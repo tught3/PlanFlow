@@ -30,9 +30,23 @@ class AuthProvider extends ChangeNotifier {
     final service = AuthService();
     unawaited(_syncProfileAndApplyUser(service, service.currentUser));
     _subscription = service.authStateChanges.listen((authState) async {
+      debugPrint(
+        'Auth state changed: ${authState.event} '
+        'user=${authState.session?.user.id ?? '<none>'}',
+      );
       _isPasswordRecovery = authState.event == AuthChangeEvent.passwordRecovery;
       await _syncProfileAndApplyUser(service, authState.session?.user);
+    }, onError: (Object error, StackTrace stackTrace) {
+      debugPrint('Auth state listener error: $error');
     });
+  }
+
+  Future<void> syncCurrentSession() async {
+    if (!AppEnv.isSupabaseReady) {
+      return;
+    }
+    final service = AuthService();
+    await _syncProfileAndApplyUser(service, service.currentUser);
   }
 
   void setUser(String? userId) {

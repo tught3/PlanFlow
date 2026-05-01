@@ -67,6 +67,7 @@ class AuthService {
 
   Future<bool> signInWithOAuth(PlanFlowOAuthProvider provider) async {
     final oauthProvider = _oauthProvider(provider);
+    debugPrint('OAuth redirect: ${AppEnv.authRedirectUrl} provider=$provider');
     return _client.auth.signInWithOAuth(
       oauthProvider,
       redirectTo: AppEnv.authRedirectUrl,

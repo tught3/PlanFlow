@@ -6,6 +6,7 @@ import 'package:home_widget/home_widget.dart';
 import 'core/constants.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
+import 'services/oauth_callback_handler.dart';
 
 class PlanFlowApp extends StatefulWidget {
   const PlanFlowApp({super.key});
@@ -16,10 +17,12 @@ class PlanFlowApp extends StatefulWidget {
 
 class _PlanFlowAppState extends State<PlanFlowApp> {
   StreamSubscription<Uri?>? _homeWidgetClickSubscription;
+  final OAuthCallbackHandler _oauthCallbackHandler = OAuthCallbackHandler();
 
   @override
   void initState() {
     super.initState();
+    _oauthCallbackHandler.start();
     _routeInitialHomeWidgetLaunch();
     _homeWidgetClickSubscription = HomeWidget.widgetClicked.listen(
       _handleHomeWidgetUri,
@@ -29,6 +32,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   @override
   void dispose() {
     _homeWidgetClickSubscription?.cancel();
+    unawaited(_oauthCallbackHandler.dispose());
     super.dispose();
   }
 
