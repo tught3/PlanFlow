@@ -65,7 +65,7 @@ class _EarlyBirdSignupCardState extends State<EarlyBirdSignupCard> {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    '출시 알림과 초기 혜택 안내를 받을 이메일을 남겨주세요.',
+                    '출시 알림과 초기 혜택 안내를 받을 이메일을 남겨 주세요.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: PlanFlowColors.textSecondary,
                     ),
@@ -100,9 +100,7 @@ class _EarlyBirdSignupCardState extends State<EarlyBirdSignupCard> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${result.email}로 신청을 저장했습니다.'),
-        ),
+        SnackBar(content: Text('${result.email}로 신청을 저장했습니다.')),
       );
     } catch (_) {
       if (!mounted) {

@@ -13,13 +13,26 @@ import 'widgets/briefing_banner.dart';
 import 'widgets/early_bird_signup_card.dart';
 import 'widgets/today_event_card.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     EventRepository? eventRepository,
   }) : eventRepository = eventRepository ?? const _UnavailableEventRepository();
 
   final EventRepository eventRepository;
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late Future<List<EventModel>> _todayEventsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _todayEventsFuture = _loadTodayEvents();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +49,6 @@ class HomeScreen extends StatelessWidget {
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: PlanFlowColors.primaryMid,
-                letterSpacing: -0.4,
               ),
             ),
             Text(
@@ -59,7 +71,7 @@ class HomeScreen extends StatelessWidget {
           children: [
             const BriefingBanner(
               title: '오늘의 브리핑',
-              message: '오늘의 핵심 일정을 한 번에 확인하고, 필요한 준비를 미리 끝내세요.',
+              message: '오늘 일정과 필요한 준비를 한 번에 확인하고, 음성으로 빠르게 추가해 보세요.',
             ),
             const SizedBox(height: AppConstants.sectionSpacing),
             const EarlyBirdSignupCard(),
@@ -71,15 +83,9 @@ class HomeScreen extends StatelessWidget {
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
                 const Spacer(),
-                const _LegendDot(
-                  color: PlanFlowColors.active,
-                  label: '진행중',
-                ),
+                const _LegendDot(color: PlanFlowColors.active, label: '진행'),
                 const SizedBox(width: 10),
-                const _LegendDot(
-                  color: PlanFlowColors.primary,
-                  label: '예정',
-                ),
+                const _LegendDot(color: PlanFlowColors.primary, label: '예정'),
                 const SizedBox(width: 10),
                 const _LegendDot(
                   color: PlanFlowColors.primaryFaint,
@@ -89,26 +95,35 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: AppConstants.sectionSpacing),
             FutureBuilder<List<EventModel>>(
-              future: _loadTodayEvents(),
+              future: _todayEventsFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const _HomeLoadingCard();
                 }
 
                 if (snapshot.hasError) {
                   return _HomeMessageCard(
                     icon: Icons.cloud_off,
                     title: '일정을 불러오지 못했어요',
-                    message: 'Supabase 로그인과 환경값을 확인해 주세요.',
+                    message: '로그인은 되어 있지만 일정 데이터를 가져오지 못했습니다. 잠시 후 다시 확인해 주세요.',
+                    primaryActionLabel: '다시 확인',
+                    primaryIcon: Icons.refresh,
+                    onPrimaryAction: _reloadTodayEvents,
                   );
                 }
 
                 final events = snapshot.data ?? const <EventModel>[];
                 if (events.isEmpty) {
-                  return const _HomeMessageCard(
-                    icon: Icons.self_improvement,
-                    title: '오늘은 여유로운 하루예요',
-                    message: '새 일정을 음성으로 빠르게 추가해 보세요.',
+                  return _HomeMessageCard(
+                    icon: Icons.calendar_month_outlined,
+                    title: '오늘 등록된 일정이 없습니다',
+                    message:
+                        '새 일정을 말로 추가하면 이곳에 오늘 일정과 준비물이 정리됩니다. 지금 바로 하나 만들어 볼까요?',
+                    primaryActionLabel: '말로 일정 추가',
+                    primaryIcon: Icons.mic_none,
+                    onPrimaryAction: () => context.go(AppRoutes.voice),
+                    secondaryActionLabel: '일정 탭 보기',
+                    onSecondaryAction: () => context.go(AppRoutes.calendar),
                   );
                 }
 
@@ -129,6 +144,7 @@ class HomeScreen extends StatelessWidget {
                 );
               },
             ),
+            const SizedBox(height: 88),
           ],
         ),
       ),
@@ -138,15 +154,21 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  void _reloadTodayEvents() {
+    setState(() {
+      _todayEventsFuture = _loadTodayEvents();
+    });
+  }
+
   Future<List<EventModel>> _loadTodayEvents() async {
     if (!AppEnv.isSupabaseReady ||
         Supabase.instance.client.auth.currentUser == null) {
       return const <EventModel>[];
     }
 
-    final repository = eventRepository is _UnavailableEventRepository
+    final repository = widget.eventRepository is _UnavailableEventRepository
         ? EventRepository.supabase()
-        : eventRepository;
+        : widget.eventRepository;
     final events = await repository.listEvents();
     final now = DateTime.now();
     return events.where((event) {
@@ -232,37 +254,111 @@ class _LegendDot extends StatelessWidget {
   }
 }
 
+class _HomeLoadingCard extends StatelessWidget {
+  const _HomeLoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _HomeFrame(
+      child: SizedBox(
+        height: 180,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+}
+
 class _HomeMessageCard extends StatelessWidget {
   const _HomeMessageCard({
     required this.icon,
     required this.title,
     required this.message,
+    this.primaryActionLabel,
+    this.primaryIcon = Icons.arrow_forward,
+    this.onPrimaryAction,
+    this.secondaryActionLabel,
+    this.onSecondaryAction,
   });
 
   final IconData icon;
   final String title;
   final String message;
+  final String? primaryActionLabel;
+  final IconData primaryIcon;
+  final VoidCallback? onPrimaryAction;
+  final String? secondaryActionLabel;
+  final VoidCallback? onSecondaryAction;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppConstants.defaultPadding),
+    return _HomeFrame(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 260),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 40, color: theme.colorScheme.primary),
-            const SizedBox(height: 12),
-            Text(title, style: theme.textTheme.titleMedium),
-            const SizedBox(height: 8),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: PlanFlowColors.primaryFaint,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 28, color: theme.colorScheme.primary),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
             Text(
               message,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium,
             ),
+            if (primaryActionLabel != null && onPrimaryAction != null) ...[
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: onPrimaryAction,
+                icon: Icon(primaryIcon, size: 18),
+                label: Text(primaryActionLabel!),
+              ),
+            ],
+            if (secondaryActionLabel != null && onSecondaryAction != null) ...[
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: onSecondaryAction,
+                child: Text(secondaryActionLabel!),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _HomeFrame extends StatelessWidget {
+  const _HomeFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: PlanFlowColors.primaryFaint, width: 0.5),
+      ),
+      child: child,
     );
   }
 }
