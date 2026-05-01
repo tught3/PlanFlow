@@ -1,10 +1,52 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:home_widget/home_widget.dart';
+
+import 'core/constants.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
 
-class PlanFlowApp extends StatelessWidget {
+class PlanFlowApp extends StatefulWidget {
   const PlanFlowApp({super.key});
+
+  @override
+  State<PlanFlowApp> createState() => _PlanFlowAppState();
+}
+
+class _PlanFlowAppState extends State<PlanFlowApp> {
+  StreamSubscription<Uri?>? _homeWidgetClickSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _routeInitialHomeWidgetLaunch();
+    _homeWidgetClickSubscription = HomeWidget.widgetClicked.listen(
+      _handleHomeWidgetUri,
+    );
+  }
+
+  @override
+  void dispose() {
+    _homeWidgetClickSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _routeInitialHomeWidgetLaunch() async {
+    final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+    _handleHomeWidgetUri(uri);
+  }
+
+  void _handleHomeWidgetUri(Uri? uri) {
+    if (uri == null) {
+      return;
+    }
+
+    if (uri.scheme == 'planflow' &&
+        (uri.host == 'voice' || uri.path == '/voice')) {
+      appRouter.go(AppRoutes.voice);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -27,7 +27,7 @@
 - [x] 10. `EventRepository` Supabase CRUD
 - [x] 11. `VoiceInputScreen` 구현
 - [x] 12. `ConfirmScreen` 구현
-- [x] 13. `HomeScreen` 구현 및 얼리버드 카드
+- [x] 13. `HomeScreen` 실제 오늘 일정 조회 및 얼리버드 카드
 - [x] 14. `CalendarScreen` 구현
 - [x] 15. `EventDetailScreen` / `EventEditScreen`
 - [x] 16. `NotificationService` 구현
@@ -36,7 +36,7 @@
 - [x] 19. Google Calendar 연동 scaffold 및 env 연결
 - [x] 20. Naver Calendar env 준비 및 placeholder
 - [x] 21. 이동시간 버퍼 scaffold
-- [x] 22. Flutter Home Widget service scaffold
+- [x] 22. Android Home Widget 네이티브 기본 구성 및 Flutter service scaffold
 - [x] 23. `SettingsScreen`
 - [x] 24. `early_bird_emails` 기반 PRO 얼리버드 이메일 수집
 
@@ -55,6 +55,15 @@
 - [x] `flutter_local_notifications` 예약 알림/부팅 복구 receiver 선언
 - [x] Critical alarm 예약 전 full-screen intent 권한 요청
 - [x] Gradle wrapper 파일 세트 커밋 준비
+- [x] ConfirmScreen 저장 순서 보강: events, pre_actions, reminders, location_history, voice_logs, 알림 스케줄
+- [x] GPT 파싱 스키마에 ISO `start_at`/`end_at` 및 `pre_actions` 반영
+- [x] HomeScreen 샘플 일정 제거 및 Supabase 오늘 일정 조회
+- [x] Android Home Widget `AppWidgetProvider`/layout/xml/manifest receiver 추가
+- [x] Home Widget 마이크 버튼 클릭 시 음성 입력 라우팅 처리
+- [x] 일정 저장 후 Home Widget 다음 일정 데이터 갱신
+- [x] Home Widget 데이터 갱신 시 오늘 남은 일정 중 가장 가까운 일정 계산
+- [x] 위젯 `planflow://voice` Android intent-filter 추가
+- [x] 후속 저장 실패 시 일정 저장 성공과 후속 동기화 경고 분리
 
 ### 1차에서 아직 실제 검증이 필요한 것
 
@@ -74,13 +83,13 @@
 - [ ] 일정 저장 플로우 확인
 - [ ] PRO 얼리버드 이메일 저장 확인
 - [ ] TTS 브리핑 음성 출력 확인
-- [ ] Android Home Widget 네이티브 구현 및 실제 표시 확인
+- [ ] Android Home Widget 실제 표시 및 마이크 버튼 앱 실행 확인
 
 ## 1차에서 주의할 점
 
 - Google Calendar는 Android Client ID와 env 연결까지 되어 있습니다. 실제 로그인/동기화는 Google API Enable, 테스트 사용자 등록, 실기기 실행으로 확인해야 합니다.
 - Naver Calendar는 키/env 준비까지 되어 있지만 실제 캘린더 API 구현은 아직 placeholder입니다.
-- Home Widget은 Flutter service scaffold와 테스트는 있지만 Android 네이티브 AppWidgetProvider/XML/manifest receiver는 아직 미완료입니다.
+- Home Widget은 Android 네이티브 기본 구성까지 추가됐습니다. 실제 런처 배치/표시는 실기기에서 확인해야 합니다.
 - iOS는 1차 Android 우선 전략상 추후 진행입니다.
 
 ## 2차 개발 범위
@@ -109,4 +118,4 @@
 - [x] `flutter analyze` 통과
 - [x] `flutter test` 통과
 - [x] Android debug APK build 통과
-- [x] 이번 v3/Android 보강분 GitHub `main` push
+- [x] 이번 v3 재정리/1차 보강분 GitHub `main` push

@@ -181,6 +181,7 @@ class GptService {
     normalized['parse_failed'] = false;
     normalized.putIfAbsent('raw_text', () => rawText);
     normalized['supplies'] = _normalizeSupplies(normalized['supplies']);
+    normalized['pre_actions'] = _normalizePreActions(normalized['pre_actions']);
     return normalized;
   }
 
@@ -201,6 +202,7 @@ class GptService {
       'memo': null,
       'supplies': <String>[],
       'is_critical': false,
+      'pre_actions': <Map<String, dynamic>>[],
     };
   }
 
@@ -223,17 +225,30 @@ class GptService {
 
     return <String>[];
   }
+
+  List<Map<String, dynamic>> _normalizePreActions(Object? preActions) {
+    if (preActions is! List) {
+      return <Map<String, dynamic>>[];
+    }
+
+    return preActions
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((item) => item['title'] != null && item['offset_hours'] != null)
+        .toList(growable: false);
+  }
 }
 
 const String _scheduleSystemPrompt = '''
 You are a Korean schedule parser.
 Return only a valid JSON object.
 Use these keys:
-title, date, start_at, end_at, location, memo, supplies, is_critical.
-Date should use YYYY-MM-DD when possible.
-Time should use HH:mm when possible.
+title, date, start_at, end_at, location, memo, supplies, is_critical, pre_actions.
+start_at and end_at must be ISO-8601 date-time strings when possible.
+If only a date is known, use 09:00 local time unless the user clearly implies all-day.
 supplies must be an array of strings.
 is_critical must be a boolean.
+pre_actions must be an array of objects with title and offset_hours.
 If a field is not known, use null or an empty array.
 ''';
 

@@ -41,6 +41,10 @@ class NotificationService {
     );
   }
 
+  int notificationIdFor(String id) {
+    return _stableNotificationId(id);
+  }
+
   Future<void> scheduleEventReminder({
     required int id,
     required String title,

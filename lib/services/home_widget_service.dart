@@ -28,7 +28,7 @@ class HomeWidgetService {
         _travelTimeBufferService =
             travelTimeBufferService ?? const TravelTimeBufferService();
 
-  static const String defaultWidgetName = 'planflow_next_event';
+  static const String defaultWidgetName = 'PlanFlowHomeWidgetProvider';
 
   final HomeWidgetPlatform _platform;
   final TravelTimeBufferService _travelTimeBufferService;
