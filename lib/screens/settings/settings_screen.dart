@@ -34,7 +34,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _calendarSyncService = widget._calendarSyncService ?? CalendarSyncService();
+    _calendarSyncService = widget._calendarSyncService ??
+        CalendarSyncService(
+          googleClientId: AppEnv.googleAndroidClientId,
+        );
     _loadCalendarStatus();
   }
 
