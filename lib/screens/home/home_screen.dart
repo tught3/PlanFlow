@@ -30,7 +30,15 @@ class HomeScreen extends StatelessWidget {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('PlanFlow'),
+            const Text(
+              'PlanFlow',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: PlanFlowColors.primaryMid,
+                letterSpacing: -0.4,
+              ),
+            ),
             Text(
               todayLabel,
               style: Theme.of(context).textTheme.bodySmall,
