@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -28,7 +30,7 @@ class AuthService {
       email: email.trim(),
       password: password,
     );
-    await ensureProfile(response.user);
+    unawaited(_tryEnsureProfile(response.user));
     return response;
   }
 
@@ -46,7 +48,7 @@ class AuthService {
       },
     );
     if (response.session != null) {
-      await ensureProfile(response.user);
+      unawaited(_tryEnsureProfile(response.user));
     }
     return response;
   }
@@ -108,6 +110,14 @@ class AuthService {
       },
       onConflict: 'id',
     );
+  }
+
+  Future<void> _tryEnsureProfile([User? user]) async {
+    try {
+      await ensureProfile(user);
+    } catch (error) {
+      debugPrint('Profile sync skipped: $error');
+    }
   }
 
   OAuthProvider _oauthProvider(PlanFlowOAuthProvider provider) {

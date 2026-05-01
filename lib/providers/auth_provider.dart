@@ -60,11 +60,11 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
+    _applyUser(user);
     try {
       await service.ensureProfile(user);
-      _applyUser(user);
-    } catch (_) {
-      _applyUser(null);
+    } catch (error) {
+      debugPrint('Profile sync skipped: $error');
     }
   }
 
