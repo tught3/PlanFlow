@@ -218,32 +218,37 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             const SizedBox(height: 20),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
               decoration: BoxDecoration(
-                color: PlanFlowColors.primary,
+                color: PlanFlowColors.primaryMid,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
                     AppConstants.appName,
+                    textAlign: TextAlign.center,
                     style: theme.textTheme.labelLarge?.copyWith(
-                      color: const Color(0xFFA8D4F0),
-                      letterSpacing: 0.6,
+                      color: const Color(0xFFCCE3F4),
+                      letterSpacing: 0.8,
+                      fontSize: 12,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   Text(
                     title,
+                    textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall?.copyWith(
                       color: Colors.white,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 24,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     subtitle,
+                    textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: Colors.white.withValues(alpha: 0.82),
                     ),
