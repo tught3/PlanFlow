@@ -1,5 +1,5 @@
-gradle-wrapper.jar
 .gradle/
+.kotlin/
 captures/
 local.properties
 keystore.properties

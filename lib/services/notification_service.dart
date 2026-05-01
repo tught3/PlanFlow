@@ -66,6 +66,7 @@ class NotificationService {
   }) async {
     await initialize();
     await _requestExactAlarmPermissionIfNeeded();
+    await _requestFullScreenIntentPermissionIfNeeded();
     await _scheduleNotification(
       id: id,
       title: title,
@@ -104,7 +105,7 @@ class NotificationService {
       ),
     );
 
-    await _plugin.initialize(initializationSettings);
+    await _plugin.initialize(settings: initializationSettings);
     await _requestNotificationPermissionIfNeeded();
   }
 
@@ -148,6 +149,17 @@ class NotificationService {
         ?.requestExactAlarmsPermission();
   }
 
+  Future<void> _requestFullScreenIntentPermissionIfNeeded() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestFullScreenIntentPermission();
+  }
+
   Future<void> _scheduleNotification({
     required int id,
     required String title,
@@ -159,14 +171,12 @@ class NotificationService {
     final scheduledDate = tz.TZDateTime.from(notifyAt.toUtc(), tz.UTC);
 
     await _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      scheduledDate,
-      details,
+      id: id,
+      scheduledDate: scheduledDate,
+      notificationDetails: details,
       androidScheduleMode: androidScheduleMode,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
+      title: title,
+      body: body,
       payload: id.toString(),
     );
   }
