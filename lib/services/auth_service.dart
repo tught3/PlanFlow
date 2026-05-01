@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/env.dart';
 
@@ -62,12 +63,19 @@ class AuthService {
     );
   }
 
-  Future<bool> signInWithOAuth(PlanFlowOAuthProvider provider) {
-    return _client.auth.signInWithOAuth(
-      _oauthProvider(provider),
+  Future<bool> signInWithOAuth(PlanFlowOAuthProvider provider) async {
+    final oauthProvider = _oauthProvider(provider);
+    final response = await _client.auth.getOAuthSignInUrl(
+      provider: oauthProvider,
       redirectTo: AppEnv.authRedirectUrl,
       scopes:
           provider == PlanFlowOAuthProvider.kakao ? 'profile_nickname' : null,
+    );
+
+    return launchUrl(
+      Uri.parse(response.url),
+      mode: LaunchMode.inAppBrowserView,
+      webOnlyWindowName: '_self',
     );
   }
 

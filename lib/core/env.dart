@@ -25,10 +25,28 @@ class AppEnv {
   }
 
   static String _envValue(String key) {
+    final compileTimeValue = _compileTimeEnvValue(key);
+    if (compileTimeValue.isNotEmpty) {
+      return compileTimeValue;
+    }
+
     try {
       return dotenv.env[key] ?? '';
     } catch (_) {
       return '';
     }
+  }
+
+  static String _compileTimeEnvValue(String key) {
+    return switch (key) {
+      'SUPABASE_URL' => const String.fromEnvironment('SUPABASE_URL'),
+      'SUPABASE_ANON_KEY' => const String.fromEnvironment('SUPABASE_ANON_KEY'),
+      'GOOGLE_ANDROID_CLIENT_ID' =>
+        const String.fromEnvironment('GOOGLE_ANDROID_CLIENT_ID'),
+      'NAVER_CLIENT_ID' => const String.fromEnvironment('NAVER_CLIENT_ID'),
+      'NAVER_CLIENT_SECRET' =>
+        const String.fromEnvironment('NAVER_CLIENT_SECRET'),
+      _ => '',
+    };
   }
 }
