@@ -4,8 +4,10 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/constants.dart';
 import '../core/env.dart';
 import '../providers/auth_provider.dart';
+import '../core/router.dart';
 
 class OAuthCallbackHandler {
   OAuthCallbackHandler({AppLinks? appLinks})
@@ -36,11 +38,9 @@ class OAuthCallbackHandler {
 
     final client = Supabase.instance.client;
 
-    // Let supabase_flutter's built-in deeplink observer complete first.
-    await Future<void>.delayed(const Duration(milliseconds: 900));
     if (client.auth.currentSession != null) {
       debugPrint('OAuth callback already produced a Supabase session.');
-      await authProvider.syncCurrentSession();
+      await _syncAndRouteHome();
       return;
     }
 
@@ -49,7 +49,7 @@ class OAuthCallbackHandler {
       debugPrint(
         'OAuth callback exchange completed: user=${response.session.user.id}',
       );
-      await authProvider.syncCurrentSession();
+      await _syncAndRouteHome();
     } on AuthException catch (error) {
       debugPrint(
         'OAuth callback exchange failed: ${error.message} '
@@ -64,6 +64,13 @@ class OAuthCallbackHandler {
     return uri.scheme == 'planflow' &&
         uri.host == 'auth-callback' &&
         uri.queryParameters.containsKey('code');
+  }
+
+  Future<void> _syncAndRouteHome() async {
+    final signedIn = await authProvider.syncCurrentSession();
+    if (signedIn && !authProvider.isPasswordRecovery) {
+      appRouter.go(AppRoutes.home);
+    }
   }
 
   Future<void> dispose() async {

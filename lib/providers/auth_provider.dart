@@ -41,12 +41,13 @@ class AuthProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> syncCurrentSession() async {
+  Future<bool> syncCurrentSession() async {
     if (!AppEnv.isSupabaseReady) {
-      return;
+      return false;
     }
     final service = AuthService();
     await _syncProfileAndApplyUser(service, service.currentUser);
+    return isSignedIn;
   }
 
   void setUser(String? userId) {

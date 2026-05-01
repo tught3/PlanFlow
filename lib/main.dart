@@ -19,6 +19,9 @@ Future<void> main() async {
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,
         anonKey: AppEnv.supabaseAnonKey,
+        authOptions: const FlutterAuthClientOptions(
+          detectSessionInUri: false,
+        ),
       ).timeout(const Duration(seconds: 10));
       AppEnv.markSupabaseInitialized();
       authProvider.start();

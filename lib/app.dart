@@ -6,6 +6,7 @@ import 'package:home_widget/home_widget.dart';
 import 'core/constants.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
+import 'providers/auth_provider.dart';
 import 'services/oauth_callback_handler.dart';
 
 class PlanFlowApp extends StatefulWidget {
@@ -18,11 +19,15 @@ class PlanFlowApp extends StatefulWidget {
 class _PlanFlowAppState extends State<PlanFlowApp> {
   StreamSubscription<Uri?>? _homeWidgetClickSubscription;
   final OAuthCallbackHandler _oauthCallbackHandler = OAuthCallbackHandler();
+  late final AppLifecycleListener _lifecycleListener;
 
   @override
   void initState() {
     super.initState();
     _oauthCallbackHandler.start();
+    _lifecycleListener = AppLifecycleListener(
+      onResume: () => unawaited(authProvider.syncCurrentSession()),
+    );
     _routeInitialHomeWidgetLaunch();
     _homeWidgetClickSubscription = HomeWidget.widgetClicked.listen(
       _handleHomeWidgetUri,
@@ -33,6 +38,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void dispose() {
     _homeWidgetClickSubscription?.cancel();
     unawaited(_oauthCallbackHandler.dispose());
+    _lifecycleListener.dispose();
     super.dispose();
   }
 
