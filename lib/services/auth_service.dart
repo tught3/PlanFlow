@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -68,13 +69,16 @@ class AuthService {
     final response = await _client.auth.getOAuthSignInUrl(
       provider: oauthProvider,
       redirectTo: AppEnv.authRedirectUrl,
-      scopes:
-          provider == PlanFlowOAuthProvider.kakao ? 'profile_nickname' : null,
     );
+
+    final launchMode =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+            ? LaunchMode.externalApplication
+            : LaunchMode.inAppBrowserView;
 
     return launchUrl(
       Uri.parse(response.url),
-      mode: LaunchMode.inAppBrowserView,
+      mode: launchMode,
       webOnlyWindowName: '_self',
     );
   }
