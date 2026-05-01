@@ -11,13 +11,13 @@ class InMemoryAppRepository implements AppRepository {
   List<AppFeature> getHomeFeatures() {
     return const [
       AppFeature(
-        title: 'Planner',
-        description: 'Basic entry point for planning work.',
+        title: '일정 관리',
+        description: '오늘의 일정과 준비할 일을 확인합니다.',
         route: '/planner',
       ),
       AppFeature(
-        title: 'Settings',
-        description: 'Space for reviewing and adjusting app state.',
+        title: '설정',
+        description: '앱 상태와 계정 설정을 확인합니다.',
         route: '/settings',
       ),
     ];

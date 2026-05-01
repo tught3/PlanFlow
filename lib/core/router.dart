@@ -93,7 +93,7 @@ final GoRouter appRouter = GoRouter(
     ),
   ],
   errorBuilder: (context, state) => const PlaceholderScreen(
-    title: 'Not Found',
-    message: 'Requested route could not be found.',
+    title: '화면을 찾을 수 없어요',
+    message: '요청한 화면 경로를 찾지 못했습니다.',
   ),
 );

@@ -22,19 +22,19 @@ class SplashScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Splash placeholder screen.',
+                  'PlanFlow를 준비하고 있어요.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 24),
                 FilledButton(
                   onPressed: () => context.go(AppRoutes.login),
-                  child: const Text('Login'),
+                  child: const Text('로그인'),
                 ),
                 const SizedBox(height: AppConstants.sectionSpacing),
                 OutlinedButton(
                   onPressed: () => context.go(AppRoutes.home),
-                  child: const Text('Go Home'),
+                  child: const Text('홈으로 이동'),
                 ),
               ],
             ),

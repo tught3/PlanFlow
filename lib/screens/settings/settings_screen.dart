@@ -121,7 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Settings reset to local defaults.'),
+        content: Text('설정을 기본값으로 되돌렸습니다.'),
       ),
     );
   }
@@ -129,8 +129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _saveLocalChanges() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text(
-            'Saved locally for this session. Backend persistence is not connected yet.'),
+        content: Text('현재 세션에 저장했습니다. 서버 저장은 추후 설정 저장소와 연결됩니다.'),
       ),
     );
   }
@@ -269,10 +268,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: const Text('설정'),
         actions: [
           IconButton(
-            tooltip: 'Reset local defaults',
+            tooltip: '기본값으로 되돌리기',
             onPressed: _resetToDefaults,
             icon: const Icon(Icons.restart_alt),
           ),
@@ -289,7 +288,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             _SectionCard(
-              title: 'Account',
+              title: '계정',
               subtitle: '로그인한 계정 기준으로 일정, 알림, 백업 데이터가 분리됩니다.',
               child: AnimatedBuilder(
                 animation: authProvider,
@@ -298,10 +297,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   return Column(
                     children: [
                       _StatusRow(
-                        label: 'Login status',
-                        value: signedIn
-                            ? authProvider.email ?? 'Signed in'
-                            : 'Signed out',
+                        label: '로그인 상태',
+                        value:
+                            signedIn ? authProvider.email ?? '로그인됨' : '로그아웃됨',
                         icon: Icons.account_circle_outlined,
                         isConfigured: signedIn,
                       ),
@@ -313,7 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onPressed: signedIn
                                   ? _signOut
                                   : () => context.go(AppRoutes.login),
-                              child: Text(signedIn ? 'Logout' : 'Login'),
+                              child: Text(signedIn ? '로그아웃' : '로그인'),
                             ),
                           ),
                         ],
@@ -325,7 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             _SectionCard(
-              title: 'Backup and restore',
+              title: '백업 및 복원',
               subtitle: '현재 로그인한 계정의 Supabase 데이터를 하나의 snapshot으로 저장하고 복원합니다.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -343,12 +341,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.cloud_upload_outlined),
-                          label: const Text('Create backup'),
+                          label: const Text('백업 만들기'),
                         ),
                       ),
                       const SizedBox(width: 8),
                       IconButton.outlined(
-                        tooltip: 'Refresh backups',
+                        tooltip: '백업 목록 새로고침',
                         onPressed: _isLoadingBackups ? null : _loadBackups,
                         icon: const Icon(Icons.refresh),
                       ),
@@ -375,22 +373,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             _SectionCard(
-              title: 'Briefing times',
-              subtitle:
-                  'Choose when the morning and evening briefings should run on this device.',
+              title: '브리핑 시간',
+              subtitle: '이 기기에서 아침/저녁 브리핑을 받을 시간을 정합니다.',
               child: Column(
                 children: [
                   _TimeSettingTile(
-                    title: 'Morning briefing',
-                    subtitle: 'Daily planning kickoff',
+                    title: '아침 브리핑',
+                    subtitle: '하루 계획을 시작하는 시간',
                     value: morningLabel,
                     icon: Icons.wb_sunny_outlined,
                     onTap: () => _pickTime(context: context, isMorning: true),
                   ),
                   const Divider(height: 1),
                   _TimeSettingTile(
-                    title: 'Evening briefing',
-                    subtitle: 'Wrap-up and next-day prep',
+                    title: '저녁 브리핑',
+                    subtitle: '하루 정리와 내일 준비',
                     value: eveningLabel,
                     icon: Icons.nightlight_outlined,
                     onTap: () => _pickTime(context: context, isMorning: false),
@@ -400,16 +397,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             _SectionCard(
-              title: 'Default reminder minutes',
-              subtitle:
-                  'This becomes the pre-action reminder used for new items until you change it.',
+              title: '기본 알림 시간',
+              subtitle: '새 일정에 기본으로 적용할 사전 알림 시간을 정합니다.',
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: _reminderOptions
                     .map(
                       (minutes) => FilterChip(
-                        label: Text('$minutes min'),
+                        label: Text('$minutes분'),
                         selected: _defaultReminderMinutes == minutes,
                         onSelected: (_) {
                           setState(() {
@@ -423,13 +419,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             _SectionCard(
-              title: 'Calendar sync status',
-              subtitle:
-                  'Secret values are hidden. Only configured or not configured is shown here.',
+              title: '캘린더 연동 상태',
+              subtitle: '비밀키는 표시하지 않고 설정 여부만 보여줍니다.',
               child: Column(
                 children: [
                   _StatusRow(
-                    label: 'Google Calendar',
+                    label: '구글 캘린더',
                     value: _calendarStatusLabel(_calendarSyncSummary?.google),
                     icon: Icons.cloud_sync_outlined,
                     isConfigured:
@@ -437,7 +432,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                   _StatusRow(
-                    label: 'Naver Calendar',
+                    label: '네이버 캘린더',
                     value: _calendarStatusLabel(_calendarSyncSummary?.naver),
                     icon: Icons.sync_alt_outlined,
                     isConfigured:
@@ -445,8 +440,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                   _StatusRow(
-                    label: 'Local sync mode',
-                    value: 'Local only',
+                    label: '로컬 동기화 모드',
+                    value: '기기 안에서만 사용',
                     icon: Icons.device_hub_outlined,
                     isConfigured: false,
                   ),
@@ -455,23 +450,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             _SectionCard(
-              title: 'Env / config status',
-              subtitle:
-                  'These checks confirm whether required environment values are present without exposing them.',
+              title: '환경값 설정 상태',
+              subtitle: '필수 환경값이 들어왔는지만 확인하고 실제 값은 숨깁니다.',
               child: Column(
                 children: [
                   _StatusRow(
-                    label: 'Supabase auth/data env',
-                    value: AppEnv.isSupabaseReady
-                        ? 'Configured'
-                        : 'Not configured',
+                    label: 'Supabase 인증/데이터',
+                    value: AppEnv.isSupabaseReady ? '설정됨' : '미설정',
                     icon: Icons.code_outlined,
                     isConfigured: AppEnv.isSupabaseReady,
                   ),
                   const SizedBox(height: 12),
                   _StatusRow(
-                    label: 'OpenAI parsing env',
-                    value: envConfigured ? 'Configured' : 'Not configured',
+                    label: 'OpenAI 일정 파싱',
+                    value: envConfigured ? '설정됨' : '미설정',
                     icon: Icons.storage_outlined,
                     isConfigured: envConfigured,
                   ),
@@ -498,7 +490,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Local changes only',
+                      '현재 화면 저장 안내',
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: PlanFlowColors.primary,
                         fontSize: 13,
@@ -507,7 +499,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'This screen is fully usable now, but changes stay in memory until repository-backed settings persistence is connected.',
+                      '브리핑/알림 설정은 지금 화면에서 바로 조정할 수 있지만, 서버 저장소 연결 전까지는 앱 세션 안에서만 유지됩니다.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: PlanFlowColors.textSecondary,
                       ),
@@ -518,14 +510,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Expanded(
                           child: OutlinedButton(
                             onPressed: _resetToDefaults,
-                            child: const Text('Reset'),
+                            child: const Text('초기화'),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: FilledButton(
                             onPressed: _saveLocalChanges,
-                            child: const Text('Save locally'),
+                            child: const Text('이 기기에 저장'),
                           ),
                         ),
                       ],
@@ -554,17 +546,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _calendarStatusLabel(CalendarIntegrationResult? result) {
     if (_isLoadingCalendarStatus || result == null) {
-      return 'Checking...';
+      return '확인 중...';
     }
 
     return switch (result.status) {
-      CalendarIntegrationStatus.notConfigured => 'Not configured',
-      CalendarIntegrationStatus.signedOut => 'Configured, signed out',
-      CalendarIntegrationStatus.ready => 'Ready',
-      CalendarIntegrationStatus.syncing => 'Syncing',
-      CalendarIntegrationStatus.synced => 'Synced',
-      CalendarIntegrationStatus.unsupported => 'Unsupported',
-      CalendarIntegrationStatus.failed => 'Status check failed',
+      CalendarIntegrationStatus.notConfigured => '미설정',
+      CalendarIntegrationStatus.signedOut => '설정됨, 로그인 필요',
+      CalendarIntegrationStatus.ready => '사용 가능',
+      CalendarIntegrationStatus.syncing => '동기화 중',
+      CalendarIntegrationStatus.synced => '동기화 완료',
+      CalendarIntegrationStatus.unsupported => '지원 전',
+      CalendarIntegrationStatus.failed => '상태 확인 실패',
     };
   }
 
@@ -613,7 +605,7 @@ class _HeaderCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Preferences',
+            '설정',
             style: theme.textTheme.labelLarge?.copyWith(
               color: const Color(0xFFA8D4F0),
               fontSize: 9,
@@ -622,7 +614,7 @@ class _HeaderCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Briefings and reminders',
+            '브리핑과 알림',
             style: theme.textTheme.headlineSmall?.copyWith(
               color: Colors.white,
               fontSize: 18,
@@ -636,15 +628,15 @@ class _HeaderCard extends StatelessWidget {
             children: [
               _HeaderPill(
                 icon: Icons.wb_sunny_outlined,
-                label: 'Morning $morningLabel',
+                label: '아침 $morningLabel',
               ),
               _HeaderPill(
                 icon: Icons.nightlight_outlined,
-                label: 'Evening $eveningLabel',
+                label: '저녁 $eveningLabel',
               ),
               _HeaderPill(
                 icon: Icons.notifications_none,
-                label: '$reminderMinutes min reminders',
+                label: '$reminderMinutes분 전 알림',
               ),
             ],
           ),
@@ -849,14 +841,16 @@ class _BackupTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    backup.label ?? 'Manual backup',
+                    backup.label == 'Manual backup'
+                        ? '수동 백업'
+                        : backup.label ?? '수동 백업',
                     style: theme.textTheme.titleSmall?.copyWith(
                       color: PlanFlowColors.primary,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '$createdAt · ${backup.totalItems} items',
+                    '$createdAt · ${backup.totalItems}개 항목',
                     style: theme.textTheme.bodySmall,
                   ),
                 ],
@@ -864,7 +858,7 @@ class _BackupTile extends StatelessWidget {
             ),
             TextButton(
               onPressed: onRestore,
-              child: const Text('Restore'),
+              child: const Text('복원'),
             ),
           ],
         ),

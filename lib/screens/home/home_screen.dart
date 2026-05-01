@@ -23,7 +23,7 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final todayLabel = DateFormat('EEEE, MMM d').format(DateTime.now());
+    final todayLabel = _koreanDateLabel(DateTime.now());
 
     return Scaffold(
       appBar: AppBar(
@@ -39,7 +39,7 @@ class HomeScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            tooltip: 'Voice input',
+            tooltip: '음성 입력',
             icon: const Icon(Icons.mic_none),
             onPressed: () => context.go(AppRoutes.voice),
           ),
@@ -50,7 +50,7 @@ class HomeScreen extends StatelessWidget {
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           children: [
             const BriefingBanner(
-              title: 'TODAY BRIEFING',
+              title: '오늘의 브리핑',
               message: '오늘의 핵심 일정을 한 번에 확인하고, 필요한 준비를 미리 끝내세요.',
             ),
             const SizedBox(height: AppConstants.sectionSpacing),
@@ -59,7 +59,7 @@ class HomeScreen extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  'TODAY',
+                  '오늘 일정',
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
                 const Spacer(),
@@ -131,7 +131,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   Future<List<EventModel>> _loadTodayEvents() async {
-    if (!AppEnv.isConfigured ||
+    if (!AppEnv.isSupabaseReady ||
         Supabase.instance.client.auth.currentUser == null) {
       return const <EventModel>[];
     }
@@ -182,6 +182,19 @@ class HomeScreen extends StatelessWidget {
       return TodayEventStatus.active;
     }
     return TodayEventStatus.normal;
+  }
+
+  String _koreanDateLabel(DateTime value) {
+    const weekdays = <int, String>{
+      DateTime.monday: '월요일',
+      DateTime.tuesday: '화요일',
+      DateTime.wednesday: '수요일',
+      DateTime.thursday: '목요일',
+      DateTime.friday: '금요일',
+      DateTime.saturday: '토요일',
+      DateTime.sunday: '일요일',
+    };
+    return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
   }
 }
 

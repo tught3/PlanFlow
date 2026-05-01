@@ -28,10 +28,10 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -500));
     await tester.pumpAndSettle();
 
-    expect(find.text('Google Calendar'), findsOneWidget);
-    expect(find.text('Ready'), findsOneWidget);
-    expect(find.text('Naver Calendar'), findsOneWidget);
-    expect(find.text('Unsupported'), findsOneWidget);
+    expect(find.text('구글 캘린더'), findsOneWidget);
+    expect(find.text('사용 가능'), findsOneWidget);
+    expect(find.text('네이버 캘린더'), findsOneWidget);
+    expect(find.text('지원 전'), findsOneWidget);
   });
 }
 

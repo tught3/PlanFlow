@@ -39,7 +39,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       }
       if (text == null || text.trim().isEmpty) {
         setState(() {
-          _error = 'No speech was recognized. Try again in a quieter place.';
+          _error = '음성이 인식되지 않았어요. 조금 더 조용한 곳에서 다시 시도해 주세요.';
           _isListening = false;
         });
         return;
@@ -58,8 +58,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         return;
       }
       setState(() {
-        _error =
-            'Voice parsing failed. You can try again or enter it manually.';
+        _error = '음성 내용을 일정으로 바꾸지 못했어요. 다시 시도하거나 직접 입력해 주세요.';
       });
     } finally {
       if (mounted) {
@@ -83,7 +82,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'SCHEDULE CAPTURE',
+                '일정 음성 입력',
                 style: theme.textTheme.labelLarge,
                 textAlign: TextAlign.center,
               ),

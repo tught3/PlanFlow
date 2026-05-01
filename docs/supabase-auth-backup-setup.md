@@ -57,3 +57,14 @@ OPENAI_API_KEY=your-openai-api-key
 ```
 
 `OPENAI_API_KEY`가 없어도 로그인과 일정 저장은 가능하지만, GPT 일정 파싱은 동작하지 않습니다.
+
+## 6. PRO 얼리버드 이메일
+
+현재 앱의 PRO 얼리버드 신청은 `public.early_bird_emails`에 이메일을 저장하는 대기자 명단 기능입니다.
+이 단계에서는 사용자에게 자동 이메일이 발송되지 않습니다.
+
+자동 안내 메일을 보내려면 추가로 아래 중 하나를 연결해야 합니다.
+
+1. Supabase Edge Function + Resend/SendGrid 같은 이메일 발송 서비스
+2. Zapier/Make 자동화로 `early_bird_emails` 신규 row 감지 후 메일 발송
+3. 운영자가 Supabase Table에서 이메일 목록을 내려받아 수동 발송

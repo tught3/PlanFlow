@@ -18,125 +18,91 @@ class EarlyBirdSignupCard extends StatefulWidget {
 }
 
 class _EarlyBirdSignupCardState extends State<EarlyBirdSignupCard> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
   var _isSaving = false;
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Card(
+      color: PlanFlowColors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(AppConstants.defaultPadding),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: PlanFlowColors.primaryFaint,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.workspace_premium_outlined,
+                color: PlanFlowColors.primary,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: PlanFlowColors.primaryFaint,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.workspace_premium_outlined,
+                  Text(
+                    'PRO 얼리버드 신청',
+                    style: theme.textTheme.titleSmall?.copyWith(
                       color: PlanFlowColors.primary,
-                      size: 18,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'PRO 얼리버드 신청',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: PlanFlowColors.tagNormalBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '1차',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: PlanFlowColors.tagNormalText,
-                      ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '출시 알림과 초기 혜택 안내를 받을 이메일을 남겨주세요.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                '출시 알림과 초기 혜택을 받을 이메일을 남겨주세요.',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _emailController,
-                enabled: !_isSaving,
-                keyboardType: TextInputType.emailAddress,
-                autofillHints: const [AutofillHints.email],
-                decoration: const InputDecoration(
-                  labelText: '이메일',
-                  hintText: 'you@example.com',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (EarlyBirdEmailModel.isValidEmail(value ?? '')) {
-                    return null;
-                  }
-                  return '올바른 이메일을 입력해 주세요.';
-                },
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _isSaving ? null : _submit,
-                  child: _isSaving
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('신청하기'),
-                ),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: _isSaving ? null : _openSignupDialog,
+              child: const Text('신청'),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) {
+  Future<void> _openSignupDialog() async {
+    final email = await showDialog<String>(
+      context: context,
+      builder: (context) => _EarlyBirdSignupDialog(isSaving: _isSaving),
+    );
+    if (email == null || email.trim().isEmpty) {
       return;
     }
 
     setState(() => _isSaving = true);
     try {
-      final result = await widget.repository.saveEmail(_emailController.text);
+      final result = await widget.repository.saveEmail(email);
       if (!mounted) {
         return;
       }
-      _emailController.text = result.email;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('신청이 완료되었습니다. 출시 소식을 보내드릴게요.')),
+        SnackBar(
+          content: Text('${result.email}로 신청을 저장했습니다.'),
+        ),
       );
     } catch (_) {
       if (!mounted) {
@@ -150,6 +116,81 @@ class _EarlyBirdSignupCardState extends State<EarlyBirdSignupCard> {
         setState(() => _isSaving = false);
       }
     }
+  }
+}
+
+class _EarlyBirdSignupDialog extends StatefulWidget {
+  const _EarlyBirdSignupDialog({
+    required this.isSaving,
+  });
+
+  final bool isSaving;
+
+  @override
+  State<_EarlyBirdSignupDialog> createState() => _EarlyBirdSignupDialogState();
+}
+
+class _EarlyBirdSignupDialogState extends State<_EarlyBirdSignupDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('PRO 얼리버드 신청'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '현재는 이메일을 대기자 명단에 저장합니다. 자동 메일 발송은 이메일 서비스 연결 후 추가됩니다.',
+            ),
+            const SizedBox(height: AppConstants.sectionSpacing),
+            TextFormField(
+              controller: _emailController,
+              enabled: !widget.isSaving,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              decoration: const InputDecoration(
+                labelText: '이메일',
+                hintText: 'you@example.com',
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (EarlyBirdEmailModel.isValidEmail(value ?? '')) {
+                  return null;
+                }
+                return '올바른 이메일을 입력해 주세요.';
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: widget.isSaving ? null : () => Navigator.of(context).pop(),
+          child: const Text('취소'),
+        ),
+        FilledButton(
+          onPressed: widget.isSaving
+              ? null
+              : () {
+                  if (_formKey.currentState?.validate() ?? false) {
+                    Navigator.of(context).pop(_emailController.text);
+                  }
+                },
+          child: const Text('신청하기'),
+        ),
+      ],
+    );
   }
 }
 

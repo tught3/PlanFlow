@@ -42,7 +42,7 @@ class SupabaseEarlyBirdEmailRepository extends EarlyBirdEmailRepository {
   Future<EarlyBirdSignupResult> saveEmail(String email) async {
     final normalizedEmail = EarlyBirdEmailModel.normalizeEmail(email);
     if (!EarlyBirdEmailModel.isValidEmail(normalizedEmail)) {
-      throw ArgumentError.value(email, 'email', 'A valid email is required.');
+      throw ArgumentError.value(email, 'email', '올바른 이메일이 필요합니다.');
     }
 
     await _gateway.submitEmail(normalizedEmail);

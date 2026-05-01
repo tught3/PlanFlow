@@ -20,6 +20,8 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - If a task looks like it benefits from GSD, use GSD first and keep the same model split inside that workflow.
 
 ## Workflow rules
+- 모든 작업을 시작하기 전에 먼저 컨텍스트 압축/정리를 수행하고, `.planning/context/ACTIVE_SUMMARY.md`를 확인해 현재 상태를 짧게 재정렬한다.
+- 작업이 끝날 때마다 반드시 Git 커밋 후 원격 저장소에 푸시한다. 단, 사용자가 만든 unrelated/untracked 파일은 명시 요청이 없으면 커밋하지 않는다.
 - Use GSD workflows for non-trivial work.
 - If the user gives an instruction and GSD appears useful for structure, planning, or safe modification, run GSD rather than skipping it.
 - When using GSD, keep the established split: `gpt-5.5` for planning, `gpt-5.4-mini` for code edits and review.

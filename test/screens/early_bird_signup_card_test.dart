@@ -15,12 +15,14 @@ void main() {
       ),
     );
 
+    await tester.tap(find.text('신청'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField), ' USER@Example.COM ');
     await tester.tap(find.text('신청하기'));
     await tester.pumpAndSettle();
 
     expect(repository.savedEmails.single, ' USER@Example.COM ');
-    expect(find.text('신청이 완료되었습니다. 출시 소식을 보내드릴게요.'), findsOneWidget);
+    expect(find.text('user@example.com로 신청을 저장했습니다.'), findsOneWidget);
   });
 
   testWidgets('EarlyBirdSignupCard shows validation for invalid email',
@@ -35,6 +37,8 @@ void main() {
       ),
     );
 
+    await tester.tap(find.text('신청'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField), 'invalid-email');
     await tester.tap(find.text('신청하기'));
     await tester.pump();

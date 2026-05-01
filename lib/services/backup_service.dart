@@ -76,7 +76,7 @@ class BackupService {
         .from('user_backups')
         .insert(<String, dynamic>{
           'user_id': userId,
-          'label': label ?? 'Manual backup',
+          'label': label ?? '수동 백업',
           'payload': payload,
           'item_counts': counts,
         })

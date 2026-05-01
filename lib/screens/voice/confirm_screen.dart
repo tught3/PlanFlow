@@ -77,7 +77,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   Future<void> _save() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      _showMessage('Title is required.');
+      _showMessage('제목을 입력해 주세요.');
       return;
     }
 
@@ -87,7 +87,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     try {
       if (!AppEnv.isSupabaseReady) {
-        _showMessage('Saved locally for now. Add env values to sync.');
+        _showMessage('Supabase 환경값이 없어 서버에 저장하지 못했습니다.');
         if (mounted) {
           context.go(AppRoutes.home);
         }
@@ -96,7 +96,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) {
-        _showMessage('Saved locally for now. Sign in to sync with Supabase.');
+        _showMessage('로그인 후 일정을 저장할 수 있습니다.');
         if (mounted) {
           context.go(AppRoutes.home);
         }
@@ -134,14 +134,14 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       if (mounted) {
         _showMessage(
           followUpResult.hasFailures
-              ? 'Event saved. Some reminders or logs need another sync.'
-              : 'Event saved.',
+              ? '일정은 저장됐지만 일부 알림이나 로그는 다시 동기화가 필요합니다.'
+              : '일정을 저장했습니다.',
         );
         context.go(AppRoutes.home);
       }
     } catch (_) {
       if (mounted) {
-        _showMessage('Could not save yet. Check Supabase sign-in and env.');
+        _showMessage('저장하지 못했습니다. 로그인과 Supabase 설정을 확인해 주세요.');
       }
     } finally {
       if (mounted) {
@@ -226,7 +226,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       () => widget.notificationService.scheduleEventReminder(
         id: widget.notificationService.notificationIdFor('${event.id}:push'),
         title: event.title,
-        body: 'Upcoming schedule: ${event.title}',
+        body: '곧 시작될 일정: ${event.title}',
         notifyAt: eventReminderNotifyAt,
       ),
     );
@@ -375,7 +375,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                 child: const Padding(
                   padding: EdgeInsets.all(AppConstants.defaultPadding),
                   child: Text(
-                    'Automatic parsing failed. Review and enter the details manually.',
+                    '자동 파싱에 실패했습니다. 내용을 확인하고 직접 입력해 주세요.',
                   ),
                 ),
               ),
@@ -462,7 +462,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                   _isCritical = value;
                 });
               },
-              title: const Text('Critical alarm'),
+              title: const Text('중요 알림'),
               subtitle: const Text('중요 일정이면 더 강한 알림을 준비합니다.'),
               contentPadding: EdgeInsets.zero,
             ),
@@ -574,7 +574,7 @@ class _DateTimeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = value == null
-        ? emptyLabel ?? 'Not set'
+        ? emptyLabel ?? '설정 안 됨'
         : MaterialLocalizations.of(context).formatFullDate(value!);
     final time = value == null
         ? null
