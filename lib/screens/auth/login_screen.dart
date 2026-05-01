@@ -88,14 +88,20 @@ class _LoginScreenState extends State<LoginScreen> {
           name: _nameController.text,
         );
         if (response.session == null) {
-          _setMessage('회원가입 메일을 보냈습니다. 메일함에서 인증을 완료해주세요.', isError: false);
+          _setMessage(
+            '회원가입 메일을 보냈습니다. 메일함에서 인증을 완료해 주세요.',
+            isError: false,
+          );
           _setMode(_AuthMode.login, keepMessage: true);
         } else if (mounted) {
           context.go(AppRoutes.home);
         }
       } else {
         await authService.sendPasswordResetEmail(_emailController.text);
-        _setMessage('비밀번호 재설정 메일을 보냈습니다. 메일함을 확인해주세요.', isError: false);
+        _setMessage(
+          '비밀번호 재설정 메일을 보냈습니다. 메일함을 확인해 주세요.',
+          isError: false,
+        );
       }
     } catch (error) {
       _setMessage(_friendlyAuthMessage(error));
@@ -123,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final launched = await authService.signInWithOAuth(provider);
       if (!launched) {
-        _setMessage('로그인 창을 열지 못했습니다. 브라우저 설정을 확인해주세요.');
+        _setMessage('로그인 창을 열지 못했습니다. 브라우저 설정을 확인해 주세요.');
       }
     } catch (error) {
       _setMessage(_friendlyAuthMessage(error));
@@ -141,7 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
 
     if (email.isEmpty || !email.contains('@')) {
-      return '올바른 이메일을 입력해주세요.';
+      return '올바른 이메일을 입력해 주세요.';
     }
     if (_mode == _AuthMode.reset) {
       return null;
@@ -182,12 +188,12 @@ class _LoginScreenState extends State<LoginScreen> {
       return '이메일 또는 비밀번호가 올바르지 않습니다.';
     }
     if (message.contains('Email not confirmed')) {
-      return '이메일 인증이 아직 완료되지 않았습니다. 메일함을 확인해주세요.';
+      return '이메일 인증이 아직 완료되지 않았습니다. 메일함을 확인해 주세요.';
     }
     if (message.contains('User already registered')) {
-      return '이미 가입된 이메일입니다. 로그인으로 진행해주세요.';
+      return '이미 가입된 이메일입니다. 로그인으로 진행해 주세요.';
     }
-    return '인증 처리 중 문제가 발생했습니다. 설정과 입력값을 확인해주세요.';
+    return '인증 처리 중 문제가 발생했습니다. 설정과 입력값을 확인해 주세요.';
   }
 
   @override
@@ -199,8 +205,8 @@ class _LoginScreenState extends State<LoginScreen> {
       _AuthMode.reset => '비밀번호 찾기',
     };
     final subtitle = switch (_mode) {
-      _AuthMode.login => '등록된 이메일과 비밀번호로 PlanFlow를 시작하세요.',
-      _AuthMode.signUp => '새 계정을 만들면 일정 데이터가 계정별로 분리됩니다.',
+      _AuthMode.login => '이메일과 비밀번호로 먼저 로그인하거나, 아래 소셜 계정으로 바로 시작하세요.',
+      _AuthMode.signUp => '계정을 만들면 일정 데이터가 사용자별로 분리되어 안전하게 저장됩니다.',
       _AuthMode.reset => '가입한 이메일로 비밀번호 재설정 링크를 보내드립니다.',
     };
 
@@ -247,128 +253,24 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 16),
             if (!AppEnv.isSupabaseReady)
-              _MessageBox(
+              const _MessageBox(
                 message:
-                    'Supabase 환경값이 없어서 실제 로그인은 아직 사용할 수 없습니다. .env에 SUPABASE_URL, SUPABASE_ANON_KEY를 넣어주세요.',
+                    'Supabase 환경값이 없어 실제 로그인은 아직 사용할 수 없습니다. .env에 SUPABASE_URL, SUPABASE_ANON_KEY를 넣어 주세요.',
                 isError: true,
               ),
             if (_message != null) ...[
               _MessageBox(message: _message!, isError: _isError),
               const SizedBox(height: 12),
             ],
-            Card(
-              color: PlanFlowColors.surface,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: const BorderSide(
-                  color: PlanFlowColors.primaryFaint,
-                  width: 0.5,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  children: [
-                    SegmentedButton<_AuthMode>(
-                      segments: const [
-                        ButtonSegment(
-                          value: _AuthMode.login,
-                          label: Text('로그인'),
-                          icon: Icon(Icons.login),
-                        ),
-                        ButtonSegment(
-                          value: _AuthMode.signUp,
-                          label: Text('회원가입'),
-                          icon: Icon(Icons.person_add_alt_1),
-                        ),
-                      ],
-                      selected: <_AuthMode>{
-                        _mode == _AuthMode.reset ? _AuthMode.login : _mode,
-                      },
-                      onSelectionChanged: _isLoading
-                          ? null
-                          : (selected) => _setMode(selected.first),
-                    ),
-                    const SizedBox(height: 16),
-                    if (_mode == _AuthMode.signUp) ...[
-                      TextField(
-                        controller: _nameController,
-                        decoration: const InputDecoration(
-                          labelText: '이름 또는 닉네임',
-                          border: OutlineInputBorder(),
-                        ),
-                        textInputAction: TextInputAction.next,
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                    ],
-                    TextField(
-                      controller: _emailController,
-                      decoration: const InputDecoration(
-                        labelText: '이메일',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      textInputAction: TextInputAction.next,
-                    ),
-                    if (_mode != _AuthMode.reset) ...[
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      TextField(
-                        controller: _passwordController,
-                        decoration: const InputDecoration(
-                          labelText: '비밀번호',
-                          border: OutlineInputBorder(),
-                        ),
-                        obscureText: true,
-                        autofillHints: const [AutofillHints.password],
-                        onSubmitted: (_) => _submit(),
-                      ),
-                    ],
-                    if (_mode == _AuthMode.signUp) ...[
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      TextField(
-                        controller: _confirmPasswordController,
-                        decoration: const InputDecoration(
-                          labelText: '비밀번호 확인',
-                          border: OutlineInputBorder(),
-                        ),
-                        obscureText: true,
-                        onSubmitted: (_) => _submit(),
-                      ),
-                    ],
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _isLoading ? null : _submit,
-                        icon: _isLoading
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Icon(_mode == _AuthMode.reset
-                                ? Icons.mark_email_read_outlined
-                                : Icons.lock_open_outlined),
-                        label: Text(
-                            _mode == _AuthMode.reset ? '재설정 메일 보내기' : title),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: _isLoading
-                          ? null
-                          : () => _setMode(_mode == _AuthMode.reset
-                              ? _AuthMode.login
-                              : _AuthMode.reset),
-                      child: Text(_mode == _AuthMode.reset
-                          ? '로그인으로 돌아가기'
-                          : '비밀번호를 잊으셨나요?'),
-                    ),
-                  ],
-                ),
-              ),
+            _EmailLoginCard(
+              mode: _mode,
+              isLoading: _isLoading,
+              emailController: _emailController,
+              passwordController: _passwordController,
+              confirmPasswordController: _confirmPasswordController,
+              nameController: _nameController,
+              onModeChanged: _setMode,
+              onSubmit: _submit,
             ),
             const SizedBox(height: 16),
             _SocialLoginCard(
@@ -376,6 +278,165 @@ class _LoginScreenState extends State<LoginScreen> {
               onGoogle: () => _socialLogin(PlanFlowOAuthProvider.google),
               onKakao: () => _socialLogin(PlanFlowOAuthProvider.kakao),
               onNaver: () => _socialLogin(PlanFlowOAuthProvider.naver),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmailLoginCard extends StatelessWidget {
+  const _EmailLoginCard({
+    required this.mode,
+    required this.isLoading,
+    required this.emailController,
+    required this.passwordController,
+    required this.confirmPasswordController,
+    required this.nameController,
+    required this.onModeChanged,
+    required this.onSubmit,
+  });
+
+  final _AuthMode mode;
+  final bool isLoading;
+  final TextEditingController emailController;
+  final TextEditingController passwordController;
+  final TextEditingController confirmPasswordController;
+  final TextEditingController nameController;
+  final ValueChanged<_AuthMode> onModeChanged;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = switch (mode) {
+      _AuthMode.login => '이메일 로그인',
+      _AuthMode.signUp => '이메일 회원가입',
+      _AuthMode.reset => '비밀번호 재설정',
+    };
+    final buttonLabel = switch (mode) {
+      _AuthMode.login => '이메일로 로그인',
+      _AuthMode.signUp => '이메일로 회원가입',
+      _AuthMode.reset => '재설정 메일 보내기',
+    };
+
+    return Card(
+      color: PlanFlowColors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<_AuthMode>(
+              segments: const [
+                ButtonSegment(
+                  value: _AuthMode.login,
+                  label: Text('로그인'),
+                  icon: Icon(Icons.login),
+                ),
+                ButtonSegment(
+                  value: _AuthMode.signUp,
+                  label: Text('회원가입'),
+                  icon: Icon(Icons.person_add_alt_1),
+                ),
+              ],
+              selected: <_AuthMode>{
+                mode == _AuthMode.reset ? _AuthMode.login : mode,
+              },
+              onSelectionChanged: isLoading
+                  ? null
+                  : (selected) => onModeChanged(selected.first),
+            ),
+            const SizedBox(height: 16),
+            if (mode == _AuthMode.signUp) ...[
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: '이름 또는 닉네임',
+                  border: OutlineInputBorder(),
+                ),
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: AppConstants.sectionSpacing),
+            ],
+            TextField(
+              controller: emailController,
+              decoration: const InputDecoration(
+                labelText: '이메일',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              textInputAction: TextInputAction.next,
+            ),
+            if (mode != _AuthMode.reset) ...[
+              const SizedBox(height: AppConstants.sectionSpacing),
+              TextField(
+                controller: passwordController,
+                decoration: const InputDecoration(
+                  labelText: '비밀번호',
+                  border: OutlineInputBorder(),
+                ),
+                obscureText: true,
+                autofillHints: const [AutofillHints.password],
+                onSubmitted: (_) => onSubmit(),
+              ),
+            ],
+            if (mode == _AuthMode.signUp) ...[
+              const SizedBox(height: AppConstants.sectionSpacing),
+              TextField(
+                controller: confirmPasswordController,
+                decoration: const InputDecoration(
+                  labelText: '비밀번호 확인',
+                  border: OutlineInputBorder(),
+                ),
+                obscureText: true,
+                onSubmitted: (_) => onSubmit(),
+              ),
+            ],
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: isLoading ? null : onSubmit,
+              icon: isLoading
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      mode == _AuthMode.reset
+                          ? Icons.mark_email_read_outlined
+                          : Icons.lock_open_outlined,
+                    ),
+              label: Text(buttonLabel),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: isLoading
+                  ? null
+                  : () => onModeChanged(
+                        mode == _AuthMode.reset
+                            ? _AuthMode.login
+                            : _AuthMode.reset,
+                      ),
+              child: Text(
+                mode == _AuthMode.reset ? '로그인으로 돌아가기' : '비밀번호를 잊으셨나요?',
+              ),
             ),
           ],
         ),
@@ -448,32 +509,143 @@ class _SocialLoginCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '소셜 로그인',
+              '간편 로그인',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: PlanFlowColors.primary,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
             ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
+            const SizedBox(height: 4),
+            Text(
+              'Supabase에 연결한 Google, Kakao, Naver 계정으로 로그인합니다.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            _BrandLoginButton(
+              label: 'Google로 계속하기',
+              mark: 'G',
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF202124),
+              borderColor: const Color(0xFFDADCE0),
               onPressed: isLoading ? null : onGoogle,
-              icon: const Icon(Icons.g_mobiledata),
-              label: const Text('Google로 로그인'),
             ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
+            _BrandLoginButton(
+              label: '카카오로 계속하기',
+              mark: 'TALK',
+              backgroundColor: const Color(0xFFFEE500),
+              foregroundColor: const Color(0xFF191919),
+              borderColor: const Color(0xFFFEE500),
               onPressed: isLoading ? null : onKakao,
-              icon: const Icon(Icons.chat_bubble_outline),
-              label: const Text('Kakao로 로그인'),
             ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
+            _BrandLoginButton(
+              label: '네이버로 계속하기',
+              mark: 'N',
+              backgroundColor: const Color(0xFF03C75A),
+              foregroundColor: Colors.white,
+              borderColor: const Color(0xFF03C75A),
               onPressed: isLoading ? null : onNaver,
-              icon: const Icon(Icons.eco_outlined),
-              label: const Text('Naver로 로그인'),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _BrandLoginButton extends StatelessWidget {
+  const _BrandLoginButton({
+    required this.label,
+    required this.mark,
+    required this.backgroundColor,
+    required this.foregroundColor,
+    required this.borderColor,
+    required this.onPressed,
+  });
+
+  final String label;
+  final String mark;
+  final Color backgroundColor;
+  final Color foregroundColor;
+  final Color borderColor;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = onPressed == null;
+    return SizedBox(
+      height: 48,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: disabled
+              ? backgroundColor.withValues(alpha: 0.45)
+              : backgroundColor,
+          foregroundColor: disabled
+              ? foregroundColor.withValues(alpha: 0.45)
+              : foregroundColor,
+          side: BorderSide(
+            color: disabled ? borderColor.withValues(alpha: 0.35) : borderColor,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _BrandMark(
+                mark: mark,
+                color: foregroundColor,
+                isGoogle: mark == 'G',
+              ),
+            ),
+            Text(label),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BrandMark extends StatelessWidget {
+  const _BrandMark({
+    required this.mark,
+    required this.color,
+    required this.isGoogle,
+  });
+
+  final String mark;
+  final Color color;
+  final bool isGoogle;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isGoogle) {
+      return const Text(
+        'G',
+        style: TextStyle(
+          color: Color(0xFF4285F4),
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+        ),
+      );
+    }
+
+    return Text(
+      mark,
+      style: TextStyle(
+        color: color,
+        fontSize: mark.length > 1 ? 11 : 20,
+        fontWeight: FontWeight.w900,
+        letterSpacing: mark.length > 1 ? -0.4 : 0,
       ),
     );
   }
