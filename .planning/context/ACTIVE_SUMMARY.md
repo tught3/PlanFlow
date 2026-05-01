@@ -11,3 +11,9 @@
 - Validation: `C:\src\flutter\bin\flutter.bat analyze` passes and `C:\src\flutter\bin\flutter.bat test test/services/gpt_service_test.dart` passes.
 - Checklist 10 repository CRUD: implemented Supabase-backed event CRUD in `lib/data/repositories/event_repository.dart`, added typed JSON serialization to event/reminder/settings models, and added round-trip tests under `test/data/models`.
 - Validation: `C:\src\flutter\bin\flutter.bat analyze` passed and `C:\src\flutter\bin\flutter.bat test test/data/models` passed.
+- Checklist 14 calendar screen: replaced the placeholder with a useful Material 3 calendar stub in `lib/screens/calendar/calendar_screen.dart`, including a date header, upcoming agenda list, empty-state path, and voice input action.
+- Validation: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format lib\screens\calendar\calendar_screen.dart` and `C:\src\flutter\bin\flutter.bat analyze` both passed.
+- Checklist 15 event detail/edit screens: replaced placeholders with usable scaffold screens in `lib/screens/event/event_detail_screen.dart` and `lib/screens/event/event_edit_screen.dart`, including detail sections for title/time/location/memo/supplies/critical state plus edit action, and an edit form with a save placeholder that returns safely to detail.
+- Validation: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format lib\screens\event\event_detail_screen.dart lib\screens\event\event_edit_screen.dart` and `C:\src\flutter\bin\flutter.bat analyze` both passed.
+- Checklist 16 notification service: implemented `lib/services/notification_service.dart` with `flutter_local_notifications` initialization, normal event reminder scheduling, critical alarm scheduling, and timezone-safe `zonedSchedule` handling via `TZDateTime` in UTC.
+- Validation: `C:\src\flutter\bin\dart.bat format lib\services\notification_service.dart`, `C:\src\flutter\bin\flutter.bat pub get`, and `C:\src\flutter\bin\flutter.bat analyze` all passed.
