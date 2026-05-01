@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants.dart';
+import '../../../core/theme.dart';
 import '../../../data/models/early_bird_email_model.dart';
 import '../../../data/repositories/early_bird_email_repository.dart';
 
@@ -39,7 +40,46 @@ class _EarlyBirdSignupCardState extends State<EarlyBirdSignupCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('PRO 얼리버드 신청', style: theme.textTheme.titleMedium),
+              Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: PlanFlowColors.primaryFaint,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.workspace_premium_outlined,
+                      color: PlanFlowColors.primary,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'PRO 얼리버드 신청',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: PlanFlowColors.tagNormalBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '1차',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: PlanFlowColors.tagNormalText,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               Text(
                 '출시 알림과 초기 혜택을 받을 이메일을 남겨주세요.',

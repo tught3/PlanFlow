@@ -5,8 +5,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../widgets/planflow_voice_fab.dart';
 import 'widgets/briefing_banner.dart';
 import 'widgets/early_bird_signup_card.dart';
 import 'widgets/today_event_card.dart';
@@ -25,7 +27,16 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(todayLabel),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('PlanFlow'),
+            Text(
+              todayLabel,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Voice input',
@@ -39,11 +50,35 @@ class HomeScreen extends StatelessWidget {
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           children: [
             const BriefingBanner(
-              title: 'Today briefing',
-              message: 'Keep the next appointment visible and prepare early.',
+              title: 'TODAY BRIEFING',
+              message: '오늘의 핵심 일정을 한 번에 확인하고, 필요한 준비를 미리 끝내세요.',
             ),
             const SizedBox(height: AppConstants.sectionSpacing),
             const EarlyBirdSignupCard(),
+            const SizedBox(height: AppConstants.sectionSpacing),
+            Row(
+              children: [
+                Text(
+                  'TODAY',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const Spacer(),
+                const _LegendDot(
+                  color: PlanFlowColors.active,
+                  label: '진행중',
+                ),
+                const SizedBox(width: 10),
+                const _LegendDot(
+                  color: PlanFlowColors.primary,
+                  label: '예정',
+                ),
+                const SizedBox(width: 10),
+                const _LegendDot(
+                  color: PlanFlowColors.primaryFaint,
+                  label: '완료',
+                ),
+              ],
+            ),
             const SizedBox(height: AppConstants.sectionSpacing),
             FutureBuilder<List<EventModel>>(
               future: _loadTodayEvents(),
@@ -78,6 +113,7 @@ class HomeScreen extends StatelessWidget {
                         location: event.location,
                         supplies: event.supplies,
                         isCritical: event.isCritical,
+                        status: _eventStatus(event),
                       ),
                       const SizedBox(height: AppConstants.sectionSpacing),
                     ],
@@ -88,10 +124,8 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: PlanFlowVoiceFab(
         onPressed: () => context.go(AppRoutes.voice),
-        icon: const Icon(Icons.mic),
-        label: const Text('Voice Input'),
       ),
     );
   }
@@ -131,6 +165,49 @@ class HomeScreen extends StatelessWidget {
       return start;
     }
     return '$start - ${formatter.format(endAt)}';
+  }
+
+  TodayEventStatus _eventStatus(EventModel event) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return TodayEventStatus.normal;
+    }
+
+    final now = DateTime.now();
+    final endAt = event.endAt ?? startAt.add(const Duration(hours: 1));
+    if (now.isAfter(endAt)) {
+      return TodayEventStatus.done;
+    }
+    if (!now.isBefore(startAt) && now.isBefore(endAt)) {
+      return TodayEventStatus.active;
+    }
+    return TodayEventStatus.normal;
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  const _LegendDot({
+    required this.color,
+    required this.label,
+  });
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
   }
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
+import '../../core/theme.dart';
 
 class EventDetailScreen extends StatelessWidget {
   const EventDetailScreen({super.key});
@@ -22,6 +23,7 @@ class EventDetailScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
+      backgroundColor: PlanFlowColors.background,
       appBar: AppBar(
         title: const Text('이벤트 상세'),
         actions: [
@@ -64,7 +66,19 @@ class EventDetailScreen extends StatelessWidget {
                   children: _sampleSupplies
                       .map(
                         (item) => Chip(
+                          backgroundColor: PlanFlowColors.tagNormalBg,
+                          side: const BorderSide(
+                            color: PlanFlowColors.primaryFaint,
+                            width: 0.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           label: Text(item),
+                          labelStyle: theme.textTheme.labelSmall?.copyWith(
+                            color: PlanFlowColors.primaryMid,
+                            fontSize: 9,
+                          ),
                           visualDensity: VisualDensity.compact,
                         ),
                       )
@@ -78,7 +92,9 @@ class EventDetailScreen extends StatelessWidget {
               children: [
                 Text(
                   _sampleMemo,
-                  style: theme.textTheme.bodyMedium,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -112,9 +128,17 @@ class _HeaderCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Card(
+      color: PlanFlowColors.surface,
       elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(AppConstants.defaultPadding),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -124,7 +148,9 @@ class _HeaderCard extends StatelessWidget {
                   child: Text(
                     title,
                     style: theme.textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
+                      color: PlanFlowColors.primary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -135,14 +161,15 @@ class _HeaderCard extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: colorScheme.errorContainer,
-                      borderRadius: BorderRadius.circular(999),
+                      color: PlanFlowColors.tagNormalBg,
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '중요',
                       style: theme.textTheme.labelMedium?.copyWith(
-                        color: colorScheme.onErrorContainer,
-                        fontWeight: FontWeight.w700,
+                        color: colorScheme.error,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -152,7 +179,8 @@ class _HeaderCard extends StatelessWidget {
             Text(
               time,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: PlanFlowColors.textSecondary,
+                fontSize: 11,
               ),
             ),
           ],
@@ -184,16 +212,26 @@ class _InfoCard extends StatelessWidget {
     }
 
     return Card(
+      color: PlanFlowColors.surface,
       elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(AppConstants.defaultPadding),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               title,
               style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+                color: PlanFlowColors.primary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 12),
@@ -228,7 +266,7 @@ class _InfoRow extends StatelessWidget {
           child: Text(
             label,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+              color: PlanFlowColors.textSecondary,
             ),
           ),
         ),
@@ -237,7 +275,7 @@ class _InfoRow extends StatelessWidget {
             value,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: valueColor,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),

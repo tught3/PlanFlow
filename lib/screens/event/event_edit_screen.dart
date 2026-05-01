@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
+import '../../core/theme.dart';
 
 class EventEditScreen extends StatefulWidget {
   const EventEditScreen({super.key});
@@ -59,6 +60,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
+      backgroundColor: PlanFlowColors.background,
       appBar: AppBar(title: const Text('이벤트 편집')),
       body: SafeArea(
         child: Form(
@@ -69,7 +71,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
               Text(
                 '필요한 정보만 수정하고 저장하세요.',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                  color: PlanFlowColors.textSecondary,
                 ),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
@@ -77,7 +79,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 controller: _titleController,
                 decoration: const InputDecoration(
                   labelText: '제목',
-                  border: OutlineInputBorder(),
                 ),
                 validator: (value) => (value == null || value.trim().isEmpty)
                     ? '제목을 입력하세요.'
@@ -88,7 +89,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 controller: _timeController,
                 decoration: const InputDecoration(
                   labelText: '시간',
-                  border: OutlineInputBorder(),
                 ),
                 validator: (value) => (value == null || value.trim().isEmpty)
                     ? '시간을 입력하세요.'
@@ -99,7 +99,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 controller: _locationController,
                 decoration: const InputDecoration(
                   labelText: '장소',
-                  border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
@@ -107,7 +106,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 controller: _memoController,
                 decoration: const InputDecoration(
                   labelText: '메모',
-                  border: OutlineInputBorder(),
                   alignLabelWithHint: true,
                 ),
                 minLines: 3,
@@ -119,11 +117,18 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 decoration: const InputDecoration(
                   labelText: '준비물',
                   helperText: '쉼표로 구분해서 입력하세요.',
-                  border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
               SwitchListTile.adaptive(
+                tileColor: PlanFlowColors.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: const BorderSide(
+                    color: PlanFlowColors.primaryFaint,
+                    width: 0.5,
+                  ),
+                ),
                 contentPadding: EdgeInsets.zero,
                 title: const Text('중요 일정'),
                 subtitle: const Text('핵심 일정 여부를 표시합니다.'),

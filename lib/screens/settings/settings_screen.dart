@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/theme.dart';
 import '../../services/calendar_sync_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -119,6 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final envConfigured = widget._envConfigured ?? AppEnv.isConfigured;
 
     return Scaffold(
+      backgroundColor: PlanFlowColors.background,
       appBar: AppBar(
         title: const Text('Settings'),
         actions: [
@@ -243,17 +245,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             Card(
+              color: PlanFlowColors.surface,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: const BorderSide(
+                  color: PlanFlowColors.primaryFaint,
+                  width: 0.5,
+                ),
+              ),
               child: Padding(
-                padding: const EdgeInsets.all(AppConstants.defaultPadding),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Local changes only',
-                        style: theme.textTheme.titleMedium),
+                    Text(
+                      'Local changes only',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       'This screen is fully usable now, but changes stay in memory until repository-backed settings persistence is connected.',
-                      style: theme.textTheme.bodyMedium,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -342,17 +364,10 @@ class _HeaderCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(AppConstants.defaultPadding),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            theme.colorScheme.primaryContainer,
-            theme.colorScheme.tertiaryContainer,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
+        color: PlanFlowColors.primaryMid,
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -360,14 +375,18 @@ class _HeaderCard extends StatelessWidget {
           Text(
             'Preferences',
             style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer,
+              color: const Color(0xFFA8D4F0),
+              fontSize: 9,
+              letterSpacing: 0.05,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Briefings and reminders',
             style: theme.textTheme.headlineSmall?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer,
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 12),
@@ -411,18 +430,19 @@ class _HeaderPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+        color: Colors.white.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: theme.colorScheme.onPrimaryContainer),
+          Icon(icon, size: 16, color: Colors.white),
           const SizedBox(width: 6),
           Text(
             label,
             style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer,
+              color: Colors.white,
+              fontSize: 9,
             ),
           ),
         ],
@@ -447,14 +467,35 @@ class _SectionCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Card(
+      color: PlanFlowColors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(AppConstants.defaultPadding),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: theme.textTheme.titleMedium),
+            Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: PlanFlowColors.primary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(subtitle, style: theme.textTheme.bodyMedium),
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
             const SizedBox(height: 16),
             child,
           ],
@@ -494,12 +535,12 @@ class _TimeSettingTile extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(14),
+                color: PlanFlowColors.background,
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 icon,
-                color: theme.colorScheme.onPrimaryContainer,
+                color: PlanFlowColors.primaryMid,
               ),
             ),
             const SizedBox(width: 12),
@@ -507,7 +548,12 @@ class _TimeSettingTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: theme.textTheme.titleSmall),
+                  Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: PlanFlowColors.primary,
+                    ),
+                  ),
                   const SizedBox(height: 2),
                   Text(subtitle, style: theme.textTheme.bodySmall),
                 ],
@@ -517,11 +563,11 @@ class _TimeSettingTile extends StatelessWidget {
             Text(
               value,
               style: theme.textTheme.titleSmall?.copyWith(
-                color: theme.colorScheme.primary,
+                color: PlanFlowColors.primaryMid,
               ),
             ),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right),
+            const Icon(Icons.chevron_right, color: PlanFlowColors.primaryMid),
           ],
         ),
       ),
@@ -546,7 +592,7 @@ class _StatusRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color =
-        isConfigured ? theme.colorScheme.primary : theme.colorScheme.outline;
+        isConfigured ? PlanFlowColors.primaryMid : PlanFlowColors.textSecondary;
 
     return Row(
       children: [
@@ -555,7 +601,7 @@ class _StatusRow extends StatelessWidget {
           height: 40,
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, color: color, size: 20),
         ),
@@ -564,7 +610,12 @@ class _StatusRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: theme.textTheme.titleSmall),
+              Text(
+                label,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: PlanFlowColors.primary,
+                ),
+              ),
               const SizedBox(height: 2),
               Text(value, style: theme.textTheme.bodySmall),
             ],

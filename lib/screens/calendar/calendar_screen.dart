@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/constants.dart';
+import '../../core/theme.dart';
+import '../../widgets/planflow_voice_fab.dart';
 
 class CalendarScreen extends StatelessWidget {
   const CalendarScreen({super.key});
@@ -35,11 +37,10 @@ class CalendarScreen extends StatelessWidget {
     ];
 
     return Scaffold(
+      backgroundColor: PlanFlowColors.background,
       appBar: AppBar(title: const Text('Calendar')),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: PlanFlowVoiceFab(
         onPressed: () => context.go(AppRoutes.voice),
-        icon: const Icon(Icons.mic_none),
-        label: const Text('Voice input'),
       ),
       body: SafeArea(
         child: ListView(
@@ -60,12 +61,15 @@ class CalendarScreen extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(999),
+                    color: PlanFlowColors.surface,
+                    border: Border.all(color: PlanFlowColors.primaryFaint),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     '${upcomingItems.length}',
-                    style: theme.textTheme.labelMedium,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: PlanFlowColors.primaryMid,
+                    ),
                   ),
                 ),
                 const Spacer(),
@@ -88,14 +92,26 @@ class CalendarScreen extends StatelessWidget {
               ),
             const SizedBox(height: 8),
             Card(
+              color: PlanFlowColors.surface,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: const BorderSide(
+                  color: PlanFlowColors.primaryFaint,
+                  width: 0.5,
+                ),
+              ),
               child: Padding(
-                padding: const EdgeInsets.all(AppConstants.defaultPadding),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(
                       Icons.calendar_month_outlined,
-                      color: theme.colorScheme.primary,
+                      color: PlanFlowColors.primaryMid,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -104,18 +120,24 @@ class CalendarScreen extends StatelessWidget {
                         children: [
                           Text(
                             'Month overview',
-                            style: theme.textTheme.titleSmall,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: PlanFlowColors.primary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             'This placeholder keeps the screen useful until live calendar loading is connected.',
-                            style: theme.textTheme.bodyMedium,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.textSecondary,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             monthLabel,
                             style: theme.textTheme.labelLarge?.copyWith(
-                              color: theme.colorScheme.primary,
+                              color: PlanFlowColors.primaryMid,
                             ),
                           ),
                         ],
@@ -147,17 +169,10 @@ class _DateHeaderCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(AppConstants.defaultPadding),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            theme.colorScheme.primaryContainer,
-            theme.colorScheme.secondaryContainer,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
+        color: PlanFlowColors.primaryMid,
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,23 +180,26 @@ class _DateHeaderCard extends StatelessWidget {
           Text(
             'Today',
             style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer,
+              color: const Color(0xFFA8D4F0),
+              fontSize: 9,
+              letterSpacing: 0.05,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             dateLabel,
             style: theme.textTheme.headlineSmall?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer,
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             monthLabel,
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer.withValues(
-                alpha: 0.85,
-              ),
+              color: Colors.white.withValues(alpha: 0.85),
+              fontSize: 11,
             ),
           ),
         ],
@@ -200,8 +218,17 @@ class _AgendaItemCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Card(
+      color: PlanFlowColors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(AppConstants.defaultPadding),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -209,12 +236,12 @@ class _AgendaItemCard extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(14),
+                color: PlanFlowColors.background,
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 item.accentIcon,
-                color: theme.colorScheme.onPrimaryContainer,
+                color: PlanFlowColors.primaryMid,
               ),
             ),
             const SizedBox(width: 12),
@@ -225,21 +252,31 @@ class _AgendaItemCard extends StatelessWidget {
                   Text(
                     item.timeRange,
                     style: theme.textTheme.labelLarge?.copyWith(
-                      color: theme.colorScheme.primary,
+                      color: PlanFlowColors.primaryMid,
+                      fontSize: 10,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(item.title, style: theme.textTheme.titleMedium),
+                  Text(
+                    item.title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     item.description,
-                    style: theme.textTheme.bodyMedium,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right),
+            const Icon(Icons.chevron_right, color: PlanFlowColors.primaryMid),
           ],
         ),
       ),
@@ -255,22 +292,33 @@ class _EmptyAgendaCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Card(
+      color: PlanFlowColors.surfaceFaint,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(AppConstants.defaultPadding),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
               Icons.event_busy_outlined,
               size: 40,
-              color: theme.colorScheme.primary,
+              color: PlanFlowColors.primaryMid,
             ),
             const SizedBox(height: 12),
             Text('No upcoming items yet', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
             Text(
               'Use voice input to add a meeting, task, or reminder and it will appear here.',
-              style: theme.textTheme.bodyMedium,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
+import '../../core/theme.dart';
 import '../../services/gpt_service.dart';
 import '../../services/stt_service.dart';
 
@@ -74,34 +75,42 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Voice Input')),
+      appBar: AppBar(title: const Text('음성 입력')),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              Text(
+                'SCHEDULE CAPTURE',
+                style: theme.textTheme.labelLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
               AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                width: _isListening ? 132 : 112,
-                height: _isListening ? 132 : 112,
+                duration: const Duration(milliseconds: 220),
+                width: _isListening ? 136 : 116,
+                height: _isListening ? 136 : 116,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: _isListening
-                      ? theme.colorScheme.primaryContainer
-                      : theme.colorScheme.surfaceContainerHighest,
+                  color: _isListening ? PlanFlowColors.active : Colors.white,
+                  border: Border.all(
+                    color: _isListening
+                        ? PlanFlowColors.activeLight
+                        : PlanFlowColors.primaryFaint,
+                    width: 0.5,
+                  ),
                 ),
                 child: Icon(
                   _isListening ? Icons.graphic_eq : Icons.mic,
                   size: 56,
-                  color: theme.colorScheme.primary,
+                  color: _isListening ? Colors.white : PlanFlowColors.fab,
                 ),
               ),
               const SizedBox(height: 24),
               Text(
-                _isListening
-                    ? 'Listening on device...'
-                    : 'Tap the mic and speak your schedule.',
+                _isListening ? '기기에서 음성을 듣고 있어요.' : '마이크를 누르고 일정을 말해주세요.',
                 style: theme.textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
@@ -110,6 +119,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                 Text(
                   _recognizedText!,
                   textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyLarge,
                 ),
               ],
               if (_error != null) ...[
@@ -129,13 +139,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.mic),
-                label: Text(_isListening ? 'Processing' : 'Start voice input'),
+                label: Text(_isListening ? '처리 중' : '음성 입력 시작'),
               ),
               const SizedBox(height: 12),
               TextButton(
                 onPressed:
                     _isListening ? null : () => context.go(AppRoutes.confirm),
-                child: const Text('Enter manually'),
+                child: const Text('직접 입력하기'),
               ),
             ],
           ),

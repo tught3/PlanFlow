@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../services/home_widget_service.dart';
@@ -349,11 +350,25 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Confirm Event')),
+      appBar: AppBar(title: const Text('일정 확인')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: PlanFlowColors.briefing,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                'GPT가 정리한 내용을 확인한 뒤 저장하세요. 필요한 항목은 바로 수정할 수 있습니다.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white,
+                    ),
+              ),
+            ),
+            const SizedBox(height: AppConstants.sectionSpacing),
             if (_parseFailed)
               Card(
                 color: Theme.of(context).colorScheme.errorContainer,
@@ -368,7 +383,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             TextField(
               controller: _titleController,
               decoration: const InputDecoration(
-                labelText: 'Title',
+                labelText: '제목',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -376,13 +391,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             TextField(
               controller: _locationController,
               decoration: const InputDecoration(
-                labelText: 'Location',
+                labelText: '장소',
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: AppConstants.sectionSpacing),
             _DateTimeTile(
-              label: 'Start',
+              label: '시작 시간',
               value: _startAt,
               onTap: () async {
                 final picked = await _pickDateTime(_startAt);
@@ -398,9 +413,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             ),
             const SizedBox(height: AppConstants.sectionSpacing),
             _DateTimeTile(
-              label: 'End',
+              label: '종료 시간',
               value: _endAt,
-              emptyLabel: 'No end time',
+              emptyLabel: '종료 시간 없음',
               onTap: () async {
                 final picked = await _pickDateTime(_endAt ?? _startAt);
                 if (picked != null) {
@@ -412,7 +427,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
               trailing: _endAt == null
                   ? null
                   : IconButton(
-                      tooltip: 'Clear end time',
+                      tooltip: '종료 시간 지우기',
                       onPressed: () {
                         setState(() {
                           _endAt = null;
@@ -425,8 +440,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             TextField(
               controller: _suppliesController,
               decoration: const InputDecoration(
-                labelText: 'Supplies',
-                helperText: 'Separate items with commas.',
+                labelText: '준비물',
+                helperText: '쉼표로 구분해서 입력하세요.',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -434,7 +449,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             TextField(
               controller: _memoController,
               decoration: const InputDecoration(
-                labelText: 'Memo',
+                labelText: '메모',
                 border: OutlineInputBorder(),
               ),
               maxLines: 3,
@@ -448,6 +463,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                 });
               },
               title: const Text('Critical alarm'),
+              subtitle: const Text('중요 일정이면 더 강한 알림을 준비합니다.'),
               contentPadding: EdgeInsets.zero,
             ),
             const SizedBox(height: 24),
@@ -459,7 +475,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.save),
-              label: Text(_isSaving ? 'Saving' : 'Save event'),
+              label: Text(_isSaving ? '저장 중' : '일정 저장'),
             ),
           ],
         ),
@@ -567,14 +583,16 @@ class _DateTimeTile extends StatelessWidget {
           );
 
     return ListTile(
-      contentPadding: EdgeInsets.zero,
+      tileColor: PlanFlowColors.surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+        borderRadius: BorderRadius.circular(10),
       ),
       title: Text(label),
       subtitle: Text(time == null ? text : '$text · $time'),
-      trailing: trailing ?? const Icon(Icons.edit_calendar),
+      trailing: trailing ??
+          const Icon(Icons.edit_calendar, color: PlanFlowColors.primaryMid),
       onTap: onTap,
     );
   }
