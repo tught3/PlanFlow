@@ -14,10 +14,15 @@ Future<void> main() async {
     // Keep booting when the local env file is absent in scaffolded setups.
   }
   if (AppEnv.supabaseUrl.isNotEmpty && AppEnv.supabaseAnonKey.isNotEmpty) {
-    await Supabase.initialize(
-      url: AppEnv.supabaseUrl,
-      anonKey: AppEnv.supabaseAnonKey,
-    );
+    try {
+      await Supabase.initialize(
+        url: AppEnv.supabaseUrl,
+        anonKey: AppEnv.supabaseAnonKey,
+      ).timeout(const Duration(seconds: 10));
+      AppEnv.markSupabaseInitialized();
+    } catch (error) {
+      debugPrint('Supabase initialization skipped: $error');
+    }
   }
   runApp(const ProviderScope(child: PlanFlowApp()));
 }
