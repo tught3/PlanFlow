@@ -1,4 +1,4 @@
-# Active Summary
+﻿# Active Summary
 
 - Updated `pubspec.yaml` to include the checklist 3 dependency set, using scaffold-compatible versions where needed.
 - Switched the app shell to `MaterialApp.router` with a minimal `go_router` configuration.
@@ -28,3 +28,5 @@
 - Validation: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format lib\services\calendar_sync_service.dart test\services\calendar_sync_service_test.dart`, `C:\src\flutter\bin\flutter.bat analyze`, and `C:\src\flutter\bin\flutter.bat test test\services\calendar_sync_service_test.dart` all passed.
 - Checklist 23 settings screen: replaced the placeholder in `lib/screens/settings/settings_screen.dart` with a usable local-state settings UI for morning/evening briefing time, default reminder minutes, calendar sync status, and env/config status without exposing secrets.
 - Validation: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format lib\screens\settings\settings_screen.dart` and `C:\src\flutter\bin\flutter.bat analyze` both passed.
+- Checklist 24 PRO early bird email collection: added `public.early_bird_emails` with RPC-only public submission via `submit_early_bird_email`, a testable Supabase-backed early bird email repository/model, and a home-screen signup card with validation.
+- Validation: `C:\src\flutter\bin\flutter.bat analyze` passed and `C:\src\flutter\bin\flutter.bat test test\data\models\early_bird_email_model_test.dart test\data\repositories\early_bird_email_repository_test.dart test\screens\early_bird_signup_card_test.dart` passed.

@@ -83,6 +83,32 @@ create table if not exists public.user_settings (
   created_at timestamptz not null default now()
 );
 
+-- 8. early_bird_emails
+create table if not exists public.early_bird_emails (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  created_at timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'early_bird_emails_email_format'
+      and conrelid = 'public.early_bird_emails'::regclass
+  ) then
+    alter table public.early_bird_emails
+      add constraint early_bird_emails_email_format
+      check (
+        char_length(email) <= 254
+        and email = lower(trim(email))
+        and email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+      );
+  end if;
+end;
+$$;
+
 alter table public.users enable row level security;
 alter table public.events enable row level security;
 alter table public.pre_actions enable row level security;
@@ -90,6 +116,7 @@ alter table public.reminders enable row level security;
 alter table public.voice_logs enable row level security;
 alter table public.location_history enable row level security;
 alter table public.user_settings enable row level security;
+alter table public.early_bird_emails enable row level security;
 
 drop policy if exists "users_select_own" on public.users;
 drop policy if exists "users_insert_own" on public.users;
@@ -244,3 +271,29 @@ create policy "user_settings_delete_own"
   on public.user_settings
   for delete
   using (auth.uid() = user_id);
+
+create or replace function public.submit_early_bird_email(input_email text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized_email text := lower(trim(input_email));
+begin
+  if normalized_email is null
+    or char_length(normalized_email) > 254
+    or normalized_email !~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+  then
+    raise exception 'A valid email is required.'
+      using errcode = '22023';
+  end if;
+
+  insert into public.early_bird_emails (email)
+  values (normalized_email)
+  on conflict (email) do nothing;
+end;
+$$;
+
+revoke all on function public.submit_early_bird_email(text) from public;
+grant execute on function public.submit_early_bird_email(text) to anon, authenticated;

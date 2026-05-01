@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/constants.dart';
 import 'widgets/briefing_banner.dart';
+import 'widgets/early_bird_signup_card.dart';
 import 'widgets/today_event_card.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -32,6 +33,8 @@ class HomeScreen extends StatelessWidget {
               title: 'Today briefing',
               message: 'Keep the next appointment visible and prepare early.',
             ),
+            SizedBox(height: AppConstants.sectionSpacing),
+            EarlyBirdSignupCard(),
             SizedBox(height: AppConstants.sectionSpacing),
             TodayEventCard(
               title: 'Morning meeting',
