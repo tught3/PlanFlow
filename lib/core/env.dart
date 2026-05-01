@@ -15,10 +15,7 @@ class AppEnv {
   static bool get isSupabaseReady => _supabaseInitialized;
 
   static bool get isConfigured =>
-      isSupabaseReady &&
-      supabaseUrl.isNotEmpty &&
-      supabaseAnonKey.isNotEmpty &&
-      openAiApiKey.isNotEmpty;
+      isSupabaseReady && supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 
   static void markSupabaseInitialized() {
     _supabaseInitialized = true;
