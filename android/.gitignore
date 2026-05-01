@@ -1,0 +1,8 @@
+gradle-wrapper.jar
+.gradle/
+captures/
+local.properties
+keystore.properties
+app/debug/
+app/profile/
+app/release/

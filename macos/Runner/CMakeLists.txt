@@ -1,0 +1,1 @@
+add_executable(planflow MACOSX_BUNDLE AppDelegate.swift MainFlutterWindow.swift)

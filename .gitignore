@@ -2,7 +2,6 @@
 .flutter-plugins
 .flutter-plugins-dependencies
 .packages
-.metadata
 build/
 chat.txt
 .env

@@ -1,6 +1,7 @@
 # Active Summary
 
-- Root repository was effectively empty aside from AGENTS and prompt docs.
-- Added a minimal Flutter app shell structure under `lib/`.
-- Kept changes away from `docs/*` and `supabase/schema.sql`.
-- Validation: `git diff --check` passed. Flutter CLI was not available in this environment, so analyzer/build checks could not run.
+- Updated `pubspec.yaml` to include the checklist 3 dependency set, using scaffold-compatible versions where needed.
+- Switched the app shell to `MaterialApp.router` with a minimal `go_router` configuration.
+- Wrapped app startup in `ProviderScope` and added optional Supabase initialization from `.env`.
+- Platform scaffold roots now exist for `android/`, `ios/`, `web/`, `windows/`, `macos/`, and `linux/`.
+- Validation: `flutter pub get` and `flutter analyze` both passed after enabling Windows developer mode for plugin symlinks.

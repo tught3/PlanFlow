@@ -1,42 +1,31 @@
-import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
-import '../screens/shell_screen.dart';
 import '../screens/placeholder_screen.dart';
+import '../screens/shell_screen.dart';
 import 'constants.dart';
 
-class AppRouter {
-  static Route<dynamic> onGenerateRoute(RouteSettings settings) {
-    switch (settings.name) {
-      case AppRoutes.root:
-      case AppRoutes.home:
-        return MaterialPageRoute<void>(
-          builder: (_) => const ShellScreen(initialIndex: 0),
-          settings: settings,
-        );
-      case AppRoutes.planner:
-        return MaterialPageRoute<void>(
-          builder: (_) => const PlaceholderScreen(
-            title: 'Planner',
-            message: '일정과 할 일을 담는 화면입니다.',
-          ),
-          settings: settings,
-        );
-      case AppRoutes.settings:
-        return MaterialPageRoute<void>(
-          builder: (_) => const PlaceholderScreen(
-            title: 'Settings',
-            message: '앱 설정과 환경 정보를 담는 화면입니다.',
-          ),
-          settings: settings,
-        );
-      default:
-        return MaterialPageRoute<void>(
-          builder: (_) => const PlaceholderScreen(
-            title: 'Not Found',
-            message: '요청한 경로를 찾지 못했습니다.',
-          ),
-          settings: settings,
-        );
-    }
-  }
-}
+final GoRouter appRouter = GoRouter(
+  initialLocation: AppRoutes.root,
+  routes: <RouteBase>[
+    GoRoute(
+      path: AppRoutes.root,
+      builder: (context, state) => const ShellScreen(initialIndex: 0),
+    ),
+    GoRoute(
+      path: AppRoutes.home,
+      builder: (context, state) => const ShellScreen(initialIndex: 0),
+    ),
+    GoRoute(
+      path: AppRoutes.planner,
+      builder: (context, state) => const ShellScreen(initialIndex: 1),
+    ),
+    GoRoute(
+      path: AppRoutes.settings,
+      builder: (context, state) => const ShellScreen(initialIndex: 2),
+    ),
+  ],
+  errorBuilder: (context, state) => const PlaceholderScreen(
+    title: 'Not Found',
+    message: 'Requested route could not be found.',
+  ),
+);
