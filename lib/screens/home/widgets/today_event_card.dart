@@ -8,12 +8,16 @@ class TodayEventCard extends StatelessWidget {
     required this.title,
     required this.timeRange,
     this.location,
+    this.supplies = const <String>[],
+    this.hasPreActions = false,
     this.isCritical = false,
   });
 
   final String title;
   final String timeRange;
   final String? location;
+  final List<String> supplies;
+  final bool hasPreActions;
   final bool isCritical;
 
   @override
@@ -21,6 +25,7 @@ class TodayEventCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: Padding(
         padding: const EdgeInsets.all(AppConstants.defaultPadding),
         child: Column(
@@ -36,7 +41,8 @@ class TodayEventCard extends StatelessWidget {
                 ),
                 if (isCritical)
                   const Chip(
-                    label: Text('중요'),
+                    avatar: Icon(Icons.priority_high, size: 16),
+                    label: Text('Critical'),
                     visualDensity: VisualDensity.compact,
                   ),
               ],
@@ -48,6 +54,27 @@ class TodayEventCard extends StatelessWidget {
               Text(
                 location!,
                 style: theme.textTheme.bodyMedium,
+              ),
+            ],
+            if (supplies.isNotEmpty || hasPreActions) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (supplies.isNotEmpty)
+                    Chip(
+                      avatar: const Icon(Icons.work_outline, size: 16),
+                      label: Text('${supplies.length} supplies'),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  if (hasPreActions)
+                    const Chip(
+                      avatar: Icon(Icons.checklist, size: 16),
+                      label: Text('Pre-actions'),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
               ),
             ],
           ],

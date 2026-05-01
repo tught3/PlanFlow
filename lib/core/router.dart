@@ -35,11 +35,16 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.voice,
-      builder: (context, state) => const VoiceInputScreen(),
+      builder: (context, state) => VoiceInputScreen(),
     ),
     GoRoute(
       path: AppRoutes.confirm,
-      builder: (context, state) => const ConfirmScreen(),
+      builder: (context, state) {
+        final parsedSchedule = state.extra is Map<String, dynamic>
+            ? state.extra! as Map<String, dynamic>
+            : const <String, dynamic>{};
+        return ConfirmScreen(parsedSchedule: parsedSchedule);
+      },
     ),
     GoRoute(
       path: AppRoutes.eventDetail,
