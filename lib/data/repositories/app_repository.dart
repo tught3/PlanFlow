@@ -12,12 +12,12 @@ class InMemoryAppRepository implements AppRepository {
     return const [
       AppFeature(
         title: 'Planner',
-        description: '일정과 작업을 모아보는 기본 진입점',
+        description: 'Basic entry point for planning work.',
         route: '/planner',
       ),
       AppFeature(
         title: 'Settings',
-        description: '앱 환경과 계정 상태를 정리하는 공간',
+        description: 'Space for reviewing and adjusting app state.',
         route: '/settings',
       ),
     ];

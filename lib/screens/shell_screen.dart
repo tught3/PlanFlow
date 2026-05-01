@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../core/constants.dart';
+import 'calendar/calendar_screen.dart';
 import 'home_screen.dart';
-import 'placeholder_screen.dart';
+import 'settings/settings_screen.dart';
 
 class ShellScreen extends StatefulWidget {
   const ShellScreen({super.key, this.initialIndex = 0});
@@ -17,15 +20,8 @@ class _ShellScreenState extends State<ShellScreen> {
 
   final List<Widget> _pages = const [
     HomeScreen(),
-    PlaceholderScreen(
-      title: 'Planner',
-      message:
-          'This screen will hold schedule creation, review, and flow management.',
-    ),
-    PlaceholderScreen(
-      title: 'Settings',
-      message: 'This screen will hold app settings and account information.',
-    ),
+    CalendarScreen(),
+    SettingsScreen(),
   ];
 
   @override
@@ -47,6 +43,17 @@ class _ShellScreenState extends State<ShellScreen> {
           setState(() {
             _currentIndex = index;
           });
+          switch (index) {
+            case 0:
+              context.go(AppRoutes.home);
+              break;
+            case 1:
+              context.go(AppRoutes.calendar);
+              break;
+            case 2:
+              context.go(AppRoutes.settings);
+              break;
+          }
         },
         destinations: const [
           NavigationDestination(
@@ -57,7 +64,7 @@ class _ShellScreenState extends State<ShellScreen> {
           NavigationDestination(
             icon: Icon(Icons.event_note_outlined),
             selectedIcon: Icon(Icons.event_note),
-            label: 'Planner',
+            label: 'Calendar',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
