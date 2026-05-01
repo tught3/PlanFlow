@@ -11,16 +11,13 @@ class SttService {
 
   Future<String?> listen() async {
     final speech = SpeechToText();
-    final available = await speech.initialize(debugLogging: false);
-    if (!available) {
-      return null;
-    }
-
     final completer = Completer<String?>();
+    String? latestRecognizedText;
+    var hasStartedListening = false;
 
-    void complete(String? text) {
+    void complete([String? text]) {
       if (!completer.isCompleted) {
-        final normalized = text?.trim();
+        final normalized = (text ?? latestRecognizedText)?.trim();
         completer.complete(
           normalized == null || normalized.isEmpty ? null : normalized,
         );
@@ -28,19 +25,50 @@ class SttService {
     }
 
     try {
+      final available = await speech.initialize(
+        debugLogging: false,
+        onStatus: (status) {
+          if (status == SpeechToText.listeningStatus) {
+            hasStartedListening = true;
+          } else if (hasStartedListening &&
+              (status == SpeechToText.doneStatus ||
+                  status == SpeechToText.notListeningStatus)) {
+            complete();
+          }
+        },
+        onError: (error) {
+          if (error.permanent || error.errorMsg == 'error_no_match') {
+            complete();
+          }
+        },
+      );
+      if (!available) {
+        return null;
+      }
+
+      final locales = await speech.locales();
+      final localeId =
+          locales.any((locale) => locale.localeId == _koreanLocaleId)
+              ? _koreanLocaleId
+              : null;
+
       await speech.listen(
-        localeId: _koreanLocaleId,
+        localeId: localeId,
         listenFor: _listenFor,
         pauseFor: _pauseFor,
         listenOptions: SpeechListenOptions(
-          onDevice: true,
+          onDevice: false,
           partialResults: true,
-          cancelOnError: true,
+          cancelOnError: false,
           listenMode: ListenMode.dictation,
         ),
         onResult: (result) {
+          final recognizedWords = result.recognizedWords.trim();
+          if (recognizedWords.isNotEmpty) {
+            latestRecognizedText = recognizedWords;
+          }
           if (result.finalResult) {
-            complete(result.recognizedWords);
+            complete(recognizedWords);
           }
         },
       );
@@ -49,7 +77,8 @@ class SttService {
         _listenFor + const Duration(seconds: 5),
         onTimeout: () async {
           await speech.cancel();
-          return null;
+          final normalized = latestRecognizedText?.trim();
+          return normalized == null || normalized.isEmpty ? null : normalized;
         },
       );
     } catch (_) {
