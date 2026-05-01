@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../core/env.dart';
 
@@ -68,20 +67,13 @@ class AuthService {
 
   Future<bool> signInWithOAuth(PlanFlowOAuthProvider provider) async {
     final oauthProvider = _oauthProvider(provider);
-    final response = await _client.auth.getOAuthSignInUrl(
-      provider: oauthProvider,
+    return _client.auth.signInWithOAuth(
+      oauthProvider,
       redirectTo: AppEnv.authRedirectUrl,
-    );
-
-    final launchMode =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-            ? LaunchMode.externalApplication
-            : LaunchMode.inAppBrowserView;
-
-    return launchUrl(
-      Uri.parse(response.url),
-      mode: launchMode,
-      webOnlyWindowName: '_self',
+      authScreenLaunchMode:
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+              ? LaunchMode.externalApplication
+              : LaunchMode.inAppBrowserView,
     );
   }
 
