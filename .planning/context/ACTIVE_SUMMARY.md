@@ -7,3 +7,7 @@
 - Validation: `flutter pub get` and `flutter analyze` both passed after enabling Windows developer mode for plugin symlinks.
 - Checklist 4 scaffold update: added minimal screen folders and placeholder widgets under `lib/screens/**`, while keeping the root compatibility files in place and updating the router for splash/login/home/calendar/voice/event/settings routes.
 - Validation: `C:\src\flutter\bin\flutter.bat analyze` now passes cleanly after updating the banner color token.
+- Checklist 8/9 service work: implemented on-device Korean STT in `lib/services/stt_service.dart`, OpenAI chat completions parsing/briefing generation in `lib/services/gpt_service.dart`, and added focused service tests under `test/services/gpt_service_test.dart`.
+- Validation: `C:\src\flutter\bin\flutter.bat analyze` passes and `C:\src\flutter\bin\flutter.bat test test/services/gpt_service_test.dart` passes.
+- Checklist 10 repository CRUD: implemented Supabase-backed event CRUD in `lib/data/repositories/event_repository.dart`, added typed JSON serialization to event/reminder/settings models, and added round-trip tests under `test/data/models`.
+- Validation: `C:\src\flutter\bin\flutter.bat analyze` passed and `C:\src\flutter\bin\flutter.bat test test/data/models` passed.

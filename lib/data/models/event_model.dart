@@ -12,6 +12,21 @@ class EventModel {
     this.createdAt,
   });
 
+  factory EventModel.fromJson(Map<String, dynamic> json) {
+    return EventModel(
+      id: _requiredStringValue(json['id'], 'id'),
+      userId: _requiredStringValue(json['user_id'], 'user_id'),
+      title: _requiredStringValue(json['title'], 'title'),
+      startAt: _requiredDateTimeValue(json['start_at'], 'start_at'),
+      endAt: _dateTimeValue(json['end_at']),
+      location: json['location'] as String?,
+      memo: json['memo'] as String?,
+      supplies: _stringListValue(json['supplies']),
+      isCritical: _boolValue(json['is_critical']),
+      createdAt: _dateTimeValue(json['created_at']),
+    );
+  }
+
   final String id;
   final String userId;
   final String title;
@@ -22,4 +37,87 @@ class EventModel {
   final List<String> supplies;
   final bool isCritical;
   final DateTime? createdAt;
+
+  Map<String, dynamic> toJson({bool includeId = true}) {
+    return <String, dynamic>{
+      if (includeId) 'id': id,
+      'user_id': userId,
+      'title': title,
+      'start_at': startAt?.toIso8601String(),
+      'end_at': endAt?.toIso8601String(),
+      'location': location,
+      'memo': memo,
+      'supplies': supplies,
+      'is_critical': isCritical,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+    };
+  }
+
+  static String _stringValue(Object? value) {
+    final text = value?.toString();
+    if (text == null || text.isEmpty) {
+      return '';
+    }
+    return text;
+  }
+
+  static String _requiredStringValue(Object? value, String fieldName) {
+    final text = _stringValue(value);
+    if (text.isEmpty) {
+      throw StateError('Missing required field: $fieldName');
+    }
+    return text;
+  }
+
+  static bool _boolValue(Object? value) {
+    if (value is bool) {
+      return value;
+    }
+    if (value is String) {
+      return value.toLowerCase() == 'true';
+    }
+    if (value is num) {
+      return value != 0;
+    }
+    return false;
+  }
+
+  static DateTime? _dateTimeValue(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is DateTime) {
+      return value;
+    }
+    final text = value.toString();
+    if (text.isEmpty) {
+      return null;
+    }
+    return DateTime.parse(text);
+  }
+
+  static DateTime _requiredDateTimeValue(Object? value, String fieldName) {
+    final parsed = _dateTimeValue(value);
+    if (parsed == null) {
+      throw StateError('Missing required field: $fieldName');
+    }
+    return parsed;
+  }
+
+  static List<String> _stringListValue(Object? value) {
+    if (value == null) {
+      return const <String>[];
+    }
+    if (value is List) {
+      return value
+          .map((item) => item.toString())
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false);
+    }
+    final text = value.toString();
+    if (text.isEmpty) {
+      return const <String>[];
+    }
+    return <String>[text];
+  }
 }

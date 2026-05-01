@@ -10,6 +10,19 @@ class UserSettingsModel {
     this.createdAt,
   });
 
+  factory UserSettingsModel.fromJson(Map<String, dynamic> json) {
+    return UserSettingsModel(
+      id: _requiredStringValue(json['id'], 'id'),
+      userId: _requiredStringValue(json['user_id'], 'user_id'),
+      morningBriefingAt: _timeValue(json['morning_briefing_at']),
+      eveningBriefingAt: _timeValue(json['evening_briefing_at']),
+      defaultReminderMin: _intValue(json['default_reminder_min'], 60),
+      googleCalendarToken: json['google_calendar_token'] as String?,
+      naverCalendarToken: json['naver_calendar_token'] as String?,
+      createdAt: _dateTimeValue(json['created_at']),
+    );
+  }
+
   final String id;
   final String userId;
   final String morningBriefingAt;
@@ -18,4 +31,66 @@ class UserSettingsModel {
   final String? googleCalendarToken;
   final String? naverCalendarToken;
   final DateTime? createdAt;
+
+  Map<String, dynamic> toJson({bool includeId = true}) {
+    return <String, dynamic>{
+      if (includeId) 'id': id,
+      'user_id': userId,
+      'morning_briefing_at': morningBriefingAt,
+      'evening_briefing_at': eveningBriefingAt,
+      'default_reminder_min': defaultReminderMin,
+      'google_calendar_token': googleCalendarToken,
+      'naver_calendar_token': naverCalendarToken,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+    };
+  }
+
+  static String _stringValue(Object? value) {
+    final text = value?.toString();
+    if (text == null || text.isEmpty) {
+      return '';
+    }
+    return text;
+  }
+
+  static String _requiredStringValue(Object? value, String fieldName) {
+    final text = _stringValue(value);
+    if (text.isEmpty) {
+      throw StateError('Missing required field: $fieldName');
+    }
+    return text;
+  }
+
+  static String _timeValue(Object? value) {
+    final text = value?.toString();
+    if (text == null || text.isEmpty) {
+      return '';
+    }
+    final match = RegExp(r'^(\d{2}:\d{2})').firstMatch(text);
+    return match?.group(1) ?? text;
+  }
+
+  static int _intValue(Object? value, int fallback) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  static DateTime? _dateTimeValue(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is DateTime) {
+      return value;
+    }
+    final text = value.toString();
+    if (text.isEmpty) {
+      return null;
+    }
+    return DateTime.parse(text);
+  }
 }
