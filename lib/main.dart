@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/env.dart';
+import 'providers/auth_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,7 @@ Future<void> main() async {
         anonKey: AppEnv.supabaseAnonKey,
       ).timeout(const Duration(seconds: 10));
       AppEnv.markSupabaseInitialized();
+      authProvider.start();
     } catch (error) {
       debugPrint('Supabase initialization skipped: $error');
     }

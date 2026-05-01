@@ -1,19 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/auth_service.dart';
+import '../../services/backup_service.dart';
 import '../../services/calendar_sync_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     CalendarSyncService? calendarSyncService,
+    BackupService? backupService,
+    AuthService? authService,
     bool? envConfigured,
   })  : _calendarSyncService = calendarSyncService,
+        _backupService = backupService,
+        _authService = authService,
         _envConfigured = envConfigured;
 
   final CalendarSyncService? _calendarSyncService;
+  final BackupService? _backupService;
+  final AuthService? _authService;
   final bool? _envConfigured;
 
   @override
@@ -28,9 +38,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _defaultReminderMinutes = 60;
 
   late final CalendarSyncService _calendarSyncService;
+  BackupService? _backupService;
+  AuthService? _authService;
 
   CalendarSyncSummary? _calendarSyncSummary;
+  List<BackupSnapshot> _backups = const <BackupSnapshot>[];
   bool _isLoadingCalendarStatus = true;
+  bool _isLoadingBackups = false;
+  bool _isBackupActionRunning = false;
 
   @override
   void initState() {
@@ -39,6 +54,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         CalendarSyncService(
           googleClientId: AppEnv.googleAndroidClientId,
         );
+    if (AppEnv.isSupabaseReady) {
+      _backupService = widget._backupService ?? BackupService();
+      _authService = widget._authService ?? AuthService();
+      _loadBackups();
+    } else {
+      _backupService = widget._backupService;
+      _authService = widget._authService;
+    }
     _loadCalendarStatus();
   }
 
@@ -112,6 +135,130 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _loadBackups() async {
+    final backupService = _backupService;
+    if (backupService == null || !authProvider.isSignedIn) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingBackups = true;
+    });
+
+    try {
+      final backups = await backupService.listBackups();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _backups = backups;
+      });
+    } catch (_) {
+      if (mounted) {
+        _showSnack('백업 목록을 불러오지 못했습니다.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingBackups = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _createBackup() async {
+    final backupService = _backupService;
+    if (backupService == null || !authProvider.isSignedIn) {
+      _showSnack('로그인 후 백업을 만들 수 있습니다.');
+      return;
+    }
+
+    setState(() {
+      _isBackupActionRunning = true;
+    });
+
+    try {
+      final backup = await backupService.createBackup();
+      await _loadBackups();
+      _showSnack('백업 완료: ${backup.totalItems}개 항목을 저장했습니다.');
+    } catch (_) {
+      _showSnack('백업 생성에 실패했습니다. Supabase schema 적용 여부를 확인해주세요.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBackupActionRunning = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _restoreBackup(BackupSnapshot backup) async {
+    final backupService = _backupService;
+    if (backupService == null) {
+      return;
+    }
+
+    final shouldRestore = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('백업 복원'),
+        content: Text(
+          '${_formatDateTime(backup.createdAt)} 백업을 현재 계정으로 복원할까요? 같은 ID의 데이터는 백업 내용으로 갱신됩니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('복원'),
+          ),
+        ],
+      ),
+    );
+    if (shouldRestore != true) {
+      return;
+    }
+
+    setState(() {
+      _isBackupActionRunning = true;
+    });
+
+    try {
+      await backupService.restoreBackup(backup.id);
+      _showSnack('백업을 복원했습니다.');
+    } catch (_) {
+      _showSnack('백업 복원에 실패했습니다. Supabase 권한과 schema를 확인해주세요.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBackupActionRunning = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _signOut() async {
+    final authService = _authService;
+    if (authService == null) {
+      return;
+    }
+    await authService.signOut();
+    if (mounted) {
+      context.go(AppRoutes.login);
+    }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -139,6 +286,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
               morningLabel: morningLabel,
               eveningLabel: eveningLabel,
               reminderMinutes: _defaultReminderMinutes,
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              title: 'Account',
+              subtitle: '로그인한 계정 기준으로 일정, 알림, 백업 데이터가 분리됩니다.',
+              child: AnimatedBuilder(
+                animation: authProvider,
+                builder: (context, _) {
+                  final signedIn = authProvider.isSignedIn;
+                  return Column(
+                    children: [
+                      _StatusRow(
+                        label: 'Login status',
+                        value: signedIn
+                            ? authProvider.email ?? 'Signed in'
+                            : 'Signed out',
+                        icon: Icons.account_circle_outlined,
+                        isConfigured: signedIn,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: signedIn
+                                  ? _signOut
+                                  : () => context.go(AppRoutes.login),
+                              child: Text(signedIn ? 'Logout' : 'Login'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              title: 'Backup and restore',
+              subtitle: '현재 로그인한 계정의 Supabase 데이터를 하나의 snapshot으로 저장하고 복원합니다.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed:
+                              _isBackupActionRunning ? null : _createBackup,
+                          icon: _isBackupActionRunning
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.cloud_upload_outlined),
+                          label: const Text('Create backup'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.outlined(
+                        tooltip: 'Refresh backups',
+                        onPressed: _isLoadingBackups ? null : _loadBackups,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (!authProvider.isSignedIn)
+                    const Text('로그인 후 백업/복원을 사용할 수 있습니다.')
+                  else if (_isLoadingBackups)
+                    const Center(child: CircularProgressIndicator())
+                  else if (_backups.isEmpty)
+                    const Text('아직 저장된 백업이 없습니다.')
+                  else
+                    ..._backups.take(5).map(
+                          (backup) => _BackupTile(
+                            backup: backup,
+                            onRestore: _isBackupActionRunning
+                                ? null
+                                : () => _restoreBackup(backup),
+                          ),
+                        ),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
             _SectionCard(
@@ -228,17 +461,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 children: [
                   _StatusRow(
-                    label: 'Supabase + OpenAI env',
-                    value: envConfigured ? 'Configured' : 'Not configured',
+                    label: 'Supabase auth/data env',
+                    value: AppEnv.isSupabaseReady
+                        ? 'Configured'
+                        : 'Not configured',
                     icon: Icons.code_outlined,
-                    isConfigured: envConfigured,
+                    isConfigured: AppEnv.isSupabaseReady,
                   ),
                   const SizedBox(height: 12),
                   _StatusRow(
-                    label: 'Backend persistence',
-                    value: 'Not configured',
+                    label: 'OpenAI parsing env',
+                    value: envConfigured ? 'Configured' : 'Not configured',
                     icon: Icons.storage_outlined,
-                    isConfigured: false,
+                    isConfigured: envConfigured,
                   ),
                 ],
               ),
@@ -310,6 +545,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       timeOfDay,
       alwaysUse24HourFormat: true,
     );
+  }
+
+  String _formatDateTime(DateTime value) {
+    return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')} '
+        '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
   }
 
   String _calendarStatusLabel(CalendarIntegrationResult? result) {
@@ -568,6 +808,64 @@ class _TimeSettingTile extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             const Icon(Icons.chevron_right, color: PlanFlowColors.primaryMid),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BackupTile extends StatelessWidget {
+  const _BackupTile({
+    required this.backup,
+    required this.onRestore,
+  });
+
+  final BackupSnapshot backup;
+  final VoidCallback? onRestore;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final createdAt =
+        '${backup.createdAt.year}-${backup.createdAt.month.toString().padLeft(2, '0')}-${backup.createdAt.day.toString().padLeft(2, '0')} '
+        '${backup.createdAt.hour.toString().padLeft(2, '0')}:${backup.createdAt.minute.toString().padLeft(2, '0')}';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: PlanFlowColors.background,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_done_outlined,
+                color: PlanFlowColors.primaryMid),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    backup.label ?? 'Manual backup',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: PlanFlowColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$createdAt · ${backup.totalItems} items',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: onRestore,
+              child: const Text('Restore'),
+            ),
           ],
         ),
       ),

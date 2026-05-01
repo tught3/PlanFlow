@@ -10,6 +10,7 @@ class AppEnv {
       _envValue('GOOGLE_ANDROID_CLIENT_ID');
   static String get naverClientId => _envValue('NAVER_CLIENT_ID');
   static String get naverClientSecret => _envValue('NAVER_CLIENT_SECRET');
+  static String get authRedirectUrl => 'planflow://auth-callback';
 
   static bool get isSupabaseReady => _supabaseInitialized;
 

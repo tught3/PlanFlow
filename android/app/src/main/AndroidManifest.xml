@@ -37,6 +37,14 @@
                     android:host="voice"
                     android:scheme="planflow" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="auth-callback"
+                    android:scheme="planflow" />
+            </intent-filter>
         </activity>
         <meta-data
             android:name="flutterEmbedding"

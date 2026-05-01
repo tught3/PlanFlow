@@ -86,7 +86,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     });
 
     try {
-      if (!AppEnv.isConfigured) {
+      if (!AppEnv.isSupabaseReady) {
         _showMessage('Saved locally for now. Add env values to sync.');
         if (mounted) {
           context.go(AppRoutes.home);

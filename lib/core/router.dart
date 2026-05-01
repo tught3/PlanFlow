@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../screens/auth/login_screen.dart';
+import '../screens/auth/reset_password_screen.dart';
 import '../screens/event/event_detail_screen.dart';
 import '../screens/event/event_edit_screen.dart';
 import '../screens/placeholder_screen.dart';
@@ -9,9 +10,41 @@ import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_input_screen.dart';
 import '../screens/shell_screen.dart';
 import 'constants.dart';
+import 'env.dart';
+import '../providers/auth_provider.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: AppRoutes.root,
+  refreshListenable: authProvider,
+  redirect: (context, state) {
+    final path = state.uri.path;
+    final isAuthPath =
+        path == AppRoutes.login || path == AppRoutes.resetPassword;
+
+    if (path == AppRoutes.root) {
+      return authProvider.isSignedIn ? AppRoutes.home : AppRoutes.login;
+    }
+
+    if (!AppEnv.isSupabaseReady) {
+      return isAuthPath ? null : AppRoutes.login;
+    }
+
+    if (authProvider.isPasswordRecovery && path != AppRoutes.resetPassword) {
+      return AppRoutes.resetPassword;
+    }
+
+    if (!authProvider.isSignedIn && !isAuthPath) {
+      return AppRoutes.login;
+    }
+
+    if (authProvider.isSignedIn &&
+        path == AppRoutes.login &&
+        !authProvider.isPasswordRecovery) {
+      return AppRoutes.home;
+    }
+
+    return null;
+  },
   routes: <RouteBase>[
     GoRoute(
       path: AppRoutes.root,
@@ -20,6 +53,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.login,
       builder: (context, state) => const LoginScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.resetPassword,
+      builder: (context, state) => const ResetPasswordScreen(),
     ),
     GoRoute(
       path: AppRoutes.home,

@@ -9,6 +9,7 @@ class AppRoutes {
   static const String root = '/';
   static const String splash = root;
   static const String login = '/login';
+  static const String resetPassword = '/reset-password';
   static const String home = '/home';
   static const String calendar = '/calendar';
   static const String planner = calendar;
