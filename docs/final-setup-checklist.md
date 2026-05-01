@@ -109,4 +109,4 @@
 - [x] `flutter analyze` 통과
 - [x] `flutter test` 통과
 - [x] Android debug APK build 통과
-- [ ] 이번 v3/Android 보강분 GitHub `main` push
+- [x] 이번 v3/Android 보강분 GitHub `main` push
