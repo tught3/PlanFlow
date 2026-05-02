@@ -46,7 +46,7 @@ class SttService {
 
   static const String _koreanLocaleId = 'ko_KR';
   static const Duration _listenFor = Duration(seconds: 15);
-  static const Duration _pauseFor = Duration(seconds: 2);
+  static const Duration _pauseFor = Duration(seconds: 8);
 
   static String? resolveKoreanLocaleId(Iterable<String> localeIds) {
     if (localeIds.contains(_koreanLocaleId)) {
@@ -112,8 +112,9 @@ class SttService {
 
     try {
       final available = await speech.initialize(
-        debugLogging: false,
+        debugLogging: kDebugMode,
         onStatus: (status) {
+          debugPrint('PlanFlow STT status: $status');
           if (status == SpeechToText.listeningStatus) {
             hasStartedListening = true;
           } else if (hasStartedListening &&
@@ -123,6 +124,9 @@ class SttService {
           }
         },
         onError: (error) {
+          debugPrint(
+            'PlanFlow STT error: ${error.errorMsg}, permanent=${error.permanent}',
+          );
           if (error.errorMsg == 'error_no_match' ||
               error.errorMsg == 'error_speech_timeout') {
             completeSuccess();
@@ -168,6 +172,9 @@ class SttService {
       final locales = await speech.locales();
       final localeId = resolveKoreanLocaleId(
         locales.map((locale) => locale.localeId),
+      );
+      debugPrint(
+        'PlanFlow STT locale: ${localeId ?? 'none'} / ${locales.length} locales',
       );
       if (localeId == null) {
         return SttListenResult.failure(
