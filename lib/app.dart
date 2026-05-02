@@ -26,7 +26,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     super.initState();
     _oauthCallbackHandler.start();
     _lifecycleListener = AppLifecycleListener(
-      onResume: () => unawaited(authProvider.syncCurrentSession()),
+      onResume: () =>
+          unawaited(authProvider.syncCurrentSession(ensureProfile: false)),
     );
     _routeInitialHomeWidgetLaunch();
     _homeWidgetClickSubscription = HomeWidget.widgetClicked.listen(

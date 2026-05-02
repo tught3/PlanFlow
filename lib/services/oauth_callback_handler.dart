@@ -4,10 +4,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/constants.dart';
 import '../core/env.dart';
-import '../providers/auth_provider.dart';
-import '../core/router.dart';
 
 class OAuthCallbackHandler {
   OAuthCallbackHandler({AppLinks? appLinks})
@@ -38,18 +35,12 @@ class OAuthCallbackHandler {
 
     final client = Supabase.instance.client;
 
-    if (client.auth.currentSession != null) {
-      debugPrint('OAuth callback already produced a Supabase session.');
-      await _syncAndRouteHome();
-      return;
-    }
-
     try {
       final response = await client.auth.getSessionFromUrl(uri);
       debugPrint(
-        'OAuth callback exchange completed: user=${response.session.user.id}',
+        'OAuth callback exchange completed: user=${response.session.user.id} '
+        'redirectType=${response.redirectType ?? '<none>'}',
       );
-      await _syncAndRouteHome();
     } on AuthException catch (error) {
       debugPrint(
         'OAuth callback exchange failed: ${error.message} '
@@ -64,13 +55,6 @@ class OAuthCallbackHandler {
     return uri.scheme == 'planflow' &&
         uri.host == 'auth-callback' &&
         uri.queryParameters.containsKey('code');
-  }
-
-  Future<void> _syncAndRouteHome() async {
-    final signedIn = await authProvider.syncCurrentSession();
-    if (signedIn && !authProvider.isPasswordRecovery) {
-      appRouter.go(AppRoutes.home);
-    }
   }
 
   Future<void> dispose() async {
