@@ -12,9 +12,21 @@ abstract class EventRepository {
 
   Future<EventModel?> fetchEvent(String eventId, {String? userId});
 
+  Future<EventModel?> fetchEventBySourceExternalId({
+    required String source,
+    required String externalId,
+    String? userId,
+  }) {
+    return Future<EventModel?>.value(null);
+  }
+
   Future<EventModel> createEvent(EventModel event);
 
   Future<EventModel> updateEvent(EventModel event);
+
+  Future<EventModel> upsertEventBySourceExternalId(EventModel event) {
+    return upsertEvent(event);
+  }
 
   Future<void> deleteEvent(String eventId, {String? userId});
 
@@ -42,7 +54,7 @@ class SupabaseEventRepository extends EventRepository {
 
   static const String _tableName = 'events';
   static const String _selectColumns =
-      'id, user_id, title, start_at, end_at, location, memo, supplies, is_critical, created_at';
+      'id, user_id, title, start_at, end_at, location, memo, supplies, is_critical, source, external_id, created_at';
 
   final SupabaseClient _client;
 
@@ -69,6 +81,33 @@ class SupabaseEventRepository extends EventRepository {
         .select(_selectColumns)
         .eq('id', eventId)
         .eq('user_id', resolvedUserId)
+        .maybeSingle();
+
+    if (response == null) {
+      return null;
+    }
+    return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<EventModel?> fetchEventBySourceExternalId({
+    required String source,
+    required String externalId,
+    String? userId,
+  }) async {
+    final resolvedUserId = _resolveUserId(userId);
+    final normalizedSource = source.trim();
+    final normalizedExternalId = externalId.trim();
+    if (normalizedSource.isEmpty || normalizedExternalId.isEmpty) {
+      return null;
+    }
+
+    final response = await _client
+        .from(_tableName)
+        .select(_selectColumns)
+        .eq('user_id', resolvedUserId)
+        .eq('source', normalizedSource)
+        .eq('external_id', normalizedExternalId)
         .maybeSingle();
 
     if (response == null) {
@@ -113,6 +152,45 @@ class SupabaseEventRepository extends EventRepository {
     }
 
     return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<EventModel> upsertEventBySourceExternalId(EventModel event) async {
+    final resolvedUserId = _resolveCurrentUserId();
+    _validateWritableEvent(event, resolvedUserId);
+
+    final normalizedSource = event.source.trim();
+    final normalizedExternalId = (event.externalId ?? '').trim();
+    if (normalizedSource.isEmpty || normalizedExternalId.isEmpty) {
+      return upsertEvent(event);
+    }
+
+    final existing = await fetchEventBySourceExternalId(
+      source: normalizedSource,
+      externalId: normalizedExternalId,
+      userId: resolvedUserId,
+    );
+
+    if (existing == null) {
+      return createEvent(event);
+    }
+
+    final mergedEvent = EventModel(
+      id: existing.id,
+      userId: event.userId,
+      title: event.title,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      location: event.location,
+      memo: event.memo,
+      supplies: event.supplies,
+      isCritical: event.isCritical,
+      source: normalizedSource,
+      externalId: normalizedExternalId,
+      createdAt: existing.createdAt,
+    );
+
+    return updateEvent(mergedEvent);
   }
 
   @override

@@ -13,6 +13,10 @@ PlanFlow reads secrets and service endpoints from a local `.env` file.
 - `SUPABASE_ANON_KEY`
 - `OPENAI_API_KEY`
 
+## Optional keys
+
+- `GOOGLE_MAPS_API_KEY`
+
 ## Notes
 
 - `lib/main.dart` loads `.env` at startup.

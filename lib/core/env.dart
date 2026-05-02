@@ -6,6 +6,7 @@ class AppEnv {
   static String get supabaseUrl => _envValue('SUPABASE_URL');
   static String get supabaseAnonKey => _envValue('SUPABASE_ANON_KEY');
   static String get openAiApiKey => _envValue('OPENAI_API_KEY');
+  static String get googleMapsApiKey => _envValue('GOOGLE_MAPS_API_KEY');
   static String get googleAndroidClientId =>
       _envValue('GOOGLE_ANDROID_CLIENT_ID');
   static String get googleWebClientId {
@@ -48,6 +49,8 @@ class AppEnv {
       'SUPABASE_ANON_KEY' => const String.fromEnvironment('SUPABASE_ANON_KEY'),
       'GOOGLE_ANDROID_CLIENT_ID' =>
         const String.fromEnvironment('GOOGLE_ANDROID_CLIENT_ID'),
+      'GOOGLE_MAPS_API_KEY' =>
+        const String.fromEnvironment('GOOGLE_MAPS_API_KEY'),
       'GOOGLE_WEB_CLIENT_ID' =>
         const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
       'GOOGLE_SERVER_CLIENT_ID' =>

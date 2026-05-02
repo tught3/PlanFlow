@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -5,7 +7,10 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
+import '../../data/models/user_settings_model.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/backup_service.dart';
 import '../../services/briefing_scheduler_service.dart';
@@ -14,18 +19,27 @@ import '../../services/calendar_sync_service.dart';
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
+    SettingsRepository? settingsRepository,
+    BriefingSchedulerService? briefingSchedulerService,
     CalendarSyncService? calendarSyncService,
     BackupService? backupService,
     AuthService? authService,
+    String? userId,
     bool? envConfigured,
-  })  : _calendarSyncService = calendarSyncService,
+  })  : _settingsRepository = settingsRepository,
+        _briefingSchedulerService = briefingSchedulerService,
+        _calendarSyncService = calendarSyncService,
         _backupService = backupService,
         _authService = authService,
+        _userId = userId,
         _envConfigured = envConfigured;
 
+  final SettingsRepository? _settingsRepository;
+  final BriefingSchedulerService? _briefingSchedulerService;
   final CalendarSyncService? _calendarSyncService;
   final BackupService? _backupService;
   final AuthService? _authService;
+  final String? _userId;
   final bool? _envConfigured;
 
   @override
@@ -35,38 +49,97 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   static const List<int> _reminderOptions = <int>[15, 30, 60, 120];
 
+  late final SettingsRepository _settingsRepository;
+  late final SettingsProvider _settingsProvider;
+  late final BriefingSchedulerService _briefingSchedulerService;
+  late final CalendarSyncService _calendarSyncService;
+
+  BackupService? _backupService;
+  AuthService? _authService;
+
+  UserSettingsModel? _savedSettings;
   TimeOfDay _morningBriefingAt = const TimeOfDay(hour: 7, minute: 30);
   TimeOfDay _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
   int _defaultReminderMinutes = 60;
 
-  late final CalendarSyncService _calendarSyncService;
-  BackupService? _backupService;
-  AuthService? _authService;
-
   CalendarSyncSummary? _calendarSyncSummary;
   List<BackupSnapshot> _backups = const <BackupSnapshot>[];
+
+  bool _isLoadingSettings = true;
   bool _isLoadingCalendarStatus = true;
   bool _isSyncingGoogleCalendar = false;
   bool _isLoadingBackups = false;
+  bool _isSavingSettings = false;
   bool _isBackupActionRunning = false;
 
   @override
   void initState() {
     super.initState();
+    _settingsRepository = widget._settingsRepository ??
+        (AppEnv.isSupabaseReady
+            ? SettingsRepository.supabase()
+            : _UnavailableSettingsRepository());
+    _settingsProvider = SettingsProvider(_settingsRepository);
+    _briefingSchedulerService =
+        widget._briefingSchedulerService ?? BriefingSchedulerService();
     _calendarSyncService = widget._calendarSyncService ??
         CalendarSyncService(
           googleClientId: _googleCalendarClientId,
           googleServerClientId: _googleCalendarServerClientId,
         );
+
     if (AppEnv.isSupabaseReady) {
       _backupService = widget._backupService ?? BackupService();
       _authService = widget._authService ?? AuthService();
-      _loadBackups();
+      unawaited(_loadBackups());
     } else {
       _backupService = widget._backupService;
       _authService = widget._authService;
     }
-    _loadCalendarStatus();
+
+    unawaited(_bootstrap());
+  }
+
+  Future<void> _bootstrap() async {
+    await Future.wait<void>([
+      _loadSettings(),
+      _loadCalendarStatus(),
+    ]);
+  }
+
+  String? get _userId => widget._userId ?? authProvider.userId;
+
+  Future<void> _loadSettings() async {
+    final userId = _userId;
+    final hasUsableRepository =
+        AppEnv.isSupabaseReady || widget._settingsRepository != null;
+    if (!hasUsableRepository || userId == null || userId.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _savedSettings = null;
+        _isLoadingSettings = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoadingSettings = true;
+    });
+
+    final loaded = await _settingsProvider.load(userId);
+    if (!mounted) {
+      return;
+    }
+
+    final effective = loaded ?? UserSettingsModel.defaults(userId: userId);
+    setState(() {
+      _savedSettings = effective;
+      _applySettings(effective);
+      _isLoadingSettings = false;
+    });
   }
 
   Future<void> _loadCalendarStatus() async {
@@ -83,6 +156,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _calendarSyncSummary = summary;
       _isLoadingCalendarStatus = false;
     });
+  }
+
+  Future<void> _loadBackups() async {
+    final backupService = _backupService;
+    if (backupService == null || !authProvider.isSignedIn) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingBackups = true;
+    });
+
+    try {
+      final backups = await backupService.listBackups();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _backups = backups;
+      });
+    } catch (_) {
+      if (mounted) {
+        _showSnack('백업 목록을 불러오지 못했습니다.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingBackups = false;
+        });
+      }
+    }
   }
 
   Future<void> _syncGoogleCalendar() async {
@@ -160,56 +264,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _defaultReminderMinutes = 60;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('설정을 기본값으로 되돌렸습니다.'),
-      ),
-    );
+    _showSnack('설정을 기본값으로 되돌렸습니다.');
   }
 
-  void _saveLocalChanges() {
-    final morningAt = '${_morningBriefingAt.hour.toString().padLeft(2, '0')}:${_morningBriefingAt.minute.toString().padLeft(2, '0')}';
-    final eveningAt = '${_eveningBriefingAt.hour.toString().padLeft(2, '0')}:${_eveningBriefingAt.minute.toString().padLeft(2, '0')}';
+  Future<void> _saveSettings() async {
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) {
+      _showSnack('로그인한 뒤 설정을 저장할 수 있습니다.');
+      return;
+    }
 
-    final scheduler = BriefingSchedulerService();
-    scheduler.scheduleDaily(
-      morningTime: morningAt,
-      eveningTime: eveningAt,
-    );
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('브리핑 알람 일정을 업데이트했습니다. 서버 저장은 추후 지원됩니다.'),
-      ),
-    );
-  }
-
-  Future<void> _loadBackups() async {
-    final backupService = _backupService;
-    if (backupService == null || !authProvider.isSignedIn) {
+    if (_isSavingSettings) {
       return;
     }
 
     setState(() {
-      _isLoadingBackups = true;
+      _isSavingSettings = true;
     });
 
     try {
-      final backups = await backupService.listBackups();
+      final current =
+          _savedSettings ?? UserSettingsModel.defaults(userId: userId);
+      final draft = current.copyWith(
+        userId: userId,
+        morningBriefingAt: _formatTimeValue(_morningBriefingAt),
+        eveningBriefingAt: _formatTimeValue(_eveningBriefingAt),
+        defaultReminderMin: _defaultReminderMinutes,
+      );
+
+      final saved = await _settingsProvider.save(draft);
       if (!mounted) {
         return;
       }
+
       setState(() {
-        _backups = backups;
+        _savedSettings = saved;
+        _applySettings(saved);
       });
+
+      await _briefingSchedulerService.scheduleDaily(
+        morningTime: saved.morningBriefingAt,
+        eveningTime: saved.eveningBriefingAt,
+      );
+      _showSnack('설정을 저장했고 브리핑 스케줄을 다시 맞췄습니다.');
     } catch (_) {
-      if (mounted) {
-        _showSnack('백업 목록을 불러오지 못했습니다.');
-      }
+      _showSnack('설정 저장에 실패했습니다. Supabase 연결을 확인하세요.');
     } finally {
       if (mounted) {
         setState(() {
-          _isLoadingBackups = false;
+          _isSavingSettings = false;
         });
       }
     }
@@ -218,7 +321,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _createBackup() async {
     final backupService = _backupService;
     if (backupService == null || !authProvider.isSignedIn) {
-      _showSnack('로그인 후 백업을 만들 수 있습니다.');
+      _showSnack('로그인 후에만 백업을 만들 수 있습니다.');
       return;
     }
 
@@ -231,7 +334,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _loadBackups();
       _showSnack('백업 완료: ${backup.totalItems}개 항목을 저장했습니다.');
     } catch (_) {
-      _showSnack('백업 생성에 실패했습니다. Supabase schema 적용 여부를 확인해주세요.');
+      _showSnack('백업 생성에 실패했습니다. Supabase schema를 확인하세요.');
     } finally {
       if (mounted) {
         setState(() {
@@ -252,7 +355,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => AlertDialog(
         title: const Text('백업 복원'),
         content: Text(
-          '${_formatDateTime(backup.createdAt)} 백업을 현재 계정으로 복원할까요? 같은 ID의 데이터는 백업 내용으로 갱신됩니다.',
+          '${_formatDateTime(backup.createdAt)} 백업을 현재 계정으로 복원할까요?',
         ),
         actions: [
           TextButton(
@@ -278,7 +381,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await backupService.restoreBackup(backup.id);
       _showSnack('백업을 복원했습니다.');
     } catch (_) {
-      _showSnack('백업 복원에 실패했습니다. Supabase 권한과 schema를 확인해주세요.');
+      _showSnack('백업 복원에 실패했습니다. Supabase 권한과 schema를 확인하세요.');
     } finally {
       if (mounted) {
         setState(() {
@@ -288,21 +391,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _signOut() async {
-    final authService = _authService;
-    if (authService == null) {
-      return;
-    }
-    await authService.signOut();
-    if (mounted) {
-      context.go(AppRoutes.login);
-    }
+  void _applySettings(UserSettingsModel settings) {
+    _morningBriefingAt = _parseTime(settings.morningBriefingAt);
+    _eveningBriefingAt = _parseTime(settings.eveningBriefingAt);
+    _defaultReminderMinutes = settings.defaultReminderMin;
   }
 
   void _showSnack(String message) {
     if (!mounted) {
       return;
     }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -313,7 +412,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
     final morningLabel = _formatTime(context, _morningBriefingAt);
     final eveningLabel = _formatTime(context, _eveningBriefingAt);
-    final envConfigured = widget._envConfigured ?? AppEnv.isConfigured;
+    final envConfigured =
+        widget._envConfigured ?? AppEnv.openAiApiKey.isNotEmpty;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -335,11 +435,222 @@ class _SettingsScreenState extends State<SettingsScreen> {
               morningLabel: morningLabel,
               eveningLabel: eveningLabel,
               reminderMinutes: _defaultReminderMinutes,
+              isLoading: _isLoadingSettings,
             ),
             const SizedBox(height: 16),
             _SectionCard(
+              title: '브리핑 시간',
+              subtitle: '저장된 시간으로 오전/저녁 브리핑 스케줄을 다시 맞춥니다.',
+              child: Column(
+                children: [
+                  _TimeSettingTile(
+                    title: '오전 브리핑',
+                    subtitle: '하루를 시작하는 브리핑 시간',
+                    value: morningLabel,
+                    icon: Icons.wb_sunny_outlined,
+                    onTap: () => _pickTime(context: context, isMorning: true),
+                  ),
+                  const Divider(height: 1),
+                  _TimeSettingTile(
+                    title: '저녁 브리핑',
+                    subtitle: '하루를 마감하는 브리핑 시간',
+                    value: eveningLabel,
+                    icon: Icons.nightlight_outlined,
+                    onTap: () => _pickTime(context: context, isMorning: false),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              title: '기본 알림',
+              subtitle: '선택한 알림 분은 새 일정 저장 시 기본값으로 적용됩니다.',
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _reminderOptions
+                    .map(
+                      (minutes) => FilterChip(
+                        label: Text('$minutes분'),
+                        selected: _defaultReminderMinutes == minutes,
+                        onSelected: (_) {
+                          setState(() {
+                            _defaultReminderMinutes = minutes;
+                          });
+                        },
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              title: '저장',
+              subtitle:
+                  '설정을 저장하면 Supabase user_settings에 반영하고 브리핑 스케줄을 다시 맞춥니다.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed:
+                              _isSavingSettings ? null : _resetToDefaults,
+                          child: const Text('기본값'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _isSavingSettings ? null : _saveSettings,
+                          child: _isSavingSettings
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('저장'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _isLoadingSettings
+                        ? '기존 user_settings를 불러오는 중입니다.'
+                        : _savedSettings == null
+                            ? '저장된 설정이 없어서 현재 화면 값이 기본값으로 시작했습니다.'
+                            : '저장된 설정을 불러와서 화면을 초기화했습니다.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              title: '캘린더 연동',
+              subtitle: 'Google Calendar는 1차에서 사용하고, 네이버 캘린더는 보류합니다.',
+              child: Column(
+                children: [
+                  _StatusRow(
+                    label: 'Google Calendar',
+                    value: _calendarStatusLabel(_calendarSyncSummary?.google),
+                    icon: Icons.cloud_sync_outlined,
+                    isConfigured:
+                        _isCalendarConfigured(_calendarSyncSummary?.google),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed:
+                          _isLoadingCalendarStatus || _isSyncingGoogleCalendar
+                              ? null
+                              : _syncGoogleCalendar,
+                      icon: _isSyncingGoogleCalendar
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync),
+                      label: Text(_googleCalendarActionLabel()),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const _PausedIntegrationNote(
+                    text: '네이버 캘린더는 1차에서 보류합니다. 이후 단계에서 다시 연결할 예정입니다.',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              title: '환경 상태',
+              subtitle: '현재 화면에서 필요한 환경 키가 들어와 있는지만 확인합니다.',
+              child: Column(
+                children: [
+                  _StatusRow(
+                    label: 'Supabase 초기화',
+                    value: AppEnv.isSupabaseReady ? '설정됨' : '미설정',
+                    icon: Icons.code_outlined,
+                    isConfigured: AppEnv.isSupabaseReady,
+                  ),
+                  const SizedBox(height: 12),
+                  _StatusRow(
+                    label: 'OpenAI 키',
+                    value: envConfigured ? '설정됨' : '미설정',
+                    icon: Icons.storage_outlined,
+                    isConfigured: envConfigured,
+                  ),
+                  const SizedBox(height: 12),
+                  _StatusRow(
+                    label: 'Google Maps 키',
+                    value: AppEnv.googleMapsApiKey.isNotEmpty ? '설정됨' : '미설정',
+                    icon: Icons.map_outlined,
+                    isConfigured: AppEnv.googleMapsApiKey.isNotEmpty,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (authProvider.isSignedIn && _backupService != null)
+              _SectionCard(
+                title: '백업 및 복원',
+                subtitle: '현재 로그인 계정의 Supabase 백업 스냅샷을 관리합니다.',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed:
+                                _isBackupActionRunning ? null : _createBackup,
+                            icon: _isBackupActionRunning
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.cloud_upload_outlined),
+                            label: const Text('백업 만들기'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.outlined(
+                          tooltip: '백업 목록 새로고침',
+                          onPressed: _isLoadingBackups ? null : _loadBackups,
+                          icon: const Icon(Icons.refresh),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_isLoadingBackups)
+                      const Center(child: CircularProgressIndicator())
+                    else if (_backups.isEmpty)
+                      const Text('아직 저장된 백업이 없습니다.')
+                    else
+                      ..._backups.take(5).map(
+                            (backup) => _BackupTile(
+                              backup: backup,
+                              onRestore: _isBackupActionRunning
+                                  ? null
+                                  : () => _restoreBackup(backup),
+                            ),
+                          ),
+                  ],
+                ),
+              ),
+            if (authProvider.isSignedIn && _backupService != null)
+              const SizedBox(height: 16),
+            _SectionCard(
               title: '계정',
-              subtitle: '로그인한 계정 기준으로 일정, 알림, 백업 데이터가 분리됩니다.',
+              subtitle: '로그인 상태를 확인하고 필요하면 앱에서 바로 로그아웃할 수 있습니다.',
               child: AnimatedBuilder(
                 animation: authProvider,
                 builder: (context, _) {
@@ -371,238 +682,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: '백업 및 복원',
-              subtitle: '현재 로그인한 계정의 Supabase 데이터를 하나의 snapshot으로 저장하고 복원합니다.',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed:
-                              _isBackupActionRunning ? null : _createBackup,
-                          icon: _isBackupActionRunning
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.cloud_upload_outlined),
-                          label: const Text('백업 만들기'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton.outlined(
-                        tooltip: '백업 목록 새로고침',
-                        onPressed: _isLoadingBackups ? null : _loadBackups,
-                        icon: const Icon(Icons.refresh),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (!authProvider.isSignedIn)
-                    const Text('로그인 후 백업/복원을 사용할 수 있습니다.')
-                  else if (_isLoadingBackups)
-                    const Center(child: CircularProgressIndicator())
-                  else if (_backups.isEmpty)
-                    const Text('아직 저장된 백업이 없습니다.')
-                  else
-                    ..._backups.take(5).map(
-                          (backup) => _BackupTile(
-                            backup: backup,
-                            onRestore: _isBackupActionRunning
-                                ? null
-                                : () => _restoreBackup(backup),
-                          ),
-                        ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: '브리핑 시간',
-              subtitle: '이 기기에서 아침/저녁 브리핑을 받을 시간을 정합니다.',
-              child: Column(
-                children: [
-                  _TimeSettingTile(
-                    title: '아침 브리핑',
-                    subtitle: '하루 계획을 시작하는 시간',
-                    value: morningLabel,
-                    icon: Icons.wb_sunny_outlined,
-                    onTap: () => _pickTime(context: context, isMorning: true),
-                  ),
-                  const Divider(height: 1),
-                  _TimeSettingTile(
-                    title: '저녁 브리핑',
-                    subtitle: '하루 정리와 내일 준비',
-                    value: eveningLabel,
-                    icon: Icons.nightlight_outlined,
-                    onTap: () => _pickTime(context: context, isMorning: false),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: '기본 알림 시간',
-              subtitle: '새 일정에 기본으로 적용할 사전 알림 시간을 정합니다.',
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _reminderOptions
-                    .map(
-                      (minutes) => FilterChip(
-                        label: Text('$minutes분'),
-                        selected: _defaultReminderMinutes == minutes,
-                        onSelected: (_) {
-                          setState(() {
-                            _defaultReminderMinutes = minutes;
-                          });
-                        },
-                      ),
-                    )
-                    .toList(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: '캘린더 연동 상태',
-              subtitle: '비밀키는 표시하지 않고 설정 여부만 보여줍니다.',
-              child: Column(
-                children: [
-                  _StatusRow(
-                    label: '구글 캘린더',
-                    value: _calendarStatusLabel(_calendarSyncSummary?.google),
-                    icon: Icons.cloud_sync_outlined,
-                    isConfigured:
-                        _isCalendarConfigured(_calendarSyncSummary?.google),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed:
-                          _isLoadingCalendarStatus || _isSyncingGoogleCalendar
-                              ? null
-                              : _syncGoogleCalendar,
-                      icon: _isSyncingGoogleCalendar
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.sync),
-                      label: Text(_googleCalendarActionLabel()),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _StatusRow(
-                    label: '네이버 캘린더',
-                    value: _calendarStatusLabel(_calendarSyncSummary?.naver),
-                    icon: Icons.sync_alt_outlined,
-                    isConfigured:
-                        _isCalendarConfigured(_calendarSyncSummary?.naver),
-                  ),
-                  const SizedBox(height: 12),
-                  _StatusRow(
-                    label: '로컬 동기화 모드',
-                    value: '기기 안에서만 사용',
-                    icon: Icons.device_hub_outlined,
-                    isConfigured: false,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: '환경값 설정 상태',
-              subtitle: '필수 환경값이 들어왔는지만 확인하고 실제 값은 숨깁니다.',
-              child: Column(
-                children: [
-                  _StatusRow(
-                    label: 'Supabase 인증/데이터',
-                    value: AppEnv.isSupabaseReady ? '설정됨' : '미설정',
-                    icon: Icons.code_outlined,
-                    isConfigured: AppEnv.isSupabaseReady,
-                  ),
-                  const SizedBox(height: 12),
-                  _StatusRow(
-                    label: 'OpenAI 일정 파싱',
-                    value: envConfigured ? '설정됨' : '미설정',
-                    icon: Icons.storage_outlined,
-                    isConfigured: envConfigured,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              color: PlanFlowColors.surface,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: const BorderSide(
-                  color: PlanFlowColors.primaryFaint,
-                  width: 0.5,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '현재 화면 저장 안내',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: PlanFlowColors.primary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '브리핑/알림 설정은 지금 화면에서 바로 조정할 수 있지만, 서버 저장소 연결 전까지는 앱 세션 안에서만 유지됩니다.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _resetToDefaults,
-                            child: const Text('초기화'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: _saveLocalChanges,
-                            child: const Text('이 기기에 저장'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
+  @override
+  void dispose() {
+    _settingsProvider.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signOut() async {
+    final authService = _authService;
+    if (authService == null) {
+      return;
+    }
+    await authService.signOut();
+    if (mounted) {
+      context.go(AppRoutes.login);
+    }
+  }
+
   String _formatTime(BuildContext context, TimeOfDay timeOfDay) {
     return MaterialLocalizations.of(context).formatTimeOfDay(
       timeOfDay,
       alwaysUse24HourFormat: true,
+    );
+  }
+
+  String _formatTimeValue(TimeOfDay timeOfDay) {
+    return '${timeOfDay.hour.toString().padLeft(2, '0')}:${timeOfDay.minute.toString().padLeft(2, '0')}';
+  }
+
+  TimeOfDay _parseTime(String value) {
+    final match = RegExp(r'^(\d{2}):(\d{2})').firstMatch(value);
+    if (match == null) {
+      return const TimeOfDay(hour: 7, minute: 30);
+    }
+
+    return TimeOfDay(
+      hour: int.tryParse(match.group(1) ?? '') ?? 7,
+      minute: int.tryParse(match.group(2) ?? '') ?? 30,
     );
   }
 
@@ -622,7 +744,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       CalendarIntegrationStatus.ready => '사용 가능',
       CalendarIntegrationStatus.syncing => '동기화 중',
       CalendarIntegrationStatus.synced => '동기화 완료',
-      CalendarIntegrationStatus.unsupported => '지원 전',
+      CalendarIntegrationStatus.unsupported => '보류',
       CalendarIntegrationStatus.failed => '상태 확인 실패',
     };
   }
@@ -637,27 +759,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       CalendarIntegrationStatus.ready ||
       CalendarIntegrationStatus.synced ||
       CalendarIntegrationStatus.failed =>
-        '동기화',
-      _ => '구글 캘린더 연결',
+        'Google Calendar 다시 동기화',
+      _ => 'Google Calendar 연결',
     };
   }
 
   String _calendarSyncSnackMessage(CalendarIntegrationResult result) {
     return switch (result.status) {
       CalendarIntegrationStatus.notConfigured =>
-        '구글 캘린더 설정이 아직 없습니다. Google Client ID 설정을 확인해 주세요.',
-      CalendarIntegrationStatus.signedOut =>
-        '구글 계정 로그인이 완료되지 않았습니다. 연결을 다시 시도해 주세요.',
+        'Google Calendar 설정이 아직 없습니다. Client ID 설정을 확인해주세요.',
+      CalendarIntegrationStatus.signedOut => 'Google 계정 로그인 후 다시 시도해주세요.',
       CalendarIntegrationStatus.failed =>
-        '구글 캘린더 동기화에 실패했습니다. 네트워크와 권한을 확인해 주세요.',
+        'Google Calendar 동기화에 실패했습니다. 네트워크와 권한을 확인해주세요.',
       CalendarIntegrationStatus.synced when result.syncedItems > 0 =>
-        '구글 캘린더 동기화가 완료되었습니다. ${result.syncedItems}개 항목을 확인했습니다.',
+        'Google Calendar 동기화가 완료되었습니다. ${result.syncedItems}개 항목을 확인했습니다.',
       CalendarIntegrationStatus.synced =>
-        '구글 캘린더 연결을 확인했습니다. 가져올 새 일정은 아직 없습니다.',
-      CalendarIntegrationStatus.ready => '구글 캘린더를 사용할 준비가 되었습니다.',
-      CalendarIntegrationStatus.syncing => '구글 캘린더 동기화를 진행 중입니다.',
+        'Google Calendar 연결을 확인했습니다. 새로 가져온 항목은 없습니다.',
+      CalendarIntegrationStatus.ready => 'Google Calendar 연결 준비가 완료되었습니다.',
+      CalendarIntegrationStatus.syncing => 'Google Calendar 동기화를 진행 중입니다.',
       CalendarIntegrationStatus.unsupported =>
-        '현재 기기에서는 구글 캘린더 동기화를 지원하지 않습니다.',
+        '현재 기기에서는 Google Calendar 동기화를 지원하지 않습니다.',
     };
   }
 
@@ -713,16 +834,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
+class _UnavailableSettingsRepository extends SettingsRepository {
+  @override
+  Future<UserSettingsModel?> fetchSettings(String userId) async => null;
+
+  @override
+  Future<UserSettingsModel> upsertSettings(UserSettingsModel settings) async {
+    return settings;
+  }
+}
+
 class _HeaderCard extends StatelessWidget {
   const _HeaderCard({
     required this.morningLabel,
     required this.eveningLabel,
     required this.reminderMinutes,
+    required this.isLoading,
   });
 
   final String morningLabel;
   final String eveningLabel;
   final int reminderMinutes;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -748,7 +881,7 @@ class _HeaderCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '브리핑과 알림',
+            isLoading ? '설정 불러오는 중' : '브리핑과 알림',
             style: theme.textTheme.headlineSmall?.copyWith(
               color: Colors.white,
               fontSize: 18,
@@ -762,7 +895,7 @@ class _HeaderCard extends StatelessWidget {
             children: [
               _HeaderPill(
                 icon: Icons.wb_sunny_outlined,
-                label: '아침 $morningLabel',
+                label: '오전 $morningLabel',
               ),
               _HeaderPill(
                 icon: Icons.nightlight_outlined,
@@ -770,7 +903,7 @@ class _HeaderCard extends StatelessWidget {
               ),
               _HeaderPill(
                 icon: Icons.notifications_none,
-                label: '$reminderMinutes분 전 알림',
+                label: '$reminderMinutes분 알림',
               ),
             ],
           ),
@@ -812,6 +945,31 @@ class _HeaderPill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PausedIntegrationNote extends StatelessWidget {
+  const _PausedIntegrationNote({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.background,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: PlanFlowColors.textSecondary,
+        ),
       ),
     );
   }
@@ -967,8 +1125,10 @@ class _BackupTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.cloud_done_outlined,
-                color: PlanFlowColors.primaryMid),
+            const Icon(
+              Icons.cloud_done_outlined,
+              color: PlanFlowColors.primaryMid,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(

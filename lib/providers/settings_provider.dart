@@ -10,18 +10,40 @@ class SettingsProvider extends ChangeNotifier {
 
   UserSettingsModel? _settings;
   bool _isLoading = false;
+  bool _isSaving = false;
 
   UserSettingsModel? get settings => _settings;
   bool get isLoading => _isLoading;
+  bool get isSaving => _isSaving;
 
-  Future<void> load(String userId) async {
+  Future<UserSettingsModel?> load(String userId) async {
     _isLoading = true;
     notifyListeners();
 
-    // TODO: Fill in cache/update behavior in a later checklist item.
-    _settings = await _repository.fetchSettings(userId);
+    try {
+      _settings = await _repository.fetchSettings(userId);
+      return _settings;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
-    _isLoading = false;
+  Future<UserSettingsModel> save(UserSettingsModel settings) async {
+    _isSaving = true;
+    notifyListeners();
+
+    try {
+      _settings = await _repository.upsertSettings(settings);
+      return _settings!;
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  void clear() {
+    _settings = null;
     notifyListeners();
   }
 }

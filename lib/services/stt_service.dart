@@ -9,6 +9,10 @@ class SttService {
   static const Duration _listenFor = Duration(seconds: 15);
   static const Duration _pauseFor = Duration(seconds: 2);
 
+  static String? resolveKoreanLocaleId(Iterable<String> localeIds) {
+    return localeIds.contains(_koreanLocaleId) ? _koreanLocaleId : null;
+  }
+
   Future<String?> listen() async {
     final speech = SpeechToText();
     final completer = Completer<String?>();
@@ -47,17 +51,19 @@ class SttService {
       }
 
       final locales = await speech.locales();
-      final localeId =
-          locales.any((locale) => locale.localeId == _koreanLocaleId)
-              ? _koreanLocaleId
-              : null;
+      final localeId = resolveKoreanLocaleId(
+        locales.map((locale) => locale.localeId),
+      );
+      if (localeId == null) {
+        return null;
+      }
 
       await speech.listen(
         localeId: localeId,
         listenFor: _listenFor,
         pauseFor: _pauseFor,
         listenOptions: SpeechListenOptions(
-          onDevice: false,
+          onDevice: true,
           partialResults: true,
           cancelOnError: false,
           listenMode: ListenMode.dictation,

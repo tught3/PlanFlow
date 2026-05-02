@@ -13,6 +13,8 @@ void main() {
       memo: 'Weekly meeting',
       supplies: const <String>['laptop', 'notes'],
       isCritical: true,
+      source: 'google',
+      externalId: 'calendar-event-1',
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
     );
 
@@ -28,6 +30,8 @@ void main() {
     expect(restored.memo, model.memo);
     expect(restored.supplies, model.supplies);
     expect(restored.isCritical, isTrue);
+    expect(restored.source, 'google');
+    expect(restored.externalId, 'calendar-event-1');
     expect(restored.createdAt, model.createdAt);
   });
 
@@ -43,5 +47,19 @@ void main() {
     expect(json.containsKey('id'), isFalse);
     expect(json['user_id'], 'user-1');
     expect(json['title'], 'Draft event');
+    expect(json['source'], 'manual');
+    expect(json['external_id'], isNull);
+  });
+
+  test('EventModel defaults source to manual when absent in JSON', () {
+    final restored = EventModel.fromJson(<String, dynamic>{
+      'id': 'event-2',
+      'user_id': 'user-2',
+      'title': 'Manual event',
+      'start_at': '2026-05-01T10:00:00Z',
+    });
+
+    expect(restored.source, 'manual');
+    expect(restored.externalId, isNull);
   });
 }

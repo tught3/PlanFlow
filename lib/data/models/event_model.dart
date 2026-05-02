@@ -9,6 +9,8 @@ class EventModel {
     this.memo,
     this.supplies = const <String>[],
     this.isCritical = false,
+    this.source = 'manual',
+    this.externalId,
     this.createdAt,
   });
 
@@ -23,6 +25,8 @@ class EventModel {
       memo: json['memo'] as String?,
       supplies: _stringListValue(json['supplies']),
       isCritical: _boolValue(json['is_critical']),
+      source: _sourceValue(json['source']),
+      externalId: _optionalStringValue(json['external_id']),
       createdAt: _dateTimeValue(json['created_at']),
     );
   }
@@ -36,6 +40,8 @@ class EventModel {
   final String? memo;
   final List<String> supplies;
   final bool isCritical;
+  final String source;
+  final String? externalId;
   final DateTime? createdAt;
 
   Map<String, dynamic> toJson({bool includeId = true}) {
@@ -49,6 +55,8 @@ class EventModel {
       'memo': memo,
       'supplies': supplies,
       'is_critical': isCritical,
+      'source': _sourceValue(source),
+      'external_id': _optionalStringValue(externalId),
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
     };
   }
@@ -67,6 +75,16 @@ class EventModel {
       throw StateError('Missing required field: $fieldName');
     }
     return text;
+  }
+
+  static String _sourceValue(Object? value) {
+    final text = _stringValue(value);
+    return text.isEmpty ? 'manual' : text;
+  }
+
+  static String? _optionalStringValue(Object? value) {
+    final text = _stringValue(value);
+    return text.isEmpty ? null : text;
   }
 
   static bool _boolValue(Object? value) {

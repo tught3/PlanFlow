@@ -1,8 +1,14 @@
+import 'dart:convert';
 import 'dart:math' as math;
+
+import 'package:http/http.dart' as http;
+
+import '../core/env.dart';
 
 enum TravelTimeBufferSource {
   coordinates,
   locationText,
+  googleMaps,
   defaultFallback,
 }
 
@@ -21,12 +27,20 @@ class TravelTimeBufferEstimate {
 }
 
 class TravelTimeBufferService {
-  const TravelTimeBufferService();
+  TravelTimeBufferService({
+    String? googleMapsApiKey,
+    http.Client Function()? httpClientFactory,
+  })  : _googleMapsApiKey = googleMapsApiKey ?? AppEnv.googleMapsApiKey,
+        _httpClientFactory = httpClientFactory ?? http.Client.new;
+
+  final String _googleMapsApiKey;
+  final http.Client Function() _httpClientFactory;
 
   /// Returns a deterministic travel buffer for the available location signal.
   ///
-  /// This is intentionally not a routing engine. We do not have a map API key
-  /// in this scaffold, so the result is a stable heuristic:
+  /// This is intentionally not a routing engine. When Google Maps is available,
+  /// callers can use [estimateWithGoogleMaps] for a route-based duration.
+  /// Otherwise, this remains a stable heuristic:
   /// - coordinates are mapped to a pseudo-distance score from the origin
   /// - location text is mapped by keyword and length hints
   /// - missing input falls back to a safe default
@@ -59,6 +73,177 @@ class TravelTimeBufferService {
       source: TravelTimeBufferSource.defaultFallback,
       reason: 'Default buffer when no location signal is available.',
     );
+  }
+
+  Future<TravelTimeBufferEstimate> estimateWithGoogleMaps({
+    required String origin,
+    required String destination,
+    double? latitude,
+    double? longitude,
+    String? locationText,
+  }) async {
+    final normalizedOrigin = origin.trim();
+    final normalizedDestination = destination.trim();
+    if (_googleMapsApiKey.trim().isEmpty ||
+        normalizedOrigin.isEmpty ||
+        normalizedDestination.isEmpty) {
+      return estimate(
+        latitude: latitude,
+        longitude: longitude,
+        locationText: locationText ?? destination,
+      );
+    }
+
+    final client = _httpClientFactory();
+    try {
+      final response = await client.get(
+        Uri.https(
+          'maps.googleapis.com',
+          '/maps/api/distancematrix/json',
+          <String, String>{
+            'origins': normalizedOrigin,
+            'destinations': normalizedDestination,
+            'mode': 'driving',
+            'units': 'metric',
+            'key': _googleMapsApiKey,
+          },
+        ),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return estimate(
+          latitude: latitude,
+          longitude: longitude,
+          locationText: locationText ?? destination,
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        return estimate(
+          latitude: latitude,
+          longitude: longitude,
+          locationText: locationText ?? destination,
+        );
+      }
+
+      if (_stringValue(decoded['status']) != 'OK') {
+        return estimate(
+          latitude: latitude,
+          longitude: longitude,
+          locationText: locationText ?? destination,
+        );
+      }
+
+      final rows = decoded['rows'];
+      if (rows is! List || rows.isEmpty) {
+        return estimate(
+          latitude: latitude,
+          longitude: longitude,
+          locationText: locationText ?? destination,
+        );
+      }
+
+      final firstRow = rows.first;
+      if (firstRow is! Map<String, dynamic>) {
+        return estimate(
+          latitude: latitude,
+          longitude: longitude,
+          locationText: locationText ?? destination,
+        );
+      }
+
+      final elements = firstRow['elements'];
+      if (elements is! List || elements.isEmpty) {
+        return estimate(
+          latitude: latitude,
+          longitude: longitude,
+          locationText: locationText ?? destination,
+        );
+      }
+
+      final firstElement = elements.first;
+      if (firstElement is! Map<String, dynamic>) {
+        return estimate(
+          latitude: latitude,
+          longitude: longitude,
+          locationText: locationText ?? destination,
+        );
+      }
+
+      if (_stringValue(firstElement['status']) != 'OK') {
+        return estimate(
+          latitude: latitude,
+          longitude: longitude,
+          locationText: locationText ?? destination,
+        );
+      }
+
+      final duration = firstElement['duration'];
+      final seconds =
+          duration is Map<String, dynamic> ? duration['value'] : null;
+      final durationSeconds = seconds is int
+          ? seconds
+          : seconds is num
+              ? seconds.toInt()
+              : null;
+      if (durationSeconds == null || durationSeconds <= 0) {
+        return estimate(
+          latitude: latitude,
+          longitude: longitude,
+          locationText: locationText ?? destination,
+        );
+      }
+
+      final bufferedMinutes = math.max(1, (durationSeconds / 60).ceil());
+      return TravelTimeBufferEstimate(
+        buffer: Duration(minutes: bufferedMinutes),
+        source: TravelTimeBufferSource.googleMaps,
+        reason: 'Google Maps Distance Matrix API response.',
+      );
+    } catch (_) {
+      return estimate(
+        latitude: latitude,
+        longitude: longitude,
+        locationText: locationText ?? destination,
+      );
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<int> estimateMinutesWithGoogleMaps({
+    required String origin,
+    required String destination,
+    double? latitude,
+    double? longitude,
+    String? locationText,
+  }) async {
+    return (await estimateWithGoogleMaps(
+      origin: origin,
+      destination: destination,
+      latitude: latitude,
+      longitude: longitude,
+      locationText: locationText,
+    ))
+        .minutes;
+  }
+
+  Future<Duration> estimateBufferWithGoogleMaps({
+    required String origin,
+    required String destination,
+    double? latitude,
+    double? longitude,
+    String? locationText,
+  }) async {
+    return (await estimateWithGoogleMaps(
+      origin: origin,
+      destination: destination,
+      latitude: latitude,
+      longitude: longitude,
+      locationText: locationText,
+    ))
+        .buffer;
   }
 
   int estimateMinutes({
@@ -150,6 +335,11 @@ class TravelTimeBufferService {
       return '';
     }
     return text.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  String _stringValue(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    return text;
   }
 
   int _clampMinutes(int minutes) {

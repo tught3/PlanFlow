@@ -10,6 +10,21 @@ class UserSettingsModel {
     this.createdAt,
   });
 
+  factory UserSettingsModel.defaults({
+    required String userId,
+    String id = '',
+    DateTime? createdAt,
+  }) {
+    return UserSettingsModel(
+      id: id,
+      userId: userId,
+      morningBriefingAt: '07:30',
+      eveningBriefingAt: '21:00',
+      defaultReminderMin: 60,
+      createdAt: createdAt,
+    );
+  }
+
   factory UserSettingsModel.fromJson(Map<String, dynamic> json) {
     return UserSettingsModel(
       id: _requiredStringValue(json['id'], 'id'),
@@ -31,6 +46,35 @@ class UserSettingsModel {
   final String? googleCalendarToken;
   final String? naverCalendarToken;
   final DateTime? createdAt;
+
+  UserSettingsModel copyWith({
+    String? id,
+    String? userId,
+    String? morningBriefingAt,
+    String? eveningBriefingAt,
+    int? defaultReminderMin,
+    String? googleCalendarToken,
+    String? naverCalendarToken,
+    DateTime? createdAt,
+    bool clearGoogleCalendarToken = false,
+    bool clearNaverCalendarToken = false,
+    bool clearCreatedAt = false,
+  }) {
+    return UserSettingsModel(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      morningBriefingAt: morningBriefingAt ?? this.morningBriefingAt,
+      eveningBriefingAt: eveningBriefingAt ?? this.eveningBriefingAt,
+      defaultReminderMin: defaultReminderMin ?? this.defaultReminderMin,
+      googleCalendarToken: clearGoogleCalendarToken
+          ? null
+          : googleCalendarToken ?? this.googleCalendarToken,
+      naverCalendarToken: clearNaverCalendarToken
+          ? null
+          : naverCalendarToken ?? this.naverCalendarToken,
+      createdAt: clearCreatedAt ? null : createdAt ?? this.createdAt,
+    );
+  }
 
   Map<String, dynamic> toJson({bool includeId = true}) {
     return <String, dynamic>{
