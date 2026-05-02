@@ -49,13 +49,38 @@ void main() {
 
   test('SttService detects local voice edit commands', () {
     expect(SttService.detectVoiceCommand('아니'), SttVoiceCommand.undoLastWord);
+    expect(SttService.detectVoiceCommand('아니,'), SttVoiceCommand.undoLastWord);
+    expect(SttService.detectVoiceCommand('아니.'), SttVoiceCommand.undoLastWord);
     expect(
       SttService.detectVoiceCommand('마지막 거 지워'),
       SttVoiceCommand.undoLastSegment,
     );
+    expect(
+      SttService.detectVoiceCommand('마지막 거 지워.'),
+      SttVoiceCommand.undoLastSegment,
+    );
     expect(SttService.detectVoiceCommand('처음부터'), SttVoiceCommand.clearAll);
+    expect(
+      SttService.detectVoiceCommand('다시 말할게!'),
+      SttVoiceCommand.clearAll,
+    );
     expect(SttService.detectVoiceCommand('취소'), SttVoiceCommand.cancel);
     expect(SttService.detectVoiceCommand('내일 대전 출발'), SttVoiceCommand.none);
+  });
+
+  test('SttService normalizes voice correction phrases in transcripts', () {
+    expect(
+      SttService.normalizeVoiceTranscript('내일 오전 9시 아니 오전 10시에 대전으로 출발'),
+      '내일 오전 10시에 대전으로 출발',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('내일 오전 9시 아니 오전10시에 대전으로 출발'),
+      '내일 오전10시에 대전으로 출발',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('내일 미팅 마지막 거 지워 오후 3시에'),
+      '내일 오후 3시에',
+    );
   });
 
   test('SttService appends only new speech when Android partials overlap', () {

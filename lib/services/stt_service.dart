@@ -72,22 +72,130 @@ class SttService {
 
   @visibleForTesting
   static SttVoiceCommand detectVoiceCommand(String text) {
-    final normalized = text.trim();
+    final normalized = _normalizeVoiceCommandText(text);
     if (normalized == '아니' || normalized == '아니야' || normalized == '아니요') {
       return SttVoiceCommand.undoLastWord;
     }
-    if (normalized.contains('마지막 거 지워') || normalized.contains('방금 거 지워')) {
+    if (normalized.contains('마지막거지워') || normalized.contains('방금거지워')) {
       return SttVoiceCommand.undoLastSegment;
     }
     if (normalized == '다시' ||
         normalized.contains('처음부터') ||
-        normalized.contains('다시 말할게')) {
+        normalized.contains('다시말할게')) {
       return SttVoiceCommand.clearAll;
     }
     if (normalized == '취소') {
       return SttVoiceCommand.cancel;
     }
     return SttVoiceCommand.none;
+  }
+
+  static String normalizeVoiceTranscript(String text) {
+    final tokens = text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList();
+    final output = <String>[];
+
+    var index = 0;
+    while (index < tokens.length) {
+      final command = _matchVoiceCommand(tokens, index);
+      if (command != null) {
+        switch (command.command) {
+          case SttVoiceCommand.undoLastWord:
+            _removeLastTranscriptWord(output);
+            break;
+          case SttVoiceCommand.undoLastSegment:
+            _removeLastTranscriptSegment(output);
+            break;
+          case SttVoiceCommand.clearAll:
+            output.clear();
+            break;
+          case SttVoiceCommand.cancel:
+            break;
+          case SttVoiceCommand.none:
+            break;
+        }
+        index += command.consumedTokens;
+        continue;
+      }
+
+      final cleanedToken = _normalizeTranscriptToken(tokens[index]);
+      if (cleanedToken.isNotEmpty) {
+        output.add(cleanedToken);
+      }
+      index += 1;
+    }
+
+    return output.join(' ').trim();
+  }
+
+  static String _normalizeVoiceCommandText(String text) {
+    return text
+        .trim()
+        .replaceAll(RegExp(r'[\s\p{P}\p{S}]', unicode: true), '')
+        .toLowerCase();
+  }
+
+  static _VoiceCommandMatch? _matchVoiceCommand(
+    List<String> tokens,
+    int index,
+  ) {
+    const maxCommandTokens = 3;
+    final maxLength = index + maxCommandTokens <= tokens.length
+        ? maxCommandTokens
+        : tokens.length - index;
+    for (var length = maxLength; length >= 1; length -= 1) {
+      final normalized = List<String>.generate(
+        length,
+        (offset) => _normalizeTranscriptToken(tokens[index + offset]),
+      ).join();
+      switch (normalized) {
+        case '아니':
+        case '아니야':
+        case '아니요':
+          return const _VoiceCommandMatch(SttVoiceCommand.undoLastWord, 1);
+        case '마지막거지워':
+        case '방금거지워':
+          return _VoiceCommandMatch(SttVoiceCommand.undoLastSegment, length);
+        case '다시':
+        case '처음부터':
+        case '다시말할게':
+          return _VoiceCommandMatch(SttVoiceCommand.clearAll, length);
+        case '취소':
+          return _VoiceCommandMatch(SttVoiceCommand.cancel, length);
+      }
+    }
+    return null;
+  }
+
+  static String _normalizeTranscriptToken(String token) {
+    return token
+        .trim()
+        .replaceAll(RegExp(r'[\s\p{P}\p{S}]', unicode: true), '')
+        .toLowerCase();
+  }
+
+  static void _removeLastTranscriptWord(List<String> output) {
+    if (output.isEmpty) {
+      return;
+    }
+    output.removeLast();
+    if (output.isEmpty) {
+      return;
+    }
+    final tail = _normalizeTranscriptToken(output.last);
+    if (_timePrefixTokens.contains(tail) && output.isNotEmpty) {
+      output.removeLast();
+    }
+  }
+
+  static void _removeLastTranscriptSegment(List<String> output) {
+    if (output.isEmpty) {
+      return;
+    }
+    output.removeLast();
   }
 
   @visibleForTesting
@@ -792,5 +900,23 @@ const String _unsupportedLocaleMessage =
     '이 기기에서는 온디바이스 한국어 음성 인식을 사용할 수 없어요. 직접 입력으로 이어가 주세요.';
 const String _permissionMessage =
     '마이크 권한이 없어요. 설정에서 권한을 허용한 뒤 다시 시도하거나 직접 입력으로 이어가 주세요.';
+
+const Set<String> _timePrefixTokens = <String>{
+  '오전',
+  '오후',
+  '새벽',
+  '아침',
+  '점심',
+  '저녁',
+  '밤',
+};
+
+class _VoiceCommandMatch {
+  const _VoiceCommandMatch(this.command, this.consumedTokens);
+
+  final SttVoiceCommand command;
+  final int consumedTokens;
+}
+
 const String _silenceMessage = '음성이 인식되지 않았어요. 조금 더 크게 말하거나 직접 입력으로 이어가 주세요.';
 const String _genericMessage = '음성 입력을 시작하지 못했어요. 직접 입력으로 이어가 주세요.';

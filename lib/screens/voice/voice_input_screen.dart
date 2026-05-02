@@ -164,7 +164,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   }
 
   Future<void> _continueWithRawText() async {
-    final rawText = _rawTextController.text.trim();
+    final rawText =
+        SttService.normalizeVoiceTranscript(_rawTextController.text.trim());
     if (rawText.isEmpty) {
       _openConfirm(const <String, dynamic>{});
       return;
