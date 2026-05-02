@@ -1,6 +1,45 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+
+enum SttListenFailure {
+  unsupportedLocale,
+  permissionDenied,
+  silence,
+  unavailable,
+}
+
+class SttListenResult {
+  const SttListenResult._({
+    this.text,
+    this.failure,
+    this.message,
+  });
+
+  factory SttListenResult.success(String text) {
+    return SttListenResult._(text: text.trim());
+  }
+
+  factory SttListenResult.failure({
+    required SttListenFailure failure,
+    required String message,
+    String? text,
+  }) {
+    return SttListenResult._(
+      text: text?.trim(),
+      failure: failure,
+      message: message,
+    );
+  }
+
+  final String? text;
+  final SttListenFailure? failure;
+  final String? message;
+
+  bool get hasText => text != null && text!.trim().isNotEmpty;
+  bool get isSuccess => failure == null && hasText;
+}
 
 class SttService {
   const SttService();
@@ -13,17 +52,52 @@ class SttService {
     return localeIds.contains(_koreanLocaleId) ? _koreanLocaleId : null;
   }
 
-  Future<String?> listen() async {
+  @visibleForTesting
+  static SpeechListenOptions buildListenOptions() {
+    return SpeechListenOptions(
+      onDevice: true,
+      partialResults: true,
+      cancelOnError: false,
+      listenMode: ListenMode.dictation,
+    );
+  }
+
+  Future<SttListenResult> listen() async {
     final speech = SpeechToText();
-    final completer = Completer<String?>();
+    final completer = Completer<SttListenResult>();
     String? latestRecognizedText;
     var hasStartedListening = false;
 
-    void complete([String? text]) {
-      if (!completer.isCompleted) {
-        final normalized = (text ?? latestRecognizedText)?.trim();
+    void completeSuccess([String? text]) {
+      if (completer.isCompleted) {
+        return;
+      }
+
+      final normalized = (text ?? latestRecognizedText)?.trim();
+      if (normalized == null || normalized.isEmpty) {
         completer.complete(
-          normalized == null || normalized.isEmpty ? null : normalized,
+          SttListenResult.failure(
+            failure: SttListenFailure.silence,
+            message: _silenceMessage,
+            text: latestRecognizedText,
+          ),
+        );
+        return;
+      }
+      completer.complete(SttListenResult.success(normalized));
+    }
+
+    void completeFailure({
+      required SttListenFailure failure,
+      required String message,
+    }) {
+      if (!completer.isCompleted) {
+        completer.complete(
+          SttListenResult.failure(
+            failure: failure,
+            message: message,
+            text: latestRecognizedText,
+          ),
         );
       }
     }
@@ -37,17 +111,53 @@ class SttService {
           } else if (hasStartedListening &&
               (status == SpeechToText.doneStatus ||
                   status == SpeechToText.notListeningStatus)) {
-            complete();
+            completeSuccess();
           }
         },
         onError: (error) {
-          if (error.permanent || error.errorMsg == 'error_no_match') {
-            complete();
+          if (error.errorMsg == 'error_no_match' ||
+              error.errorMsg == 'error_speech_timeout') {
+            completeFailure(
+              failure: SttListenFailure.silence,
+              message: _silenceMessage,
+            );
+            return;
+          }
+
+          if (error.errorMsg == 'error_permission' ||
+              error.errorMsg == 'error_client') {
+            completeFailure(
+              failure: SttListenFailure.permissionDenied,
+              message: _permissionMessage,
+            );
+            return;
+          }
+
+          if (error.errorMsg == 'error_language_not_supported' ||
+              error.errorMsg == 'error_language_unavailable') {
+            completeFailure(
+              failure: SttListenFailure.unsupportedLocale,
+              message: _unsupportedLocaleMessage,
+            );
+            return;
+          }
+
+          if (error.permanent) {
+            completeFailure(
+              failure: SttListenFailure.unavailable,
+              message: _genericMessage,
+            );
           }
         },
       );
       if (!available) {
-        return null;
+        final hasPermission = await speech.hasPermission;
+        return SttListenResult.failure(
+          failure: hasPermission
+              ? SttListenFailure.unavailable
+              : SttListenFailure.permissionDenied,
+          message: hasPermission ? _genericMessage : _permissionMessage,
+        );
       }
 
       final locales = await speech.locales();
@@ -55,26 +165,24 @@ class SttService {
         locales.map((locale) => locale.localeId),
       );
       if (localeId == null) {
-        return null;
+        return SttListenResult.failure(
+          failure: SttListenFailure.unsupportedLocale,
+          message: _unsupportedLocaleMessage,
+        );
       }
 
       await speech.listen(
         localeId: localeId,
         listenFor: _listenFor,
         pauseFor: _pauseFor,
-        listenOptions: SpeechListenOptions(
-          onDevice: true,
-          partialResults: true,
-          cancelOnError: false,
-          listenMode: ListenMode.dictation,
-        ),
+        listenOptions: buildListenOptions(),
         onResult: (result) {
           final recognizedWords = result.recognizedWords.trim();
           if (recognizedWords.isNotEmpty) {
             latestRecognizedText = recognizedWords;
           }
           if (result.finalResult) {
-            complete(recognizedWords);
+            completeSuccess(recognizedWords);
           }
         },
       );
@@ -84,11 +192,21 @@ class SttService {
         onTimeout: () async {
           await speech.cancel();
           final normalized = latestRecognizedText?.trim();
-          return normalized == null || normalized.isEmpty ? null : normalized;
+          if (normalized == null || normalized.isEmpty) {
+            return SttListenResult.failure(
+              failure: SttListenFailure.silence,
+              message: _silenceMessage,
+            );
+          }
+          return SttListenResult.success(normalized);
         },
       );
     } catch (_) {
-      return null;
+      return SttListenResult.failure(
+        failure: SttListenFailure.unavailable,
+        message: _genericMessage,
+        text: latestRecognizedText,
+      );
     } finally {
       if (speech.isListening) {
         await speech.stop();
@@ -98,3 +216,10 @@ class SttService {
     }
   }
 }
+
+const String _unsupportedLocaleMessage =
+    '이 기기에서는 온디바이스 한국어 음성 인식을 사용할 수 없어요. 직접 입력으로 이어가 주세요.';
+const String _permissionMessage =
+    '마이크 권한이 없어요. 설정에서 권한을 허용한 뒤 다시 시도하거나 직접 입력으로 이어가 주세요.';
+const String _silenceMessage = '음성이 인식되지 않았어요. 조금 더 크게 말하거나 직접 입력으로 이어가 주세요.';
+const String _genericMessage = '음성 입력을 시작하지 못했어요. 직접 입력으로 이어가 주세요.';
