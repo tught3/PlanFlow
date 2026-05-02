@@ -22,8 +22,7 @@ class BriefingSchedulerService {
   })  : _alarmService = alarmService ?? const AlarmService(),
         _gptService = gptService ?? GptService(),
         _ttsService = ttsService ?? const TtsService(),
-        _notificationService =
-            notificationService ?? NotificationService();
+        _notificationService = notificationService ?? NotificationService();
 
   final AlarmService _alarmService;
   final GptService _gptService;
@@ -41,36 +40,51 @@ class BriefingSchedulerService {
   Future<void> scheduleDaily({
     required String morningTime,
     required String eveningTime,
+    String? userId,
   }) async {
     final morningAt = _nextOccurrence(morningTime);
     final eveningAt = _nextOccurrence(eveningTime);
+    final resolvedUserId = _resolveUserId(userId);
 
     await _alarmService.scheduleMorningBriefing(
       id: _morningAlarmId,
       scheduledAt: morningAt,
+      userId: resolvedUserId,
     );
 
     await _alarmService.scheduleEveningBriefing(
       id: _eveningAlarmId,
       scheduledAt: eveningAt,
+      userId: resolvedUserId,
     );
   }
 
   /// Execute a briefing right now (called from alarm callback or manually).
-  Future<void> executeBriefing({required bool isMorning}) async {
+  Future<void> executeBriefing({
+    required bool isMorning,
+    String? userId,
+  }) async {
     if (!AppEnv.isSupabaseReady) {
+      await _deliverBriefing(
+        'PlanFlow 브리핑을 실행하려면 Supabase 설정이 필요해요. 앱을 열어 설정을 확인해 주세요.',
+        isMorning: isMorning,
+      );
       return;
     }
 
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
+    final resolvedUserId = _resolveUserId(userId);
+    if (resolvedUserId == null) {
+      await _deliverBriefing(
+        'PlanFlow 브리핑 사용자 확인이 필요해요. 앱을 한 번 열어 로그인 상태와 브리핑 알람을 새로고침해 주세요.',
+        isMorning: isMorning,
+      );
       return;
     }
 
     try {
       // 1. Fetch relevant events
       final events = await _fetchRelevantEvents(
-        userId: user.id,
+        userId: resolvedUserId,
         isMorning: isMorning,
       );
 
@@ -89,9 +103,8 @@ class BriefingSchedulerService {
             : '시간 미정';
         final location = e.location != null ? ' (${e.location})' : '';
         final critical = e.isCritical ? ' ⚠️중요' : '';
-        final supplies = e.supplies.isNotEmpty
-            ? ' 준비물: ${e.supplies.join(', ')}'
-            : '';
+        final supplies =
+            e.supplies.isNotEmpty ? ' 준비물: ${e.supplies.join(', ')}' : '';
         return '- $time ${e.title}$location$critical$supplies';
       }).join('\n');
 
@@ -108,7 +121,10 @@ class BriefingSchedulerService {
     }
 
     // 5. Re-schedule for tomorrow
-    await _rescheduleForTomorrow(isMorning: isMorning);
+    await _rescheduleForTomorrow(
+      isMorning: isMorning,
+      userId: resolvedUserId,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -159,7 +175,10 @@ class BriefingSchedulerService {
     } catch (_) {}
   }
 
-  Future<void> _rescheduleForTomorrow({required bool isMorning}) async {
+  Future<void> _rescheduleForTomorrow({
+    required bool isMorning,
+    String? userId,
+  }) async {
     // Default times; in production these would come from user_settings
     final defaultTime = isMorning ? '07:30' : '21:00';
     final nextAt = _nextOccurrence(defaultTime);
@@ -168,13 +187,34 @@ class BriefingSchedulerService {
       await _alarmService.scheduleMorningBriefing(
         id: _morningAlarmId,
         scheduledAt: nextAt,
+        userId: _resolveUserId(userId),
       );
     } else {
       await _alarmService.scheduleEveningBriefing(
         id: _eveningAlarmId,
         scheduledAt: nextAt,
+        userId: _resolveUserId(userId),
       );
     }
+  }
+
+  String? _resolveUserId(String? userId) {
+    final explicitUserId = userId?.trim();
+    if (explicitUserId != null && explicitUserId.isNotEmpty) {
+      return explicitUserId;
+    }
+
+    try {
+      final currentUserId =
+          Supabase.instance.client.auth.currentUser?.id.trim();
+      if (currentUserId != null && currentUserId.isNotEmpty) {
+        return currentUserId;
+      }
+    } catch (_) {
+      // Background isolates can run without a hydrated Supabase auth session.
+    }
+
+    return null;
   }
 
   /// Parse "HH:mm" and return the next occurrence (today if future, else tomorrow).

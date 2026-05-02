@@ -14,6 +14,17 @@ void main() {
       location: 'Seoul Station',
       travelBufferMinutes: 25,
       isCritical: true,
+      upcomingEvents: <HomeWidgetListEventData>[
+        HomeWidgetListEventData(
+          title: 'Team sync',
+          startAt: DateTime.parse('2026-05-01T09:00:00Z'),
+          location: 'Seoul Station',
+        ),
+        HomeWidgetListEventData(
+          title: 'Design review',
+          startAt: DateTime.parse('2026-05-01T11:00:00Z'),
+        ),
+      ],
       widgetName: 'next_event_widget',
     );
 
@@ -25,6 +36,12 @@ void main() {
     expect(platform.savedValues['next_event_location'], 'Seoul Station');
     expect(platform.savedValues['next_event_travel_buffer_minutes'], 25);
     expect(platform.savedValues['next_event_is_critical'], isTrue);
+    expect(platform.savedValues['event_list_1_title'], 'Team sync');
+    expect(
+        platform.savedValues['event_list_1_time'], '2026-05-01T09:00:00.000Z');
+    expect(platform.savedValues['event_list_1_location'], 'Seoul Station');
+    expect(platform.savedValues['event_list_2_title'], 'Design review');
+    expect(platform.savedValues['event_list_3_title'], isNull);
     expect(platform.updatedWidgets.single, 'next_event_widget');
   });
 

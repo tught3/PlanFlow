@@ -11,6 +11,7 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/travel_time_buffer_service.dart';
 
 class ConfirmScreen extends StatefulWidget {
   ConfirmScreen({
@@ -368,7 +369,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
 
     final eventReminderNotifyAt =
-        eventStartAt.subtract(const Duration(minutes: 60));
+        eventStartAt.subtract(await _resolveReminderBuffer(event));
     final criticalAlarmNotifyAt =
         eventStartAt.subtract(const Duration(minutes: 30));
     await _tryFollowUp(
@@ -391,6 +392,24 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         ),
       );
     }
+  }
+
+  Future<Duration> _resolveReminderBuffer(EventModel event) async {
+    final destination = event.location?.trim() ?? '';
+    if (destination.isEmpty) {
+      return const Duration(minutes: 60);
+    }
+
+    final travelOrigin = _resolveTravelOrigin();
+    final service = TravelTimeBufferService();
+    final travelMinutes = travelOrigin == null
+        ? service.estimateMinutes(locationText: destination)
+        : await service.estimateMinutesWithGoogleMaps(
+            origin: travelOrigin,
+            destination: destination,
+            locationText: destination,
+          );
+    return Duration(minutes: travelMinutes + 10);
   }
 
   Future<void> _tryFollowUp(Future<void> Function() action) async {
@@ -465,12 +484,23 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   ) async {
     try {
       final nextEvent = await _resolveNextEvent(repository) ?? fallbackEvent;
+      final upcomingEvents = await _resolveUpcomingEvents(repository);
       await widget.homeWidgetService.updateNextEvent(
         title: nextEvent.title,
         eventId: nextEvent.id,
         startAt: nextEvent.startAt,
         location: nextEvent.location,
+        travelOrigin: _resolveTravelOrigin(),
         isCritical: nextEvent.isCritical,
+        upcomingEvents: upcomingEvents
+            .map(
+              (event) => HomeWidgetListEventData(
+                title: event.title,
+                startAt: event.startAt,
+                location: event.location,
+              ),
+            )
+            .toList(growable: false),
       );
     } catch (_) {}
   }
@@ -499,6 +529,39 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return null;
     }
     return remainingToday.first;
+  }
+
+  Future<List<EventModel>> _resolveUpcomingEvents(
+    EventRepository repository,
+  ) async {
+    final userId = _resolveUserId();
+    if (userId == null) {
+      return const <EventModel>[];
+    }
+
+    final now = DateTime.now();
+    final events = await repository.listEvents(userId: userId);
+    return events.where((event) {
+      final startAt = event.startAt;
+      return startAt != null && !startAt.isBefore(now);
+    }).toList(growable: false)
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+  }
+
+  String? _resolveTravelOrigin() {
+    const keys = <String>[
+      'travel_origin',
+      'origin_location',
+      'origin',
+      'departure_location',
+    ];
+    for (final key in keys) {
+      final value = _stringValue(widget.parsedSchedule[key]);
+      if (value != null) {
+        return value;
+      }
+    }
+    return null;
   }
 
   Future<void> _addSupplyFromInput() async {

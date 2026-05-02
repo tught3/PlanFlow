@@ -24,13 +24,12 @@
     <TextView
         android:id="@+id/widget_title"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
+        android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:layout_weight="1"
         android:ellipsize="end"
-        android:maxLines="2"
+        android:maxLines="1"
         android:textColor="#1F2A24"
-        android:textSize="18sp"
+        android:textSize="17sp"
         android:textStyle="bold"
         tools:text="JW제약 미팅" />
 
@@ -38,6 +37,7 @@
         android:id="@+id/widget_time"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
         android:textColor="#5F6B62"
         android:textSize="13sp"
         tools:text="5/1 14:00" />
@@ -53,11 +53,51 @@
         android:textSize="13sp"
         tools:text="강남역" />
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_list_item_1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#26352B"
+            android:textSize="12sp"
+            tools:text="14:00  미팅" />
+
+        <TextView
+            android:id="@+id/widget_list_item_2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#26352B"
+            android:textSize="12sp"
+            tools:text="16:30  운동" />
+
+        <TextView
+            android:id="@+id/widget_list_item_3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#26352B"
+            android:textSize="12sp"
+            tools:text="19:00  저녁 약속" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/widget_voice_button"
         android:layout_width="match_parent"
-        android:layout_height="36dp"
-        android:layout_marginTop="10dp"
+        android:layout_height="34dp"
+        android:layout_marginTop="8dp"
         android:background="#D95F43"
         android:gravity="center"
         android:text="마이크로 추가"

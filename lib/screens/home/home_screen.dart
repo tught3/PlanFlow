@@ -686,10 +686,12 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
     });
 
     try {
-      if (AppEnv.isSupabaseReady) {
-        final repository = EarlyBirdEmailRepository.supabase();
-        await repository.saveEmail(email);
+      if (!AppEnv.isSupabaseReady) {
+        throw StateError('Supabase is not configured.');
       }
+
+      final repository = EarlyBirdEmailRepository.supabase();
+      await repository.saveEmail(email);
 
       if (mounted) {
         setState(() {

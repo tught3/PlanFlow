@@ -19,6 +19,18 @@ class HomeWidgetNextEventData {
   final bool isCritical;
 }
 
+class HomeWidgetListEventData {
+  const HomeWidgetListEventData({
+    required this.title,
+    this.startAt,
+    this.location,
+  });
+
+  final String title;
+  final DateTime? startAt;
+  final String? location;
+}
+
 class HomeWidgetService {
   HomeWidgetService({
     HomeWidgetPlatform? platform,
@@ -41,20 +53,24 @@ class HomeWidgetService {
     String? eventId,
     DateTime? startAt,
     String? location,
+    String? travelOrigin,
     double? latitude,
     double? longitude,
     int? travelBufferMinutes,
     bool isCritical = false,
+    List<HomeWidgetListEventData> upcomingEvents =
+        const <HomeWidgetListEventData>[],
     String widgetName = defaultWidgetName,
     String? androidName,
     String? iOSName,
     String? qualifiedAndroidName,
-  }) {
+  }) async {
     final resolvedBufferMinutes = travelBufferMinutes ??
-        _travelTimeBufferService.estimateMinutes(
+        await _resolveTravelBufferMinutes(
+          travelOrigin: travelOrigin,
+          destination: location,
           latitude: latitude,
           longitude: longitude,
-          locationText: location,
         );
 
     return updateNextEventData(
@@ -70,6 +86,7 @@ class HomeWidgetService {
       androidName: androidName,
       iOSName: iOSName,
       qualifiedAndroidName: qualifiedAndroidName,
+      upcomingEvents: upcomingEvents,
     );
   }
 
@@ -79,6 +96,8 @@ class HomeWidgetService {
     String? androidName,
     String? iOSName,
     String? qualifiedAndroidName,
+    List<HomeWidgetListEventData> upcomingEvents =
+        const <HomeWidgetListEventData>[],
   }) async {
     if (!isSupported) {
       return false;
@@ -105,6 +124,7 @@ class HomeWidgetService {
         success;
     success =
         await _saveValue('next_event_is_critical', data.isCritical) && success;
+    success = await _saveUpcomingEvents(upcomingEvents) && success;
 
     final refreshed = await _platform.updateWidget(
       name: widgetName,
@@ -114,6 +134,58 @@ class HomeWidgetService {
     );
 
     return success && refreshed;
+  }
+
+  Future<int> _resolveTravelBufferMinutes({
+    required String? travelOrigin,
+    required String? destination,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final normalizedOrigin = travelOrigin?.trim() ?? '';
+    final normalizedDestination = destination?.trim() ?? '';
+    if (normalizedOrigin.isNotEmpty && normalizedDestination.isNotEmpty) {
+      return _travelTimeBufferService.estimateMinutesWithGoogleMaps(
+        origin: normalizedOrigin,
+        destination: normalizedDestination,
+        latitude: latitude,
+        longitude: longitude,
+        locationText: destination,
+      );
+    }
+
+    return _travelTimeBufferService.estimateMinutes(
+      latitude: latitude,
+      longitude: longitude,
+      locationText: destination,
+    );
+  }
+
+  Future<bool> _saveUpcomingEvents(List<HomeWidgetListEventData> events) async {
+    var success = true;
+    final slots = events.take(3).toList(growable: false);
+
+    for (var index = 0; index < 3; index += 1) {
+      final event = index < slots.length ? slots[index] : null;
+      final slot = index + 1;
+      success = await _saveOptionalValue(
+            'event_list_${slot}_title',
+            event?.title,
+          ) &&
+          success;
+      success = await _saveOptionalValue(
+            'event_list_${slot}_time',
+            event?.startAt?.toUtc().toIso8601String(),
+          ) &&
+          success;
+      success = await _saveOptionalValue(
+            'event_list_${slot}_location',
+            event?.location,
+          ) &&
+          success;
+    }
+
+    return success;
   }
 
   Future<bool> _ensureConfigured() async {

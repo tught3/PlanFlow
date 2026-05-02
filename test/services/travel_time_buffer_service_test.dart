@@ -1,3 +1,5 @@
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/services/travel_time_buffer_service.dart';
 
@@ -35,5 +37,26 @@ void main() {
 
     expect(estimate.source, TravelTimeBufferSource.defaultFallback);
     expect(estimate.buffer, const Duration(minutes: 15));
+  });
+
+  test('TravelTimeBufferService uses Google Maps duration when available',
+      () async {
+    final service = TravelTimeBufferService(
+      googleMapsApiKey: 'test-key',
+      httpClientFactory: () => MockClient((request) async {
+        return http.Response(
+          '{"status":"OK","rows":[{"elements":[{"status":"OK","duration":{"value":1920}}]}]}',
+          200,
+        );
+      }),
+    );
+
+    final estimate = await service.estimateWithGoogleMaps(
+      origin: 'Home',
+      destination: 'Seoul Station',
+    );
+
+    expect(estimate.source, TravelTimeBufferSource.googleMaps);
+    expect(estimate.minutes, 32);
   });
 }
