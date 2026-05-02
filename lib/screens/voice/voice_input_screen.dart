@@ -274,49 +274,65 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                 ),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
-              Center(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  width: _isListening ? 136 : 116,
-                  height: _isListening ? 136 : 116,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _isListening ? PlanFlowColors.active : Colors.white,
-                    border: Border.all(
-                      color: _isListening
-                          ? PlanFlowColors.activeLight
-                          : PlanFlowColors.primaryFaint,
-                      width: 0.5,
-                    ),
+              _VoiceCommandGuide(theme: theme),
+              const SizedBox(height: 12),
+              Card(
+                elevation: 0,
+                color: PlanFlowColors.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: const BorderSide(
+                    color: PlanFlowColors.primaryFaint,
+                    width: 0.5,
                   ),
-                  child: Icon(
-                    _isListening ? Icons.graphic_eq : Icons.mic,
-                    size: 56,
-                    color: _isListening ? Colors.white : PlanFlowColors.fab,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isListening
+                            ? '온디바이스 한국어 인식으로 듣는 중이에요.'
+                            : '온디바이스 한국어 인식이 가능하면 음성으로 바로 받아쓸 수 있어요.',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: PlanFlowColors.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _isListening
+                            ? '중간에 잠깐 멈춰도 완료 버튼을 누르기 전까지는 아래 원문이 계속 유지돼요.'
+                            : '안 되면 아래 직접 입력 칸에 바로 적어서 이어가면 됩니다.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                        ),
+                      ),
+                      if (_isListening) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _sttRestartCount == 0
+                              ? '말을 마친 뒤 아래 완료 버튼을 눌러 확정해 주세요.'
+                              : '음성 엔진 재연결 $_sttRestartCount회. 인식된 문장은 아래 입력칸에 계속 유지됩니다.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               Text(
-                _isListening
-                    ? '계속 듣는 중이에요. 중간에 소리가 나도 완료 전에는 확인 화면으로 넘어가지 않습니다.'
-                    : '온디바이스 한국어 인식이 안 되면 아래에 직접 입력해도 됩니다.',
-                style: theme.textTheme.titleMedium,
-                textAlign: TextAlign.center,
-              ),
-              if (_isListening) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _sttRestartCount == 0
-                      ? '말을 마친 뒤 아래 완료 버튼을 눌러 확정해 주세요.'
-                      : '음성 엔진 재연결 $_sttRestartCount회. 인식된 문장은 아래 입력칸에 계속 유지됩니다.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: PlanFlowColors.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
+                '음성 원문 / 직접 입력',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: PlanFlowColors.primary,
+                  fontWeight: FontWeight.w700,
                 ),
-              ],
-              const SizedBox(height: 20),
+              ),
+              const SizedBox(height: 8),
               TextField(
                 controller: _rawTextController,
                 focusNode: _rawTextFocusNode,
@@ -337,8 +353,6 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   ),
                 ),
               ],
-              const SizedBox(height: 12),
-              _VoiceCommandGuide(theme: theme),
               if (_statusMessage != null) ...[
                 const SizedBox(height: 12),
                 Card(
@@ -368,29 +382,32 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   _isListening
                       ? '받아쓰는 중'
                       : _rawTextController.text.trim().isEmpty
-                          ? '음성으로 받아쓰기'
+                          ? '음성으로 일정 입력하기'
                           : '다시 말하기',
                 ),
               ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _undoLastSegment,
+                    icon: const Icon(Icons.undo),
+                    label: const Text('마지막 말 삭제'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        _rawTextController.text.trim().isEmpty && !_isListening
+                            ? null
+                            : _clearTranscript,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('전체 지우기'),
+                  ),
+                ],
+              ),
               if (_isListening) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: _undoLastSegment,
-                      icon: const Icon(Icons.undo),
-                      label: const Text('마지막 말 지우기'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: _clearTranscript,
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('전체 지우기'),
-                    ),
-                  ],
-                ),
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: _finishVoiceFlow,
@@ -405,23 +422,6 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                 ),
               ],
               const SizedBox(height: 12),
-              if (!_isListening) ...[
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: _rawTextController.text.trim().isEmpty
-                          ? null
-                          : _clearTranscript,
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('전체 지우기'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-              ],
               FilledButton.tonalIcon(
                 onPressed: (_isListening || _isParsing)
                     ? null
@@ -432,7 +432,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.edit_note),
-                label: Text(_isParsing ? '정리 중' : '직접 입력으로 확인 화면 열기'),
+                label: Text(_isParsing ? '정리 중' : '직접 입력으로 확인'),
               ),
             ],
           ),
