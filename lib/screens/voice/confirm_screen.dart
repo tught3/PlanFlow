@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -12,6 +13,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
+import '../../services/location_lookup_service.dart';
 import '../../services/map_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/travel_time_buffer_service.dart';
@@ -26,10 +28,13 @@ class ConfirmScreen extends StatefulWidget {
     ConfirmScreenBackend? backend,
     NotificationService? notificationService,
     HomeWidgetService? homeWidgetService,
+    LocationLookupService? locationLookupService,
   })  : backend = backend ?? const SupabaseConfirmScreenBackend(),
         gptService = gptService ?? GptService(),
         notificationService = notificationService ?? NotificationService(),
-        homeWidgetService = homeWidgetService ?? HomeWidgetService();
+        homeWidgetService = homeWidgetService ?? HomeWidgetService(),
+        locationLookupService =
+            locationLookupService ?? LocationLookupService();
 
   final Map<String, dynamic> parsedSchedule;
   final String? userId;
@@ -38,6 +43,7 @@ class ConfirmScreen extends StatefulWidget {
   final ConfirmScreenBackend backend;
   final NotificationService notificationService;
   final HomeWidgetService homeWidgetService;
+  final LocationLookupService locationLookupService;
 
   @override
   State<ConfirmScreen> createState() => _ConfirmScreenState();
@@ -139,7 +145,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   final FocusNode _newSupplyFocusNode = FocusNode();
   final GlobalKey _suppliesKey = GlobalKey();
   final GlobalKey _preActionsKey = GlobalKey();
-  late final List<String> _supplies;
+  late final List<_SupplyDraft> _supplies;
   late final List<_PreActionDraft> _preActions;
   late DateTime _startAt;
   DateTime? _endAt;
@@ -148,7 +154,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   late bool _isCritical;
   bool _isSaving = false;
   bool _isLoadingPastSupplies = false;
+  bool _isLookingUpLocation = false;
   bool _isHydratingParsedSchedule = false;
+  bool _suppliesCollapsed = false;
   List<String> _pastSupplies = const <String>[];
   Timer? _locationDebounce;
   bool _hasFollowUpFailures = false;
@@ -171,7 +179,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           _stringValue(widget.parsedSchedule['raw_text']),
     );
     _newSupplyController = TextEditingController();
-    _supplies = _stringListValue(widget.parsedSchedule['supplies']);
+    _supplies = _stringListValue(widget.parsedSchedule['supplies'])
+        .map(_SupplyDraft.new)
+        .toList(growable: true);
     _preActions = _initialPreActions();
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
@@ -196,6 +206,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _newSupplyController.dispose();
     _scrollController.dispose();
     _newSupplyFocusNode.dispose();
+    for (final draft in _supplies) {
+      draft.dispose();
+    }
     for (final draft in _preActions) {
       draft.dispose();
     }
@@ -256,6 +269,65 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
   }
 
+  Future<void> _lookupLocation() async {
+    final query = _locationController.text.trim();
+    if (query.isEmpty) {
+      _showMessage('장소를 먼저 입력해 주세요.');
+      return;
+    }
+
+    if (_isLookingUpLocation) {
+      return;
+    }
+
+    setState(() {
+      _isLookingUpLocation = true;
+    });
+
+    try {
+      final results = await widget.locationLookupService.search(query);
+      if (!mounted) {
+        return;
+      }
+
+      if (results.isEmpty) {
+        _showMessage('장소를 찾지 못했어요. 다른 이름으로 다시 검색해 주세요.');
+        return;
+      }
+
+      final selected = await showModalBottomSheet<LocationLookupResult>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (context) => _LocationLookupSheet(
+          initialQuery: query,
+          results: results,
+        ),
+      );
+
+      if (!mounted || selected == null) {
+        return;
+      }
+
+      setState(() {
+        _locationController.text = selected.label;
+        _locationLat = selected.latitude;
+        _locationLng = selected.longitude;
+      });
+      _showMessage('정확한 위치를 선택했어요.');
+    } catch (_) {
+      if (mounted) {
+        _showMessage('위치를 찾는 데 실패했어요. 네트워크와 설정을 확인해 주세요.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLookingUpLocation = false;
+        });
+      }
+    }
+  }
+
   void _maybeHydrateParsedSchedule() {
     final rawText = _stringValue(widget.parsedSchedule['raw_text']);
     final shouldHydrate = widget.parsedSchedule['parse_pending'] == true ||
@@ -307,7 +379,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
         final supplies = _stringListValue(parsed['supplies']);
         if (supplies.isNotEmpty && _supplies.isEmpty) {
-          _supplies.addAll(supplies);
+          _supplies.addAll(supplies.map(_SupplyDraft.new));
         }
 
         final parsedPreActions = _preActionsFromValue(parsed['pre_actions']);
@@ -394,7 +466,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           locationLat: _locationLat,
           locationLng: _locationLng,
           memo: _emptyToNull(_memoController.text),
-          supplies: List<String>.unmodifiable(_supplies),
+          supplies: List<String>.unmodifiable(
+            _supplies
+                .map((draft) => draft.titleController.text.trim())
+                .where((item) => item.isNotEmpty),
+          ),
           isCritical: _isCritical,
         ),
       );
@@ -748,16 +824,38 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   bool _addSupply(String supply) {
-    if (_supplies.contains(supply)) {
+    if (_supplies.any((draft) => draft.titleController.text.trim() == supply)) {
       return false;
     }
-    _supplies.add(supply);
+    _supplies.add(_SupplyDraft(supply));
     return true;
   }
 
-  void _removeSupply(String supply) {
+  void _removeSupply(_SupplyDraft draft) {
     setState(() {
-      _supplies.remove(supply);
+      _supplies.remove(draft);
+      draft.dispose();
+    });
+  }
+
+  void _toggleSupplyChecked(_SupplyDraft draft) {
+    setState(() {
+      draft.isChecked = !draft.isChecked;
+    });
+  }
+
+  bool get _allSuppliesChecked =>
+      _supplies.isNotEmpty && _supplies.every((draft) => draft.isChecked);
+
+  void _collapseSupplies() {
+    setState(() {
+      _suppliesCollapsed = true;
+    });
+  }
+
+  void _expandSupplies() {
+    setState(() {
+      _suppliesCollapsed = false;
     });
   }
 
@@ -963,10 +1061,23 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                     const SizedBox(height: AppConstants.sectionSpacing),
                     TextField(
                       controller: _locationController,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: '장소',
                         helperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          tooltip: '장소 찾기',
+                          onPressed:
+                              _isLookingUpLocation ? null : _lookupLocation,
+                          icon: _isLookingUpLocation
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.map_outlined),
+                        ),
                       ),
                     ),
                     const SizedBox(height: AppConstants.sectionSpacing),
@@ -1000,6 +1111,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         errorText: _supplyErrorText,
                         onAdd: _addSupplyFromInput,
                         onRemove: _removeSupply,
+                        onToggleChecked: _toggleSupplyChecked,
+                        onCollapse: _collapseSupplies,
+                        onExpand: _expandSupplies,
+                        isCollapsed: _suppliesCollapsed,
+                        allChecked: _allSuppliesChecked,
                       ),
                     ),
                     const SizedBox(height: AppConstants.sectionSpacing),
@@ -1200,45 +1316,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   Future<DateTime?> _pickDateTime(DateTime initialValue) async {
-    final now = DateTime.now();
-    final safeInitialDate = initialValue.isBefore(
-      now.subtract(const Duration(days: 365)),
-    )
-        ? now
-        : initialValue;
-    final pickedDate = await showDatePicker(
+    return showDialog<DateTime>(
       context: context,
-      locale: const Locale('ko', 'KR'),
-      initialDate: safeInitialDate,
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
-      helpText: '날짜 선택',
-      cancelText: '취소',
-      confirmText: '확인',
-      fieldLabelText: '날짜 입력',
-      fieldHintText: '예: 2026.05.02',
-    );
-    if (pickedDate == null || !mounted) {
-      return null;
-    }
-
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(initialValue),
-      helpText: '시간 선택',
-      cancelText: '취소',
-      confirmText: '확인',
-    );
-    if (pickedTime == null) {
-      return null;
-    }
-
-    return DateTime(
-      pickedDate.year,
-      pickedDate.month,
-      pickedDate.day,
-      pickedTime.hour,
-      pickedTime.minute,
+      barrierDismissible: false,
+      builder: (context) => _DateTimePickerDialog(initialValue: initialValue),
     );
   }
 }
@@ -1324,6 +1405,23 @@ class _PreActionDraft {
   }
 }
 
+class _SupplyDraft {
+  _SupplyDraft(String title)
+      : key = GlobalKey(),
+        titleController = TextEditingController(text: title),
+        focusNode = FocusNode();
+
+  final GlobalKey key;
+  final TextEditingController titleController;
+  final FocusNode focusNode;
+  bool isChecked = false;
+
+  void dispose() {
+    titleController.dispose();
+    focusNode.dispose();
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
@@ -1368,14 +1466,24 @@ class _SuppliesEditor extends StatelessWidget {
     required this.errorText,
     required this.onAdd,
     required this.onRemove,
+    required this.onToggleChecked,
+    required this.onCollapse,
+    required this.onExpand,
+    required this.isCollapsed,
+    required this.allChecked,
   });
 
-  final List<String> supplies;
+  final List<_SupplyDraft> supplies;
   final TextEditingController newSupplyController;
   final FocusNode newSupplyFocusNode;
   final String? errorText;
   final VoidCallback onAdd;
-  final ValueChanged<String> onRemove;
+  final ValueChanged<_SupplyDraft> onRemove;
+  final ValueChanged<_SupplyDraft> onToggleChecked;
+  final VoidCallback onCollapse;
+  final VoidCallback onExpand;
+  final bool isCollapsed;
+  final bool allChecked;
 
   @override
   Widget build(BuildContext context) {
@@ -1396,78 +1504,214 @@ class _SuppliesEditor extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '준비물',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: PlanFlowColors.primary,
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '준비물',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (isCollapsed)
+                  TextButton(
+                    onPressed: onExpand,
+                    child: const Text('펼치기'),
+                  )
+                else ...[
+                  if (supplies.isNotEmpty && allChecked)
+                    Chip(
+                      label: const Text('준비물 준비완료'),
+                      visualDensity: VisualDensity.compact,
+                      side: const BorderSide(
+                        color: PlanFlowColors.primaryFaint,
+                        width: 0.5,
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: onCollapse,
+                    child: const Text('확인'),
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 6),
             Text(
-              '칩으로 추가하거나 과거 장소 준비물을 눌러 바로 넣을 수 있어요.',
+              '체크리스트로 준비물을 관리해 보세요. 체크하면 줄이 그어지고, 다시 누르면 해제됩니다.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: PlanFlowColors.textSecondary,
               ),
             ),
             const SizedBox(height: 12),
-            if (supplies.isEmpty)
+            if (isCollapsed)
               Text(
-                '아직 준비물이 없어요. 아래에서 하나씩 추가해 보세요.',
+                supplies.isEmpty
+                    ? '아직 준비물이 없어요. 펼쳐서 한 줄씩 추가해 보세요.'
+                    : '준비물 ${supplies.length}개${allChecked ? ' · 모두 체크 완료' : ''}.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: PlanFlowColors.textSecondary,
                 ),
               )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: supplies
-                    .map(
-                      (supply) => InputChip(
-                        label: Text(supply),
-                        onDeleted: () => onRemove(supply),
-                        deleteIconColor: PlanFlowColors.primaryMid,
-                        side: const BorderSide(
-                          color: PlanFlowColors.primaryFaint,
-                          width: 0.5,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+            else ...[
+              if (supplies.isEmpty)
+                Text(
+                  '아직 준비물이 없어요. 아래에서 하나씩 추가해 보세요.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
+                )
+              else
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: supplies.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    mainAxisExtent: 154,
+                  ),
+                  itemBuilder: (context, index) {
+                    final draft = supplies[index];
+                    return _SupplyChecklistTile(
+                      draft: draft,
+                      onToggle: () => onToggleChecked(draft),
+                      onDelete: () => onRemove(draft),
+                    );
+                  },
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: newSupplyController,
+                      focusNode: newSupplyFocusNode,
+                      decoration: InputDecoration(
+                        labelText: '준비물 추가',
+                        hintText: '예: 물, 여권, 충전기',
+                        helperText: '입력 후 추가 버튼을 누르세요.',
+                        border: const OutlineInputBorder(),
+                        errorText: errorText,
                       ),
-                    )
-                    .toList(growable: false),
+                      onSubmitted: (_) => onAdd(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: onAdd,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(72, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                    ),
+                    child: const Text('추가'),
+                  ),
+                ],
               ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: newSupplyController,
-                    focusNode: newSupplyFocusNode,
-                    decoration: const InputDecoration(
-                      labelText: '준비물 추가',
-                      hintText: '예: 충전기',
-                      helperText: '비워 두면 추가되지 않아요.',
-                      border: OutlineInputBorder(),
-                    ).copyWith(errorText: errorText),
-                    onSubmitted: (_) => onAdd(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: onAdd,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(72, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                  ),
-                  child: const Text('추가'),
-                ),
-              ],
-            ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SupplyChecklistTile extends StatelessWidget {
+  const _SupplyChecklistTile({
+    required this.draft,
+    required this.onToggle,
+    required this.onDelete,
+  });
+
+  final _SupplyDraft draft;
+  final VoidCallback onToggle;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final checked = draft.isChecked;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      decoration: BoxDecoration(
+        color: checked ? const Color(0xFFEAF5EE) : PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color:
+              checked ? const Color(0xFF8BBF99) : PlanFlowColors.primaryFaint,
+          width: 0.8,
+        ),
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: onToggle,
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(
+                    checked ? Icons.check_circle : Icons.radio_button_unchecked,
+                    color: checked
+                        ? const Color(0xFF2E7D32)
+                        : PlanFlowColors.primaryMid,
+                    size: 22,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  checked ? '완료' : '진행 중',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: checked
+                        ? const Color(0xFF2E7D32)
+                        : PlanFlowColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: '삭제',
+                onPressed: onDelete,
+                padding: EdgeInsets.zero,
+                constraints:
+                    const BoxConstraints.tightFor(width: 28, height: 28),
+                icon: const Icon(Icons.close, size: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          TextField(
+            controller: draft.titleController,
+            focusNode: draft.focusNode,
+            onTap: () {
+              draft.titleController.selection = TextSelection(
+                baseOffset: 0,
+                extentOffset: draft.titleController.text.length,
+              );
+            },
+            style: theme.textTheme.bodyMedium?.copyWith(
+              decoration:
+                  checked ? TextDecoration.lineThrough : TextDecoration.none,
+              color: checked ? PlanFlowColors.textSecondary : null,
+            ),
+            decoration: const InputDecoration(
+              hintText: '준비물 입력',
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+            maxLines: 2,
+          ),
+        ],
       ),
     );
   }
@@ -1680,7 +1924,8 @@ class _DateTimeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = value == null ? emptyLabel ?? '미설정' : _formatKorean(value!);
+    final text =
+        value == null ? emptyLabel ?? '날짜를 선택해 주세요' : _formatKorean(value!);
 
     return ListTile(
       tileColor: PlanFlowColors.surface,
@@ -1712,5 +1957,447 @@ class _DateTimeTile extends StatelessWidget {
     final minute = value.minute.toString().padLeft(2, '0');
     final weekday = weekdays[value.weekday] ?? '';
     return '${value.year}년 ${value.month}월 ${value.day}일 $weekday $period $hour12:$minute';
+  }
+}
+
+enum _DateTimePickerStep { date, time }
+
+class _DateTimePickerDialog extends StatefulWidget {
+  const _DateTimePickerDialog({required this.initialValue});
+
+  final DateTime initialValue;
+
+  @override
+  State<_DateTimePickerDialog> createState() => _DateTimePickerDialogState();
+}
+
+class _DateTimePickerDialogState extends State<_DateTimePickerDialog> {
+  late DateTime _selectedDate;
+  late DateTime _visibleMonth;
+  late final TextEditingController _hourController;
+  late final TextEditingController _minuteController;
+  _DateTimePickerStep _step = _DateTimePickerStep.date;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = DateTime(
+      widget.initialValue.year,
+      widget.initialValue.month,
+      widget.initialValue.day,
+      widget.initialValue.hour,
+      widget.initialValue.minute,
+    );
+    _visibleMonth = DateTime(_selectedDate.year, _selectedDate.month);
+    _hourController = TextEditingController(
+      text: _selectedDate.hour.toString().padLeft(2, '0'),
+    );
+    _minuteController = TextEditingController(
+      text: _selectedDate.minute.toString().padLeft(2, '0'),
+    );
+  }
+
+  @override
+  void dispose() {
+    _hourController.dispose();
+    _minuteController.dispose();
+    super.dispose();
+  }
+
+  void _goToTime() => setState(() => _step = _DateTimePickerStep.time);
+  void _goToDate() => setState(() => _step = _DateTimePickerStep.date);
+
+  void _pickDay(DateTime day) {
+    final sameDay = DateUtils.isSameDay(day, _selectedDate);
+    setState(() {
+      _selectedDate = DateTime(
+        day.year,
+        day.month,
+        day.day,
+        _selectedDate.hour,
+        _selectedDate.minute,
+      );
+      _visibleMonth = DateTime(day.year, day.month);
+    });
+    if (sameDay) {
+      _goToTime();
+    }
+  }
+
+  void _changeMonth(int delta) {
+    setState(() {
+      _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + delta);
+    });
+  }
+
+  int _parsePart(String value, int fallback, int min, int max) {
+    final parsed = int.tryParse(value.trim());
+    if (parsed == null) {
+      return fallback;
+    }
+    return parsed.clamp(min, max).toInt();
+  }
+
+  void _confirm() {
+    final hour = _parsePart(_hourController.text, _selectedDate.hour, 0, 23);
+    final minute =
+        _parsePart(_minuteController.text, _selectedDate.minute, 0, 59);
+    Navigator.of(context).pop(
+      DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        hour,
+        minute,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 420,
+          maxHeight: MediaQuery.of(context).size.height * 0.82,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: _step == _DateTimePickerStep.date
+                  ? _buildDateStep(context)
+                  : _buildTimeStep(context),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateStep(BuildContext context) {
+    final theme = Theme.of(context);
+    final firstDay = DateTime(_visibleMonth.year, _visibleMonth.month, 1);
+    final leadingBlanks = (firstDay.weekday + 6) % 7;
+    final daysInMonth =
+        DateUtils.getDaysInMonth(_visibleMonth.year, _visibleMonth.month);
+    final totalCells = leadingBlanks + daysInMonth;
+    final monthTitle = '${_visibleMonth.year}년 ${_visibleMonth.month}월';
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '날짜 선택',
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            IconButton(
+                onPressed: () => _changeMonth(-1),
+                icon: const Icon(Icons.chevron_left)),
+            Text(monthTitle),
+            IconButton(
+                onPressed: () => _changeMonth(1),
+                icon: const Icon(Icons.chevron_right)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const Row(
+          children: [
+            Expanded(child: Center(child: Text('월'))),
+            Expanded(child: Center(child: Text('화'))),
+            Expanded(child: Center(child: Text('수'))),
+            Expanded(child: Center(child: Text('목'))),
+            Expanded(child: Center(child: Text('금'))),
+            Expanded(child: Center(child: Text('토'))),
+            Expanded(child: Center(child: Text('일'))),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 280,
+          child: GridView.builder(
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+            ),
+            itemCount: totalCells,
+            itemBuilder: (context, index) {
+              if (index < leadingBlanks) {
+                return const SizedBox.shrink();
+              }
+              final day = index - leadingBlanks + 1;
+              final date =
+                  DateTime(_visibleMonth.year, _visibleMonth.month, day);
+              final selected = DateUtils.isSameDay(date, _selectedDate);
+              final today = DateUtils.isSameDay(date, DateTime.now());
+              return _DateCell(
+                day: day,
+                selected: selected,
+                today: today,
+                onTap: () => _pickDay(date),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '같은 날짜를 다시 누르면 시간 설정으로 넘어갑니다.',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: PlanFlowColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('취소')),
+            const Spacer(),
+            OutlinedButton(onPressed: _goToTime, child: const Text('시간 입력')),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimeStep(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          '시간 입력',
+          style: theme.textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _formatKorean(_selectedDate),
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: PlanFlowColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _TimeField(
+                label: '시',
+                controller: _hourController,
+                onTapSelectAll: true,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _TimeField(
+                label: '분',
+                controller: _minuteController,
+                onTapSelectAll: true,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '시와 분을 눌러 바로 수정할 수 있어요.',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: PlanFlowColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            TextButton(onPressed: _goToDate, child: const Text('달력으로')),
+            const Spacer(),
+            OutlinedButton(onPressed: _confirm, child: const Text('확인')),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String _formatKorean(DateTime value) {
+    const weekdays = <int, String>{
+      DateTime.monday: '월요일',
+      DateTime.tuesday: '화요일',
+      DateTime.wednesday: '수요일',
+      DateTime.thursday: '목요일',
+      DateTime.friday: '금요일',
+      DateTime.saturday: '토요일',
+      DateTime.sunday: '일요일',
+    };
+    final period = value.hour < 12 ? '오전' : '오후';
+    final hour12 = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final minute = value.minute.toString().padLeft(2, '0');
+    final weekday = weekdays[value.weekday] ?? '';
+    return '${value.year}년 ${value.month}월 ${value.day}일 $weekday $period $hour12:$minute';
+  }
+}
+
+class _DateCell extends StatelessWidget {
+  const _DateCell({
+    required this.day,
+    required this.selected,
+    required this.today,
+    required this.onTap,
+  });
+
+  final int day;
+  final bool selected;
+  final bool today;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = selected ? PlanFlowColors.primary : Colors.transparent;
+    final foreground =
+        selected ? Colors.white : Theme.of(context).colorScheme.onSurface;
+    final borderColor = selected
+        ? PlanFlowColors.primary
+        : today
+            ? PlanFlowColors.primaryMid
+            : PlanFlowColors.primaryFaint;
+
+    return Material(
+      color: background,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: borderColor, width: 0.8),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Center(
+          child: Text(
+            '$day',
+            style: TextStyle(
+              color: foreground,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TimeField extends StatelessWidget {
+  const _TimeField({
+    required this.label,
+    required this.controller,
+    required this.onTapSelectAll,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final bool onTapSelectAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      textAlign: TextAlign.center,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(2),
+      ],
+      onTap: onTapSelectAll
+          ? () {
+              controller.selection = TextSelection(
+                baseOffset: 0,
+                extentOffset: controller.text.length,
+              );
+            }
+          : null,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      ),
+    );
+  }
+}
+
+class _LocationLookupSheet extends StatelessWidget {
+  const _LocationLookupSheet({
+    required this.initialQuery,
+    required this.results,
+  });
+
+  final String initialQuery;
+  final List<LocationLookupResult> results;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '정확한 위치 선택',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '검색어: $initialQuery',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: results.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final result = results[index];
+                  return Card(
+                    elevation: 0,
+                    color: PlanFlowColors.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: const BorderSide(
+                        color: PlanFlowColors.primaryFaint,
+                        width: 0.5,
+                      ),
+                    ),
+                    child: ListTile(
+                      title: Text(result.name),
+                      subtitle: Text(
+                        '${result.label}\n위도 ${result.latitude.toStringAsFixed(6)}, 경도 ${result.longitude.toStringAsFixed(6)}',
+                      ),
+                      isThreeLine: true,
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).pop(result),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('닫기'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
