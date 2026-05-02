@@ -13,6 +13,7 @@ class PlanFlowVoiceFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FloatingActionButton.extended(
+      heroTag: null,
       onPressed: onPressed,
       icon: Container(
         width: 22,

@@ -128,7 +128,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   late final TextEditingController _locationController;
   late final TextEditingController _memoController;
   late final TextEditingController _newSupplyController;
-  final ScrollController _scrollController = ScrollController();
+  final ScrollController _scrollController = ScrollController(
+    keepScrollOffset: false,
+  );
   final FocusNode _newSupplyFocusNode = FocusNode();
   final GlobalKey _suppliesKey = GlobalKey();
   final GlobalKey _preActionsKey = GlobalKey();
@@ -707,186 +709,199 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         onSettings: () => context.go(AppRoutes.settings),
       ),
       body: SafeArea(
-        child: ListView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(AppConstants.defaultPadding),
+        child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: PlanFlowColors.briefing,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                'GPT가 정리한 내용을 확인하고 바로 저장할 수 있어요. 필요한 항목은 지금 수정해도 됩니다.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            if (_parseFailed)
-              Card(
-                color: theme.colorScheme.errorContainer,
-                child: const Padding(
-                  padding: EdgeInsets.all(AppConstants.defaultPadding),
-                  child: Text(
-                    '자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.',
-                  ),
-                ),
-              ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: '제목',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            TextField(
-              controller: _locationController,
-              decoration: const InputDecoration(
-                labelText: '장소',
-                helperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            if (_isLoadingPastSupplies)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: LinearProgressIndicator(),
-              )
-            else if (_pastSupplies.isNotEmpty && location.isNotEmpty) ...[
-              _SuggestionsCard(
-                title: '같은 장소의 준비물',
-                subtitle: '이전 일정에서 자주 쓰던 준비물을 눌러 바로 추가할 수 있어요.',
-                chips: _pastSupplies
-                    .map(
-                      (supply) => ActionChip(
-                        label: Text(supply),
-                        onPressed: () => _applyPastSupply(supply),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(AppConstants.defaultPadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: PlanFlowColors.briefing,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                    )
-                    .toList(growable: false),
-              ),
-              const SizedBox(height: AppConstants.sectionSpacing),
-            ],
-            KeyedSubtree(
-              key: _suppliesKey,
-              child: _SuppliesEditor(
-                supplies: _supplies,
-                newSupplyController: _newSupplyController,
-                newSupplyFocusNode: _newSupplyFocusNode,
-                onAdd: _addSupplyFromInput,
-                onRemove: _removeSupply,
-              ),
-            ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            KeyedSubtree(
-              key: _preActionsKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _SectionHeader(
-                    title: '선행행동',
-                    actionLabel: '추가',
-                    onAction: _addPreAction,
-                  ),
-                  const SizedBox(height: 8),
-                  if (_preActions.isEmpty)
-                    _EmptyInlineHint(
-                      message: '선행행동이 없어요. 추가 버튼을 누르면 바로 아래에 입력 카드가 생겨요.',
-                      actionLabel: '선행행동 추가',
-                      onAction: _addPreAction,
-                    )
-                  else
-                    ..._preActions.asMap().entries.map(
-                          (entry) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _PreActionEditorCard(
-                              draft: entry.value,
-                              index: entry.key + 1,
-                              onDelete: () => _removePreAction(entry.value),
-                            ),
+                      child: Text(
+                        'GPT가 정리한 내용을 확인하고 바로 저장할 수 있어요. 필요한 항목은 지금 수정해도 됩니다.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    if (_parseFailed)
+                      Card(
+                        color: theme.colorScheme.errorContainer,
+                        child: const Padding(
+                          padding: EdgeInsets.all(AppConstants.defaultPadding),
+                          child: Text(
+                            '자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.',
                           ),
                         ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            _DateTimeTile(
-              label: '시작 시간',
-              value: _startAt,
-              onTap: () async {
-                final picked = await _pickDateTime(_startAt);
-                if (picked != null) {
-                  setState(() {
-                    _startAt = picked;
-                    if (_endAt != null && _endAt!.isBefore(_startAt)) {
-                      _endAt = null;
-                    }
-                  });
-                }
-              },
-            ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            _DateTimeTile(
-              label: '종료 시간',
-              value: _endAt,
-              emptyLabel: '종료 시간 없음',
-              onTap: () async {
-                final picked = await _pickDateTime(_endAt ?? _startAt);
-                if (picked != null) {
-                  setState(() {
-                    _endAt = picked;
-                  });
-                }
-              },
-              trailing: _endAt == null
-                  ? null
-                  : IconButton(
-                      tooltip: '종료 시간 지우기',
-                      onPressed: () {
+                      ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    TextField(
+                      controller: _titleController,
+                      decoration: const InputDecoration(
+                        labelText: '제목',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    TextField(
+                      controller: _locationController,
+                      decoration: const InputDecoration(
+                        labelText: '장소',
+                        helperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    if (_isLoadingPastSupplies)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: LinearProgressIndicator(),
+                      )
+                    else if (_pastSupplies.isNotEmpty &&
+                        location.isNotEmpty) ...[
+                      _SuggestionsCard(
+                        title: '같은 장소의 준비물',
+                        subtitle: '이전 일정에서 자주 쓰던 준비물을 눌러 바로 추가할 수 있어요.',
+                        chips: _pastSupplies
+                            .map(
+                              (supply) => ActionChip(
+                                label: Text(supply),
+                                onPressed: () => _applyPastSupply(supply),
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
+                      const SizedBox(height: AppConstants.sectionSpacing),
+                    ],
+                    KeyedSubtree(
+                      key: _suppliesKey,
+                      child: _SuppliesEditor(
+                        supplies: _supplies,
+                        newSupplyController: _newSupplyController,
+                        newSupplyFocusNode: _newSupplyFocusNode,
+                        onAdd: _addSupplyFromInput,
+                        onRemove: _removeSupply,
+                      ),
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    KeyedSubtree(
+                      key: _preActionsKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _SectionHeader(
+                            title: '선행행동',
+                            actionLabel: '추가',
+                            onAction: _addPreAction,
+                          ),
+                          const SizedBox(height: 8),
+                          if (_preActions.isEmpty)
+                            _EmptyInlineHint(
+                              message:
+                                  '선행행동이 없어요. 추가 버튼을 누르면 바로 아래에 입력 카드가 생겨요.',
+                              actionLabel: '선행행동 추가',
+                              onAction: _addPreAction,
+                            )
+                          else
+                            ..._preActions.asMap().entries.map(
+                                  (entry) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: _PreActionEditorCard(
+                                      draft: entry.value,
+                                      index: entry.key + 1,
+                                      onDelete: () =>
+                                          _removePreAction(entry.value),
+                                    ),
+                                  ),
+                                ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    _DateTimeTile(
+                      label: '시작 시간',
+                      value: _startAt,
+                      onTap: () async {
+                        final picked = await _pickDateTime(_startAt);
+                        if (picked != null) {
+                          setState(() {
+                            _startAt = picked;
+                            if (_endAt != null && _endAt!.isBefore(_startAt)) {
+                              _endAt = null;
+                            }
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    _DateTimeTile(
+                      label: '종료 시간',
+                      value: _endAt,
+                      emptyLabel: '종료 시간 없음',
+                      onTap: () async {
+                        final picked = await _pickDateTime(_endAt ?? _startAt);
+                        if (picked != null) {
+                          setState(() {
+                            _endAt = picked;
+                          });
+                        }
+                      },
+                      trailing: _endAt == null
+                          ? null
+                          : IconButton(
+                              tooltip: '종료 시간 지우기',
+                              onPressed: () {
+                                setState(() {
+                                  _endAt = null;
+                                });
+                              },
+                              icon: const Icon(Icons.clear),
+                            ),
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    TextField(
+                      controller: _memoController,
+                      decoration: const InputDecoration(
+                        labelText: '메모',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    SwitchListTile(
+                      value: _isCritical,
+                      onChanged: (value) {
                         setState(() {
-                          _endAt = null;
+                          _isCritical = value;
                         });
                       },
-                      icon: const Icon(Icons.clear),
+                      title: const Text('중요 알림'),
+                      subtitle: const Text('중요 일정이면 더 강한 알림에 함께 등록돼요.'),
+                      contentPadding: EdgeInsets.zero,
                     ),
-            ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            TextField(
-              controller: _memoController,
-              decoration: const InputDecoration(
-                labelText: '메모',
-                border: OutlineInputBorder(),
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      onPressed: _isSaving ? null : _save,
+                      icon: _isSaving
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save),
+                      label: Text(_isSaving ? '저장 중' : '일정 저장'),
+                    ),
+                  ],
+                ),
               ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            SwitchListTile(
-              value: _isCritical,
-              onChanged: (value) {
-                setState(() {
-                  _isCritical = value;
-                });
-              },
-              title: const Text('중요 알림'),
-              subtitle: const Text('중요 일정이면 더 강한 알림에 함께 등록돼요.'),
-              contentPadding: EdgeInsets.zero,
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: _isSaving ? null : _save,
-              icon: _isSaving
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save),
-              label: Text(_isSaving ? '저장 중' : '일정 저장'),
             ),
           ],
         ),
@@ -1177,6 +1192,10 @@ class _SuppliesEditor extends StatelessWidget {
                 const SizedBox(width: 8),
                 FilledButton(
                   onPressed: onAdd,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(72, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                  ),
                   child: const Text('추가'),
                 ),
               ],

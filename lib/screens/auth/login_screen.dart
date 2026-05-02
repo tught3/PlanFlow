@@ -291,6 +291,7 @@ class _LoginScreenState extends State<LoginScreen> {
               isLoading: _isLoading,
               onGoogle: () => _socialLogin(PlanFlowOAuthProvider.google),
               onKakao: () => _socialLogin(PlanFlowOAuthProvider.kakao),
+              onNaver: () => _socialLogin(PlanFlowOAuthProvider.naver),
             ),
           ],
         ),
@@ -496,11 +497,13 @@ class _SocialLoginCard extends StatelessWidget {
     required this.isLoading,
     required this.onGoogle,
     required this.onKakao,
+    required this.onNaver,
   });
 
   final bool isLoading;
   final VoidCallback onGoogle;
   final VoidCallback onKakao;
+  final VoidCallback onNaver;
 
   @override
   Widget build(BuildContext context) {
@@ -528,7 +531,7 @@ class _SocialLoginCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Supabase에 연결한 Google, Kakao 계정으로 로그인합니다.',
+              'Supabase에 연결한 Google, Kakao, Naver 계정으로 로그인합니다.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 8),
@@ -556,6 +559,15 @@ class _SocialLoginCard extends StatelessWidget {
               foregroundColor: const Color(0xFF191919),
               borderColor: const Color(0xFFFEE500),
               onPressed: isLoading ? null : onKakao,
+            ),
+            const SizedBox(height: 8),
+            _BrandLoginButton(
+              label: '네이버로 계속하기',
+              mark: 'N',
+              backgroundColor: const Color(0xFF03C75A),
+              foregroundColor: Colors.white,
+              borderColor: const Color(0xFF03C75A),
+              onPressed: isLoading ? null : onNaver,
             ),
           ],
         ),
