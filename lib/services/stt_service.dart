@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 enum SttListenFailure {
@@ -51,6 +52,9 @@ class SttService {
   static Completer<SttListenResult>? _activeCompleter;
   static String? _activeRecognizedText;
   static var _userRequestedStop = false;
+  static var _activeNativeListen = false;
+  static const MethodChannel _nativeSttChannel =
+      MethodChannel('planflow/native_stt');
 
   static String? resolveKoreanLocaleId(Iterable<String> localeIds) {
     if (localeIds.contains(_koreanLocaleId)) {
@@ -76,6 +80,17 @@ class SttService {
 
   Future<void> stopActiveListen() async {
     _userRequestedStop = true;
+    if (_activeNativeListen) {
+      try {
+        await _nativeSttChannel.invokeMethod<String>('stop');
+      } catch (_) {
+        // The fallback completion below keeps the UI responsive if Android
+        // does not send a final callback after stopListening.
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      _completeActiveListenFromText();
+      return;
+    }
     final speech = _activeSpeech;
     if (speech == null) {
       return;
@@ -86,22 +101,28 @@ class SttService {
     await Future<void>.delayed(const Duration(milliseconds: 250));
     final completer = _activeCompleter;
     if (completer != null && !completer.isCompleted) {
-      final normalized = _activeRecognizedText?.trim();
-      if (normalized == null || normalized.isEmpty) {
-        completer.complete(
-          SttListenResult.failure(
-            failure: SttListenFailure.silence,
-            message: _silenceMessage,
-          ),
-        );
-      } else {
-        completer.complete(SttListenResult.success(normalized));
-      }
+      _completeActiveListenFromText();
     }
   }
 
   Future<void> cancelActiveListen() async {
     _userRequestedStop = true;
+    if (_activeNativeListen) {
+      try {
+        await _nativeSttChannel.invokeMethod<String>('cancel');
+      } catch (_) {}
+      final completer = _activeCompleter;
+      if (completer != null && !completer.isCompleted) {
+        completer.complete(
+          SttListenResult.failure(
+            failure: SttListenFailure.silence,
+            message: '음성 입력을 취소했어요.',
+            text: _activeRecognizedText,
+          ),
+        );
+      }
+      return;
+    }
     final speech = _activeSpeech;
     if (speech == null) {
       return;
@@ -123,6 +144,16 @@ class SttService {
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
   }) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final nativeResult = await _listenWithNativeAndroid(
+        onPartialResult: onPartialResult,
+        onRestart: onRestart,
+      );
+      if (nativeResult.failure != SttListenFailure.unavailable) {
+        return nativeResult;
+      }
+    }
+
     final speech = SpeechToText();
     final completer = Completer<SttListenResult>();
     String? latestRecognizedText;
@@ -389,6 +420,173 @@ class SttService {
       }
       if (identical(_activeSpeech, speech)) {
         _activeSpeech = null;
+        _activeCompleter = null;
+        _activeRecognizedText = null;
+      }
+    }
+  }
+
+  static void _completeActiveListenFromText() {
+    final completer = _activeCompleter;
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+    final normalized = _activeRecognizedText?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      completer.complete(
+        SttListenResult.failure(
+          failure: SttListenFailure.silence,
+          message: _silenceMessage,
+        ),
+      );
+    } else {
+      completer.complete(SttListenResult.success(normalized));
+    }
+  }
+
+  Future<SttListenResult> _listenWithNativeAndroid({
+    ValueChanged<String>? onPartialResult,
+    ValueChanged<int>? onRestart,
+  }) async {
+    final completer = Completer<SttListenResult>();
+    String? latestRecognizedText;
+    String? activeSessionText;
+    var restartCount = 0;
+    _activeNativeListen = true;
+    _activeCompleter = completer;
+    _activeRecognizedText = null;
+    _userRequestedStop = false;
+
+    String mergeRecognizedText(String current, String incoming) {
+      final trimmedCurrent = current.trim();
+      final trimmedIncoming = incoming.trim();
+      if (trimmedCurrent.isEmpty) {
+        return trimmedIncoming;
+      }
+      if (trimmedIncoming.isEmpty ||
+          trimmedIncoming == trimmedCurrent ||
+          trimmedCurrent.endsWith(trimmedIncoming)) {
+        return trimmedCurrent;
+      }
+      if (trimmedIncoming.startsWith(trimmedCurrent)) {
+        return trimmedIncoming;
+      }
+      if (trimmedCurrent.startsWith(trimmedIncoming)) {
+        return trimmedCurrent;
+      }
+      return '$trimmedCurrent $trimmedIncoming'.trim();
+    }
+
+    String replaceTrailingSegment(
+      String baseText,
+      String previousSegment,
+      String nextSegment,
+    ) {
+      final trimmedBase = baseText.trim();
+      final trimmedPrevious = previousSegment.trim();
+      final trimmedNext = nextSegment.trim();
+      if (trimmedBase.isEmpty || trimmedPrevious.isEmpty) {
+        return mergeRecognizedText(trimmedBase, trimmedNext);
+      }
+      if (trimmedBase.endsWith(trimmedPrevious)) {
+        return trimmedBase
+                .substring(0, trimmedBase.length - trimmedPrevious.length)
+                .trimRight() +
+            (trimmedBase.length > trimmedPrevious.length ? ' ' : '') +
+            trimmedNext;
+      }
+      return mergeRecognizedText(trimmedBase, trimmedNext);
+    }
+
+    void updateRecognizedText(String incomingText) {
+      final recognizedWords = incomingText.trim();
+      if (recognizedWords.isEmpty) {
+        return;
+      }
+      final mergedText = activeSessionText == null
+          ? mergeRecognizedText(latestRecognizedText ?? '', recognizedWords)
+          : replaceTrailingSegment(
+              latestRecognizedText ?? '',
+              activeSessionText!,
+              recognizedWords,
+            );
+      activeSessionText = recognizedWords;
+      latestRecognizedText = mergedText;
+      _activeRecognizedText = mergedText;
+      onPartialResult?.call(mergedText);
+    }
+
+    _nativeSttChannel.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'partial':
+          updateRecognizedText(call.arguments?.toString() ?? '');
+          break;
+        case 'stopped':
+          updateRecognizedText(call.arguments?.toString() ?? '');
+          _completeActiveListenFromText();
+          break;
+        case 'cancelled':
+          if (!completer.isCompleted) {
+            completer.complete(
+              SttListenResult.failure(
+                failure: SttListenFailure.silence,
+                message: '음성 입력을 취소했어요.',
+                text: latestRecognizedText,
+              ),
+            );
+          }
+          break;
+        case 'error':
+          if (!completer.isCompleted) {
+            completer.complete(
+              SttListenResult.failure(
+                failure: SttListenFailure.unavailable,
+                message: _genericMessage,
+                text: latestRecognizedText,
+              ),
+            );
+          }
+          break;
+        case 'restarted':
+          restartCount += 1;
+          activeSessionText = null;
+          onRestart?.call(restartCount);
+          break;
+      }
+    });
+
+    try {
+      final started = await _nativeSttChannel.invokeMethod<bool>('start');
+      if (started != true) {
+        return SttListenResult.failure(
+          failure: SttListenFailure.unavailable,
+          message: _genericMessage,
+        );
+      }
+      return await completer.future.timeout(
+        _listenFor + const Duration(seconds: 5),
+        onTimeout: () async {
+          await _nativeSttChannel.invokeMethod<String>('cancel');
+          final normalized = latestRecognizedText?.trim();
+          if (normalized == null || normalized.isEmpty) {
+            return SttListenResult.failure(
+              failure: SttListenFailure.silence,
+              message: _silenceMessage,
+            );
+          }
+          return SttListenResult.success(normalized);
+        },
+      );
+    } catch (_) {
+      return SttListenResult.failure(
+        failure: SttListenFailure.unavailable,
+        message: _genericMessage,
+        text: latestRecognizedText,
+      );
+    } finally {
+      _activeNativeListen = false;
+      _nativeSttChannel.setMethodCallHandler(null);
+      if (_activeCompleter == completer) {
         _activeCompleter = null;
         _activeRecognizedText = null;
       }
