@@ -1,4 +1,4 @@
-﻿# AGENTS.md for `E:\Project\PlanFlow`
+# AGENTS.md for `E:\FluxStudio\PlanFlow`
 
 이 파일은 이 저장소에서 가장 우선하는 작업 규칙입니다.
 보조 참고 문서는 `CLAUDE.md`와 `docs/agent-rules-*.md`입니다.
@@ -36,17 +36,20 @@
 
 ## 세션 시작
 - `.planning/STATE.md`와 `.planning/context/ACTIVE_SUMMARY.md`를 먼저 확인합니다.
-- 긴 작업을 시작하기 전, 그리고 최종 보고 전에는 `node scripts/gsd-context-hygiene.mjs`를 실행합니다.
+- 긴 작업을 시작하기 전, 그리고 최종 보고 전에는 `node scripts/gsd-context-hygiene.mjs`를 실행합니다. 스크립트가 없으면 없음을 기록하고 계속합니다.
 - 완료된 논리 변경마다 planning context에 짧은 체크포인트를 남깁니다.
 - 다음 청크로 넘어가기 전에 `.planning/context/ACTIVE_SUMMARY.md`와 최신 스냅샷을 갱신합니다.
 - 이미 planning context로 저장소 구조를 알고 있으면, 새로 스캔해야 하는 경우가 아니면 다시 맵핑하지 않습니다.
 
 ## 저장소별 규칙
 - `lite-app/`은 이 작업에서 읽기 전용입니다. 수정하지 않습니다.
-- 문서/지식 조회는 가능하면 QMD를 먼저 사용합니다.
-- 금융 파이프라인의 source of truth는 `financial_raw_archive`입니다.
-- parser/storage 변경은 완료 전에 반드시 financial regression을 실행합니다.
+- PlanFlow 제품 범위의 기준 문서는 `PlanFlow_Codex_Prompt_v3.md`입니다.
+- Supabase 스키마 기준은 `supabase/schema.sql`입니다.
+- 1차 배포에서는 과금, 광고, 카톡/문자/통화 감지, TEAM/BUSINESS 기능을 구현하지 않습니다.
+- 네이버 캘린더는 1차 배포에서 보류합니다. 화면에는 노출하지 않고 안전한 unsupported 상태만 유지합니다.
 - 검증은 엄격하게 진행하고, 요청한 항목이 모두 충족되기 전에는 완료를 보고하지 않습니다.
+- 작업 경로는 사용자가 바꾸지 않는 한 `E:\FluxStudio\PlanFlow`를 기준으로 합니다.
+- 실제 Android 앱 동작 확인이 필요하면 ADB 연결을 확인하고, 필요한 경우 실기기에서 검증합니다.
 - 실제 Android 기기를 확인할 때 ADB 스크린샷이나 미러링이 검은 화면이면, 먼저 폰 화면이 꺼졌거나 가려졌다고 가정합니다. 계속하기 전에 사용자가 폰 화면을 켜고 확인하도록 요청합니다.
 - PlanFlow Home UI는 참고 목업에 가깝게, 컴팩트하고 깔끔한 한국어 중심, 카드 기반, 첫 화면에 큰 빈 공간이 없도록 유지합니다.
 
@@ -60,23 +63,22 @@
 ## 프로젝트 구조 (PlanFlow)
 
 ```text
-artifacts/
-├── api-server/          # Express API (포트 3001)
-│   └── src/routes/
-│       ├── ai.ts        # Claude AI 프록시
-│       └── data.ts      # CRUD API
-└── sales-intelligence/  # React 프론트엔드 (포트 5000)
-    └── src/lib/
-        ├── storage.ts   # API 클라이언트 + 캐시
-        └── ai.ts        # AI 통합
 lib/
-└── db/                  # Drizzle ORM + 스키마
+├── core/                # env, routing, theme, constants
+├── data/                # models and Supabase repositories
+├── providers/           # app/auth/event/settings state
+├── screens/             # Flutter screens
+├── services/            # STT, GPT, calendar, notification, widget, backup
+└── widgets/             # shared UI widgets
+android/                 # Android app, widget, manifest
+supabase/schema.sql      # DB schema and RLS source of truth
 ```
 
 ## 배포 구조
 
-- **Vercel**: `vercel.json`에서 `/api/*`를 Railway로 rewrite합니다.
-- **Railway**: Express API + PostgreSQL를 호스팅합니다.
+- **Android 우선**: 1차 배포 대상
+- **Supabase**: Auth, PostgreSQL, RLS, backup/restore RPC
+- **Google Cloud**: Google Calendar OAuth, Google Maps 이동시간 API
 
 ## 세부 참고 문서
 - 워크플로우: `docs/agent-rules-workflow.md`

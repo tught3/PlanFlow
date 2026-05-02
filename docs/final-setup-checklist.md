@@ -34,8 +34,8 @@
 - [x] 17. 선행행동 역산 알림 로직
 - [x] 18. 이브닝/모닝 브리핑 scaffold
 - [x] 19. Google Calendar 연동 scaffold 및 env 연결
-- [x] 20. Naver Calendar env 준비 및 placeholder
-- [x] 21. 이동시간 버퍼 scaffold
+- [x] 20. Naver Calendar 1차 보류 처리
+- [ ] 21. Google Maps 기반 이동시간 버퍼
 - [x] 22. Android Home Widget 네이티브 기본 구성 및 Flutter service scaffold
 - [x] 23. `SettingsScreen`
 - [x] 24. `early_bird_emails` 기반 PRO 얼리버드 이메일 수집
@@ -73,7 +73,7 @@
 - [ ] `early_bird_emails`에 공개 insert/select policy가 없는지 확인
 - [ ] Google Calendar API Enable 확인
 - [ ] Google OAuth 테스트 사용자 등록 확인
-- [ ] Naver Developers API 설정 확인
+- [ ] Google Maps API Key 발급 및 `.env`의 `GOOGLE_MAPS_API_KEY` 입력
 - [ ] Android 실제 기기에서 `flutter run`
 - [ ] 앱 알림 권한 허용 확인
 - [ ] 정확한 알람 권한 허용 확인
@@ -88,7 +88,8 @@
 ## 1차에서 주의할 점
 
 - Google Calendar는 Android Client ID와 env 연결까지 되어 있습니다. 실제 로그인/동기화는 Google API Enable, 테스트 사용자 등록, 실기기 실행으로 확인해야 합니다.
-- Naver Calendar는 키/env 준비까지 되어 있지만 실제 캘린더 API 구현은 아직 placeholder입니다.
+- Naver Calendar는 1차에서 보류합니다. 네이버 심사/권한 준비 후 2차 이후 별도 구현합니다.
+- Google Maps 이동시간 버퍼는 `GOOGLE_MAPS_API_KEY`가 없으면 안전한 로컬 추정값으로 동작해야 합니다.
 - Home Widget은 Android 네이티브 기본 구성까지 추가됐습니다. 실제 런처 배치/표시는 실기기에서 확인해야 합니다.
 - iOS는 1차 Android 우선 전략상 추후 진행입니다.
 
@@ -110,7 +111,7 @@
 2. Supabase Table Editor에서 8개 테이블 확인
 3. Supabase Database Functions에서 `submit_early_bird_email` 확인
 4. Google Cloud에서 Calendar API Enable 및 테스트 사용자 확인
-5. Naver Developers에서 네이버 로그인/캘린더/API 환경 확인
+5. Google Cloud에서 Maps API Key 발급 후 `.env`에 `GOOGLE_MAPS_API_KEY` 입력
 6. Android 기기 연결 후 `flutter run`
 
 ## 현재 검증 기준
