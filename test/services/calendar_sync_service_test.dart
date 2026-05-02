@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import 'package:planflow/services/calendar_sync_service.dart';
 
@@ -31,6 +33,7 @@ void main() {
       final service = CalendarSyncService(
         googleClientId: 'test-client-id',
         googlePlatformSupported: false,
+        googleTargetPlatform: TargetPlatform.windows,
       );
 
       final status = await service.getGoogleStatus();
@@ -55,5 +58,51 @@ void main() {
       expect(status.status, CalendarIntegrationStatus.notConfigured);
       expect(status.provider, CalendarProvider.google);
     });
+
+    test(
+        'returns notConfigured on Android when serverClientId is missing even if clientId exists',
+        () async {
+      final googleSignIn = _FakeGoogleSignIn();
+      final service = CalendarSyncService(
+        googleClientId: 'android-client-id',
+        googleSignIn: googleSignIn,
+        googlePlatformSupported: true,
+        googleTargetPlatform: TargetPlatform.android,
+      );
+
+      final result = await service.syncGoogleCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.notConfigured);
+      expect(result.message, contains('Web OAuth Client ID'));
+      expect(googleSignIn.signInCallCount, 0);
+    });
+
+    test('enters Google sign-in path on Android when serverClientId exists',
+        () async {
+      final googleSignIn = _FakeGoogleSignIn();
+      final service = CalendarSyncService(
+        googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+        googleSignIn: googleSignIn,
+        googlePlatformSupported: true,
+        googleTargetPlatform: TargetPlatform.android,
+      );
+
+      final result = await service.syncGoogleCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.signedOut);
+      expect(googleSignIn.signInCallCount, 1);
+    });
   });
+}
+
+class _FakeGoogleSignIn extends GoogleSignIn {
+  _FakeGoogleSignIn() : super(scopes: const <String>[]);
+
+  int signInCallCount = 0;
+
+  @override
+  Future<GoogleSignInAccount?> signIn() async {
+    signInCallCount += 1;
+    return null;
+  }
 }

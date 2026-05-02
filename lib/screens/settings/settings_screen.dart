@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -53,7 +54,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _calendarSyncService = widget._calendarSyncService ??
         CalendarSyncService(
-          googleClientId: AppEnv.googleAndroidClientId,
+          googleClientId: _googleCalendarClientId,
+          googleServerClientId: _googleCalendarServerClientId,
         );
     if (AppEnv.isSupabaseReady) {
       _backupService = widget._backupService ?? BackupService();
@@ -664,6 +666,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
       CalendarIntegrationStatus.unsupported ||
       CalendarIntegrationStatus.failed =>
         false,
+    };
+  }
+
+  String? get _googleCalendarClientId {
+    if (kIsWeb) {
+      return AppEnv.googleWebClientId;
+    }
+
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android => null,
+      TargetPlatform.iOS ||
+      TargetPlatform.macOS =>
+        AppEnv.googleAndroidClientId,
+      TargetPlatform.fuchsia ||
+      TargetPlatform.linux ||
+      TargetPlatform.windows =>
+        null,
+    };
+  }
+
+  String? get _googleCalendarServerClientId {
+    if (kIsWeb) {
+      return null;
+    }
+
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android => AppEnv.googleServerClientId,
+      TargetPlatform.iOS ||
+      TargetPlatform.macOS ||
+      TargetPlatform.fuchsia ||
+      TargetPlatform.linux ||
+      TargetPlatform.windows =>
+        null,
     };
   }
 }

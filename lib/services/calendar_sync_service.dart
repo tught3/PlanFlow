@@ -151,18 +151,21 @@ class CalendarSyncService {
     ],
     GoogleSignIn? googleSignIn,
     bool? googlePlatformSupported,
+    TargetPlatform? googleTargetPlatform,
     http.Client Function()? httpClientFactory,
   })  : _googleClientId = googleClientId,
         _googleServerClientId = googleServerClientId,
         _googleScopes = List<String>.unmodifiable(googleScopes),
         _googleSignIn = googleSignIn,
         _googlePlatformSupportedOverride = googlePlatformSupported,
+        _googleTargetPlatformOverride = googleTargetPlatform,
         _httpClientFactory = httpClientFactory ?? http.Client.new;
 
   final String? _googleClientId;
   final String? _googleServerClientId;
   final List<String> _googleScopes;
   final bool? _googlePlatformSupportedOverride;
+  final TargetPlatform? _googleTargetPlatformOverride;
   final http.Client Function() _httpClientFactory;
 
   GoogleSignIn? _googleSignIn;
@@ -175,11 +178,27 @@ class CalendarSyncService {
     );
   }
 
-  bool get _hasGoogleConfiguration {
-    return _hasText(_googleClientId) || _hasText(_googleServerClientId);
+  bool _hasText(String? value) => value != null && value.trim().isNotEmpty;
+
+  TargetPlatform get _googleTargetPlatform {
+    return _googleTargetPlatformOverride ?? defaultTargetPlatform;
   }
 
-  bool _hasText(String? value) => value != null && value.trim().isNotEmpty;
+  bool get _isAndroidGoogleSignIn {
+    return !kIsWeb && _googleTargetPlatform == TargetPlatform.android;
+  }
+
+  String? get _googleConfigurationIssue {
+    if (_isAndroidGoogleSignIn && !_hasText(_googleServerClientId)) {
+      return 'Android에서 Google Calendar를 연결하려면 Web OAuth Client ID를 serverClientId로 설정해야 합니다.';
+    }
+
+    if (!_hasText(_googleClientId) && !_hasText(_googleServerClientId)) {
+      return 'Google Calendar 연결에 필요한 OAuth Client ID가 설정되지 않았습니다.';
+    }
+
+    return null;
+  }
 
   bool get _isGooglePlatformSupported {
     if (_googlePlatformSupportedOverride != null) {
@@ -190,7 +209,7 @@ class CalendarSyncService {
       return true;
     }
 
-    return switch (defaultTargetPlatform) {
+    return switch (_googleTargetPlatform) {
       TargetPlatform.android ||
       TargetPlatform.iOS ||
       TargetPlatform.macOS =>
@@ -221,11 +240,11 @@ class CalendarSyncService {
   }
 
   Future<CalendarIntegrationResult> getGoogleStatus() async {
-    if (!_hasGoogleConfiguration) {
+    final configurationIssue = _googleConfigurationIssue;
+    if (configurationIssue != null) {
       return CalendarIntegrationResult.notConfigured(
         CalendarProvider.google,
-        message:
-            'Google Calendar sync is scaffolded but no client configuration was provided.',
+        message: configurationIssue,
       );
     }
 
@@ -253,10 +272,13 @@ class CalendarSyncService {
         CalendarProvider.google,
         message: 'Google Calendar sign-in is available.',
       );
-    } catch (error) {
+    } catch (error, stackTrace) {
+      debugPrint('Google Calendar status check failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
       return CalendarIntegrationResult.failed(
         CalendarProvider.google,
         error: error,
+        stackTrace: stackTrace,
         message: 'Google Calendar status could not be checked.',
       );
     }
@@ -265,11 +287,11 @@ class CalendarSyncService {
   Future<CalendarIntegrationResult> syncGoogleCalendar({
     bool interactive = true,
   }) async {
-    if (!_hasGoogleConfiguration) {
+    final configurationIssue = _googleConfigurationIssue;
+    if (configurationIssue != null) {
       return CalendarIntegrationResult.notConfigured(
         CalendarProvider.google,
-        message:
-            'Google Calendar sync is scaffolded but no client configuration was provided.',
+        message: configurationIssue,
       );
     }
 
@@ -331,19 +353,25 @@ class CalendarSyncService {
           message: 'Google Calendar scaffold request completed.',
           syncedItems: syncedItems,
         );
-      } catch (error) {
+      } catch (error, stackTrace) {
+        debugPrint('Google Calendar API sync failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
         return CalendarIntegrationResult.failed(
           CalendarProvider.google,
           error: error,
+          stackTrace: stackTrace,
           message: 'Google Calendar sync scaffold could not complete.',
         );
       } finally {
         client.close();
       }
-    } catch (error) {
+    } catch (error, stackTrace) {
+      debugPrint('Google Calendar sign-in or sync failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
       return CalendarIntegrationResult.failed(
         CalendarProvider.google,
         error: error,
+        stackTrace: stackTrace,
         message: 'Google Calendar sign-in or sync failed.',
       );
     }

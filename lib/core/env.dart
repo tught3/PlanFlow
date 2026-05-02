@@ -8,6 +8,14 @@ class AppEnv {
   static String get openAiApiKey => _envValue('OPENAI_API_KEY');
   static String get googleAndroidClientId =>
       _envValue('GOOGLE_ANDROID_CLIENT_ID');
+  static String get googleWebClientId {
+    final webClientId = _envValue('GOOGLE_WEB_CLIENT_ID');
+    return webClientId.isNotEmpty
+        ? webClientId
+        : _envValue('GOOGLE_SERVER_CLIENT_ID');
+  }
+
+  static String get googleServerClientId => googleWebClientId;
   static String get naverClientId => _envValue('NAVER_CLIENT_ID');
   static String get naverClientSecret => _envValue('NAVER_CLIENT_SECRET');
   static String get authRedirectUrl => 'planflow://auth-callback';
@@ -40,6 +48,10 @@ class AppEnv {
       'SUPABASE_ANON_KEY' => const String.fromEnvironment('SUPABASE_ANON_KEY'),
       'GOOGLE_ANDROID_CLIENT_ID' =>
         const String.fromEnvironment('GOOGLE_ANDROID_CLIENT_ID'),
+      'GOOGLE_WEB_CLIENT_ID' =>
+        const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
+      'GOOGLE_SERVER_CLIENT_ID' =>
+        const String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID'),
       'NAVER_CLIENT_ID' => const String.fromEnvironment('NAVER_CLIENT_ID'),
       'NAVER_CLIENT_SECRET' =>
         const String.fromEnvironment('NAVER_CLIENT_SECRET'),
