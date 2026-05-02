@@ -455,22 +455,26 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     required String eventId,
     required DateTime eventStartAt,
   }) {
+    final now = DateTime.now();
+    final pushNotifyAt = eventStartAt.subtract(const Duration(minutes: 60));
     final payloads = <Map<String, dynamic>>[
-      _reminderPayload(
-        userId: userId,
-        eventId: eventId,
-        type: 'push',
-        notifyAt: eventStartAt.subtract(const Duration(minutes: 60)),
-      ),
+      if (pushNotifyAt.isAfter(now))
+        _reminderPayload(
+          userId: userId,
+          eventId: eventId,
+          type: 'push',
+          notifyAt: pushNotifyAt,
+        ),
     ];
 
-    if (_isCritical) {
+    final criticalNotifyAt = eventStartAt.subtract(const Duration(minutes: 30));
+    if (_isCritical && criticalNotifyAt.isAfter(now)) {
       payloads.add(
         _reminderPayload(
           userId: userId,
           eventId: eventId,
           type: 'system_alarm',
-          notifyAt: eventStartAt.subtract(const Duration(minutes: 30)),
+          notifyAt: criticalNotifyAt,
         ),
       );
     }

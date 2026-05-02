@@ -10,12 +10,25 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../services/home_widget_service.dart';
+import '../../services/manual_event_side_effect_service.dart';
 
 class EventDetailScreen extends StatefulWidget {
-  const EventDetailScreen({super.key, this.event, this.eventId});
+  EventDetailScreen({
+    super.key,
+    this.event,
+    this.eventId,
+    this.eventRepository,
+    ManualEventSideEffectService? sideEffectService,
+    HomeWidgetService? homeWidgetService,
+  })  : sideEffectService =
+            sideEffectService ?? const ManualEventSideEffectService(),
+        homeWidgetService = homeWidgetService ?? HomeWidgetService();
 
   final EventModel? event;
   final String? eventId;
+  final EventRepository? eventRepository;
+  final ManualEventSideEffectService sideEffectService;
+  final HomeWidgetService homeWidgetService;
 
   @override
   State<EventDetailScreen> createState() => _EventDetailScreenState();
@@ -38,6 +51,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
     return null;
   }
+
+  EventRepository get _repository =>
+      widget.eventRepository ?? EventRepository.supabase();
 
   @override
   void initState() {
@@ -69,7 +85,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     });
 
     try {
-      final latestEvent = await EventRepository.supabase().fetchEvent(
+      final latestEvent = await _repository.fetchEvent(
         eventId,
         userId: user.id,
       );
@@ -132,9 +148,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     try {
       if (AppEnv.isSupabaseReady) {
-        final repository = EventRepository.supabase();
-        await repository.deleteEvent(event.id);
-        unawaited(_refreshHomeWidget(repository));
+        await _repository.deleteEvent(event.id);
+        await widget.sideEffectService.cleanupAfterDelete(event.id);
+        unawaited(_refreshHomeWidget(_repository));
       }
 
       if (mounted) {
@@ -173,7 +189,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       }).toList(growable: false)
         ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
 
-      final widgetService = HomeWidgetService();
+      final widgetService = widget.homeWidgetService;
       if (nextEvents.isEmpty) {
         await widgetService.updateNextEventData(
           const HomeWidgetNextEventData(title: '예정된 일정이 없어요'),
@@ -188,6 +204,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         startAt: nextEvent.startAt,
         location: nextEvent.location,
         isCritical: nextEvent.isCritical,
+        upcomingEvents: nextEvents
+            .take(3)
+            .map(
+              (event) => HomeWidgetListEventData(
+                title: event.title,
+                startAt: event.startAt,
+                location: event.location,
+              ),
+            )
+            .toList(growable: false),
       );
     } catch (_) {
       // Widget refresh should not block event deletion.
@@ -261,7 +287,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           children: [
             _HeaderCard(
               title: event.title,
-              time: timeLabel ?? '시간 미지정',
+              time: timeLabel ?? '시간 미정',
               critical: event.isCritical,
             ),
             if (_loadError != null) ...[
@@ -294,7 +320,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   label: '등록일',
                   value: event.createdAt != null
                       ? _formatDate(event.createdAt!)
-                      : '알 수 없음',
+                      : '정보 없음',
                 ),
               ],
             ),

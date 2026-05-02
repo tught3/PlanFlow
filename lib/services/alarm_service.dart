@@ -119,11 +119,12 @@ Future<void> _briefingAlarmCallback(
     // Re-initialize environment in the background isolate
     await dotenv.load(fileName: '.env');
 
-    if (AppEnv.isSupabaseReady) {
+    if (!AppEnv.isSupabaseReady && AppEnv.hasValidSupabaseConfig) {
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,
         anonKey: AppEnv.supabaseAnonKey,
       );
+      AppEnv.markSupabaseInitialized();
     }
 
     final scheduler = BriefingSchedulerService();

@@ -19,7 +19,7 @@ class NotificationService {
 
   static const String _criticalAlarmChannelId = 'critical_alarms';
   static const String _criticalAlarmChannelName = '중요 일정 알람';
-  static const String _criticalAlarmChannelDescription = '중요 일정용 긴급 알람';
+  static const String _criticalAlarmChannelDescription = '중요 일정 긴급 알람';
 
   Future<void> initialize() {
     return _initializationFuture ??= _initializeInternal();
@@ -49,6 +49,10 @@ class NotificationService {
     required String body,
     required DateTime notifyAt,
   }) async {
+    if (!notifyAt.isAfter(DateTime.now())) {
+      return;
+    }
+
     await initialize();
     await _scheduleNotification(
       id: id,
@@ -66,17 +70,31 @@ class NotificationService {
     required DateTime notifyAt,
     String? body,
   }) async {
+    if (!notifyAt.isAfter(DateTime.now())) {
+      return;
+    }
+
     await initialize();
     await _requestExactAlarmPermissionIfNeeded();
     await _requestFullScreenIntentPermissionIfNeeded();
     await _scheduleNotification(
       id: id,
       title: title,
-      body: body ?? 'Critical event is starting soon.',
+      body: body ?? '중요 일정이 곧 시작됩니다.',
       notifyAt: notifyAt,
       details: _criticalAlarmDetails,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
     );
+  }
+
+  Future<void> cancel(int id) async {
+    await initialize();
+    await _plugin.cancel(id: id);
+  }
+
+  Future<void> cancelEventNotifications(String eventId) async {
+    await cancel(notificationIdFor('$eventId:push'));
+    await cancel(notificationIdFor('$eventId:critical'));
   }
 
   Future<NotificationPermissionStatus> checkPermissionStatus() async {
@@ -138,7 +156,7 @@ class NotificationService {
         defaultPresentList: true,
       ),
       linux: LinuxInitializationSettings(
-        defaultActionName: 'Open notification',
+        defaultActionName: '알림 열기',
       ),
     );
 
@@ -205,6 +223,10 @@ class NotificationService {
     required NotificationDetails details,
     required AndroidScheduleMode androidScheduleMode,
   }) async {
+    if (!notifyAt.isAfter(DateTime.now())) {
+      return;
+    }
+
     final scheduledDate = tz.TZDateTime.from(notifyAt.toUtc(), tz.UTC);
 
     await _plugin.zonedSchedule(

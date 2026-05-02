@@ -15,11 +15,14 @@ class OAuthCallbackHandler {
 
   final AppLinks _appLinks;
   StreamSubscription<Uri>? _subscription;
+  bool _initialLinkHandled = false;
 
   void start() {
     if (kIsWeb || !AppEnv.isSupabaseReady || _subscription != null) {
       return;
     }
+
+    unawaited(_handleInitialLinkOnce());
 
     _subscription = _appLinks.uriLinkStream.listen(
       (uri) => unawaited(_handleUri(uri)),
@@ -27,6 +30,23 @@ class OAuthCallbackHandler {
         debugPrint('OAuth callback listener error: $error');
       },
     );
+  }
+
+  Future<void> _handleInitialLinkOnce() async {
+    if (_initialLinkHandled) {
+      return;
+    }
+    _initialLinkHandled = true;
+
+    try {
+      final uri = await _appLinks.getInitialLink();
+      if (uri != null) {
+        await _handleUri(uri);
+      }
+    } catch (error, stackTrace) {
+      debugPrint('OAuth initial callback read failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<void> _handleUri(Uri uri) async {

@@ -8,7 +8,7 @@ import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/notification_service.dart';
 
 void main() {
-  testWidgets('SettingsScreen loads saved settings and shows Naver paused note',
+  testWidgets('SettingsScreen loads saved settings and hides Naver calendar UI',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -50,9 +50,7 @@ void main() {
     expect(find.text('06:40'), findsWidgets);
     expect(find.text('20:20'), findsWidgets);
     expect(find.text('45분 알림'), findsOneWidget);
-    final naverNote = find.text('네이버 캘린더는 1차에서 보류합니다. 이후 단계에서 다시 연결할 예정입니다.');
-    await tester.scrollUntilVisible(naverNote, 200);
-    expect(naverNote, findsOneWidget);
+    expect(find.textContaining('네이버'), findsNothing);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 
@@ -142,8 +140,7 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final syncButton =
-        find.widgetWithText(FilledButton, 'Google Calendar 다시 동기화');
+    final syncButton = find.widgetWithText(FilledButton, '구글 캘린더 다시 동기화');
     await tester.scrollUntilVisible(syncButton, 200);
     await tester.ensureVisible(syncButton);
     await tester.tap(syncButton);
@@ -152,7 +149,7 @@ void main() {
     expect(calendarSyncService.syncCallCount, 1);
     expect(calendarSyncService.lastInteractive, isTrue);
     expect(
-      find.textContaining('Google Calendar 동기화가 완료되었습니다. 2개 항목을 확인했습니다.'),
+      find.textContaining('구글 캘린더 동기화가 완료되었습니다. 2개 항목을 확인했습니다.'),
       findsOneWidget,
     );
   });
@@ -229,6 +226,7 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
   Future<void> scheduleDaily({
     required String morningTime,
     required String eveningTime,
+    String? userId,
   }) async {
     callCount += 1;
     lastMorningTime = morningTime;

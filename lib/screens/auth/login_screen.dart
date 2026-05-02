@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
 
 enum _AuthMode {
@@ -78,8 +79,11 @@ class _LoginScreenState extends State<LoginScreen> {
           email: _emailController.text,
           password: _passwordController.text,
         );
-        if (mounted) {
+        final signedIn = await authProvider.syncCurrentSession();
+        if (mounted && signedIn) {
           context.go(AppRoutes.home);
+        } else if (mounted) {
+          _setMessage('로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
         }
       } else if (_mode == _AuthMode.signUp) {
         final response = await authService.signUpWithEmail(
@@ -94,7 +98,12 @@ class _LoginScreenState extends State<LoginScreen> {
           );
           _setMode(_AuthMode.login, keepMessage: true);
         } else if (mounted) {
-          context.go(AppRoutes.home);
+          final signedIn = await authProvider.syncCurrentSession();
+          if (mounted && signedIn) {
+            context.go(AppRoutes.home);
+          } else if (mounted) {
+            _setMessage('회원가입 세션을 확인하지 못했습니다. 로그인으로 다시 시도해 주세요.');
+          }
         }
       } else {
         await authService.sendPasswordResetEmail(_emailController.text);

@@ -1,66 +1,59 @@
 # AGENTS.md for `E:\FluxStudio\PlanFlow`
 
-이 파일은 이 저장소에서 가장 우선하는 작업 규칙입니다.
-보조 참고 문서는 `CLAUDE.md`와 `docs/agent-rules-*.md`입니다.
+This file is the top-priority working rule for this repo.
+Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 
-## 기본 언어
-- 항상 한국어로 응답합니다.
+## Default language
+- Always respond in Korean.
 
-## 기본 작업 순서
-1. 요청에 2개 이상 이슈가 있거나 여러 하위 시스템을 건드리면, 먼저 계획합니다.
-2. 계획을 바탕으로 작업하고, 파일 범위가 겹치지 않으면 병렬로 진행합니다.
-3. 구현 후에는 반드시 별도의 리뷰/검증 패스를 수행합니다.
-4. 리뷰에서 미완료나 위험 요소가 발견되면 먼저 수정하고 다시 검토합니다.
-5. 더 손댈 것이 없을 때만 완료를 보고합니다.
+## Default operating order
+1. If a request has 2 or more issues, or spans multiple subsystems, plan first with the strongest planner available.
+2. Use the plan to execute with worker agents, preferably in parallel when file scopes do not overlap.
+3. Always run a separate review/verifier pass after implementation.
+4. If review finds anything incomplete or risky, fix it and review again.
+5. Only report completion when nothing is left to change.
 
-## 모델 라우팅
-- 계획: `gpt-5.5`
-- 실행: `gpt-5.4-mini`
-- 리뷰/검증: `gpt-5.4-mini`
-- 작업이 GSD에 적합하면 먼저 GSD를 사용하고, 그 안에서도 같은 모델 분리를 유지합니다.
+## Model routing
+- Planning: `gpt-5.5`
+- Execution: `gpt-5.4-mini`
+- Review / verification: `gpt-5.4-mini`
+- If a task benefits from GSD, use GSD first and keep the same model split inside that workflow.
 
-## 작업 규칙
-- 작업을 시작하기 전에 `.planning/context/ACTIVE_SUMMARY.md`를 확인해 현재 상태를 정리합니다.
-- 작업이 끝날 때마다 Git 커밋 후 원격 저장소에 푸시합니다. 단, 사용자가 만든 unrelated/untracked 파일은 명시 요청이 없으면 커밋하지 않습니다.
-- 비자명한 작업은 GSD 워크플로우를 우선 사용합니다.
-- 기존 코드, 공용 헬퍼, 기존 문서를 새 구조보다 우선합니다.
-- 새 코드는 재사용보다 분명히 나을 때만 만듭니다.
-- 구현과 검증이 끝나기 전에는 사용하지 않는 코드를 지우지 않습니다.
-- 복잡한 작업은 독립적인 하위 작업으로 나누고, 안전하면 병렬로 실행합니다.
-- 코드 변경 시에는 워커 에이전트로 구현하고 별도의 리뷰어로 검증합니다.
-- 완료된 워커/리뷰어/탐색 에이전트는 다시 쓸 계획이 없으면 즉시 닫습니다.
-- 직접 편집은 좁게 유지하고, 사소한 수정이나 저장소 설정/문서 업데이트에만 사용합니다.
-- 요청에 함께 들어온 질문도 모두 답합니다.
-- 요청이 명시하지 않으면 테스트를 수정하지 않습니다.
-- 범위를 좁게 유지하고, 불필요한 변경은 추가하지 않으며, 남은 갭은 명확히 보고합니다.
+## Workflow rules
+- Before starting work, check `.planning/STATE.md` and `.planning/context/ACTIVE_SUMMARY.md`.
+- Run `node scripts/gsd-context-hygiene.mjs` at session start, before long work, and before final report. If the script is missing, record that and continue.
+- After every completed logical change, update `.planning/context/ACTIVE_SUMMARY.md` with a short checkpoint.
+- After every completed logical change, commit and push to the remote repository.
+- Do not commit unrelated or user-created untracked files unless explicitly requested.
+- Prefer existing code, shared helpers, and existing docs before creating new structures.
+- Create new code only when reuse is clearly worse.
+- Do not delete unused code until implementation and verification are fully complete.
+- For complex work, split into independent subagent tasks and run them in parallel when safe.
+- When code changes are needed, prefer worker agents for implementation and a separate reviewer for verification.
+- Completed worker/reviewer agents must be closed unless there is a specific reuse plan.
+- Keep direct edits narrow; use them only for trivial fixes or repo settings/doc updates.
+- If a request has 2 or more issues, the plan-review-implement-review loop is mandatory by default.
+- Do not ask for permission between intermediate steps in the same batch unless a real decision is blocked.
+- Answer all user questions that appear in the same request, even if they are separate from the code task.
+- Do not modify tests unless the task explicitly asks for test changes or the implementation requires test updates.
+- Keep the scope tight; do not add unrelated changes, and report known gaps instead.
 
-## 세션 시작
-- `.planning/STATE.md`와 `.planning/context/ACTIVE_SUMMARY.md`를 먼저 확인합니다.
-- 긴 작업을 시작하기 전, 그리고 최종 보고 전에는 `node scripts/gsd-context-hygiene.mjs`를 실행합니다. 스크립트가 없으면 없음을 기록하고 계속합니다.
-- 완료된 논리 변경마다 planning context에 짧은 체크포인트를 남깁니다.
-- 다음 청크로 넘어가기 전에 `.planning/context/ACTIVE_SUMMARY.md`와 최신 스냅샷을 갱신합니다.
-- 이미 planning context로 저장소 구조를 알고 있으면, 새로 스캔해야 하는 경우가 아니면 다시 맵핑하지 않습니다.
+## Repo-specific rules
+- Work from `E:\FluxStudio\PlanFlow` unless the user explicitly changes the working path.
+- `E:\Project\PlanFlow` is a read-only reference source for files that previously worked, especially login and app flow.
+- `G:\AI-automatic-expense-tracker` is reference-only and must not be modified.
+- `lite-app/` is read-only for this work; do not modify it.
+- PlanFlow product scope is defined by `PlanFlow_Codex_Prompt_v3.md`.
+- Supabase schema source of truth is `supabase/schema.sql`.
+- For 1st release, do not implement billing, ads, reward ads, Kakao/SMS/call detection, or TEAM/BUSINESS features.
+- Naver Calendar is deferred for 1st release. Do not expose it as a working feature.
+- Keep all user-facing UI text Korean unless a platform/provider brand requires otherwise.
+- Voice files must never be sent to external servers. Only STT text may be stored or sent for parsing.
+- `speech_to_text` must use `SpeechListenOptions(onDevice: true)` for STT.
+- If ADB screenshots or mirroring are black, ask the user to turn on the phone screen before visual verification.
+- Keep the PlanFlow Home UI close to the compact card-based reference: clean Korean schedule cards, no large blank first viewport.
 
-## 저장소별 규칙
-- `lite-app/`은 이 작업에서 읽기 전용입니다. 수정하지 않습니다.
-- PlanFlow 제품 범위의 기준 문서는 `PlanFlow_Codex_Prompt_v3.md`입니다.
-- Supabase 스키마 기준은 `supabase/schema.sql`입니다.
-- 1차 배포에서는 과금, 광고, 카톡/문자/통화 감지, TEAM/BUSINESS 기능을 구현하지 않습니다.
-- 네이버 캘린더는 1차 배포에서 보류합니다. 화면에는 노출하지 않고 안전한 unsupported 상태만 유지합니다.
-- 검증은 엄격하게 진행하고, 요청한 항목이 모두 충족되기 전에는 완료를 보고하지 않습니다.
-- 작업 경로는 사용자가 바꾸지 않는 한 `E:\FluxStudio\PlanFlow`를 기준으로 합니다.
-- 실제 Android 앱 동작 확인이 필요하면 ADB 연결을 확인하고, 필요한 경우 실기기에서 검증합니다.
-- 실제 Android 기기를 확인할 때 ADB 스크린샷이나 미러링이 검은 화면이면, 먼저 폰 화면이 꺼졌거나 가려졌다고 가정합니다. 계속하기 전에 사용자가 폰 화면을 켜고 확인하도록 요청합니다.
-- PlanFlow Home UI는 참고 목업에 가깝게, 컴팩트하고 깔끔한 한국어 중심, 카드 기반, 첫 화면에 큰 빈 공간이 없도록 유지합니다.
-
-## 카프카 스타일 코딩 원칙
-
-1. **코딩 전에 사고합니다**: 가정을 명시하고, 불확실하면 질문합니다.
-2. **단순성을 우선합니다**: 요청된 것만 구현합니다. 추측성 기능은 넣지 않습니다.
-3. **수술적으로 변경합니다**: 필요한 것만 수정하고 기존 스타일을 유지합니다.
-4. **목표 기반으로 실행합니다**: 검증 가능한 성공 기준을 먼저 정합니다.
-
-## 프로젝트 구조 (PlanFlow)
+## Project structure
 
 ```text
 lib/
@@ -74,13 +67,12 @@ android/                 # Android app, widget, manifest
 supabase/schema.sql      # DB schema and RLS source of truth
 ```
 
-## 배포 구조
+## Deployment structure
+- Android first for 1st release.
+- Supabase: Auth, PostgreSQL, RLS, backup/restore RPC.
+- Google Cloud: Google Calendar OAuth and Google Maps travel-time API.
 
-- **Android 우선**: 1차 배포 대상
-- **Supabase**: Auth, PostgreSQL, RLS, backup/restore RPC
-- **Google Cloud**: Google Calendar OAuth, Google Maps 이동시간 API
-
-## 세부 참고 문서
-- 워크플로우: `docs/agent-rules-workflow.md`
-- 검증: `docs/agent-rules-validation.md`
-- 운영: `docs/agent-rules-operations.md`
+## Detail references
+- Workflow details: `docs/agent-rules-workflow.md`
+- Validation details: `docs/agent-rules-validation.md`
+- Operations details: `docs/agent-rules-operations.md`

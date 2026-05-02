@@ -266,7 +266,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _calendarSyncSummary = CalendarSyncSummary(
           google: CalendarIntegrationResult.syncing(
             CalendarProvider.google,
-            message: 'Google Calendar sync is in progress.',
+            message: '구글 캘린더 동기화 중입니다.',
           ),
           naver: previousSummary.naver,
         );
@@ -399,7 +399,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _loadBackups();
       _showSnack('백업 완료: ${backup.totalItems}개 항목을 저장했습니다.');
     } catch (_) {
-      _showSnack('백업 생성에 실패했습니다. Supabase schema를 확인하세요.');
+      _showSnack('백업 생성에 실패했습니다. Supabase 스키마를 확인하세요.');
     } finally {
       if (mounted) {
         setState(() {
@@ -446,7 +446,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await backupService.restoreBackup(backup.id);
       _showSnack('백업을 복원했습니다.');
     } catch (_) {
-      _showSnack('백업 복원에 실패했습니다. Supabase 권한과 schema를 확인하세요.');
+      _showSnack('백업 복원에 실패했습니다. Supabase 권한과 스키마를 확인하세요.');
     } finally {
       if (mounted) {
         setState(() {
@@ -551,8 +551,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             _SectionCard(
               title: '저장',
-              subtitle:
-                  '설정을 저장하면 Supabase user_settings에 반영하고 브리핑 스케줄을 다시 맞춥니다.',
+              subtitle: '설정을 저장하면 내 계정에 반영하고 브리핑 스케줄을 다시 맞춥니다.',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -584,7 +583,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 12),
                   Text(
                     _isLoadingSettings
-                        ? '기존 user_settings를 불러오는 중입니다.'
+                        ? '기존 설정을 불러오는 중입니다.'
                         : _savedSettings == null
                             ? '저장된 설정이 없어서 현재 화면 값이 기본값으로 시작했습니다.'
                             : '저장된 설정을 불러와서 화면을 초기화했습니다.',
@@ -598,11 +597,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             _SectionCard(
               title: '캘린더 연동',
-              subtitle: 'Google Calendar는 1차에서 사용하고, 네이버 캘린더는 보류합니다.',
+              subtitle: '구글 캘린더를 연결해 외부 일정을 PlanFlow로 가져옵니다.',
               child: Column(
                 children: [
                   _StatusRow(
-                    label: 'Google Calendar',
+                    label: '구글 캘린더',
                     value: _calendarStatusLabel(_calendarSyncSummary?.google),
                     icon: Icons.cloud_sync_outlined,
                     isConfigured:
@@ -625,10 +624,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       label: Text(_googleCalendarActionLabel()),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  const _PausedIntegrationNote(
-                    text: '네이버 캘린더는 1차에서 보류합니다. 이후 단계에서 다시 연결할 예정입니다.',
-                  ),
                 ],
               ),
             ),
@@ -646,14 +641,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                   _StatusRow(
-                    label: 'OpenAI 키',
+                    label: 'OpenAI API 키',
                     value: envConfigured ? '설정됨' : '미설정',
                     icon: Icons.storage_outlined,
                     isConfigured: envConfigured,
                   ),
                   const SizedBox(height: 12),
                   _StatusRow(
-                    label: 'Google Maps 키',
+                    label: '구글 지도 API 키',
                     value: AppEnv.googleMapsApiKey.isNotEmpty ? '설정됨' : '미설정',
                     icon: Icons.map_outlined,
                     isConfigured: AppEnv.googleMapsApiKey.isNotEmpty,
@@ -691,7 +686,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                   _StatusRow(
-                    label: 'Full-screen 알림',
+                    label: '전체 화면 알림',
                     value: _fullScreenStatusLabel(
                       _notificationPermissionStatus?.fullScreenIntentStatus,
                     ),
@@ -720,7 +715,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Full-screen 알림은 Android 설정 화면에서 최종 허용 여부를 한 번 더 확인해야 할 수 있어요.',
+                    '전체 화면 알림은 Android 설정 화면에서 최종 허용 여부를 한 번 더 확인해야 할 수 있어요.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: PlanFlowColors.textSecondary,
                       height: 1.35,
@@ -733,7 +728,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (authProvider.isSignedIn && _backupService != null)
               _SectionCard(
                 title: '백업 및 복원',
-                subtitle: '현재 로그인 계정의 Supabase 백업 스냅샷을 관리합니다.',
+                subtitle: '현재 로그인 계정의 백업 스냅샷을 관리합니다.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -877,7 +872,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       CalendarIntegrationStatus.ready => '사용 가능',
       CalendarIntegrationStatus.syncing => '동기화 중',
       CalendarIntegrationStatus.synced => '동기화 완료',
-      CalendarIntegrationStatus.unsupported => '보류',
+      CalendarIntegrationStatus.unsupported => '지원 안 함',
       CalendarIntegrationStatus.failed => '상태 확인 실패',
     };
   }
@@ -892,26 +887,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       CalendarIntegrationStatus.ready ||
       CalendarIntegrationStatus.synced ||
       CalendarIntegrationStatus.failed =>
-        'Google Calendar 다시 동기화',
-      _ => 'Google Calendar 연결',
+        '구글 캘린더 다시 동기화',
+      _ => '구글 캘린더 연결',
     };
   }
 
   String _calendarSyncSnackMessage(CalendarIntegrationResult result) {
     return switch (result.status) {
       CalendarIntegrationStatus.notConfigured =>
-        'Google Calendar 설정이 아직 없습니다. Client ID 설정을 확인해주세요.',
-      CalendarIntegrationStatus.signedOut => 'Google 계정 로그인 후 다시 시도해주세요.',
+        '구글 캘린더 설정이 아직 없습니다. OAuth Client ID 설정을 확인해 주세요.',
+      CalendarIntegrationStatus.signedOut => '구글 계정 로그인 후 다시 시도해 주세요.',
       CalendarIntegrationStatus.failed =>
-        'Google Calendar 동기화에 실패했습니다. 네트워크와 권한을 확인해주세요.',
+        '구글 캘린더 동기화에 실패했습니다. 네트워크와 권한을 확인해 주세요.',
       CalendarIntegrationStatus.synced when result.syncedItems > 0 =>
-        'Google Calendar 동기화가 완료되었습니다. ${result.syncedItems}개 항목을 확인했습니다.',
-      CalendarIntegrationStatus.synced =>
-        'Google Calendar 연결을 확인했습니다. 새로 가져온 항목은 없습니다.',
-      CalendarIntegrationStatus.ready => 'Google Calendar 연결 준비가 완료되었습니다.',
-      CalendarIntegrationStatus.syncing => 'Google Calendar 동기화를 진행 중입니다.',
+        '구글 캘린더 동기화가 완료되었습니다. ${result.syncedItems}개 항목을 확인했습니다.',
+      CalendarIntegrationStatus.synced => '구글 캘린더 연결을 확인했습니다. 새로 가져온 항목은 없습니다.',
+      CalendarIntegrationStatus.ready => '구글 캘린더 연결 준비가 완료되었습니다.',
+      CalendarIntegrationStatus.syncing => '구글 캘린더 동기화를 진행 중입니다.',
       CalendarIntegrationStatus.unsupported =>
-        '현재 기기에서는 Google Calendar 동기화를 지원하지 않습니다.',
+        '현재 기기에서는 구글 캘린더 동기화를 지원하지 않습니다.',
     };
   }
 
@@ -1103,31 +1097,6 @@ class _HeaderPill extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PausedIntegrationNote extends StatelessWidget {
-  const _PausedIntegrationNote({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: PlanFlowColors.background,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(
-        text,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: PlanFlowColors.textSecondary,
-        ),
       ),
     );
   }

@@ -2,134 +2,108 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
 import '../data/models/event_model.dart';
+import '../data/models/user_settings_model.dart';
 import '../data/repositories/event_repository.dart';
+import '../data/repositories/settings_repository.dart';
 import 'alarm_service.dart';
 import 'gpt_service.dart';
 import 'notification_service.dart';
 import 'tts_service.dart';
 
-/// Orchestrates morning and evening briefings:
-/// 1. Fetches today/tomorrow events from Supabase
-/// 2. Generates a GPT summary
-/// 3. Speaks the briefing via TTS
-/// 4. Schedules the next daily alarm
 class BriefingSchedulerService {
   BriefingSchedulerService({
     AlarmService? alarmService,
     GptService? gptService,
     TtsService? ttsService,
     NotificationService? notificationService,
+    SettingsRepository? settingsRepository,
   })  : _alarmService = alarmService ?? const AlarmService(),
         _gptService = gptService ?? GptService(),
         _ttsService = ttsService ?? const TtsService(),
-        _notificationService = notificationService ?? NotificationService();
+        _notificationService = notificationService ?? NotificationService(),
+        _settingsRepository = settingsRepository;
 
   final AlarmService _alarmService;
   final GptService _gptService;
   final TtsService _ttsService;
   final NotificationService _notificationService;
+  final SettingsRepository? _settingsRepository;
 
   static const String _morningAlarmId = 'briefing:morning';
   static const String _eveningAlarmId = 'briefing:evening';
 
-  // ---------------------------------------------------------------------------
-  // Public API
-  // ---------------------------------------------------------------------------
-
-  /// Schedule both morning and evening briefings based on user settings.
   Future<void> scheduleDaily({
     required String morningTime,
     required String eveningTime,
     String? userId,
   }) async {
-    final morningAt = _nextOccurrence(morningTime);
-    final eveningAt = _nextOccurrence(eveningTime);
     final resolvedUserId = _resolveUserId(userId);
 
     await _alarmService.scheduleMorningBriefing(
       id: _morningAlarmId,
-      scheduledAt: morningAt,
+      scheduledAt: _nextOccurrence(morningTime),
       userId: resolvedUserId,
     );
 
     await _alarmService.scheduleEveningBriefing(
       id: _eveningAlarmId,
-      scheduledAt: eveningAt,
+      scheduledAt: _nextOccurrence(eveningTime),
       userId: resolvedUserId,
     );
   }
 
-  /// Execute a briefing right now (called from alarm callback or manually).
   Future<void> executeBriefing({
     required bool isMorning,
     String? userId,
   }) async {
-    if (!AppEnv.isSupabaseReady) {
-      await _deliverBriefing(
-        'PlanFlow 브리핑을 실행하려면 Supabase 설정이 필요해요. 앱을 열어 설정을 확인해 주세요.',
-        isMorning: isMorning,
-      );
-      return;
-    }
-
     final resolvedUserId = _resolveUserId(userId);
-    if (resolvedUserId == null) {
-      await _deliverBriefing(
-        'PlanFlow 브리핑 사용자 확인이 필요해요. 앱을 한 번 열어 로그인 상태와 브리핑 알람을 새로고침해 주세요.',
-        isMorning: isMorning,
-      );
-      return;
-    }
 
     try {
-      // 1. Fetch relevant events
+      if (!AppEnv.isSupabaseReady) {
+        await _deliverBriefing(
+          'PlanFlow 브리핑을 실행하려면 서버 설정이 필요합니다. 앱을 열어 설정을 확인해 주세요.',
+          isMorning: isMorning,
+        );
+        return;
+      }
+
+      if (resolvedUserId == null) {
+        await _deliverBriefing(
+          'PlanFlow 브리핑을 위해 로그인 상태 확인이 필요합니다. 앱을 한 번 열어 주세요.',
+          isMorning: isMorning,
+        );
+        return;
+      }
+
       final events = await _fetchRelevantEvents(
         userId: resolvedUserId,
         isMorning: isMorning,
       );
 
       if (events.isEmpty) {
-        final emptyMessage = isMorning
-            ? '좋은 아침이에요! 오늘은 예정된 일정이 없어요. 여유로운 하루 보내세요 😊'
-            : '오늘 하루도 수고하셨어요! 내일은 예정된 일정이 없네요. 편안한 저녁 보내세요 🌙';
-        await _deliverBriefing(emptyMessage, isMorning: isMorning);
+        await _deliverBriefing(
+          isMorning
+              ? '좋은 아침이에요. 오늘은 예정된 일정이 없어요. 여유로운 하루 보내세요.'
+              : '오늘 하루도 고생하셨어요. 내일은 예정된 일정이 없어요. 편안한 저녁 보내세요.',
+          isMorning: isMorning,
+        );
         return;
       }
 
-      // 2. Build event summary for GPT
-      final eventSummary = events.map((e) {
-        final time = e.startAt != null
-            ? '${e.startAt!.hour.toString().padLeft(2, '0')}:${e.startAt!.minute.toString().padLeft(2, '0')}'
-            : '시간 미정';
-        final location = e.location != null ? ' (${e.location})' : '';
-        final critical = e.isCritical ? ' ⚠️중요' : '';
-        final supplies =
-            e.supplies.isNotEmpty ? ' 준비물: ${e.supplies.join(', ')}' : '';
-        return '- $time ${e.title}$location$critical$supplies';
-      }).join('\n');
-
-      // 3. Generate GPT briefing
       final briefingText = await _gptService.generateBriefing(
-        rawText: eventSummary,
+        rawText: _buildEventSummary(events),
         isMorning: isMorning,
       );
-
-      // 4. Deliver
       await _deliverBriefing(briefingText, isMorning: isMorning);
     } catch (_) {
-      // Fail silently; don't crash background isolate
+      // Background alarm callbacks must never crash the isolate.
+    } finally {
+      await _rescheduleForTomorrow(
+        isMorning: isMorning,
+        userId: resolvedUserId,
+      );
     }
-
-    // 5. Re-schedule for tomorrow
-    await _rescheduleForTomorrow(
-      isMorning: isMorning,
-      userId: resolvedUserId,
-    );
   }
-
-  // ---------------------------------------------------------------------------
-  // Internal
-  // ---------------------------------------------------------------------------
 
   Future<List<EventModel>> _fetchRelevantEvents({
     required String userId,
@@ -137,7 +111,6 @@ class BriefingSchedulerService {
   }) async {
     final repository = EventRepository.supabase();
     final allEvents = await repository.listEvents(userId: userId);
-
     final targetDate = isMorning ? DateTime.now() : _tomorrow();
 
     return allEvents.where((event) {
@@ -152,24 +125,34 @@ class BriefingSchedulerService {
       ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
   }
 
+  String _buildEventSummary(List<EventModel> events) {
+    return events.map((event) {
+      final time = event.startAt == null
+          ? '시간 미정'
+          : '${event.startAt!.hour.toString().padLeft(2, '0')}:${event.startAt!.minute.toString().padLeft(2, '0')}';
+      final location = event.location == null ? '' : ' (${event.location})';
+      final critical = event.isCritical ? ' 중요' : '';
+      final supplies =
+          event.supplies.isEmpty ? '' : ' 준비물: ${event.supplies.join(', ')}';
+      return '- $time ${event.title}$location$critical$supplies';
+    }).join('\n');
+  }
+
   Future<void> _deliverBriefing(
     String text, {
     required bool isMorning,
   }) async {
-    // Push notification
-    final notificationId = isMorning ? 90001 : 90002;
-    final title = isMorning ? '☀️ 모닝 브리핑' : '🌙 이브닝 브리핑';
+    final title = isMorning ? '모닝 브리핑' : '이브닝 브리핑';
 
     try {
       await _notificationService.scheduleEventReminder(
-        id: notificationId,
+        id: isMorning ? 90001 : 90002,
         title: title,
         body: text.length > 100 ? '${text.substring(0, 100)}...' : text,
         notifyAt: DateTime.now().add(const Duration(seconds: 1)),
       );
     } catch (_) {}
 
-    // TTS
     try {
       await _ttsService.speak(text);
     } catch (_) {}
@@ -179,22 +162,37 @@ class BriefingSchedulerService {
     required bool isMorning,
     String? userId,
   }) async {
-    // Default times; in production these would come from user_settings
-    final defaultTime = isMorning ? '07:30' : '21:00';
-    final nextAt = _nextOccurrence(defaultTime);
+    final resolvedUserId = _resolveUserId(userId);
+    final settings = await _loadSettings(resolvedUserId);
+    final nextTime =
+        isMorning ? settings.morningBriefingAt : settings.eveningBriefingAt;
 
     if (isMorning) {
       await _alarmService.scheduleMorningBriefing(
         id: _morningAlarmId,
-        scheduledAt: nextAt,
-        userId: _resolveUserId(userId),
+        scheduledAt: _nextOccurrence(nextTime),
+        userId: resolvedUserId,
       );
     } else {
       await _alarmService.scheduleEveningBriefing(
         id: _eveningAlarmId,
-        scheduledAt: nextAt,
-        userId: _resolveUserId(userId),
+        scheduledAt: _nextOccurrence(nextTime),
+        userId: resolvedUserId,
       );
+    }
+  }
+
+  Future<UserSettingsModel> _loadSettings(String? userId) async {
+    if (userId == null || !AppEnv.isSupabaseReady) {
+      return UserSettingsModel.defaults(userId: userId ?? '');
+    }
+
+    try {
+      final repository = _settingsRepository ?? SettingsRepository.supabase();
+      final settings = await repository.fetchSettings(userId);
+      return settings ?? UserSettingsModel.defaults(userId: userId);
+    } catch (_) {
+      return UserSettingsModel.defaults(userId: userId);
     }
   }
 
@@ -210,14 +208,11 @@ class BriefingSchedulerService {
       if (currentUserId != null && currentUserId.isNotEmpty) {
         return currentUserId;
       }
-    } catch (_) {
-      // Background isolates can run without a hydrated Supabase auth session.
-    }
+    } catch (_) {}
 
     return null;
   }
 
-  /// Parse "HH:mm" and return the next occurrence (today if future, else tomorrow).
   DateTime _nextOccurrence(String timeString) {
     final parts = timeString.split(':');
     final hour = int.tryParse(parts.firstOrNull ?? '') ?? 7;

@@ -10,12 +10,25 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../services/home_widget_service.dart';
+import '../../services/manual_event_side_effect_service.dart';
 
 class EventEditScreen extends StatefulWidget {
-  const EventEditScreen({super.key, this.event, this.eventId});
+  EventEditScreen({
+    super.key,
+    this.event,
+    this.eventId,
+    this.eventRepository,
+    ManualEventSideEffectService? sideEffectService,
+    HomeWidgetService? homeWidgetService,
+  })  : sideEffectService =
+            sideEffectService ?? const ManualEventSideEffectService(),
+        homeWidgetService = homeWidgetService ?? HomeWidgetService();
 
   final EventModel? event;
   final String? eventId;
+  final EventRepository? eventRepository;
+  final ManualEventSideEffectService sideEffectService;
+  final HomeWidgetService homeWidgetService;
 
   @override
   State<EventEditScreen> createState() => _EventEditScreenState();
@@ -47,6 +60,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
     return null;
   }
+
+  EventRepository get _repository =>
+      widget.eventRepository ?? EventRepository.supabase();
 
   @override
   void initState() {
@@ -87,9 +103,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
     try {
       if (!AppEnv.isSupabaseReady) {
         _showMessage('Supabase 환경값이 설정되지 않았습니다.');
-        if (mounted) {
-          context.pop();
-        }
         return;
       }
 
@@ -120,17 +133,25 @@ class _EventEditScreenState extends State<EventEditScreen> {
         createdAt: _loadedEvent?.createdAt,
       );
 
-      final repository = EventRepository.supabase();
       late final EventModel savedEvent;
       if (_isNewEvent) {
-        savedEvent = await repository.createEvent(updatedEvent);
+        savedEvent = await _repository.createEvent(updatedEvent);
       } else {
-        savedEvent = await repository.updateEvent(updatedEvent);
+        savedEvent = await _repository.updateEvent(updatedEvent);
       }
-      unawaited(_refreshHomeWidget(repository, savedEvent));
+
+      final sideEffectResult = await widget.sideEffectService.syncAfterSave(
+        event: savedEvent,
+        userId: user.id,
+      );
+      unawaited(_refreshHomeWidget(_repository, savedEvent));
 
       if (mounted) {
-        _showMessage(_isNewEvent ? '일정을 만들었습니다.' : '일정을 수정했습니다.');
+        final actionText = _isNewEvent ? '일정을 만들었습니다.' : '일정을 수정했습니다.';
+        final warningText = sideEffectResult.isFullySynced
+            ? ''
+            : ' 알림 동기화가 일부 실패했습니다. 설정을 확인해 주세요.';
+        _showMessage('$actionText$warningText');
         context.go(AppRoutes.calendar);
       }
     } catch (_) {
@@ -163,7 +184,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     });
 
     try {
-      final event = await EventRepository.supabase().fetchEvent(
+      final event = await _repository.fetchEvent(
         eventId,
         userId: user.id,
       );
@@ -214,12 +235,22 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }).toList(growable: false)
         ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
       final nextEvent = nextEvents.isEmpty ? fallbackEvent : nextEvents.first;
-      await HomeWidgetService().updateNextEvent(
+      await widget.homeWidgetService.updateNextEvent(
         title: nextEvent.title,
         eventId: nextEvent.id,
         startAt: nextEvent.startAt,
         location: nextEvent.location,
         isCritical: nextEvent.isCritical,
+        upcomingEvents: nextEvents
+            .take(3)
+            .map(
+              (event) => HomeWidgetListEventData(
+                title: event.title,
+                startAt: event.startAt,
+                location: event.location,
+              ),
+            )
+            .toList(growable: false),
       );
     } catch (_) {
       // Widget refresh should not block event saves.
@@ -272,7 +303,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
       appBar: AppBar(
-        title: Text(_isNewEvent ? '일정 만들기' : '이벤트 편집'),
+        title: Text(_isNewEvent ? '일정 만들기' : '일정 편집'),
       ),
       body: SafeArea(
         child: Form(
@@ -284,8 +315,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 _isLoading
                     ? '일정 정보를 불러오는 중입니다.'
                     : _isNewEvent
-                        ? '새 일정의 정보를 입력하세요.'
-                        : '필요한 정보만 수정하고 저장하세요.',
+                        ? '새 일정의 정보를 입력해 주세요.'
+                        : '필요한 정보만 수정하고 저장해 주세요.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: PlanFlowColors.textSecondary,
                 ),
@@ -299,12 +330,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 controller: _titleController,
                 decoration: const InputDecoration(labelText: '제목'),
                 validator: (value) => (value == null || value.trim().isEmpty)
-                    ? '제목을 입력하세요.'
+                    ? '제목을 입력해 주세요.'
                     : null,
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
-
-              // Start time
               _DateTimeTile(
                 label: '시작 시간',
                 value: _startAt,
@@ -321,8 +350,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 },
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
-
-              // End time
               _DateTimeTile(
                 label: '종료 시간',
                 value: _endAt,
@@ -367,7 +394,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 controller: _suppliesController,
                 decoration: const InputDecoration(
                   labelText: '준비물',
-                  helperText: '쉼표로 구분해서 입력하세요.',
+                  helperText: '쉼표로 구분해서 입력해 주세요.',
                 ),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
@@ -383,7 +410,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 title: const Text('중요 일정'),
-                subtitle: const Text('핵심 일정 여부를 표시합니다.'),
+                subtitle: const Text('긴급 알림을 함께 예약합니다.'),
                 value: _critical,
                 onChanged: (value) {
                   setState(() {
@@ -433,7 +460,7 @@ class _DateTimeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = value == null
-        ? emptyLabel ?? '설정 안 됨'
+        ? emptyLabel ?? '설정 안 함'
         : MaterialLocalizations.of(context).formatFullDate(value!);
     final time = value == null
         ? null
