@@ -450,11 +450,11 @@ class _VoiceCommandGuide extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 0,
-      color: Colors.white,
+      color: const Color(0xFFF7F9FF),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: const BorderSide(
-          color: Color.fromRGBO(61, 72, 143, 0.22),
+          color: Color.fromRGBO(61, 72, 143, 0.38),
           width: 1,
         ),
       ),
