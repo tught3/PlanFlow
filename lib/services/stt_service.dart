@@ -91,6 +91,46 @@ class SttService {
   }
 
   @visibleForTesting
+  static String appendOnlyNewSpeech(String committedText, String incomingText) {
+    final committedWords = committedText
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    final incomingWords = incomingText
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    if (incomingWords.isEmpty) {
+      return '';
+    }
+    if (committedWords.isEmpty) {
+      return incomingWords.join(' ');
+    }
+
+    final maxOverlap = committedWords.length < incomingWords.length
+        ? committedWords.length
+        : incomingWords.length;
+    for (var overlap = maxOverlap; overlap > 0; overlap -= 1) {
+      final committedTail = committedWords.sublist(
+        committedWords.length - overlap,
+      );
+      final incomingHead = incomingWords.sublist(0, overlap);
+      if (listEquals(committedTail, incomingHead)) {
+        return incomingWords.sublist(overlap).join(' ');
+      }
+    }
+
+    final incoming = incomingWords.join(' ');
+    final committed = committedWords.join(' ');
+    if (committed.endsWith(incoming)) {
+      return '';
+    }
+    return incoming;
+  }
+
+  @visibleForTesting
   static SpeechListenOptions buildListenOptions() {
     return SpeechListenOptions(
       onDevice: true,
@@ -578,9 +618,13 @@ class SttService {
       if (recognizedWords.isEmpty) {
         return;
       }
-      final mergedText =
-          [...committedSegments, recognizedWords].join(' ').trim();
-      _activeNativeSessionText = recognizedWords;
+      final committedText = committedSegments.join(' ').trim();
+      final newSpeech = appendOnlyNewSpeech(committedText, recognizedWords);
+      final mergedText = [
+        if (committedText.isNotEmpty) committedText,
+        if (newSpeech.isNotEmpty) newSpeech,
+      ].join(' ').trim();
+      _activeNativeSessionText = newSpeech;
       latestRecognizedText = mergedText;
       _activeRecognizedText = mergedText;
       onPartialResult?.call(mergedText);

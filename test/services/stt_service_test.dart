@@ -57,4 +57,19 @@ void main() {
     expect(SttService.detectVoiceCommand('취소'), SttVoiceCommand.cancel);
     expect(SttService.detectVoiceCommand('내일 대전 출발'), SttVoiceCommand.none);
   });
+
+  test('SttService appends only new speech when Android partials overlap', () {
+    expect(
+      SttService.appendOnlyNewSpeech('내일 오전 9시에 대전으로', '대전으로 출발'),
+      '출발',
+    );
+    expect(
+      SttService.appendOnlyNewSpeech('내일 오전 9시에 대전으로 출발', '대전으로 출발'),
+      '',
+    );
+    expect(
+      SttService.appendOnlyNewSpeech('', '내일 오전 9시에'),
+      '내일 오전 9시에',
+    );
+  });
 }
