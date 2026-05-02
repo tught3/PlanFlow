@@ -11,7 +11,12 @@ import '../../data/repositories/early_bird_email_repository.dart';
 import '../../widgets/planflow_voice_fab.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.scrollController,
+  });
+
+  final ScrollController? scrollController;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -93,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: RefreshIndicator(
             onRefresh: _loadTodayEvents,
             child: SingleChildScrollView(
+              controller: widget.scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(
                 AppConstants.defaultPadding,
@@ -103,7 +109,6 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Briefing card
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(18),
@@ -112,8 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(18),
                       boxShadow: [
                         BoxShadow(
-                          color:
-                              PlanFlowColors.primary.withValues(alpha: 0.16),
+                          color: PlanFlowColors.primary.withValues(alpha: 0.16),
                           blurRadius: 18,
                           offset: const Offset(0, 10),
                         ),
@@ -158,9 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
-                                _todayEvents.isEmpty
-                                    ? '일정 없음'
-                                    : '브리핑 준비 완료',
+                                _todayEvents.isEmpty ? '일정 없음' : '브리핑 준비 완료',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
@@ -181,8 +183,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-
-                  // Quick actions
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -211,14 +211,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           runSpacing: 8,
                           children: [
                             FilledButton.icon(
-                              onPressed: () =>
-                                  context.push(AppRoutes.voice),
+                              onPressed: () => context.push(AppRoutes.voice),
                               icon: const Icon(Icons.mic_none, size: 18),
                               label: const Text('말로 추가'),
                             ),
                             OutlinedButton.icon(
-                              onPressed: () =>
-                                  context.go(AppRoutes.calendar),
+                              onPressed: () => context.go(AppRoutes.calendar),
                               icon: const Icon(
                                 Icons.event_note_outlined,
                                 size: 18,
@@ -239,8 +237,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-
-                  // Today events section
                   if (_isLoading)
                     const Center(
                       child: Padding(
@@ -262,10 +258,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: _TodayEventCard(
                           event: event,
-                          onTap: () => context.push(
-                            AppRoutes.eventDetail,
-                            extra: event,
-                          ),
+                          onTap: () =>
+                              context.push(AppRoutes.eventDetail, extra: event),
                         ),
                       ),
                     ),
@@ -318,8 +312,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                     ),
-
-                  // Early bird banner
                   const SizedBox(height: 16),
                   const _EarlyBirdBanner(),
                 ],

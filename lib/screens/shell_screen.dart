@@ -18,17 +18,27 @@ class ShellScreen extends StatefulWidget {
 
 class _ShellScreenState extends State<ShellScreen> {
   late int _currentIndex;
-
-  final List<Widget> _pages = const [
-    HomeScreen(),
-    CalendarScreen(),
-    SettingsScreen(),
-  ];
+  late final ScrollController _homeScrollController;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    _homeScrollController = ScrollController(keepScrollOffset: false);
+  }
+
+  @override
+  void dispose() {
+    _homeScrollController.dispose();
+    super.dispose();
+  }
+
+  void _showHomeAtTop() {
+    if (!_homeScrollController.hasClients) {
+      return;
+    }
+
+    _homeScrollController.jumpTo(0);
   }
 
   @override
@@ -51,7 +61,11 @@ class _ShellScreenState extends State<ShellScreen> {
       child: Scaffold(
         body: IndexedStack(
           index: _currentIndex,
-          children: _pages,
+          children: [
+            HomeScreen(scrollController: _homeScrollController),
+            const CalendarScreen(),
+            const SettingsScreen(),
+          ],
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _currentIndex,
@@ -61,6 +75,11 @@ class _ShellScreenState extends State<ShellScreen> {
             });
             switch (index) {
               case 0:
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    _showHomeAtTop();
+                  }
+                });
                 context.go(AppRoutes.home);
                 break;
               case 1:
