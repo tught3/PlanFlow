@@ -449,71 +449,39 @@ class SttService {
     ValueChanged<int>? onRestart,
   }) async {
     final completer = Completer<SttListenResult>();
-    String? latestRecognizedText;
-    String? activeSessionText;
+    final committedSegments = <String>[];
+    String activeSessionText = '';
+    String latestRecognizedText = '';
     var restartCount = 0;
     _activeNativeListen = true;
     _activeCompleter = completer;
     _activeRecognizedText = null;
     _userRequestedStop = false;
 
-    String mergeRecognizedText(String current, String incoming) {
-      final trimmedCurrent = current.trim();
-      final trimmedIncoming = incoming.trim();
-      if (trimmedCurrent.isEmpty) {
-        return trimmedIncoming;
-      }
-      if (trimmedIncoming.isEmpty ||
-          trimmedIncoming == trimmedCurrent ||
-          trimmedCurrent.endsWith(trimmedIncoming)) {
-        return trimmedCurrent;
-      }
-      if (trimmedIncoming.startsWith(trimmedCurrent)) {
-        return trimmedIncoming;
-      }
-      if (trimmedCurrent.startsWith(trimmedIncoming)) {
-        return trimmedCurrent;
-      }
-      return '$trimmedCurrent $trimmedIncoming'.trim();
-    }
-
-    String replaceTrailingSegment(
-      String baseText,
-      String previousSegment,
-      String nextSegment,
-    ) {
-      final trimmedBase = baseText.trim();
-      final trimmedPrevious = previousSegment.trim();
-      final trimmedNext = nextSegment.trim();
-      if (trimmedBase.isEmpty || trimmedPrevious.isEmpty) {
-        return mergeRecognizedText(trimmedBase, trimmedNext);
-      }
-      if (trimmedBase.endsWith(trimmedPrevious)) {
-        return trimmedBase
-                .substring(0, trimmedBase.length - trimmedPrevious.length)
-                .trimRight() +
-            (trimmedBase.length > trimmedPrevious.length ? ' ' : '') +
-            trimmedNext;
-      }
-      return mergeRecognizedText(trimmedBase, trimmedNext);
-    }
-
     void updateRecognizedText(String incomingText) {
       final recognizedWords = incomingText.trim();
       if (recognizedWords.isEmpty) {
         return;
       }
-      final mergedText = activeSessionText == null
-          ? mergeRecognizedText(latestRecognizedText ?? '', recognizedWords)
-          : replaceTrailingSegment(
-              latestRecognizedText ?? '',
-              activeSessionText!,
-              recognizedWords,
-            );
+      final mergedText =
+          [...committedSegments, recognizedWords].join(' ').trim();
       activeSessionText = recognizedWords;
       latestRecognizedText = mergedText;
       _activeRecognizedText = mergedText;
       onPartialResult?.call(mergedText);
+    }
+
+    void commitActiveSession() {
+      final text = activeSessionText.trim();
+      if (text.isEmpty) {
+        return;
+      }
+      if (committedSegments.isEmpty || committedSegments.last != text) {
+        committedSegments.add(text);
+      }
+      activeSessionText = '';
+      latestRecognizedText = committedSegments.join(' ').trim();
+      _activeRecognizedText = latestRecognizedText;
     }
 
     _nativeSttChannel.setMethodCallHandler((call) async {
@@ -523,6 +491,7 @@ class SttService {
           break;
         case 'stopped':
           updateRecognizedText(call.arguments?.toString() ?? '');
+          commitActiveSession();
           _completeActiveListenFromText();
           break;
         case 'cancelled':
@@ -549,8 +518,11 @@ class SttService {
           break;
         case 'restarted':
           restartCount += 1;
-          activeSessionText = null;
+          commitActiveSession();
           onRestart?.call(restartCount);
+          break;
+        case 'segmentEnded':
+          commitActiveSession();
           break;
       }
     });
@@ -567,8 +539,9 @@ class SttService {
         _listenFor + const Duration(seconds: 5),
         onTimeout: () async {
           await _nativeSttChannel.invokeMethod<String>('cancel');
-          final normalized = latestRecognizedText?.trim();
-          if (normalized == null || normalized.isEmpty) {
+          commitActiveSession();
+          final normalized = latestRecognizedText.trim();
+          if (normalized.isEmpty) {
             return SttListenResult.failure(
               failure: SttListenFailure.silence,
               message: _silenceMessage,

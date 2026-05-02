@@ -36,7 +36,7 @@ private class PlanFlowSttChannel(
     private var recognizer: SpeechRecognizer? = null
     private var listening = false
     private var userRequestedStop = false
-    private var latestText = ""
+    private var latestPartialText = ""
 
     init {
         channel.setMethodCallHandler { call, result ->
@@ -48,12 +48,12 @@ private class PlanFlowSttChannel(
                 "stop" -> {
                     userRequestedStop = true
                     recognizer?.stopListening()
-                    result.success(latestText)
+                    result.success(latestPartialText)
                 }
                 "cancel" -> {
                     userRequestedStop = true
                     cancel()
-                    result.success(latestText)
+                    result.success(latestPartialText)
                 }
                 else -> result.notImplemented()
             }
@@ -67,7 +67,7 @@ private class PlanFlowSttChannel(
         }
         listening = true
         userRequestedStop = false
-        latestText = ""
+        latestPartialText = ""
         ensureRecognizer()
         startListening()
     }
@@ -117,7 +117,7 @@ private class PlanFlowSttChannel(
             ?.trim()
             .orEmpty()
         if (text.isNotEmpty()) {
-            latestText = text
+            latestPartialText = text
             channel.invokeMethod("partial", text)
         }
     }
@@ -125,7 +125,7 @@ private class PlanFlowSttChannel(
     private fun cancel() {
         listening = false
         recognizer?.cancel()
-        channel.invokeMethod("cancelled", latestText)
+        channel.invokeMethod("cancelled", latestPartialText)
     }
 
     fun dispose() {
@@ -139,13 +139,15 @@ private class PlanFlowSttChannel(
     override fun onBeginningOfSpeech() = Unit
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
-    override fun onEndOfSpeech() = Unit
+    override fun onEndOfSpeech() {
+        channel.invokeMethod("segmentEnded", null)
+    }
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
     override fun onError(error: Int) {
         if (userRequestedStop) {
             listening = false
-            channel.invokeMethod("stopped", latestText)
+            channel.invokeMethod("stopped", latestPartialText)
             return
         }
         restartSoon()
@@ -155,7 +157,7 @@ private class PlanFlowSttChannel(
         publishText(results)
         if (userRequestedStop) {
             listening = false
-            channel.invokeMethod("stopped", latestText)
+            channel.invokeMethod("stopped", latestPartialText)
             return
         }
         restartSoon()
