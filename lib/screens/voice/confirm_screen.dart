@@ -626,7 +626,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       _preActions.add(draft);
     });
     _showMessage('선행행동을 추가했어요. 내용을 바로 입력해 주세요.');
-    _focusNewPreAction(draft.titleFocusNode);
+    _focusNewPreAction(draft);
   }
 
   void _removePreAction(_PreActionDraft draft) {
@@ -659,7 +659,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             offsetHours: _intValue(item['offset_hours']) ?? 1,
           ),
         )
-        .toList(growable: false);
+        .toList();
   }
 
   Map<String, dynamic> _reminderPayload({
@@ -699,20 +699,21 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     });
   }
 
-  void _focusNewPreAction(FocusNode focusNode) {
+  void _focusNewPreAction(_PreActionDraft draft) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
       }
-      focusNode.requestFocus();
-      if (!_scrollController.hasClients) {
-        return;
+      final targetContext = draft.key.currentContext;
+      if (targetContext != null) {
+        Scrollable.ensureVisible(
+          targetContext,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          alignment: 0.2,
+        );
       }
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
-      );
+      draft.titleFocusNode.requestFocus();
     });
   }
 
@@ -836,11 +837,14 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                             ..._preActions.asMap().entries.map(
                                   (entry) => Padding(
                                     padding: const EdgeInsets.only(bottom: 8),
-                                    child: _PreActionEditorCard(
-                                      draft: entry.value,
-                                      index: entry.key + 1,
-                                      onDelete: () =>
-                                          _removePreAction(entry.value),
+                                    child: KeyedSubtree(
+                                      key: entry.value.key,
+                                      child: _PreActionEditorCard(
+                                        draft: entry.value,
+                                        index: entry.key + 1,
+                                        onDelete: () =>
+                                            _removePreAction(entry.value),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -1092,6 +1096,7 @@ class _PreActionDraft {
     String? title,
     int? offsetHours,
   })  : isAuto = true,
+        key = GlobalKey(),
         titleController = TextEditingController(text: title ?? ''),
         offsetController = TextEditingController(
           text: (offsetHours ?? 1).toString(),
@@ -1100,11 +1105,13 @@ class _PreActionDraft {
 
   _PreActionDraft.manual()
       : isAuto = false,
+        key = GlobalKey(),
         titleController = TextEditingController(),
         offsetController = TextEditingController(text: '1'),
         titleFocusNode = FocusNode();
 
   final bool isAuto;
+  final GlobalKey key;
   final TextEditingController titleController;
   final TextEditingController offsetController;
   final FocusNode titleFocusNode;
@@ -1441,10 +1448,13 @@ class _EmptyInlineHint extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          TextButton.icon(
-            onPressed: onAction,
-            icon: const Icon(Icons.add, size: 18),
-            label: Text(actionLabel),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: onAction,
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(actionLabel),
+            ),
           ),
         ],
       ),
