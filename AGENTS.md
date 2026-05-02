@@ -30,6 +30,8 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - Do not delete unused code until implementation and verification are fully complete.
 - For complex work, split into independent subagent tasks and run them in parallel when safe.
 - When code changes are needed, prefer worker agents for implementation and a separate reviewer for verification.
+- After a spawned subagent finishes, close it immediately unless there is a concrete plan to reuse that same agent for follow-up work.
+- Do not leave completed worker/reviewer/explorer agents open; they consume context/thread resources and can block new review agents.
 - Keep direct edits narrow; use them only for trivial fixes or repo settings/doc updates.
 - If a request has 2 or more issues, the plan-review-implement-review loop is mandatory by default.
 - The user is the CEO; the planning model must first interpret the request, then workers implement, then the reviewer verifies before any completion report.
@@ -53,6 +55,8 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - Keep review/verification strict: no completion report until the requested items are all satisfied.
 - Path context: stay rooted at `E:\Sales-Intelligence-Partner` unless a task explicitly says otherwise.
 - If planning needs real phone records from the financial app, request ADB connection first, verify the device is connected, and inspect the device with ADB before finalizing the plan or code changes.
+- When checking a real Android device, if ADB screenshots or mirrored views are black, assume the phone screen may be off or blocked first. Ask the user to turn the phone screen on and confirm before continuing visual verification.
+- For PlanFlow Home UI, keep the target direction close to the reference mockup: compact, clean, Korean-first, card-based, with no large empty dead space in the first viewport.
 
 ## 🧠 Karpathy 코딩 원칙 (LLM 실수 방지)
 
