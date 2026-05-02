@@ -69,6 +69,22 @@ class EventModel {
     };
   }
 
+  Map<String, dynamic> toUpdateJson() {
+    return <String, dynamic>{
+      'title': title,
+      'start_at': startAt?.toIso8601String(),
+      'end_at': endAt?.toIso8601String(),
+      'location': location,
+      'location_lat': locationLat,
+      'location_lng': locationLng,
+      'memo': memo,
+      'supplies': supplies,
+      'is_critical': isCritical,
+      'source': _sourceValue(source),
+      'external_id': _optionalStringValue(externalId),
+    };
+  }
+
   static String _stringValue(Object? value) {
     final text = value?.toString();
     if (text == null || text.isEmpty) {

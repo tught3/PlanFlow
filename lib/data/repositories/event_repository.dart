@@ -141,7 +141,7 @@ class SupabaseEventRepository extends EventRepository {
 
     final response = await _client
         .from(_tableName)
-        .update(event.toJson())
+        .update(event.toUpdateJson())
         .eq('id', event.id)
         .eq('user_id', resolvedUserId)
         .select(_selectColumns)

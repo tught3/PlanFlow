@@ -57,6 +57,24 @@ void main() {
     expect(json['external_id'], isNull);
   });
 
+  test('EventModel update payload excludes immutable row fields', () {
+    final model = EventModel(
+      id: 'event-1',
+      userId: 'user-1',
+      title: 'Updated event',
+      startAt: DateTime.parse('2026-05-01T09:00:00Z'),
+      createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
+    );
+
+    final json = model.toUpdateJson();
+
+    expect(json.containsKey('id'), isFalse);
+    expect(json.containsKey('user_id'), isFalse);
+    expect(json.containsKey('created_at'), isFalse);
+    expect(json['title'], 'Updated event');
+    expect(json['source'], 'manual');
+  });
+
   test('EventModel defaults source to manual when absent in JSON', () {
     final restored = EventModel.fromJson(<String, dynamic>{
       'id': 'event-2',

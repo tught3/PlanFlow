@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
@@ -156,7 +157,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   bool _isLoadingPastSupplies = false;
   bool _isLookingUpLocation = false;
   bool _isHydratingParsedSchedule = false;
-  bool _suppliesCollapsed = false;
   List<String> _pastSupplies = const <String>[];
   Timer? _locationDebounce;
   bool _hasFollowUpFailures = false;
@@ -291,7 +291,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       }
 
       if (results.isEmpty) {
-        _showMessage('장소를 찾지 못했어요. 다른 이름으로 다시 검색해 주세요.');
+        await _showExternalMapOptions(
+          query,
+          message: '앱 안에서 장소를 찾지 못했어요. 외부 지도에서 직접 확인해 보세요.',
+        );
         return;
       }
 
@@ -317,7 +320,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       _showMessage('정확한 위치를 선택했어요.');
     } catch (_) {
       if (mounted) {
-        _showMessage('위치를 찾는 데 실패했어요. 네트워크와 설정을 확인해 주세요.');
+        await _showExternalMapOptions(
+          query,
+          message: '위치 검색에 실패했어요. 외부 지도에서 직접 확인해 보세요.',
+        );
       }
     } finally {
       if (mounted) {
@@ -325,6 +331,58 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           _isLookingUpLocation = false;
         });
       }
+    }
+  }
+
+  Future<void> _showExternalMapOptions(
+    String query, {
+    String? message,
+  }) async {
+    if (!mounted) {
+      return;
+    }
+
+    final selected = await showModalBottomSheet<_MapSearchTarget>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _ExternalMapSearchSheet(
+        query: query,
+        message: message,
+      ),
+    );
+    if (!mounted || selected == null) {
+      return;
+    }
+
+    await _launchMapSearch(query, selected);
+  }
+
+  Future<void> _launchMapSearch(
+    String query,
+    _MapSearchTarget target,
+  ) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      _showMessage('장소를 먼저 입력해 주세요.');
+      return;
+    }
+
+    final uri = target == _MapSearchTarget.google
+        ? Uri.https(
+            'www.google.com',
+            '/maps/search/',
+            <String, String>{'api': '1', 'query': trimmed},
+          )
+        : Uri.parse(
+            'https://map.naver.com/p/search/${Uri.encodeComponent(trimmed)}',
+          );
+
+    final launched = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && mounted) {
+      _showMessage('지도를 열지 못했어요. 장소명을 수정해서 다시 시도해 주세요.');
     }
   }
 
@@ -483,7 +541,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
       if (mounted) {
         _showMessage(
-          '일정을 저장했어요${_hasFollowUpFailures ? ', 일부 후속 저장은 다시 시도해 주세요.' : '.'}',
+          _hasFollowUpFailures
+              ? '일정은 저장됐지만 알림/준비 기록 중 일부를 저장하지 못했어요. 설정과 권한을 확인해 주세요.'
+              : '일정을 저장했어요.',
         );
         EventRefreshBus.instance.notifyChanged(
           reason: 'confirm_saved',
@@ -524,9 +584,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     await _tryFollowUp(
       () => widget.backend.insertPreActions(preActionPayloads),
+      label: 'pre_actions',
     );
     await _tryFollowUp(
       () => widget.backend.insertReminders(reminderPayloads),
+      label: 'reminders',
     );
 
     final location = _emptyToNull(_locationController.text);
@@ -538,6 +600,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           'location': location,
           'supplies': event.supplies,
         }),
+        label: 'location_history',
       );
     }
 
@@ -550,6 +613,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           'raw_text': rawText,
           'parsed_json': widget.parsedSchedule,
         }),
+        label: 'voice_logs',
       );
     }
 
@@ -564,6 +628,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         body: '이벤트 시작: ${event.title}',
         notifyAt: eventReminderNotifyAt,
       ),
+      label: 'local_event_reminder',
     );
 
     if (_isCritical) {
@@ -575,6 +640,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           notifyAt: criticalAlarmNotifyAt,
           body: '중요 일정이 곧 시작됩니다.',
         ),
+        label: 'critical_alarm',
       );
     }
   }
@@ -643,11 +709,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
   }
 
-  Future<void> _tryFollowUp(Future<void> Function() action) async {
+  Future<void> _tryFollowUp(
+    Future<void> Function() action, {
+    required String label,
+  }) async {
     try {
       await action();
-    } catch (_) {
+    } catch (error, stackTrace) {
       _hasFollowUpFailures = true;
+      debugPrint('ConfirmScreen follow-up save failed ($label): $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -835,27 +906,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     setState(() {
       _supplies.remove(draft);
       draft.dispose();
-    });
-  }
-
-  void _toggleSupplyChecked(_SupplyDraft draft) {
-    setState(() {
-      draft.isChecked = !draft.isChecked;
-    });
-  }
-
-  bool get _allSuppliesChecked =>
-      _supplies.isNotEmpty && _supplies.every((draft) => draft.isChecked);
-
-  void _collapseSupplies() {
-    setState(() {
-      _suppliesCollapsed = true;
-    });
-  }
-
-  void _expandSupplies() {
-    setState(() {
-      _suppliesCollapsed = false;
     });
   }
 
@@ -1111,11 +1161,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         errorText: _supplyErrorText,
                         onAdd: _addSupplyFromInput,
                         onRemove: _removeSupply,
-                        onToggleChecked: _toggleSupplyChecked,
-                        onCollapse: _collapseSupplies,
-                        onExpand: _expandSupplies,
-                        isCollapsed: _suppliesCollapsed,
-                        allChecked: _allSuppliesChecked,
                       ),
                     ),
                     const SizedBox(height: AppConstants.sectionSpacing),
@@ -1414,7 +1459,6 @@ class _SupplyDraft {
   final GlobalKey key;
   final TextEditingController titleController;
   final FocusNode focusNode;
-  bool isChecked = false;
 
   void dispose() {
     titleController.dispose();
@@ -1466,11 +1510,6 @@ class _SuppliesEditor extends StatelessWidget {
     required this.errorText,
     required this.onAdd,
     required this.onRemove,
-    required this.onToggleChecked,
-    required this.onCollapse,
-    required this.onExpand,
-    required this.isCollapsed,
-    required this.allChecked,
   });
 
   final List<_SupplyDraft> supplies;
@@ -1479,11 +1518,6 @@ class _SuppliesEditor extends StatelessWidget {
   final String? errorText;
   final VoidCallback onAdd;
   final ValueChanged<_SupplyDraft> onRemove;
-  final ValueChanged<_SupplyDraft> onToggleChecked;
-  final VoidCallback onCollapse;
-  final VoidCallback onExpand;
-  final bool isCollapsed;
-  final bool allChecked;
 
   @override
   Widget build(BuildContext context) {
@@ -1515,103 +1549,67 @@ class _SuppliesEditor extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (isCollapsed)
-                  TextButton(
-                    onPressed: onExpand,
-                    child: const Text('펼치기'),
-                  )
-                else ...[
-                  if (supplies.isNotEmpty && allChecked)
-                    Chip(
-                      label: const Text('준비물 준비완료'),
-                      visualDensity: VisualDensity.compact,
-                      side: const BorderSide(
-                        color: PlanFlowColors.primaryFaint,
-                        width: 0.5,
-                      ),
-                    ),
-                  const SizedBox(width: 8),
-                  OutlinedButton(
-                    onPressed: onCollapse,
-                    child: const Text('확인'),
-                  ),
-                ],
               ],
             ),
             const SizedBox(height: 6),
             Text(
-              '체크리스트로 준비물을 관리해 보세요. 체크하면 줄이 그어지고, 다시 누르면 해제됩니다.',
+              '일정에 필요한 준비물을 한 줄씩 정리해 주세요. 실제 체크는 일정 상세에서 할 수 있어요.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: PlanFlowColors.textSecondary,
               ),
             ),
             const SizedBox(height: 12),
-            if (isCollapsed)
+            if (supplies.isEmpty)
               Text(
-                supplies.isEmpty
-                    ? '아직 준비물이 없어요. 펼쳐서 한 줄씩 추가해 보세요.'
-                    : '준비물 ${supplies.length}개${allChecked ? ' · 모두 체크 완료' : ''}.',
+                '아직 준비물이 없어요. 아래에서 하나씩 추가해 보세요.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: PlanFlowColors.textSecondary,
                 ),
               )
             else ...[
-              if (supplies.isEmpty)
-                Text(
-                  '아직 준비물이 없어요. 아래에서 하나씩 추가해 보세요.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: PlanFlowColors.textSecondary,
-                  ),
-                )
-              else
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: supplies.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    mainAxisExtent: 154,
-                  ),
-                  itemBuilder: (context, index) {
-                    final draft = supplies[index];
-                    return _SupplyChecklistTile(
-                      draft: draft,
-                      onToggle: () => onToggleChecked(draft),
-                      onDelete: () => onRemove(draft),
-                    );
-                  },
-                ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: newSupplyController,
-                      focusNode: newSupplyFocusNode,
-                      decoration: InputDecoration(
-                        labelText: '준비물 추가',
-                        hintText: '예: 물, 여권, 충전기',
-                        helperText: '입력 후 추가 버튼을 누르세요.',
-                        border: const OutlineInputBorder(),
-                        errorText: errorText,
+              Column(
+                children: supplies
+                    .map(
+                      (draft) => _SupplyInputRow(
+                        draft: draft,
+                        onDelete: () => onRemove(draft),
                       ),
-                      onSubmitted: (_) => onAdd(),
+                    )
+                    .toList(growable: false),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: newSupplyController,
+                    focusNode: newSupplyFocusNode,
+                    decoration: InputDecoration(
+                      labelText: '준비물 추가',
+                      hintText: '예: 물, 여권, 충전기',
+                      helperText: '입력 후 추가 버튼을 누르세요.',
+                      border: const OutlineInputBorder(),
+                      errorText: errorText,
                     ),
+                    onSubmitted: (_) => onAdd(),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton(
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 56,
+                  child: FilledButton(
                     onPressed: onAdd,
                     style: FilledButton.styleFrom(
-                      minimumSize: const Size(72, 48),
+                      minimumSize: const Size(72, 56),
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                     ),
                     child: const Text('추가'),
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -1619,99 +1617,63 @@ class _SuppliesEditor extends StatelessWidget {
   }
 }
 
-class _SupplyChecklistTile extends StatelessWidget {
-  const _SupplyChecklistTile({
+class _SupplyInputRow extends StatelessWidget {
+  const _SupplyInputRow({
     required this.draft,
-    required this.onToggle,
     required this.onDelete,
   });
 
   final _SupplyDraft draft;
-  final VoidCallback onToggle;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final checked = draft.isChecked;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      decoration: BoxDecoration(
-        color: checked ? const Color(0xFFEAF5EE) : PlanFlowColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color:
-              checked ? const Color(0xFF8BBF99) : PlanFlowColors.primaryFaint,
-          width: 0.8,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: PlanFlowColors.background,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: PlanFlowColors.primaryFaint,
+            width: 0.6,
+          ),
         ),
-      ),
-      padding: const EdgeInsets.all(10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              InkWell(
-                borderRadius: BorderRadius.circular(20),
-                onTap: onToggle,
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(
-                    checked ? Icons.check_circle : Icons.radio_button_unchecked,
-                    color: checked
-                        ? const Color(0xFF2E7D32)
-                        : PlanFlowColors.primaryMid,
-                    size: 22,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  checked ? '완료' : '진행 중',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: checked
-                        ? const Color(0xFF2E7D32)
-                        : PlanFlowColors.textSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: '삭제',
-                onPressed: onDelete,
-                padding: EdgeInsets.zero,
-                constraints:
-                    const BoxConstraints.tightFor(width: 28, height: 28),
-                icon: const Icon(Icons.close, size: 16),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          TextField(
-            controller: draft.titleController,
-            focusNode: draft.focusNode,
-            onTap: () {
-              draft.titleController.selection = TextSelection(
-                baseOffset: 0,
-                extentOffset: draft.titleController.text.length,
-              );
-            },
-            style: theme.textTheme.bodyMedium?.copyWith(
-              decoration:
-                  checked ? TextDecoration.lineThrough : TextDecoration.none,
-              color: checked ? PlanFlowColors.textSecondary : null,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.backpack_outlined,
+              size: 18,
+              color: PlanFlowColors.primaryMid,
             ),
-            decoration: const InputDecoration(
-              hintText: '준비물 입력',
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: EdgeInsets.zero,
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: draft.titleController,
+                focusNode: draft.focusNode,
+                style: theme.textTheme.bodyMedium,
+                decoration: const InputDecoration(
+                  hintText: '준비물 입력',
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 6),
+                ),
+                maxLines: 1,
+              ),
             ),
-            maxLines: 2,
-          ),
-        ],
+            IconButton(
+              tooltip: '삭제',
+              onPressed: onDelete,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+              icon: const Icon(Icons.close, size: 18),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2392,6 +2354,68 @@ class _LocationLookupSheet extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('닫기'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum _MapSearchTarget { google, naver }
+
+class _ExternalMapSearchSheet extends StatelessWidget {
+  const _ExternalMapSearchSheet({
+    required this.query,
+    this.message,
+  });
+
+  final String query;
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '지도에서 장소 찾기',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: PlanFlowColors.primary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message ?? '외부 지도에서 "$query"를 검색해 정확한 장소를 확인해 보세요.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () =>
+                  Navigator.of(context).pop(_MapSearchTarget.google),
+              icon: const Icon(Icons.map_outlined),
+              label: const Text('Google 지도에서 찾기'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  Navigator.of(context).pop(_MapSearchTarget.naver),
+              icon: const Icon(Icons.place_outlined),
+              label: const Text('네이버 지도에서 찾기'),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('닫기'),
             ),

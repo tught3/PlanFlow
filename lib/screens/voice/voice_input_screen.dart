@@ -305,6 +305,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
               TextField(
                 controller: _rawTextController,
                 focusNode: _rawTextFocusNode,
+                minLines: 2,
                 maxLines: 5,
                 decoration: const InputDecoration(
                   hintText: '입력해주세요',

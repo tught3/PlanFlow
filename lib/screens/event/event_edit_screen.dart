@@ -126,6 +126,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
         startAt: _startAt,
         endAt: _endAt,
         location: _emptyToNull(_locationController.text),
+        locationLat: _loadedEvent?.locationLat,
+        locationLng: _loadedEvent?.locationLng,
         memo: _emptyToNull(_memoController.text),
         supplies: supplies,
         isCritical: _critical,
@@ -160,9 +162,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
         );
         context.go(AppRoutes.calendar);
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen save failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
-        _showMessage('저장하지 못했습니다. 다시 시도해 주세요.');
+        _showMessage('일정 저장 실패. 로그인 상태 또는 Supabase 스키마를 확인해 주세요.');
       }
     } finally {
       if (mounted) {

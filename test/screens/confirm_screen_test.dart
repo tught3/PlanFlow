@@ -7,6 +7,7 @@ import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/voice/confirm_screen.dart';
 import 'package:planflow/services/home_widget_service.dart';
+import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/notification_service.dart';
 
 void main() {
@@ -72,6 +73,57 @@ void main() {
     );
     expect(notifications.criticalAlarmTitles, contains('성남 출발'));
   });
+
+  testWidgets('ConfirmScreen opens external map options when lookup is empty',
+      (tester) async {
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.byTooltip('장소 찾기'));
+    await tester.tap(find.byTooltip('장소 찾기'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('지도에서 장소 찾기'), findsOneWidget);
+    expect(find.text('Google 지도에서 찾기'), findsOneWidget);
+    expect(find.text('네이버 지도에서 찾기'), findsOneWidget);
+  });
+
+  testWidgets('ConfirmScreen shows supplies as compact editable rows',
+      (tester) async {
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            supplies: const <String>['물', '충전기'],
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('물'));
+
+    expect(find.text('물'), findsOneWidget);
+    expect(find.text('충전기'), findsOneWidget);
+    expect(find.textContaining('체크리스트로'), findsNothing);
+    expect(find.text('진행 중'), findsNothing);
+  });
 }
 
 Widget _testApp(Widget child) {
@@ -103,6 +155,7 @@ Widget _testApp(Widget child) {
 Map<String, dynamic> _parsedSchedule({
   bool isCritical = false,
   DateTime? startAt,
+  List<String> supplies = const <String>[],
 }) {
   return {
     'title': '성남 출발',
@@ -111,11 +164,18 @@ Map<String, dynamic> _parsedSchedule({
     'end_at': null,
     'location': '성남',
     'memo': '테스트 일정',
-    'supplies': <String>[],
+    'supplies': supplies,
     'is_critical': isCritical,
     'pre_actions': <Map<String, dynamic>>[],
     'raw_text': '내일 오전 10시에 성남으로 출발',
   };
+}
+
+class _EmptyLocationLookupService extends LocationLookupService {
+  @override
+  Future<List<LocationLookupResult>> search(String query) async {
+    return const <LocationLookupResult>[];
+  }
 }
 
 class _FakeConfirmBackend extends ConfirmScreenBackend {

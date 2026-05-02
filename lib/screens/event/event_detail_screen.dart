@@ -40,6 +40,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool _isLoading = false;
   bool _isDeleting = false;
   String? _loadError;
+  final Set<String> _checkedSupplies = <String>{};
 
   String? get _resolvedEventId {
     final routeId = widget.eventId?.trim();
@@ -60,6 +61,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   void initState() {
     super.initState();
     _event = widget.event;
+    _syncCheckedSupplies();
     _loadLatestEvent();
   }
 
@@ -96,6 +98,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       setState(() {
         _event = latestEvent ?? _event;
         _loadError = latestEvent == null ? '일정을 다시 찾지 못했습니다.' : null;
+        _syncCheckedSupplies();
       });
     } catch (_) {
       if (mounted) {
@@ -110,6 +113,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         });
       }
     }
+  }
+
+  void _syncCheckedSupplies() {
+    final supplies = _event?.supplies.toSet() ?? const <String>{};
+    _checkedSupplies.removeWhere((item) => !supplies.contains(item));
+  }
+
+  void _toggleSupply(String item) {
+    setState(() {
+      if (_checkedSupplies.contains(item)) {
+        _checkedSupplies.remove(item);
+      } else {
+        _checkedSupplies.add(item);
+      }
+    });
   }
 
   Future<void> _deleteEvent() async {
@@ -335,34 +353,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               _InfoCard(
                 title: '준비물',
                 children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: event.supplies
-                        .map(
-                          (item) => Chip(
-                            backgroundColor: PlanFlowColors.tagNormalBg,
-                            side: const BorderSide(
-                              color: PlanFlowColors.primaryFaint,
-                              width: 0.5,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            avatar: const Icon(
-                              Icons.backpack_outlined,
-                              size: 14,
-                              color: PlanFlowColors.tagNormalText,
-                            ),
-                            label: Text(item),
-                            labelStyle: theme.textTheme.labelSmall?.copyWith(
-                              color: PlanFlowColors.primaryMid,
-                              fontSize: 9,
-                            ),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        )
-                        .toList(),
+                  _SupplyChecklist(
+                    supplies: event.supplies,
+                    checkedSupplies: _checkedSupplies,
+                    onToggle: _toggleSupply,
                   ),
                 ],
               ),
@@ -391,7 +385,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               label: const Text('일정 편집'),
             ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
+            FilledButton.icon(
               onPressed: _isDeleting ? null : _deleteEvent,
               icon: _isDeleting
                   ? const SizedBox.square(
@@ -400,14 +394,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     )
                   : const Icon(
                       Icons.delete_outline,
-                      color: Color(0xFFB42318),
                     ),
               label: Text(
                 _isDeleting ? '삭제 중...' : '일정 삭제',
-                style: const TextStyle(color: Color(0xFFB42318)),
               ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFFFFE3DD)),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB42318),
+                foregroundColor: Colors.white,
               ),
             ),
           ],
@@ -607,6 +600,77 @@ class _InfoRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SupplyChecklist extends StatelessWidget {
+  const _SupplyChecklist({
+    required this.supplies,
+    required this.checkedSupplies,
+    required this.onToggle,
+  });
+
+  final List<String> supplies;
+  final Set<String> checkedSupplies;
+  final ValueChanged<String> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      children: supplies.map((item) {
+        final checked = checkedSupplies.contains(item);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => onToggle(item),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              decoration: BoxDecoration(
+                color: checked
+                    ? const Color(0xFFEAF5EE)
+                    : PlanFlowColors.background,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: checked
+                      ? const Color(0xFF8BBF99)
+                      : PlanFlowColors.primaryFaint,
+                  width: 0.6,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    checked ? Icons.check_circle : Icons.radio_button_unchecked,
+                    size: 20,
+                    color: checked
+                        ? const Color(0xFF2E7D32)
+                        : PlanFlowColors.primaryMid,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      item,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: checked
+                            ? PlanFlowColors.textSecondary
+                            : PlanFlowColors.textPrimary,
+                        decoration: checked
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(growable: false),
     );
   }
 }
