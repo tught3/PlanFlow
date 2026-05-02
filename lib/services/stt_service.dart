@@ -45,8 +45,8 @@ class SttService {
   const SttService();
 
   static const String _koreanLocaleId = 'ko_KR';
-  static const Duration _listenFor = Duration(minutes: 5);
-  static const Duration _pauseFor = Duration(minutes: 5);
+  static const Duration _listenFor = Duration(minutes: 15);
+  static const Duration _pauseFor = Duration(seconds: 20);
   static SpeechToText? _activeSpeech;
   static Completer<SttListenResult>? _activeCompleter;
   static String? _activeRecognizedText;
@@ -126,6 +126,7 @@ class SttService {
     final speech = SpeechToText();
     final completer = Completer<SttListenResult>();
     String? latestRecognizedText;
+    String? activeSessionText;
     var hasStartedListening = false;
     var restartCount = 0;
     Future<void> Function()? startListening;
@@ -153,6 +154,30 @@ class SttService {
       completer.complete(SttListenResult.success(normalized));
     }
 
+    String mergeRecognizedText(String current, String incoming) {
+      final trimmedCurrent = current.trim();
+      final trimmedIncoming = incoming.trim();
+      if (trimmedCurrent.isEmpty) {
+        return trimmedIncoming;
+      }
+      if (trimmedIncoming.isEmpty) {
+        return trimmedCurrent;
+      }
+      if (trimmedIncoming == trimmedCurrent) {
+        return trimmedCurrent;
+      }
+      if (trimmedIncoming.startsWith(trimmedCurrent)) {
+        return trimmedIncoming;
+      }
+      if (trimmedCurrent.startsWith(trimmedIncoming)) {
+        return trimmedCurrent;
+      }
+      if (trimmedCurrent.endsWith(trimmedIncoming)) {
+        return trimmedCurrent;
+      }
+      return '$trimmedCurrent $trimmedIncoming'.trim();
+    }
+
     void completeFailure({
       required SttListenFailure failure,
       required String message,
@@ -166,6 +191,30 @@ class SttService {
           ),
         );
       }
+    }
+
+    String replaceTrailingSegment(
+      String baseText,
+      String previousSegment,
+      String nextSegment,
+    ) {
+      final trimmedBase = baseText.trim();
+      final trimmedPrevious = previousSegment.trim();
+      final trimmedNext = nextSegment.trim();
+      if (trimmedBase.isEmpty) {
+        return trimmedNext;
+      }
+      if (trimmedPrevious.isEmpty) {
+        return trimmedNext;
+      }
+      if (trimmedBase.endsWith(trimmedPrevious)) {
+        return trimmedBase
+                .substring(0, trimmedBase.length - trimmedPrevious.length)
+                .trimRight() +
+            (trimmedBase.length > trimmedPrevious.length ? ' ' : '') +
+            trimmedNext;
+      }
+      return mergeRecognizedText(trimmedBase, trimmedNext);
     }
 
     void scheduleRestart(String reason) {
@@ -183,6 +232,7 @@ class SttService {
       restartCount += 1;
       debugPrint('PlanFlow STT restart #$restartCount: $reason');
       onRestart?.call(restartCount);
+      activeSessionText = null;
       unawaited(
         Future<void>.delayed(const Duration(milliseconds: 350), () async {
           if (_userRequestedStop || completer.isCompleted) {
@@ -292,9 +342,18 @@ class SttService {
           onResult: (result) {
             final recognizedWords = result.recognizedWords.trim();
             if (recognizedWords.isNotEmpty) {
-              latestRecognizedText = recognizedWords;
-              _activeRecognizedText = recognizedWords;
-              onPartialResult?.call(recognizedWords);
+              final mergedText = activeSessionText == null
+                  ? mergeRecognizedText(
+                      latestRecognizedText ?? '', recognizedWords)
+                  : replaceTrailingSegment(
+                      latestRecognizedText ?? '',
+                      activeSessionText!,
+                      recognizedWords,
+                    );
+              activeSessionText = recognizedWords;
+              latestRecognizedText = mergedText;
+              _activeRecognizedText = mergedText;
+              onPartialResult?.call(mergedText);
             }
             if (result.finalResult && _userRequestedStop) {
               completeSuccess(recognizedWords);
