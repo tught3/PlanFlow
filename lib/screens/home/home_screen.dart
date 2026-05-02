@@ -19,40 +19,40 @@ class _HomeScreenState extends State<HomeScreen> {
     final todayLabel = _koreanDateLabel(DateTime.now());
 
     return Scaffold(
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppConstants.defaultPadding,
-            AppConstants.defaultPadding,
-            AppConstants.defaultPadding,
-            120,
-          ),
-          children: [
-            _HomeHeader(onVoice: () => context.push(AppRoutes.voice)),
-            const SizedBox(height: 18),
-            _HomeBriefingCard(todayLabel: todayLabel),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            _QuickActionCard(
-              onVoice: () => context.push(AppRoutes.voice),
-              onCalendar: () => context.go(AppRoutes.calendar),
+      backgroundColor: PlanFlowColors.background,
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        toolbarHeight: 96,
+        titleSpacing: AppConstants.defaultPadding,
+        backgroundColor: PlanFlowColors.background,
+        surfaceTintColor: Colors.transparent,
+        title: _HomeHeader(onVoice: () => context.push(AppRoutes.voice)),
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+              AppConstants.defaultPadding,
+              8,
+              AppConstants.defaultPadding,
+              104,
             ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            _TodaySectionHeader(onRefresh: _reloadTodayEvents),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            _HomeMessageCard(
-              icon: Icons.calendar_month_outlined,
-              title: '오늘 등록된 일정이 없습니다',
-              message: '새 일정을 말로 추가하면 이곳에 오늘 일정과 준비물이 정리됩니다.',
-              primaryActionLabel: '말로 일정 추가',
-              primaryIcon: Icons.mic_none,
-              onPrimaryAction: () => context.push(AppRoutes.voice),
-              secondaryActionLabel: '일정 탭 보기',
-              onSecondaryAction: () => context.go(AppRoutes.calendar),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: (constraints.maxHeight - 112).clamp(
+                  0,
+                  double.infinity,
+                ),
+              ),
+              child: _HomeDashboardPanel(
+                todayLabel: todayLabel,
+                onVoice: () => context.push(AppRoutes.voice),
+                onCalendar: () => context.go(AppRoutes.calendar),
+                onRefresh: _reloadTodayEvents,
+              ),
             ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            const EarlyBirdSignupCard(),
-          ],
-        ),
+          );
+        },
       ),
       floatingActionButton: PlanFlowVoiceFab(
         onPressed: () => context.push(AppRoutes.voice),
@@ -83,17 +83,33 @@ class _HomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final todayLabel = _koreanDateLabel(DateTime.now());
+
     return Row(
       children: [
-        const Expanded(
-          child: Text(
-            'PlanFlow',
-            style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w900,
-              color: PlanFlowColors.primaryMid,
-              letterSpacing: -1.0,
-            ),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'PlanFlow',
+                style: TextStyle(
+                  fontSize: 38,
+                  fontWeight: FontWeight.w900,
+                  color: PlanFlowColors.primaryMid,
+                  letterSpacing: -1.2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                todayLabel,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
           ),
         ),
         IconButton(
@@ -105,6 +121,56 @@ class _HomeHeader extends StatelessWidget {
             color: PlanFlowColors.primary,
           ),
         ),
+      ],
+    );
+  }
+
+  String _koreanDateLabel(DateTime value) {
+    const weekdays = <int, String>{
+      DateTime.monday: '월요일',
+      DateTime.tuesday: '화요일',
+      DateTime.wednesday: '수요일',
+      DateTime.thursday: '목요일',
+      DateTime.friday: '금요일',
+      DateTime.saturday: '토요일',
+      DateTime.sunday: '일요일',
+    };
+    return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
+  }
+}
+
+class _HomeDashboardPanel extends StatelessWidget {
+  const _HomeDashboardPanel({
+    required this.todayLabel,
+    required this.onVoice,
+    required this.onCalendar,
+    required this.onRefresh,
+  });
+
+  final String todayLabel;
+  final VoidCallback onVoice;
+  final VoidCallback onCalendar;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _HomeBriefingCard(todayLabel: todayLabel),
+        const SizedBox(height: 12),
+        _QuickActionCard(
+          onVoice: onVoice,
+          onCalendar: onCalendar,
+        ),
+        const SizedBox(height: 12),
+        _TodayEmptyPanel(
+          onVoice: onVoice,
+          onCalendar: onCalendar,
+          onRefresh: onRefresh,
+        ),
+        const SizedBox(height: 12),
+        const EarlyBirdSignupCard(),
       ],
     );
   }
@@ -341,76 +407,78 @@ class _TodaySectionHeader extends StatelessWidget {
   }
 }
 
-class _HomeMessageCard extends StatelessWidget {
-  const _HomeMessageCard({
-    required this.icon,
-    required this.title,
-    required this.message,
-    this.primaryActionLabel,
-    this.primaryIcon = Icons.arrow_forward,
-    this.onPrimaryAction,
-    this.secondaryActionLabel,
-    this.onSecondaryAction,
+class _TodayEmptyPanel extends StatelessWidget {
+  const _TodayEmptyPanel({
+    required this.onVoice,
+    required this.onCalendar,
+    required this.onRefresh,
   });
 
-  final IconData icon;
-  final String title;
-  final String message;
-  final String? primaryActionLabel;
-  final IconData primaryIcon;
-  final VoidCallback? onPrimaryAction;
-  final String? secondaryActionLabel;
-  final VoidCallback? onSecondaryAction;
+  final VoidCallback onVoice;
+  final VoidCallback onCalendar;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return _HomeFrame(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 260),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: PlanFlowColors.primaryFaint,
-                borderRadius: BorderRadius.circular(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _TodaySectionHeader(onRefresh: onRefresh),
+          const SizedBox(height: 18),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: PlanFlowColors.primaryFaint,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.calendar_month_outlined,
+              size: 28,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '오늘 등록된 일정이 없습니다',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: PlanFlowColors.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '말로 일정을 추가하면 오늘 할 일과 준비물이 이곳에 정리됩니다.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onVoice,
+                  icon: const Icon(Icons.mic_none, size: 18),
+                  label: const Text('말로 추가'),
+                ),
               ),
-              child: Icon(icon, size: 28, color: theme.colorScheme.primary),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium,
-            ),
-            if (primaryActionLabel != null && onPrimaryAction != null) ...[
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                onPressed: onPrimaryAction,
-                icon: Icon(primaryIcon, size: 18),
-                label: Text(primaryActionLabel!),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onCalendar,
+                  icon: const Icon(Icons.event_note_outlined, size: 18),
+                  label: const Text('일정 보기'),
+                ),
               ),
             ],
-            if (secondaryActionLabel != null && onSecondaryAction != null) ...[
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: onSecondaryAction,
-                child: Text(secondaryActionLabel!),
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -425,7 +493,7 @@ class _HomeFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: PlanFlowColors.surface,
         borderRadius: BorderRadius.circular(10),
