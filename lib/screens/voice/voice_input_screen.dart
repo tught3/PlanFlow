@@ -3,18 +3,15 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme.dart';
-import '../../services/gpt_service.dart';
 import '../../services/stt_service.dart';
 
 class VoiceInputScreen extends StatefulWidget {
-  VoiceInputScreen({
+  const VoiceInputScreen({
     super.key,
     this.sttService = const SttService(),
-    GptService? gptService,
-  }) : gptService = gptService ?? GptService();
+  });
 
   final SttService sttService;
-  final GptService gptService;
 
   @override
   State<VoiceInputScreen> createState() => _VoiceInputScreenState();
@@ -25,7 +22,6 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   final FocusNode _rawTextFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   bool _isListening = false;
-  bool _isParsing = false;
   String? _recognizedText;
   String? _statusMessage;
   int _sttRestartCount = 0;
@@ -170,40 +166,12 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       _openConfirm(const <String, dynamic>{});
       return;
     }
-
-    if (mounted) {
-      setState(() {
-        _isParsing = true;
-        _statusMessage = null;
-      });
-    }
-
-    try {
-      final parsed = await widget.gptService.parseSchedule(rawText);
-      if (!mounted) {
-        return;
-      }
-      _openConfirm(<String, dynamic>{
-        ...parsed,
-        'raw_text': parsed['raw_text'] ?? rawText,
-      });
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      _openConfirm(<String, dynamic>{
-        'title': '',
-        'memo': rawText,
-        'raw_text': rawText,
-        'parse_failed': true,
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isParsing = false;
-        });
-      }
-    }
+    _openConfirm(<String, dynamic>{
+      'title': '',
+      'memo': rawText,
+      'raw_text': rawText,
+      'parse_pending': true,
+    });
   }
 
   void _openConfirm(Map<String, dynamic> parsedSchedule) {
@@ -422,16 +390,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
               ],
               const SizedBox(height: 12),
               FilledButton.tonalIcon(
-                onPressed: (_isListening || _isParsing)
-                    ? null
-                    : () => _continueWithRawText(),
-                icon: _isParsing
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.edit_note),
-                label: Text(_isParsing ? '정리 중' : '직접 입력으로 확인'),
+                onPressed: _isListening ? null : _continueWithRawText,
+                icon: const Icon(Icons.edit_note),
+                label: const Text('직접 입력으로 확인'),
               ),
             ],
           ),
@@ -468,7 +429,7 @@ class _VoiceCommandGuide extends StatelessWidget {
             color: PlanFlowColors.primary,
           ),
           title: Text(
-            '말로 수정하기',
+            '음성으로 수정하기',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w800,
               color: PlanFlowColors.textPrimary,

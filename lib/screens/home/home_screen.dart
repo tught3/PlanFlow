@@ -280,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             FilledButton.icon(
                               onPressed: () => context.push(AppRoutes.voice),
                               icon: const Icon(Icons.mic_none, size: 18),
-                              label: const Text('말로 추가'),
+                              label: const Text('음성으로 일정 추가'),
                             ),
                             OutlinedButton.icon(
                               onPressed: () => context.go(AppRoutes.calendar),

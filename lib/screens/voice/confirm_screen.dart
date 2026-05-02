@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/travel_time_buffer_service.dart';
@@ -20,16 +21,19 @@ class ConfirmScreen extends StatefulWidget {
     this.parsedSchedule = const <String, dynamic>{},
     this.userId,
     this.eventRepository,
+    GptService? gptService,
     ConfirmScreenBackend? backend,
     NotificationService? notificationService,
     HomeWidgetService? homeWidgetService,
   })  : backend = backend ?? const SupabaseConfirmScreenBackend(),
+        gptService = gptService ?? GptService(),
         notificationService = notificationService ?? NotificationService(),
         homeWidgetService = homeWidgetService ?? HomeWidgetService();
 
   final Map<String, dynamic> parsedSchedule;
   final String? userId;
   final EventRepository? eventRepository;
+  final GptService gptService;
   final ConfirmScreenBackend backend;
   final NotificationService notificationService;
   final HomeWidgetService homeWidgetService;
@@ -141,10 +145,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   late bool _isCritical;
   bool _isSaving = false;
   bool _isLoadingPastSupplies = false;
+  bool _isHydratingParsedSchedule = false;
   List<String> _pastSupplies = const <String>[];
   Timer? _locationDebounce;
   bool _hasFollowUpFailures = false;
   String? _supplyErrorText;
+  String? _hydrateMessage;
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
 
@@ -171,6 +177,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPastSupplies();
+      _maybeHydrateParsedSchedule();
     });
   }
 
@@ -239,6 +246,85 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       if (mounted) {
         setState(() {
           _isLoadingPastSupplies = false;
+        });
+      }
+    }
+  }
+
+  void _maybeHydrateParsedSchedule() {
+    final rawText = _stringValue(widget.parsedSchedule['raw_text']);
+    final shouldHydrate = widget.parsedSchedule['parse_pending'] == true ||
+        widget.parsedSchedule['parse_failed'] == true ||
+        (_titleController.text.trim().isEmpty &&
+            rawText != null &&
+            rawText.isNotEmpty);
+    if (!shouldHydrate || rawText == null || rawText.isEmpty) {
+      return;
+    }
+    _hydrateParsedSchedule(rawText);
+  }
+
+  Future<void> _hydrateParsedSchedule(String rawText) async {
+    if (_isHydratingParsedSchedule) {
+      return;
+    }
+
+    setState(() {
+      _isHydratingParsedSchedule = true;
+      _hydrateMessage = null;
+    });
+
+    try {
+      final parsed = await widget.gptService.parseSchedule(rawText);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        final title = _stringValue(parsed['title']);
+        if (title != null && title.isNotEmpty) {
+          _titleController.text = title;
+        }
+
+        final location = _stringValue(parsed['location']);
+        if (location != null && location.isNotEmpty) {
+          _locationController.text = location;
+        }
+
+        final memo = _stringValue(parsed['memo']);
+        if (memo != null && memo.isNotEmpty) {
+          _memoController.text = memo;
+        } else if (_memoController.text.trim().isEmpty) {
+          _memoController.text = rawText;
+        }
+
+        final supplies = _stringListValue(parsed['supplies']);
+        if (supplies.isNotEmpty && _supplies.isEmpty) {
+          _supplies.addAll(supplies);
+        }
+
+        final parsedPreActions = _preActionsFromValue(parsed['pre_actions']);
+        if (parsedPreActions.isNotEmpty && _preActions.isEmpty) {
+          _preActions.addAll(parsedPreActions);
+        }
+
+        _startAt = _safeStartAt(parsed['start_at'] ?? _startAt);
+        _endAt = _safeEndAt(parsed['end_at'], _startAt);
+        if (parsed['is_critical'] == true) {
+          _isCritical = true;
+        }
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _hydrateMessage = '일정을 바로 정리하지 못했어요. 필요한 내용만 직접 수정해 주세요.';
+        });
+      }
+      debugPrint('ConfirmScreen hydration failed: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isHydratingParsedSchedule = false;
         });
       }
     }
@@ -461,7 +547,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           };
         })
         .whereType<Map<String, dynamic>>()
-        .toList(growable: false);
+        .toList(growable: true);
   }
 
   List<Map<String, dynamic>> _buildReminderPayloads({
@@ -646,7 +732,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   List<_PreActionDraft> _initialPreActions() {
-    final rawPreActions = widget.parsedSchedule['pre_actions'];
+    return _preActionsFromValue(widget.parsedSchedule['pre_actions']);
+  }
+
+  List<_PreActionDraft> _preActionsFromValue(Object? rawPreActions) {
     if (rawPreActions is! List) {
       return <_PreActionDraft>[];
     }
@@ -659,7 +748,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             offsetHours: _intValue(item['offset_hours']) ?? 1,
           ),
         )
-        .toList();
+        .toList(growable: true);
   }
 
   Map<String, dynamic> _reminderPayload({
@@ -753,6 +842,50 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         ),
                       ),
                     ),
+                    if (_isHydratingParsedSchedule ||
+                        _hydrateMessage != null) ...[
+                      const SizedBox(height: AppConstants.sectionSpacing),
+                      Card(
+                        color: const Color(0xFFF7F9FF),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: const BorderSide(
+                            color: PlanFlowColors.primaryFaint,
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              if (_isHydratingParsedSchedule)
+                                const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              else
+                                const Icon(
+                                  Icons.info_outline,
+                                  color: PlanFlowColors.primaryMid,
+                                ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _hydrateMessage ??
+                                      '음성 내용을 정리하는 중이에요. 화면은 바로 열렸고, 아래 항목은 곧 채워집니다.',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: PlanFlowColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: AppConstants.sectionSpacing),
                     if (_parseFailed)
                       Card(
@@ -952,7 +1085,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return value
           .map((item) => item.toString().trim())
           .where((item) => item.isNotEmpty)
-          .toList(growable: false);
+          .toList(growable: true);
     }
     return const <String>[];
   }
