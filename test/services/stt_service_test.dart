@@ -46,4 +46,15 @@ void main() {
     expect(failure.hasText, isFalse);
     expect(failure.failure, SttListenFailure.silence);
   });
+
+  test('SttService detects local voice edit commands', () {
+    expect(SttService.detectVoiceCommand('아니'), SttVoiceCommand.undoLastWord);
+    expect(
+      SttService.detectVoiceCommand('마지막 거 지워'),
+      SttVoiceCommand.undoLastSegment,
+    );
+    expect(SttService.detectVoiceCommand('처음부터'), SttVoiceCommand.clearAll);
+    expect(SttService.detectVoiceCommand('취소'), SttVoiceCommand.cancel);
+    expect(SttService.detectVoiceCommand('내일 대전 출발'), SttVoiceCommand.none);
+  });
 }

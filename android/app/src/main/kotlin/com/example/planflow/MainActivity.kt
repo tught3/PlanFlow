@@ -55,6 +55,22 @@ private class PlanFlowSttChannel(
                     cancel()
                     result.success(latestPartialText)
                 }
+                "clearPartial" -> {
+                    latestPartialText = ""
+                    result.success(true)
+                }
+                "resetTranscript" -> {
+                    latestPartialText = ""
+                    recognizer?.cancel()
+                    if (listening && !userRequestedStop) {
+                        activity.window.decorView.postDelayed({
+                            if (listening && !userRequestedStop) {
+                                startListening()
+                            }
+                        }, 150)
+                    }
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }

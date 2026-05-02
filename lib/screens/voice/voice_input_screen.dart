@@ -31,11 +31,25 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   int _sttRestartCount = 0;
 
   @override
+  void initState() {
+    super.initState();
+    _rawTextController.addListener(_handleRawTextChanged);
+  }
+
+  @override
   void dispose() {
+    _rawTextController.removeListener(_handleRawTextChanged);
     _rawTextController.dispose();
     _rawTextFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _handleRawTextChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
   }
 
   Future<void> _startVoiceFlow() async {
@@ -52,10 +66,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
           if (!mounted) {
             return;
           }
-          setState(() {
-            _recognizedText = text;
-            _rawTextController.text = text;
-          });
+          _setTranscriptText(text);
         },
         onRestart: (count) {
           if (!mounted) {
@@ -73,10 +84,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       }
 
       if (result.hasText) {
-        setState(() {
-          _recognizedText = result.text;
-          _rawTextController.text = result.text ?? '';
-        });
+        _setTranscriptText(result.text ?? '');
       }
 
       if (result.isSuccess) {
@@ -127,6 +135,34 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     });
   }
 
+  Future<void> _undoLastSegment() async {
+    final nextText = _isListening
+        ? await widget.sttService.undoLastSpeechSegment()
+        : _removeLastWord(_rawTextController.text);
+    _setTranscriptText(nextText);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _statusMessage = nextText.trim().isEmpty
+          ? '입력 내용을 비웠어요. 다시 말하거나 직접 입력해 주세요.'
+          : '마지막 말을 지웠어요.';
+    });
+  }
+
+  Future<void> _clearTranscript() async {
+    if (_isListening) {
+      await widget.sttService.clearActiveTranscript();
+    }
+    _setTranscriptText('');
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _statusMessage = '전체 입력을 지웠어요. 다시 말하거나 직접 입력해 주세요.';
+    });
+  }
+
   Future<void> _continueWithRawText() async {
     final rawText = _rawTextController.text.trim();
     if (rawText.isEmpty) {
@@ -171,6 +207,29 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
   void _openConfirm(Map<String, dynamic> parsedSchedule) {
     context.push(AppRoutes.confirm, extra: parsedSchedule);
+  }
+
+  void _setTranscriptText(String text) {
+    if (!mounted) {
+      return;
+    }
+    final nextText = text.trim();
+    setState(() {
+      _recognizedText = nextText.isEmpty ? null : nextText;
+      _rawTextController.value = TextEditingValue(
+        text: nextText,
+        selection: TextSelection.collapsed(offset: nextText.length),
+      );
+    });
+  }
+
+  String _removeLastWord(String text) {
+    final words = text.trim().split(RegExp(r'\s+'));
+    if (words.isEmpty || words.first.isEmpty) {
+      return '';
+    }
+    words.removeLast();
+    return words.join(' ');
   }
 
   void _focusManualInput() {
@@ -303,9 +362,33 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.mic),
-                label: Text(_isListening ? '받아쓰는 중' : '음성으로 받아쓰기'),
+                label: Text(
+                  _isListening
+                      ? '받아쓰는 중'
+                      : _rawTextController.text.trim().isEmpty
+                          ? '음성으로 받아쓰기'
+                          : '다시 말하기',
+                ),
               ),
               if (_isListening) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _undoLastSegment,
+                      icon: const Icon(Icons.undo),
+                      label: const Text('마지막 말 지우기'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _clearTranscript,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('전체 지우기'),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: _finishVoiceFlow,
@@ -320,6 +403,23 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                 ),
               ],
               const SizedBox(height: 12),
+              if (!_isListening) ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _rawTextController.text.trim().isEmpty
+                          ? null
+                          : _clearTranscript,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('전체 지우기'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
               FilledButton.tonalIcon(
                 onPressed: (_isListening || _isParsing)
                     ? null

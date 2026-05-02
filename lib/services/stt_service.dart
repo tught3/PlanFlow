@@ -53,6 +53,8 @@ class SttService {
   static String? _activeRecognizedText;
   static var _userRequestedStop = false;
   static var _activeNativeListen = false;
+  static List<String>? _activeCommittedSegments;
+  static var _activeNativeSessionText = '';
   static const MethodChannel _nativeSttChannel =
       MethodChannel('planflow/native_stt');
 
@@ -66,6 +68,26 @@ class SttService {
       }
     }
     return null;
+  }
+
+  @visibleForTesting
+  static SttVoiceCommand detectVoiceCommand(String text) {
+    final normalized = text.trim();
+    if (normalized == '아니' || normalized == '아니야' || normalized == '아니요') {
+      return SttVoiceCommand.undoLastWord;
+    }
+    if (normalized.contains('마지막 거 지워') || normalized.contains('방금 거 지워')) {
+      return SttVoiceCommand.undoLastSegment;
+    }
+    if (normalized == '다시' ||
+        normalized.contains('처음부터') ||
+        normalized.contains('다시 말할게')) {
+      return SttVoiceCommand.clearAll;
+    }
+    if (normalized == '취소') {
+      return SttVoiceCommand.cancel;
+    }
+    return SttVoiceCommand.none;
   }
 
   @visibleForTesting
@@ -138,6 +160,74 @@ class SttService {
         ),
       );
     }
+  }
+
+  Future<String> undoLastSpeechSegment() async {
+    if (_activeNativeListen) {
+      if (_activeNativeSessionText.trim().isNotEmpty) {
+        _activeNativeSessionText = '';
+        await _resetNativeTranscript();
+      } else {
+        final segments = _activeCommittedSegments;
+        if (segments != null && segments.isNotEmpty) {
+          segments.removeLast();
+        }
+      }
+      return _syncNativeTranscript();
+    }
+    return _editActiveText((text) {
+      final words = text.trim().split(RegExp(r'\s+'));
+      if (words.isEmpty || words.first.isEmpty) {
+        return '';
+      }
+      words.removeLast();
+      return words.join(' ');
+    });
+  }
+
+  Future<String> undoLastSpeechWord() async {
+    if (_activeNativeListen) {
+      final sessionWords =
+          _activeNativeSessionText.trim().split(RegExp(r'\s+'));
+      if (_activeNativeSessionText.trim().isNotEmpty &&
+          sessionWords.isNotEmpty) {
+        sessionWords.removeLast();
+        _activeNativeSessionText = sessionWords.join(' ');
+        await _resetNativeTranscript();
+      } else {
+        final segments = _activeCommittedSegments;
+        if (segments != null && segments.isNotEmpty) {
+          final lastWords = segments.last.trim().split(RegExp(r'\s+'));
+          if (lastWords.length <= 1) {
+            segments.removeLast();
+          } else {
+            lastWords.removeLast();
+            segments[segments.length - 1] = lastWords.join(' ');
+          }
+        }
+      }
+      return _syncNativeTranscript();
+    }
+    return _editActiveText((text) {
+      final words = text.trim().split(RegExp(r'\s+'));
+      if (words.isEmpty || words.first.isEmpty) {
+        return '';
+      }
+      words.removeLast();
+      return words.join(' ');
+    });
+  }
+
+  Future<String> clearActiveTranscript() async {
+    if (_activeNativeListen) {
+      _activeCommittedSegments?.clear();
+      _activeNativeSessionText = '';
+      _activeRecognizedText = '';
+      await _resetNativeTranscript();
+      return '';
+    }
+    _activeRecognizedText = '';
+    return '';
   }
 
   Future<SttListenResult> listen({
@@ -444,16 +534,41 @@ class SttService {
     }
   }
 
+  static String _syncNativeTranscript() {
+    final segments = _activeCommittedSegments ?? const <String>[];
+    final pieces = <String>[
+      ...segments,
+      if (_activeNativeSessionText.trim().isNotEmpty)
+        _activeNativeSessionText.trim(),
+    ];
+    final transcript = pieces.join(' ').trim();
+    _activeRecognizedText = transcript;
+    return transcript;
+  }
+
+  static String _editActiveText(String Function(String text) edit) {
+    final nextText = edit(_activeRecognizedText ?? '').trim();
+    _activeRecognizedText = nextText;
+    return nextText;
+  }
+
+  static Future<void> _resetNativeTranscript() async {
+    try {
+      await _nativeSttChannel.invokeMethod<bool>('resetTranscript');
+    } catch (_) {}
+  }
+
   Future<SttListenResult> _listenWithNativeAndroid({
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
   }) async {
     final completer = Completer<SttListenResult>();
     final committedSegments = <String>[];
-    String activeSessionText = '';
     String latestRecognizedText = '';
     var restartCount = 0;
     _activeNativeListen = true;
+    _activeCommittedSegments = committedSegments;
+    _activeNativeSessionText = '';
     _activeCompleter = completer;
     _activeRecognizedText = null;
     _userRequestedStop = false;
@@ -465,21 +580,73 @@ class SttService {
       }
       final mergedText =
           [...committedSegments, recognizedWords].join(' ').trim();
-      activeSessionText = recognizedWords;
+      _activeNativeSessionText = recognizedWords;
       latestRecognizedText = mergedText;
       _activeRecognizedText = mergedText;
       onPartialResult?.call(mergedText);
     }
 
     void commitActiveSession() {
-      final text = activeSessionText.trim();
+      final text = _activeNativeSessionText.trim();
       if (text.isEmpty) {
         return;
+      }
+      switch (detectVoiceCommand(text)) {
+        case SttVoiceCommand.undoLastWord:
+          if (committedSegments.isNotEmpty) {
+            final lastWords =
+                committedSegments.last.trim().split(RegExp(r'\s+'));
+            if (lastWords.length <= 1) {
+              committedSegments.removeLast();
+            } else {
+              lastWords.removeLast();
+              committedSegments[committedSegments.length - 1] =
+                  lastWords.join(' ');
+            }
+          }
+          _activeNativeSessionText = '';
+          latestRecognizedText = committedSegments.join(' ').trim();
+          _activeRecognizedText = latestRecognizedText;
+          onPartialResult?.call(latestRecognizedText);
+          return;
+        case SttVoiceCommand.undoLastSegment:
+          if (committedSegments.isNotEmpty) {
+            committedSegments.removeLast();
+          }
+          _activeNativeSessionText = '';
+          latestRecognizedText = committedSegments.join(' ').trim();
+          _activeRecognizedText = latestRecognizedText;
+          onPartialResult?.call(latestRecognizedText);
+          return;
+        case SttVoiceCommand.clearAll:
+          committedSegments.clear();
+          _activeNativeSessionText = '';
+          latestRecognizedText = '';
+          _activeRecognizedText = '';
+          onPartialResult?.call('');
+          unawaited(_resetNativeTranscript());
+          return;
+        case SttVoiceCommand.cancel:
+          _activeNativeSessionText = '';
+          latestRecognizedText = committedSegments.join(' ').trim();
+          _activeRecognizedText = latestRecognizedText;
+          if (!completer.isCompleted) {
+            completer.complete(
+              SttListenResult.failure(
+                failure: SttListenFailure.silence,
+                message: '음성 입력을 취소했어요.',
+                text: latestRecognizedText,
+              ),
+            );
+          }
+          return;
+        case SttVoiceCommand.none:
+          break;
       }
       if (committedSegments.isEmpty || committedSegments.last != text) {
         committedSegments.add(text);
       }
-      activeSessionText = '';
+      _activeNativeSessionText = '';
       latestRecognizedText = committedSegments.join(' ').trim();
       _activeRecognizedText = latestRecognizedText;
     }
@@ -558,6 +725,8 @@ class SttService {
       );
     } finally {
       _activeNativeListen = false;
+      _activeCommittedSegments = null;
+      _activeNativeSessionText = '';
       _nativeSttChannel.setMethodCallHandler(null);
       if (_activeCompleter == completer) {
         _activeCompleter = null;
@@ -565,6 +734,14 @@ class SttService {
       }
     }
   }
+}
+
+enum SttVoiceCommand {
+  none,
+  undoLastWord,
+  undoLastSegment,
+  clearAll,
+  cancel,
 }
 
 const String _unsupportedLocaleMessage =
