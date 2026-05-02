@@ -235,7 +235,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   String? _resolveUserId() {
-    final userId = widget.userId ?? Supabase.instance.client.auth.currentUser?.id;
+    final userId =
+        widget.userId ?? Supabase.instance.client.auth.currentUser?.id;
     if (userId == null || userId.trim().isEmpty) {
       return null;
     }
@@ -1108,7 +1109,7 @@ class _PreActionEditorCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '선행행동 ${index}',
+              '선행행동 $index',
               style: theme.textTheme.titleSmall?.copyWith(
                 color: PlanFlowColors.primary,
                 fontWeight: FontWeight.w700,

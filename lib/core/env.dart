@@ -9,7 +9,6 @@ class AppEnv {
   static String get googleMapsApiKey => _envValue('GOOGLE_MAPS_API_KEY');
   static String get googleAndroidClientId =>
       _envValue('GOOGLE_ANDROID_CLIENT_ID');
-  static String get googleMapsApiKey => _envValue('GOOGLE_MAPS_API_KEY');
   static String get googleWebClientId {
     final webClientId = _envValue('GOOGLE_WEB_CLIENT_ID');
     return webClientId.isNotEmpty
@@ -56,8 +55,6 @@ class AppEnv {
         const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
       'GOOGLE_SERVER_CLIENT_ID' =>
         const String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID'),
-      'GOOGLE_MAPS_API_KEY' =>
-        const String.fromEnvironment('GOOGLE_MAPS_API_KEY'),
       'NAVER_CLIENT_ID' => const String.fromEnvironment('NAVER_CLIENT_ID'),
       'NAVER_CLIENT_SECRET' =>
         const String.fromEnvironment('NAVER_CLIENT_SECRET'),

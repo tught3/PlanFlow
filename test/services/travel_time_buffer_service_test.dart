@@ -4,7 +4,7 @@ import 'package:planflow/services/travel_time_buffer_service.dart';
 void main() {
   test('TravelTimeBufferService prefers coordinates when both signals exist',
       () {
-    const service = TravelTimeBufferService();
+    final service = TravelTimeBufferService();
 
     final estimate = service.estimate(
       latitude: 37.5665,
@@ -19,7 +19,7 @@ void main() {
   test(
       'TravelTimeBufferService uses text heuristic when coordinates are absent',
       () {
-    const service = TravelTimeBufferService();
+    final service = TravelTimeBufferService();
 
     final estimate =
         service.estimate(locationText: 'Incheon Airport Terminal 2');
@@ -29,7 +29,7 @@ void main() {
   });
 
   test('TravelTimeBufferService falls back to a stable default buffer', () {
-    const service = TravelTimeBufferService();
+    final service = TravelTimeBufferService();
 
     final estimate = service.estimate();
 

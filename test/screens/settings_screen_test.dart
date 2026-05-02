@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
@@ -11,6 +9,9 @@ import 'package:planflow/services/calendar_sync_service.dart';
 void main() {
   testWidgets('SettingsScreen loads saved settings and shows Naver paused note',
       (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final settingsRepository = _FakeSettingsRepository(
       fetched: const UserSettingsModel(
         id: 'settings-1',
@@ -47,15 +48,17 @@ void main() {
     expect(find.text('06:40'), findsWidgets);
     expect(find.text('20:20'), findsWidgets);
     expect(find.text('45분 알림'), findsOneWidget);
-    expect(
-      find.text('네이버 캘린더는 1차에서 보류합니다. 이후 단계에서 다시 연결할 예정입니다.'),
-      findsOneWidget,
-    );
+    final naverNote = find.text('네이버 캘린더는 1차에서 보류합니다. 이후 단계에서 다시 연결할 예정입니다.');
+    await tester.scrollUntilVisible(naverNote, 200);
+    expect(naverNote, findsOneWidget);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 
   testWidgets('SettingsScreen saves settings and schedules briefing times',
       (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final settingsRepository = _FakeSettingsRepository(
       fetched: const UserSettingsModel(
         id: 'settings-1',
@@ -91,8 +94,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('60분'));
     await tester.pump();
-    await tester.scrollUntilVisible(find.text('저장'), 200);
-    await tester.tap(find.text('저장'));
+    final saveButton = find.widgetWithText(FilledButton, '저장');
+    await tester.scrollUntilVisible(saveButton, 200);
+    await tester.ensureVisible(saveButton);
+    await tester.tap(saveButton);
     await tester.pumpAndSettle();
 
     expect(settingsRepository.savedSettings, isNotNull);
@@ -106,6 +111,9 @@ void main() {
 
   testWidgets('Google calendar button syncs interactively and shows feedback',
       (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final calendarSyncService = _FakeCalendarSyncService(
       summary: CalendarSyncSummary(
         google: CalendarIntegrationResult.ready(CalendarProvider.google),
@@ -130,8 +138,11 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Google Calendar 다시 동기화'), 200);
-    await tester.tap(find.text('Google Calendar 다시 동기화'));
+    final syncButton =
+        find.widgetWithText(FilledButton, 'Google Calendar 다시 동기화');
+    await tester.scrollUntilVisible(syncButton, 200);
+    await tester.ensureVisible(syncButton);
+    await tester.tap(syncButton);
     await tester.pumpAndSettle();
 
     expect(calendarSyncService.syncCallCount, 1);

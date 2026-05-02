@@ -215,11 +215,11 @@ class CalendarSyncService {
 
   String? get _googleConfigurationIssue {
     if (_isAndroidGoogleSignIn && !_hasText(_googleServerClientId)) {
-      return 'Android?먯꽌 Google Calendar瑜??곌껐?섎젮硫?Web OAuth Client ID瑜?serverClientId濡??ㅼ젙?댁빞 ?⑸땲??';
+      return 'Android에서 Google Calendar를 연결하려면 Web OAuth Client ID를 serverClientId로 설정해야 합니다.';
     }
 
     if (!_hasText(_googleClientId) && !_hasText(_googleServerClientId)) {
-      return 'Google Calendar ?곌껐???꾩슂??OAuth Client ID媛 ?ㅼ젙?섏? ?딆븯?듬땲??';
+      return 'Google Calendar 연결에 필요한 OAuth Client ID가 설정되지 않았습니다.';
     }
 
     return null;
@@ -227,7 +227,7 @@ class CalendarSyncService {
 
   bool get _isGooglePlatformSupported {
     if (_googlePlatformSupportedOverride != null) {
-      return _googlePlatformSupportedOverride!;
+      return _googlePlatformSupportedOverride;
     }
 
     if (kIsWeb) {

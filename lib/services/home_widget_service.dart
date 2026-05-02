@@ -26,7 +26,7 @@ class HomeWidgetService {
     this.iOSAppGroupId,
   })  : _platform = platform ?? createHomeWidgetPlatform(),
         _travelTimeBufferService =
-            travelTimeBufferService ?? const TravelTimeBufferService();
+            travelTimeBufferService ?? TravelTimeBufferService();
 
   static const String defaultWidgetName = 'PlanFlowHomeWidgetProvider';
 
