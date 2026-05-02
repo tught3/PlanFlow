@@ -337,6 +337,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   ),
                 ),
               ],
+              const SizedBox(height: 12),
+              _VoiceCommandGuide(theme: theme),
               if (_statusMessage != null) ...[
                 const SizedBox(height: 12),
                 Card(
@@ -435,6 +437,117 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _VoiceCommandGuide extends StatelessWidget {
+  const _VoiceCommandGuide({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint),
+      ),
+      child: Theme(
+        data: theme.copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+          leading: const Icon(
+            Icons.record_voice_over_outlined,
+            color: PlanFlowColors.primary,
+          ),
+          title: Text(
+            '말로 수정하기',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: PlanFlowColors.textPrimary,
+            ),
+          ),
+          subtitle: Text(
+            '잘못 말했을 때 아래처럼 말하면 바로 정리돼요.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.textSecondary,
+            ),
+          ),
+          children: const [
+            _VoiceCommandRow(
+              command: '아니, 아니야, 아니요',
+              description: '마지막 단어 지우기',
+            ),
+            _VoiceCommandRow(
+              command: '마지막 거 지워, 방금 거 지워',
+              description: '마지막 말 조각 지우기',
+            ),
+            _VoiceCommandRow(
+              command: '다시, 처음부터, 다시 말할게',
+              description: '전체 입력 지우기',
+            ),
+            _VoiceCommandRow(
+              command: '취소',
+              description: '음성 입력 취소',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VoiceCommandRow extends StatelessWidget {
+  const _VoiceCommandRow({
+    required this.command,
+    required this.description,
+  });
+
+  final String command;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.check_circle_outline,
+            size: 18,
+            color: PlanFlowColors.active,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  command,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: PlanFlowColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  description,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
