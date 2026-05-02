@@ -44,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   CalendarSyncSummary? _calendarSyncSummary;
   List<BackupSnapshot> _backups = const <BackupSnapshot>[];
   bool _isLoadingCalendarStatus = true;
+  bool _isSyncingGoogleCalendar = false;
   bool _isLoadingBackups = false;
   bool _isBackupActionRunning = false;
 
@@ -79,6 +80,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _calendarSyncSummary = summary;
       _isLoadingCalendarStatus = false;
     });
+  }
+
+  Future<void> _syncGoogleCalendar() async {
+    if (_isSyncingGoogleCalendar) {
+      return;
+    }
+
+    final previousSummary = _calendarSyncSummary;
+    setState(() {
+      _isSyncingGoogleCalendar = true;
+      if (previousSummary != null) {
+        _calendarSyncSummary = CalendarSyncSummary(
+          google: CalendarIntegrationResult.syncing(
+            CalendarProvider.google,
+            message: 'Google Calendar sync is in progress.',
+          ),
+          naver: previousSummary.naver,
+        );
+      }
+    });
+
+    final result = await _calendarSyncService.syncGoogleCalendar(
+      interactive: true,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _calendarSyncSummary = CalendarSyncSummary(
+        google: result,
+        naver: previousSummary?.naver ??
+            CalendarIntegrationResult.unsupported(CalendarProvider.naver),
+      );
+      _isSyncingGoogleCalendar = false;
+    });
+    _showSnack(_calendarSyncSnackMessage(result));
   }
 
   Future<void> _pickTime({
@@ -431,6 +469,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _isCalendarConfigured(_calendarSyncSummary?.google),
                   ),
                   const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed:
+                          _isLoadingCalendarStatus || _isSyncingGoogleCalendar
+                              ? null
+                              : _syncGoogleCalendar,
+                      icon: _isSyncingGoogleCalendar
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync),
+                      label: Text(_googleCalendarActionLabel()),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   _StatusRow(
                     label: '네이버 캘린더',
                     value: _calendarStatusLabel(_calendarSyncSummary?.naver),
@@ -557,6 +612,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
       CalendarIntegrationStatus.synced => '동기화 완료',
       CalendarIntegrationStatus.unsupported => '지원 전',
       CalendarIntegrationStatus.failed => '상태 확인 실패',
+    };
+  }
+
+  String _googleCalendarActionLabel() {
+    if (_isSyncingGoogleCalendar) {
+      return '동기화 중...';
+    }
+
+    final status = _calendarSyncSummary?.google.status;
+    return switch (status) {
+      CalendarIntegrationStatus.ready ||
+      CalendarIntegrationStatus.synced ||
+      CalendarIntegrationStatus.failed =>
+        '동기화',
+      _ => '구글 캘린더 연결',
+    };
+  }
+
+  String _calendarSyncSnackMessage(CalendarIntegrationResult result) {
+    return switch (result.status) {
+      CalendarIntegrationStatus.notConfigured =>
+        '구글 캘린더 설정이 아직 없습니다. Google Client ID 설정을 확인해 주세요.',
+      CalendarIntegrationStatus.signedOut =>
+        '구글 계정 로그인이 완료되지 않았습니다. 연결을 다시 시도해 주세요.',
+      CalendarIntegrationStatus.failed =>
+        '구글 캘린더 동기화에 실패했습니다. 네트워크와 권한을 확인해 주세요.',
+      CalendarIntegrationStatus.synced when result.syncedItems > 0 =>
+        '구글 캘린더 동기화가 완료되었습니다. ${result.syncedItems}개 항목을 확인했습니다.',
+      CalendarIntegrationStatus.synced =>
+        '구글 캘린더 연결을 확인했습니다. 가져올 새 일정은 아직 없습니다.',
+      CalendarIntegrationStatus.ready => '구글 캘린더를 사용할 준비가 되었습니다.',
+      CalendarIntegrationStatus.syncing => '구글 캘린더 동기화를 진행 중입니다.',
+      CalendarIntegrationStatus.unsupported =>
+        '현재 기기에서는 구글 캘린더 동기화를 지원하지 않습니다.',
     };
   }
 
