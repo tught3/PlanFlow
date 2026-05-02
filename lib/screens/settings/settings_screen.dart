@@ -15,6 +15,7 @@ import '../../services/auth_service.dart';
 import '../../services/backup_service.dart';
 import '../../services/briefing_scheduler_service.dart';
 import '../../services/calendar_sync_service.dart';
+import '../../services/notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -22,6 +23,7 @@ class SettingsScreen extends StatefulWidget {
     SettingsRepository? settingsRepository,
     BriefingSchedulerService? briefingSchedulerService,
     CalendarSyncService? calendarSyncService,
+    NotificationService? notificationService,
     BackupService? backupService,
     AuthService? authService,
     String? userId,
@@ -29,6 +31,7 @@ class SettingsScreen extends StatefulWidget {
   })  : _settingsRepository = settingsRepository,
         _briefingSchedulerService = briefingSchedulerService,
         _calendarSyncService = calendarSyncService,
+        _notificationService = notificationService,
         _backupService = backupService,
         _authService = authService,
         _userId = userId,
@@ -37,6 +40,7 @@ class SettingsScreen extends StatefulWidget {
   final SettingsRepository? _settingsRepository;
   final BriefingSchedulerService? _briefingSchedulerService;
   final CalendarSyncService? _calendarSyncService;
+  final NotificationService? _notificationService;
   final BackupService? _backupService;
   final AuthService? _authService;
   final String? _userId;
@@ -53,6 +57,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final SettingsProvider _settingsProvider;
   late final BriefingSchedulerService _briefingSchedulerService;
   late final CalendarSyncService _calendarSyncService;
+  late final NotificationService _notificationService;
 
   BackupService? _backupService;
   AuthService? _authService;
@@ -63,11 +68,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _defaultReminderMinutes = 60;
 
   CalendarSyncSummary? _calendarSyncSummary;
+  NotificationPermissionStatus? _notificationPermissionStatus;
   List<BackupSnapshot> _backups = const <BackupSnapshot>[];
 
   bool _isLoadingSettings = true;
   bool _isLoadingCalendarStatus = true;
+  bool _isLoadingNotificationStatus = true;
   bool _isSyncingGoogleCalendar = false;
+  bool _isRequestingNotificationPermissions = false;
   bool _isLoadingBackups = false;
   bool _isSavingSettings = false;
   bool _isBackupActionRunning = false;
@@ -87,6 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           googleClientId: _googleCalendarClientId,
           googleServerClientId: _googleCalendarServerClientId,
         );
+    _notificationService = widget._notificationService ?? NotificationService();
 
     if (AppEnv.isSupabaseReady) {
       _backupService = widget._backupService ?? BackupService();
@@ -104,6 +113,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await Future.wait<void>([
       _loadSettings(),
       _loadCalendarStatus(),
+      _loadNotificationStatus(),
     ]);
   }
 
@@ -156,6 +166,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _calendarSyncSummary = summary;
       _isLoadingCalendarStatus = false;
     });
+  }
+
+  Future<void> _loadNotificationStatus() async {
+    setState(() {
+      _isLoadingNotificationStatus = true;
+    });
+
+    try {
+      final status = await _notificationService.checkPermissionStatus();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _notificationPermissionStatus = status;
+      });
+    } catch (_) {
+      if (mounted) {
+        _showSnack('알림 권한 상태를 확인하지 못했습니다.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingNotificationStatus = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _requestNotificationPermissions() async {
+    if (_isRequestingNotificationPermissions) {
+      return;
+    }
+
+    setState(() {
+      _isRequestingNotificationPermissions = true;
+    });
+
+    try {
+      final status = await _notificationService.requestAndCheckPermissions();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _notificationPermissionStatus = status;
+      });
+      _showSnack('알림 권한 상태를 다시 확인했습니다.');
+    } catch (_) {
+      _showSnack('알림 권한 요청에 실패했습니다. Android 앱 설정을 확인해 주세요.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRequestingNotificationPermissions = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadBackups() async {
@@ -597,6 +662,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            _SectionCard(
+              title: '알림 권한',
+              subtitle: '일정 알림, 정확한 알람, 전체 화면 알림 권한을 확인합니다.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _StatusRow(
+                    label: '앱 알림',
+                    value: _notificationStatusLabel(
+                      _notificationPermissionStatus?.notificationsEnabled,
+                    ),
+                    icon: Icons.notifications_active_outlined,
+                    isConfigured:
+                        _notificationPermissionStatus?.notificationsEnabled ??
+                            false,
+                  ),
+                  const SizedBox(height: 12),
+                  _StatusRow(
+                    label: '정확한 알람',
+                    value: _notificationStatusLabel(
+                      _notificationPermissionStatus?.exactAlarmsEnabled,
+                    ),
+                    icon: Icons.alarm_on_outlined,
+                    isConfigured:
+                        _notificationPermissionStatus?.exactAlarmsEnabled ??
+                            false,
+                  ),
+                  const SizedBox(height: 12),
+                  _StatusRow(
+                    label: 'Full-screen 알림',
+                    value: _fullScreenStatusLabel(
+                      _notificationPermissionStatus?.fullScreenIntentStatus,
+                    ),
+                    icon: Icons.fullscreen_outlined,
+                    isConfigured:
+                        _notificationPermissionStatus?.fullScreenIntentStatus ==
+                            PermissionCheckState.granted,
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _isLoadingNotificationStatus ||
+                            _isRequestingNotificationPermissions
+                        ? null
+                        : _requestNotificationPermissions,
+                    icon: _isRequestingNotificationPermissions
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.verified_user_outlined),
+                    label: Text(
+                      _isRequestingNotificationPermissions
+                          ? '권한 확인 중...'
+                          : '알림 권한 요청/재확인',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Full-screen 알림은 Android 설정 화면에서 최종 허용 여부를 한 번 더 확인해야 할 수 있어요.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             if (authProvider.isSignedIn && _backupService != null)
               _SectionCard(
                 title: '백업 및 복원',
@@ -797,6 +930,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       CalendarIntegrationStatus.unsupported ||
       CalendarIntegrationStatus.failed =>
         false,
+    };
+  }
+
+  String _notificationStatusLabel(bool? enabled) {
+    if (_isLoadingNotificationStatus) {
+      return '확인 중...';
+    }
+
+    if (enabled == null) {
+      return '지원 안 함';
+    }
+
+    return enabled ? '허용됨' : '확인 필요';
+  }
+
+  String _fullScreenStatusLabel(PermissionCheckState? status) {
+    if (_isLoadingNotificationStatus || status == null) {
+      return '확인 중...';
+    }
+
+    return switch (status) {
+      PermissionCheckState.granted => '허용됨',
+      PermissionCheckState.denied => '확인 필요',
+      PermissionCheckState.unsupported => '지원 안 함',
+      PermissionCheckState.needsManualCheck => 'Android 설정에서 확인',
     };
   }
 

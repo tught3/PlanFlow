@@ -5,6 +5,7 @@ import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/screens/settings/settings_screen.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
+import 'package:planflow/services/notification_service.dart';
 
 void main() {
   testWidgets('SettingsScreen loads saved settings and shows Naver paused note',
@@ -37,6 +38,7 @@ void main() {
               ),
             ),
           ),
+          notificationService: _FakeNotificationService(),
           userId: 'user-1',
           envConfigured: false,
         ),
@@ -85,6 +87,7 @@ void main() {
               ),
             ),
           ),
+          notificationService: _FakeNotificationService(),
           userId: 'user-1',
           envConfigured: false,
         ),
@@ -131,6 +134,7 @@ void main() {
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: calendarSyncService,
+          notificationService: _FakeNotificationService(),
           userId: 'user-1',
           envConfigured: false,
         ),
@@ -151,6 +155,48 @@ void main() {
       find.textContaining('Google Calendar 동기화가 완료되었습니다. 2개 항목을 확인했습니다.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('SettingsScreen shows notification permission status',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final notificationService = _FakeNotificationService(
+      status: const NotificationPermissionStatus(
+        notificationsEnabled: true,
+        exactAlarmsEnabled: null,
+        fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.unsupported(
+                CalendarProvider.naver,
+              ),
+            ),
+          ),
+          notificationService: notificationService,
+          userId: 'user-1',
+          envConfigured: false,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final sectionTitle = find.text('알림 권한');
+    await tester.scrollUntilVisible(sectionTitle, 200);
+    expect(sectionTitle, findsOneWidget);
+    expect(find.text('허용됨'), findsWidgets);
+    expect(find.text('지원 안 함'), findsOneWidget);
+    expect(find.text('Android 설정에서 확인'), findsOneWidget);
   });
 }
 
@@ -213,4 +259,23 @@ class _FakeCalendarSyncService extends CalendarSyncService {
     return syncResult ??
         CalendarIntegrationResult.synced(CalendarProvider.google);
   }
+}
+
+class _FakeNotificationService extends NotificationService {
+  _FakeNotificationService({
+    this.status = const NotificationPermissionStatus(
+      notificationsEnabled: true,
+      exactAlarmsEnabled: true,
+      fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
+    ),
+  });
+
+  final NotificationPermissionStatus status;
+
+  @override
+  Future<NotificationPermissionStatus> checkPermissionStatus() async => status;
+
+  @override
+  Future<NotificationPermissionStatus> requestAndCheckPermissions() async =>
+      status;
 }

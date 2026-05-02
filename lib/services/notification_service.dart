@@ -14,14 +14,12 @@ class NotificationService {
   Future<void>? _initializationFuture;
 
   static const String _eventReminderChannelId = 'event_reminders';
-  static const String _eventReminderChannelName = 'Event reminders';
-  static const String _eventReminderChannelDescription =
-      'Reminders for upcoming events';
+  static const String _eventReminderChannelName = '일정 알림';
+  static const String _eventReminderChannelDescription = '다가오는 일정 알림';
 
   static const String _criticalAlarmChannelId = 'critical_alarms';
-  static const String _criticalAlarmChannelName = 'Critical alarms';
-  static const String _criticalAlarmChannelDescription =
-      'Urgent alerts for critical events';
+  static const String _criticalAlarmChannelName = '중요 일정 알람';
+  static const String _criticalAlarmChannelDescription = '중요 일정용 긴급 알람';
 
   Future<void> initialize() {
     return _initializationFuture ??= _initializeInternal();
@@ -79,6 +77,41 @@ class NotificationService {
       details: _criticalAlarmDetails,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
     );
+  }
+
+  Future<NotificationPermissionStatus> checkPermissionStatus() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return const NotificationPermissionStatus(
+        notificationsEnabled: null,
+        exactAlarmsEnabled: null,
+        fullScreenIntentStatus: PermissionCheckState.unsupported,
+      );
+    }
+
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    final notificationsEnabled =
+        await android?.areNotificationsEnabled() ?? false;
+    final exactAlarmsEnabled =
+        await android?.canScheduleExactNotifications() ?? false;
+
+    return NotificationPermissionStatus(
+      notificationsEnabled: notificationsEnabled,
+      exactAlarmsEnabled: exactAlarmsEnabled,
+      fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
+    );
+  }
+
+  Future<NotificationPermissionStatus> requestAndCheckPermissions() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return checkPermissionStatus();
+    }
+
+    await initialize();
+    await _requestNotificationPermissionIfNeeded();
+    await _requestExactAlarmPermissionIfNeeded();
+    await _requestFullScreenIntentPermissionIfNeeded();
+    return checkPermissionStatus();
   }
 
   Future<void> _initializeInternal() async {
@@ -252,4 +285,23 @@ class NotificationService {
 
     return hash == 0 ? 1 : hash;
   }
+}
+
+enum PermissionCheckState {
+  granted,
+  denied,
+  unsupported,
+  needsManualCheck,
+}
+
+class NotificationPermissionStatus {
+  const NotificationPermissionStatus({
+    required this.notificationsEnabled,
+    required this.exactAlarmsEnabled,
+    required this.fullScreenIntentStatus,
+  });
+
+  final bool? notificationsEnabled;
+  final bool? exactAlarmsEnabled;
+  final PermissionCheckState fullScreenIntentStatus;
 }
