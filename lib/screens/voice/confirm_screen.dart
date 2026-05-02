@@ -144,6 +144,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   List<String> _pastSupplies = const <String>[];
   Timer? _locationDebounce;
   bool _hasFollowUpFailures = false;
+  String? _supplyErrorText;
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
 
@@ -163,9 +164,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _newSupplyController = TextEditingController();
     _supplies = _stringListValue(widget.parsedSchedule['supplies']);
     _preActions = _initialPreActions();
-    _startAt = _dateTimeValue(widget.parsedSchedule['start_at']) ??
-        DateTime.now().add(const Duration(hours: 1));
-    _endAt = _dateTimeValue(widget.parsedSchedule['end_at']);
+    _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
+    _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
     _isCritical = widget.parsedSchedule['is_critical'] == true;
     _locationController.addListener(_schedulePastSupplyLookup);
 
@@ -585,7 +585,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   Future<void> _addSupplyFromInput() async {
     final supply = _newSupplyController.text.trim();
     if (supply.isEmpty) {
-      _showMessage('추가할 준비물을 먼저 입력해 주세요.');
+      setState(() {
+        _supplyErrorText = '추가할 준비물을 먼저 입력해 주세요.';
+      });
       _newSupplyFocusNode.requestFocus();
       return;
     }
@@ -594,6 +596,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     setState(() {
       wasAdded = _addSupply(supply);
       _newSupplyController.clear();
+      _supplyErrorText = wasAdded ? null : '이미 추가된 준비물이에요.';
     });
     _showMessage(wasAdded ? '$supply 준비물을 추가했어요.' : '이미 추가된 준비물이에요.');
     if (wasAdded) {
@@ -623,7 +626,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       _preActions.add(draft);
     });
     _showMessage('선행행동을 추가했어요. 내용을 바로 입력해 주세요.');
-    _scrollToKey(_preActionsKey, focusNode: draft.titleFocusNode);
+    _focusNewPreAction(draft.titleFocusNode);
   }
 
   void _removePreAction(_PreActionDraft draft) {
@@ -693,6 +696,23 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         alignment: 0.1,
       );
       focusNode?.requestFocus();
+    });
+  }
+
+  void _focusNewPreAction(FocusNode focusNode) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      focusNode.requestFocus();
+      if (!_scrollController.hasClients) {
+        return;
+      }
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
     });
   }
 
@@ -788,6 +808,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         supplies: _supplies,
                         newSupplyController: _newSupplyController,
                         newSupplyFocusNode: _newSupplyFocusNode,
+                        errorText: _supplyErrorText,
                         onAdd: _addSupplyFromInput,
                         onRemove: _removeSupply,
                       ),
@@ -940,6 +961,26 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     return DateTime.tryParse(text);
   }
 
+  DateTime _safeStartAt(Object? value) {
+    final now = DateTime.now();
+    final parsed = _dateTimeValue(value);
+    if (parsed == null) {
+      return now;
+    }
+    if (parsed.isBefore(now.subtract(const Duration(days: 1)))) {
+      return now;
+    }
+    return parsed;
+  }
+
+  DateTime? _safeEndAt(Object? value, DateTime startAt) {
+    final parsed = _dateTimeValue(value);
+    if (parsed == null || parsed.isBefore(startAt)) {
+      return null;
+    }
+    return parsed;
+  }
+
   int? _intValue(Object? value) {
     if (value == null) {
       return null;
@@ -954,11 +995,23 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   Future<DateTime?> _pickDateTime(DateTime initialValue) async {
+    final now = DateTime.now();
+    final safeInitialDate = initialValue.isBefore(
+      now.subtract(const Duration(days: 365)),
+    )
+        ? now
+        : initialValue;
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: initialValue,
+      locale: const Locale('ko', 'KR'),
+      initialDate: safeInitialDate,
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+      helpText: '날짜 선택',
+      cancelText: '취소',
+      confirmText: '확인',
+      fieldLabelText: '날짜 입력',
+      fieldHintText: '예: 2026.05.02',
     );
     if (pickedDate == null || !mounted) {
       return null;
@@ -967,6 +1020,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     final pickedTime = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(initialValue),
+      helpText: '시간 선택',
+      cancelText: '취소',
+      confirmText: '확인',
     );
     if (pickedTime == null) {
       return null;
@@ -1101,6 +1157,7 @@ class _SuppliesEditor extends StatelessWidget {
     required this.supplies,
     required this.newSupplyController,
     required this.newSupplyFocusNode,
+    required this.errorText,
     required this.onAdd,
     required this.onRemove,
   });
@@ -1108,6 +1165,7 @@ class _SuppliesEditor extends StatelessWidget {
   final List<String> supplies;
   final TextEditingController newSupplyController;
   final FocusNode newSupplyFocusNode;
+  final String? errorText;
   final VoidCallback onAdd;
   final ValueChanged<String> onRemove;
 
@@ -1185,7 +1243,7 @@ class _SuppliesEditor extends StatelessWidget {
                       hintText: '예: 충전기',
                       helperText: '비워 두면 추가되지 않아요.',
                       border: OutlineInputBorder(),
-                    ),
+                    ).copyWith(errorText: errorText),
                     onSubmitted: (_) => onAdd(),
                   ),
                 ),
@@ -1411,14 +1469,7 @@ class _DateTimeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = value == null
-        ? emptyLabel ?? '미설정'
-        : MaterialLocalizations.of(context).formatFullDate(value!);
-    final time = value == null
-        ? null
-        : MaterialLocalizations.of(context).formatTimeOfDay(
-            TimeOfDay.fromDateTime(value!),
-          );
+    final text = value == null ? emptyLabel ?? '미설정' : _formatKorean(value!);
 
     return ListTile(
       tileColor: PlanFlowColors.surface,
@@ -1428,10 +1479,27 @@ class _DateTimeTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       title: Text(label),
-      subtitle: Text(time == null ? text : '$text · $time'),
+      subtitle: Text(text),
       trailing: trailing ??
           const Icon(Icons.edit_calendar, color: PlanFlowColors.primaryMid),
       onTap: onTap,
     );
+  }
+
+  String _formatKorean(DateTime value) {
+    const weekdays = <int, String>{
+      DateTime.monday: '월요일',
+      DateTime.tuesday: '화요일',
+      DateTime.wednesday: '수요일',
+      DateTime.thursday: '목요일',
+      DateTime.friday: '금요일',
+      DateTime.saturday: '토요일',
+      DateTime.sunday: '일요일',
+    };
+    final period = value.hour < 12 ? '오전' : '오후';
+    final hour12 = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final minute = value.minute.toString().padLeft(2, '0');
+    final weekday = weekdays[value.weekday] ?? '';
+    return '${value.year}년 ${value.month}월 ${value.day}일 $weekday $period $hour12:$minute';
   }
 }

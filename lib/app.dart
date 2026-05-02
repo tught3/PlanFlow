@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:home_widget/home_widget.dart';
 
 import 'core/constants.dart';
@@ -64,6 +65,16 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       debugShowCheckedModeBanner: false,
       title: 'PlanFlow',
       theme: buildPlanFlowTheme(),
+      locale: const Locale('ko', 'KR'),
+      supportedLocales: const [
+        Locale('ko', 'KR'),
+        Locale('en', 'US'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
       routerConfig: appRouter,
     );
   }

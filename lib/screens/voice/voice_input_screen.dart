@@ -28,6 +28,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   bool _isParsing = false;
   String? _recognizedText;
   String? _statusMessage;
+  int _sttRestartCount = 0;
 
   @override
   void dispose() {
@@ -41,6 +42,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     setState(() {
       _isListening = true;
       _recognizedText = null;
+      _sttRestartCount = 0;
       _statusMessage = null;
     });
 
@@ -53,6 +55,16 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
           setState(() {
             _recognizedText = text;
             _rawTextController.text = text;
+          });
+        },
+        onRestart: (count) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _sttRestartCount = count;
+            _statusMessage =
+                '기기 음성 엔진이 잠깐 멈췄지만 계속 듣는 중이에요. 완료 버튼을 누르면 그때 일정 확인으로 넘어갑니다.';
           });
         },
       );
@@ -228,11 +240,23 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
               const SizedBox(height: 20),
               Text(
                 _isListening
-                    ? '말을 마친 뒤 아래 완료 버튼을 눌러 주세요. 완료 전에는 확인 화면으로 넘어가지 않습니다.'
+                    ? '계속 듣는 중이에요. 중간에 소리가 나도 완료 전에는 확인 화면으로 넘어가지 않습니다.'
                     : '온디바이스 한국어 인식이 안 되면 아래에 직접 입력해도 됩니다.',
                 style: theme.textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
+              if (_isListening) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _sttRestartCount == 0
+                      ? '말을 마친 뒤 아래 완료 버튼을 눌러 확정해 주세요.'
+                      : '음성 엔진 재연결 $_sttRestartCount회. 인식된 문장은 아래 입력칸에 계속 유지됩니다.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
               const SizedBox(height: 20),
               TextField(
                 controller: _rawTextController,

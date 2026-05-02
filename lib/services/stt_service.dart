@@ -121,6 +121,7 @@ class SttService {
 
   Future<SttListenResult> listen({
     ValueChanged<String>? onPartialResult,
+    ValueChanged<int>? onRestart,
   }) async {
     final speech = SpeechToText();
     final completer = Completer<SttListenResult>();
@@ -181,6 +182,7 @@ class SttService {
 
       restartCount += 1;
       debugPrint('PlanFlow STT restart #$restartCount: $reason');
+      onRestart?.call(restartCount);
       unawaited(
         Future<void>.delayed(const Duration(milliseconds: 350), () async {
           if (_userRequestedStop || completer.isCompleted) {
