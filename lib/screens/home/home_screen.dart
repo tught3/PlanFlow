@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../widgets/planflow_voice_fab.dart';
-import 'widgets/early_bird_signup_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,6 +16,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final todayLabel = _koreanDateLabel(DateTime.now());
+    final theme = Theme.of(context);
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -29,29 +29,191 @@ class _HomeScreenState extends State<HomeScreen> {
         title: _HomeHeader(onVoice: () => context.push(AppRoutes.voice)),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppConstants.defaultPadding,
-            AppConstants.defaultPadding,
-            AppConstants.defaultPadding,
-            104,
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          color: PlanFlowColors.background,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppConstants.defaultPadding,
+              12,
+              AppConstants.defaultPadding,
+              96,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: PlanFlowColors.primaryMid,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: PlanFlowColors.primary.withValues(alpha: 0.16),
+                        blurRadius: 18,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        todayLabel,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: PlanFlowColors.briefingLabel,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '오늘의 흐름을\n한눈에 준비하세요',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          color: Colors.white,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w900,
+                          height: 1.18,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: const Text(
+                              '브리핑 준비 완료',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(
+                            Icons.wb_sunny_outlined,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: PlanFlowColors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: PlanFlowColors.primaryFaint,
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '빠른 실행',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: PlanFlowColors.primary,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          FilledButton.icon(
+                            onPressed: () => context.push(AppRoutes.voice),
+                            icon: const Icon(Icons.mic_none, size: 18),
+                            label: const Text('말로 추가'),
+                          ),
+                          const SizedBox(width: 10),
+                          OutlinedButton.icon(
+                            onPressed: () => context.go(AppRoutes.calendar),
+                            icon: const Icon(
+                              Icons.event_note_outlined,
+                              size: 18,
+                            ),
+                            label: const Text('일정 보기'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '음성으로 일정을 만들고 캘린더에서 바로 확인할 수 있어요.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: PlanFlowColors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: PlanFlowColors.primaryFaint,
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: PlanFlowColors.primaryFaint,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.calendar_month_outlined,
+                          color: PlanFlowColors.primaryMid,
+                          size: 26,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '오늘 일정 안내',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: PlanFlowColors.primary,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '등록된 일정이 없어도 괜찮아요. 새 일정이 생기면 준비물과 알림을 함께 정리해 드릴게요.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-          children: [
-            _HomeBriefingCard(todayLabel: todayLabel),
-            const SizedBox(height: 12),
-            _QuickActionCard(
-              onVoice: () => context.push(AppRoutes.voice),
-              onCalendar: () => context.go(AppRoutes.calendar),
-            ),
-            const SizedBox(height: 12),
-            _TodayEmptyPanel(
-              onVoice: () => context.push(AppRoutes.voice),
-              onCalendar: () => context.go(AppRoutes.calendar),
-              onRefresh: _reloadTodayEvents,
-            ),
-            const SizedBox(height: 12),
-            const EarlyBirdSignupCard(),
-          ],
         ),
       ),
       floatingActionButton: PlanFlowVoiceFab(
@@ -59,8 +221,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  void _reloadTodayEvents() {}
 
   String _koreanDateLabel(DateTime value) {
     const weekdays = <int, String>{
@@ -87,7 +247,7 @@ class _HomeHeader extends StatelessWidget {
 
     return Row(
       children: [
-        Flexible(
+        Expanded(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,325 +296,5 @@ class _HomeHeader extends StatelessWidget {
       DateTime.sunday: '일요일',
     };
     return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
-  }
-}
-
-class _HomeBriefingCard extends StatelessWidget {
-  const _HomeBriefingCard({required this.todayLabel});
-
-  final String todayLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 168),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      decoration: BoxDecoration(
-        color: PlanFlowColors.primaryMid,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            todayLabel,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: PlanFlowColors.briefingLabel,
-              fontSize: 11,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '오늘 일정과 준비를\n한눈에 확인하세요.',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              height: 1.25,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: const [
-              _BriefingPill(icon: Icons.mic_none, label: '음성 입력'),
-              _BriefingPill(
-                icon: Icons.event_note_outlined,
-                label: '일정 정리',
-              ),
-              _BriefingPill(
-                icon: Icons.notifications_none,
-                label: '알림 준비',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickActionCard extends StatelessWidget {
-  const _QuickActionCard({
-    required this.onVoice,
-    required this.onCalendar,
-  });
-
-  final VoidCallback onVoice;
-  final VoidCallback onCalendar;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return _HomeFrame(
-      child: Column(
-        children: [
-          _QuickActionButton(
-            icon: Icons.mic_none,
-            title: '말로 추가',
-            subtitle: '일정 음성 입력',
-            onTap: onVoice,
-          ),
-          const Divider(height: 20),
-          _QuickActionButton(
-            icon: Icons.event_note_outlined,
-            title: '일정 보기',
-            subtitle: '캘린더 탭 이동',
-            onTap: onCalendar,
-          ),
-          const Divider(height: 20),
-          Row(
-            children: [
-              const Icon(
-                Icons.cloud_done_outlined,
-                color: PlanFlowColors.primaryMid,
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '백업 준비',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: PlanFlowColors.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '계정별 저장',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickActionButton extends StatelessWidget {
-  const _QuickActionButton({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          children: [
-            Icon(icon, color: PlanFlowColors.primaryMid),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: PlanFlowColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(subtitle, style: theme.textTheme.bodySmall),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BriefingPill extends StatelessWidget {
-  const _BriefingPill({
-    required this.icon,
-    required this.label,
-  });
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.white, size: 15),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: Colors.white,
-              fontSize: 10,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TodaySectionHeader extends StatelessWidget {
-  const _TodaySectionHeader({required this.onRefresh});
-
-  final VoidCallback onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Row(
-      children: [
-        Text(
-          '오늘 일정',
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: PlanFlowColors.primary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(width: 12),
-        TextButton.icon(
-          onPressed: onRefresh,
-          icon: const Icon(Icons.refresh, size: 18),
-          label: const Text('새로고침'),
-        ),
-      ],
-    );
-  }
-}
-
-class _TodayEmptyPanel extends StatelessWidget {
-  const _TodayEmptyPanel({
-    required this.onVoice,
-    required this.onCalendar,
-    required this.onRefresh,
-  });
-
-  final VoidCallback onVoice;
-  final VoidCallback onCalendar;
-  final VoidCallback onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return _HomeFrame(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _TodaySectionHeader(onRefresh: onRefresh),
-          const SizedBox(height: 18),
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: PlanFlowColors.primaryFaint,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              Icons.calendar_month_outlined,
-              size: 28,
-              color: theme.colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '오늘 등록된 일정이 없습니다',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: PlanFlowColors.primary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '말로 일정을 추가하면 오늘 할 일과 준비물이 이곳에 정리됩니다.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: PlanFlowColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 18),
-          FilledButton.icon(
-            onPressed: onVoice,
-            icon: const Icon(Icons.mic_none, size: 18),
-            label: const Text('말로 추가'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: onCalendar,
-            icon: const Icon(Icons.event_note_outlined, size: 18),
-            label: const Text('일정 보기'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HomeFrame extends StatelessWidget {
-  const _HomeFrame({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: PlanFlowColors.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: PlanFlowColors.primaryFaint, width: 0.5),
-      ),
-      child: child,
-    );
   }
 }
