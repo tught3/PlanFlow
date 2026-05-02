@@ -9,6 +9,7 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 
@@ -152,6 +153,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
             ? ''
             : ' 알림 동기화가 일부 실패했습니다. 설정을 확인해 주세요.';
         _showMessage('$actionText$warningText');
+        EventRefreshBus.instance.notifyChanged(
+          reason: _isNewEvent ? 'event_created' : 'event_updated',
+          eventId: savedEvent.id,
+          startAt: savedEvent.startAt,
+        );
         context.go(AppRoutes.calendar);
       }
     } catch (_) {

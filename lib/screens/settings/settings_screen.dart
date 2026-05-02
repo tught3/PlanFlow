@@ -866,15 +866,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return '확인 중...';
     }
 
-    return switch (result.status) {
-      CalendarIntegrationStatus.notConfigured => '미설정',
-      CalendarIntegrationStatus.signedOut => '설정됨, 로그인 필요',
-      CalendarIntegrationStatus.ready => '사용 가능',
-      CalendarIntegrationStatus.syncing => '동기화 중',
-      CalendarIntegrationStatus.synced => '동기화 완료',
-      CalendarIntegrationStatus.unsupported => '지원 안 함',
-      CalendarIntegrationStatus.failed => '상태 확인 실패',
-    };
+    return result.message;
   }
 
   String _googleCalendarActionLabel() {
@@ -893,20 +885,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String _calendarSyncSnackMessage(CalendarIntegrationResult result) {
-    return switch (result.status) {
-      CalendarIntegrationStatus.notConfigured =>
-        '구글 캘린더 설정이 아직 없습니다. OAuth Client ID 설정을 확인해 주세요.',
-      CalendarIntegrationStatus.signedOut => '구글 계정 로그인 후 다시 시도해 주세요.',
-      CalendarIntegrationStatus.failed =>
-        '구글 캘린더 동기화에 실패했습니다. 네트워크와 권한을 확인해 주세요.',
-      CalendarIntegrationStatus.synced when result.syncedItems > 0 =>
-        '구글 캘린더 동기화가 완료되었습니다. ${result.syncedItems}개 항목을 확인했습니다.',
-      CalendarIntegrationStatus.synced => '구글 캘린더 연결을 확인했습니다. 새로 가져온 항목은 없습니다.',
-      CalendarIntegrationStatus.ready => '구글 캘린더 연결 준비가 완료되었습니다.',
-      CalendarIntegrationStatus.syncing => '구글 캘린더 동기화를 진행 중입니다.',
-      CalendarIntegrationStatus.unsupported =>
-        '현재 기기에서는 구글 캘린더 동기화를 지원하지 않습니다.',
-    };
+    return result.message;
   }
 
   bool _isCalendarConfigured(CalendarIntegrationResult? result) {

@@ -9,6 +9,7 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/travel_time_buffer_service.dart';
@@ -127,6 +128,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   late final TextEditingController _locationController;
   late final TextEditingController _memoController;
   late final TextEditingController _newSupplyController;
+  final ScrollController _scrollController = ScrollController();
+  final FocusNode _newSupplyFocusNode = FocusNode();
+  final GlobalKey _suppliesKey = GlobalKey();
+  final GlobalKey _preActionsKey = GlobalKey();
   late final List<String> _supplies;
   late final List<_PreActionDraft> _preActions;
   late DateTime _startAt;
@@ -175,6 +180,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _locationController.dispose();
     _memoController.dispose();
     _newSupplyController.dispose();
+    _scrollController.dispose();
+    _newSupplyFocusNode.dispose();
     for (final draft in _preActions) {
       draft.dispose();
     }
@@ -304,6 +311,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       if (mounted) {
         _showMessage(
           '일정을 저장했어요${_hasFollowUpFailures ? ', 일부 후속 저장은 다시 시도해 주세요.' : '.'}',
+        );
+        EventRefreshBus.instance.notifyChanged(
+          reason: 'confirm_saved',
+          eventId: savedEvent.id,
+          startAt: savedEvent.startAt,
         );
         context.go(AppRoutes.home);
       }
@@ -571,20 +583,30 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   Future<void> _addSupplyFromInput() async {
     final supply = _newSupplyController.text.trim();
     if (supply.isEmpty) {
+      _showMessage('추가할 준비물을 먼저 입력해 주세요.');
+      _newSupplyFocusNode.requestFocus();
       return;
     }
 
+    late final bool wasAdded;
     setState(() {
-      _addSupply(supply);
+      wasAdded = _addSupply(supply);
       _newSupplyController.clear();
     });
+    _showMessage(wasAdded ? '$supply 준비물을 추가했어요.' : '이미 추가된 준비물이에요.');
+    if (wasAdded) {
+      _scrollToKey(_suppliesKey);
+    } else {
+      _newSupplyFocusNode.requestFocus();
+    }
   }
 
-  void _addSupply(String supply) {
+  bool _addSupply(String supply) {
     if (_supplies.contains(supply)) {
-      return;
+      return false;
     }
     _supplies.add(supply);
+    return true;
   }
 
   void _removeSupply(String supply) {
@@ -594,9 +616,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   void _addPreAction() {
+    final draft = _PreActionDraft.manual();
     setState(() {
-      _preActions.add(_PreActionDraft.manual());
+      _preActions.add(draft);
     });
+    _showMessage('선행행동을 추가했어요. 내용을 바로 입력해 주세요.');
+    _scrollToKey(_preActionsKey, focusNode: draft.titleFocusNode);
   }
 
   void _removePreAction(_PreActionDraft draft) {
@@ -607,9 +632,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   void _applyPastSupply(String supply) {
+    late final bool wasAdded;
     setState(() {
-      _addSupply(supply);
+      wasAdded = _addSupply(supply);
     });
+    _showMessage(wasAdded ? '$supply 준비물을 추가했어요.' : '이미 추가된 준비물이에요.');
+    _scrollToKey(_suppliesKey);
   }
 
   List<_PreActionDraft> _initialPreActions() {
@@ -650,6 +678,22 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     );
   }
 
+  void _scrollToKey(GlobalKey key, {FocusNode? focusNode}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final targetContext = key.currentContext;
+      if (!mounted || targetContext == null) {
+        return;
+      }
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        alignment: 0.1,
+      );
+      focusNode?.requestFocus();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -659,6 +703,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       appBar: AppBar(title: const Text('일정 확인')),
       body: SafeArea(
         child: ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           children: [
             Container(
@@ -723,36 +768,48 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
             ],
-            _SuppliesEditor(
-              supplies: _supplies,
-              newSupplyController: _newSupplyController,
-              onAdd: _addSupplyFromInput,
-              onRemove: _removeSupply,
+            KeyedSubtree(
+              key: _suppliesKey,
+              child: _SuppliesEditor(
+                supplies: _supplies,
+                newSupplyController: _newSupplyController,
+                newSupplyFocusNode: _newSupplyFocusNode,
+                onAdd: _addSupplyFromInput,
+                onRemove: _removeSupply,
+              ),
             ),
             const SizedBox(height: AppConstants.sectionSpacing),
-            _SectionHeader(
-              title: '선행행동',
-              actionLabel: '추가',
-              onAction: _addPreAction,
-            ),
-            const SizedBox(height: 8),
-            if (_preActions.isEmpty)
-              _EmptyInlineHint(
-                message: '선행행동이 없어요. 준비물 정리, 출발 준비 같은 항목을 추가해 보세요.',
-                actionLabel: '선행행동 추가',
-                onAction: _addPreAction,
-              )
-            else
-              ..._preActions.asMap().entries.map(
-                    (entry) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _PreActionEditorCard(
-                        draft: entry.value,
-                        index: entry.key + 1,
-                        onDelete: () => _removePreAction(entry.value),
-                      ),
-                    ),
+            KeyedSubtree(
+              key: _preActionsKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _SectionHeader(
+                    title: '선행행동',
+                    actionLabel: '추가',
+                    onAction: _addPreAction,
                   ),
+                  const SizedBox(height: 8),
+                  if (_preActions.isEmpty)
+                    _EmptyInlineHint(
+                      message: '선행행동이 없어요. 추가 버튼을 누르면 바로 아래에 입력 카드가 생겨요.',
+                      actionLabel: '선행행동 추가',
+                      onAction: _addPreAction,
+                    )
+                  else
+                    ..._preActions.asMap().entries.map(
+                          (entry) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _PreActionEditorCard(
+                              draft: entry.value,
+                              index: entry.key + 1,
+                              onDelete: () => _removePreAction(entry.value),
+                            ),
+                          ),
+                        ),
+                ],
+              ),
+            ),
             const SizedBox(height: AppConstants.sectionSpacing),
             _DateTimeTile(
               label: '시작 시간',
@@ -913,20 +970,24 @@ class _PreActionDraft {
         titleController = TextEditingController(text: title ?? ''),
         offsetController = TextEditingController(
           text: (offsetHours ?? 1).toString(),
-        );
+        ),
+        titleFocusNode = FocusNode();
 
   _PreActionDraft.manual()
       : isAuto = false,
         titleController = TextEditingController(),
-        offsetController = TextEditingController(text: '1');
+        offsetController = TextEditingController(text: '1'),
+        titleFocusNode = FocusNode();
 
   final bool isAuto;
   final TextEditingController titleController;
   final TextEditingController offsetController;
+  final FocusNode titleFocusNode;
 
   void dispose() {
     titleController.dispose();
     offsetController.dispose();
+    titleFocusNode.dispose();
   }
 }
 
@@ -970,12 +1031,14 @@ class _SuppliesEditor extends StatelessWidget {
   const _SuppliesEditor({
     required this.supplies,
     required this.newSupplyController,
+    required this.newSupplyFocusNode,
     required this.onAdd,
     required this.onRemove,
   });
 
   final List<String> supplies;
   final TextEditingController newSupplyController;
+  final FocusNode newSupplyFocusNode;
   final VoidCallback onAdd;
   final ValueChanged<String> onRemove;
 
@@ -1047,9 +1110,11 @@ class _SuppliesEditor extends StatelessWidget {
                 Expanded(
                   child: TextField(
                     controller: newSupplyController,
+                    focusNode: newSupplyFocusNode,
                     decoration: const InputDecoration(
                       labelText: '준비물 추가',
                       hintText: '예: 충전기',
+                      helperText: '비워 두면 추가되지 않아요.',
                       border: OutlineInputBorder(),
                     ),
                     onSubmitted: (_) => onAdd(),
@@ -1185,6 +1250,7 @@ class _PreActionEditorCard extends StatelessWidget {
             const SizedBox(height: 12),
             TextField(
               controller: draft.titleController,
+              focusNode: draft.titleFocusNode,
               decoration: const InputDecoration(
                 labelText: '행동 이름',
                 hintText: '예: 준비물 다시 확인',

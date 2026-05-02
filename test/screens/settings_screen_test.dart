@@ -122,6 +122,7 @@ void main() {
       ),
       syncResult: CalendarIntegrationResult.synced(
         CalendarProvider.google,
+        message: 'Google Calendar 동기화가 완료되었습니다. 2개 항목을 확인했습니다.',
         syncedItems: 2,
       ),
     );
@@ -149,8 +150,8 @@ void main() {
     expect(calendarSyncService.syncCallCount, 1);
     expect(calendarSyncService.lastInteractive, isTrue);
     expect(
-      find.textContaining('구글 캘린더 동기화가 완료되었습니다. 2개 항목을 확인했습니다.'),
-      findsOneWidget,
+      find.textContaining('Google Calendar 동기화가 완료되었습니다. 2개 항목을 확인했습니다.'),
+      findsWidgets,
     );
   });
 

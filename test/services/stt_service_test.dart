@@ -13,10 +13,19 @@ void main() {
     expect(options.listenMode, ListenMode.dictation);
   });
 
-  test('SttService resolves only Korean locale id', () {
+  test('SttService prefers ko_KR and falls back to other Korean locale ids',
+      () {
     expect(
       SttService.resolveKoreanLocaleId(const <String>['en_US', 'ko_KR']),
       'ko_KR',
+    );
+    expect(
+      SttService.resolveKoreanLocaleId(const <String>['en_US', 'ko']),
+      'ko',
+    );
+    expect(
+      SttService.resolveKoreanLocaleId(const <String>['en_US', 'ko-KP']),
+      'ko-KP',
     );
     expect(
       SttService.resolveKoreanLocaleId(const <String>['en_US', 'ja_JP']),

@@ -9,6 +9,7 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 
@@ -156,6 +157,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('일정을 삭제했습니다.')),
+        );
+        EventRefreshBus.instance.notifyChanged(
+          reason: 'event_deleted',
+          eventId: event.id,
+          startAt: event.startAt,
         );
         context.go(AppRoutes.calendar);
       }

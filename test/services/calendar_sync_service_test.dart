@@ -24,7 +24,7 @@ void main() {
       final result = await service.syncNaverCalendar();
 
       expect(result.status, CalendarIntegrationStatus.unsupported);
-      expect(result.message, contains('placeholder'));
+      expect(result.message, contains('현재 사용할 수 없습니다'));
       expect(result.provider, CalendarProvider.naver);
       expect(result.isSuccess, isFalse);
     });

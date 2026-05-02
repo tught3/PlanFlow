@@ -531,6 +531,14 @@ class _SocialLoginCard extends StatelessWidget {
               'Supabase에 연결한 Google, Kakao 계정으로 로그인합니다.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
+            const SizedBox(height: 8),
+            Text(
+              '카카오에서 KOE205가 보이면 앱 문제가 아니라 Kakao Developers와 Supabase의 카카오 OAuth 설정을 먼저 확인해야 합니다.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                    height: 1.35,
+                  ),
+            ),
             const SizedBox(height: 12),
             _BrandLoginButton(
               label: 'Google로 계속하기',

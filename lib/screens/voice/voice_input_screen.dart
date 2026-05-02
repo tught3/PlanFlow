@@ -22,6 +22,8 @@ class VoiceInputScreen extends StatefulWidget {
 
 class _VoiceInputScreenState extends State<VoiceInputScreen> {
   final TextEditingController _rawTextController = TextEditingController();
+  final FocusNode _rawTextFocusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   bool _isListening = false;
   bool _isParsing = false;
   String? _recognizedText;
@@ -30,6 +32,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   @override
   void dispose() {
     _rawTextController.dispose();
+    _rawTextFocusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -62,6 +66,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         _statusMessage =
             result.message ?? '음성 인식 결과를 확인할 수 없어요. 직접 입력으로 계속해 주세요.';
       });
+      _focusManualInput();
     } catch (_) {
       if (!mounted) {
         return;
@@ -69,6 +74,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       setState(() {
         _statusMessage = '음성 인식을 처리하지 못했어요. 아래에 직접 입력해도 바로 이어갈 수 있어요.';
       });
+      _focusManualInput();
     } finally {
       if (mounted) {
         setState(() {
@@ -124,6 +130,23 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     context.push(AppRoutes.confirm, extra: parsedSchedule);
   }
 
+  void _focusManualInput() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _rawTextFocusNode.requestFocus();
+      if (!_scrollController.hasClients) {
+        return;
+      }
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -134,6 +157,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         child: Padding(
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           child: ListView(
+            controller: _scrollController,
             children: [
               Text(
                 '말한 내용을 바로 저장해도 되고, 직접 입력해서 확인 화면으로 이어가도 돼요.',
@@ -176,10 +200,12 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
               const SizedBox(height: 20),
               TextField(
                 controller: _rawTextController,
+                focusNode: _rawTextFocusNode,
                 maxLines: 5,
                 decoration: const InputDecoration(
                   labelText: '음성 원문 / 직접 입력',
                   hintText: '예: 내일 오후 3시 강남역 미팅 준비물 노트북, 충전기',
+                  helperText: '음성이 끊겨도 여기서 바로 고쳐서 이어갈 수 있어요.',
                   border: OutlineInputBorder(),
                 ),
               ),

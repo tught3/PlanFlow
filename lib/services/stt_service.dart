@@ -49,7 +49,15 @@ class SttService {
   static const Duration _pauseFor = Duration(seconds: 2);
 
   static String? resolveKoreanLocaleId(Iterable<String> localeIds) {
-    return localeIds.contains(_koreanLocaleId) ? _koreanLocaleId : null;
+    if (localeIds.contains(_koreanLocaleId)) {
+      return _koreanLocaleId;
+    }
+    for (final localeId in localeIds) {
+      if (localeId.toLowerCase().startsWith('ko')) {
+        return localeId;
+      }
+    }
+    return null;
   }
 
   @visibleForTesting
@@ -117,10 +125,7 @@ class SttService {
         onError: (error) {
           if (error.errorMsg == 'error_no_match' ||
               error.errorMsg == 'error_speech_timeout') {
-            completeFailure(
-              failure: SttListenFailure.silence,
-              message: _silenceMessage,
-            );
+            completeSuccess();
             return;
           }
 

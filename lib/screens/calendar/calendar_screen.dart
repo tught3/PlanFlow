@@ -7,6 +7,7 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../services/event_refresh_bus.dart';
 import '../../widgets/planflow_voice_fab.dart';
 
 enum _CalendarLoadState {
@@ -34,12 +35,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _loadEvents();
   }
 
-  Future<void> _loadEvents() async {
+  @override
+  void dispose() {
+    EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
+    super.dispose();
+  }
+
+  void _handleEventRefresh() {
+    final signal = EventRefreshBus.instance.latest.value;
+    _loadEvents(focusDate: signal?.startAt);
+  }
+
+  Future<void> _loadEvents({DateTime? focusDate}) async {
     if (mounted) {
       setState(() {
+        if (focusDate != null) {
+          _selectedDate = focusDate;
+          _focusedMonth = DateTime(focusDate.year, focusDate.month);
+        }
         _loadState = _CalendarLoadState.loading;
         _loadMessage = null;
       });
@@ -71,6 +88,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (mounted) {
         setState(() {
           _allEvents = events;
+          if (focusDate != null) {
+            _selectedDate = focusDate;
+            _focusedMonth = DateTime(focusDate.year, focusDate.month);
+          }
           _loadState = _CalendarLoadState.ready;
         });
       }
@@ -137,7 +158,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         actions: [
           IconButton(
             tooltip: '새로고침',
-            onPressed: isLoading ? null : _loadEvents,
+            onPressed: isLoading ? null : () => _loadEvents(),
             icon: isLoading
                 ? const SizedBox.square(
                     dimension: 18,
@@ -152,7 +173,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadEvents,
+          onRefresh: () => _loadEvents(),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
@@ -161,7 +182,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 _CalendarStatusCard(
                   state: _loadState,
                   message: _loadMessage,
-                  onRefresh: _loadEvents,
+                  onRefresh: () => _loadEvents(),
                 ),
                 const SizedBox(height: 12),
               ],

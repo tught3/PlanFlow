@@ -55,8 +55,7 @@ class CalendarIntegrationResult {
     return CalendarIntegrationResult(
       provider: provider,
       status: CalendarIntegrationStatus.notConfigured,
-      message:
-          message ?? 'This calendar integration has not been configured yet.',
+      message: message ?? '캘린더 연동 설정이 아직 없습니다.',
     );
   }
 
@@ -67,8 +66,7 @@ class CalendarIntegrationResult {
     return CalendarIntegrationResult(
       provider: provider,
       status: CalendarIntegrationStatus.signedOut,
-      message:
-          message ?? 'A user sign-in is required before calendar sync can run.',
+      message: message ?? '캘린더 동기화를 실행하려면 로그인이 필요합니다.',
     );
   }
 
@@ -79,7 +77,7 @@ class CalendarIntegrationResult {
     return CalendarIntegrationResult(
       provider: provider,
       status: CalendarIntegrationStatus.ready,
-      message: message ?? 'Calendar integration is ready.',
+      message: message ?? '캘린더 연동을 사용할 수 있습니다.',
     );
   }
 
@@ -90,7 +88,7 @@ class CalendarIntegrationResult {
     return CalendarIntegrationResult(
       provider: provider,
       status: CalendarIntegrationStatus.syncing,
-      message: message ?? 'Calendar sync is in progress.',
+      message: message ?? '캘린더 동기화 중입니다.',
     );
   }
 
@@ -102,7 +100,10 @@ class CalendarIntegrationResult {
     return CalendarIntegrationResult(
       provider: provider,
       status: CalendarIntegrationStatus.synced,
-      message: message ?? 'Calendar sync completed.',
+      message: message ??
+          (syncedItems > 0
+              ? '캘린더 동기화가 완료되었습니다. $syncedItems개 항목을 확인했습니다.'
+              : '캘린더 동기화가 완료되었습니다. 새로 가져온 항목은 없습니다.'),
       syncedItems: syncedItems,
     );
   }
@@ -114,7 +115,7 @@ class CalendarIntegrationResult {
     return CalendarIntegrationResult(
       provider: provider,
       status: CalendarIntegrationStatus.unsupported,
-      message: message ?? 'This integration is not supported yet.',
+      message: message ?? '이 캘린더 연동은 아직 지원하지 않습니다.',
     );
   }
 
@@ -127,7 +128,7 @@ class CalendarIntegrationResult {
     return CalendarIntegrationResult(
       provider: provider,
       status: CalendarIntegrationStatus.failed,
-      message: message ?? 'Calendar sync failed.',
+      message: message ?? '캘린더 동기화에 실패했습니다.',
       error: error,
       stackTrace: stackTrace,
     );
@@ -280,8 +281,7 @@ class CalendarSyncService {
     if (!_isGooglePlatformSupported) {
       return CalendarIntegrationResult.unsupported(
         CalendarProvider.google,
-        message:
-            'Google Calendar sign-in is not supported on this platform yet.',
+        message: '현재 기기에서는 Google Calendar 로그인을 아직 지원하지 않습니다.',
       );
     }
 
@@ -292,14 +292,13 @@ class CalendarSyncService {
       if (account == null) {
         return CalendarIntegrationResult.signedOut(
           CalendarProvider.google,
-          message:
-              'Google Calendar is configured, but the user has not signed in yet.',
+          message: 'Google Calendar 설정은 있지만 Google 계정 로그인이 필요합니다.',
         );
       }
 
       return CalendarIntegrationResult.ready(
         CalendarProvider.google,
-        message: 'Google Calendar sign-in is available.',
+        message: 'Google Calendar 로그인을 사용할 수 있습니다.',
       );
     } catch (error, stackTrace) {
       debugPrint('Google Calendar status check failed: $error');
@@ -308,7 +307,7 @@ class CalendarSyncService {
         CalendarProvider.google,
         error: error,
         stackTrace: stackTrace,
-        message: 'Google Calendar status could not be checked.',
+        message: 'Google Calendar 상태를 확인하지 못했습니다. OAuth 설정과 권한을 확인해 주세요.',
       );
     }
   }
@@ -327,7 +326,7 @@ class CalendarSyncService {
     if (!_isGooglePlatformSupported) {
       return CalendarIntegrationResult.unsupported(
         CalendarProvider.google,
-        message: 'Google Calendar sync is not supported on this platform yet.',
+        message: '현재 기기에서는 Google Calendar 동기화를 아직 지원하지 않습니다.',
       );
     }
 
@@ -338,8 +337,7 @@ class CalendarSyncService {
       if (accessToken == null || accessToken.isEmpty) {
         return CalendarIntegrationResult.signedOut(
           CalendarProvider.google,
-          message:
-              'Google Calendar sync needs a signed-in account before it can run.',
+          message: 'Google Calendar 동기화를 실행하려면 Google 계정 로그인이 필요합니다.',
         );
       }
 
@@ -366,7 +364,9 @@ class CalendarSyncService {
 
         return CalendarIntegrationResult.synced(
           CalendarProvider.google,
-          message: 'Google Calendar sync completed.',
+          message: syncedItems > 0
+              ? 'Google Calendar 동기화가 완료되었습니다. $syncedItems개 항목을 확인했습니다.'
+              : 'Google Calendar 동기화가 완료되었습니다. 새로 가져온 항목은 없습니다.',
           syncedItems: syncedItems,
         );
       } catch (error, stackTrace) {
@@ -376,7 +376,7 @@ class CalendarSyncService {
           CalendarProvider.google,
           error: error,
           stackTrace: stackTrace,
-          message: 'Google Calendar sync could not complete.',
+          message: _googleApiFailureMessage(error),
         );
       } finally {
         client.close();
@@ -388,7 +388,8 @@ class CalendarSyncService {
         CalendarProvider.google,
         error: error,
         stackTrace: stackTrace,
-        message: 'Google Calendar sign-in or sync failed.',
+        message:
+            'Google OAuth 로그인 또는 권한 승인에 실패했습니다. Google 계정과 Calendar 권한 동의를 확인해 주세요.',
       );
     }
   }
@@ -396,16 +397,33 @@ class CalendarSyncService {
   Future<CalendarIntegrationResult> getNaverStatus() async {
     return CalendarIntegrationResult.unsupported(
       CalendarProvider.naver,
-      message: 'Naver Calendar sync is not configured yet.',
+      message: '네이버 캘린더는 1차 배포에서 지원하지 않습니다.',
     );
   }
 
   Future<CalendarIntegrationResult> syncNaverCalendar() async {
     return CalendarIntegrationResult.unsupported(
       CalendarProvider.naver,
-      message:
-          'Naver Calendar sync is currently a placeholder and is not available yet.',
+      message: '네이버 캘린더 동기화는 현재 사용할 수 없습니다.',
     );
+  }
+
+  String _googleApiFailureMessage(Object error) {
+    if (error is StateError) {
+      return 'Google Calendar 일정을 저장하려면 PlanFlow 로그인이 필요합니다.';
+    }
+
+    final errorText = error.toString().toLowerCase();
+    if (errorText.contains('insufficient') ||
+        errorText.contains('permission') ||
+        errorText.contains('forbidden') ||
+        errorText.contains('unauthorized') ||
+        errorText.contains('401') ||
+        errorText.contains('403')) {
+      return 'Google Calendar 권한이 부족해 동기화하지 못했습니다. Calendar 권한 동의를 다시 확인해 주세요.';
+    }
+
+    return 'Google Calendar API 호출에 실패했습니다. Google Cloud Calendar API 사용 설정과 네트워크 상태를 확인해 주세요.';
   }
 
   Future<String?> _fetchGoogleAccessToken({
