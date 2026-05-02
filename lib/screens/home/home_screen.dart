@@ -33,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
           width: double.infinity,
           height: double.infinity,
           color: PlanFlowColors.background,
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(
               AppConstants.defaultPadding,
               12,
@@ -79,7 +79,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -99,7 +102,6 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
                           const Icon(
                             Icons.wb_sunny_outlined,
                             color: Colors.white,
@@ -134,14 +136,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Row(
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 8,
                         children: [
                           FilledButton.icon(
                             onPressed: () => context.push(AppRoutes.voice),
                             icon: const Icon(Icons.mic_none, size: 18),
                             label: const Text('말로 추가'),
                           ),
-                          const SizedBox(width: 10),
                           OutlinedButton.icon(
                             onPressed: () => context.go(AppRoutes.calendar),
                             icon: const Icon(
