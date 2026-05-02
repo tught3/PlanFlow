@@ -66,86 +66,107 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(AppConstants.defaultPadding),
-          children: [
-            const BriefingBanner(
-              title: '오늘의 브리핑',
-              message: '오늘 일정과 필요한 준비를 한 번에 확인하고, 음성으로 빠르게 추가해 보세요.',
-            ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            const EarlyBirdSignupCard(),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            Row(
-              children: [
-                Text(
-                  '오늘 일정',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-                const Spacer(),
-                const _LegendDot(color: PlanFlowColors.active, label: '진행'),
-                const SizedBox(width: 10),
-                const _LegendDot(color: PlanFlowColors.primary, label: '예정'),
-                const SizedBox(width: 10),
-                const _LegendDot(
-                  color: PlanFlowColors.primaryFaint,
-                  label: '완료',
-                ),
-              ],
-            ),
-            const SizedBox(height: AppConstants.sectionSpacing),
-            FutureBuilder<List<EventModel>>(
-              future: _todayEventsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const _HomeLoadingCard();
-                }
-
-                if (snapshot.hasError) {
-                  return _HomeMessageCard(
-                    icon: Icons.cloud_off,
-                    title: '일정을 불러오지 못했어요',
-                    message: '로그인은 되어 있지만 일정 데이터를 가져오지 못했습니다. 잠시 후 다시 확인해 주세요.',
-                    primaryActionLabel: '다시 확인',
-                    primaryIcon: Icons.refresh,
-                    onPrimaryAction: _reloadTodayEvents,
-                  );
-                }
-
-                final events = snapshot.data ?? const <EventModel>[];
-                if (events.isEmpty) {
-                  return _HomeMessageCard(
-                    icon: Icons.calendar_month_outlined,
-                    title: '오늘 등록된 일정이 없습니다',
-                    message:
-                        '새 일정을 말로 추가하면 이곳에 오늘 일정과 준비물이 정리됩니다. 지금 바로 하나 만들어 볼까요?',
-                    primaryActionLabel: '말로 일정 추가',
-                    primaryIcon: Icons.mic_none,
-                    onPrimaryAction: () => context.go(AppRoutes.voice),
-                    secondaryActionLabel: '일정 탭 보기',
-                    onSecondaryAction: () => context.go(AppRoutes.calendar),
-                  );
-                }
-
-                return Column(
+        child: RefreshIndicator(
+          onRefresh: () async => _reloadTodayEvents(),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.all(AppConstants.defaultPadding),
+                sliver: SliverList.list(
                   children: [
-                    for (final event in events) ...[
-                      TodayEventCard(
-                        title: event.title,
-                        timeRange: _timeRange(event),
-                        location: event.location,
-                        supplies: event.supplies,
-                        isCritical: event.isCritical,
-                        status: _eventStatus(event),
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                    ],
+                    const BriefingBanner(
+                      title: '오늘의 브리핑',
+                      message: '오늘 일정과 필요한 준비를 한 번에 확인하고, 음성으로 빠르게 추가해 보세요.',
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    const EarlyBirdSignupCard(),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    Row(
+                      children: [
+                        Text(
+                          '오늘 일정',
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                        const Spacer(),
+                        const _LegendDot(
+                          color: PlanFlowColors.active,
+                          label: '진행',
+                        ),
+                        const SizedBox(width: 10),
+                        const _LegendDot(
+                          color: PlanFlowColors.primary,
+                          label: '예정',
+                        ),
+                        const SizedBox(width: 10),
+                        const _LegendDot(
+                          color: PlanFlowColors.primaryFaint,
+                          label: '완료',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    FutureBuilder<List<EventModel>>(
+                      future: _todayEventsFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const _HomeLoadingCard();
+                        }
+
+                        if (snapshot.hasError) {
+                          return _HomeMessageCard(
+                            icon: Icons.cloud_off,
+                            title: '일정을 불러오지 못했어요',
+                            message:
+                                '로그인은 되어 있지만 일정 데이터를 가져오지 못했습니다. 잠시 후 다시 확인해 주세요.',
+                            primaryActionLabel: '다시 확인',
+                            primaryIcon: Icons.refresh,
+                            onPrimaryAction: _reloadTodayEvents,
+                          );
+                        }
+
+                        final events = snapshot.data ?? const <EventModel>[];
+                        if (events.isEmpty) {
+                          return _HomeMessageCard(
+                            icon: Icons.calendar_month_outlined,
+                            title: '오늘 등록된 일정이 없습니다',
+                            message:
+                                '새 일정을 말로 추가하면 이곳에 오늘 일정과 준비물이 정리됩니다. 지금 바로 하나 만들어 볼까요?',
+                            primaryActionLabel: '말로 일정 추가',
+                            primaryIcon: Icons.mic_none,
+                            onPrimaryAction: () => context.go(AppRoutes.voice),
+                            secondaryActionLabel: '일정 탭 보기',
+                            onSecondaryAction: () =>
+                                context.go(AppRoutes.calendar),
+                          );
+                        }
+
+                        return Column(
+                          children: [
+                            for (final event in events) ...[
+                              TodayEventCard(
+                                title: event.title,
+                                timeRange: _timeRange(event),
+                                location: event.location,
+                                supplies: event.supplies,
+                                isCritical: event.isCritical,
+                                status: _eventStatus(event),
+                              ),
+                              const SizedBox(
+                                height: AppConstants.sectionSpacing,
+                              ),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 88),
                   ],
-                );
-              },
-            ),
-            const SizedBox(height: 88),
-          ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
       floatingActionButton: PlanFlowVoiceFab(
