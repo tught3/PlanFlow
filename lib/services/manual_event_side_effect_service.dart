@@ -68,7 +68,7 @@ class ManualEventSideEffectService {
   }) : _notificationService = notificationService;
 
   static const Duration defaultReminderOffset = Duration(minutes: 60);
-  static const Duration criticalAlarmOffset = Duration(minutes: 30);
+  static const Duration criticalAlarmOffset = Duration(minutes: 60);
 
   final ManualEventSideEffectGateway gateway;
   final NotificationService? _notificationService;

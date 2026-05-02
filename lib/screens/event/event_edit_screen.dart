@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -147,14 +145,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
         event: savedEvent,
         userId: user.id,
       );
-      unawaited(_refreshHomeWidget(_repository, savedEvent));
+      final widgetRefreshed = await _refreshHomeWidget(_repository, savedEvent);
 
       if (mounted) {
         final actionText = _isNewEvent ? '일정을 만들었습니다.' : '일정을 수정했습니다.';
         final warningText = sideEffectResult.isFullySynced
             ? ''
             : ' 알림 동기화가 일부 실패했습니다. 설정을 확인해 주세요.';
-        _showMessage('$actionText$warningText');
+        final widgetWarningText =
+            widgetRefreshed ? '' : ' 홈 위젯 갱신은 다시 확인해 주세요.';
+        _showMessage('$actionText$warningText$widgetWarningText');
         EventRefreshBus.instance.notifyChanged(
           reason: _isNewEvent ? 'event_created' : 'event_updated',
           eventId: savedEvent.id,
@@ -228,14 +228,14 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
   }
 
-  Future<void> _refreshHomeWidget(
+  Future<bool> _refreshHomeWidget(
     EventRepository repository,
     EventModel fallbackEvent,
   ) async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) {
-        return;
+        return false;
       }
       final now = DateTime.now();
       final events = await repository.listEvents(userId: user.id);
@@ -245,7 +245,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }).toList(growable: false)
         ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
       final nextEvent = nextEvents.isEmpty ? fallbackEvent : nextEvents.first;
-      await widget.homeWidgetService.updateNextEvent(
+      return widget.homeWidgetService.updateNextEvent(
         title: nextEvent.title,
         eventId: nextEvent.id,
         startAt: nextEvent.startAt,
@@ -262,8 +262,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
             )
             .toList(growable: false),
       );
-    } catch (_) {
-      // Widget refresh should not block event saves.
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen widget refresh failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
     }
   }
 

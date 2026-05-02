@@ -66,6 +66,10 @@ void main() {
       expect(notifications.cancelledEventIds, ['event-2']);
       expect(notifications.scheduledEventReminderIds, hasLength(1));
       expect(notifications.scheduledCriticalAlarmIds, hasLength(1));
+      expect(
+        notifications.scheduledCriticalNotifyAts.single,
+        event.startAt!.subtract(const Duration(minutes: 60)),
+      );
     });
 
     test('delete cleanup cancels local notifications for the event', () async {
@@ -113,6 +117,7 @@ class _FakeNotificationService extends NotificationService {
   final cancelledEventIds = <String>[];
   final scheduledEventReminderIds = <int>[];
   final scheduledCriticalAlarmIds = <int>[];
+  final scheduledCriticalNotifyAts = <DateTime>[];
 
   @override
   Future<void> cancelEventNotifications(String eventId) async {
@@ -137,5 +142,6 @@ class _FakeNotificationService extends NotificationService {
     String? body,
   }) async {
     scheduledCriticalAlarmIds.add(id);
+    scheduledCriticalNotifyAts.add(notifyAt);
   }
 }

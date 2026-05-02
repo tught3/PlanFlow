@@ -620,7 +620,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     final eventReminderNotifyAt =
         eventStartAt.subtract(await _resolveReminderBuffer(event));
     final criticalAlarmNotifyAt =
-        eventStartAt.subtract(const Duration(minutes: 30));
+        eventStartAt.subtract(const Duration(minutes: 60));
     await _tryFollowUp(
       () => widget.notificationService.scheduleEventReminder(
         id: widget.notificationService.notificationIdFor('${event.id}:push'),

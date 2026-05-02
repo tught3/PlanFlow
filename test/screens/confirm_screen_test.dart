@@ -72,6 +72,14 @@ void main() {
       hasLength(1),
     );
     expect(notifications.criticalAlarmTitles, contains('성남 출발'));
+    expect(
+      notifications.criticalAlarmNotifyAts.single.difference(
+        repository.createdEvents.single.startAt!.subtract(
+          const Duration(minutes: 60),
+        ),
+      ),
+      Duration.zero,
+    );
   });
 
   testWidgets('ConfirmScreen opens external map options when lookup is empty',
@@ -241,6 +249,7 @@ class _FakeEventRepository extends EventRepository {
 
 class _FakeNotificationService extends NotificationService {
   final criticalAlarmTitles = <String>[];
+  final criticalAlarmNotifyAts = <DateTime>[];
 
   @override
   int notificationIdFor(String id) => id.hashCode & 0x7fffffff;
@@ -261,6 +270,7 @@ class _FakeNotificationService extends NotificationService {
     String? body,
   }) async {
     criticalAlarmTitles.add(title);
+    criticalAlarmNotifyAts.add(notifyAt);
   }
 }
 
