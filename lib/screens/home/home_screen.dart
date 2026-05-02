@@ -19,54 +19,43 @@ class _HomeScreenState extends State<HomeScreen> {
     final todayLabel = _koreanDateLabel(DateTime.now());
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'PlanFlow',
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w800,
-            color: PlanFlowColors.primaryMid,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: '음성 입력',
-            icon: const Icon(Icons.mic_none),
-            onPressed: () => context.go(AppRoutes.voice),
-          ),
-        ],
-      ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppConstants.defaultPadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _HomeBriefingCard(todayLabel: todayLabel),
-              const SizedBox(height: AppConstants.sectionSpacing),
-              _TodaySectionHeader(onRefresh: _reloadTodayEvents),
-              const SizedBox(height: AppConstants.sectionSpacing),
-              Expanded(
-                child: _HomeMessageCard(
-                  icon: Icons.calendar_month_outlined,
-                  title: '오늘 등록된 일정이 없습니다',
-                  message: '새 일정을 말로 추가하면 이곳에 오늘 일정과 준비물이 정리됩니다.',
-                  primaryActionLabel: '말로 일정 추가',
-                  primaryIcon: Icons.mic_none,
-                  onPrimaryAction: () => context.go(AppRoutes.voice),
-                  secondaryActionLabel: '일정 탭 보기',
-                  onSecondaryAction: () => context.go(AppRoutes.calendar),
-                ),
-              ),
-              const SizedBox(height: AppConstants.sectionSpacing),
-              const EarlyBirdSignupCard(),
-              const SizedBox(height: 88),
-            ],
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            AppConstants.defaultPadding,
+            AppConstants.defaultPadding,
+            AppConstants.defaultPadding,
+            120,
           ),
+          children: [
+            _HomeHeader(onVoice: () => context.push(AppRoutes.voice)),
+            const SizedBox(height: 18),
+            _HomeBriefingCard(todayLabel: todayLabel),
+            const SizedBox(height: AppConstants.sectionSpacing),
+            _QuickActionCard(
+              onVoice: () => context.push(AppRoutes.voice),
+              onCalendar: () => context.go(AppRoutes.calendar),
+            ),
+            const SizedBox(height: AppConstants.sectionSpacing),
+            _TodaySectionHeader(onRefresh: _reloadTodayEvents),
+            const SizedBox(height: AppConstants.sectionSpacing),
+            _HomeMessageCard(
+              icon: Icons.calendar_month_outlined,
+              title: '오늘 등록된 일정이 없습니다',
+              message: '새 일정을 말로 추가하면 이곳에 오늘 일정과 준비물이 정리됩니다.',
+              primaryActionLabel: '말로 일정 추가',
+              primaryIcon: Icons.mic_none,
+              onPrimaryAction: () => context.push(AppRoutes.voice),
+              secondaryActionLabel: '일정 탭 보기',
+              onSecondaryAction: () => context.go(AppRoutes.calendar),
+            ),
+            const SizedBox(height: AppConstants.sectionSpacing),
+            const EarlyBirdSignupCard(),
+          ],
         ),
       ),
       floatingActionButton: PlanFlowVoiceFab(
-        onPressed: () => context.go(AppRoutes.voice),
+        onPressed: () => context.push(AppRoutes.voice),
       ),
     );
   }
@@ -87,6 +76,40 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader({required this.onVoice});
+
+  final VoidCallback onVoice;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Expanded(
+          child: Text(
+            'PlanFlow',
+            style: TextStyle(
+              fontSize: 34,
+              fontWeight: FontWeight.w900,
+              color: PlanFlowColors.primaryMid,
+              letterSpacing: -1.0,
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: '음성 입력',
+          onPressed: onVoice,
+          icon: const Icon(
+            Icons.mic_none,
+            size: 34,
+            color: PlanFlowColors.primary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _HomeBriefingCard extends StatelessWidget {
   const _HomeBriefingCard({required this.todayLabel});
 
@@ -96,53 +119,156 @@ class _HomeBriefingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return SizedBox(
+    return Container(
       width: double.infinity,
-      height: 210,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: PlanFlowColors.primaryMid,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                todayLabel,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: PlanFlowColors.briefingLabel,
-                  fontSize: 11,
-                ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.primaryMid,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            todayLabel,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: PlanFlowColors.briefingLabel,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '오늘 일정과 준비를\n한눈에 확인하세요.',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: const [
+              _BriefingPill(icon: Icons.mic_none, label: '음성 입력'),
+              _BriefingPill(
+                icon: Icons.event_note_outlined,
+                label: '일정 정리',
               ),
-              const SizedBox(height: 10),
-              Text(
-                '일정을 말로 추가하고, 오늘 해야 할 준비를 한눈에 확인하세요.',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  height: 1.35,
-                ),
-              ),
-              const Spacer(),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: const [
-                  _BriefingPill(icon: Icons.mic_none, label: '음성 입력'),
-                  _BriefingPill(
-                    icon: Icons.event_note_outlined,
-                    label: '일정 정리',
-                  ),
-                  _BriefingPill(
-                    icon: Icons.notifications_none,
-                    label: '알림 준비',
-                  ),
-                ],
+              _BriefingPill(
+                icon: Icons.notifications_none,
+                label: '알림 준비',
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActionCard extends StatelessWidget {
+  const _QuickActionCard({
+    required this.onVoice,
+    required this.onCalendar,
+  });
+
+  final VoidCallback onVoice;
+  final VoidCallback onCalendar;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return _HomeFrame(
+      child: Row(
+        children: [
+          Expanded(
+            child: _QuickActionButton(
+              icon: Icons.mic_none,
+              title: '말로 추가',
+              subtitle: '일정 음성 입력',
+              onTap: onVoice,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _QuickActionButton(
+              icon: Icons.event_note_outlined,
+              title: '일정 보기',
+              subtitle: '캘린더 탭 이동',
+              onTap: onCalendar,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.cloud_done_outlined,
+                  color: PlanFlowColors.primaryMid,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '백업 준비',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: PlanFlowColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '계정별 저장',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActionButton extends StatelessWidget {
+  const _QuickActionButton({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          children: [
+            Icon(icon, color: PlanFlowColors.primaryMid),
+            const SizedBox(height: 6),
+            Text(
+              title,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: PlanFlowColors.primary,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
         ),
       ),
     );

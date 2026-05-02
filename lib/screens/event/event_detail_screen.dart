@@ -28,7 +28,7 @@ class EventDetailScreen extends StatelessWidget {
         title: const Text('이벤트 상세'),
         actions: [
           TextButton.icon(
-            onPressed: () => context.go(AppRoutes.eventEdit),
+            onPressed: () => context.push(AppRoutes.eventEdit),
             icon: const Icon(Icons.edit_outlined),
             label: const Text('편집'),
           ),
@@ -100,7 +100,7 @@ class EventDetailScreen extends StatelessWidget {
             ),
             const SizedBox(height: AppConstants.sectionSpacing),
             FilledButton.icon(
-              onPressed: () => context.go(AppRoutes.eventEdit),
+              onPressed: () => context.push(AppRoutes.eventEdit),
               icon: const Icon(Icons.edit_outlined),
               label: const Text('이벤트 편집'),
             ),

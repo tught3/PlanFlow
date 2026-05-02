@@ -52,7 +52,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       if (!mounted) {
         return;
       }
-      context.go(AppRoutes.confirm, extra: parsed);
+      context.push(AppRoutes.confirm, extra: parsed);
     } catch (_) {
       if (!mounted) {
         return;
@@ -143,7 +143,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
               const SizedBox(height: 12),
               TextButton(
                 onPressed:
-                    _isListening ? null : () => context.go(AppRoutes.confirm),
+                    _isListening ? null : () => context.push(AppRoutes.confirm),
                 child: const Text('직접 입력하기'),
               ),
             ],

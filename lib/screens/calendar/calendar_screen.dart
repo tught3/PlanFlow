@@ -38,7 +38,7 @@ class CalendarScreen extends StatelessWidget {
       backgroundColor: PlanFlowColors.background,
       appBar: AppBar(title: const Text('일정')),
       floatingActionButton: PlanFlowVoiceFab(
-        onPressed: () => context.go(AppRoutes.voice),
+        onPressed: () => context.push(AppRoutes.voice),
       ),
       body: SafeArea(
         child: ListView(
@@ -72,7 +72,7 @@ class CalendarScreen extends StatelessWidget {
                 ),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: () => context.go(AppRoutes.voice),
+                  onPressed: () => context.push(AppRoutes.voice),
                   icon: const Icon(Icons.mic_none),
                   label: const Text('음성 추가'),
                 ),
@@ -333,7 +333,7 @@ class _EmptyAgendaCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: () => context.go(AppRoutes.voice),
+              onPressed: () => context.push(AppRoutes.voice),
               icon: const Icon(Icons.mic_none),
               label: const Text('음성 입력 시작'),
             ),
