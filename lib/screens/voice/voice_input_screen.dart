@@ -395,7 +395,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   OutlinedButton.icon(
                     onPressed: _undoLastSegment,
                     icon: const Icon(Icons.undo),
-                    label: const Text('마지막 말 삭제'),
+                    label: const Text('마지막 단어 삭제'),
                   ),
                   OutlinedButton.icon(
                     onPressed:
