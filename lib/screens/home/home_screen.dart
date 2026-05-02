@@ -28,31 +28,31 @@ class _HomeScreenState extends State<HomeScreen> {
         surfaceTintColor: Colors.transparent,
         title: _HomeHeader(onVoice: () => context.push(AppRoutes.voice)),
       ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              AppConstants.defaultPadding,
-              8,
-              AppConstants.defaultPadding,
-              104,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            AppConstants.defaultPadding,
+            AppConstants.defaultPadding,
+            AppConstants.defaultPadding,
+            104,
+          ),
+          children: [
+            _HomeBriefingCard(todayLabel: todayLabel),
+            const SizedBox(height: 12),
+            _QuickActionCard(
+              onVoice: () => context.push(AppRoutes.voice),
+              onCalendar: () => context.go(AppRoutes.calendar),
             ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: (constraints.maxHeight - 112).clamp(
-                  0,
-                  double.infinity,
-                ),
-              ),
-              child: _HomeDashboardPanel(
-                todayLabel: todayLabel,
-                onVoice: () => context.push(AppRoutes.voice),
-                onCalendar: () => context.go(AppRoutes.calendar),
-                onRefresh: _reloadTodayEvents,
-              ),
+            const SizedBox(height: 12),
+            _TodayEmptyPanel(
+              onVoice: () => context.push(AppRoutes.voice),
+              onCalendar: () => context.go(AppRoutes.calendar),
+              onRefresh: _reloadTodayEvents,
             ),
-          );
-        },
+            const SizedBox(height: 12),
+            const EarlyBirdSignupCard(),
+          ],
+        ),
       ),
       floatingActionButton: PlanFlowVoiceFab(
         onPressed: () => context.push(AppRoutes.voice),
@@ -87,7 +87,7 @@ class _HomeHeader extends StatelessWidget {
 
     return Row(
       children: [
-        Expanded(
+        Flexible(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,43 +139,6 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
-class _HomeDashboardPanel extends StatelessWidget {
-  const _HomeDashboardPanel({
-    required this.todayLabel,
-    required this.onVoice,
-    required this.onCalendar,
-    required this.onRefresh,
-  });
-
-  final String todayLabel;
-  final VoidCallback onVoice;
-  final VoidCallback onCalendar;
-  final VoidCallback onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _HomeBriefingCard(todayLabel: todayLabel),
-        const SizedBox(height: 12),
-        _QuickActionCard(
-          onVoice: onVoice,
-          onCalendar: onCalendar,
-        ),
-        const SizedBox(height: 12),
-        _TodayEmptyPanel(
-          onVoice: onVoice,
-          onCalendar: onCalendar,
-          onRefresh: onRefresh,
-        ),
-        const SizedBox(height: 12),
-        const EarlyBirdSignupCard(),
-      ],
-    );
-  }
-}
-
 class _HomeBriefingCard extends StatelessWidget {
   const _HomeBriefingCard({required this.todayLabel});
 
@@ -187,6 +150,7 @@ class _HomeBriefingCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 168),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       decoration: BoxDecoration(
         color: PlanFlowColors.primaryMid,
@@ -247,48 +211,46 @@ class _QuickActionCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return _HomeFrame(
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _QuickActionButton(
-              icon: Icons.mic_none,
-              title: '말로 추가',
-              subtitle: '일정 음성 입력',
-              onTap: onVoice,
-            ),
+          _QuickActionButton(
+            icon: Icons.mic_none,
+            title: '말로 추가',
+            subtitle: '일정 음성 입력',
+            onTap: onVoice,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _QuickActionButton(
-              icon: Icons.event_note_outlined,
-              title: '일정 보기',
-              subtitle: '캘린더 탭 이동',
-              onTap: onCalendar,
-            ),
+          const Divider(height: 20),
+          _QuickActionButton(
+            icon: Icons.event_note_outlined,
+            title: '일정 보기',
+            subtitle: '캘린더 탭 이동',
+            onTap: onCalendar,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.cloud_done_outlined,
-                  color: PlanFlowColors.primaryMid,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '백업 준비',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: PlanFlowColors.primary,
+          const Divider(height: 20),
+          Row(
+            children: [
+              const Icon(
+                Icons.cloud_done_outlined,
+                color: PlanFlowColors.primaryMid,
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '백업 준비',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: PlanFlowColors.primary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '계정별 저장',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-            ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '계정별 저장',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
@@ -317,22 +279,23 @@ class _QuickActionButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Column(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
           children: [
             Icon(icon, color: PlanFlowColors.primaryMid),
-            const SizedBox(height: 6),
-            Text(
-              title,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: PlanFlowColors.primary,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall,
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: PlanFlowColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(subtitle, style: theme.textTheme.bodySmall),
+              ],
             ),
           ],
         ),
@@ -396,7 +359,7 @@ class _TodaySectionHeader extends StatelessWidget {
             fontWeight: FontWeight.w700,
           ),
         ),
-        const Spacer(),
+        const SizedBox(width: 12),
         TextButton.icon(
           onPressed: onRefresh,
           icon: const Icon(Icons.refresh, size: 18),
@@ -459,24 +422,16 @@ class _TodayEmptyPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: onVoice,
-                  icon: const Icon(Icons.mic_none, size: 18),
-                  label: const Text('말로 추가'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onCalendar,
-                  icon: const Icon(Icons.event_note_outlined, size: 18),
-                  label: const Text('일정 보기'),
-                ),
-              ),
-            ],
+          FilledButton.icon(
+            onPressed: onVoice,
+            icon: const Icon(Icons.mic_none, size: 18),
+            label: const Text('말로 추가'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: onCalendar,
+            icon: const Icon(Icons.event_note_outlined, size: 18),
+            label: const Text('일정 보기'),
           ),
         ],
       ),
