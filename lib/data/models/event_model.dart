@@ -6,6 +6,8 @@ class EventModel {
     this.startAt,
     this.endAt,
     this.location,
+    this.locationLat,
+    this.locationLng,
     this.memo,
     this.supplies = const <String>[],
     this.isCritical = false,
@@ -22,6 +24,8 @@ class EventModel {
       startAt: _requiredDateTimeValue(json['start_at'], 'start_at'),
       endAt: _dateTimeValue(json['end_at']),
       location: json['location'] as String?,
+      locationLat: _doubleValue(json['location_lat']),
+      locationLng: _doubleValue(json['location_lng']),
       memo: json['memo'] as String?,
       supplies: _stringListValue(json['supplies']),
       isCritical: _boolValue(json['is_critical']),
@@ -37,6 +41,8 @@ class EventModel {
   final DateTime? startAt;
   final DateTime? endAt;
   final String? location;
+  final double? locationLat;
+  final double? locationLng;
   final String? memo;
   final List<String> supplies;
   final bool isCritical;
@@ -52,6 +58,8 @@ class EventModel {
       'start_at': startAt?.toIso8601String(),
       'end_at': endAt?.toIso8601String(),
       'location': location,
+      'location_lat': locationLat,
+      'location_lng': locationLng,
       'memo': memo,
       'supplies': supplies,
       'is_critical': isCritical,
@@ -98,6 +106,19 @@ class EventModel {
       return value != 0;
     }
     return false;
+  }
+
+  static double? _doubleValue(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is double) {
+      return value;
+    }
+    if (value is num) {
+      return value.toDouble();
+    }
+    return double.tryParse(value.toString());
   }
 
   static DateTime? _dateTimeValue(Object? value) {

@@ -50,7 +50,7 @@ void main() {
     expect(find.text('06:40'), findsWidgets);
     expect(find.text('20:20'), findsWidgets);
     expect(find.text('45분 알림'), findsOneWidget);
-    expect(find.textContaining('네이버'), findsNothing);
+    expect(find.textContaining('네이버 캘린더'), findsNothing);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 

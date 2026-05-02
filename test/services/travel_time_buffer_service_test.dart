@@ -1,6 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/services/map_service.dart';
 import 'package:planflow/services/travel_time_buffer_service.dart';
 
 void main() {
@@ -58,5 +59,30 @@ void main() {
 
     expect(estimate.source, TravelTimeBufferSource.googleMaps);
     expect(estimate.minutes, 32);
+  });
+
+  test('TravelTimeBufferService uses map API estimates when coordinates exist',
+      () async {
+    final service = TravelTimeBufferService(
+      mapService: MapService(
+        tmapApiKey: 'tmap-key',
+        httpClientFactory: () => MockClient((request) async {
+          return http.Response(
+            '{"features":[{"properties":{"totalTime":2100}}]}',
+            200,
+          );
+        }),
+      ),
+    );
+
+    final estimate = await service.estimateWithMapApis(
+      originLat: 37.5665,
+      originLng: 126.978,
+      destinationLat: 37.4979,
+      destinationLng: 127.0276,
+    );
+
+    expect(estimate.source, TravelTimeBufferSource.tmap);
+    expect(estimate.minutes, 35);
   });
 }

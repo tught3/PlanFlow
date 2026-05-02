@@ -10,6 +10,8 @@ void main() {
       startAt: DateTime.parse('2026-05-01T09:00:00Z'),
       endAt: DateTime.parse('2026-05-01T09:30:00Z'),
       location: 'Seoul',
+      locationLat: 37.5665,
+      locationLng: 126.978,
       memo: 'Weekly meeting',
       supplies: const <String>['laptop', 'notes'],
       isCritical: true,
@@ -27,12 +29,16 @@ void main() {
     expect(restored.startAt, model.startAt);
     expect(restored.endAt, model.endAt);
     expect(restored.location, model.location);
+    expect(restored.locationLat, 37.5665);
+    expect(restored.locationLng, 126.978);
     expect(restored.memo, model.memo);
     expect(restored.supplies, model.supplies);
     expect(restored.isCritical, isTrue);
     expect(restored.source, 'google');
     expect(restored.externalId, 'calendar-event-1');
     expect(restored.createdAt, model.createdAt);
+    expect(json['location_lat'], 37.5665);
+    expect(json['location_lng'], 126.978);
   });
 
   test('EventModel can omit id for inserts', () {

@@ -59,6 +59,10 @@ create table if not exists public.events (
   created_at timestamptz not null default now()
 );
 
+alter table public.events
+  add column if not exists location_lat double precision,
+  add column if not exists location_lng double precision;
+
 -- 3. pre_actions
 create table if not exists public.pre_actions (
   id uuid primary key default gen_random_uuid(),
@@ -108,10 +112,14 @@ create table if not exists public.user_settings (
   morning_briefing_at time not null default '07:30',
   evening_briefing_at time not null default '21:00',
   default_reminder_min integer not null default 60,
+  travel_mode text not null default 'car',
   google_calendar_token text,
   naver_calendar_token text,
   created_at timestamptz not null default now()
 );
+
+alter table public.user_settings
+  add column if not exists travel_mode text not null default 'car';
 
 -- 8. early_bird_emails
 create table if not exists public.early_bird_emails (
@@ -494,7 +502,7 @@ begin
   loop
     insert into public.user_settings (
       id, user_id, morning_briefing_at, evening_briefing_at,
-      default_reminder_min, created_at
+      default_reminder_min, travel_mode, created_at
     )
     values (
       coalesce(nullif(item ->> 'id', '')::uuid, gen_random_uuid()),
@@ -502,12 +510,18 @@ begin
       coalesce(nullif(item ->> 'morning_briefing_at', '')::time, '07:30'::time),
       coalesce(nullif(item ->> 'evening_briefing_at', '')::time, '21:00'::time),
       coalesce(nullif(item ->> 'default_reminder_min', '')::integer, 60),
+      case
+        when lower(coalesce(item ->> 'travel_mode', '')) = 'transit'
+          then 'transit'
+        else 'car'
+      end,
       coalesce(nullif(item ->> 'created_at', '')::timestamptz, now())
     )
     on conflict (user_id) do update
       set morning_briefing_at = excluded.morning_briefing_at,
           evening_briefing_at = excluded.evening_briefing_at,
-          default_reminder_min = excluded.default_reminder_min;
+          default_reminder_min = excluded.default_reminder_min,
+          travel_mode = excluded.travel_mode;
   end loop;
 
   for item in

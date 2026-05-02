@@ -54,7 +54,7 @@ class SupabaseEventRepository extends EventRepository {
 
   static const String _tableName = 'events';
   static const String _selectColumns =
-      'id, user_id, title, start_at, end_at, location, memo, supplies, is_critical, source, external_id, created_at';
+      'id, user_id, title, start_at, end_at, location, location_lat, location_lng, memo, supplies, is_critical, source, external_id, created_at';
 
   final SupabaseClient _client;
 
@@ -182,6 +182,8 @@ class SupabaseEventRepository extends EventRepository {
       startAt: event.startAt,
       endAt: event.endAt,
       location: event.location,
+      locationLat: event.locationLat,
+      locationLng: event.locationLng,
       memo: event.memo,
       supplies: event.supplies,
       isCritical: event.isCritical,

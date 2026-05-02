@@ -60,9 +60,7 @@ class GptService {
 
     final briefing = content?.trim();
     if (briefing == null || briefing.isEmpty) {
-      return isMorning
-          ? 'Unable to load the morning briefing.'
-          : 'Unable to load the evening briefing.';
+      return isMorning ? '모닝 브리핑을 불러오지 못했습니다.' : '이브닝 브리핑을 불러오지 못했습니다.';
     }
 
     return briefing;
@@ -180,6 +178,11 @@ class GptService {
     final normalized = Map<String, dynamic>.from(parsed);
     normalized['parse_failed'] = false;
     normalized.putIfAbsent('raw_text', () => rawText);
+    normalized.putIfAbsent('location_lat', () => null);
+    normalized.putIfAbsent('location_lng', () => null);
+    normalized.putIfAbsent('travel_origin_lat', () => null);
+    normalized.putIfAbsent('travel_origin_lng', () => null);
+    normalized.putIfAbsent('travel_mode', () => null);
     normalized['supplies'] = _normalizeSupplies(normalized['supplies']);
     normalized['pre_actions'] = _normalizePreActions(normalized['pre_actions']);
     return normalized;
@@ -199,6 +202,11 @@ class GptService {
       'start_at': null,
       'end_at': null,
       'location': null,
+      'location_lat': null,
+      'location_lng': null,
+      'travel_origin_lat': null,
+      'travel_origin_lng': null,
+      'travel_mode': null,
       'memo': null,
       'supplies': <String>[],
       'is_critical': false,
@@ -243,23 +251,25 @@ const String _scheduleSystemPrompt = '''
 You are a Korean schedule parser.
 Return only a valid JSON object.
 Use these keys:
-title, date, start_at, end_at, location, memo, supplies, is_critical, pre_actions.
+title, date, start_at, end_at, location, location_lat, location_lng, travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies, is_critical, pre_actions.
 start_at and end_at must be ISO-8601 date-time strings when possible.
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.
 supplies must be an array of strings.
 is_critical must be a boolean.
 pre_actions must be an array of objects with title and offset_hours.
+travel_mode must be "car", "transit", or null.
+Only include latitude/longitude values when they are explicitly known from the input or prior context.
 If a field is not known, use null or an empty array.
 ''';
 
 const String _morningBriefingPrompt = '''
-You are writing a short morning briefing in Korean.
-Use a warm, concise tone with 2 to 4 sentences.
-Summarize the day, highlight urgent items first, and avoid markdown.
+당신은 시간의 주권자를 보좌하는 권위 있고 전문적인 비서입니다.
+성공적인 하루를 설계하기 위한 핵심 통찰을 2-4문장으로 브리핑하세요.
+긴급한 일정과 준비가 필요한 항목을 먼저 요약하고, 마크다운 없이 한국어로만 답하세요.
 ''';
 
 const String _eveningBriefingPrompt = '''
-You are writing a short evening briefing in Korean.
-Use a calm, concise tone with 2 to 4 sentences.
-Summarize completed work, mention anything left for tomorrow, and avoid markdown.
+당신은 오늘의 성취를 분석하고 내일의 승리를 예견하는 통찰력 있는 리포터입니다.
+오늘의 데이터 흐름을 요약하고 내일을 위한 전략적 제언을 2-4문장으로 브리핑하세요.
+차분하고 권위 있는 어조를 유지하고, 마크다운 없이 한국어로만 답하세요.
 ''';

@@ -71,7 +71,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
 
   static const String tableName = 'user_settings';
   static const String selectColumns =
-      'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, google_calendar_token, naver_calendar_token, created_at';
+      'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, travel_mode, google_calendar_token, naver_calendar_token, created_at';
 
   final SupabaseClient _client;
 

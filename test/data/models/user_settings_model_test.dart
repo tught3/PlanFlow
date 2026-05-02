@@ -9,6 +9,7 @@ void main() {
       morningBriefingAt: '07:30',
       eveningBriefingAt: '21:00',
       defaultReminderMin: 45,
+      travelMode: 'transit',
       googleCalendarToken: 'google-token',
       naverCalendarToken: 'naver-token',
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
@@ -25,8 +26,20 @@ void main() {
     expect(restored.morningBriefingAt, '07:30');
     expect(restored.eveningBriefingAt, '21:00');
     expect(restored.defaultReminderMin, model.defaultReminderMin);
+    expect(restored.travelMode, 'transit');
     expect(restored.googleCalendarToken, model.googleCalendarToken);
     expect(restored.naverCalendarToken, model.naverCalendarToken);
     expect(restored.createdAt, model.createdAt);
+  });
+
+  test('UserSettingsModel defaults unknown travel mode to car', () {
+    final restored = UserSettingsModel.fromJson({
+      'id': 'settings-2',
+      'user_id': 'user-2',
+      'travel_mode': 'bike',
+    });
+
+    expect(restored.travelMode, 'car');
+    expect(restored.toJson()['travel_mode'], 'car');
   });
 }

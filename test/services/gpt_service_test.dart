@@ -80,7 +80,7 @@ void main() {
       expect(body['model'], 'gpt-4o-mini');
       expect(
         (body['messages'] as List).first['content'] as String,
-        contains('morning briefing'),
+        contains('성공적인 하루'),
       );
     });
 
@@ -117,7 +117,7 @@ void main() {
       expect(body['model'], 'gpt-4o-mini');
       expect(
         (body['messages'] as List).first['content'] as String,
-        contains('evening briefing'),
+        contains('내일을 위한 전략적 제언'),
       );
     });
   });

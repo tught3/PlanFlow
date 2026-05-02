@@ -5,6 +5,7 @@ class UserSettingsModel {
     this.morningBriefingAt = '07:30',
     this.eveningBriefingAt = '21:00',
     this.defaultReminderMin = 60,
+    this.travelMode = 'car',
     this.googleCalendarToken,
     this.naverCalendarToken,
     this.createdAt,
@@ -32,6 +33,7 @@ class UserSettingsModel {
       morningBriefingAt: _timeValue(json['morning_briefing_at']),
       eveningBriefingAt: _timeValue(json['evening_briefing_at']),
       defaultReminderMin: _intValue(json['default_reminder_min'], 60),
+      travelMode: _travelModeValue(json['travel_mode']),
       googleCalendarToken: json['google_calendar_token'] as String?,
       naverCalendarToken: json['naver_calendar_token'] as String?,
       createdAt: _dateTimeValue(json['created_at']),
@@ -43,6 +45,7 @@ class UserSettingsModel {
   final String morningBriefingAt;
   final String eveningBriefingAt;
   final int defaultReminderMin;
+  final String travelMode;
   final String? googleCalendarToken;
   final String? naverCalendarToken;
   final DateTime? createdAt;
@@ -53,6 +56,7 @@ class UserSettingsModel {
     String? morningBriefingAt,
     String? eveningBriefingAt,
     int? defaultReminderMin,
+    String? travelMode,
     String? googleCalendarToken,
     String? naverCalendarToken,
     DateTime? createdAt,
@@ -66,6 +70,7 @@ class UserSettingsModel {
       morningBriefingAt: morningBriefingAt ?? this.morningBriefingAt,
       eveningBriefingAt: eveningBriefingAt ?? this.eveningBriefingAt,
       defaultReminderMin: defaultReminderMin ?? this.defaultReminderMin,
+      travelMode: travelMode ?? this.travelMode,
       googleCalendarToken: clearGoogleCalendarToken
           ? null
           : googleCalendarToken ?? this.googleCalendarToken,
@@ -83,6 +88,7 @@ class UserSettingsModel {
       'morning_briefing_at': morningBriefingAt,
       'evening_briefing_at': eveningBriefingAt,
       'default_reminder_min': defaultReminderMin,
+      'travel_mode': _travelModeValue(travelMode),
       'google_calendar_token': googleCalendarToken,
       'naver_calendar_token': naverCalendarToken,
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
@@ -122,6 +128,11 @@ class UserSettingsModel {
       return value.toInt();
     }
     return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  static String _travelModeValue(Object? value) {
+    final text = value?.toString().trim().toLowerCase() ?? '';
+    return text == 'transit' ? 'transit' : 'car';
   }
 
   static DateTime? _dateTimeValue(Object? value) {

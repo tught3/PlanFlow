@@ -4,11 +4,14 @@ import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 
 import '../core/env.dart';
+import 'map_service.dart';
 
 enum TravelTimeBufferSource {
   coordinates,
   locationText,
   googleMaps,
+  tmap,
+  naverMap,
   defaultFallback,
 }
 
@@ -30,10 +33,13 @@ class TravelTimeBufferService {
   TravelTimeBufferService({
     String? googleMapsApiKey,
     http.Client Function()? httpClientFactory,
+    MapService? mapService,
   })  : _googleMapsApiKey = googleMapsApiKey ?? AppEnv.googleMapsApiKey,
+        _mapService = mapService,
         _httpClientFactory = httpClientFactory ?? http.Client.new;
 
   final String _googleMapsApiKey;
+  final MapService? _mapService;
   final http.Client Function() _httpClientFactory;
 
   /// Returns a deterministic travel buffer for the available location signal.
@@ -210,6 +216,43 @@ class TravelTimeBufferService {
     } finally {
       client.close();
     }
+  }
+
+  Future<TravelTimeBufferEstimate> estimateWithMapApis({
+    required double originLat,
+    required double originLng,
+    required double destinationLat,
+    required double destinationLng,
+    MapTravelMode mode = MapTravelMode.car,
+    String? locationText,
+  }) async {
+    final mapEstimate = await (_mapService ?? MapService()).getTravelMinutes(
+      originLat: originLat,
+      originLng: originLng,
+      destinationLat: destinationLat,
+      destinationLng: destinationLng,
+      mode: mode,
+    );
+
+    if (mapEstimate == null) {
+      return estimate(
+        latitude: destinationLat,
+        longitude: destinationLng,
+        locationText: locationText,
+      );
+    }
+
+    return TravelTimeBufferEstimate(
+      buffer: Duration(minutes: mapEstimate.minutes),
+      source: switch (mapEstimate.provider) {
+        MapTravelProvider.tmap => TravelTimeBufferSource.tmap,
+        MapTravelProvider.naver => TravelTimeBufferSource.naverMap,
+      },
+      reason: switch (mapEstimate.provider) {
+        MapTravelProvider.tmap => 'Tmap route API response.',
+        MapTravelProvider.naver => 'Naver Map directions API response.',
+      },
+    );
   }
 
   Future<int> estimateMinutesWithGoogleMaps({

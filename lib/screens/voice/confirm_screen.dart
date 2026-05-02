@@ -12,6 +12,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
+import '../../services/map_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/travel_time_buffer_service.dart';
 
@@ -142,6 +143,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   late final List<_PreActionDraft> _preActions;
   late DateTime _startAt;
   DateTime? _endAt;
+  double? _locationLat;
+  double? _locationLng;
   late bool _isCritical;
   bool _isSaving = false;
   bool _isLoadingPastSupplies = false;
@@ -172,6 +175,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _preActions = _initialPreActions();
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
+    _locationLat = _doubleValue(widget.parsedSchedule['location_lat']);
+    _locationLng = _doubleValue(widget.parsedSchedule['location_lng']);
     _isCritical = widget.parsedSchedule['is_critical'] == true;
     _locationController.addListener(_schedulePastSupplyLookup);
 
@@ -290,6 +295,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         if (location != null && location.isNotEmpty) {
           _locationController.text = location;
         }
+        _locationLat = _doubleValue(parsed['location_lat']) ?? _locationLat;
+        _locationLng = _doubleValue(parsed['location_lng']) ?? _locationLng;
 
         final memo = _stringValue(parsed['memo']);
         if (memo != null && memo.isNotEmpty) {
@@ -384,6 +391,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           startAt: _startAt,
           endAt: _endAt,
           location: _emptyToNull(_locationController.text),
+          locationLat: _locationLat,
+          locationLng: _locationLng,
           memo: _emptyToNull(_memoController.text),
           supplies: List<String>.unmodifiable(_supplies),
           isCritical: _isCritical,
@@ -502,6 +511,27 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     final travelOrigin = _resolveTravelOrigin();
     final service = TravelTimeBufferService();
+    final originLat = _doubleValue(widget.parsedSchedule['travel_origin_lat']);
+    final originLng = _doubleValue(widget.parsedSchedule['travel_origin_lng']);
+    final canUseMapApis = originLat != null &&
+        originLng != null &&
+        event.locationLat != null &&
+        event.locationLng != null;
+    if (canUseMapApis) {
+      final mapEstimate = await service.estimateWithMapApis(
+        originLat: originLat,
+        originLng: originLng,
+        destinationLat: event.locationLat!,
+        destinationLng: event.locationLng!,
+        mode: await _resolveTravelMode(event.userId),
+        locationText: destination,
+      );
+      if (mapEstimate.source == TravelTimeBufferSource.tmap ||
+          mapEstimate.source == TravelTimeBufferSource.naverMap) {
+        return Duration(minutes: mapEstimate.minutes + 10);
+      }
+    }
+
     final travelMinutes = travelOrigin == null
         ? service.estimateMinutes(locationText: destination)
         : await service.estimateMinutesWithGoogleMaps(
@@ -510,6 +540,31 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             locationText: destination,
           );
     return Duration(minutes: travelMinutes + 10);
+  }
+
+  Future<MapTravelMode> _resolveTravelMode(String userId) async {
+    final parsedTravelMode = _stringValue(widget.parsedSchedule['travel_mode']);
+    if (parsedTravelMode == 'transit') {
+      return MapTravelMode.transit;
+    }
+
+    if (!AppEnv.isSupabaseReady) {
+      return MapTravelMode.car;
+    }
+
+    try {
+      final response = await Supabase.instance.client
+          .from('user_settings')
+          .select('travel_mode')
+          .eq('user_id', userId)
+          .maybeSingle();
+      final travelMode = _stringValue(response?['travel_mode']);
+      return travelMode == 'transit'
+          ? MapTravelMode.transit
+          : MapTravelMode.car;
+    } catch (_) {
+      return MapTravelMode.car;
+    }
   }
 
   Future<void> _tryFollowUp(Future<void> Function() action) async {
@@ -1129,6 +1184,19 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return value.toInt();
     }
     return int.tryParse(value.toString());
+  }
+
+  double? _doubleValue(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is double) {
+      return value;
+    }
+    if (value is num) {
+      return value.toDouble();
+    }
+    return double.tryParse(value.toString());
   }
 
   Future<DateTime?> _pickDateTime(DateTime initialValue) async {

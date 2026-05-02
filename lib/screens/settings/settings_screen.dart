@@ -66,6 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   TimeOfDay _morningBriefingAt = const TimeOfDay(hour: 7, minute: 30);
   TimeOfDay _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
   int _defaultReminderMinutes = 60;
+  String _travelMode = 'car';
 
   CalendarSyncSummary? _calendarSyncSummary;
   NotificationPermissionStatus? _notificationPermissionStatus;
@@ -327,6 +328,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _morningBriefingAt = const TimeOfDay(hour: 7, minute: 30);
       _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
       _defaultReminderMinutes = 60;
+      _travelMode = 'car';
     });
 
     _showSnack('설정을 기본값으로 되돌렸습니다.');
@@ -355,6 +357,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         morningBriefingAt: _formatTimeValue(_morningBriefingAt),
         eveningBriefingAt: _formatTimeValue(_eveningBriefingAt),
         defaultReminderMin: _defaultReminderMinutes,
+        travelMode: _travelMode,
       );
 
       final saved = await _settingsProvider.save(draft);
@@ -460,6 +463,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _morningBriefingAt = _parseTime(settings.morningBriefingAt);
     _eveningBriefingAt = _parseTime(settings.eveningBriefingAt);
     _defaultReminderMinutes = settings.defaultReminderMin;
+    _travelMode = settings.travelMode;
   }
 
   void _showSnack(String message) {
@@ -546,6 +550,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     )
                     .toList(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
+              title: '이동수단',
+              subtitle: '선행행동 역산 알림에서 이동시간 버퍼를 계산할 때 우선 사용할 방식을 정합니다.',
+              child: SegmentedButton<String>(
+                segments: const <ButtonSegment<String>>[
+                  ButtonSegment<String>(
+                    value: 'car',
+                    icon: Icon(Icons.directions_car_outlined),
+                    label: Text('자동차'),
+                  ),
+                  ButtonSegment<String>(
+                    value: 'transit',
+                    icon: Icon(Icons.directions_transit_outlined),
+                    label: Text('대중교통'),
+                  ),
+                ],
+                selected: <String>{_travelMode},
+                onSelectionChanged: (selected) {
+                  setState(() {
+                    _travelMode = selected.first;
+                  });
+                },
               ),
             ),
             const SizedBox(height: 16),
@@ -648,10 +677,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                   _StatusRow(
-                    label: '구글 지도 API 키',
-                    value: AppEnv.googleMapsApiKey.isNotEmpty ? '설정됨' : '미설정',
+                    label: 'T맵 API 키',
+                    value: AppEnv.tmapApiKey.isNotEmpty ? '설정됨' : '미설정',
                     icon: Icons.map_outlined,
-                    isConfigured: AppEnv.googleMapsApiKey.isNotEmpty,
+                    isConfigured: AppEnv.tmapApiKey.isNotEmpty,
+                  ),
+                  const SizedBox(height: 12),
+                  _StatusRow(
+                    label: '네이버 지도 API 키',
+                    value: AppEnv.naverMapClientId.isNotEmpty &&
+                            AppEnv.naverMapClientSecret.isNotEmpty
+                        ? '설정됨'
+                        : '미설정',
+                    icon: Icons.alt_route_outlined,
+                    isConfigured: AppEnv.naverMapClientId.isNotEmpty &&
+                        AppEnv.naverMapClientSecret.isNotEmpty,
                   ),
                 ],
               ),
