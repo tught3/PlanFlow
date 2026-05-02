@@ -14,7 +14,7 @@ Future<void> main() async {
   } catch (_) {
     // Keep booting when the local env file is absent in scaffolded setups.
   }
-  if (AppEnv.supabaseUrl.isNotEmpty && AppEnv.supabaseAnonKey.isNotEmpty) {
+  if (AppEnv.hasValidSupabaseConfig) {
     try {
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,

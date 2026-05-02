@@ -21,10 +21,25 @@ class AppEnv {
   static String get naverClientSecret => _envValue('NAVER_CLIENT_SECRET');
   static String get authRedirectUrl => 'planflow://auth-callback';
 
+  static bool get hasValidSupabaseConfig {
+    final url = supabaseUrl.trim();
+    final anonKey = supabaseAnonKey.trim();
+
+    if (url.isEmpty || anonKey.isEmpty) {
+      return false;
+    }
+
+    if (_looksLikePlaceholder(url) || _looksLikePlaceholder(anonKey)) {
+      return false;
+    }
+
+    return true;
+  }
+
   static bool get isSupabaseReady => _supabaseInitialized;
 
   static bool get isConfigured =>
-      isSupabaseReady && supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+      isSupabaseReady && hasValidSupabaseConfig;
 
   static void markSupabaseInitialized() {
     _supabaseInitialized = true;
@@ -60,5 +75,15 @@ class AppEnv {
         const String.fromEnvironment('NAVER_CLIENT_SECRET'),
       _ => '',
     };
+  }
+
+  static bool _looksLikePlaceholder(String value) {
+    final normalized = value.toLowerCase();
+    return normalized.startsWith('your-') ||
+        normalized.contains('your-project.supabase.co') ||
+        normalized.contains('your-supabase-anon-key') ||
+        normalized.contains('your-google-web-client-id') ||
+        normalized.contains('your-google-android-client-id') ||
+        normalized.contains('your-google-maps-api-key');
   }
 }
