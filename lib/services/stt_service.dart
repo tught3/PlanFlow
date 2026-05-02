@@ -45,8 +45,12 @@ class SttService {
   const SttService();
 
   static const String _koreanLocaleId = 'ko_KR';
-  static const Duration _listenFor = Duration(seconds: 15);
-  static const Duration _pauseFor = Duration(seconds: 8);
+  static const Duration _listenFor = Duration(minutes: 5);
+  static const Duration _pauseFor = Duration(minutes: 5);
+  static SpeechToText? _activeSpeech;
+  static Completer<SttListenResult>? _activeCompleter;
+  static String? _activeRecognizedText;
+  static var _userRequestedStop = false;
 
   static String? resolveKoreanLocaleId(Iterable<String> localeIds) {
     if (localeIds.contains(_koreanLocaleId)) {
@@ -70,11 +74,64 @@ class SttService {
     );
   }
 
-  Future<SttListenResult> listen() async {
+  Future<void> stopActiveListen() async {
+    _userRequestedStop = true;
+    final speech = _activeSpeech;
+    if (speech == null) {
+      return;
+    }
+    if (speech.isListening) {
+      await speech.stop();
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    final completer = _activeCompleter;
+    if (completer != null && !completer.isCompleted) {
+      final normalized = _activeRecognizedText?.trim();
+      if (normalized == null || normalized.isEmpty) {
+        completer.complete(
+          SttListenResult.failure(
+            failure: SttListenFailure.silence,
+            message: _silenceMessage,
+          ),
+        );
+      } else {
+        completer.complete(SttListenResult.success(normalized));
+      }
+    }
+  }
+
+  Future<void> cancelActiveListen() async {
+    _userRequestedStop = true;
+    final speech = _activeSpeech;
+    if (speech == null) {
+      return;
+    }
+    await speech.cancel();
+    final completer = _activeCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(
+        SttListenResult.failure(
+          failure: SttListenFailure.silence,
+          message: '음성 입력을 취소했어요.',
+          text: _activeRecognizedText,
+        ),
+      );
+    }
+  }
+
+  Future<SttListenResult> listen({
+    ValueChanged<String>? onPartialResult,
+  }) async {
     final speech = SpeechToText();
     final completer = Completer<SttListenResult>();
     String? latestRecognizedText;
     var hasStartedListening = false;
+    var restartCount = 0;
+    Future<void> Function()? startListening;
+    _activeSpeech = speech;
+    _activeCompleter = completer;
+    _activeRecognizedText = null;
+    _userRequestedStop = false;
 
     void completeSuccess([String? text]) {
       if (completer.isCompleted) {
@@ -110,6 +167,38 @@ class SttService {
       }
     }
 
+    void scheduleRestart(String reason) {
+      if (_userRequestedStop || completer.isCompleted) {
+        return;
+      }
+      if (restartCount >= 20) {
+        completeFailure(
+          failure: SttListenFailure.unavailable,
+          message: _genericMessage,
+        );
+        return;
+      }
+
+      restartCount += 1;
+      debugPrint('PlanFlow STT restart #$restartCount: $reason');
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 350), () async {
+          if (_userRequestedStop || completer.isCompleted) {
+            return;
+          }
+          try {
+            await startListening?.call();
+          } catch (error) {
+            debugPrint('PlanFlow STT restart failed: $error');
+            completeFailure(
+              failure: SttListenFailure.unavailable,
+              message: _genericMessage,
+            );
+          }
+        }),
+      );
+    }
+
     try {
       final available = await speech.initialize(
         debugLogging: kDebugMode,
@@ -120,7 +209,11 @@ class SttService {
           } else if (hasStartedListening &&
               (status == SpeechToText.doneStatus ||
                   status == SpeechToText.notListeningStatus)) {
-            completeSuccess();
+            if (_userRequestedStop) {
+              completeSuccess();
+            } else {
+              scheduleRestart(status);
+            }
           }
         },
         onError: (error) {
@@ -129,7 +222,11 @@ class SttService {
           );
           if (error.errorMsg == 'error_no_match' ||
               error.errorMsg == 'error_speech_timeout') {
-            completeSuccess();
+            if (_userRequestedStop) {
+              completeSuccess();
+            } else {
+              scheduleRestart(error.errorMsg);
+            }
             return;
           }
 
@@ -183,21 +280,27 @@ class SttService {
         );
       }
 
-      await speech.listen(
-        localeId: localeId,
-        listenFor: _listenFor,
-        pauseFor: _pauseFor,
-        listenOptions: buildListenOptions(),
-        onResult: (result) {
-          final recognizedWords = result.recognizedWords.trim();
-          if (recognizedWords.isNotEmpty) {
-            latestRecognizedText = recognizedWords;
-          }
-          if (result.finalResult) {
-            completeSuccess(recognizedWords);
-          }
-        },
-      );
+      startListening = () {
+        hasStartedListening = false;
+        return speech.listen(
+          localeId: localeId,
+          listenFor: _listenFor,
+          pauseFor: _pauseFor,
+          listenOptions: buildListenOptions(),
+          onResult: (result) {
+            final recognizedWords = result.recognizedWords.trim();
+            if (recognizedWords.isNotEmpty) {
+              latestRecognizedText = recognizedWords;
+              _activeRecognizedText = recognizedWords;
+              onPartialResult?.call(recognizedWords);
+            }
+            if (result.finalResult && _userRequestedStop) {
+              completeSuccess(recognizedWords);
+            }
+          },
+        );
+      };
+      await startListening();
 
       return await completer.future.timeout(
         _listenFor + const Duration(seconds: 5),
@@ -220,10 +323,13 @@ class SttService {
         text: latestRecognizedText,
       );
     } finally {
-      if (speech.isListening) {
-        await speech.stop();
-      } else {
+      if (!_userRequestedStop && speech.isListening) {
         await speech.cancel();
+      }
+      if (identical(_activeSpeech, speech)) {
+        _activeSpeech = null;
+        _activeCompleter = null;
+        _activeRecognizedText = null;
       }
     }
   }

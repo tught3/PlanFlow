@@ -701,6 +701,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('일정 확인')),
+      bottomNavigationBar: _ConfirmBottomNavigation(
+        onHome: () => context.go(AppRoutes.home),
+        onCalendar: () => context.go(AppRoutes.calendar),
+        onSettings: () => context.go(AppRoutes.settings),
+      ),
       body: SafeArea(
         child: ListView(
           controller: _scrollController,
@@ -958,6 +963,55 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       pickedDate.day,
       pickedTime.hour,
       pickedTime.minute,
+    );
+  }
+}
+
+class _ConfirmBottomNavigation extends StatelessWidget {
+  const _ConfirmBottomNavigation({
+    required this.onHome,
+    required this.onCalendar,
+    required this.onSettings,
+  });
+
+  final VoidCallback onHome;
+  final VoidCallback onCalendar;
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    return NavigationBar(
+      selectedIndex: 1,
+      onDestinationSelected: (index) {
+        switch (index) {
+          case 0:
+            onHome();
+            break;
+          case 1:
+            onCalendar();
+            break;
+          case 2:
+            onSettings();
+            break;
+        }
+      },
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home),
+          label: '홈',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.event_note_outlined),
+          selectedIcon: Icon(Icons.event_note),
+          label: '일정',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.settings_outlined),
+          selectedIcon: Icon(Icons.settings),
+          label: '설정',
+        ),
+      ],
     );
   }
 }

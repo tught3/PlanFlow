@@ -45,7 +45,17 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     });
 
     try {
-      final result = await widget.sttService.listen();
+      final result = await widget.sttService.listen(
+        onPartialResult: (text) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _recognizedText = text;
+            _rawTextController.text = text;
+          });
+        },
+      );
       if (!mounted) {
         return;
       }
@@ -82,6 +92,27 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         });
       }
     }
+  }
+
+  Future<void> _finishVoiceFlow() async {
+    if (!_isListening) {
+      return;
+    }
+    await widget.sttService.stopActiveListen();
+  }
+
+  Future<void> _cancelVoiceFlow() async {
+    if (!_isListening) {
+      return;
+    }
+    await widget.sttService.cancelActiveListen();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isListening = false;
+      _statusMessage = '음성 입력을 취소했어요. 다시 받아쓰거나 직접 입력으로 이어갈 수 있어요.';
+    });
   }
 
   Future<void> _continueWithRawText() async {
@@ -153,6 +184,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('음성 입력')),
+      bottomNavigationBar: _VoiceBottomNavigation(
+        onHome: () => context.go(AppRoutes.home),
+        onCalendar: () => context.go(AppRoutes.calendar),
+        onSettings: () => context.go(AppRoutes.settings),
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
@@ -192,7 +228,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
               const SizedBox(height: 20),
               Text(
                 _isListening
-                    ? '지금 말하는 내용을 받아쓰는 중이에요.'
+                    ? '말을 마친 뒤 아래 완료 버튼을 눌러 주세요. 완료 전에는 확인 화면으로 넘어가지 않습니다.'
                     : '온디바이스 한국어 인식이 안 되면 아래에 직접 입력해도 됩니다.',
                 style: theme.textTheme.titleMedium,
                 textAlign: TextAlign.center,
@@ -245,6 +281,20 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                     : const Icon(Icons.mic),
                 label: Text(_isListening ? '받아쓰는 중' : '음성으로 받아쓰기'),
               ),
+              if (_isListening) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: _finishVoiceFlow,
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: const Text('완료하고 일정 확인'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _cancelVoiceFlow,
+                  icon: const Icon(Icons.close),
+                  label: const Text('취소'),
+                ),
+              ],
               const SizedBox(height: 12),
               FilledButton.tonalIcon(
                 onPressed: (_isListening || _isParsing)
@@ -262,6 +312,55 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _VoiceBottomNavigation extends StatelessWidget {
+  const _VoiceBottomNavigation({
+    required this.onHome,
+    required this.onCalendar,
+    required this.onSettings,
+  });
+
+  final VoidCallback onHome;
+  final VoidCallback onCalendar;
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    return NavigationBar(
+      selectedIndex: 1,
+      onDestinationSelected: (index) {
+        switch (index) {
+          case 0:
+            onHome();
+            break;
+          case 1:
+            onCalendar();
+            break;
+          case 2:
+            onSettings();
+            break;
+        }
+      },
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home),
+          label: '홈',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.event_note_outlined),
+          selectedIcon: Icon(Icons.event_note),
+          label: '일정',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.settings_outlined),
+          selectedIcon: Icon(Icons.settings),
+          label: '설정',
+        ),
+      ],
     );
   }
 }
