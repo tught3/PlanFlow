@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
+import '../../core/env.dart';
 import '../../core/theme.dart';
+import '../../data/models/event_model.dart';
+import '../../data/repositories/event_repository.dart';
 
 class EventEditScreen extends StatefulWidget {
-  const EventEditScreen({super.key});
+  const EventEditScreen({super.key, this.event});
+
+  final EventModel? event;
 
   @override
   State<EventEditScreen> createState() => _EventEditScreenState();
@@ -14,45 +20,145 @@ class EventEditScreen extends StatefulWidget {
 class _EventEditScreenState extends State<EventEditScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
-  late final TextEditingController _timeController;
   late final TextEditingController _locationController;
   late final TextEditingController _memoController;
   late final TextEditingController _suppliesController;
-  bool _critical = true;
+  late DateTime _startAt;
+  DateTime? _endAt;
+  late bool _critical;
+  bool _isSaving = false;
+
+  bool get _isNewEvent => widget.event == null;
 
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: '주간 영업 미팅');
-    _timeController = TextEditingController(text: '2026-05-01 14:00 - 15:00');
-    _locationController = TextEditingController(text: '서울역 인근 회의실 A');
-    _memoController = TextEditingController(
-      text: '이번 주 우선순위 고객과 진행 상황을 정리하고, 다음 액션을 확정합니다.',
+    final event = widget.event;
+    _titleController = TextEditingController(text: event?.title ?? '');
+    _locationController = TextEditingController(text: event?.location ?? '');
+    _memoController = TextEditingController(text: event?.memo ?? '');
+    _suppliesController = TextEditingController(
+      text: event?.supplies.join(', ') ?? '',
     );
-    _suppliesController = TextEditingController(text: '노트북, 충전기, 명함, 회의 자료');
+    _startAt = event?.startAt ?? DateTime.now().add(const Duration(hours: 1));
+    _endAt = event?.endAt;
+    _critical = event?.isCritical ?? false;
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _timeController.dispose();
     _locationController.dispose();
     _memoController.dispose();
     _suppliesController.dispose();
     super.dispose();
   }
 
-  void _handleSave() {
+  Future<void> _handleSave() async {
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) {
       return;
     }
 
-    if (!mounted) {
-      return;
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      if (!AppEnv.isSupabaseReady) {
+        _showMessage('Supabase 환경값이 설정되지 않았습니다.');
+        if (mounted) {
+          context.pop();
+        }
+        return;
+      }
+
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        _showMessage('로그인 후 저장할 수 있습니다.');
+        return;
+      }
+
+      final supplies = _suppliesController.text
+          .split(',')
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false);
+
+      final updatedEvent = EventModel(
+        id: widget.event?.id ?? '',
+        userId: user.id,
+        title: _titleController.text.trim(),
+        startAt: _startAt,
+        endAt: _endAt,
+        location: _emptyToNull(_locationController.text),
+        memo: _emptyToNull(_memoController.text),
+        supplies: supplies,
+        isCritical: _critical,
+        createdAt: widget.event?.createdAt,
+      );
+
+      final repository = EventRepository.supabase();
+      if (_isNewEvent) {
+        await repository.createEvent(updatedEvent);
+      } else {
+        await repository.updateEvent(updatedEvent);
+      }
+
+      if (mounted) {
+        _showMessage(_isNewEvent ? '일정을 만들었습니다.' : '일정을 수정했습니다.');
+        context.go(AppRoutes.calendar);
+      }
+    } catch (_) {
+      if (mounted) {
+        _showMessage('저장하지 못했습니다. 다시 시도해 주세요.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  String? _emptyToNull(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<DateTime?> _pickDateTime(DateTime initialValue) async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialValue,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+    );
+    if (pickedDate == null || !mounted) {
+      return null;
     }
 
-    context.go(AppRoutes.eventDetail);
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initialValue),
+    );
+    if (pickedTime == null) {
+      return null;
+    }
+
+    return DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
   }
 
   @override
@@ -61,7 +167,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
-      appBar: AppBar(title: const Text('이벤트 편집')),
+      appBar: AppBar(
+        title: Text(_isNewEvent ? '일정 만들기' : '이벤트 편집'),
+      ),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -69,7 +177,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             children: [
               Text(
-                '필요한 정보만 수정하고 저장하세요.',
+                _isNewEvent
+                    ? '새 일정의 정보를 입력하세요.'
+                    : '필요한 정보만 수정하고 저장하세요.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: PlanFlowColors.textSecondary,
                 ),
@@ -77,29 +187,60 @@ class _EventEditScreenState extends State<EventEditScreen> {
               const SizedBox(height: AppConstants.sectionSpacing),
               TextFormField(
                 controller: _titleController,
-                decoration: const InputDecoration(
-                  labelText: '제목',
-                ),
+                decoration: const InputDecoration(labelText: '제목'),
                 validator: (value) => (value == null || value.trim().isEmpty)
                     ? '제목을 입력하세요.'
                     : null,
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
-              TextFormField(
-                controller: _timeController,
-                decoration: const InputDecoration(
-                  labelText: '시간',
-                ),
-                validator: (value) => (value == null || value.trim().isEmpty)
-                    ? '시간을 입력하세요.'
-                    : null,
+
+              // Start time
+              _DateTimeTile(
+                label: '시작 시간',
+                value: _startAt,
+                onTap: () async {
+                  final picked = await _pickDateTime(_startAt);
+                  if (picked != null) {
+                    setState(() {
+                      _startAt = picked;
+                      if (_endAt != null && _endAt!.isBefore(_startAt)) {
+                        _endAt = null;
+                      }
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: AppConstants.sectionSpacing),
+
+              // End time
+              _DateTimeTile(
+                label: '종료 시간',
+                value: _endAt,
+                emptyLabel: '종료 시간 없음',
+                onTap: () async {
+                  final picked = await _pickDateTime(_endAt ?? _startAt);
+                  if (picked != null) {
+                    setState(() {
+                      _endAt = picked;
+                    });
+                  }
+                },
+                trailing: _endAt == null
+                    ? null
+                    : IconButton(
+                        tooltip: '종료 시간 지우기',
+                        onPressed: () {
+                          setState(() {
+                            _endAt = null;
+                          });
+                        },
+                        icon: const Icon(Icons.clear),
+                      ),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
               TextFormField(
                 controller: _locationController,
-                decoration: const InputDecoration(
-                  labelText: '장소',
-                ),
+                decoration: const InputDecoration(labelText: '장소'),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
               TextFormField(
@@ -129,7 +270,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
                     width: 0.5,
                   ),
                 ),
-                contentPadding: EdgeInsets.zero,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 title: const Text('중요 일정'),
                 subtitle: const Text('핵심 일정 여부를 표시합니다.'),
                 value: _critical,
@@ -139,21 +281,69 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   });
                 },
               ),
-              const SizedBox(height: AppConstants.sectionSpacing),
+              const SizedBox(height: 24),
               FilledButton.icon(
-                onPressed: _handleSave,
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('저장'),
+                onPressed: _isSaving ? null : _handleSave,
+                icon: _isSaving
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(_isSaving ? '저장 중...' : '저장'),
               ),
               const SizedBox(height: 8),
               TextButton(
-                onPressed: () => context.go(AppRoutes.eventDetail),
-                child: const Text('상세로 돌아가기'),
+                onPressed: () => context.pop(),
+                child: const Text('취소'),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _DateTimeTile extends StatelessWidget {
+  const _DateTimeTile({
+    required this.label,
+    required this.value,
+    required this.onTap,
+    this.emptyLabel,
+    this.trailing,
+  });
+
+  final String label;
+  final DateTime? value;
+  final String? emptyLabel;
+  final VoidCallback onTap;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = value == null
+        ? emptyLabel ?? '설정 안 됨'
+        : MaterialLocalizations.of(context).formatFullDate(value!);
+    final time = value == null
+        ? null
+        : MaterialLocalizations.of(context).formatTimeOfDay(
+            TimeOfDay.fromDateTime(value!),
+          );
+
+    return ListTile(
+      tileColor: PlanFlowColors.surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      shape: RoundedRectangleBorder(
+        side:
+            const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      title: Text(label),
+      subtitle: Text(time == null ? text : '$text · $time'),
+      trailing: trailing ??
+          const Icon(Icons.edit_calendar, color: PlanFlowColors.primaryMid),
+      onTap: onTap,
     );
   }
 }

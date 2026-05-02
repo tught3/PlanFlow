@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/backup_service.dart';
+import '../../services/briefing_scheduler_service.dart';
 import '../../services/calendar_sync_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -167,9 +168,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _saveLocalChanges() {
+    final morningAt = '${_morningBriefingAt.hour.toString().padLeft(2, '0')}:${_morningBriefingAt.minute.toString().padLeft(2, '0')}';
+    final eveningAt = '${_eveningBriefingAt.hour.toString().padLeft(2, '0')}:${_eveningBriefingAt.minute.toString().padLeft(2, '0')}';
+
+    final scheduler = BriefingSchedulerService();
+    scheduler.scheduleDaily(
+      morningTime: morningAt,
+      eveningTime: eveningAt,
+    );
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('현재 세션에 저장했습니다. 서버 저장은 추후 설정 저장소와 연결됩니다.'),
+        content: Text('브리핑 알람 일정을 업데이트했습니다. 서버 저장은 추후 지원됩니다.'),
       ),
     );
   }

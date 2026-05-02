@@ -1,4 +1,9 @@
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../core/env.dart';
+import 'briefing_scheduler_service.dart';
 
 class AlarmService {
   const AlarmService();
@@ -71,7 +76,33 @@ class AlarmService {
   int _alarmIdFrom(String id) => id.hashCode & 0x7fffffff;
 }
 
+/// Background isolate callback for briefing alarms.
+///
+/// Because this runs in a separate isolate, we need to re-initialize
+/// dotenv and Supabase before doing any work.
 @pragma('vm:entry-point')
-void _briefingAlarmCallback(int id, Map<String, dynamic> params) {
-  // Scaffold only: the background isolate wiring will be expanded later.
+Future<void> _briefingAlarmCallback(
+  int id,
+  Map<String, dynamic> params,
+) async {
+  final briefingType = params['briefing_type'] as String? ?? 'morning';
+  final isMorning = briefingType == 'morning';
+
+  try {
+    // Re-initialize environment in the background isolate
+    await dotenv.load(fileName: '.env');
+
+    if (AppEnv.isSupabaseReady) {
+      await Supabase.initialize(
+        url: AppEnv.supabaseUrl,
+        anonKey: AppEnv.supabaseAnonKey,
+      );
+    }
+
+    final scheduler = BriefingSchedulerService();
+    await scheduler.executeBriefing(isMorning: isMorning);
+  } catch (_) {
+    // Background isolate must never crash
+  }
 }
+

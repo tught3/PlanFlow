@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/reset_password_screen.dart';
+import '../data/models/event_model.dart';
 import '../screens/event/event_detail_screen.dart';
 import '../screens/event/event_edit_screen.dart';
 import '../screens/placeholder_screen.dart';
@@ -85,11 +86,21 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.eventDetail,
-      builder: (context, state) => const EventDetailScreen(),
+      builder: (context, state) {
+        final event = state.extra is EventModel
+            ? state.extra! as EventModel
+            : null;
+        return EventDetailScreen(event: event);
+      },
     ),
     GoRoute(
       path: AppRoutes.eventEdit,
-      builder: (context, state) => const EventEditScreen(),
+      builder: (context, state) {
+        final event = state.extra is EventModel
+            ? state.extra! as EventModel
+            : null;
+        return EventEditScreen(event: event);
+      },
     ),
   ],
   errorBuilder: (context, state) => const PlaceholderScreen(
