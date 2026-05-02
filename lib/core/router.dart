@@ -87,19 +87,45 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.eventDetail,
       builder: (context, state) {
-        final event = state.extra is EventModel
-            ? state.extra! as EventModel
-            : null;
-        return EventDetailScreen(event: event);
+        final event =
+            state.extra is EventModel ? state.extra! as EventModel : null;
+        return EventDetailScreen(
+          event: event,
+          eventId: _resolveEventId(state, event),
+        );
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.eventDetailWithId,
+      builder: (context, state) {
+        final event =
+            state.extra is EventModel ? state.extra! as EventModel : null;
+        return EventDetailScreen(
+          event: event,
+          eventId: _resolveEventId(state, event),
+        );
       },
     ),
     GoRoute(
       path: AppRoutes.eventEdit,
       builder: (context, state) {
-        final event = state.extra is EventModel
-            ? state.extra! as EventModel
-            : null;
-        return EventEditScreen(event: event);
+        final event =
+            state.extra is EventModel ? state.extra! as EventModel : null;
+        return EventEditScreen(
+          event: event,
+          eventId: _resolveEventId(state, event),
+        );
+      },
+    ),
+    GoRoute(
+      path: AppRoutes.eventEditWithId,
+      builder: (context, state) {
+        final event =
+            state.extra is EventModel ? state.extra! as EventModel : null;
+        return EventEditScreen(
+          event: event,
+          eventId: _resolveEventId(state, event),
+        );
       },
     ),
   ],
@@ -108,3 +134,27 @@ final GoRouter appRouter = GoRouter(
     message: '요청한 화면 경로를 찾지 못했습니다.',
   ),
 );
+
+String? _resolveEventId(GoRouterState state, EventModel? event) {
+  final pathId = state.pathParameters['eventId']?.trim();
+  if (pathId != null && pathId.isNotEmpty) {
+    return pathId;
+  }
+
+  final queryId = state.uri.queryParameters['eventId']?.trim();
+  if (queryId != null && queryId.isNotEmpty) {
+    return queryId;
+  }
+
+  final querySnakeId = state.uri.queryParameters['event_id']?.trim();
+  if (querySnakeId != null && querySnakeId.isNotEmpty) {
+    return querySnakeId;
+  }
+
+  final extraId = event?.id.trim();
+  if (extraId != null && extraId.isNotEmpty) {
+    return extraId;
+  }
+
+  return null;
+}

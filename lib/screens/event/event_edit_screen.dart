@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,11 +9,13 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../services/home_widget_service.dart';
 
 class EventEditScreen extends StatefulWidget {
-  const EventEditScreen({super.key, this.event});
+  const EventEditScreen({super.key, this.event, this.eventId});
 
   final EventModel? event;
+  final String? eventId;
 
   @override
   State<EventEditScreen> createState() => _EventEditScreenState();
@@ -26,14 +30,29 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late DateTime _startAt;
   DateTime? _endAt;
   late bool _critical;
+  EventModel? _loadedEvent;
+  bool _isLoading = false;
   bool _isSaving = false;
 
-  bool get _isNewEvent => widget.event == null;
+  bool get _isNewEvent => _loadedEvent == null && _resolvedEventId == null;
+
+  String? get _resolvedEventId {
+    final routeId = widget.eventId?.trim();
+    if (routeId != null && routeId.isNotEmpty) {
+      return routeId;
+    }
+    final extraId = widget.event?.id.trim();
+    if (extraId != null && extraId.isNotEmpty) {
+      return extraId;
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
     final event = widget.event;
+    _loadedEvent = event;
     _titleController = TextEditingController(text: event?.title ?? '');
     _locationController = TextEditingController(text: event?.location ?? '');
     _memoController = TextEditingController(text: event?.memo ?? '');
@@ -43,6 +62,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _startAt = event?.startAt ?? DateTime.now().add(const Duration(hours: 1));
     _endAt = event?.endAt;
     _critical = event?.isCritical ?? false;
+    _loadEventIfNeeded();
   }
 
   @override
@@ -86,7 +106,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
           .toList(growable: false);
 
       final updatedEvent = EventModel(
-        id: widget.event?.id ?? '',
+        id: _loadedEvent?.id ?? _resolvedEventId ?? '',
         userId: user.id,
         title: _titleController.text.trim(),
         startAt: _startAt,
@@ -95,15 +115,19 @@ class _EventEditScreenState extends State<EventEditScreen> {
         memo: _emptyToNull(_memoController.text),
         supplies: supplies,
         isCritical: _critical,
-        createdAt: widget.event?.createdAt,
+        source: _loadedEvent?.source ?? 'manual',
+        externalId: _loadedEvent?.externalId,
+        createdAt: _loadedEvent?.createdAt,
       );
 
       final repository = EventRepository.supabase();
+      late final EventModel savedEvent;
       if (_isNewEvent) {
-        await repository.createEvent(updatedEvent);
+        savedEvent = await repository.createEvent(updatedEvent);
       } else {
-        await repository.updateEvent(updatedEvent);
+        savedEvent = await repository.updateEvent(updatedEvent);
       }
+      unawaited(_refreshHomeWidget(repository, savedEvent));
 
       if (mounted) {
         _showMessage(_isNewEvent ? '일정을 만들었습니다.' : '일정을 수정했습니다.');
@@ -119,6 +143,86 @@ class _EventEditScreenState extends State<EventEditScreen> {
           _isSaving = false;
         });
       }
+    }
+  }
+
+  Future<void> _loadEventIfNeeded() async {
+    final eventId = _resolvedEventId;
+    if (_loadedEvent != null || eventId == null || !AppEnv.isSupabaseReady) {
+      return;
+    }
+
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      _showMessage('로그인 후 일정 정보를 불러올 수 있습니다.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final event = await EventRepository.supabase().fetchEvent(
+        eventId,
+        userId: user.id,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (event == null) {
+        _showMessage('수정할 일정을 찾지 못했습니다.');
+        return;
+      }
+      setState(() {
+        _loadedEvent = event;
+        _titleController.text = event.title;
+        _locationController.text = event.location ?? '';
+        _memoController.text = event.memo ?? '';
+        _suppliesController.text = event.supplies.join(', ');
+        _startAt = event.startAt ?? _startAt;
+        _endAt = event.endAt;
+        _critical = event.isCritical;
+      });
+    } catch (_) {
+      if (mounted) {
+        _showMessage('일정 정보를 불러오지 못했습니다.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshHomeWidget(
+    EventRepository repository,
+    EventModel fallbackEvent,
+  ) async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        return;
+      }
+      final now = DateTime.now();
+      final events = await repository.listEvents(userId: user.id);
+      final nextEvents = events.where((event) {
+        final startAt = event.startAt;
+        return startAt != null && !startAt.isBefore(now);
+      }).toList(growable: false)
+        ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+      final nextEvent = nextEvents.isEmpty ? fallbackEvent : nextEvents.first;
+      await HomeWidgetService().updateNextEvent(
+        title: nextEvent.title,
+        eventId: nextEvent.id,
+        startAt: nextEvent.startAt,
+        location: nextEvent.location,
+        isCritical: nextEvent.isCritical,
+      );
+    } catch (_) {
+      // Widget refresh should not block event saves.
     }
   }
 
@@ -177,13 +281,19 @@ class _EventEditScreenState extends State<EventEditScreen> {
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             children: [
               Text(
-                _isNewEvent
-                    ? '새 일정의 정보를 입력하세요.'
-                    : '필요한 정보만 수정하고 저장하세요.',
+                _isLoading
+                    ? '일정 정보를 불러오는 중입니다.'
+                    : _isNewEvent
+                        ? '새 일정의 정보를 입력하세요.'
+                        : '필요한 정보만 수정하고 저장하세요.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: PlanFlowColors.textSecondary,
                 ),
               ),
+              if (_isLoading) ...[
+                const SizedBox(height: AppConstants.sectionSpacing),
+                const LinearProgressIndicator(),
+              ],
               const SizedBox(height: AppConstants.sectionSpacing),
               TextFormField(
                 controller: _titleController,
@@ -335,8 +445,7 @@ class _DateTimeTile extends StatelessWidget {
       tileColor: PlanFlowColors.surface,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       shape: RoundedRectangleBorder(
-        side:
-            const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
         borderRadius: BorderRadius.circular(10),
       ),
       title: Text(label),

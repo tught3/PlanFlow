@@ -9,6 +9,14 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../widgets/planflow_voice_fab.dart';
 
+enum _CalendarLoadState {
+  loading,
+  ready,
+  supabaseMissing,
+  signedOut,
+  error,
+}
+
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
 
@@ -20,7 +28,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _selectedDate = DateTime.now();
   DateTime _focusedMonth = DateTime.now();
   List<EventModel> _allEvents = const <EventModel>[];
-  bool _isLoading = false;
+  _CalendarLoadState _loadState = _CalendarLoadState.loading;
+  String? _loadMessage;
 
   @override
   void initState() {
@@ -29,17 +38,32 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _loadEvents() async {
+    if (mounted) {
+      setState(() {
+        _loadState = _CalendarLoadState.loading;
+        _loadMessage = null;
+      });
+    }
+
     if (!AppEnv.isSupabaseReady) {
+      if (mounted) {
+        setState(() {
+          _allEvents = const <EventModel>[];
+          _loadState = _CalendarLoadState.supabaseMissing;
+        });
+      }
       return;
     }
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
+      if (mounted) {
+        setState(() {
+          _allEvents = const <EventModel>[];
+          _loadState = _CalendarLoadState.signedOut;
+        });
+      }
       return;
     }
-
-    setState(() {
-      _isLoading = true;
-    });
 
     try {
       final repository = EventRepository.supabase();
@@ -47,16 +71,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (mounted) {
         setState(() {
           _allEvents = events;
+          _loadState = _CalendarLoadState.ready;
         });
       }
-    } catch (_) {
-      // Fail silently; show empty state
-    } finally {
+    } catch (error) {
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          _allEvents = const <EventModel>[];
+          _loadState = _CalendarLoadState.error;
+          _loadMessage = '캘린더 일정을 불러오지 못했어요. 다시 시도해 주세요.';
         });
       }
+      debugPrint('CalendarScreen load failed: $error');
+    } finally {
+      // Loading state is replaced by one of the terminal states above.
     }
   }
 
@@ -100,105 +128,135 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final monthLabel = '${_focusedMonth.year}년 ${_focusedMonth.month}월';
     final selectedDateLabel = _koreanDateLabel(_selectedDate);
     final dayEvents = _eventsForSelectedDate;
+    final isLoading = _loadState == _CalendarLoadState.loading;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
-      appBar: AppBar(title: const Text('일정')),
+      appBar: AppBar(
+        title: const Text('일정'),
+        actions: [
+          IconButton(
+            tooltip: '새로고침',
+            onPressed: isLoading ? null : _loadEvents,
+            icon: isLoading
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+          ),
+        ],
+      ),
       floatingActionButton: PlanFlowVoiceFab(
         onPressed: () => context.push(AppRoutes.voice),
       ),
       body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(AppConstants.defaultPadding),
+        child: RefreshIndicator(
+          onRefresh: _loadEvents,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            children: [
+              if (_loadState != _CalendarLoadState.ready) ...[
+                _CalendarStatusCard(
+                  state: _loadState,
+                  message: _loadMessage,
+                  onRefresh: _loadEvents,
+                ),
+                const SizedBox(height: 12),
+              ],
+              // Month header with navigation
+              _MonthHeader(
+                monthLabel: monthLabel,
+                onPrevious: () => _changeMonth(-1),
+                onNext: () => _changeMonth(1),
+                onToday: () {
+                  setState(() {
+                    _focusedMonth = DateTime.now();
+                    _selectedDate = DateTime.now();
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+
+              // Mini calendar grid
+              _MiniCalendarGrid(
+                focusedMonth: _focusedMonth,
+                selectedDate: _selectedDate,
+                daysWithEvents: _daysWithEvents,
+                onDaySelected: (day) {
+                  setState(() {
+                    _selectedDate = day;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Selected date events
+              Row(
                 children: [
-                  // Month header with navigation
-                  _MonthHeader(
-                    monthLabel: monthLabel,
-                    onPrevious: () => _changeMonth(-1),
-                    onNext: () => _changeMonth(1),
-                    onToday: () {
-                      setState(() {
-                        _focusedMonth = DateTime.now();
-                        _selectedDate = DateTime.now();
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Mini calendar grid
-                  _MiniCalendarGrid(
-                    focusedMonth: _focusedMonth,
-                    selectedDate: _selectedDate,
-                    daysWithEvents: _daysWithEvents,
-                    onDaySelected: (day) {
-                      setState(() {
-                        _selectedDate = day;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Selected date events
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          selectedDateLabel,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: PlanFlowColors.primary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: PlanFlowColors.surface,
-                          border:
-                              Border.all(color: PlanFlowColors.primaryFaint),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${dayEvents.length}',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: PlanFlowColors.primaryMid,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      TextButton.icon(
-                        onPressed: () => context.push(AppRoutes.voice),
-                        icon: const Icon(Icons.mic_none, size: 18),
-                        label: const Text('음성 추가'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  if (dayEvents.isEmpty)
-                    _EmptyAgendaCard(
-                      onVoice: () => context.push(AppRoutes.voice),
-                    )
-                  else
-                    ...dayEvents.map(
-                      (event) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _EventAgendaCard(
-                          event: event,
-                          onTap: () => context.push(
-                            AppRoutes.eventDetail,
-                            extra: event,
-                          ),
-                        ),
+                  Expanded(
+                    child: Text(
+                      selectedDateLabel,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: PlanFlowColors.surface,
+                      border: Border.all(color: PlanFlowColors.primaryFaint),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${dayEvents.length}',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: PlanFlowColors.primaryMid,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: () => context.push(AppRoutes.eventEdit),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('직접 추가'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: () => context.push(AppRoutes.voice),
+                    icon: const Icon(Icons.mic_none, size: 18),
+                    label: const Text('음성 추가'),
+                  ),
                 ],
               ),
+              const SizedBox(height: 12),
+
+              if (dayEvents.isEmpty)
+                _EmptyAgendaCard(
+                  onVoice: () => context.push(AppRoutes.voice),
+                )
+              else
+                ...dayEvents.map(
+                  (event) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _EventAgendaCard(
+                      event: event,
+                      onTap: () => context.push(
+                        '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                        extra: event,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -214,6 +272,94 @@ class _CalendarScreenState extends State<CalendarScreen> {
       DateTime.sunday: '일요일',
     };
     return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
+  }
+}
+
+class _CalendarStatusCard extends StatelessWidget {
+  const _CalendarStatusCard({
+    required this.state,
+    required this.onRefresh,
+    this.message,
+  });
+
+  final _CalendarLoadState state;
+  final VoidCallback onRefresh;
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final (icon, title, body) = switch (state) {
+      _CalendarLoadState.supabaseMissing => (
+          Icons.cloud_off_outlined,
+          'Supabase 설정이 필요해요',
+          '환경값이 없어서 캘린더 데이터를 가져올 수 없어요.',
+        ),
+      _CalendarLoadState.signedOut => (
+          Icons.lock_outline,
+          '로그인이 필요해요',
+          '로그인한 뒤 내 일정 목록을 다시 불러올 수 있어요.',
+        ),
+      _CalendarLoadState.error => (
+          Icons.error_outline,
+          '캘린더 불러오기 실패',
+          message ?? '캘린더 일정 목록을 불러오지 못했습니다.',
+        ),
+      _CalendarLoadState.loading => (
+          Icons.hourglass_top_outlined,
+          '캘린더 확인 중',
+          '잠시만 기다려 주세요.',
+        ),
+      _CalendarLoadState.ready => (
+          Icons.check_circle_outline,
+          '정상',
+          '캘린더 데이터를 불러왔어요.',
+        ),
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: PlanFlowColors.primaryFaint, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: PlanFlowColors.primaryMid),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.textSecondary,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: onRefresh,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('새로고침'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -300,8 +446,7 @@ class _MiniCalendarGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final firstDayOfMonth = DateTime(focusedMonth.year, focusedMonth.month, 1);
-    final lastDay =
-        DateTime(focusedMonth.year, focusedMonth.month + 1, 0).day;
+    final lastDay = DateTime(focusedMonth.year, focusedMonth.month + 1, 0).day;
     final startWeekday = firstDayOfMonth.weekday % 7; // 0=Sun
     final today = DateTime.now();
 
@@ -476,9 +621,7 @@ class _EventAgendaCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
-                  event.isCritical
-                      ? Icons.priority_high
-                      : Icons.event_outlined,
+                  event.isCritical ? Icons.priority_high : Icons.event_outlined,
                   color: event.isCritical
                       ? const Color(0xFFB42318)
                       : PlanFlowColors.primaryMid,

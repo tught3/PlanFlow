@@ -1,16 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../services/home_widget_service.dart';
 
 class EventDetailScreen extends StatefulWidget {
-  const EventDetailScreen({super.key, this.event});
+  const EventDetailScreen({super.key, this.event, this.eventId});
 
   final EventModel? event;
+  final String? eventId;
 
   @override
   State<EventDetailScreen> createState() => _EventDetailScreenState();
@@ -18,12 +23,76 @@ class EventDetailScreen extends StatefulWidget {
 
 class _EventDetailScreenState extends State<EventDetailScreen> {
   EventModel? _event;
+  bool _isLoading = false;
   bool _isDeleting = false;
+  String? _loadError;
+
+  String? get _resolvedEventId {
+    final routeId = widget.eventId?.trim();
+    if (routeId != null && routeId.isNotEmpty) {
+      return routeId;
+    }
+    final extraId = widget.event?.id.trim();
+    if (extraId != null && extraId.isNotEmpty) {
+      return extraId;
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
     _event = widget.event;
+    _loadLatestEvent();
+  }
+
+  Future<void> _loadLatestEvent() async {
+    final eventId = _resolvedEventId;
+    if (eventId == null || eventId.isEmpty || !AppEnv.isSupabaseReady) {
+      setState(() {
+        _loadError = _event == null ? '일정 정보를 불러오지 못했습니다.' : null;
+      });
+      return;
+    }
+
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      setState(() {
+        _loadError = _event == null ? '로그인 후 일정 정보를 다시 확인할 수 있습니다.' : null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    try {
+      final latestEvent = await EventRepository.supabase().fetchEvent(
+        eventId,
+        userId: user.id,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _event = latestEvent ?? _event;
+        _loadError = latestEvent == null ? '일정을 다시 찾지 못했습니다.' : null;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadError = _event == null ? '일정 정보를 불러오지 못했습니다.' : null;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _deleteEvent() async {
@@ -63,7 +132,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     try {
       if (AppEnv.isSupabaseReady) {
-        await EventRepository.supabase().deleteEvent(event.id);
+        final repository = EventRepository.supabase();
+        await repository.deleteEvent(event.id);
+        unawaited(_refreshHomeWidget(repository));
       }
 
       if (mounted) {
@@ -87,6 +158,42 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
+  Future<void> _refreshHomeWidget(EventRepository repository) async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        return;
+      }
+
+      final now = DateTime.now();
+      final events = await repository.listEvents(userId: user.id);
+      final nextEvents = events.where((event) {
+        final startAt = event.startAt;
+        return startAt != null && !startAt.isBefore(now);
+      }).toList(growable: false)
+        ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+
+      final widgetService = HomeWidgetService();
+      if (nextEvents.isEmpty) {
+        await widgetService.updateNextEventData(
+          const HomeWidgetNextEventData(title: '예정된 일정이 없어요'),
+        );
+        return;
+      }
+
+      final nextEvent = nextEvents.first;
+      await widgetService.updateNextEvent(
+        title: nextEvent.title,
+        eventId: nextEvent.id,
+        startAt: nextEvent.startAt,
+        location: nextEvent.location,
+        isCritical: nextEvent.isCritical,
+      );
+    } catch (_) {
+      // Widget refresh should not block event deletion.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -96,8 +203,27 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       return Scaffold(
         backgroundColor: PlanFlowColors.background,
         appBar: AppBar(title: const Text('일정 상세')),
-        body: const Center(
-          child: Text('일정 정보를 불러오지 못했습니다.'),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isLoading)
+                  const CircularProgressIndicator()
+                else
+                  const Icon(Icons.event_busy_outlined, size: 40),
+                const SizedBox(height: 12),
+                Text(_loadError ?? '일정 정보를 불러오지 못했습니다.'),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _loadLatestEvent,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('다시 불러오기'),
+                ),
+              ],
+            ),
+          ),
         ),
       );
     }
@@ -109,8 +235,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       appBar: AppBar(
         title: const Text('일정 상세'),
         actions: [
+          IconButton(
+            tooltip: '새로고침',
+            onPressed: _isLoading ? null : _loadLatestEvent,
+            icon: _isLoading
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+          ),
           TextButton.icon(
-            onPressed: () => context.push(AppRoutes.eventEdit, extra: event),
+            onPressed: () => context.push(
+              '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
+              extra: event,
+            ),
             icon: const Icon(Icons.edit_outlined),
             label: const Text('편집'),
           ),
@@ -125,6 +264,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               time: timeLabel ?? '시간 미지정',
               critical: event.isCritical,
             ),
+            if (_loadError != null) ...[
+              const SizedBox(height: AppConstants.sectionSpacing),
+              _InfoCard(
+                title: '최신 정보 확인',
+                children: [
+                  Text(
+                    _loadError!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: AppConstants.sectionSpacing),
             _InfoCard(
               title: '기본 정보',
@@ -198,7 +351,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ],
             const SizedBox(height: AppConstants.sectionSpacing),
             FilledButton.icon(
-              onPressed: () => context.push(AppRoutes.eventEdit, extra: event),
+              onPressed: () => context.push(
+                '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
+                extra: event,
+              ),
               icon: const Icon(Icons.edit_outlined),
               label: const Text('일정 편집'),
             ),

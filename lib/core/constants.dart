@@ -16,6 +16,8 @@ class AppRoutes {
   static const String voice = '/voice';
   static const String confirm = '/voice/confirm';
   static const String eventDetail = '/event/detail';
+  static const String eventDetailWithId = '/event/detail/:eventId';
   static const String eventEdit = '/event/edit';
+  static const String eventEditWithId = '/event/edit/:eventId';
   static const String settings = '/settings';
 }

@@ -10,6 +10,14 @@ import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/early_bird_email_repository.dart';
 import '../../widgets/planflow_voice_fab.dart';
 
+enum _HomeLoadState {
+  loading,
+  ready,
+  supabaseMissing,
+  signedOut,
+  error,
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -24,7 +32,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<EventModel> _todayEvents = const <EventModel>[];
-  bool _isLoading = false;
+  _HomeLoadState _loadState = _HomeLoadState.loading;
+  String? _loadMessage;
 
   @override
   void initState() {
@@ -33,17 +42,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadTodayEvents() async {
+    if (mounted) {
+      setState(() {
+        _loadState = _HomeLoadState.loading;
+        _loadMessage = null;
+      });
+    }
+
     if (!AppEnv.isSupabaseReady) {
+      if (mounted) {
+        setState(() {
+          _todayEvents = const <EventModel>[];
+          _loadState = _HomeLoadState.supabaseMissing;
+        });
+      }
       return;
     }
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
+      if (mounted) {
+        setState(() {
+          _todayEvents = const <EventModel>[];
+          _loadState = _HomeLoadState.signedOut;
+        });
+      }
       return;
     }
-
-    setState(() {
-      _isLoading = true;
-    });
 
     try {
       final repository = EventRepository.supabase();
@@ -62,16 +86,20 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _todayEvents = todayEvents;
+          _loadState = _HomeLoadState.ready;
         });
       }
-    } catch (_) {
-      // Fail silently
-    } finally {
+    } catch (error) {
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          _todayEvents = const <EventModel>[];
+          _loadState = _HomeLoadState.error;
+          _loadMessage = '오늘 일정을 불러오지 못했어요. 새로고침해 주세요.';
         });
       }
+      debugPrint('HomeScreen load failed: $error');
+    } finally {
+      // Loading state is replaced by one of the terminal states above.
     }
   }
 
@@ -79,6 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final todayLabel = _koreanDateLabel(DateTime.now());
     final theme = Theme.of(context);
+    final isLoading = _loadState == _HomeLoadState.loading;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -89,6 +118,19 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: PlanFlowColors.background,
         surfaceTintColor: Colors.transparent,
         title: _HomeHeader(onVoice: () => context.push(AppRoutes.voice)),
+        actions: [
+          IconButton(
+            tooltip: '새로고침',
+            onPressed: isLoading ? null : _loadTodayEvents,
+            icon: isLoading
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: SafeArea(
         child: Container(
@@ -237,14 +279,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  if (_isLoading)
+                  if (isLoading)
                     const Center(
                       child: Padding(
                         padding: EdgeInsets.all(24),
                         child: CircularProgressIndicator(),
                       ),
                     )
-                  else if (_todayEvents.isNotEmpty) ...[
+                  else if (_loadState != _HomeLoadState.ready) ...[
+                    _HomeStatusCard(
+                      state: _loadState,
+                      message: _loadMessage,
+                      onRefresh: _loadTodayEvents,
+                    ),
+                    const SizedBox(height: 12),
+                  ] else if (_todayEvents.isNotEmpty) ...[
                     Text(
                       '오늘 일정',
                       style: theme.textTheme.titleMedium?.copyWith(
@@ -258,8 +307,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: _TodayEventCard(
                           event: event,
-                          onTap: () =>
-                              context.push(AppRoutes.eventDetail, extra: event),
+                          onTap: () => context.push(
+                            '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                            extra: event,
+                          ),
                         ),
                       ),
                     ),
@@ -337,6 +388,97 @@ class _HomeScreenState extends State<HomeScreen> {
       DateTime.sunday: '일요일',
     };
     return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
+  }
+}
+
+class _HomeStatusCard extends StatelessWidget {
+  const _HomeStatusCard({
+    required this.state,
+    required this.onRefresh,
+    this.message,
+  });
+
+  final _HomeLoadState state;
+  final VoidCallback onRefresh;
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final (icon, title, body) = switch (state) {
+      _HomeLoadState.supabaseMissing => (
+          Icons.cloud_off_outlined,
+          'Supabase 설정이 필요해요',
+          '환경값이 없어서 오늘 일정을 불러올 수 없어요.',
+        ),
+      _HomeLoadState.signedOut => (
+          Icons.lock_outline,
+          '로그인이 필요해요',
+          '로그인한 뒤 내 일정을 다시 불러올 수 있어요.',
+        ),
+      _HomeLoadState.error => (
+          Icons.error_outline,
+          '일정 불러오기 실패',
+          message ?? '오늘 일정을 불러오지 못했습니다.',
+        ),
+      _HomeLoadState.loading => (
+          Icons.hourglass_top_outlined,
+          '일정 확인 중',
+          '잠시만 기다려 주세요.',
+        ),
+      _HomeLoadState.ready => (
+          Icons.check_circle_outline,
+          '정상',
+          '오늘 일정을 불러왔어요.',
+        ),
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.8,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: PlanFlowColors.primaryMid),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.textSecondary,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: onRefresh,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('새로고침'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

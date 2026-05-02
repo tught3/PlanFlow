@@ -33,6 +33,17 @@ class _ShellScreenState extends State<ShellScreen> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant ShellScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialIndex != widget.initialIndex &&
+        _currentIndex != widget.initialIndex) {
+      setState(() {
+        _currentIndex = widget.initialIndex;
+      });
+    }
+  }
+
   void _showHomeAtTop() {
     if (!_homeScrollController.hasClients) {
       return;
