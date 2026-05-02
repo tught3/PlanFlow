@@ -338,9 +338,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                 focusNode: _rawTextFocusNode,
                 maxLines: 5,
                 decoration: const InputDecoration(
-                  labelText: '음성 원문 / 직접 입력',
-                  hintText: '예: 내일 오후 3시 강남역 미팅 준비물 노트북, 충전기',
-                  helperText: '음성이 끊겨도 여기서 바로 고쳐서 이어갈 수 있어요.',
+                  hintText: '입력해주세요',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -454,7 +452,10 @@ class _VoiceCommandGuide extends StatelessWidget {
       color: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(color: PlanFlowColors.primaryFaint),
+        side: const BorderSide(
+          color: Color.fromRGBO(61, 72, 143, 0.22),
+          width: 1,
+        ),
       ),
       child: Theme(
         data: theme.copyWith(dividerColor: Colors.transparent),
