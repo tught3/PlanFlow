@@ -10,6 +10,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
+import '../../services/reminder_settings_service.dart';
 
 class EventEditScreen extends StatefulWidget {
   EventEditScreen({
@@ -45,6 +46,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
   EventModel? _loadedEvent;
   bool _isLoading = false;
   bool _isSaving = false;
+  final ReminderSettingsService _reminderSettingsService =
+      const ReminderSettingsService();
 
   bool get _isNewEvent => _loadedEvent == null && _resolvedEventId == null;
 
@@ -144,6 +147,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
       final sideEffectResult = await widget.sideEffectService.syncAfterSave(
         event: savedEvent,
         userId: user.id,
+        reminderOffset: await _reminderSettingsService
+            .resolveDefaultReminderOffset(userId: user.id),
+        criticalAlarmOffset: await _reminderSettingsService
+            .resolveDefaultReminderOffset(userId: user.id),
       );
       final widgetRefreshed = await _refreshHomeWidget(_repository, savedEvent);
 

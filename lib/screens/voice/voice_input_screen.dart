@@ -71,7 +71,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
           setState(() {
             _sttRestartCount = count;
             _statusMessage =
-                '기기 음성 엔진이 잠깐 멈췄지만 계속 듣는 중이에요. 완료 버튼을 누르면 그때 일정 확인으로 넘어갑니다.';
+                '음성 인식이 이어지는 중이에요. 완료 버튼을 누를 때까지 계속 이어서 말해도 됩니다.';
           });
         },
       );
@@ -89,8 +89,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       }
 
       setState(() {
-        _statusMessage =
-            result.message ?? '음성 인식 결과를 확인할 수 없어요. 직접 입력으로 계속해 주세요.';
+        _statusMessage = result.message ??
+            '음성 인식 결과를 확인하지 못했어요. 직접 입력으로 이어가 주세요.';
       });
       _focusManualInput();
     } catch (_) {
@@ -98,7 +98,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         return;
       }
       setState(() {
-        _statusMessage = '음성 인식을 처리하지 못했어요. 아래에 직접 입력해도 바로 이어갈 수 있어요.';
+        _statusMessage = '음성 인식을 처리하지 못했어요. 아래 직접 입력으로 이어갈 수 있어요.';
       });
       _focusManualInput();
     } finally {
@@ -127,7 +127,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
     setState(() {
       _isListening = false;
-      _statusMessage = '음성 입력을 취소했어요. 다시 받아쓰거나 직접 입력으로 이어갈 수 있어요.';
+      _statusMessage = '음성 입력을 취소했어요. 다시 시작할 수 있어요.';
     });
   }
 
@@ -141,8 +141,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
     setState(() {
       _statusMessage = nextText.trim().isEmpty
-          ? '입력 내용을 비웠어요. 다시 말하거나 직접 입력해 주세요.'
-          : '마지막 말을 지웠어요.';
+          ? '입력 내용이 비었어요. 다시 말하거나 직접 입력해 주세요.'
+          : '마지막 입력을 지웠어요.';
     });
   }
 
@@ -166,36 +166,37 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       _openConfirm(const <String, dynamic>{});
       return;
     }
+
     final commandAction = _detectCommandAction(rawText);
-    if (commandAction != null) {
-      context.push(
-        AppRoutes.voiceAction,
-        extra: <String, dynamic>{
-          'raw_text': rawText,
-          'action': commandAction.name,
-        },
-      );
-      return;
-    }
-    _openConfirm(<String, dynamic>{
-      'title': '',
-      'memo': rawText,
-      'raw_text': rawText,
-      'parse_pending': true,
-    });
+    context.push(
+      AppRoutes.voiceAction,
+      extra: <String, dynamic>{
+        'raw_text': rawText,
+        'action': commandAction.name,
+      },
+    );
   }
 
-  _VoiceCommandAction? _detectCommandAction(String text) {
+  _VoiceCommandAction _detectCommandAction(String text) {
     final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
-    final deletePattern = RegExp(r'(삭제|삭제해|지워|지우기|없애|빼줘)');
-    final editPattern = RegExp(r'(수정|수정해|변경|변경해|바꿔|고쳐|미뤄|앞당겨|옮겨)');
+    final deletePattern = RegExp(r'(삭제|지워|지워줘|지워줘요|지우기|없애)');
+    final editPattern = RegExp(r'(수정|바꿔|바꿔줘|고쳐|고쳐줘|변경|변경해줘|다시 말할게)');
+    final queryPattern = RegExp(r'(조회|알려줘|보여줘|뭐야|몇 시|언제|일정 있어|일정있어)');
+    final addPattern = RegExp(r'(추가|등록|만들어|잡아줘|예약|기록)');
+
     if (deletePattern.hasMatch(normalized)) {
       return _VoiceCommandAction.delete;
     }
     if (editPattern.hasMatch(normalized)) {
       return _VoiceCommandAction.edit;
     }
-    return null;
+    if (queryPattern.hasMatch(normalized)) {
+      return _VoiceCommandAction.query;
+    }
+    if (addPattern.hasMatch(normalized)) {
+      return _VoiceCommandAction.add;
+    }
+    return _VoiceCommandAction.choose;
   }
 
   void _openConfirm(Map<String, dynamic> parsedSchedule) {
@@ -260,7 +261,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
             controller: _scrollController,
             children: [
               Text(
-                '말한 내용을 바로 저장해도 되고, 직접 입력해서 확인 화면으로 이어가도 돼요.',
+                '말한 내용을 먼저 확인하고, 직접 입력으로도 바로 수정할 수 있어요.',
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: PlanFlowColors.primary,
                   fontWeight: FontWeight.w700,
@@ -286,8 +287,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                     children: [
                       Text(
                         _isListening
-                            ? '온디바이스 한국어 인식으로 듣는 중이에요.'
-                            : '온디바이스 한국어 인식이 가능하면 음성으로 바로 받아쓸 수 있어요.',
+                            ? '온디바이스 음성으로 듣는 중이에요.'
+                            : '음성 입력이 가능하면 아래 버튼으로 시작해 주세요.',
                         style: theme.textTheme.titleSmall?.copyWith(
                           color: PlanFlowColors.primary,
                           fontWeight: FontWeight.w700,
@@ -296,8 +297,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                       const SizedBox(height: 6),
                       Text(
                         _isListening
-                            ? '중간에 잠깐 멈춰도 완료 버튼을 누르기 전까지는 아래 원문이 계속 유지돼요.'
-                            : '안 되면 아래 직접 입력 칸에 바로 적어서 이어가면 됩니다.',
+                            ? '완료 버튼을 누를 때까지 계속 이어서 말해도 됩니다.'
+                            : '말하다가 틀리면 마지막 단어 삭제나 전체 지우기로 다시 정리할 수 있어요.',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: PlanFlowColors.textSecondary,
                         ),
@@ -306,8 +307,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                         const SizedBox(height: 8),
                         Text(
                           _sttRestartCount == 0
-                              ? '말을 마친 뒤 아래 완료 버튼을 눌러 확정해 주세요.'
-                              : '음성 엔진 재연결 $_sttRestartCount회. 인식된 문장은 아래 입력칸에 계속 유지됩니다.',
+                              ? '음성 인식이 시작됐어요.'
+                              : '음성 인식이 다시 이어졌어요 ($_sttRestartCount).',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: PlanFlowColors.textSecondary,
                           ),
@@ -318,107 +319,28 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text(
-                '음성 원문 / 직접 입력',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: PlanFlowColors.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
+              _VoiceTranscriptSection(
+                isListening: _isListening,
+                recognizedText: _recognizedText,
                 controller: _rawTextController,
                 focusNode: _rawTextFocusNode,
-                minLines: 2,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  hintText: '입력해주세요',
-                  border: OutlineInputBorder(),
-                ),
+                onManualSubmit: _continueWithRawText,
+                onTapStart: _startVoiceFlow,
               ),
-              if (_recognizedText != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  '인식 결과: $_recognizedText',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: PlanFlowColors.textSecondary,
-                  ),
-                ),
-              ],
-              if (_statusMessage != null) ...[
-                const SizedBox(height: 12),
-                Card(
-                  color: theme.colorScheme.errorContainer,
-                  elevation: 0,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Text(
-                      _statusMessage!,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onErrorContainer,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: _isListening ? null : _startVoiceFlow,
-                icon: _isListening
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.mic),
-                label: Text(
-                  _isListening
-                      ? '받아쓰는 중'
-                      : _rawTextController.text.trim().isEmpty
-                          ? '음성으로 일정 입력하기'
-                          : '다시 말하기',
-                ),
+              const SizedBox(height: 16),
+              _VoiceActionButtons(
+                isListening: _isListening,
+                hasText: _rawTextController.text.trim().isNotEmpty,
+                onStart: _startVoiceFlow,
+                onFinish: _finishVoiceFlow,
+                onCancel: _cancelVoiceFlow,
+                onUndo: _undoLastSegment,
+                onClear: _clearTranscript,
+                onManualSubmit: _continueWithRawText,
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.center,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _undoLastSegment,
-                    icon: const Icon(Icons.undo),
-                    label: const Text('마지막 단어 삭제'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed:
-                        _rawTextController.text.trim().isEmpty && !_isListening
-                            ? null
-                            : _clearTranscript,
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('전체 지우기'),
-                  ),
-                ],
-              ),
-              if (_isListening) ...[
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: _finishVoiceFlow,
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('완료하고 일정 확인'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _cancelVoiceFlow,
-                  icon: const Icon(Icons.close),
-                  label: const Text('취소'),
-                ),
-              ],
-              const SizedBox(height: 12),
-              FilledButton.tonalIcon(
-                onPressed: _isListening ? null : _continueWithRawText,
-                icon: const Icon(Icons.edit_note),
-                label: const Text('직접 입력으로 확인'),
-              ),
+              if (_statusMessage != null)
+                _StatusBanner(message: _statusMessage!),
             ],
           ),
         ),
@@ -427,7 +349,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   }
 }
 
-enum _VoiceCommandAction { edit, delete }
+enum _VoiceCommandAction { add, edit, delete, query, choose }
 
 class _VoiceCommandGuide extends StatelessWidget {
   const _VoiceCommandGuide({required this.theme});
@@ -436,58 +358,48 @@ class _VoiceCommandGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bullets = <String>[
+      '추가: "내일 오전 9시 미팅 추가"',
+      '수정: "한강 피크닉 오전 10시로 수정해줘"',
+      '삭제: "오후 3시 회의 삭제해줘"',
+      '조회: "오늘 일정 보여줘"',
+      '수정/삭제가 헷갈리면 먼저 선택 후 확인 화면이 열려요.',
+    ];
+
     return Card(
       elevation: 0,
-      color: const Color(0xFFF7F9FF),
+      color: PlanFlowColors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         side: const BorderSide(
-          color: Color.fromRGBO(61, 72, 143, 0.38),
-          width: 1,
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
         ),
       ),
-      child: Theme(
-        data: theme.copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          tilePadding: const EdgeInsets.symmetric(horizontal: 14),
-          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-          leading: const Icon(
-            Icons.record_voice_over_outlined,
-            color: PlanFlowColors.primary,
-          ),
-          title: Text(
-            '음성으로 수정하기',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              color: PlanFlowColors.textPrimary,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '말로 수정하기 안내',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: PlanFlowColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          subtitle: Text(
-            '잘못 말했을 때 아래처럼 말하면 바로 정리돼요.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: PlanFlowColors.textSecondary,
-            ),
-          ),
-          children: const [
-            _VoiceCommandRow(
-              command: '아니, 아니야, 아니요',
-              description: '마지막 단어 지우기',
-            ),
-            _VoiceCommandRow(
-              command: '마지막 거 지워, 방금 거 지워',
-              description: '마지막 말 조각 지우기',
-            ),
-            _VoiceCommandRow(
-              command: '다시, 처음부터, 다시 말할게',
-              description: '전체 입력 지우기',
-            ),
-            _VoiceCommandRow(
-              command: '취소',
-              description: '음성 입력 취소',
-            ),
-            _VoiceCommandRow(
-              command: '한강 피크닉 수정해줘 / 삭제해줘',
-              description: '기존 일정 찾기',
+            const SizedBox(height: 8),
+            ...bullets.map(
+              (line) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  '• $line',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -496,52 +408,156 @@ class _VoiceCommandGuide extends StatelessWidget {
   }
 }
 
-class _VoiceCommandRow extends StatelessWidget {
-  const _VoiceCommandRow({
-    required this.command,
-    required this.description,
+class _VoiceTranscriptSection extends StatelessWidget {
+  const _VoiceTranscriptSection({
+    required this.isListening,
+    required this.recognizedText,
+    required this.controller,
+    required this.focusNode,
+    required this.onManualSubmit,
+    required this.onTapStart,
   });
 
-  final String command;
-  final String description;
+  final bool isListening;
+  final String? recognizedText;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final VoidCallback onManualSubmit;
+  final VoidCallback onTapStart;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.check_circle_outline,
-            size: 18,
-            color: PlanFlowColors.active,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  command,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: PlanFlowColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  description,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: PlanFlowColors.textSecondary,
-                  ),
-                ),
-              ],
+    return Card(
+      elevation: 0,
+      color: PlanFlowColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '음성 원문 / 직접 입력',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: PlanFlowColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              focusNode: focusNode,
+              maxLines: 5,
+              minLines: 2,
+              decoration: const InputDecoration(
+                hintText: '입력해주세요',
+              ),
+              onSubmitted: (_) => onManualSubmit(),
+            ),
+            const SizedBox(height: 10),
+            if (recognizedText != null)
+              Text(
+                isListening ? '계속 듣는 중이에요.' : '방금 인식한 내용이에요.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                ),
+              ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: onTapStart,
+              icon: const Icon(Icons.mic),
+              label: const Text('음성으로 일정 입력하기'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VoiceActionButtons extends StatelessWidget {
+  const _VoiceActionButtons({
+    required this.isListening,
+    required this.hasText,
+    required this.onStart,
+    required this.onFinish,
+    required this.onCancel,
+    required this.onUndo,
+    required this.onClear,
+    required this.onManualSubmit,
+  });
+
+  final bool isListening;
+  final bool hasText;
+  final VoidCallback onStart;
+  final VoidCallback onFinish;
+  final VoidCallback onCancel;
+  final VoidCallback onUndo;
+  final VoidCallback onClear;
+  final VoidCallback onManualSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final buttons = <Widget>[
+      FilledButton(
+        onPressed: isListening ? onFinish : onStart,
+        child: Text(isListening ? '완료' : '음성 시작'),
+      ),
+      OutlinedButton(
+        onPressed: hasText ? onClear : null,
+        child: const Text('전체 지우기'),
+      ),
+      OutlinedButton(
+        onPressed: hasText ? onUndo : null,
+        child: const Text('마지막 단어 삭제'),
+      ),
+      OutlinedButton(
+        onPressed: hasText ? onManualSubmit : null,
+        child: const Text('직접 입력으로'),
+      ),
+    ];
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: buttons,
+    );
+  }
+}
+
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
+      ),
+      child: Text(
+        message,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: PlanFlowColors.textSecondary,
+        ),
       ),
     );
   }
@@ -561,7 +577,7 @@ class _VoiceBottomNavigation extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return NavigationBar(
-      selectedIndex: 1,
+      selectedIndex: 0,
       onDestinationSelected: (index) {
         switch (index) {
           case 0:
@@ -582,8 +598,8 @@ class _VoiceBottomNavigation extends StatelessWidget {
           label: '홈',
         ),
         NavigationDestination(
-          icon: Icon(Icons.event_note_outlined),
-          selectedIcon: Icon(Icons.event_note),
+          icon: Icon(Icons.calendar_month_outlined),
+          selectedIcon: Icon(Icons.calendar_month),
           label: '일정',
         ),
         NavigationDestination(

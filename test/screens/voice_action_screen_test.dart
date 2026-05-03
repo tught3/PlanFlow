@@ -43,9 +43,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('한강 피크닉'), findsOneWidget);
-    expect(find.text('치과 방문'), findsNothing);
+    expect(find.text('치과 방문'), findsOneWidget);
 
-    await tester.tap(find.text('수정하기'));
+    await tester.tap(find.text('수정하기').first);
     await tester.pumpAndSettle();
 
     expect(find.text('편집 화면: event-1'), findsOneWidget);

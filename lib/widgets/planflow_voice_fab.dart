@@ -28,7 +28,7 @@ class PlanFlowVoiceFab extends StatelessWidget {
           color: PlanFlowColors.fab,
         ),
       ),
-      label: const Text('말하기'),
+      label: const Text('음성으로 일정 관리'),
     );
   }
 }

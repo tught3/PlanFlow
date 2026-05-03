@@ -83,9 +83,10 @@ final GoRouter appRouter = GoRouter(
             ? state.extra! as Map<String, dynamic>
             : const <String, dynamic>{};
         final actionText = extra['action']?.toString() ?? 'edit';
-        final action = actionText == VoiceScheduleAction.delete.name
-            ? VoiceScheduleAction.delete
-            : VoiceScheduleAction.edit;
+        final action = VoiceScheduleAction.values.firstWhere(
+          (candidate) => candidate.name == actionText,
+          orElse: () => VoiceScheduleAction.choose,
+        );
         return VoiceActionScreen(
           rawText: extra['raw_text']?.toString() ?? '',
           action: action,

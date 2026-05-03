@@ -17,6 +17,7 @@ import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/map_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/reminder_settings_service.dart';
 import '../../services/travel_time_buffer_service.dart';
 
 class ConfirmScreen extends StatefulWidget {
@@ -157,6 +158,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   bool _isLoadingPastSupplies = false;
   bool _isLookingUpLocation = false;
   bool _isHydratingParsedSchedule = false;
+  final ReminderSettingsService _reminderSettingsService =
+      const ReminderSettingsService();
   List<String> _pastSupplies = const <String>[];
   Timer? _locationDebounce;
   bool _hasFollowUpFailures = false;
@@ -571,6 +574,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }) async {
     _hasFollowUpFailures = false;
     final eventStartAt = event.startAt ?? _startAt;
+    final defaultReminderOffset = await _resolveDefaultReminderOffset(userId);
+    final eventReminderOffset =
+        await _resolveReminderBuffer(event, defaultReminderOffset);
     final preActionPayloads = _buildPreActionPayloads(
       userId: userId,
       eventId: event.id,
@@ -580,6 +586,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       userId: userId,
       eventId: event.id,
       eventStartAt: eventStartAt,
+      reminderOffset: eventReminderOffset,
+      criticalAlarmOffset: defaultReminderOffset,
     );
 
     await _tryFollowUp(
@@ -618,9 +626,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
 
     final eventReminderNotifyAt =
-        eventStartAt.subtract(await _resolveReminderBuffer(event));
-    final criticalAlarmNotifyAt =
-        eventStartAt.subtract(const Duration(minutes: 60));
+        eventStartAt.subtract(eventReminderOffset);
+    final criticalAlarmNotifyAt = eventStartAt.subtract(defaultReminderOffset);
     await _tryFollowUp(
       () => widget.notificationService.scheduleEventReminder(
         id: widget.notificationService.notificationIdFor('${event.id}:push'),
@@ -645,10 +652,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
   }
 
-  Future<Duration> _resolveReminderBuffer(EventModel event) async {
+  Future<Duration> _resolveReminderBuffer(
+    EventModel event,
+    Duration fallback,
+  ) async {
     final destination = event.location?.trim() ?? '';
     if (destination.isEmpty) {
-      return const Duration(minutes: 60);
+      return fallback;
     }
 
     final travelOrigin = _resolveTravelOrigin();
@@ -682,6 +692,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             locationText: destination,
           );
     return Duration(minutes: travelMinutes + 10);
+  }
+
+  Future<Duration> _resolveDefaultReminderOffset(String userId) async {
+    final minutes = await _reminderSettingsService.resolveDefaultReminderMinutes(
+      userId: userId,
+    );
+    return Duration(minutes: minutes);
   }
 
   Future<MapTravelMode> _resolveTravelMode(String userId) async {
@@ -756,9 +773,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     required String userId,
     required String eventId,
     required DateTime eventStartAt,
+    required Duration reminderOffset,
+    required Duration criticalAlarmOffset,
   }) {
     final now = DateTime.now();
-    final pushNotifyAt = eventStartAt.subtract(const Duration(minutes: 60));
+    final pushNotifyAt = eventStartAt.subtract(reminderOffset);
     final payloads = <Map<String, dynamic>>[
       if (pushNotifyAt.isAfter(now))
         _reminderPayload(
@@ -766,10 +785,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           eventId: eventId,
           type: 'push',
           notifyAt: pushNotifyAt,
-        ),
+      ),
     ];
 
-    final criticalNotifyAt = eventStartAt.subtract(const Duration(minutes: 30));
+    final criticalNotifyAt = eventStartAt.subtract(criticalAlarmOffset);
     if (_isCritical && criticalNotifyAt.isAfter(now)) {
       payloads.add(
         _reminderPayload(

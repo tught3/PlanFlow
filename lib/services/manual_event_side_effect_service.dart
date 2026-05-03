@@ -80,6 +80,8 @@ class ManualEventSideEffectService {
     required EventModel event,
     required String userId,
     bool clearPreActions = true,
+    Duration reminderOffset = defaultReminderOffset,
+    Duration? criticalAlarmOffset,
   }) async {
     final startAt = event.startAt;
     if (startAt == null) {
@@ -109,7 +111,12 @@ class ManualEventSideEffectService {
         preActionsCleared = true;
       }
       await gateway.insertReminders(
-        buildReminderPayloads(event: event, userId: userId),
+        buildReminderPayloads(
+          event: event,
+          userId: userId,
+          reminderOffset: reminderOffset,
+          criticalAlarmOffset: criticalAlarmOffset ?? reminderOffset,
+        ),
       );
       remindersSynced = true;
     } catch (_) {
@@ -117,7 +124,11 @@ class ManualEventSideEffectService {
     }
 
     try {
-      await scheduleLocalNotifications(event);
+      await scheduleLocalNotifications(
+        event,
+        reminderOffset: reminderOffset,
+        criticalAlarmOffset: criticalAlarmOffset ?? reminderOffset,
+      );
       notificationsSynced = true;
     } catch (_) {
       notificationsSynced = false;
@@ -137,6 +148,8 @@ class ManualEventSideEffectService {
   List<Map<String, dynamic>> buildReminderPayloads({
     required EventModel event,
     required String userId,
+    Duration reminderOffset = defaultReminderOffset,
+    Duration? criticalAlarmOffset,
   }) {
     final startAt = event.startAt;
     if (startAt == null) {
@@ -148,7 +161,7 @@ class ManualEventSideEffectService {
         eventId: event.id,
         userId: userId,
         type: 'push',
-        notifyAt: startAt.subtract(defaultReminderOffset),
+        notifyAt: startAt.subtract(reminderOffset),
       ),
     ];
 
@@ -158,7 +171,7 @@ class ManualEventSideEffectService {
           eventId: event.id,
           userId: userId,
           type: 'system_alarm',
-          notifyAt: startAt.subtract(criticalAlarmOffset),
+          notifyAt: startAt.subtract(criticalAlarmOffset ?? reminderOffset),
         ),
       );
     }
@@ -166,14 +179,18 @@ class ManualEventSideEffectService {
     return payloads;
   }
 
-  Future<void> scheduleLocalNotifications(EventModel event) async {
+  Future<void> scheduleLocalNotifications(
+    EventModel event, {
+    Duration reminderOffset = defaultReminderOffset,
+    Duration? criticalAlarmOffset,
+  }) async {
     final startAt = event.startAt;
     if (startAt == null) {
       return;
     }
 
     final now = DateTime.now();
-    final reminderNotifyAt = startAt.subtract(defaultReminderOffset);
+    final reminderNotifyAt = startAt.subtract(reminderOffset);
     if (reminderNotifyAt.isAfter(now)) {
       await _notifications.scheduleEventReminder(
         id: _notifications.notificationIdFor('${event.id}:push'),
@@ -183,7 +200,8 @@ class ManualEventSideEffectService {
       );
     }
 
-    final criticalNotifyAt = startAt.subtract(criticalAlarmOffset);
+    final criticalNotifyAt =
+        startAt.subtract(criticalAlarmOffset ?? reminderOffset);
     if (event.isCritical && criticalNotifyAt.isAfter(now)) {
       await _notifications.scheduleCriticalAlarm(
         id: _notifications.notificationIdFor('${event.id}:critical'),

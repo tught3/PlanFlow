@@ -13,7 +13,7 @@ import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 
-enum VoiceScheduleAction { edit, delete }
+enum VoiceScheduleAction { add, edit, delete, query, choose }
 
 class VoiceActionScreen extends StatefulWidget {
   VoiceActionScreen({
@@ -45,15 +45,103 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   bool _isDeleting = false;
   String? _message;
 
+  late VoiceScheduleAction _selectedAction;
+
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
 
-  bool get _isDelete => widget.action == VoiceScheduleAction.delete;
+  bool get _isDelete => _selectedAction == VoiceScheduleAction.delete;
+  bool get _isEdit => _selectedAction == VoiceScheduleAction.edit;
+  bool get _isAdd => _selectedAction == VoiceScheduleAction.add;
+  bool get _isQuery => _selectedAction == VoiceScheduleAction.query;
+  bool get _isChoose => _selectedAction == VoiceScheduleAction.choose;
 
   @override
   void initState() {
     super.initState();
+    _selectedAction = widget.action;
     unawaited(_loadCandidates());
+  }
+
+  String _actionTitle() {
+    switch (_selectedAction) {
+      case VoiceScheduleAction.add:
+        return '음성으로 일정 추가';
+      case VoiceScheduleAction.edit:
+        return '음성으로 일정 수정';
+      case VoiceScheduleAction.delete:
+        return '음성으로 일정 삭제';
+      case VoiceScheduleAction.query:
+        return '음성으로 일정 조회';
+      case VoiceScheduleAction.choose:
+        return '음성으로 일정 관리';
+    }
+  }
+
+  String _actionDescription() {
+    switch (_selectedAction) {
+      case VoiceScheduleAction.add:
+        return '인식된 내용을 바로 저장하지 않고, 확인 화면으로 먼저 보냅니다.';
+      case VoiceScheduleAction.edit:
+        return '말한 내용과 가장 가까운 일정을 고른 뒤 편집 화면에서 다시 확인해 주세요.';
+      case VoiceScheduleAction.delete:
+        return '말한 내용과 가장 가까운 일정을 고른 뒤 삭제를 다시 확인해 주세요.';
+      case VoiceScheduleAction.query:
+        return 'DB에서 직접 일정을 찾아 카드로 보여드립니다.';
+      case VoiceScheduleAction.choose:
+        return '무엇을 할지 먼저 고른 뒤 그에 맞는 일정 후보를 확인해 주세요.';
+    }
+  }
+
+  String _candidateActionLabel() {
+    if (_isDelete) {
+      return '삭제하기';
+    }
+    if (_isEdit) {
+      return '수정하기';
+    }
+    return '상세 보기';
+  }
+
+  IconData _candidateActionIcon() {
+    if (_isDelete) {
+      return Icons.delete_outline;
+    }
+    if (_isEdit) {
+      return Icons.edit_note;
+    }
+    return Icons.visibility_outlined;
+  }
+
+  Future<void> _openAddConfirm() async {
+    await _recordVoiceLog(
+      action: 'add',
+      result: 'confirm_opened',
+    );
+    if (!mounted) {
+      return;
+    }
+    final parsed = <String, dynamic>{
+      'raw_text': widget.rawText,
+      'memo': widget.rawText,
+      'parse_pending': true,
+    };
+    await context.push(AppRoutes.confirm, extra: parsed);
+  }
+
+  Future<void> _openQueryResult(EventModel event) async {
+    await _recordVoiceLog(
+      action: 'query',
+      targetEventId: event.id,
+      result: 'opened',
+    );
+    if (!mounted) {
+      return;
+    }
+    await context.push(
+      '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+      extra: event,
+    );
   }
 
   Future<void> _loadCandidates() async {
@@ -66,7 +154,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       final userId = _resolveUserId();
       if (userId == null) {
         setState(() {
-          _message = '로그인 후 음성으로 일정을 ${_isDelete ? '삭제' : '수정'}할 수 있어요.';
+          _message = '로그인 후 음성으로 일정을 관리할 수 있어요.';
           _isLoading = false;
         });
         return;
@@ -74,7 +162,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
 
       if (!AppEnv.isSupabaseReady && widget.eventRepository == null) {
         setState(() {
-          _message = 'Supabase 설정이 없어 저장된 일정을 불러올 수 없습니다.';
+          _message = 'Supabase 설정이 없어 저장된 일정을 불러올 수 없어요.';
           _isLoading = false;
         });
         return;
@@ -89,7 +177,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         _events
           ..clear()
           ..addAll(ranked);
-        _message = ranked.isEmpty ? '조건에 맞는 일정을 찾지 못했어요.' : null;
+        _message = ranked.isEmpty
+            ? '조건에 맞는 일정을 찾지 못했어요. 내용을 다시 말해 보거나 직접 선택해 보세요.'
+            : null;
         _isLoading = false;
       });
     } catch (error, stackTrace) {
@@ -99,7 +189,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         return;
       }
       setState(() {
-        _message = '저장된 일정을 불러오지 못했어요. 로그인 상태와 네트워크를 확인해 주세요.';
+        _message = '저장된 일정을 불러오지 못했어요. 로그인 상태와 스토리지를 확인해 주세요.';
         _isLoading = false;
       });
     }
@@ -178,29 +268,38 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       '고쳐',
       '삭제',
       '삭제해',
-      '지워',
-      '지우기',
-      '없애',
+      '추가',
+      '등록',
+      '보여',
+      '찾아',
+      '조회',
       '오늘',
       '내일',
       '모레',
-      '오전',
-      '오후',
-      '으로',
-      '에서',
-      '에게',
-      '해줘',
+      '이번',
+      '이번주',
+      '이번 주',
+      '무엇',
+      '뭐',
     };
     return text
         .toLowerCase()
-        .replaceAll(RegExp(r'[^0-9a-z가-힣\s]'), ' ')
-        .split(RegExp(r'\s+'))
+        .replaceAll(RegExp(r'[^0-9a-z가-힣\\s]'), ' ')
+        .split(RegExp(r'\\s+'))
         .map((token) => token.trim())
         .where((token) => token.length >= 2 && !stopWords.contains(token))
         .toList(growable: false);
   }
 
   Future<void> _openEdit(EventModel event) async {
+    await _recordVoiceLog(
+      action: 'edit',
+      targetEventId: event.id,
+      result: 'opened',
+    );
+    if (!mounted) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('수정할 일정을 열었어요. 확인 후 저장해 주세요.')),
     );
@@ -253,6 +352,14 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       await _repository.deleteEvent(event.id, userId: userId);
       await widget.sideEffectService.cleanupAfterDelete(event.id);
       await _refreshHomeWidget(userId);
+      if (!mounted) {
+        return;
+      }
+      await _recordVoiceLog(
+        action: 'delete',
+        targetEventId: event.id,
+        result: 'deleted',
+      );
       EventRefreshBus.instance.notifyChanged(
         reason: 'voice_event_deleted',
         eventId: event.id,
@@ -290,7 +397,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
 
       if (nextEvents.isEmpty) {
         await widget.homeWidgetService.updateNextEventData(
-          const HomeWidgetNextEventData(title: '예정된 일정이 없어요'),
+          const HomeWidgetNextEventData(title: '다가올 일정이 없어요'),
         );
         return;
       }
@@ -325,10 +432,42 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     );
   }
 
+  Future<void> _recordVoiceLog({
+    required String action,
+    String? targetEventId,
+    required String result,
+  }) async {
+    if (!AppEnv.isSupabaseReady) {
+      return;
+    }
+
+    final userId = _resolveUserId();
+    if (userId == null) {
+      return;
+    }
+
+    try {
+      await Supabase.instance.client.from('voice_logs').insert(<String, dynamic>{
+        'user_id': userId,
+        'event_id': targetEventId,
+        'raw_text': widget.rawText,
+        'parsed_json': <String, dynamic>{
+          'action': action,
+          'target_event_id': targetEventId,
+          'result': result,
+        },
+      });
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen voice log save failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final title = _isDelete ? '음성으로 일정 삭제' : '음성으로 일정 수정';
+    final title = _actionTitle();
+    final description = _actionDescription();
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -342,11 +481,27 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
               _CommandCard(
                 title: title,
                 rawText: widget.rawText,
-                description: _isDelete
-                    ? '말한 내용과 가장 가까운 일정을 골라 삭제할 수 있어요.'
-                    : '말한 내용과 가장 가까운 일정을 골라 편집 화면에서 수정해 주세요.',
+                description: description,
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
+              if (_isChoose) ...[
+                _ActionChooserCard(
+                  currentAction: _selectedAction,
+                  onSelected: (action) {
+                    setState(() {
+                      _selectedAction = action;
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (_isAdd) ...[
+                _AddConfirmCard(
+                  rawText: widget.rawText,
+                  onContinue: _openAddConfirm,
+                ),
+                const SizedBox(height: 12),
+              ],
               if (_isLoading)
                 const Center(
                   child: Padding(
@@ -358,7 +513,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                 _EmptyCard(message: _message!)
               else ...[
                 Text(
-                  '후보 일정',
+                  _isQuery ? '단순 조회 결과' : '대상 일정',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: PlanFlowColors.primary,
                     fontWeight: FontWeight.w800,
@@ -370,13 +525,15 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _EventCandidateCard(
                       event: event,
-                      actionLabel: _isDelete ? '삭제하기' : '수정하기',
-                      actionIcon:
-                          _isDelete ? Icons.delete_outline : Icons.edit_note,
+                      actionLabel: _candidateActionLabel(),
+                      actionIcon: _candidateActionIcon(),
                       isDanger: _isDelete,
                       disabled: _isDeleting,
-                      onTap: () =>
-                          _isDelete ? _confirmDelete(event) : _openEdit(event),
+                      onTap: () => _isDelete
+                          ? _confirmDelete(event)
+                          : _isEdit
+                              ? _openEdit(event)
+                              : _openQueryResult(event),
                     ),
                   ),
                 ),
@@ -452,8 +609,119 @@ class _CommandCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              rawText.trim().isEmpty ? '내용 없음' : rawText.trim(),
+              rawText.trim().isEmpty ? '내용이 비어 있어요.' : rawText.trim(),
               style: theme.textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddConfirmCard extends StatelessWidget {
+  const _AddConfirmCard({
+    required this.rawText,
+    required this.onContinue,
+  });
+
+  final String rawText;
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      elevation: 0,
+      color: PlanFlowColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '일정 추가 확인',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: PlanFlowColors.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '음성 원문을 확인한 뒤 일정 확인 화면으로 넘겨드립니다.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: onContinue,
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('확인 화면으로 이동'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionChooserCard extends StatelessWidget {
+  const _ActionChooserCard({
+    required this.currentAction,
+    required this.onSelected,
+  });
+
+  final VoiceScheduleAction currentAction;
+  final ValueChanged<VoiceScheduleAction> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final options = <(VoiceScheduleAction, String, IconData)>[
+      (VoiceScheduleAction.add, '추가', Icons.add_circle_outline),
+      (VoiceScheduleAction.edit, '수정', Icons.edit_note),
+      (VoiceScheduleAction.delete, '삭제', Icons.delete_outline),
+      (VoiceScheduleAction.query, '조회', Icons.search),
+    ];
+
+    return Card(
+      elevation: 0,
+      color: PlanFlowColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '무엇을 할까요?',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: PlanFlowColors.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: options.map((option) {
+                final selected = currentAction == option.$1;
+                return FilterChip(
+                  selected: selected,
+                  label: Text(option.$2),
+                  avatar: Icon(option.$3, size: 18),
+                  onSelected: (_) => onSelected(option.$1),
+                );
+              }).toList(growable: false),
             ),
           ],
         ),
