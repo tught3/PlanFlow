@@ -8,6 +8,7 @@ import '../screens/event/event_edit_screen.dart';
 import '../screens/placeholder_screen.dart';
 import '../screens/splash/splash_screen.dart';
 import '../screens/voice/confirm_screen.dart';
+import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_input_screen.dart';
 import '../screens/shell_screen.dart';
 import 'constants.dart';
@@ -74,6 +75,22 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.voice,
       builder: (context, state) => VoiceInputScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.voiceAction,
+      builder: (context, state) {
+        final extra = state.extra is Map<String, dynamic>
+            ? state.extra! as Map<String, dynamic>
+            : const <String, dynamic>{};
+        final actionText = extra['action']?.toString() ?? 'edit';
+        final action = actionText == VoiceScheduleAction.delete.name
+            ? VoiceScheduleAction.delete
+            : VoiceScheduleAction.edit;
+        return VoiceActionScreen(
+          rawText: extra['raw_text']?.toString() ?? '',
+          action: action,
+        );
+      },
     ),
     GoRoute(
       path: AppRoutes.confirm,

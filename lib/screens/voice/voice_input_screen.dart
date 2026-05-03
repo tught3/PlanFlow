@@ -166,12 +166,36 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       _openConfirm(const <String, dynamic>{});
       return;
     }
+    final commandAction = _detectCommandAction(rawText);
+    if (commandAction != null) {
+      context.push(
+        AppRoutes.voiceAction,
+        extra: <String, dynamic>{
+          'raw_text': rawText,
+          'action': commandAction.name,
+        },
+      );
+      return;
+    }
     _openConfirm(<String, dynamic>{
       'title': '',
       'memo': rawText,
       'raw_text': rawText,
       'parse_pending': true,
     });
+  }
+
+  _VoiceCommandAction? _detectCommandAction(String text) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
+    final deletePattern = RegExp(r'(삭제|삭제해|지워|지우기|없애|빼줘)');
+    final editPattern = RegExp(r'(수정|수정해|변경|변경해|바꿔|고쳐|미뤄|앞당겨|옮겨)');
+    if (deletePattern.hasMatch(normalized)) {
+      return _VoiceCommandAction.delete;
+    }
+    if (editPattern.hasMatch(normalized)) {
+      return _VoiceCommandAction.edit;
+    }
+    return null;
   }
 
   void _openConfirm(Map<String, dynamic> parsedSchedule) {
@@ -403,6 +427,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   }
 }
 
+enum _VoiceCommandAction { edit, delete }
+
 class _VoiceCommandGuide extends StatelessWidget {
   const _VoiceCommandGuide({required this.theme});
 
@@ -458,6 +484,10 @@ class _VoiceCommandGuide extends StatelessWidget {
             _VoiceCommandRow(
               command: '취소',
               description: '음성 입력 취소',
+            ),
+            _VoiceCommandRow(
+              command: '한강 피크닉 수정해줘 / 삭제해줘',
+              description: '기존 일정 찾기',
             ),
           ],
         ),

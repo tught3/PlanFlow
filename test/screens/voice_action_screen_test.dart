@@ -1,0 +1,187 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:planflow/core/constants.dart';
+import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/screens/voice/voice_action_screen.dart';
+import 'package:planflow/services/home_widget_service.dart';
+import 'package:planflow/services/manual_event_side_effect_service.dart';
+
+void main() {
+  testWidgets('음성 수정 명령은 후보 일정을 편집 화면으로 연결한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(id: 'event-1', title: '한강 피크닉'),
+        _event(id: 'event-2', title: '치과 방문'),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 일정 수정해줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) => Text(
+            '편집 화면: ${state.pathParameters['eventId']}',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('한강 피크닉'), findsOneWidget);
+    expect(find.text('치과 방문'), findsNothing);
+
+    await tester.tap(find.text('수정하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('편집 화면: event-1'), findsOneWidget);
+  });
+
+  testWidgets('음성 삭제 명령은 확인 후 일정을 삭제하고 일정 탭으로 이동한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(id: 'event-1', title: '한강 피크닉'),
+        _event(id: 'event-2', title: '치과 방문'),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 삭제해줘',
+            action: VoiceScheduleAction.delete,
+            eventRepository: repository,
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('삭제하기').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '삭제'));
+    await tester.pumpAndSettle();
+
+    expect(repository.deletedEventIds, ['event-1']);
+    expect(find.text('일정 탭'), findsOneWidget);
+  });
+}
+
+EventModel _event({
+  required String id,
+  required String title,
+}) {
+  return EventModel(
+    id: id,
+    userId: 'user-1',
+    title: title,
+    startAt: DateTime(2026, 5, 5, 10),
+    location: title.contains('한강') ? '한강' : null,
+  );
+}
+
+class _FakeEventRepository extends EventRepository {
+  _FakeEventRepository({required List<EventModel> events}) : _events = events;
+
+  final List<EventModel> _events;
+  final List<String> deletedEventIds = <String>[];
+
+  @override
+  Future<EventModel> createEvent(EventModel event) async => event;
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) async {
+    deletedEventIds.add(eventId);
+    _events.removeWhere((event) => event.id == eventId);
+  }
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    for (final event in _events) {
+      if (event.id == eventId) {
+        return event;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    return List<EventModel>.of(_events);
+  }
+
+  @override
+  Future<EventModel> updateEvent(EventModel event) async => event;
+}
+
+class _NoopSideEffectService extends ManualEventSideEffectService {
+  const _NoopSideEffectService();
+
+  @override
+  Future<void> cleanupAfterDelete(String eventId) async {}
+}
+
+class _NoopHomeWidgetService extends HomeWidgetService {
+  @override
+  Future<bool> updateNextEventData(
+    HomeWidgetNextEventData data, {
+    String widgetName = HomeWidgetService.defaultWidgetName,
+    String? androidName,
+    String? iOSName,
+    String? qualifiedAndroidName,
+    List<HomeWidgetListEventData> upcomingEvents =
+        const <HomeWidgetListEventData>[],
+  }) async {
+    return true;
+  }
+
+  @override
+  Future<bool> updateNextEvent({
+    required String title,
+    String? eventId,
+    DateTime? startAt,
+    String? location,
+    String? travelOrigin,
+    double? latitude,
+    double? longitude,
+    int? travelBufferMinutes,
+    bool isCritical = false,
+    List<HomeWidgetListEventData> upcomingEvents =
+        const <HomeWidgetListEventData>[],
+    String widgetName = HomeWidgetService.defaultWidgetName,
+    String? androidName,
+    String? iOSName,
+    String? qualifiedAndroidName,
+  }) async {
+    return true;
+  }
+}
