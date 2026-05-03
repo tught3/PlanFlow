@@ -44,6 +44,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   bool _isLoading = true;
   bool _isDeleting = false;
   String? _message;
+  bool _hasChosenAction = false;
 
   late VoiceScheduleAction _selectedAction;
 
@@ -145,6 +146,15 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   }
 
   Future<void> _loadCandidates() async {
+    if (_isAdd) {
+      setState(() {
+        _events.clear();
+        _message = null;
+        _isLoading = false;
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _message = null;
@@ -193,6 +203,28 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _selectAction(VoiceScheduleAction action) async {
+    setState(() {
+      _selectedAction = action;
+      _hasChosenAction = true;
+      _events.clear();
+      _message = null;
+      _isLoading = action != VoiceScheduleAction.add;
+    });
+
+    if (action == VoiceScheduleAction.add) {
+      await _openAddConfirm();
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    await _loadCandidates();
   }
 
   String? _resolveUserId() {
@@ -315,18 +347,34 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       builder: (context) => AlertDialog(
         title: const Text('음성으로 일정 삭제'),
         content: Text('"${event.title}" 일정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.'),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB42318),
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('삭제'),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonal(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    foregroundColor: PlanFlowColors.primary,
+                    backgroundColor: PlanFlowColors.primaryFaint,
+                  ),
+                  child: const Text('취소'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    backgroundColor: const Color(0xFFB42318),
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('삭제'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -484,14 +532,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                 description: description,
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
-              if (_isChoose) ...[
+              if (_isChoose || _hasChosenAction) ...[
                 _ActionChooserCard(
                   currentAction: _selectedAction,
-                  onSelected: (action) {
-                    setState(() {
-                      _selectedAction = action;
-                    });
-                  },
+                  onSelected: _selectAction,
                 ),
                 const SizedBox(height: 12),
               ],

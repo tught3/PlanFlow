@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/calendar/v3.dart' as gcal;
 import 'package:googleapis_auth/googleapis_auth.dart' as gauth;
@@ -199,7 +200,7 @@ class CalendarSyncService {
   GoogleSignIn get _googleSignInInstance {
     return _googleSignIn ??= GoogleSignIn(
       scopes: _googleScopes,
-      clientId: _googleClientId,
+      clientId: _isAndroidGoogleSignIn ? null : _googleClientId,
       serverClientId: _googleServerClientId,
     );
   }
@@ -337,7 +338,8 @@ class CalendarSyncService {
       if (accessToken == null || accessToken.isEmpty) {
         return CalendarIntegrationResult.signedOut(
           CalendarProvider.google,
-          message: 'Google Calendar 동기화를 실행하려면 Google 계정 로그인이 필요합니다.',
+          message:
+              'Google 로그인을 완료하지 않았거나 Calendar 권한 동의가 끝나지 않았습니다. 다시 동기화를 눌러 계정과 권한을 확인해 주세요.',
         );
       }
 
@@ -388,8 +390,7 @@ class CalendarSyncService {
         CalendarProvider.google,
         error: error,
         stackTrace: stackTrace,
-        message:
-            'Google OAuth 로그인 또는 권한 승인에 실패했습니다. Google 계정과 Calendar 권한 동의를 확인해 주세요.',
+        message: _googleSignInFailureMessage(error),
       );
     }
   }
@@ -424,6 +425,39 @@ class CalendarSyncService {
     }
 
     return 'Google Calendar API 호출에 실패했습니다. Google Cloud Calendar API 사용 설정과 네트워크 상태를 확인해 주세요.';
+  }
+
+  String _googleSignInFailureMessage(Object error) {
+    if (error is PlatformException) {
+      final code = error.code.toLowerCase();
+      final message = (error.message ?? '').toLowerCase();
+      final details = error.details?.toString().toLowerCase() ?? '';
+      final combined = '$code $message $details';
+
+      if (combined.contains('canceled') ||
+          combined.contains('cancelled') ||
+          combined.contains('12501')) {
+        return 'Google 로그인이 취소되었습니다. 다시 동기화를 눌러 Google 계정과 Calendar 권한 동의를 완료해 주세요.';
+      }
+
+      if (combined.contains('network')) {
+        return 'Google 로그인 네트워크 연결에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
+      }
+
+      if (combined.contains('developer_error') ||
+          combined.contains('api_exception: 10') ||
+          combined.contains('12500') ||
+          combined.contains('sign_in_failed')) {
+        return 'Google OAuth 설정이 맞지 않아 로그인하지 못했습니다. Web OAuth Client ID, Android SHA 지문, Calendar API 사용 설정을 확인해 주세요.';
+      }
+    }
+
+    final errorText = error.toString().toLowerCase();
+    if (errorText.contains('token') || errorText.contains('authentication')) {
+      return 'Google 인증 토큰을 받지 못했습니다. Google 계정과 Calendar 권한 동의를 다시 확인해 주세요.';
+    }
+
+    return 'Google OAuth 로그인 또는 권한 승인에 실패했습니다. Google 계정, Calendar 권한 동의, OAuth 설정을 확인해 주세요.';
   }
 
   Future<String?> _fetchGoogleAccessToken({

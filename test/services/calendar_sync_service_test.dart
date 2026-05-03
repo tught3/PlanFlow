@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -91,6 +92,47 @@ void main() {
 
       expect(result.status, CalendarIntegrationStatus.signedOut);
       expect(googleSignIn.signInCallCount, 1);
+    });
+
+    test('classifies Google sign-in cancellation with actionable message',
+        () async {
+      final service = CalendarSyncService(
+        googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+        googlePlatformSupported: true,
+        googleTargetPlatform: TargetPlatform.android,
+        googleAccessTokenProvider: ({required bool interactive}) {
+          throw const PlatformException(
+            code: 'sign_in_canceled',
+            message: 'The user canceled sign-in.',
+          );
+        },
+      );
+
+      final result = await service.syncGoogleCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.failed);
+      expect(result.message, contains('취소'));
+      expect(result.message, contains('Calendar 권한'));
+    });
+
+    test('classifies Google OAuth configuration failures clearly', () async {
+      final service = CalendarSyncService(
+        googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+        googlePlatformSupported: true,
+        googleTargetPlatform: TargetPlatform.android,
+        googleAccessTokenProvider: ({required bool interactive}) {
+          throw const PlatformException(
+            code: 'sign_in_failed',
+            message: 'ApiException: 10',
+          );
+        },
+      );
+
+      final result = await service.syncGoogleCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.failed);
+      expect(result.message, contains('OAuth 설정'));
+      expect(result.message, contains('Android SHA'));
     });
   });
 }

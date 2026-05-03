@@ -244,61 +244,29 @@ class _HomeScreenState extends State<HomeScreen> {
                               color: Colors.white,
                               size: 20,
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: PlanFlowColors.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: PlanFlowColors.primaryFaint,
-                        width: 0.8,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '빠른 실행',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: PlanFlowColors.primary,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 8,
-                          children: [
-                            FilledButton.icon(
-                              onPressed: () => context.push(AppRoutes.voice),
-                              icon: const Icon(Icons.mic_none, size: 18),
-                              label: const Text('음성으로 일정 추가'),
-                            ),
                             OutlinedButton.icon(
                               onPressed: () => context.go(AppRoutes.calendar),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.65),
+                                ),
+                                backgroundColor:
+                                    Colors.white.withValues(alpha: 0.10),
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 7,
+                                ),
+                                minimumSize: const Size(0, 34),
+                              ),
                               icon: const Icon(
                                 Icons.event_note_outlined,
-                                size: 18,
+                                size: 17,
                               ),
                               label: const Text('일정 보기'),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '음성으로 일정을 만들고 캘린더에서 바로 확인할 수 있어요.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: PlanFlowColors.textSecondary,
-                            height: 1.35,
-                          ),
                         ),
                       ],
                     ),

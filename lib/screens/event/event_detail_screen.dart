@@ -141,17 +141,34 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       builder: (context) => AlertDialog(
         title: const Text('일정 삭제'),
         content: Text('"${event.title}" 일정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.'),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB42318),
-            ),
-            child: const Text('삭제'),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonal(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    foregroundColor: PlanFlowColors.primary,
+                    backgroundColor: PlanFlowColors.primaryFaint,
+                  ),
+                  child: const Text('취소'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    backgroundColor: const Color(0xFFB42318),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('삭제'),
+                ),
+              ),
+            ],
           ),
         ],
       ),

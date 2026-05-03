@@ -196,6 +196,55 @@ void main() {
     expect(find.text('지원 안 함'), findsOneWidget);
     expect(find.text('Android 설정에서 확인'), findsOneWidget);
   });
+
+  testWidgets('notification permission request rechecks status after request failure',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final notificationService = _FakeNotificationService(
+      status: const NotificationPermissionStatus(
+        notificationsEnabled: true,
+        exactAlarmsEnabled: true,
+        fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
+      ),
+      throwOnRequest: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.unsupported(
+                CalendarProvider.naver,
+              ),
+            ),
+          ),
+          notificationService: notificationService,
+          userId: 'user-1',
+          envConfigured: false,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final requestButton = find.widgetWithText(
+      OutlinedButton,
+      '알림 권한 요청/재확인',
+    );
+    await tester.scrollUntilVisible(requestButton, 200);
+    await tester.ensureVisible(requestButton);
+    await tester.tap(requestButton);
+    await tester.pumpAndSettle();
+
+    expect(notificationService.requestCallCount, 1);
+    expect(notificationService.checkCallCount, greaterThanOrEqualTo(1));
+    expect(find.textContaining('앱 알림과 정확한 알람은 허용됨'), findsWidgets);
+  });
 }
 
 class _FakeSettingsRepository extends SettingsRepository {
@@ -267,14 +316,26 @@ class _FakeNotificationService extends NotificationService {
       exactAlarmsEnabled: true,
       fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
     ),
+    this.throwOnRequest = false,
   });
 
   final NotificationPermissionStatus status;
+  final bool throwOnRequest;
+  int checkCallCount = 0;
+  int requestCallCount = 0;
 
   @override
-  Future<NotificationPermissionStatus> checkPermissionStatus() async => status;
+  Future<NotificationPermissionStatus> checkPermissionStatus() async {
+    checkCallCount += 1;
+    return status;
+  }
 
   @override
-  Future<NotificationPermissionStatus> requestAndCheckPermissions() async =>
-      status;
+  Future<NotificationPermissionStatus> requestAndCheckPermissions() async {
+    requestCallCount += 1;
+    if (throwOnRequest) {
+      throw StateError('request failed');
+    }
+    return status;
+  }
 }

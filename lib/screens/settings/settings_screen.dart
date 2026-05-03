@@ -212,9 +212,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _notificationPermissionStatus = status;
       });
-      _showSnack('알림 권한 상태를 다시 확인했습니다.');
-    } catch (_) {
-      _showSnack('알림 권한 요청에 실패했습니다. Android 앱 설정을 확인해 주세요.');
+      _showSnack(_notificationPermissionSnack(status));
+    } catch (error, stackTrace) {
+      debugPrint('Notification permission request failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      try {
+        final status = await _notificationService.checkPermissionStatus();
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _notificationPermissionStatus = status;
+        });
+        _showSnack(_notificationPermissionSnack(status));
+      } catch (_) {
+        if (mounted) {
+          _showSnack('알림 권한 상태를 확인하지 못했습니다. Android 앱 설정에서 직접 확인해 주세요.');
+        }
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -969,6 +984,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PermissionCheckState.unsupported => '지원 안 함',
       PermissionCheckState.needsManualCheck => 'Android 설정에서 확인',
     };
+  }
+
+  String _notificationPermissionSnack(NotificationPermissionStatus status) {
+    final notificationsAllowed = status.notificationsEnabled == true;
+    final exactAllowed = status.exactAlarmsEnabled == true;
+    if (notificationsAllowed && exactAllowed) {
+      return status.fullScreenIntentStatus ==
+              PermissionCheckState.needsManualCheck
+          ? '앱 알림과 정확한 알람은 허용됨입니다. 전체 화면 알림은 Android 설정에서 확인해 주세요.'
+          : '알림 권한 상태를 다시 확인했습니다.';
+    }
+
+    if (notificationsAllowed) {
+      return '앱 알림은 허용됨입니다. 정확한 알람 또는 전체 화면 알림은 Android 설정에서 확인해 주세요.';
+    }
+
+    return '일부 알림 권한은 Android 앱 설정에서 허용이 필요합니다.';
   }
 
   String? get _googleCalendarClientId {

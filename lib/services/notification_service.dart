@@ -75,8 +75,14 @@ class NotificationService {
     }
 
     await initialize();
-    await _requestExactAlarmPermissionIfNeeded();
-    await _requestFullScreenIntentPermissionIfNeeded();
+    await _runPermissionRequestBestEffort(
+      'exact alarm before critical notification',
+      _requestExactAlarmPermissionIfNeeded,
+    );
+    await _runPermissionRequestBestEffort(
+      'full-screen intent before critical notification',
+      _requestFullScreenIntentPermissionIfNeeded,
+    );
     await _scheduleNotification(
       id: id,
       title: title,
@@ -126,9 +132,18 @@ class NotificationService {
     }
 
     await initialize();
-    await _requestNotificationPermissionIfNeeded();
-    await _requestExactAlarmPermissionIfNeeded();
-    await _requestFullScreenIntentPermissionIfNeeded();
+    await _runPermissionRequestBestEffort(
+      'notification permission',
+      _requestNotificationPermissionIfNeeded,
+    );
+    await _runPermissionRequestBestEffort(
+      'exact alarm permission',
+      _requestExactAlarmPermissionIfNeeded,
+    );
+    await _runPermissionRequestBestEffort(
+      'full-screen intent permission',
+      _requestFullScreenIntentPermissionIfNeeded,
+    );
     return checkPermissionStatus();
   }
 
@@ -161,7 +176,22 @@ class NotificationService {
     );
 
     await _plugin.initialize(settings: initializationSettings);
-    await _requestNotificationPermissionIfNeeded();
+    await _runPermissionRequestBestEffort(
+      'initial notification permission',
+      _requestNotificationPermissionIfNeeded,
+    );
+  }
+
+  Future<void> _runPermissionRequestBestEffort(
+    String label,
+    Future<void> Function() request,
+  ) async {
+    try {
+      await request();
+    } catch (error, stackTrace) {
+      debugPrint('Notification permission request skipped ($label): $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<void> _requestNotificationPermissionIfNeeded() async {

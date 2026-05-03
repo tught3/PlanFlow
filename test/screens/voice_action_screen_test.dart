@@ -9,6 +9,75 @@ import 'package:planflow/services/home_widget_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 
 void main() {
+  testWidgets('관리 선택 화면의 추가 버튼은 일정 확인 화면으로 바로 이동한다', (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '5월 5일 한강 피크닉 10시에 추가해줘',
+            action: VoiceScheduleAction.choose,
+            eventRepository: _FakeEventRepository(events: const []),
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('추가'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('일정 확인 화면'), findsOneWidget);
+  });
+
+  testWidgets('관리 선택 화면의 수정/조회 버튼은 후보 영역을 즉시 갱신한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(id: 'event-1', title: '한강 피크닉'),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 어떻게 할까',
+            action: VoiceScheduleAction.choose,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('수정'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.text('수정하기'), findsOneWidget);
+
+    await tester.tap(find.text('조회'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('단순 조회 결과'), findsOneWidget);
+    expect(find.text('상세 보기'), findsOneWidget);
+  });
+
   testWidgets('음성 수정 명령은 후보 일정을 편집 화면으로 연결한다', (tester) async {
     final repository = _FakeEventRepository(
       events: [
