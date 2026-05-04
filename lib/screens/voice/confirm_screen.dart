@@ -11,6 +11,7 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../location/location_picker_screen.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
@@ -290,7 +291,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         return;
       }
 
-      if (results.isEmpty) {
+      if (results.isEmpty && !AppEnv.isNaverMapReady) {
         await _showExternalMapOptions(
           query,
           message: '앱 안에서 장소를 찾지 못했어요. 외부 지도에서 직접 확인해 보세요.',
@@ -298,13 +299,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         return;
       }
 
-      final selected = await showModalBottomSheet<LocationLookupResult>(
-        context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        builder: (context) =>
-            _LocationLookupSheet(initialQuery: query, results: results),
-      );
+      final selected = await _chooseLocation(query, results);
 
       if (!mounted || selected == null) {
         return;
@@ -316,6 +311,15 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         _locationLng = selected.longitude;
       });
       _showMessage('정확한 위치를 선택했어요.');
+    } on LocationLookupException catch (error) {
+      if (mounted) {
+        await _showExternalMapOptions(
+          query,
+          message: error.isAuthFailure
+              ? '네이버 지도 API 인증에 실패했어요. Naver Cloud의 Geocoding/Directions 권한과 키 제한을 확인해 주세요.'
+              : '네이버 지도 API 호출에 실패했어요. 잠시 후 다시 시도해 주세요.',
+        );
+      }
     } catch (_) {
       if (mounted) {
         await _showExternalMapOptions(
@@ -330,6 +334,31 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         });
       }
     }
+  }
+
+  Future<LocationLookupResult?> _chooseLocation(
+    String query,
+    List<LocationLookupResult> results,
+  ) {
+    if (AppEnv.isNaverMapReady) {
+      return Navigator.of(context).push<LocationLookupResult>(
+        MaterialPageRoute(
+          builder: (_) => LocationPickerScreen(
+            initialQuery: query,
+            initialResults: results,
+            locationLookupService: widget.locationLookupService,
+          ),
+        ),
+      );
+    }
+
+    return showModalBottomSheet<LocationLookupResult>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) =>
+          _LocationLookupSheet(initialQuery: query, results: results),
+    );
   }
 
   Future<void> _showExternalMapOptions(String query, {String? message}) async {

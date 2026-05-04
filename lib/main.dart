@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -17,6 +18,25 @@ Future<void> main() async {
     await dotenv.load(fileName: '.env');
   } catch (_) {
     // Keep booting when the local env file is absent in scaffolded setups.
+  }
+  if (AppEnv.naverMapClientId.trim().isNotEmpty) {
+    var naverMapAuthFailed = false;
+    try {
+      await FlutterNaverMap()
+          .init(
+            clientId: AppEnv.naverMapClientId,
+            onAuthFailed: (error) {
+              naverMapAuthFailed = true;
+              debugPrint('Naver Map auth failed: $error');
+            },
+          )
+          .timeout(const Duration(seconds: 8));
+      if (!naverMapAuthFailed) {
+        AppEnv.markNaverMapInitialized();
+      }
+    } catch (error) {
+      debugPrint('Naver Map initialization skipped: $error');
+    }
   }
   if (AppEnv.hasValidSupabaseConfig) {
     try {

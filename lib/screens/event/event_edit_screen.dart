@@ -9,8 +9,10 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../location/location_picker_screen.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
+import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
@@ -44,6 +46,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late final TextEditingController _suppliesController;
   late DateTime _startAt;
   DateTime? _endAt;
+  double? _locationLat;
+  double? _locationLng;
   late bool _critical;
   Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
   EventModel? _loadedEvent;
@@ -80,6 +84,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
     );
     _startAt = event?.startAt ?? DateTime.now().add(const Duration(hours: 1));
     _endAt = event?.endAt;
+    _locationLat = event?.locationLat;
+    _locationLng = event?.locationLng;
     _critical = event?.isCritical ?? false;
     _loadEventIfNeeded();
     if (event != null) {
@@ -131,8 +137,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
         startAt: _startAt,
         endAt: _endAt,
         location: _emptyToNull(_locationController.text),
-        locationLat: _loadedEvent?.locationLat,
-        locationLng: _loadedEvent?.locationLng,
+        locationLat: _locationLat,
+        locationLng: _locationLng,
         memo: _emptyToNull(_memoController.text),
         supplies: supplies,
         isCritical: _critical,
@@ -215,6 +221,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _loadedEvent = event;
         _titleController.text = event.title;
         _locationController.text = event.location ?? '';
+        _locationLat = event.locationLat;
+        _locationLng = event.locationLng;
         _memoController.text = event.memo ?? '';
         _suppliesController.text = event.supplies.join(', ');
         _startAt = event.startAt ?? _startAt;
@@ -359,6 +367,61 @@ class _EventEditScreenState extends State<EventEditScreen> {
     );
   }
 
+  Future<void> _pickLocationOnMap() async {
+    final query = _locationController.text.trim();
+    if (query.isEmpty) {
+      _showMessage('장소를 먼저 입력해 주세요.');
+      return;
+    }
+
+    try {
+      final lookupService = LocationLookupService();
+      final results = await lookupService.search(query);
+      if (!mounted) {
+        return;
+      }
+      if (results.isEmpty && !AppEnv.isNaverMapReady) {
+        _showMessage('지도 키가 없어 앱 안 지도를 열 수 없습니다. 장소명을 더 자세히 입력해 주세요.');
+        return;
+      }
+
+      final selected = await Navigator.of(context).push<LocationLookupResult>(
+        MaterialPageRoute(
+          builder: (_) => LocationPickerScreen(
+            initialQuery: query,
+            initialResults: results,
+            locationLookupService: lookupService,
+          ),
+        ),
+      );
+      if (!mounted || selected == null) {
+        return;
+      }
+      setState(() {
+        _locationController.text = selected.label;
+        _locationLat = selected.latitude;
+        _locationLng = selected.longitude;
+      });
+      _showMessage('정확한 위치를 선택했어요.');
+    } on LocationLookupException catch (error, stackTrace) {
+      debugPrint('EventEditScreen location auth failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showMessage(
+          error.isAuthFailure
+              ? '네이버 지도 API 인증에 실패했어요. Naver Cloud의 지도 권한과 키 제한을 확인해 주세요.'
+              : '위치 검색에 실패했어요. 잠시 후 다시 시도해 주세요.',
+        );
+      }
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen location pick failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showMessage('위치 선택을 열지 못했어요. 지도 키와 네트워크를 확인해 주세요.');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -438,7 +501,14 @@ class _EventEditScreenState extends State<EventEditScreen> {
               const SizedBox(height: AppConstants.sectionSpacing),
               TextFormField(
                 controller: _locationController,
-                decoration: const InputDecoration(labelText: '장소'),
+                decoration: InputDecoration(
+                  labelText: '장소',
+                  suffixIcon: IconButton(
+                    tooltip: '지도에서 위치 선택',
+                    onPressed: _pickLocationOnMap,
+                    icon: const Icon(Icons.map_outlined),
+                  ),
+                ),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
               TextFormField(

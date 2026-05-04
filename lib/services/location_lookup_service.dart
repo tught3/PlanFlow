@@ -4,6 +4,21 @@ import 'package:http/http.dart' as http;
 
 import '../core/env.dart';
 
+class LocationLookupException implements Exception {
+  const LocationLookupException({
+    required this.statusCode,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String message;
+
+  bool get isAuthFailure => statusCode == 401 || statusCode == 403;
+
+  @override
+  String toString() => 'LocationLookupException($statusCode, $message)';
+}
+
 class LocationLookupResult {
   const LocationLookupResult({
     required this.name,
@@ -24,39 +39,58 @@ class LocationLookupService {
   LocationLookupService({
     String? clientId,
     String? clientSecret,
+    String? proxyUrl,
     http.Client Function()? httpClientFactory,
   })  : _clientId = clientId ?? AppEnv.naverMapClientId,
         _clientSecret = clientSecret ?? AppEnv.naverMapClientSecret,
+        _proxyUrl = proxyUrl ?? AppEnv.naverMapProxyUrl,
         _httpClientFactory = httpClientFactory ?? http.Client.new;
 
   final String _clientId;
   final String _clientSecret;
+  final String _proxyUrl;
   final http.Client Function() _httpClientFactory;
 
   Future<List<LocationLookupResult>> search(String query) async {
     final normalized = query.trim();
-    if (normalized.isEmpty ||
-        _clientId.trim().isEmpty ||
-        _clientSecret.trim().isEmpty) {
+    if (normalized.isEmpty) {
+      return const <LocationLookupResult>[];
+    }
+
+    final proxyUri = _proxyUri(normalized);
+    final useProxy = proxyUri != null;
+    if (!useProxy &&
+        (_clientId.trim().isEmpty || _clientSecret.trim().isEmpty)) {
       return const <LocationLookupResult>[];
     }
 
     final client = _httpClientFactory();
     try {
-      final response = await client.get(
-        Uri.https(
-          'naveropenapi.apigw.ntruss.com',
-          '/map-geocode/v2/geocode',
-          <String, String>{
-            'query': normalized,
-          },
-        ),
-        headers: <String, String>{
-          'X-NCP-APIGW-API-KEY-ID': _clientId,
-          'X-NCP-APIGW-API-KEY': _clientSecret,
-          'accept': 'application/json',
-        },
-      );
+      final response = useProxy
+          ? await client.get(proxyUri, headers: const <String, String>{
+              'accept': 'application/json',
+            })
+          : await client.get(
+              Uri.https(
+                'naveropenapi.apigw.ntruss.com',
+                '/map-geocode/v2/geocode',
+                <String, String>{
+                  'query': normalized,
+                },
+              ),
+              headers: <String, String>{
+                'X-NCP-APIGW-API-KEY-ID': _clientId,
+                'X-NCP-APIGW-API-KEY': _clientSecret,
+                'accept': 'application/json',
+              },
+            );
+
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        throw LocationLookupException(
+          statusCode: response.statusCode,
+          message: '네이버 지도 API 인증 또는 서비스 권한을 확인해 주세요.',
+        );
+      }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return const <LocationLookupResult>[];
@@ -78,6 +112,8 @@ class LocationLookupService {
           .map(_parseAddress)
           .whereType<LocationLookupResult>()
           .toList(growable: false);
+    } on LocationLookupException {
+      rethrow;
     } catch (_) {
       return const <LocationLookupResult>[];
     } finally {
@@ -123,5 +159,22 @@ class LocationLookupService {
       return value.toDouble();
     }
     return double.tryParse(value?.toString() ?? '');
+  }
+
+  Uri? _proxyUri(String query) {
+    final raw = _proxyUrl.trim();
+    if (raw.isEmpty) {
+      return null;
+    }
+    final uri = Uri.tryParse(raw);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      return null;
+    }
+    return uri.replace(
+      queryParameters: <String, String>{
+        ...uri.queryParameters,
+        'query': query,
+      },
+    );
   }
 }

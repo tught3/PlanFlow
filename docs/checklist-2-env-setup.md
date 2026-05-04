@@ -1,11 +1,6 @@
 # Checklist 2 - Environment Setup
 
-PlanFlow reads secrets and service endpoints from a local `.env` file.
-
-## Files
-
-- `.env.example`: committed template with placeholder values
-- `.env`: local-only file, ignored by git
+PlanFlow reads local development values from `.env`. The file is ignored by Git.
 
 ## Required keys
 
@@ -14,16 +9,21 @@ PlanFlow reads secrets and service endpoints from a local `.env` file.
 - `OPENAI_API_KEY`
 - `GOOGLE_WEB_CLIENT_ID`
 - `GOOGLE_MAPS_API_KEY`
+- `TMAP_API_KEY`
+- `NAVER_MAP_CLIENT_ID`
 
 ## Optional keys
 
-- `GOOGLE_MAPS_API_KEY`
+- `GOOGLE_ANDROID_CLIENT_ID`
+- `GOOGLE_SERVER_CLIENT_ID`
+- `NAVER_MAP_PROXY_URL`
+- `NAVER_MAP_CLIENT_SECRET` for local debug only
 
 ## Notes
 
-- `lib/main.dart` loads `.env` at startup.
-- `lib/core/env.dart` exposes the parsed values for later app wiring.
-- If `.env` is empty, the app still starts, but integrations remain inactive.
 - `GOOGLE_WEB_CLIENT_ID` is used as Android `serverClientId` for Google Calendar sign-in.
-- `GOOGLE_MAPS_API_KEY` is used for 1차 이동시간 버퍼. If it is absent, PlanFlow keeps using the local fallback estimate.
+- `GOOGLE_MAPS_API_KEY` is used for Google Distance Matrix travel-time fallback.
+- `TMAP_API_KEY` is used first for route duration when origin/destination coordinates exist.
+- `NAVER_MAP_CLIENT_ID` is used by the Android in-app Naver Dynamic Map SDK.
+- Do not ship `NAVER_MAP_CLIENT_SECRET` in a production APK. For release, deploy `supabase/functions/naver-geocode`, store the secret in Supabase, and set `NAVER_MAP_PROXY_URL` to the function URL.
 - Naver Calendar is intentionally deferred for 1차 배포.

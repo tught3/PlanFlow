@@ -31,6 +31,11 @@ public final class GeneratedPluginRegistrant {
       Log.e(TAG, "Error registering plugin flutter_local_notifications, com.dexterous.flutterlocalnotifications.FlutterLocalNotificationsPlugin", e);
     }
     try {
+      flutterEngine.getPlugins().add(new dev.note11.flutter_naver_map.flutter_naver_map.FlutterNaverMapPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin flutter_naver_map, dev.note11.flutter_naver_map.flutter_naver_map.FlutterNaverMapPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new com.tundralabs.fluttertts.FlutterTtsPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin flutter_tts, com.tundralabs.fluttertts.FlutterTtsPlugin", e);

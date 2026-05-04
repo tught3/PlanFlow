@@ -2,6 +2,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AppEnv {
   static bool _supabaseInitialized = false;
+  static bool _naverMapInitialized = false;
 
   static String get supabaseUrl => _envValue('SUPABASE_URL');
   static String get supabaseAnonKey => _envValue('SUPABASE_ANON_KEY');
@@ -11,6 +12,7 @@ class AppEnv {
   static String get naverMapClientId => _envValue('NAVER_MAP_CLIENT_ID');
   static String get naverMapClientSecret =>
       _envValue('NAVER_MAP_CLIENT_SECRET');
+  static String get naverMapProxyUrl => _envValue('NAVER_MAP_PROXY_URL');
   static String get googleAndroidClientId =>
       _envValue('GOOGLE_ANDROID_CLIENT_ID');
   static String get googleWebClientId {
@@ -41,11 +43,16 @@ class AppEnv {
   }
 
   static bool get isSupabaseReady => _supabaseInitialized;
+  static bool get isNaverMapReady => _naverMapInitialized;
 
   static bool get isConfigured => isSupabaseReady && hasValidSupabaseConfig;
 
   static void markSupabaseInitialized() {
     _supabaseInitialized = true;
+  }
+
+  static void markNaverMapInitialized() {
+    _naverMapInitialized = true;
   }
 
   static String _envValue(String key) {
@@ -74,6 +81,8 @@ class AppEnv {
         const String.fromEnvironment('NAVER_MAP_CLIENT_ID'),
       'NAVER_MAP_CLIENT_SECRET' =>
         const String.fromEnvironment('NAVER_MAP_CLIENT_SECRET'),
+      'NAVER_MAP_PROXY_URL' =>
+        const String.fromEnvironment('NAVER_MAP_PROXY_URL'),
       'GOOGLE_WEB_CLIENT_ID' =>
         const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
       'GOOGLE_SERVER_CLIENT_ID' =>
@@ -95,6 +104,7 @@ class AppEnv {
         normalized.contains('your-google-maps-api-key') ||
         normalized.contains('your-tmap-api-key') ||
         normalized.contains('your-naver-map-client-id') ||
-        normalized.contains('your-naver-map-client-secret');
+        normalized.contains('your-naver-map-client-secret') ||
+        normalized.contains('your-naver-map-proxy-url');
   }
 }

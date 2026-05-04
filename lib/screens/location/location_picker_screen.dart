@@ -1,0 +1,353 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
+
+import '../../core/env.dart';
+import '../../core/theme.dart';
+import '../../services/location_lookup_service.dart';
+
+class LocationPickerScreen extends StatefulWidget {
+  LocationPickerScreen({
+    super.key,
+    required this.initialQuery,
+    this.initialResults = const <LocationLookupResult>[],
+    LocationLookupService? locationLookupService,
+  }) : locationLookupService = locationLookupService ?? LocationLookupService();
+
+  final String initialQuery;
+  final List<LocationLookupResult> initialResults;
+  final LocationLookupService locationLookupService;
+
+  @override
+  State<LocationPickerScreen> createState() => _LocationPickerScreenState();
+}
+
+class _LocationPickerScreenState extends State<LocationPickerScreen> {
+  late final TextEditingController _queryController;
+  late List<LocationLookupResult> _results;
+  LocationLookupResult? _selected;
+  NaverMapController? _mapController;
+  bool _isSearching = false;
+  String? _message;
+
+  bool get _canUseNaverMap => AppEnv.isNaverMapReady;
+
+  NLatLng get _initialTarget {
+    final selected = _selected;
+    if (selected != null) {
+      return NLatLng(selected.latitude, selected.longitude);
+    }
+    return const NLatLng(37.5666, 126.979);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _queryController = TextEditingController(text: widget.initialQuery);
+    _results = List<LocationLookupResult>.of(widget.initialResults);
+    if (_results.isNotEmpty) {
+      _selected = _results.first;
+    }
+    if (_results.isEmpty && widget.initialQuery.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _search());
+    }
+  }
+
+  @override
+  void dispose() {
+    _queryController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final query = _queryController.text.trim();
+    if (query.isEmpty) {
+      setState(() {
+        _message = '검색할 장소를 입력해 주세요.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isSearching = true;
+      _message = null;
+    });
+
+    try {
+      final results = await widget.locationLookupService.search(query);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _results = results;
+        _selected = results.isEmpty ? _selected : results.first;
+        _message =
+            results.isEmpty ? '검색 결과가 없어요. 지도에서 직접 위치를 눌러 지정할 수 있습니다.' : null;
+      });
+      final selected = _selected;
+      if (selected != null) {
+        await _moveMapTo(selected);
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _message = '장소 검색에 실패했어요. 지도에서 직접 위치를 눌러 지정해 주세요.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSearching = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _moveMapTo(LocationLookupResult result) async {
+    final controller = _mapController;
+    if (controller == null) {
+      return;
+    }
+    final position = NLatLng(result.latitude, result.longitude);
+    await controller.clearOverlays(type: NOverlayType.marker);
+    await controller.addOverlay(
+      NMarker(
+        id: 'selected-location',
+        position: position,
+        caption: NOverlayCaption(text: result.name),
+      ),
+    );
+    await controller.updateCamera(
+      NCameraUpdate.scrollAndZoomTo(target: position, zoom: 15),
+    );
+  }
+
+  Future<void> _selectResult(LocationLookupResult result) async {
+    setState(() {
+      _selected = result;
+      _queryController.text = result.name;
+    });
+    await _moveMapTo(result);
+  }
+
+  Future<void> _selectTappedPoint(NLatLng latLng) async {
+    final query = _queryController.text.trim();
+    final result = LocationLookupResult(
+      name: query.isEmpty ? '지도에서 선택한 위치' : query,
+      address: '지도에서 직접 선택한 위치',
+      latitude: latLng.latitude,
+      longitude: latLng.longitude,
+    );
+    setState(() {
+      _selected = result;
+      _message = '지도에서 위치를 선택했어요. 아래 버튼으로 확정해 주세요.';
+    });
+    await _moveMapTo(result);
+  }
+
+  void _confirm() {
+    final selected = _selected;
+    if (selected == null) {
+      setState(() {
+        _message = '먼저 지도에서 위치를 선택해 주세요.';
+      });
+      return;
+    }
+    Navigator.of(context).pop(selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      backgroundColor: PlanFlowColors.background,
+      appBar: AppBar(
+        title: const Text('지도에서 장소 선택'),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _queryController,
+                          textInputAction: TextInputAction.search,
+                          onSubmitted: (_) => _search(),
+                          decoration: const InputDecoration(
+                            hintText: '장소명을 입력해 주세요',
+                            prefixIcon: Icon(Icons.search),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _isSearching ? null : _search,
+                        child: _isSearching
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('검색'),
+                      ),
+                    ],
+                  ),
+                  if (_message != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _message!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Expanded(
+              child: _canUseNaverMap
+                  ? NaverMap(
+                      forceGesture: true,
+                      options: NaverMapViewOptions(
+                        initialCameraPosition: NCameraPosition(
+                          target: _initialTarget,
+                          zoom: 15,
+                        ),
+                        locationButtonEnable: false,
+                        compassEnable: true,
+                        contentPadding: const EdgeInsets.only(bottom: 160),
+                      ),
+                      onMapReady: (controller) async {
+                        _mapController = controller;
+                        final selected = _selected;
+                        if (selected != null) {
+                          await _moveMapTo(selected);
+                        }
+                      },
+                      onMapTapped: (_, latLng) => _selectTappedPoint(latLng),
+                    )
+                  : _MapUnavailablePanel(query: widget.initialQuery),
+            ),
+            _BottomSelectionPanel(
+              results: _results,
+              selected: _selected,
+              onSelect: _selectResult,
+              onConfirm: _confirm,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomSelectionPanel extends StatelessWidget {
+  const _BottomSelectionPanel({
+    required this.results,
+    required this.selected,
+    required this.onSelect,
+    required this.onConfirm,
+  });
+
+  final List<LocationLookupResult> results;
+  final LocationLookupResult? selected;
+  final ValueChanged<LocationLookupResult> onSelect;
+  final VoidCallback onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      decoration: const BoxDecoration(
+        color: PlanFlowColors.surface,
+        border: Border(top: BorderSide(color: PlanFlowColors.primaryFaint)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (selected != null) ...[
+            Text(
+              selected!.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: PlanFlowColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              selected!.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (results.isNotEmpty)
+            SizedBox(
+              height: 44,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: results.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final result = results[index];
+                  final isSelected = result == selected;
+                  return ChoiceChip(
+                    label: Text(
+                      result.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    selected: isSelected,
+                    onSelected: (_) => onSelect(result),
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: selected == null ? null : onConfirm,
+            icon: const Icon(Icons.check),
+            label: const Text('이 위치 사용'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapUnavailablePanel extends StatelessWidget {
+  const _MapUnavailablePanel({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          '네이버 지도 키가 없어 앱 안 지도를 열 수 없습니다.\n검색 후보를 선택하거나 외부 지도로 확인해 주세요.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+        ),
+      ),
+    );
+  }
+}
