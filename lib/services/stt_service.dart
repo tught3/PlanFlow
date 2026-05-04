@@ -383,6 +383,10 @@ class SttService {
     ValueChanged<int>? onRestart,
   }) async {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final permissionResult = await _ensureAndroidMicrophonePermission();
+      if (permissionResult != null) {
+        return permissionResult;
+      }
       final nativeResult = await _listenWithNativeAndroid(
         onPartialResult: onPartialResult,
         onRestart: onRestart,
@@ -661,6 +665,41 @@ class SttService {
         _activeCompleter = null;
         _activeRecognizedText = null;
       }
+    }
+  }
+
+  Future<SttListenResult?> _ensureAndroidMicrophonePermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return null;
+    }
+
+    final speech = SpeechToText();
+    try {
+      final available = await speech.initialize(debugLogging: kDebugMode);
+      if (!available) {
+        final hasPermission = await speech.hasPermission;
+        return SttListenResult.failure(
+          failure: hasPermission
+              ? SttListenFailure.unavailable
+              : SttListenFailure.permissionDenied,
+          message: hasPermission ? _genericMessage : _permissionMessage,
+        );
+      }
+
+      final hasPermission = await speech.hasPermission;
+      if (!hasPermission) {
+        return SttListenResult.failure(
+          failure: SttListenFailure.permissionDenied,
+          message: _permissionMessage,
+        );
+      }
+      return null;
+    } catch (error) {
+      debugPrint('PlanFlow STT permission check failed: $error');
+      return SttListenResult.failure(
+        failure: SttListenFailure.permissionDenied,
+        message: _permissionMessage,
+      );
     }
   }
 
