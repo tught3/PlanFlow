@@ -197,9 +197,10 @@ void main() {
     expect(find.text('Android 설정에서 확인'), findsOneWidget);
   });
 
-  testWidgets('notification permission request rechecks status after request failure',
+  testWidgets(
+      'notification permission request rechecks status after request failure',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    await tester.binding.setSurfaceSize(const Size(800, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final notificationService = _FakeNotificationService(

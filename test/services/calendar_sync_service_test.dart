@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -101,7 +100,7 @@ void main() {
         googlePlatformSupported: true,
         googleTargetPlatform: TargetPlatform.android,
         googleAccessTokenProvider: ({required bool interactive}) {
-          throw const PlatformException(
+          throw PlatformException(
             code: 'sign_in_canceled',
             message: 'The user canceled sign-in.',
           );
@@ -121,7 +120,7 @@ void main() {
         googlePlatformSupported: true,
         googleTargetPlatform: TargetPlatform.android,
         googleAccessTokenProvider: ({required bool interactive}) {
-          throw const PlatformException(
+          throw PlatformException(
             code: 'sign_in_failed',
             message: 'ApiException: 10',
           );
