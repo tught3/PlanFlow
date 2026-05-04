@@ -1,7 +1,9 @@
 package com.example.planflow
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -12,16 +14,60 @@ import java.util.Locale
 
 class MainActivity : FlutterActivity() {
     private var planFlowStt: PlanFlowSttChannel? = null
+    private var settingsChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         planFlowStt = PlanFlowSttChannel(this, flutterEngine)
+        settingsChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "planflow/android_settings",
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "openNotificationSettings" -> {
+                        result.success(openNotificationSettings())
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
     }
 
     override fun onDestroy() {
         planFlowStt?.dispose()
         planFlowStt = null
+        settingsChannel?.setMethodCallHandler(null)
+        settingsChannel = null
         super.onDestroy()
+    }
+
+    private fun openNotificationSettings(): Boolean {
+        return try {
+            val intent = if (android.os.Build.VERSION.SDK_INT >= 26) {
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                }
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            true
+        } catch (_: Exception) {
+            try {
+                val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(fallback)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 }
 

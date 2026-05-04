@@ -49,12 +49,14 @@ void main() {
 
     expect(find.text('06:40'), findsWidgets);
     expect(find.text('20:20'), findsWidgets);
-    expect(find.text('45분 알림'), findsOneWidget);
+    expect(find.text('기본 알림'), findsNothing);
+    expect(find.text('저장'), findsNothing);
+    expect(find.text('계정'), findsOneWidget);
     expect(find.textContaining('네이버 캘린더'), findsNothing);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 
-  testWidgets('SettingsScreen saves settings and schedules briefing times',
+  testWidgets('SettingsScreen auto-saves setting changes and schedules briefing',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -93,16 +95,15 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    await tester.tap(find.text('60분'));
-    await tester.pump();
-    final saveButton = find.widgetWithText(FilledButton, '저장');
-    await tester.scrollUntilVisible(saveButton, 200);
-    await tester.ensureVisible(saveButton);
-    await tester.tap(saveButton);
+    final transitOption = find.text('대중교통');
+    await tester.scrollUntilVisible(transitOption, 200);
+    await tester.ensureVisible(transitOption);
+    await tester.tap(transitOption);
     await tester.pumpAndSettle();
 
     expect(settingsRepository.savedSettings, isNotNull);
-    expect(settingsRepository.savedSettings!.defaultReminderMin, 60);
+    expect(settingsRepository.savedSettings!.defaultReminderMin, 45);
+    expect(settingsRepository.savedSettings!.travelMode, 'transit');
     expect(settingsRepository.savedSettings!.morningBriefingAt, '07:10');
     expect(settingsRepository.savedSettings!.eveningBriefingAt, '21:20');
     expect(scheduler.lastMorningTime, '07:10');

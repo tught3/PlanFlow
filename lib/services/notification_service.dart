@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 class NotificationService {
-  NotificationService({
-    FlutterLocalNotificationsPlugin? plugin,
-  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+  NotificationService({FlutterLocalNotificationsPlugin? plugin})
+    : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final FlutterLocalNotificationsPlugin _plugin;
 
@@ -20,6 +20,9 @@ class NotificationService {
   static const String _criticalAlarmChannelId = 'critical_alarms';
   static const String _criticalAlarmChannelName = '중요 일정 알람';
   static const String _criticalAlarmChannelDescription = '중요 일정 긴급 알람';
+  static const MethodChannel _settingsChannel = MethodChannel(
+    'planflow/android_settings',
+  );
 
   Future<void> initialize() {
     return _initializationFuture ??= _initializeInternal();
@@ -112,8 +115,10 @@ class NotificationService {
       );
     }
 
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     final notificationsEnabled =
         await android?.areNotificationsEnabled() ?? false;
     final exactAlarmsEnabled =
@@ -147,6 +152,23 @@ class NotificationService {
     return checkPermissionStatus();
   }
 
+  Future<bool> openAppNotificationSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return false;
+    }
+
+    try {
+      return await _settingsChannel.invokeMethod<bool>(
+            'openNotificationSettings',
+          ) ??
+          false;
+    } catch (error, stackTrace) {
+      debugPrint('Open notification settings failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
+  }
+
   Future<void> _initializeInternal() async {
     const initializationSettings = InitializationSettings(
       android: AndroidInitializationSettings('ic_launcher'),
@@ -170,9 +192,7 @@ class NotificationService {
         defaultPresentBanner: true,
         defaultPresentList: true,
       ),
-      linux: LinuxInitializationSettings(
-        defaultActionName: '알림 열기',
-      ),
+      linux: LinuxInitializationSettings(defaultActionName: '알림 열기'),
     );
 
     await _plugin.initialize(settings: initializationSettings);
@@ -202,7 +222,8 @@ class NotificationService {
     if (defaultTargetPlatform == TargetPlatform.android) {
       await _plugin
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
+            AndroidFlutterLocalNotificationsPlugin
+          >()
           ?.requestNotificationsPermission();
       return;
     }
@@ -210,7 +231,8 @@ class NotificationService {
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       await _plugin
           .resolvePlatformSpecificImplementation<
-              IOSFlutterLocalNotificationsPlugin>()
+            IOSFlutterLocalNotificationsPlugin
+          >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
       return;
     }
@@ -218,7 +240,8 @@ class NotificationService {
     if (defaultTargetPlatform == TargetPlatform.macOS) {
       await _plugin
           .resolvePlatformSpecificImplementation<
-              MacOSFlutterLocalNotificationsPlugin>()
+            MacOSFlutterLocalNotificationsPlugin
+          >()
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
   }
@@ -230,7 +253,8 @@ class NotificationService {
 
     await _plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestExactAlarmsPermission();
   }
 
@@ -241,7 +265,8 @@ class NotificationService {
 
     await _plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestFullScreenIntentPermission();
   }
 
@@ -280,14 +305,8 @@ class NotificationService {
         priority: Priority.high,
         category: AndroidNotificationCategory.event,
       ),
-      iOS: DarwinNotificationDetails(
-        presentAlert: true,
-        presentSound: true,
-      ),
-      macOS: DarwinNotificationDetails(
-        presentAlert: true,
-        presentSound: true,
-      ),
+      iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
+      macOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
       linux: LinuxNotificationDetails(
         urgency: LinuxNotificationUrgency.normal,
         suppressSound: false,
@@ -339,12 +358,7 @@ class NotificationService {
   }
 }
 
-enum PermissionCheckState {
-  granted,
-  denied,
-  unsupported,
-  needsManualCheck,
-}
+enum PermissionCheckState { granted, denied, unsupported, needsManualCheck }
 
 class NotificationPermissionStatus {
   const NotificationPermissionStatus({

@@ -29,7 +29,7 @@ class BackupSnapshot {
 
 class BackupService {
   BackupService({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+    : _client = client ?? Supabase.instance.client;
 
   static const List<String> _scopedTables = <String>[
     'events',
@@ -86,6 +86,21 @@ class BackupService {
     return BackupSnapshot.fromJson(Map<String, dynamic>.from(inserted));
   }
 
+  Future<BackupSnapshot?> createAutomaticBackupIfDue({DateTime? now}) async {
+    final current = now ?? DateTime.now();
+    final dueAt = _latestBackupBoundary(current);
+    final backups = await listBackups();
+    final hasFreshAutomaticBackup = backups.any((backup) {
+      return backup.label == '자동 백업' && !backup.createdAt.isBefore(dueAt);
+    });
+
+    if (hasFreshAutomaticBackup) {
+      return null;
+    }
+
+    return createBackup(label: '자동 백업');
+  }
+
   Future<void> restoreBackup(String backupId) async {
     _requireUserId();
     await _client.rpc(
@@ -97,7 +112,7 @@ class BackupService {
   String _selectColumnsFor(String table) {
     if (table == 'user_settings') {
       return 'id, user_id, morning_briefing_at, evening_briefing_at, '
-          'default_reminder_min, created_at';
+          'default_reminder_min, travel_mode, created_at';
     }
     return '*';
   }
@@ -108,5 +123,13 @@ class BackupService {
       throw StateError('A signed-in user is required for backup and restore.');
     }
     return userId;
+  }
+
+  DateTime _latestBackupBoundary(DateTime now) {
+    var boundary = DateTime(now.year, now.month, now.day, 3);
+    if (now.isBefore(boundary)) {
+      boundary = boundary.subtract(const Duration(days: 1));
+    }
+    return boundary;
   }
 }

@@ -15,10 +15,8 @@ import '../../services/event_refresh_bus.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
-import '../../services/map_service.dart';
 import '../../services/notification_service.dart';
-import '../../services/reminder_settings_service.dart';
-import '../../services/travel_time_buffer_service.dart';
+import '../../widgets/reminder_offset_selector.dart';
 
 class ConfirmScreen extends StatefulWidget {
   ConfirmScreen({
@@ -158,8 +156,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   bool _isLoadingPastSupplies = false;
   bool _isLookingUpLocation = false;
   bool _isHydratingParsedSchedule = false;
-  final ReminderSettingsService _reminderSettingsService =
-      const ReminderSettingsService();
+  Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
   List<String> _pastSupplies = const <String>[];
   Timer? _locationDebounce;
   bool _hasFollowUpFailures = false;
@@ -182,9 +179,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           _stringValue(widget.parsedSchedule['raw_text']),
     );
     _newSupplyController = TextEditingController();
-    _supplies = _stringListValue(widget.parsedSchedule['supplies'])
-        .map(_SupplyDraft.new)
-        .toList(growable: true);
+    _supplies = _stringListValue(
+      widget.parsedSchedule['supplies'],
+    ).map(_SupplyDraft.new).toList(growable: true);
     _preActions = _initialPreActions();
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
@@ -305,10 +302,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         context: context,
         isScrollControlled: true,
         showDragHandle: true,
-        builder: (context) => _LocationLookupSheet(
-          initialQuery: query,
-          results: results,
-        ),
+        builder: (context) =>
+            _LocationLookupSheet(initialQuery: query, results: results),
       );
 
       if (!mounted || selected == null) {
@@ -337,10 +332,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
   }
 
-  Future<void> _showExternalMapOptions(
-    String query, {
-    String? message,
-  }) async {
+  Future<void> _showExternalMapOptions(String query, {String? message}) async {
     if (!mounted) {
       return;
     }
@@ -348,10 +340,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     final selected = await showModalBottomSheet<_MapSearchTarget>(
       context: context,
       showDragHandle: true,
-      builder: (context) => _ExternalMapSearchSheet(
-        query: query,
-        message: message,
-      ),
+      builder: (context) =>
+          _ExternalMapSearchSheet(query: query, message: message),
     );
     if (!mounted || selected == null) {
       return;
@@ -360,10 +350,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     await _launchMapSearch(query, selected);
   }
 
-  Future<void> _launchMapSearch(
-    String query,
-    _MapSearchTarget target,
-  ) async {
+  Future<void> _launchMapSearch(String query, _MapSearchTarget target) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
       _showMessage('장소를 먼저 입력해 주세요.');
@@ -371,19 +358,15 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
 
     final uri = target == _MapSearchTarget.google
-        ? Uri.https(
-            'www.google.com',
-            '/maps/search/',
-            <String, String>{'api': '1', 'query': trimmed},
-          )
+        ? Uri.https('www.google.com', '/maps/search/', <String, String>{
+            'api': '1',
+            'query': trimmed,
+          })
         : Uri.parse(
             'https://map.naver.com/p/search/${Uri.encodeComponent(trimmed)}',
           );
 
-    final launched = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
       _showMessage('지도를 열지 못했어요. 장소명을 수정해서 다시 시도해 주세요.');
     }
@@ -536,10 +519,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         ),
       );
 
-      await _saveRelatedRecords(
-        userId: userId,
-        event: savedEvent,
-      );
+      await _saveRelatedRecords(userId: userId, event: savedEvent);
       await _updateHomeWidget(repository, savedEvent);
 
       if (mounted) {
@@ -574,9 +554,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }) async {
     _hasFollowUpFailures = false;
     final eventStartAt = event.startAt ?? _startAt;
-    final defaultReminderOffset = await _resolveDefaultReminderOffset(userId);
-    final eventReminderOffset =
-        await _resolveReminderBuffer(event, defaultReminderOffset);
     final preActionPayloads = _buildPreActionPayloads(
       userId: userId,
       eventId: event.id,
@@ -586,8 +563,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       userId: userId,
       eventId: event.id,
       eventStartAt: eventStartAt,
-      reminderOffset: eventReminderOffset,
-      criticalAlarmOffset: defaultReminderOffset,
+      reminderOffset: _reminderOffset,
+      criticalAlarmOffset: _reminderOffset,
     );
 
     await _tryFollowUp(
@@ -625,104 +602,33 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       );
     }
 
-    final eventReminderNotifyAt =
-        eventStartAt.subtract(eventReminderOffset);
-    final criticalAlarmNotifyAt = eventStartAt.subtract(defaultReminderOffset);
-    await _tryFollowUp(
-      () => widget.notificationService.scheduleEventReminder(
-        id: widget.notificationService.notificationIdFor('${event.id}:push'),
-        title: event.title,
-        body: '이벤트 시작: ${event.title}',
-        notifyAt: eventReminderNotifyAt,
-      ),
-      label: 'local_event_reminder',
-    );
+    final reminderOffset = _reminderOffset;
+    if (reminderOffset != null) {
+      final eventReminderNotifyAt = eventStartAt.subtract(reminderOffset);
+      await _tryFollowUp(
+        () => widget.notificationService.scheduleEventReminder(
+          id: widget.notificationService.notificationIdFor('${event.id}:push'),
+          title: event.title,
+          body: '일정 시작: ${event.title}',
+          notifyAt: eventReminderNotifyAt,
+        ),
+        label: 'local_event_reminder',
+      );
+    }
 
-    if (_isCritical) {
+    if (_isCritical && reminderOffset != null) {
+      final criticalAlarmNotifyAt = eventStartAt.subtract(reminderOffset);
       await _tryFollowUp(
         () => widget.notificationService.scheduleCriticalAlarm(
-          id: widget.notificationService
-              .notificationIdFor('${event.id}:critical'),
+          id: widget.notificationService.notificationIdFor(
+            '${event.id}:critical',
+          ),
           title: event.title,
           notifyAt: criticalAlarmNotifyAt,
           body: '중요 일정이 곧 시작됩니다.',
         ),
         label: 'critical_alarm',
       );
-    }
-  }
-
-  Future<Duration> _resolveReminderBuffer(
-    EventModel event,
-    Duration fallback,
-  ) async {
-    final destination = event.location?.trim() ?? '';
-    if (destination.isEmpty) {
-      return fallback;
-    }
-
-    final travelOrigin = _resolveTravelOrigin();
-    final service = TravelTimeBufferService();
-    final originLat = _doubleValue(widget.parsedSchedule['travel_origin_lat']);
-    final originLng = _doubleValue(widget.parsedSchedule['travel_origin_lng']);
-    final canUseMapApis = originLat != null &&
-        originLng != null &&
-        event.locationLat != null &&
-        event.locationLng != null;
-    if (canUseMapApis) {
-      final mapEstimate = await service.estimateWithMapApis(
-        originLat: originLat,
-        originLng: originLng,
-        destinationLat: event.locationLat!,
-        destinationLng: event.locationLng!,
-        mode: await _resolveTravelMode(event.userId),
-        locationText: destination,
-      );
-      if (mapEstimate.source == TravelTimeBufferSource.tmap ||
-          mapEstimate.source == TravelTimeBufferSource.naverMap) {
-        return Duration(minutes: mapEstimate.minutes + 10);
-      }
-    }
-
-    final travelMinutes = travelOrigin == null
-        ? service.estimateMinutes(locationText: destination)
-        : await service.estimateMinutesWithGoogleMaps(
-            origin: travelOrigin,
-            destination: destination,
-            locationText: destination,
-          );
-    return Duration(minutes: travelMinutes + 10);
-  }
-
-  Future<Duration> _resolveDefaultReminderOffset(String userId) async {
-    final minutes = await _reminderSettingsService.resolveDefaultReminderMinutes(
-      userId: userId,
-    );
-    return Duration(minutes: minutes);
-  }
-
-  Future<MapTravelMode> _resolveTravelMode(String userId) async {
-    final parsedTravelMode = _stringValue(widget.parsedSchedule['travel_mode']);
-    if (parsedTravelMode == 'transit') {
-      return MapTravelMode.transit;
-    }
-
-    if (!AppEnv.isSupabaseReady) {
-      return MapTravelMode.car;
-    }
-
-    try {
-      final response = await Supabase.instance.client
-          .from('user_settings')
-          .select('travel_mode')
-          .eq('user_id', userId)
-          .maybeSingle();
-      final travelMode = _stringValue(response?['travel_mode']);
-      return travelMode == 'transit'
-          ? MapTravelMode.transit
-          : MapTravelMode.car;
-    } catch (_) {
-      return MapTravelMode.car;
     }
   }
 
@@ -773,23 +679,28 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     required String userId,
     required String eventId,
     required DateTime eventStartAt,
-    required Duration reminderOffset,
-    required Duration criticalAlarmOffset,
+    required Duration? reminderOffset,
+    required Duration? criticalAlarmOffset,
   }) {
     final now = DateTime.now();
-    final pushNotifyAt = eventStartAt.subtract(reminderOffset);
+    final pushNotifyAt =
+        reminderOffset == null ? null : eventStartAt.subtract(reminderOffset);
     final payloads = <Map<String, dynamic>>[
-      if (pushNotifyAt.isAfter(now))
+      if (pushNotifyAt != null && pushNotifyAt.isAfter(now))
         _reminderPayload(
           userId: userId,
           eventId: eventId,
           type: 'push',
           notifyAt: pushNotifyAt,
-      ),
+        ),
     ];
 
-    final criticalNotifyAt = eventStartAt.subtract(criticalAlarmOffset);
-    if (_isCritical && criticalNotifyAt.isAfter(now)) {
+    final criticalNotifyAt = criticalAlarmOffset == null
+        ? null
+        : eventStartAt.subtract(criticalAlarmOffset);
+    if (_isCritical &&
+        criticalNotifyAt != null &&
+        criticalNotifyAt.isAfter(now)) {
       payloads.add(
         _reminderPayload(
           userId: userId,
@@ -989,9 +900,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _scrollToKey(GlobalKey key, {FocusNode? focusNode}) {
@@ -1052,7 +963,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
                         color: PlanFlowColors.briefing,
                         borderRadius: BorderRadius.circular(10),
@@ -1114,9 +1027,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         color: theme.colorScheme.errorContainer,
                         child: const Padding(
                           padding: EdgeInsets.all(AppConstants.defaultPadding),
-                          child: Text(
-                            '자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.',
-                          ),
+                          child: Text('자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
                         ),
                       ),
                     const SizedBox(height: AppConstants.sectionSpacing),
@@ -1268,6 +1179,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         border: OutlineInputBorder(),
                       ),
                       maxLines: 3,
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
+                    ReminderOffsetSelector(
+                      value: _reminderOffset,
+                      onChanged: (value) {
+                        setState(() {
+                          _reminderOffset = value;
+                        });
+                      },
+                      subtitle: '기본은 1시간 전입니다. 이 일정만 다르게 바꿀 수 있어요.',
                     ),
                     const SizedBox(height: AppConstants.sectionSpacing),
                     SwitchListTile(
@@ -1438,10 +1359,8 @@ class _ConfirmBottomNavigation extends StatelessWidget {
 }
 
 class _PreActionDraft {
-  _PreActionDraft.auto({
-    String? title,
-    int? offsetHours,
-  })  : isAuto = true,
+  _PreActionDraft.auto({String? title, int? offsetHours})
+      : isAuto = true,
         key = GlobalKey(),
         titleController = TextEditingController(text: title ?? ''),
         offsetController = TextEditingController(
@@ -1547,10 +1466,7 @@ class _SuppliesEditor extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(
-          color: PlanFlowColors.primaryFaint,
-          width: 0.5,
-        ),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1637,10 +1553,7 @@ class _SuppliesEditor extends StatelessWidget {
 }
 
 class _SupplyInputRow extends StatelessWidget {
-  const _SupplyInputRow({
-    required this.draft,
-    required this.onDelete,
-  });
+  const _SupplyInputRow({required this.draft, required this.onDelete});
 
   final _SupplyDraft draft;
   final VoidCallback onDelete;
@@ -1655,10 +1568,7 @@ class _SupplyInputRow extends StatelessWidget {
         decoration: BoxDecoration(
           color: PlanFlowColors.background,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: PlanFlowColors.primaryFaint,
-            width: 0.6,
-          ),
+          border: Border.all(color: PlanFlowColors.primaryFaint, width: 0.6),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Row(
@@ -1718,10 +1628,7 @@ class _SuggestionsCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(
-          color: PlanFlowColors.primaryFaint,
-          width: 0.5,
-        ),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1743,11 +1650,7 @@ class _SuggestionsCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: chips,
-            ),
+            Wrap(spacing: 8, runSpacing: 8, children: chips),
           ],
         ),
       ),
@@ -1775,10 +1678,7 @@ class _PreActionEditorCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(
-          color: PlanFlowColors.primaryFaint,
-          width: 0.5,
-        ),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1859,10 +1759,7 @@ class _EmptyInlineHint extends StatelessWidget {
       decoration: BoxDecoration(
         color: PlanFlowColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: PlanFlowColors.primaryFaint,
-          width: 0.5,
-        ),
+        border: Border.all(color: PlanFlowColors.primaryFaint, width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2021,8 +1918,12 @@ class _DateTimePickerDialogState extends State<_DateTimePickerDialog> {
 
   void _confirm() {
     final hour = _parsePart(_hourController.text, _selectedDate.hour, 0, 23);
-    final minute =
-        _parsePart(_minuteController.text, _selectedDate.minute, 0, 59);
+    final minute = _parsePart(
+      _minuteController.text,
+      _selectedDate.minute,
+      0,
+      59,
+    );
     Navigator.of(context).pop(
       DateTime(
         _selectedDate.year,
@@ -2062,8 +1963,10 @@ class _DateTimePickerDialogState extends State<_DateTimePickerDialog> {
     final theme = Theme.of(context);
     final firstDay = DateTime(_visibleMonth.year, _visibleMonth.month, 1);
     final leadingBlanks = (firstDay.weekday + 6) % 7;
-    final daysInMonth =
-        DateUtils.getDaysInMonth(_visibleMonth.year, _visibleMonth.month);
+    final daysInMonth = DateUtils.getDaysInMonth(
+      _visibleMonth.year,
+      _visibleMonth.month,
+    );
     final totalCells = leadingBlanks + daysInMonth;
     final monthTitle = '${_visibleMonth.year}년 ${_visibleMonth.month}월';
 
@@ -2076,17 +1979,20 @@ class _DateTimePickerDialogState extends State<_DateTimePickerDialog> {
             Expanded(
               child: Text(
                 '날짜 선택',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             IconButton(
-                onPressed: () => _changeMonth(-1),
-                icon: const Icon(Icons.chevron_left)),
+              onPressed: () => _changeMonth(-1),
+              icon: const Icon(Icons.chevron_left),
+            ),
             Text(monthTitle),
             IconButton(
-                onPressed: () => _changeMonth(1),
-                icon: const Icon(Icons.chevron_right)),
+              onPressed: () => _changeMonth(1),
+              icon: const Icon(Icons.chevron_right),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -2117,8 +2023,11 @@ class _DateTimePickerDialogState extends State<_DateTimePickerDialog> {
                 return const SizedBox.shrink();
               }
               final day = index - leadingBlanks + 1;
-              final date =
-                  DateTime(_visibleMonth.year, _visibleMonth.month, day);
+              final date = DateTime(
+                _visibleMonth.year,
+                _visibleMonth.month,
+                day,
+              );
               final selected = DateUtils.isSameDay(date, _selectedDate);
               final today = DateUtils.isSameDay(date, DateTime.now());
               return _DateCell(
@@ -2133,15 +2042,17 @@ class _DateTimePickerDialogState extends State<_DateTimePickerDialog> {
         const SizedBox(height: 8),
         Text(
           '같은 날짜를 다시 누르면 시간 설정으로 넘어갑니다.',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: PlanFlowColors.textSecondary),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: PlanFlowColors.textSecondary,
+          ),
         ),
         const SizedBox(height: 12),
         Row(
           children: [
             TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('취소')),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('취소'),
+            ),
             const Spacer(),
             OutlinedButton(onPressed: _goToTime, child: const Text('시간 입력')),
           ],
@@ -2158,14 +2069,16 @@ class _DateTimePickerDialogState extends State<_DateTimePickerDialog> {
       children: [
         Text(
           '시간 입력',
-          style: theme.textTheme.titleMedium
-              ?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 8),
         Text(
           _formatKorean(_selectedDate),
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: PlanFlowColors.textSecondary),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: PlanFlowColors.textSecondary,
+          ),
         ),
         const SizedBox(height: 12),
         Row(
@@ -2190,8 +2103,9 @@ class _DateTimePickerDialogState extends State<_DateTimePickerDialog> {
         const SizedBox(height: 8),
         Text(
           '시와 분을 눌러 바로 수정할 수 있어요.',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: PlanFlowColors.textSecondary),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: PlanFlowColors.textSecondary,
+          ),
         ),
         const SizedBox(height: 12),
         Row(
@@ -2259,10 +2173,7 @@ class _DateCell extends StatelessWidget {
         child: Center(
           child: Text(
             '$day',
-            style: TextStyle(
-              color: foreground,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: foreground, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -2386,10 +2297,7 @@ class _LocationLookupSheet extends StatelessWidget {
 enum _MapSearchTarget { google, naver }
 
 class _ExternalMapSearchSheet extends StatelessWidget {
-  const _ExternalMapSearchSheet({
-    required this.query,
-    this.message,
-  });
+  const _ExternalMapSearchSheet({required this.query, this.message});
 
   final String query;
   final String? message;

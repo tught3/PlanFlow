@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -10,7 +12,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
-import '../../services/reminder_settings_service.dart';
+import '../../widgets/reminder_offset_selector.dart';
 
 class EventEditScreen extends StatefulWidget {
   EventEditScreen({
@@ -43,11 +45,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late DateTime _startAt;
   DateTime? _endAt;
   late bool _critical;
+  Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
   EventModel? _loadedEvent;
   bool _isLoading = false;
   bool _isSaving = false;
-  final ReminderSettingsService _reminderSettingsService =
-      const ReminderSettingsService();
 
   bool get _isNewEvent => _loadedEvent == null && _resolvedEventId == null;
 
@@ -81,6 +82,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _endAt = event?.endAt;
     _critical = event?.isCritical ?? false;
     _loadEventIfNeeded();
+    if (event != null) {
+      unawaited(_loadReminderOffsetIfNeeded(event));
+    }
   }
 
   @override
@@ -147,10 +151,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
       final sideEffectResult = await widget.sideEffectService.syncAfterSave(
         event: savedEvent,
         userId: user.id,
-        reminderOffset: await _reminderSettingsService
-            .resolveDefaultReminderOffset(userId: user.id),
-        criticalAlarmOffset: await _reminderSettingsService
-            .resolveDefaultReminderOffset(userId: user.id),
+        reminderOffset: _reminderOffset,
+        criticalAlarmOffset: _reminderOffset,
       );
       final widgetRefreshed = await _refreshHomeWidget(_repository, savedEvent);
 
@@ -201,10 +203,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     });
 
     try {
-      final event = await _repository.fetchEvent(
-        eventId,
-        userId: user.id,
-      );
+      final event = await _repository.fetchEvent(eventId, userId: user.id);
       if (!mounted) {
         return;
       }
@@ -222,6 +221,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _endAt = event.endAt;
         _critical = event.isCritical;
       });
+      unawaited(_loadReminderOffsetIfNeeded(event));
     } catch (_) {
       if (mounted) {
         _showMessage('일정 정보를 불러오지 못했습니다.');
@@ -232,6 +232,50 @@ class _EventEditScreenState extends State<EventEditScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _loadReminderOffsetIfNeeded(EventModel event) async {
+    final startAt = event.startAt;
+    if (event.id.trim().isEmpty || startAt == null || !AppEnv.isSupabaseReady) {
+      return;
+    }
+
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        return;
+      }
+      final row = await Supabase.instance.client
+          .from('reminders')
+          .select('notify_at')
+          .eq('event_id', event.id)
+          .eq('user_id', user.id)
+          .eq('type', 'push')
+          .maybeSingle();
+      if (!mounted) {
+        return;
+      }
+      if (row == null) {
+        setState(() {
+          _reminderOffset = null;
+        });
+        return;
+      }
+      final notifyAt = DateTime.tryParse(row['notify_at'].toString());
+      if (notifyAt == null) {
+        return;
+      }
+      final minutes = startAt.difference(notifyAt).inMinutes;
+      if (minutes < 0) {
+        return;
+      }
+      setState(() {
+        _reminderOffset = Duration(minutes: minutes);
+      });
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen reminder load skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -282,9 +326,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<DateTime?> _pickDateTime(DateTime initialValue) async {
@@ -321,9 +365,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
-      appBar: AppBar(
-        title: Text(_isNewEvent ? '일정 만들기' : '일정 편집'),
-      ),
+      appBar: AppBar(title: Text(_isNewEvent ? '일정 만들기' : '일정 편집')),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -417,6 +459,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 ),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
+              ReminderOffsetSelector(
+                value: _reminderOffset,
+                onChanged: (value) {
+                  setState(() {
+                    _reminderOffset = value;
+                  });
+                },
+                subtitle: '기본은 1시간 전입니다. 이 일정만 다르게 바꿀 수 있어요.',
+              ),
+              const SizedBox(height: AppConstants.sectionSpacing),
               SwitchListTile.adaptive(
                 tileColor: PlanFlowColors.surface,
                 shape: RoundedRectangleBorder(
@@ -426,8 +478,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
                     width: 0.5,
                   ),
                 ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 title: const Text('중요 일정'),
                 subtitle: const Text('긴급 알림을 함께 예약합니다.'),
                 value: _critical,
@@ -483,9 +537,9 @@ class _DateTimeTile extends StatelessWidget {
         : MaterialLocalizations.of(context).formatFullDate(value!);
     final time = value == null
         ? null
-        : MaterialLocalizations.of(context).formatTimeOfDay(
-            TimeOfDay.fromDateTime(value!),
-          );
+        : MaterialLocalizations.of(
+            context,
+          ).formatTimeOfDay(TimeOfDay.fromDateTime(value!));
 
     return ListTile(
       tileColor: PlanFlowColors.surface,
