@@ -29,6 +29,7 @@ class _PermissionOnboardingScreenState
   AppPermissionSnapshot? _snapshot;
   bool _isLoading = true;
   bool _isRequestingAll = false;
+  String? _activeRequestKey;
   String? _message;
 
   @override
@@ -38,10 +39,12 @@ class _PermissionOnboardingScreenState
     unawaited(_refresh());
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh({bool clearMessage = false}) async {
     setState(() {
       _isLoading = true;
-      _message = null;
+      if (clearMessage) {
+        _message = null;
+      }
     });
 
     try {
@@ -52,10 +55,10 @@ class _PermissionOnboardingScreenState
       setState(() {
         _snapshot = snapshot;
       });
-    } catch (error) {
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _message = '권한 상태를 확인하지 못했습니다. 휴대폰 설정을 확인해 주세요.';
+          _message = '권한 상태를 확인하지 못했습니다. 휴대폰 설정에서 PlanFlow 권한을 확인해 주세요.';
         });
       }
     } finally {
@@ -67,8 +70,35 @@ class _PermissionOnboardingScreenState
     }
   }
 
+  Future<void> _requestOne({
+    required String key,
+    required String grantedMessage,
+    required String deniedMessage,
+    required Future<bool> Function() request,
+  }) async {
+    if (_activeRequestKey != null || _isRequestingAll) {
+      return;
+    }
+
+    setState(() {
+      _activeRequestKey = key;
+      _message = null;
+    });
+
+    final granted = await request();
+    await _refresh();
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _activeRequestKey = null;
+      _message = granted ? grantedMessage : deniedMessage;
+    });
+  }
+
   Future<void> _requestAll() async {
-    if (_isRequestingAll) {
+    if (_isRequestingAll || _activeRequestKey != null) {
       return;
     }
 
@@ -84,7 +114,8 @@ class _PermissionOnboardingScreenState
       await _refresh();
       if (mounted) {
         setState(() {
-          _message = '권한 요청을 마쳤습니다. 허용되지 않은 항목은 휴대폰 설정에서 다시 켤 수 있어요.';
+          _message =
+              '권한 요청을 마쳤습니다. 허용되지 않은 항목은 아래 상태를 확인한 뒤 Android 설정에서 다시 켤 수 있어요.';
         });
       }
     } finally {
@@ -152,54 +183,81 @@ class _PermissionOnboardingScreenState
               _PermissionTile(
                 icon: Icons.mic_none,
                 title: '마이크',
-                description: '음성으로 일정을 입력하고 수정하려면 필요합니다.',
+                description: '음성으로 일정을 추가, 수정, 삭제하려면 필요합니다.',
                 granted: snapshot?.microphoneGranted == true,
-                onRequest: () async {
-                  await _permissionService.requestMicrophonePermission();
-                  await _refresh();
-                },
+                isRequesting: _activeRequestKey == 'microphone',
+                onRequest: () => _requestOne(
+                  key: 'microphone',
+                  grantedMessage: '마이크 권한이 허용되었습니다.',
+                  deniedMessage:
+                      '마이크 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
+                  request: _permissionService.requestMicrophonePermission,
+                ),
               ),
               const SizedBox(height: 10),
               _PermissionTile(
                 icon: Icons.notifications_active_outlined,
                 title: '앱 알림',
-                description: '일정 시작 전 알림과 중요 알림을 표시합니다.',
+                description: '일정 시작 전 알림과 브리핑 알림을 표시합니다.',
                 granted: snapshot?.notificationsGranted == true,
-                onRequest: () async {
-                  await _permissionService.requestNotificationPermissions();
-                  await _refresh();
-                },
+                isRequesting: _activeRequestKey == 'notification',
+                onRequest: () => _requestOne(
+                  key: 'notification',
+                  grantedMessage: '앱 알림 권한 상태를 다시 확인했습니다.',
+                  deniedMessage:
+                      '앱 알림이 아직 꺼져 있습니다. Android 알림 설정에서 PlanFlow 알림을 허용해 주세요.',
+                  request: () async {
+                    final status = await _permissionService
+                        .requestNotificationPermissions();
+                    return status.notificationsEnabled == true;
+                  },
+                ),
               ),
               const SizedBox(height: 10),
               _PermissionTile(
                 icon: Icons.alarm_on_outlined,
                 title: '정확한 알람',
-                description: '중요 일정 알림을 늦지 않게 예약하기 위해 필요합니다.',
+                description:
+                    '중요 일정 알림을 지정한 시간에 맞춰 울리기 위해 필요합니다. Android에서는 설정 화면으로 이동할 수 있습니다.',
                 granted: snapshot?.exactAlarmsGranted == true,
-                onRequest: () async {
-                  await _permissionService.requestNotificationPermissions();
-                  await _refresh();
-                },
+                isRequesting: _activeRequestKey == 'exactAlarm',
+                onRequest: () => _requestOne(
+                  key: 'exactAlarm',
+                  grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
+                  deniedMessage:
+                      '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요.',
+                  request: () async {
+                    final status = await _permissionService
+                        .requestNotificationPermissions();
+                    return status.exactAlarmsEnabled == true;
+                  },
+                ),
               ),
               const SizedBox(height: 10),
               _PermissionTile(
                 icon: Icons.fullscreen_outlined,
                 title: '전체 화면 알림',
-                description: '중요 알림을 화면에 크게 띄울 때 Android 설정 확인이 필요할 수 있습니다.',
+                description:
+                    '긴급 알림을 크게 띄우기 위한 권한입니다. Android 버전에 따라 직접 설정에서 확인해야 합니다.',
                 granted: snapshot?.notificationStatus.fullScreenIntentStatus ==
                     PermissionCheckState.granted,
+                isRequesting: _activeRequestKey == 'fullScreen',
                 onRequest: _openNotificationSettings,
               ),
               const SizedBox(height: 10),
               _PermissionTile(
                 icon: Icons.my_location_outlined,
                 title: '위치',
-                description: '현재 위치를 출발지로 사용해 이동시간과 출발 알림을 더 정확하게 계산합니다.',
+                description: '현재 위치를 출발지 후보로 사용해 이동시간과 출발 알림을 더 정확히 계산합니다.',
                 granted: snapshot?.locationGranted == true,
-                onRequest: () async {
-                  await _permissionService.requestLocationPermission();
-                  await _refresh();
-                },
+                isRequesting: _activeRequestKey == 'location',
+                onRequest: () => _requestOne(
+                  key: 'location',
+                  grantedMessage: '위치 권한이 허용되었습니다.',
+                  deniedMessage:
+                      '위치 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
+                  request: _permissionService.requestLocationPermission,
+                ),
               ),
             ],
             if (_message != null) ...[
@@ -213,7 +271,9 @@ class _PermissionOnboardingScreenState
             ],
             const SizedBox(height: 20),
             FilledButton.icon(
-              onPressed: _isRequestingAll ? null : _requestAll,
+              onPressed: (_isRequestingAll || _activeRequestKey != null)
+                  ? null
+                  : _requestAll,
               icon: _isRequestingAll
                   ? const SizedBox.square(
                       dimension: 18,
@@ -288,12 +348,14 @@ class _PermissionTile extends StatelessWidget {
     required this.description,
     required this.granted,
     required this.onRequest,
+    this.isRequesting = false,
   });
 
   final IconData icon;
   final String title;
   final String description;
   final bool granted;
+  final bool isRequesting;
   final Future<void> Function() onRequest;
 
   @override
@@ -348,13 +410,18 @@ class _PermissionTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            granted
-                ? const Icon(Icons.check_circle_outline,
-                    color: Color(0xFF2E7D32))
-                : TextButton(
-                    onPressed: onRequest,
-                    child: const Text('요청'),
-                  ),
+            if (granted)
+              const Icon(Icons.check_circle_outline, color: Color(0xFF2E7D32))
+            else if (isRequesting)
+              const SizedBox.square(
+                dimension: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              TextButton(
+                onPressed: onRequest,
+                child: const Text('요청'),
+              ),
           ],
         ),
       ),
