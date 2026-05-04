@@ -859,13 +859,13 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF1E8),
+          color: const Color(0xFFF9DFC9),
           border: Border.all(
-            color: const Color(0xFFE1A57A).withValues(alpha: 0.62),
+            color: const Color(0xFFC67E52).withValues(alpha: 0.72),
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFE1A57A).withValues(alpha: 0.10),
+              color: const Color(0xFFC67E52).withValues(alpha: 0.14),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -878,7 +878,7 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
             const Text(
               '🎉 얼리버드 신청 완료!',
               style: TextStyle(
-                color: Colors.white,
+                color: Color(0xFF111111),
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
               ),
@@ -887,7 +887,7 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
             Text(
               'PRO 출시 때 특별 할인 혜택을 보내드릴게요.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: Colors.white.withValues(alpha: 0.85),
+                color: const Color(0xFF222222),
               ),
             ),
           ],
@@ -899,13 +899,13 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF1E8),
+          color: const Color(0xFFF9DFC9),
           border: Border.all(
-            color: const Color(0xFFE1A57A).withValues(alpha: 0.62),
+            color: const Color(0xFFC67E52).withValues(alpha: 0.72),
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFE1A57A).withValues(alpha: 0.10),
+              color: const Color(0xFFC67E52).withValues(alpha: 0.14),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -918,7 +918,7 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
           const Text(
             '🚀 PRO 얼리버드 신청',
             style: TextStyle(
-              color: Colors.white,
+              color: Color(0xFF111111),
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
@@ -927,7 +927,7 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
           Text(
             '무제한 음성 등록, AI 브리핑, 선행역산 알림을 먼저 만나보세요.\n출시 시 특별 할인 혜택을 드립니다.',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.white.withValues(alpha: 0.85),
+              color: Color(0xFF222222),
               height: 1.4,
             ),
           ),
@@ -939,13 +939,13 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   style: const TextStyle(
-                    color: Color(0xFF6B3F2A),
+                    color: Color(0xFF111111),
                     fontSize: 13,
                   ),
                   decoration: InputDecoration(
                     hintText: 'your@email.com',
                     hintStyle: TextStyle(
-                      color: Color(0xFF9A6D59).withValues(alpha: 0.70),
+                      color: const Color(0xFF333333).withValues(alpha: 0.72),
                       fontSize: 13,
                     ),
                     filled: true,
@@ -977,7 +977,7 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
               FilledButton(
                 onPressed: _isSubmitting ? null : _submit,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFD77A61),
+                  backgroundColor: const Color(0xFFB85C44),
                   foregroundColor: Colors.white,
                   minimumSize: const Size(0, 44),
                 ),
