@@ -859,10 +859,17 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF4F8),
+          color: const Color(0xFFFFF1E8),
           border: Border.all(
-            color: const Color(0xFF9BBFD4).withValues(alpha: 0.42),
+            color: const Color(0xFFE1A57A).withValues(alpha: 0.62),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFE1A57A).withValues(alpha: 0.10),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
@@ -892,10 +899,17 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF4F8),
+          color: const Color(0xFFFFF1E8),
           border: Border.all(
-            color: const Color(0xFF9BBFD4).withValues(alpha: 0.42),
+            color: const Color(0xFFE1A57A).withValues(alpha: 0.62),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFE1A57A).withValues(alpha: 0.10),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
           borderRadius: BorderRadius.circular(16),
         ),
       child: Column(
@@ -925,27 +939,27 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
                   style: const TextStyle(
-                    color: Color(0xFF35546D),
+                    color: Color(0xFF6B3F2A),
                     fontSize: 13,
                   ),
                   decoration: InputDecoration(
                     hintText: 'your@email.com',
                     hintStyle: TextStyle(
-                      color: Color(0xFF5F7F96).withValues(alpha: 0.65),
+                      color: Color(0xFF9A6D59).withValues(alpha: 0.70),
                       fontSize: 13,
                     ),
                     filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.82),
+                    fillColor: Colors.white.withValues(alpha: 0.92),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(
-                        color: const Color(0xFF9BBFD4).withValues(alpha: 0.22),
+                        color: const Color(0xFFE1A57A).withValues(alpha: 0.28),
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(
-                        color: const Color(0xFF9BBFD4).withValues(alpha: 0.62),
+                        color: const Color(0xFFE1A57A).withValues(alpha: 0.80),
                         width: 1.2,
                       ),
                     ),
@@ -963,7 +977,7 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
               FilledButton(
                 onPressed: _isSubmitting ? null : _submit,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF9BBFD4),
+                  backgroundColor: const Color(0xFFD77A61),
                   foregroundColor: Colors.white,
                   minimumSize: const Size(0, 44),
                 ),
