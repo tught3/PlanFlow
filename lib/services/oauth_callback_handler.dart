@@ -94,7 +94,12 @@ class OAuthCallbackHandler {
     final message = error.message.toLowerCase();
     if (message.contains('getting user email')) {
       return '네이버 인증은 됐지만 이메일 정보를 받지 못해 로그인을 완료하지 못했습니다. '
-          'Naver Developers에서 이메일 제공 항목을 필수로 켜거나, Supabase custom provider의 email_optional 설정을 켜 주세요.';
+          'Naver Developers에서 이메일 제공 항목을 필수로 켜고, Supabase Userinfo URL을 naver-userinfo-proxy로 바꿔 주세요.';
+    }
+    if (message.contains('missing provider id') ||
+        message.contains('missing_provider_id')) {
+      return '네이버 인증은 됐지만 Supabase가 네이버 사용자 ID를 읽지 못했습니다. '
+          'Supabase Naver provider의 Userinfo URL을 naver-userinfo-proxy Edge Function으로 바꿔 주세요.';
     }
     if (error.code == 'server_error' ||
         error.statusCode == 'unexpected_failure') {
