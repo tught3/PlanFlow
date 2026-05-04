@@ -57,6 +57,8 @@ class SttService {
   static var _activeNativeSessionText = '';
   static const MethodChannel _nativeSttChannel =
       MethodChannel('planflow/native_stt');
+  static const MethodChannel _androidPermissionsChannel =
+      MethodChannel('planflow/android_permissions');
 
   static String? resolveKoreanLocaleId(Iterable<String> localeIds) {
     if (localeIds.contains(_koreanLocaleId)) {
@@ -673,21 +675,12 @@ class SttService {
       return null;
     }
 
-    final speech = SpeechToText();
     try {
-      final available = await speech.initialize(debugLogging: kDebugMode);
-      if (!available) {
-        final hasPermission = await speech.hasPermission;
-        return SttListenResult.failure(
-          failure: hasPermission
-              ? SttListenFailure.unavailable
-              : SttListenFailure.permissionDenied,
-          message: hasPermission ? _genericMessage : _permissionMessage,
-        );
-      }
-
-      final hasPermission = await speech.hasPermission;
-      if (!hasPermission) {
+      final granted = await _androidPermissionsChannel.invokeMethod<bool>(
+            'requestMicrophonePermission',
+          ) ??
+          false;
+      if (!granted) {
         return SttListenResult.failure(
           failure: SttListenFailure.permissionDenied,
           message: _permissionMessage,

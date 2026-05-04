@@ -1,20 +1,30 @@
 package com.example.planflow
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
 
 class MainActivity : FlutterActivity() {
+    companion object {
+        private const val REQUEST_MICROPHONE_PERMISSION = 4310
+    }
+
     private var planFlowStt: PlanFlowSttChannel? = null
     private var settingsChannel: MethodChannel? = null
+    private var permissionsChannel: MethodChannel? = null
+    private var microphonePermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -32,6 +42,18 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+        permissionsChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "planflow/android_permissions",
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "requestMicrophonePermission" -> requestMicrophonePermission(result)
+                    "openAppSettings" -> result.success(openAppSettings())
+                    else -> result.notImplemented()
+                }
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -39,7 +61,25 @@ class MainActivity : FlutterActivity() {
         planFlowStt = null
         settingsChannel?.setMethodCallHandler(null)
         settingsChannel = null
+        permissionsChannel?.setMethodCallHandler(null)
+        permissionsChannel = null
         super.onDestroy()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_MICROPHONE_PERMISSION) {
+            return
+        }
+
+        val granted = grantResults.isNotEmpty() &&
+            grantResults.first() == PackageManager.PERMISSION_GRANTED
+        microphonePermissionResult?.success(granted)
+        microphonePermissionResult = null
     }
 
     private fun openNotificationSettings(): Boolean {
@@ -68,6 +108,42 @@ class MainActivity : FlutterActivity() {
                 false
             }
         }
+    }
+
+    private fun openAppSettings(): Boolean {
+        return try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun requestMicrophonePermission(result: MethodChannel.Result) {
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO,
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            result.success(true)
+            return
+        }
+
+        if (microphonePermissionResult != null) {
+            result.success(false)
+            return
+        }
+
+        microphonePermissionResult = result
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.RECORD_AUDIO),
+            REQUEST_MICROPHONE_PERMISSION,
+        )
     }
 }
 
