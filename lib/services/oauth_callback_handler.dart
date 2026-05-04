@@ -6,8 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/constants.dart';
 import '../core/env.dart';
-import '../providers/auth_provider.dart';
 import '../core/router.dart';
+import '../providers/auth_provider.dart';
 
 class OAuthCallbackHandler {
   OAuthCallbackHandler({AppLinks? appLinks})
@@ -83,12 +83,25 @@ class OAuthCallbackHandler {
         'OAuth callback exchange failed: ${error.message} '
         'code=${error.code} status=${error.statusCode}',
       );
-      latestUserMessage.value =
-          '네이버 인증은 완료되지 않았습니다. Supabase/Naver 콜백 설정을 확인해 주세요.';
+      latestUserMessage.value = _messageForAuthException(error);
     } catch (error) {
       debugPrint('OAuth callback exchange failed: $error');
       latestUserMessage.value = '소셜 로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
     }
+  }
+
+  String _messageForAuthException(AuthException error) {
+    final message = error.message.toLowerCase();
+    if (message.contains('getting user email')) {
+      return '네이버 인증은 됐지만 이메일 정보를 받지 못해 로그인을 완료하지 못했습니다. '
+          'Naver Developers에서 이메일 제공 항목을 필수로 켜거나, Supabase custom provider의 email_optional 설정을 켜 주세요.';
+    }
+    if (error.code == 'server_error' ||
+        error.statusCode == 'unexpected_failure') {
+      return '네이버 인증 처리 중 Supabase 오류가 발생했습니다. '
+          'Naver Developers와 Supabase의 콜백/Provider 설정을 확인해 주세요.';
+    }
+    return '네이버 인증을 완료하지 못했습니다. Supabase/Naver 콜백 설정을 확인해 주세요.';
   }
 
   bool _isAuthCallback(Uri uri) {
