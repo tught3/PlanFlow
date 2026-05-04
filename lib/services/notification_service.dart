@@ -169,7 +169,7 @@ class NotificationService {
 
   Future<void> _initializeInternal() async {
     const initializationSettings = InitializationSettings(
-      android: AndroidInitializationSettings('ic_launcher'),
+      android: AndroidInitializationSettings('ic_stat_planflow'),
       iOS: DarwinInitializationSettings(
         requestAlertPermission: true,
         requestSoundPermission: true,

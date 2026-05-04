@@ -176,6 +176,12 @@ class AppPermissionSnapshot {
       notificationStatus.notificationsEnabled == true;
 
   bool get exactAlarmsGranted => notificationStatus.exactAlarmsEnabled == true;
+
+  bool get requiredPermissionsGranted =>
+      microphoneGranted &&
+      notificationsGranted &&
+      exactAlarmsGranted &&
+      locationGranted;
 }
 
 class GeoPoint {

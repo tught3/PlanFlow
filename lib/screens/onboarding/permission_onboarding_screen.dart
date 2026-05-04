@@ -7,7 +7,6 @@ import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
-import '../../services/notification_service.dart';
 
 class PermissionOnboardingScreen extends StatefulWidget {
   const PermissionOnboardingScreen({
@@ -55,6 +54,7 @@ class _PermissionOnboardingScreenState
       setState(() {
         _snapshot = snapshot;
       });
+      unawaited(_completeIfReady(snapshot));
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -85,16 +85,31 @@ class _PermissionOnboardingScreenState
       _message = null;
     });
 
-    final granted = await request();
-    await _refresh();
+    try {
+      final granted = await _withPermissionTimeout(request);
+      await _refresh();
 
-    if (!mounted) {
-      return;
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _message = granted ? grantedMessage : deniedMessage;
+      });
+    } catch (_) {
+      await _refresh();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _message = '권한 요청이 완료되지 않았습니다. Android 앱 설정에서 PlanFlow 권한을 직접 확인해 주세요.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _activeRequestKey = null;
+        });
+      }
     }
-    setState(() {
-      _activeRequestKey = null;
-      _message = granted ? grantedMessage : deniedMessage;
-    });
   }
 
   Future<void> _requestAll() async {
@@ -108,14 +123,28 @@ class _PermissionOnboardingScreenState
     });
 
     try {
-      await _permissionService.requestMicrophonePermission();
-      await _permissionService.requestNotificationPermissions();
-      await _permissionService.requestLocationPermission();
+      await _withPermissionTimeout(
+        _permissionService.requestMicrophonePermission,
+      );
+      await _permissionService
+          .requestNotificationPermissions()
+          .timeout(const Duration(seconds: 8));
+      await _withPermissionTimeout(
+        _permissionService.requestLocationPermission,
+      );
       await _refresh();
       if (mounted) {
         setState(() {
           _message =
               '권한 요청을 마쳤습니다. 허용되지 않은 항목은 아래 상태를 확인한 뒤 Android 설정에서 다시 켤 수 있어요.';
+        });
+      }
+    } catch (_) {
+      await _refresh();
+      if (mounted) {
+        setState(() {
+          _message =
+              '일부 권한 요청이 완료되지 않았습니다. 아래 상태를 확인하고 Android 앱 설정에서 직접 켜 주세요.';
         });
       }
     } finally {
@@ -125,6 +154,10 @@ class _PermissionOnboardingScreenState
         });
       }
     }
+  }
+
+  Future<bool> _withPermissionTimeout(Future<bool> Function() request) {
+    return request().timeout(const Duration(seconds: 8));
   }
 
   Future<void> _complete() async {
@@ -137,20 +170,18 @@ class _PermissionOnboardingScreenState
     }
   }
 
+  Future<void> _completeIfReady(AppPermissionSnapshot snapshot) async {
+    if (!snapshot.requiredPermissionsGranted || !mounted) {
+      return;
+    }
+    await _complete();
+  }
+
   Future<void> _openAppSettings() async {
     final opened = await _permissionService.openAppSettings();
     if (!opened && mounted) {
       setState(() {
         _message = 'Android 앱 설정을 열지 못했습니다. 휴대폰 설정에서 PlanFlow 권한을 확인해 주세요.';
-      });
-    }
-  }
-
-  Future<void> _openNotificationSettings() async {
-    final opened = await _permissionService.openNotificationSettings();
-    if (!opened && mounted) {
-      setState(() {
-        _message = 'Android 알림 설정을 열지 못했습니다. 휴대폰 설정에서 PlanFlow 알림을 확인해 주세요.';
       });
     }
   }
@@ -235,17 +266,6 @@ class _PermissionOnboardingScreenState
               ),
               const SizedBox(height: 10),
               _PermissionTile(
-                icon: Icons.fullscreen_outlined,
-                title: '전체 화면 알림',
-                description:
-                    '긴급 알림을 크게 띄우기 위한 권한입니다. Android 버전에 따라 직접 설정에서 확인해야 합니다.',
-                granted: snapshot?.notificationStatus.fullScreenIntentStatus ==
-                    PermissionCheckState.granted,
-                isRequesting: _activeRequestKey == 'fullScreen',
-                onRequest: _openNotificationSettings,
-              ),
-              const SizedBox(height: 10),
-              _PermissionTile(
                 icon: Icons.my_location_outlined,
                 title: '위치',
                 description: '현재 위치를 출발지 후보로 사용해 이동시간과 출발 알림을 더 정확히 계산합니다.',
@@ -287,11 +307,6 @@ class _PermissionOnboardingScreenState
               onPressed: _openAppSettings,
               icon: const Icon(Icons.settings_applications_outlined),
               label: const Text('Android 앱 설정 열기'),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: _complete,
-              child: const Text('완료하고 시작하기'),
             ),
           ],
         ),

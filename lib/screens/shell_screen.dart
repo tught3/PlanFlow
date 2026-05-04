@@ -82,7 +82,15 @@ class _ShellScreenState extends State<ShellScreen> {
     }
 
     if (!completed) {
-      await context.push(AppRoutes.permissionOnboarding);
+      final snapshot = await _permissionService.checkAll();
+      if (!mounted) {
+        return;
+      }
+      if (snapshot.requiredPermissionsGranted) {
+        await _permissionService.markOnboardingCompleted(userId);
+      } else {
+        await context.push(AppRoutes.permissionOnboarding);
+      }
     }
 
     if (mounted) {
