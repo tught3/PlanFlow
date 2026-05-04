@@ -1,0 +1,220 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+enum NaverCalendarPermissionStatus {
+  granted,
+  denied,
+  unknown,
+  networkError,
+}
+
+class NaverCalendarPermissionResult {
+  const NaverCalendarPermissionResult({
+    required this.status,
+    required this.message,
+    this.statusCode,
+    this.error,
+  });
+
+  final NaverCalendarPermissionStatus status;
+  final String message;
+  final int? statusCode;
+  final Object? error;
+
+  bool get isGranted => status == NaverCalendarPermissionStatus.granted;
+  bool get isDenied => status == NaverCalendarPermissionStatus.denied;
+  bool get isNetworkError =>
+      status == NaverCalendarPermissionStatus.networkError;
+}
+
+typedef NaverAccessTokenProvider = Future<String?> Function();
+
+class NaverCalendarPermissionService {
+  NaverCalendarPermissionService({
+    SupabaseClient? supabaseClient,
+    http.Client? httpClient,
+    SharedPreferencesAsync? preferences,
+    NaverAccessTokenProvider? accessTokenProvider,
+    Uri? probeUri,
+  })  : _supabaseClient = supabaseClient,
+        _httpClient = httpClient ?? http.Client(),
+        _preferences = preferences ?? SharedPreferencesAsync(),
+        _accessTokenProvider = accessTokenProvider,
+        _probeUri = probeUri ??
+            Uri.parse('https://openapi.naver.com/calendar/createSchedule.json');
+
+  static const String _statusKey = 'naver_calendar_permission_status';
+  static const String _lastCheckedAtKey =
+      'naver_calendar_permission_checked_at';
+
+  final SupabaseClient? _supabaseClient;
+  final http.Client _httpClient;
+  final SharedPreferencesAsync _preferences;
+  final NaverAccessTokenProvider? _accessTokenProvider;
+  final Uri _probeUri;
+
+  Future<NaverCalendarPermissionStatus> loadStatus() async {
+    final value = await _preferences.getString(_statusKey);
+    return _parseStatus(value);
+  }
+
+  Future<void> saveStatus(NaverCalendarPermissionStatus status) async {
+    await _preferences.setString(_statusKey, status.name);
+    await _preferences.setString(
+      _lastCheckedAtKey,
+      DateTime.now().toUtc().toIso8601String(),
+    );
+  }
+
+  Future<NaverCalendarPermissionResult> refreshStatus() async {
+    final accessToken = await _resolveAccessToken();
+    if (accessToken == null || accessToken.trim().isEmpty) {
+      final result = const NaverCalendarPermissionResult(
+        status: NaverCalendarPermissionStatus.unknown,
+        message: '네이버 로그인 토큰을 확인하지 못했습니다.',
+      );
+      await saveStatus(result.status);
+      return result;
+    }
+
+    try {
+      final response = await _httpClient.post(
+        _probeUri,
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer $accessToken',
+          HttpHeaders.contentTypeHeader:
+              'application/x-www-form-urlencoded; charset=utf-8',
+        },
+        body: const <String, String>{
+          'calendarId': 'defaultCalendarId',
+          'scheduleIcalString': 'PLANFLOW_PERMISSION_PROBE',
+        },
+      ).timeout(const Duration(seconds: 8));
+
+      final result = _classifyResponse(response);
+      await saveStatus(result.status);
+      return result;
+    } on TimeoutException catch (error) {
+      final result = NaverCalendarPermissionResult(
+        status: NaverCalendarPermissionStatus.networkError,
+        message: '네이버 캘린더 권한 확인 중 연결 시간이 초과되었습니다.',
+        error: error,
+      );
+      await saveStatus(result.status);
+      return result;
+    } on SocketException catch (error) {
+      final result = NaverCalendarPermissionResult(
+        status: NaverCalendarPermissionStatus.networkError,
+        message: '네이버 캘린더 권한 확인 중 네트워크 연결 문제가 발생했습니다.',
+        error: error,
+      );
+      await saveStatus(result.status);
+      return result;
+    } catch (error) {
+      final result = NaverCalendarPermissionResult(
+        status: NaverCalendarPermissionStatus.unknown,
+        message: '네이버 캘린더 권한 상태를 확인하지 못했습니다.',
+        error: error,
+      );
+      await saveStatus(result.status);
+      return result;
+    }
+  }
+
+  bool isNaverSignedIn() {
+    final user = _clientOrNull?.auth.currentUser;
+    final appProvider = user?.appMetadata['provider']?.toString() ?? '';
+    if (appProvider.toLowerCase().contains('naver')) {
+      return true;
+    }
+
+    final identities = user?.identities ?? const <UserIdentity>[];
+    return identities.any((identity) {
+      final provider = identity.provider.toLowerCase();
+      return provider.contains('naver');
+    });
+  }
+
+  Future<String?> _resolveAccessToken() async {
+    final provider = _accessTokenProvider;
+    if (provider != null) {
+      return provider();
+    }
+
+    return _clientOrNull?.auth.currentSession?.providerToken;
+  }
+
+  SupabaseClient? get _clientOrNull {
+    if (_supabaseClient != null) {
+      return _supabaseClient;
+    }
+
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @visibleForTesting
+  static NaverCalendarPermissionResult classifyResponse(
+      http.Response response) {
+    return _classifyResponse(response);
+  }
+
+  static NaverCalendarPermissionResult _classifyResponse(
+    http.Response response,
+  ) {
+    final body = response.body.toLowerCase();
+    final statusCode = response.statusCode;
+    if (statusCode == 401 ||
+        statusCode == 403 ||
+        body.contains('permission') ||
+        body.contains('scope') ||
+        body.contains('unauthorized') ||
+        body.contains('forbidden') ||
+        body.contains('권한')) {
+      return NaverCalendarPermissionResult(
+        status: NaverCalendarPermissionStatus.denied,
+        statusCode: statusCode,
+        message: '네이버 캘린더 권한이 연결되지 않았습니다.',
+      );
+    }
+
+    if (statusCode >= 500) {
+      return NaverCalendarPermissionResult(
+        status: NaverCalendarPermissionStatus.networkError,
+        statusCode: statusCode,
+        message: '네이버 캘린더 서버 응답이 불안정합니다. 잠시 후 다시 시도해 주세요.',
+      );
+    }
+
+    if (statusCode >= 200 && statusCode < 500) {
+      return NaverCalendarPermissionResult(
+        status: NaverCalendarPermissionStatus.granted,
+        statusCode: statusCode,
+        message: '네이버 캘린더 권한이 확인되었습니다.',
+      );
+    }
+
+    return NaverCalendarPermissionResult(
+      status: NaverCalendarPermissionStatus.unknown,
+      statusCode: statusCode,
+      message: '네이버 캘린더 권한 상태를 확인하지 못했습니다.',
+    );
+  }
+
+  static NaverCalendarPermissionStatus _parseStatus(String? value) {
+    for (final status in NaverCalendarPermissionStatus.values) {
+      if (status.name == value) {
+        return status;
+      }
+    }
+    return NaverCalendarPermissionStatus.unknown;
+  }
+}

@@ -29,7 +29,7 @@ class BackupSnapshot {
 
 class BackupService {
   BackupService({SupabaseClient? client})
-    : _client = client ?? Supabase.instance.client;
+      : _client = client ?? Supabase.instance.client;
 
   static const List<String> _scopedTables = <String>[
     'events',

@@ -39,6 +39,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   EventModel? _event;
   bool _isLoading = false;
   bool _isDeleting = false;
+  bool _isSavingSupplies = false;
   String? _loadError;
   final Set<String> _checkedSupplies = <String>{};
 
@@ -117,17 +118,62 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   void _syncCheckedSupplies() {
     final supplies = _event?.supplies.toSet() ?? const <String>{};
+    final persisted = _event?.suppliesChecked.toSet() ?? const <String>{};
+    _checkedSupplies
+      ..clear()
+      ..addAll(persisted.where(supplies.contains));
     _checkedSupplies.removeWhere((item) => !supplies.contains(item));
   }
 
-  void _toggleSupply(String item) {
+  Future<void> _toggleSupply(String item) async {
+    final event = _event;
+    if (event == null || _isSavingSupplies) {
+      return;
+    }
+
+    final previous = Set<String>.from(_checkedSupplies);
     setState(() {
+      _isSavingSupplies = true;
       if (_checkedSupplies.contains(item)) {
         _checkedSupplies.remove(item);
       } else {
         _checkedSupplies.add(item);
       }
     });
+
+    try {
+      final saved = await _repository.updateSuppliesChecked(
+        eventId: event.id,
+        suppliesChecked: _checkedSupplies.toList(growable: false),
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _event = saved;
+        _syncCheckedSupplies();
+      });
+    } catch (error, stackTrace) {
+      debugPrint('Supply checklist save failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _checkedSupplies
+          ..clear()
+          ..addAll(previous);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('준비물 체크 상태를 저장하지 못했습니다. 다시 시도해 주세요.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingSupplies = false;
+        });
+      }
+    }
   }
 
   Future<void> _deleteEvent() async {
@@ -373,6 +419,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   _SupplyChecklist(
                     supplies: event.supplies,
                     checkedSupplies: _checkedSupplies,
+                    isSaving: _isSavingSupplies,
                     onToggle: _toggleSupply,
                   ),
                 ],
@@ -625,12 +672,14 @@ class _SupplyChecklist extends StatelessWidget {
   const _SupplyChecklist({
     required this.supplies,
     required this.checkedSupplies,
+    required this.isSaving,
     required this.onToggle,
   });
 
   final List<String> supplies;
   final Set<String> checkedSupplies;
-  final ValueChanged<String> onToggle;
+  final bool isSaving;
+  final Future<void> Function(String item) onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -643,7 +692,7 @@ class _SupplyChecklist extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 8),
           child: InkWell(
             borderRadius: BorderRadius.circular(8),
-            onTap: () => onToggle(item),
+            onTap: isSaving ? null : () => onToggle(item),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),

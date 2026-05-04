@@ -3,15 +3,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/env.dart';
 
 class ReminderSettingsService {
-  const ReminderSettingsService({SupabaseClient? client})
-      : _client = client;
+  const ReminderSettingsService({SupabaseClient? client}) : _client = client;
 
   static const int fallbackMinutes = 60;
 
   final SupabaseClient? _client;
 
-  SupabaseClient get _resolvedClient =>
-      _client ?? Supabase.instance.client;
+  SupabaseClient get _resolvedClient => _client ?? Supabase.instance.client;
 
   Future<int> resolveDefaultReminderMinutes({String? userId}) async {
     final resolvedUserId = userId?.trim();
@@ -28,7 +26,8 @@ class ReminderSettingsService {
           .eq('user_id', resolvedUserId)
           .maybeSingle();
       final value = response?['default_reminder_min'];
-      final parsed = value is int ? value : int.tryParse(value?.toString() ?? '');
+      final parsed =
+          value is int ? value : int.tryParse(value?.toString() ?? '');
       if (parsed == null || parsed <= 0) {
         return fallbackMinutes;
       }

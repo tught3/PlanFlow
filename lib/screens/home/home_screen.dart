@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -876,20 +876,20 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF9DFC9),
-          border: Border.all(
-            color: const Color(0xFFC67E52).withValues(alpha: 0.72),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFC67E52).withValues(alpha: 0.14),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-          borderRadius: BorderRadius.circular(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9DFC9),
+        border: Border.all(
+          color: const Color(0xFFC67E52).withValues(alpha: 0.72),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFC67E52).withValues(alpha: 0.14),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

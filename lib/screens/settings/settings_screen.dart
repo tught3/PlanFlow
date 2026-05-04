@@ -16,7 +16,6 @@ import '../../services/backup_service.dart';
 import '../../services/briefing_scheduler_service.dart';
 import '../../services/calendar_sync_service.dart';
 import '../../services/daily_backup_scheduler_service.dart';
-import '../../services/notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -24,7 +23,7 @@ class SettingsScreen extends StatefulWidget {
     SettingsRepository? settingsRepository,
     BriefingSchedulerService? briefingSchedulerService,
     CalendarSyncService? calendarSyncService,
-    NotificationService? notificationService,
+    Object? notificationService,
     BackupService? backupService,
     AuthService? authService,
     String? userId,
@@ -32,7 +31,6 @@ class SettingsScreen extends StatefulWidget {
   })  : _settingsRepository = settingsRepository,
         _briefingSchedulerService = briefingSchedulerService,
         _calendarSyncService = calendarSyncService,
-        _notificationService = notificationService,
         _backupService = backupService,
         _authService = authService,
         _userId = userId,
@@ -41,7 +39,6 @@ class SettingsScreen extends StatefulWidget {
   final SettingsRepository? _settingsRepository;
   final BriefingSchedulerService? _briefingSchedulerService;
   final CalendarSyncService? _calendarSyncService;
-  final NotificationService? _notificationService;
   final BackupService? _backupService;
   final AuthService? _authService;
   final String? _userId;
@@ -56,7 +53,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final SettingsProvider _settingsProvider;
   late final BriefingSchedulerService _briefingSchedulerService;
   late final CalendarSyncService _calendarSyncService;
-  late final NotificationService _notificationService;
   late final DailyBackupSchedulerService _dailyBackupSchedulerService;
 
   BackupService? _backupService;
@@ -69,17 +65,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _travelMode = 'car';
 
   CalendarSyncSummary? _calendarSyncSummary;
-  NotificationPermissionStatus? _notificationPermissionStatus;
   List<BackupSnapshot> _backups = const <BackupSnapshot>[];
 
   bool _isLoadingSettings = true;
   bool _isLoadingCalendarStatus = true;
-  bool _isLoadingNotificationStatus = true;
   bool _isSyncingGoogleCalendar = false;
-  bool _isRequestingNotificationPermissions = false;
   bool _isLoadingBackups = false;
   bool _isSavingSettings = false;
   bool _isBackupActionRunning = false;
+
+  String? get _userId => widget._userId ?? authProvider.userId;
 
   @override
   void initState() {
@@ -96,41 +91,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
           googleClientId: _googleCalendarClientId,
           googleServerClientId: _googleCalendarServerClientId,
         );
-    _notificationService = widget._notificationService ?? NotificationService();
     _dailyBackupSchedulerService = const DailyBackupSchedulerService();
+    _backupService = widget._backupService ??
+        (AppEnv.isSupabaseReady ? BackupService() : null);
+    _authService =
+        widget._authService ?? (AppEnv.isSupabaseReady ? AuthService() : null);
 
+    unawaited(_loadSettings());
+    unawaited(_loadCalendarStatus());
     if (AppEnv.isSupabaseReady) {
-      _backupService = widget._backupService ?? BackupService();
-      _authService = widget._authService ?? AuthService();
       unawaited(_loadBackups());
       unawaited(_ensureAutomaticBackup());
-    } else {
-      _backupService = widget._backupService;
-      _authService = widget._authService;
     }
-
-    unawaited(_bootstrap());
   }
 
-  Future<void> _bootstrap() async {
-    await Future.wait<void>([
-      _loadSettings(),
-      _loadCalendarStatus(),
-      _loadNotificationStatus(),
-    ]);
+  @override
+  void dispose() {
+    _settingsProvider.dispose();
+    super.dispose();
   }
-
-  String? get _userId => widget._userId ?? authProvider.userId;
 
   Future<void> _loadSettings() async {
     final userId = _userId;
-    final hasUsableRepository =
-        AppEnv.isSupabaseReady || widget._settingsRepository != null;
-    if (!hasUsableRepository || userId == null || userId.isEmpty) {
-      if (!mounted) {
-        return;
-      }
-
+    if (userId == null || userId.isEmpty) {
       setState(() {
         _savedSettings = null;
         _isLoadingSettings = false;
@@ -141,12 +124,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _isLoadingSettings = true;
     });
-
     final loaded = await _settingsProvider.load(userId);
     if (!mounted) {
       return;
     }
-
     final effective = loaded ?? UserSettingsModel.defaults(userId: userId);
     setState(() {
       _savedSettings = effective;
@@ -159,83 +140,106 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _isLoadingCalendarStatus = true;
     });
-
     final summary = await _calendarSyncService.fetchStatus();
     if (!mounted) {
       return;
     }
-
     setState(() {
       _calendarSyncSummary = summary;
       _isLoadingCalendarStatus = false;
     });
   }
 
-  Future<void> _loadNotificationStatus() async {
-    setState(() {
-      _isLoadingNotificationStatus = true;
-    });
-
-    try {
-      final status = await _notificationService.checkPermissionStatus();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _notificationPermissionStatus = status;
-      });
-    } catch (_) {
-      if (mounted) {
-        _showSnack('알림 권한 상태를 확인하지 못했습니다.');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingNotificationStatus = false;
-        });
-      }
+  Future<void> _syncGoogleCalendar() async {
+    if (_isSyncingGoogleCalendar) {
+      return;
     }
+    setState(() {
+      _isSyncingGoogleCalendar = true;
+    });
+    final result =
+        await _calendarSyncService.syncGoogleCalendar(interactive: true);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _calendarSyncSummary = CalendarSyncSummary(
+        google: result,
+        naver: _calendarSyncSummary?.naver ??
+            CalendarIntegrationResult.unsupported(CalendarProvider.naver),
+      );
+      _isSyncingGoogleCalendar = false;
+    });
+    _showSnack(result.message);
   }
 
-  Future<void> _requestNotificationPermissions() async {
-    if (_isRequestingNotificationPermissions) {
+  Future<void> _pickTime({required bool isMorning}) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: isMorning ? _morningBriefingAt : _eveningBriefingAt,
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+    if (picked == null || !mounted) {
+      return;
+    }
+    setState(() {
+      if (isMorning) {
+        _morningBriefingAt = picked;
+      } else {
+        _eveningBriefingAt = picked;
+      }
+    });
+    unawaited(_persistSettings());
+  }
+
+  Future<void> _persistSettings({String? successMessage}) async {
+    final userId = _userId;
+    if (userId == null || userId.isEmpty || _isSavingSettings) {
       return;
     }
 
     setState(() {
-      _isRequestingNotificationPermissions = true;
+      _isSavingSettings = true;
     });
-
     try {
-      final status = await _notificationService.requestAndCheckPermissions();
+      final current =
+          _savedSettings ?? UserSettingsModel.defaults(userId: userId);
+      final draft = current.copyWith(
+        userId: userId,
+        morningBriefingAt: _formatTimeValue(_morningBriefingAt),
+        eveningBriefingAt: _formatTimeValue(_eveningBriefingAt),
+        defaultReminderMin: _defaultReminderMinutes,
+        travelMode: _travelMode,
+      );
+      final saved = await _settingsProvider.save(draft);
       if (!mounted) {
         return;
       }
       setState(() {
-        _notificationPermissionStatus = status;
+        _savedSettings = saved;
+        _applySettings(saved);
       });
-      _showSnack(_notificationPermissionSnack(status));
-    } catch (error, stackTrace) {
-      debugPrint('Notification permission request failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      try {
-        final status = await _notificationService.checkPermissionStatus();
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _notificationPermissionStatus = status;
-        });
-        _showSnack(_notificationPermissionSnack(status));
-      } catch (_) {
-        if (mounted) {
-          _showSnack('알림 권한 상태를 확인하지 못했습니다. Android 앱 설정에서 직접 확인해 주세요.');
-        }
+      await _briefingSchedulerService.scheduleDaily(
+        morningTime: saved.morningBriefingAt,
+        eveningTime: saved.eveningBriefingAt,
+        userId: userId,
+      );
+      if (successMessage != null) {
+        _showSnack(successMessage);
       }
+    } catch (error, stackTrace) {
+      debugPrint('Settings save failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showSnack('설정 저장에 실패했습니다. Supabase 연결을 확인해 주세요.');
     } finally {
       if (mounted) {
         setState(() {
-          _isRequestingNotificationPermissions = false;
+          _isSavingSettings = false;
         });
       }
     }
@@ -246,11 +250,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (backupService == null || !authProvider.isSignedIn) {
       return;
     }
-
     setState(() {
       _isLoadingBackups = true;
     });
-
     try {
       final backups = await backupService.listBackups();
       if (!mounted) {
@@ -272,79 +274,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _syncGoogleCalendar() async {
-    if (_isSyncingGoogleCalendar) {
-      return;
-    }
-
-    final previousSummary = _calendarSyncSummary;
-    setState(() {
-      _isSyncingGoogleCalendar = true;
-      if (previousSummary != null) {
-        _calendarSyncSummary = CalendarSyncSummary(
-          google: CalendarIntegrationResult.syncing(
-            CalendarProvider.google,
-            message: '구글 캘린더 동기화 중입니다.',
-          ),
-          naver: previousSummary.naver,
-        );
-      }
-    });
-
-    final result = await _calendarSyncService.syncGoogleCalendar(
-      interactive: true,
-    );
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _calendarSyncSummary = CalendarSyncSummary(
-        google: result,
-        naver: previousSummary?.naver ??
-            CalendarIntegrationResult.unsupported(CalendarProvider.naver),
-      );
-      _isSyncingGoogleCalendar = false;
-    });
-    _showSnack(_calendarSyncSnackMessage(result));
-  }
-
-  Future<void> _pickTime({
-    required BuildContext context,
-    required bool isMorning,
-  }) async {
-    final initialTime = isMorning ? _morningBriefingAt : _eveningBriefingAt;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: initialTime,
-      builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
-    );
-
-    if (!mounted || picked == null) {
-      return;
-    }
-
-    setState(() {
-      if (isMorning) {
-        _morningBriefingAt = picked;
-      } else {
-        _eveningBriefingAt = picked;
-      }
-    });
-    unawaited(_persistSettings());
-  }
-
   Future<void> _ensureAutomaticBackup() async {
     final backupService = _backupService;
     if (backupService == null || !authProvider.isSignedIn) {
       return;
     }
-
     try {
       await _dailyBackupSchedulerService.scheduleDaily();
       final created = await _dailyBackupSchedulerService.runCatchUpIfDue(
@@ -359,100 +293,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _openNotificationSettings() async {
-    final opened = await _notificationService.openAppNotificationSettings();
-    _showSnack(
-      opened
-          ? 'Android 알림 설정을 열었습니다.'
-          : 'Android 알림 설정을 열지 못했습니다. 휴대폰 설정에서 PlanFlow 알림을 확인해 주세요.',
-    );
-  }
-
-  void _resetToDefaults() {
-    setState(() {
-      _morningBriefingAt = const TimeOfDay(hour: 7, minute: 30);
-      _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
-      _defaultReminderMinutes = 60;
-      _travelMode = 'car';
-    });
-
-    unawaited(_persistSettings(successMessage: '설정을 기본값으로 되돌렸습니다.'));
-  }
-
-  Future<void> _persistSettings({String? successMessage}) async {
-    final userId = _userId;
-    if (userId == null || userId.isEmpty) {
-      if (successMessage != null) {
-        _showSnack('로그인한 뒤 설정을 저장할 수 있습니다.');
-      }
-      return;
-    }
-
-    if (_isSavingSettings) {
-      return;
-    }
-
-    setState(() {
-      _isSavingSettings = true;
-    });
-
-    try {
-      final current =
-          _savedSettings ?? UserSettingsModel.defaults(userId: userId);
-      final draft = current.copyWith(
-        userId: userId,
-        morningBriefingAt: _formatTimeValue(_morningBriefingAt),
-        eveningBriefingAt: _formatTimeValue(_eveningBriefingAt),
-        defaultReminderMin: _defaultReminderMinutes,
-        travelMode: _travelMode,
-      );
-
-      final saved = await _settingsProvider.save(draft);
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _savedSettings = saved;
-        _applySettings(saved);
-      });
-
-      await _briefingSchedulerService.scheduleDaily(
-        morningTime: saved.morningBriefingAt,
-        eveningTime: saved.eveningBriefingAt,
-        userId: userId,
-      );
-      if (successMessage != null) {
-        _showSnack(successMessage);
-      }
-    } catch (_) {
-      _showSnack('설정 저장에 실패했습니다. Supabase 연결을 확인하세요.');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSavingSettings = false;
-        });
-      }
-    }
-  }
-
   Future<void> _createBackup() async {
     final backupService = _backupService;
     if (backupService == null || !authProvider.isSignedIn) {
-      _showSnack('로그인 후에만 백업을 만들 수 있습니다.');
+      _showSnack('로그인 후 백업할 수 있습니다.');
       return;
     }
-
     setState(() {
       _isBackupActionRunning = true;
     });
-
     try {
       final backup = await backupService.createBackup();
       await _loadBackups();
       _showSnack('백업 완료: ${backup.totalItems}개 항목을 저장했습니다.');
-    } catch (_) {
-      _showSnack('백업 생성에 실패했습니다. Supabase 스키마를 확인하세요.');
+    } catch (error, stackTrace) {
+      debugPrint('Backup create failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showSnack('백업 생성에 실패했습니다. Supabase 스키마를 확인해 주세요.');
     } finally {
       if (mounted) {
         setState(() {
@@ -467,14 +324,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (backupService == null) {
       return;
     }
-
     final shouldRestore = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('백업 복원'),
-        content: Text(
-          '${_formatDateTime(backup.createdAt)} 백업을 현재 계정으로 복원할까요?',
-        ),
+        content: Text('${_formatDateTime(backup.createdAt)} 백업을 복원할까요?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -490,15 +344,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (shouldRestore != true) {
       return;
     }
-
     setState(() {
       _isBackupActionRunning = true;
     });
-
     try {
       await backupService.restoreBackup(backup.id);
       _showSnack('백업을 복원했습니다.');
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('Backup restore failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
       _showSnack('백업 복원에 실패했습니다. Supabase 권한과 스키마를 확인하세요.');
     } finally {
       if (mounted) {
@@ -507,6 +361,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     }
+  }
+
+  void _resetToDefaults() {
+    setState(() {
+      _morningBriefingAt = const TimeOfDay(hour: 7, minute: 30);
+      _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
+      _defaultReminderMinutes = 60;
+      _travelMode = 'car';
+    });
+    unawaited(_persistSettings(successMessage: '설정을 기본값으로 되돌렸습니다.'));
   }
 
   void _applySettings(UserSettingsModel settings) {
@@ -520,19 +384,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) {
       return;
     }
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final morningLabel = _formatTime(context, _morningBriefingAt);
-    final eveningLabel = _formatTime(context, _eveningBriefingAt);
     final envConfigured =
         widget._envConfigured ?? AppEnv.openAiApiKey.isNotEmpty;
+    final morningLabel = _formatTime(context, _morningBriefingAt);
+    final eveningLabel = _formatTime(context, _eveningBriefingAt);
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -550,12 +412,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           children: [
-            _HeaderCard(
-              morningLabel: morningLabel,
-              eveningLabel: eveningLabel,
-              isLoading: _isLoadingSettings,
-            ),
-            const SizedBox(height: 16),
             _AccountSection(
               authService: _authService,
               onSignedOut: () {
@@ -565,25 +421,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             const SizedBox(height: 16),
+            _HeaderCard(
+              morningLabel: morningLabel,
+              eveningLabel: eveningLabel,
+              isLoading: _isLoadingSettings,
+            ),
+            const SizedBox(height: 16),
             _SectionCard(
               title: '브리핑 시간',
-              subtitle: '변경하면 바로 저장되고 오전/저녁 브리핑 스케줄에 반영됩니다.',
+              subtitle: '변경하면 바로 저장되고 모닝/이브닝 브리핑 일정에 반영됩니다.',
               child: Column(
                 children: [
                   _TimeSettingTile(
-                    title: '오전 브리핑',
+                    title: '모닝 브리핑',
                     subtitle: '하루를 시작하는 브리핑 시간',
                     value: morningLabel,
                     icon: Icons.wb_sunny_outlined,
-                    onTap: () => _pickTime(context: context, isMorning: true),
+                    onTap: () => _pickTime(isMorning: true),
                   ),
                   const Divider(height: 1),
                   _TimeSettingTile(
-                    title: '저녁 브리핑',
+                    title: '이브닝 브리핑',
                     subtitle: '하루를 마감하는 브리핑 시간',
                     value: eveningLabel,
                     icon: Icons.nightlight_outlined,
-                    onTap: () => _pickTime(context: context, isMorning: false),
+                    onTap: () => _pickTime(isMorning: false),
                   ),
                 ],
               ),
@@ -591,7 +453,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             _SectionCard(
               title: '이동수단',
-              subtitle: '선행행동 역산 알림에서 이동시간 버퍼를 계산할 때 우선 사용할 방식을 정합니다.',
+              subtitle: '위치 기반 이동시간 계산과 선행행동 알림에 우선 적용할 방식을 정합니다.',
               child: SegmentedButton<String>(
                 segments: const <ButtonSegment<String>>[
                   ButtonSegment<String>(
@@ -617,11 +479,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             _SectionCard(
               title: '캘린더 연동',
-              subtitle: '구글 캘린더를 연결해 외부 일정을 PlanFlow로 가져옵니다.',
+              subtitle: 'Google Calendar 일정을 PlanFlow로 가져옵니다.',
               child: Column(
                 children: [
                   _StatusRow(
-                    label: '구글 캘린더',
+                    label: 'Google Calendar',
                     value: _calendarStatusLabel(_calendarSyncSummary?.google),
                     icon: Icons.cloud_sync_outlined,
                     isConfigured: _isCalendarConfigured(
@@ -650,85 +512,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             _DiagnosticsSection(envConfigured: envConfigured),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: '알림 권한',
-              subtitle: '일정 알림, 정확한 알람, 전체 화면 알림 권한을 확인합니다.',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _StatusRow(
-                    label: '앱 알림',
-                    value: _notificationStatusLabel(
-                      _notificationPermissionStatus?.notificationsEnabled,
-                    ),
-                    icon: Icons.notifications_active_outlined,
-                    isConfigured:
-                        _notificationPermissionStatus?.notificationsEnabled ??
-                            false,
-                  ),
-                  const SizedBox(height: 12),
-                  _StatusRow(
-                    label: '정확한 알람',
-                    value: _notificationStatusLabel(
-                      _notificationPermissionStatus?.exactAlarmsEnabled,
-                    ),
-                    icon: Icons.alarm_on_outlined,
-                    isConfigured:
-                        _notificationPermissionStatus?.exactAlarmsEnabled ??
-                            false,
-                  ),
-                  const SizedBox(height: 12),
-                  _StatusRow(
-                    label: '전체 화면 알림',
-                    value: _fullScreenStatusLabel(
-                      _notificationPermissionStatus?.fullScreenIntentStatus,
-                    ),
-                    icon: Icons.fullscreen_outlined,
-                    isConfigured:
-                        _notificationPermissionStatus?.fullScreenIntentStatus ==
-                            PermissionCheckState.granted,
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _isLoadingNotificationStatus ||
-                            _isRequestingNotificationPermissions
-                        ? null
-                        : _requestNotificationPermissions,
-                    icon: _isRequestingNotificationPermissions
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.verified_user_outlined),
-                    label: Text(
-                      _isRequestingNotificationPermissions
-                          ? '권한 확인 중...'
-                          : '알림 권한 요청/재확인',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: _openNotificationSettings,
-                    icon: const Icon(Icons.settings_applications_outlined),
-                    label: const Text('Android 알림 설정 열기'),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '요청이 실패하거나 계속 확인 필요로 보이면 Android 앱 알림 설정에서 직접 허용해 주세요.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                      height: 1.35,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (authProvider.isSignedIn && _backupService != null)
+            if (authProvider.isSignedIn && _backupService != null) ...[
+              const SizedBox(height: 16),
               _SectionCard(
                 title: '백업 및 복원',
-                subtitle: '수동 백업과 매일 새벽 3시 자동 백업 스냅샷을 관리합니다.',
+                subtitle: '수동 백업과 매일 새벽 3시 자동 백업 기록을 관리합니다.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -774,24 +562,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
-            if (authProvider.isSignedIn && _backupService != null)
-              const SizedBox(height: 16),
+            ],
           ],
         ),
       ),
     );
   }
 
-  @override
-  void dispose() {
-    _settingsProvider.dispose();
-    super.dispose();
-  }
-
   String _formatTime(BuildContext context, TimeOfDay timeOfDay) {
-    return MaterialLocalizations.of(
-      context,
-    ).formatTimeOfDay(timeOfDay, alwaysUse24HourFormat: true);
+    return MaterialLocalizations.of(context).formatTimeOfDay(
+      timeOfDay,
+      alwaysUse24HourFormat: true,
+    );
   }
 
   String _formatTimeValue(TimeOfDay timeOfDay) {
@@ -803,7 +585,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (match == null) {
       return const TimeOfDay(hour: 7, minute: 30);
     }
-
     return TimeOfDay(
       hour: int.tryParse(match.group(1) ?? '') ?? 7,
       minute: int.tryParse(match.group(2) ?? '') ?? 30,
@@ -819,7 +600,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_isLoadingCalendarStatus || result == null) {
       return '확인 중...';
     }
-
     return result.message;
   }
 
@@ -827,7 +607,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (_isSyncingGoogleCalendar) {
       return '동기화 중...';
     }
-
     final status = _calendarSyncSummary?.google.status;
     return switch (status) {
       CalendarIntegrationStatus.ready ||
@@ -838,15 +617,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     };
   }
 
-  String _calendarSyncSnackMessage(CalendarIntegrationResult result) {
-    return result.message;
-  }
-
   bool _isCalendarConfigured(CalendarIntegrationResult? result) {
     if (result == null) {
       return false;
     }
-
     return switch (result.status) {
       CalendarIntegrationStatus.signedOut ||
       CalendarIntegrationStatus.ready ||
@@ -860,53 +634,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     };
   }
 
-  String _notificationStatusLabel(bool? enabled) {
-    if (_isLoadingNotificationStatus) {
-      return '확인 중...';
-    }
-
-    if (enabled == null) {
-      return '지원 안 함';
-    }
-
-    return enabled ? '허용됨' : '확인 필요';
-  }
-
-  String _fullScreenStatusLabel(PermissionCheckState? status) {
-    if (_isLoadingNotificationStatus || status == null) {
-      return '확인 중...';
-    }
-
-    return switch (status) {
-      PermissionCheckState.granted => '허용됨',
-      PermissionCheckState.denied => '확인 필요',
-      PermissionCheckState.unsupported => '지원 안 함',
-      PermissionCheckState.needsManualCheck => 'Android 설정에서 확인',
-    };
-  }
-
-  String _notificationPermissionSnack(NotificationPermissionStatus status) {
-    final notificationsAllowed = status.notificationsEnabled == true;
-    final exactAllowed = status.exactAlarmsEnabled == true;
-    if (notificationsAllowed && exactAllowed) {
-      return status.fullScreenIntentStatus ==
-              PermissionCheckState.needsManualCheck
-          ? '앱 알림과 정확한 알람은 허용됨입니다. 전체 화면 알림은 Android 설정에서 확인해 주세요.'
-          : '알림 권한 상태를 다시 확인했습니다.';
-    }
-
-    if (notificationsAllowed) {
-      return '앱 알림은 허용됨입니다. 정확한 알람 또는 전체 화면 알림은 Android 설정에서 확인해 주세요.';
-    }
-
-    return '일부 알림 권한은 Android 앱 설정에서 허용이 필요합니다.';
-  }
-
   String? get _googleCalendarClientId {
     if (kIsWeb) {
       return AppEnv.googleWebClientId;
     }
-
     return switch (defaultTargetPlatform) {
       TargetPlatform.android => null,
       TargetPlatform.iOS ||
@@ -923,7 +654,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (kIsWeb) {
       return null;
     }
-
     return switch (defaultTargetPlatform) {
       TargetPlatform.android => AppEnv.googleServerClientId,
       TargetPlatform.iOS ||
@@ -960,7 +690,6 @@ class _HeaderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -976,12 +705,11 @@ class _HeaderCard extends StatelessWidget {
             style: theme.textTheme.labelLarge?.copyWith(
               color: const Color(0xFFA8D4F0),
               fontSize: 9,
-              letterSpacing: 0.05,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            isLoading ? '설정 불러오는 중' : '변경 즉시 적용',
+            isLoading ? '설정을 불러오는 중' : '변경 즉시 적용',
             style: theme.textTheme.headlineSmall?.copyWith(
               color: Colors.white,
               fontSize: 18,
@@ -995,11 +723,11 @@ class _HeaderCard extends StatelessWidget {
             children: [
               _HeaderPill(
                 icon: Icons.wb_sunny_outlined,
-                label: '오전 $morningLabel',
+                label: '모닝 $morningLabel',
               ),
               _HeaderPill(
                 icon: Icons.nightlight_outlined,
-                label: '저녁 $eveningLabel',
+                label: '이브닝 $eveningLabel',
               ),
             ],
           ),
@@ -1010,7 +738,10 @@ class _HeaderCard extends StatelessWidget {
 }
 
 class _AccountSection extends StatelessWidget {
-  const _AccountSection({required this.authService, required this.onSignedOut});
+  const _AccountSection({
+    required this.authService,
+    required this.onSignedOut,
+  });
 
   final AuthService? authService;
   final VoidCallback onSignedOut;
@@ -1019,7 +750,7 @@ class _AccountSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return _SectionCard(
       title: '계정',
-      subtitle: '로그인 상태를 먼저 확인하고 필요하면 바로 로그아웃할 수 있습니다.',
+      subtitle: '현재 로그인 상태를 확인하고 필요하면 로그아웃할 수 있습니다.',
       child: AnimatedBuilder(
         animation: authProvider,
         builder: (context, _) {
@@ -1033,20 +764,17 @@ class _AccountSection extends StatelessWidget {
                 isConfigured: signedIn,
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: signedIn
-                          ? () async {
-                              await authService?.signOut();
-                              onSignedOut();
-                            }
-                          : () => context.go(AppRoutes.login),
-                      child: Text(signedIn ? '로그아웃' : '로그인'),
-                    ),
-                  ),
-                ],
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: signedIn
+                      ? () async {
+                          await authService?.signOut();
+                          onSignedOut();
+                        }
+                      : () => context.go(AppRoutes.login),
+                  child: Text(signedIn ? '로그아웃' : '로그인'),
+                ),
               ),
             ],
           );
@@ -1122,7 +850,6 @@ class _HeaderPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -1161,7 +888,6 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return Card(
       color: PlanFlowColors.surface,
       elevation: 0,
@@ -1179,7 +905,7 @@ class _SectionCard extends StatelessWidget {
               style: theme.textTheme.titleMedium?.copyWith(
                 color: PlanFlowColors.primary,
                 fontSize: 13,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 4),
@@ -1216,7 +942,6 @@ class _TimeSettingTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -1277,7 +1002,6 @@ class _BackupTile extends StatelessWidget {
     final createdAt =
         '${backup.createdAt.year}-${backup.createdAt.month.toString().padLeft(2, '0')}-${backup.createdAt.day.toString().padLeft(2, '0')} '
         '${backup.createdAt.hour.toString().padLeft(2, '0')}:${backup.createdAt.minute.toString().padLeft(2, '0')}';
-
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: Container(
@@ -1300,7 +1024,7 @@ class _BackupTile extends StatelessWidget {
                   Text(
                     backup.label == 'Manual backup'
                         ? '수동 백업'
-                        : backup.label ?? '수동 백업',
+                        : backup.label ?? '백업',
                     style: theme.textTheme.titleSmall?.copyWith(
                       color: PlanFlowColors.primary,
                     ),
@@ -1339,7 +1063,6 @@ class _StatusRow extends StatelessWidget {
     final theme = Theme.of(context);
     final color =
         isConfigured ? PlanFlowColors.primaryMid : PlanFlowColors.textSecondary;
-
     return Row(
       children: [
         Container(

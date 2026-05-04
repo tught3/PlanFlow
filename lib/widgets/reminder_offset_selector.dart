@@ -20,19 +20,18 @@ class ReminderOffsetSelector extends StatelessWidget {
 
   static const List<ReminderOffsetChoice> standardChoices =
       <ReminderOffsetChoice>[
-        ReminderOffsetChoice(label: '알림 없음'),
-        ReminderOffsetChoice(label: '정시', offset: Duration.zero),
-        ReminderOffsetChoice(label: '10분 전', offset: Duration(minutes: 10)),
-        ReminderOffsetChoice(label: '30분 전', offset: Duration(minutes: 30)),
-        ReminderOffsetChoice(label: '1시간 전', offset: Duration(minutes: 60)),
-        ReminderOffsetChoice(label: '2시간 전', offset: Duration(minutes: 120)),
-      ];
+    ReminderOffsetChoice(label: '알림 없음'),
+    ReminderOffsetChoice(label: '정시', offset: Duration.zero),
+    ReminderOffsetChoice(label: '10분 전', offset: Duration(minutes: 10)),
+    ReminderOffsetChoice(label: '30분 전', offset: Duration(minutes: 30)),
+    ReminderOffsetChoice(label: '1시간 전', offset: Duration(minutes: 60)),
+    ReminderOffsetChoice(label: '2시간 전', offset: Duration(minutes: 120)),
+  ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isCustom =
-        value != null &&
+    final isCustom = value != null &&
         !standardChoices.any((choice) => choice.offset == value);
 
     return Container(

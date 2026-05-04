@@ -1,8 +1,11 @@
 package com.example.planflow
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -19,12 +22,14 @@ import java.util.Locale
 class MainActivity : FlutterActivity() {
     companion object {
         private const val REQUEST_MICROPHONE_PERMISSION = 4310
+        private const val REQUEST_LOCATION_PERMISSION = 4311
     }
 
     private var planFlowStt: PlanFlowSttChannel? = null
     private var settingsChannel: MethodChannel? = null
     private var permissionsChannel: MethodChannel? = null
     private var microphonePermissionResult: MethodChannel.Result? = null
+    private var locationPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -48,7 +53,11 @@ class MainActivity : FlutterActivity() {
         ).also { channel ->
             channel.setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "checkMicrophonePermission" -> result.success(hasMicrophonePermission())
                     "requestMicrophonePermission" -> requestMicrophonePermission(result)
+                    "checkLocationPermission" -> result.success(hasLocationPermission())
+                    "requestLocationPermission" -> requestLocationPermission(result)
+                    "getLastKnownLocation" -> result.success(getLastKnownLocationMap())
                     "openAppSettings" -> result.success(openAppSettings())
                     else -> result.notImplemented()
                 }
@@ -72,14 +81,18 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode != REQUEST_MICROPHONE_PERMISSION) {
-            return
-        }
-
         val granted = grantResults.isNotEmpty() &&
-            grantResults.first() == PackageManager.PERMISSION_GRANTED
-        microphonePermissionResult?.success(granted)
-        microphonePermissionResult = null
+            grantResults.any { it == PackageManager.PERMISSION_GRANTED }
+        when (requestCode) {
+            REQUEST_MICROPHONE_PERMISSION -> {
+                microphonePermissionResult?.success(granted)
+                microphonePermissionResult = null
+            }
+            REQUEST_LOCATION_PERMISSION -> {
+                locationPermissionResult?.success(granted)
+                locationPermissionResult = null
+            }
+        }
     }
 
     private fun openNotificationSettings(): Boolean {
@@ -124,11 +137,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun requestMicrophonePermission(result: MethodChannel.Result) {
-        if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.RECORD_AUDIO,
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
+        if (hasMicrophonePermission()) {
             result.success(true)
             return
         }
@@ -145,6 +154,90 @@ class MainActivity : FlutterActivity() {
             REQUEST_MICROPHONE_PERMISSION,
         )
     }
+
+    private fun hasMicrophonePermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        val fine = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        return fine || coarse
+    }
+
+    private fun requestLocationPermission(result: MethodChannel.Result) {
+        if (hasLocationPermission()) {
+            result.success(true)
+            return
+        }
+
+        if (locationPermissionResult != null) {
+            result.success(false)
+            return
+        }
+
+        locationPermissionResult = result
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ),
+            REQUEST_LOCATION_PERMISSION,
+        )
+    }
+
+    private fun getLastKnownLocationMap(): Map<String, Double>? {
+        if (!hasLocationPermission()) {
+            return null
+        }
+
+        return try {
+            val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val providers = listOf(
+                LocationManager.GPS_PROVIDER,
+                LocationManager.NETWORK_PROVIDER,
+                LocationManager.PASSIVE_PROVIDER,
+            )
+            val location = providers
+                .mapNotNull { provider -> safeLastKnownLocation(manager, provider) }
+                .maxByOrNull { it.time }
+            if (location == null) {
+                null
+            } else {
+                mapOf(
+                    "latitude" to location.latitude,
+                    "longitude" to location.longitude,
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun safeLastKnownLocation(
+        manager: LocationManager,
+        provider: String,
+    ): Location? {
+        return try {
+            if (manager.isProviderEnabled(provider)) {
+                manager.getLastKnownLocation(provider)
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 }
 
 private class PlanFlowSttChannel(
@@ -159,6 +252,7 @@ private class PlanFlowSttChannel(
     private var listening = false
     private var userRequestedStop = false
     private var latestPartialText = ""
+    private var sessionId = 0
 
     init {
         channel.setMethodCallHandler { call, result ->
@@ -182,6 +276,7 @@ private class PlanFlowSttChannel(
                     result.success(true)
                 }
                 "resetTranscript" -> {
+                    sessionId += 1
                     latestPartialText = ""
                     recognizer?.cancel()
                     if (listening && !userRequestedStop) {
@@ -191,7 +286,7 @@ private class PlanFlowSttChannel(
                             }
                         }, 150)
                     }
-                    result.success(true)
+                    result.success(sessionId)
                 }
                 else -> result.notImplemented()
             }
@@ -206,6 +301,7 @@ private class PlanFlowSttChannel(
         listening = true
         userRequestedStop = false
         latestPartialText = ""
+        sessionId += 1
         ensureRecognizer()
         startListening()
     }
@@ -240,7 +336,7 @@ private class PlanFlowSttChannel(
         if (!listening || userRequestedStop) {
             return
         }
-        channel.invokeMethod("restarted", null)
+        channel.invokeMethod("restarted", mapOf("sessionId" to sessionId))
         activity.window.decorView.postDelayed({
             if (listening && !userRequestedStop) {
                 startListening()
@@ -256,14 +352,20 @@ private class PlanFlowSttChannel(
             .orEmpty()
         if (text.isNotEmpty()) {
             latestPartialText = text
-            channel.invokeMethod("partial", text)
+            channel.invokeMethod(
+                "partial",
+                mapOf("text" to text, "sessionId" to sessionId),
+            )
         }
     }
 
     private fun cancel() {
         listening = false
         recognizer?.cancel()
-        channel.invokeMethod("cancelled", latestPartialText)
+        channel.invokeMethod(
+            "cancelled",
+            mapOf("text" to latestPartialText, "sessionId" to sessionId),
+        )
     }
 
     fun dispose() {
@@ -278,14 +380,17 @@ private class PlanFlowSttChannel(
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() {
-        channel.invokeMethod("segmentEnded", null)
+        channel.invokeMethod("segmentEnded", mapOf("sessionId" to sessionId))
     }
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
     override fun onError(error: Int) {
         if (userRequestedStop) {
             listening = false
-            channel.invokeMethod("stopped", latestPartialText)
+            channel.invokeMethod(
+                "stopped",
+                mapOf("text" to latestPartialText, "sessionId" to sessionId),
+            )
             return
         }
         restartSoon()
@@ -295,7 +400,10 @@ private class PlanFlowSttChannel(
         publishText(results)
         if (userRequestedStop) {
             listening = false
-            channel.invokeMethod("stopped", latestPartialText)
+            channel.invokeMethod(
+                "stopped",
+                mapOf("text" to latestPartialText, "sessionId" to sessionId),
+            )
             return
         }
         restartSoon()

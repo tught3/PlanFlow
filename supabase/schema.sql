@@ -53,6 +53,7 @@ create table if not exists public.events (
   location_lng double precision,
   memo text,
   supplies text[] not null default '{}',
+  supplies_checked text[] not null default '{}',
   is_critical boolean not null default false,
   source text not null default 'manual',
   external_id text,
@@ -61,7 +62,8 @@ create table if not exists public.events (
 
 alter table public.events
   add column if not exists location_lat double precision,
-  add column if not exists location_lng double precision;
+  add column if not exists location_lng double precision,
+  add column if not exists supplies_checked text[] not null default '{}';
 
 -- 3. pre_actions
 create table if not exists public.pre_actions (
@@ -434,6 +436,7 @@ declare
   item jsonb;
   event_id_value uuid;
   supplies_value text[];
+  supplies_checked_value text[];
 begin
   if uid is null then
     raise exception 'A signed-in user is required.' using errcode = '28000';
@@ -460,10 +463,13 @@ begin
     supplies_value := array(
       select jsonb_array_elements_text(coalesce(item -> 'supplies', '[]'::jsonb))
     );
+    supplies_checked_value := array(
+      select jsonb_array_elements_text(coalesce(item -> 'supplies_checked', '[]'::jsonb))
+    );
 
     insert into public.events (
       id, user_id, title, start_at, end_at, location, location_lat,
-      location_lng, memo, supplies, is_critical, source, external_id,
+      location_lng, memo, supplies, supplies_checked, is_critical, source, external_id,
       created_at
     )
     values (
@@ -477,6 +483,7 @@ begin
       nullif(item ->> 'location_lng', '')::double precision,
       nullif(item ->> 'memo', ''),
       coalesce(supplies_value, '{}'::text[]),
+      coalesce(supplies_checked_value, '{}'::text[]),
       coalesce(nullif(item ->> 'is_critical', '')::boolean, false),
       coalesce(nullif(item ->> 'source', ''), 'manual'),
       nullif(item ->> 'external_id', ''),
@@ -491,6 +498,7 @@ begin
           location_lng = excluded.location_lng,
           memo = excluded.memo,
           supplies = excluded.supplies,
+          supplies_checked = excluded.supplies_checked,
           is_critical = excluded.is_critical,
           source = excluded.source,
           external_id = excluded.external_id

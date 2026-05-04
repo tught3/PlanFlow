@@ -13,10 +13,12 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../location/location_picker_screen.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/app_permission_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/travel_time_buffer_service.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
 class ConfirmScreen extends StatefulWidget {
@@ -30,12 +32,16 @@ class ConfirmScreen extends StatefulWidget {
     NotificationService? notificationService,
     HomeWidgetService? homeWidgetService,
     LocationLookupService? locationLookupService,
+    this.permissionService,
+    TravelTimeBufferService? travelTimeBufferService,
   })  : backend = backend ?? const SupabaseConfirmScreenBackend(),
         gptService = gptService ?? GptService(),
         notificationService = notificationService ?? NotificationService(),
         homeWidgetService = homeWidgetService ?? HomeWidgetService(),
         locationLookupService =
-            locationLookupService ?? LocationLookupService();
+            locationLookupService ?? LocationLookupService(),
+        travelTimeBufferService =
+            travelTimeBufferService ?? TravelTimeBufferService();
 
   final Map<String, dynamic> parsedSchedule;
   final String? userId;
@@ -45,6 +51,8 @@ class ConfirmScreen extends StatefulWidget {
   final NotificationService notificationService;
   final HomeWidgetService homeWidgetService;
   final LocationLookupService locationLookupService;
+  final AppPermissionService? permissionService;
+  final TravelTimeBufferService travelTimeBufferService;
 
   @override
   State<ConfirmScreen> createState() => _ConfirmScreenState();
@@ -588,6 +596,14 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       eventId: event.id,
       eventStartAt: eventStartAt,
     );
+    final travelPreAction = await _buildTravelPreActionPayload(
+      userId: userId,
+      eventId: event.id,
+      eventStartAt: eventStartAt,
+    );
+    if (travelPreAction != null) {
+      preActionPayloads.add(travelPreAction);
+    }
     final reminderPayloads = _buildReminderPayloads(
       userId: userId,
       eventId: event.id,
@@ -702,6 +718,63 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         })
         .whereType<Map<String, dynamic>>()
         .toList(growable: true);
+  }
+
+  Future<Map<String, dynamic>?> _buildTravelPreActionPayload({
+    required String userId,
+    required String eventId,
+    required DateTime eventStartAt,
+  }) async {
+    final destinationLat = _locationLat;
+    final destinationLng = _locationLng;
+    if (destinationLat == null || destinationLng == null) {
+      return null;
+    }
+
+    final permissionService =
+        widget.permissionService ?? AppPermissionService();
+    final origin = await permissionService.getLastKnownLocation();
+    if (origin == null) {
+      return null;
+    }
+
+    try {
+      final estimate = await widget.travelTimeBufferService.estimateWithMapApis(
+        originLat: origin.latitude,
+        originLng: origin.longitude,
+        destinationLat: destinationLat,
+        destinationLng: destinationLng,
+        locationText: _emptyToNull(_locationController.text),
+      );
+      final notifyAt = eventStartAt.subtract(estimate.buffer);
+      if (!notifyAt.isAfter(DateTime.now())) {
+        return null;
+      }
+
+      return <String, dynamic>{
+        'event_id': eventId,
+        'user_id': userId,
+        'title':
+            '출발 준비 (${_travelSourceLabel(estimate.source)} 기준 ${estimate.minutes}분)',
+        'notify_at': notifyAt.toIso8601String(),
+        'is_done': false,
+      };
+    } catch (error, stackTrace) {
+      debugPrint('Travel pre-action calculation failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
+    }
+  }
+
+  String _travelSourceLabel(TravelTimeBufferSource source) {
+    return switch (source) {
+      TravelTimeBufferSource.tmap => 'T맵',
+      TravelTimeBufferSource.naverMap => '네이버 지도',
+      TravelTimeBufferSource.googleMaps => 'Google 지도',
+      TravelTimeBufferSource.coordinates => '좌표 추정',
+      TravelTimeBufferSource.locationText => '장소명 추정',
+      TravelTimeBufferSource.defaultFallback => '기본값',
+    };
   }
 
   List<Map<String, dynamic>> _buildReminderPayloads({

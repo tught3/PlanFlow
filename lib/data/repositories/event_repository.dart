@@ -24,6 +24,14 @@ abstract class EventRepository {
 
   Future<EventModel> updateEvent(EventModel event);
 
+  Future<EventModel> updateSuppliesChecked({
+    required String eventId,
+    required List<String> suppliesChecked,
+    String? userId,
+  }) {
+    throw UnimplementedError('updateSuppliesChecked is not implemented.');
+  }
+
   Future<EventModel> upsertEventBySourceExternalId(EventModel event) {
     return upsertEvent(event);
   }
@@ -54,7 +62,7 @@ class SupabaseEventRepository extends EventRepository {
 
   static const String _tableName = 'events';
   static const String _selectColumns =
-      'id, user_id, title, start_at, end_at, location, location_lat, location_lng, memo, supplies, is_critical, source, external_id, created_at';
+      'id, user_id, title, start_at, end_at, location, location_lat, location_lng, memo, supplies, supplies_checked, is_critical, source, external_id, created_at';
 
   final SupabaseClient _client;
 
@@ -186,6 +194,7 @@ class SupabaseEventRepository extends EventRepository {
       locationLng: event.locationLng,
       memo: event.memo,
       supplies: event.supplies,
+      suppliesChecked: event.suppliesChecked,
       isCritical: event.isCritical,
       source: normalizedSource,
       externalId: normalizedExternalId,
@@ -208,6 +217,28 @@ class SupabaseEventRepository extends EventRepository {
         )
         .select(_selectColumns)
         .single();
+
+    return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<EventModel> updateSuppliesChecked({
+    required String eventId,
+    required List<String> suppliesChecked,
+    String? userId,
+  }) async {
+    final resolvedUserId = _resolveUserId(userId);
+    final response = await _client
+        .from(_tableName)
+        .update(<String, dynamic>{'supplies_checked': suppliesChecked})
+        .eq('id', eventId)
+        .eq('user_id', resolvedUserId)
+        .select(_selectColumns)
+        .maybeSingle();
+
+    if (response == null) {
+      throw StateError('Event not found for the current user.');
+    }
 
     return EventModel.fromJson(_rowAsJson(response));
   }

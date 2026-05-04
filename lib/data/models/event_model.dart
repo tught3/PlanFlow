@@ -10,6 +10,7 @@ class EventModel {
     this.locationLng,
     this.memo,
     this.supplies = const <String>[],
+    this.suppliesChecked = const <String>[],
     this.isCritical = false,
     this.source = 'manual',
     this.externalId,
@@ -28,6 +29,7 @@ class EventModel {
       locationLng: _doubleValue(json['location_lng']),
       memo: json['memo'] as String?,
       supplies: _stringListValue(json['supplies']),
+      suppliesChecked: _stringListValue(json['supplies_checked']),
       isCritical: _boolValue(json['is_critical']),
       source: _sourceValue(json['source']),
       externalId: _optionalStringValue(json['external_id']),
@@ -45,6 +47,7 @@ class EventModel {
   final double? locationLng;
   final String? memo;
   final List<String> supplies;
+  final List<String> suppliesChecked;
   final bool isCritical;
   final String source;
   final String? externalId;
@@ -62,6 +65,7 @@ class EventModel {
       'location_lng': locationLng,
       'memo': memo,
       'supplies': supplies,
+      'supplies_checked': suppliesChecked,
       'is_critical': isCritical,
       'source': _sourceValue(source),
       'external_id': _optionalStringValue(externalId),
@@ -79,6 +83,7 @@ class EventModel {
       'location_lng': locationLng,
       'memo': memo,
       'supplies': supplies,
+      'supplies_checked': suppliesChecked,
       'is_critical': isCritical,
       'source': _sourceValue(source),
       'external_id': _optionalStringValue(externalId),

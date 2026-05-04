@@ -495,7 +495,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     }
 
     try {
-      await Supabase.instance.client.from('voice_logs').insert(<String, dynamic>{
+      await Supabase.instance.client
+          .from('voice_logs')
+          .insert(<String, dynamic>{
         'user_id': userId,
         'event_id': targetEventId,
         'raw_text': widget.rawText,
@@ -754,19 +756,27 @@ class _ActionChooserCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: options.map((option) {
-                final selected = currentAction == option.$1;
-                return FilterChip(
-                  selected: selected,
-                  label: Text(option.$2),
-                  avatar: Icon(option.$3, size: 18),
-                  onSelected: (_) => onSelected(option.$1),
-                );
-              }).toList(growable: false),
-            ),
+            ...options.map((option) {
+              final selected = currentAction == option.$1;
+              final button = selected
+                  ? FilledButton.icon(
+                      onPressed: () => onSelected(option.$1),
+                      icon: Icon(option.$3),
+                      label: Text(option.$2),
+                    )
+                  : OutlinedButton.icon(
+                      onPressed: () => onSelected(option.$1),
+                      icon: Icon(option.$3),
+                      label: Text(option.$2),
+                    );
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: button,
+                ),
+              );
+            }),
           ],
         ),
       ),

@@ -56,7 +56,8 @@ void main() {
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 
-  testWidgets('SettingsScreen auto-saves setting changes and schedules briefing',
+  testWidgets(
+      'SettingsScreen auto-saves setting changes and schedules briefing',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -156,18 +157,10 @@ void main() {
     );
   });
 
-  testWidgets('SettingsScreen shows notification permission status',
+  testWidgets('SettingsScreen hides notification permission controls',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final notificationService = _FakeNotificationService(
-      status: const NotificationPermissionStatus(
-        notificationsEnabled: true,
-        exactAlarmsEnabled: null,
-        fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
-      ),
-    );
 
     await tester.pumpWidget(
       MaterialApp(
@@ -182,7 +175,7 @@ void main() {
               ),
             ),
           ),
-          notificationService: notificationService,
+          notificationService: _FakeNotificationService(),
           userId: 'user-1',
           envConfigured: false,
         ),
@@ -190,16 +183,11 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final sectionTitle = find.text('알림 권한');
-    await tester.scrollUntilVisible(sectionTitle, 200);
-    expect(sectionTitle, findsOneWidget);
-    expect(find.text('허용됨'), findsWidgets);
-    expect(find.text('지원 안 함'), findsOneWidget);
-    expect(find.text('Android 설정에서 확인'), findsOneWidget);
+    expect(find.text('알림 권한'), findsNothing);
+    expect(find.text('알림 권한 요청/재확인'), findsNothing);
   });
 
-  testWidgets(
-      'notification permission request rechecks status after request failure',
+  testWidgets('SettingsScreen does not request notification permissions',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -234,18 +222,8 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final requestButton = find.widgetWithText(
-      OutlinedButton,
-      '알림 권한 요청/재확인',
-    );
-    await tester.scrollUntilVisible(requestButton, 200);
-    await tester.ensureVisible(requestButton);
-    await tester.tap(requestButton);
-    await tester.pumpAndSettle();
-
-    expect(notificationService.requestCallCount, 1);
-    expect(notificationService.checkCallCount, greaterThanOrEqualTo(1));
-    expect(find.textContaining('앱 알림과 정확한 알람은 허용됨'), findsWidgets);
+    expect(find.widgetWithText(OutlinedButton, '알림 권한 요청/재확인'), findsNothing);
+    expect(notificationService.requestCallCount, 0);
   });
 }
 

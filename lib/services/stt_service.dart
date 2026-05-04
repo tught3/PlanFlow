@@ -48,6 +48,11 @@ class SttService {
   static const String _koreanLocaleId = 'ko_KR';
   static const Duration _listenFor = Duration(minutes: 15);
   static const Duration _pauseFor = Duration(seconds: 20);
+  static const MethodChannel _nativeSttChannel =
+      MethodChannel('planflow/native_stt');
+  static const MethodChannel _androidPermissionsChannel =
+      MethodChannel('planflow/android_permissions');
+
   static SpeechToText? _activeSpeech;
   static Completer<SttListenResult>? _activeCompleter;
   static String? _activeRecognizedText;
@@ -55,10 +60,7 @@ class SttService {
   static var _activeNativeListen = false;
   static List<String>? _activeCommittedSegments;
   static var _activeNativeSessionText = '';
-  static const MethodChannel _nativeSttChannel =
-      MethodChannel('planflow/native_stt');
-  static const MethodChannel _androidPermissionsChannel =
-      MethodChannel('planflow/android_permissions');
+  static int? _activeNativeSessionId;
 
   static String? resolveKoreanLocaleId(Iterable<String> localeIds) {
     if (localeIds.contains(_koreanLocaleId)) {
@@ -93,11 +95,16 @@ class SttService {
   }
 
   static String normalizeVoiceTranscript(String text) {
-    final tokens = text
+    var tokens = text
         .trim()
         .split(RegExp(r'\s+'))
         .where((token) => token.isNotEmpty)
-        .toList();
+        .toList(growable: true);
+    if (tokens.isEmpty) {
+      return '';
+    }
+
+    tokens = _applyInlineCorrections(tokens);
     final output = <String>[];
 
     var index = 0;
@@ -115,7 +122,6 @@ class SttService {
             output.clear();
             break;
           case SttVoiceCommand.cancel:
-            break;
           case SttVoiceCommand.none:
             break;
         }
@@ -131,6 +137,61 @@ class SttService {
     }
 
     return output.join(' ').trim();
+  }
+
+  static List<String> _applyInlineCorrections(List<String> tokens) {
+    var result = List<String>.from(tokens);
+    var index = 0;
+    while (index < result.length) {
+      final normalized = _normalizeTranscriptToken(result[index]);
+      if ((normalized == '아니' || normalized == '아니야' || normalized == '아니요') &&
+          index > 0 &&
+          index < result.length - 1) {
+        final before = result.sublist(0, index);
+        final correction = result.sublist(index + 1);
+        result = _replaceTailWords(before, correction);
+        index = 0;
+        continue;
+      }
+      index += 1;
+    }
+    return result;
+  }
+
+  static List<String> _replaceTailWords(
+    List<String> baseWords,
+    List<String> correctionWords,
+  ) {
+    final base = baseWords
+        .map(_normalizeTranscriptToken)
+        .where((word) => word.isNotEmpty)
+        .toList();
+    final correction = correctionWords
+        .map(_normalizeTranscriptToken)
+        .where((word) => word.isNotEmpty)
+        .toList();
+    if (base.isEmpty) {
+      return correction;
+    }
+    if (correction.isEmpty) {
+      return base;
+    }
+    for (var index = base.length - 1; index >= 0; index -= 1) {
+      if (base[index] == correction.first ||
+          correction.first.startsWith(base[index]) ||
+          base[index].startsWith(correction.first)) {
+        return <String>[
+          ...base.take(index),
+          ...correction,
+        ];
+      }
+    }
+    final replaceCount =
+        correction.length <= base.length ? correction.length : base.length;
+    return <String>[
+      ...base.take(base.length - replaceCount),
+      ...correction,
+    ];
   }
 
   static String _normalizeVoiceCommandText(String text) {
@@ -194,10 +255,9 @@ class SttService {
   }
 
   static void _removeLastTranscriptSegment(List<String> output) {
-    if (output.isEmpty) {
-      return;
+    if (output.isNotEmpty) {
+      output.removeLast();
     }
-    output.removeLast();
   }
 
   @visibleForTesting
@@ -255,10 +315,7 @@ class SttService {
     if (_activeNativeListen) {
       try {
         await _nativeSttChannel.invokeMethod<String>('stop');
-      } catch (_) {
-        // The fallback completion below keeps the UI responsive if Android
-        // does not send a final callback after stopListening.
-      }
+      } catch (_) {}
       await Future<void>.delayed(const Duration(milliseconds: 350));
       _completeActiveListenFromText();
       return;
@@ -271,10 +328,7 @@ class SttService {
       await speech.stop();
     }
     await Future<void>.delayed(const Duration(milliseconds: 250));
-    final completer = _activeCompleter;
-    if (completer != null && !completer.isCompleted) {
-      _completeActiveListenFromText();
-    }
+    _completeActiveListenFromText();
   }
 
   Future<void> cancelActiveListen() async {
@@ -283,16 +337,10 @@ class SttService {
       try {
         await _nativeSttChannel.invokeMethod<String>('cancel');
       } catch (_) {}
-      final completer = _activeCompleter;
-      if (completer != null && !completer.isCompleted) {
-        completer.complete(
-          SttListenResult.failure(
-            failure: SttListenFailure.silence,
-            message: '음성 입력을 취소했어요.',
-            text: _activeRecognizedText,
-          ),
-        );
-      }
+      _completeActiveFailure(
+        failure: SttListenFailure.silence,
+        message: '음성 입력을 취소했어요.',
+      );
       return;
     }
     final speech = _activeSpeech;
@@ -300,23 +348,17 @@ class SttService {
       return;
     }
     await speech.cancel();
-    final completer = _activeCompleter;
-    if (completer != null && !completer.isCompleted) {
-      completer.complete(
-        SttListenResult.failure(
-          failure: SttListenFailure.silence,
-          message: '음성 입력을 취소했어요.',
-          text: _activeRecognizedText,
-        ),
-      );
-    }
+    _completeActiveFailure(
+      failure: SttListenFailure.silence,
+      message: '음성 입력을 취소했어요.',
+    );
   }
 
   Future<String> undoLastSpeechSegment() async {
     if (_activeNativeListen) {
       if (_activeNativeSessionText.trim().isNotEmpty) {
         _activeNativeSessionText = '';
-        await _resetNativeTranscript();
+        _activeNativeSessionId = await _resetNativeTranscript();
       } else {
         final segments = _activeCommittedSegments;
         if (segments != null && segments.isNotEmpty) {
@@ -343,7 +385,7 @@ class SttService {
           sessionWords.isNotEmpty) {
         sessionWords.removeLast();
         _activeNativeSessionText = sessionWords.join(' ');
-        await _resetNativeTranscript();
+        _activeNativeSessionId = await _resetNativeTranscript();
       } else {
         final segments = _activeCommittedSegments;
         if (segments != null && segments.isNotEmpty) {
@@ -373,7 +415,7 @@ class SttService {
       _activeCommittedSegments?.clear();
       _activeNativeSessionText = '';
       _activeRecognizedText = '';
-      await _resetNativeTranscript();
+      _activeNativeSessionId = await _resetNativeTranscript();
       return '';
     }
     _activeRecognizedText = '';
@@ -397,14 +439,15 @@ class SttService {
         return nativeResult;
       }
     }
+    return _listenWithSpeechToText(onPartialResult: onPartialResult);
+  }
 
+  Future<SttListenResult> _listenWithSpeechToText({
+    ValueChanged<String>? onPartialResult,
+  }) async {
     final speech = SpeechToText();
     final completer = Completer<SttListenResult>();
     String? latestRecognizedText;
-    String? activeSessionText;
-    var hasStartedListening = false;
-    var restartCount = 0;
-    Future<void> Function()? startListening;
     _activeSpeech = speech;
     _activeCompleter = completer;
     _activeRecognizedText = null;
@@ -414,7 +457,6 @@ class SttService {
       if (completer.isCompleted) {
         return;
       }
-
       final normalized = (text ?? latestRecognizedText)?.trim();
       if (normalized == null || normalized.isEmpty) {
         completer.complete(
@@ -429,156 +471,22 @@ class SttService {
       completer.complete(SttListenResult.success(normalized));
     }
 
-    String mergeRecognizedText(String current, String incoming) {
-      final trimmedCurrent = current.trim();
-      final trimmedIncoming = incoming.trim();
-      if (trimmedCurrent.isEmpty) {
-        return trimmedIncoming;
-      }
-      if (trimmedIncoming.isEmpty) {
-        return trimmedCurrent;
-      }
-      if (trimmedIncoming == trimmedCurrent) {
-        return trimmedCurrent;
-      }
-      if (trimmedIncoming.startsWith(trimmedCurrent)) {
-        return trimmedIncoming;
-      }
-      if (trimmedCurrent.startsWith(trimmedIncoming)) {
-        return trimmedCurrent;
-      }
-      if (trimmedCurrent.endsWith(trimmedIncoming)) {
-        return trimmedCurrent;
-      }
-      return '$trimmedCurrent $trimmedIncoming'.trim();
-    }
-
-    void completeFailure({
-      required SttListenFailure failure,
-      required String message,
-    }) {
-      if (!completer.isCompleted) {
-        completer.complete(
-          SttListenResult.failure(
-            failure: failure,
-            message: message,
-            text: latestRecognizedText,
-          ),
-        );
-      }
-    }
-
-    String replaceTrailingSegment(
-      String baseText,
-      String previousSegment,
-      String nextSegment,
-    ) {
-      final trimmedBase = baseText.trim();
-      final trimmedPrevious = previousSegment.trim();
-      final trimmedNext = nextSegment.trim();
-      if (trimmedBase.isEmpty) {
-        return trimmedNext;
-      }
-      if (trimmedPrevious.isEmpty) {
-        return trimmedNext;
-      }
-      if (trimmedBase.endsWith(trimmedPrevious)) {
-        return trimmedBase
-                .substring(0, trimmedBase.length - trimmedPrevious.length)
-                .trimRight() +
-            (trimmedBase.length > trimmedPrevious.length ? ' ' : '') +
-            trimmedNext;
-      }
-      return mergeRecognizedText(trimmedBase, trimmedNext);
-    }
-
-    void scheduleRestart(String reason) {
-      if (_userRequestedStop || completer.isCompleted) {
-        return;
-      }
-      if (restartCount >= 20) {
-        completeFailure(
-          failure: SttListenFailure.unavailable,
-          message: _genericMessage,
-        );
-        return;
-      }
-
-      restartCount += 1;
-      debugPrint('PlanFlow STT restart #$restartCount: $reason');
-      onRestart?.call(restartCount);
-      activeSessionText = null;
-      unawaited(
-        Future<void>.delayed(const Duration(milliseconds: 350), () async {
-          if (_userRequestedStop || completer.isCompleted) {
-            return;
-          }
-          try {
-            await startListening?.call();
-          } catch (error) {
-            debugPrint('PlanFlow STT restart failed: $error');
-            completeFailure(
-              failure: SttListenFailure.unavailable,
-              message: _genericMessage,
-            );
-          }
-        }),
-      );
-    }
-
     try {
       final available = await speech.initialize(
         debugLogging: kDebugMode,
         onStatus: (status) {
-          debugPrint('PlanFlow STT status: $status');
-          if (status == SpeechToText.listeningStatus) {
-            hasStartedListening = true;
-          } else if (hasStartedListening &&
+          if (_userRequestedStop &&
               (status == SpeechToText.doneStatus ||
                   status == SpeechToText.notListeningStatus)) {
-            if (_userRequestedStop) {
-              completeSuccess();
-            } else {
-              scheduleRestart(status);
-            }
+            completeSuccess();
           }
         },
         onError: (error) {
-          debugPrint(
-            'PlanFlow STT error: ${error.errorMsg}, permanent=${error.permanent}',
-          );
-          if (error.errorMsg == 'error_no_match' ||
-              error.errorMsg == 'error_speech_timeout') {
-            if (_userRequestedStop) {
-              completeSuccess();
-            } else {
-              scheduleRestart(error.errorMsg);
-            }
-            return;
-          }
-
           if (error.errorMsg == 'error_permission' ||
               error.errorMsg == 'error_client') {
-            completeFailure(
+            _completeActiveFailure(
               failure: SttListenFailure.permissionDenied,
               message: _permissionMessage,
-            );
-            return;
-          }
-
-          if (error.errorMsg == 'error_language_not_supported' ||
-              error.errorMsg == 'error_language_unavailable') {
-            completeFailure(
-              failure: SttListenFailure.unsupportedLocale,
-              message: _unsupportedLocaleMessage,
-            );
-            return;
-          }
-
-          if (error.permanent) {
-            completeFailure(
-              failure: SttListenFailure.unavailable,
-              message: _genericMessage,
             );
           }
         },
@@ -597,9 +505,6 @@ class SttService {
       final localeId = resolveKoreanLocaleId(
         locales.map((locale) => locale.localeId),
       );
-      debugPrint(
-        'PlanFlow STT locale: ${localeId ?? 'none'} / ${locales.length} locales',
-      );
       if (localeId == null) {
         return SttListenResult.failure(
           failure: SttListenFailure.unsupportedLocale,
@@ -607,36 +512,24 @@ class SttService {
         );
       }
 
-      startListening = () {
-        hasStartedListening = false;
-        return speech.listen(
-          localeId: localeId,
-          listenFor: _listenFor,
-          pauseFor: _pauseFor,
-          listenOptions: buildListenOptions(),
-          onResult: (result) {
-            final recognizedWords = result.recognizedWords.trim();
-            if (recognizedWords.isNotEmpty) {
-              final mergedText = activeSessionText == null
-                  ? mergeRecognizedText(
-                      latestRecognizedText ?? '', recognizedWords)
-                  : replaceTrailingSegment(
-                      latestRecognizedText ?? '',
-                      activeSessionText!,
-                      recognizedWords,
-                    );
-              activeSessionText = recognizedWords;
-              latestRecognizedText = mergedText;
-              _activeRecognizedText = mergedText;
-              onPartialResult?.call(mergedText);
-            }
-            if (result.finalResult && _userRequestedStop) {
-              completeSuccess(recognizedWords);
-            }
-          },
-        );
-      };
-      await startListening();
+      await speech.listen(
+        localeId: localeId,
+        listenFor: _listenFor,
+        pauseFor: _pauseFor,
+        listenOptions: buildListenOptions(),
+        onResult: (result) {
+          final text = result.recognizedWords.trim();
+          if (text.isEmpty) {
+            return;
+          }
+          latestRecognizedText = text;
+          _activeRecognizedText = text;
+          onPartialResult?.call(text);
+          if (result.finalResult && _userRequestedStop) {
+            completeSuccess(text);
+          }
+        },
+      );
 
       return await completer.future.timeout(
         _listenFor + const Duration(seconds: 5),
@@ -714,6 +607,23 @@ class SttService {
     }
   }
 
+  static void _completeActiveFailure({
+    required SttListenFailure failure,
+    required String message,
+  }) {
+    final completer = _activeCompleter;
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+    completer.complete(
+      SttListenResult.failure(
+        failure: failure,
+        message: message,
+        text: _activeRecognizedText,
+      ),
+    );
+  }
+
   static String _syncNativeTranscript() {
     final segments = _activeCommittedSegments ?? const <String>[];
     final pieces = <String>[
@@ -732,10 +642,12 @@ class SttService {
     return nextText;
   }
 
-  static Future<void> _resetNativeTranscript() async {
+  static Future<int?> _resetNativeTranscript() async {
     try {
-      await _nativeSttChannel.invokeMethod<bool>('resetTranscript');
-    } catch (_) {}
+      return await _nativeSttChannel.invokeMethod<int>('resetTranscript');
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<SttListenResult> _listenWithNativeAndroid({
@@ -746,12 +658,41 @@ class SttService {
     final committedSegments = <String>[];
     String latestRecognizedText = '';
     var restartCount = 0;
+    var pendingReplacement = false;
     _activeNativeListen = true;
     _activeCommittedSegments = committedSegments;
     _activeNativeSessionText = '';
+    _activeNativeSessionId = null;
     _activeCompleter = completer;
     _activeRecognizedText = null;
     _userRequestedStop = false;
+
+    String eventText(Object? arguments) {
+      if (arguments is Map) {
+        return arguments['text']?.toString() ?? '';
+      }
+      return arguments?.toString() ?? '';
+    }
+
+    int? eventSessionId(Object? arguments) {
+      if (arguments is Map) {
+        final value = arguments['sessionId'];
+        if (value is int) {
+          return value;
+        }
+        return int.tryParse(value?.toString() ?? '');
+      }
+      return null;
+    }
+
+    bool acceptsEvent(Object? arguments) {
+      final eventSession = eventSessionId(arguments);
+      if (eventSession == null) {
+        return true;
+      }
+      _activeNativeSessionId ??= eventSession;
+      return eventSession == _activeNativeSessionId;
+    }
 
     void updateRecognizedText(String incomingText) {
       final recognizedWords = incomingText.trim();
@@ -770,6 +711,23 @@ class SttService {
       onPartialResult?.call(mergedText);
     }
 
+    void replaceCommittedTail(String correction) {
+      final correctionWords = correction
+          .trim()
+          .split(RegExp(r'\s+'))
+          .where((word) => word.isNotEmpty)
+          .toList();
+      final baseWords = committedSegments
+          .join(' ')
+          .trim()
+          .split(RegExp(r'\s+'))
+          .where((word) => word.isNotEmpty)
+          .toList();
+      committedSegments
+        ..clear()
+        ..add(_replaceTailWords(baseWords, correctionWords).join(' '));
+    }
+
     void commitActiveSession() {
       final text = _activeNativeSessionText.trim();
       if (text.isEmpty) {
@@ -777,17 +735,7 @@ class SttService {
       }
       switch (detectVoiceCommand(text)) {
         case SttVoiceCommand.undoLastWord:
-          if (committedSegments.isNotEmpty) {
-            final lastWords =
-                committedSegments.last.trim().split(RegExp(r'\s+'));
-            if (lastWords.length <= 1) {
-              committedSegments.removeLast();
-            } else {
-              lastWords.removeLast();
-              committedSegments[committedSegments.length - 1] =
-                  lastWords.join(' ');
-            }
-          }
+          pendingReplacement = true;
           _activeNativeSessionText = '';
           latestRecognizedText = committedSegments.join(' ').trim();
           _activeRecognizedText = latestRecognizedText;
@@ -808,64 +756,58 @@ class SttService {
           latestRecognizedText = '';
           _activeRecognizedText = '';
           onPartialResult?.call('');
-          unawaited(_resetNativeTranscript());
+          unawaited(_resetNativeTranscript().then((id) {
+            _activeNativeSessionId = id;
+          }));
           return;
         case SttVoiceCommand.cancel:
           _activeNativeSessionText = '';
           latestRecognizedText = committedSegments.join(' ').trim();
           _activeRecognizedText = latestRecognizedText;
-          if (!completer.isCompleted) {
-            completer.complete(
-              SttListenResult.failure(
-                failure: SttListenFailure.silence,
-                message: '음성 입력을 취소했어요.',
-                text: latestRecognizedText,
-              ),
-            );
-          }
+          _completeActiveFailure(
+            failure: SttListenFailure.silence,
+            message: '음성 입력을 취소했어요.',
+          );
           return;
         case SttVoiceCommand.none:
           break;
       }
-      if (committedSegments.isEmpty || committedSegments.last != text) {
+      if (pendingReplacement) {
+        replaceCommittedTail(text);
+        pendingReplacement = false;
+      } else if (committedSegments.isEmpty || committedSegments.last != text) {
         committedSegments.add(text);
       }
       _activeNativeSessionText = '';
       latestRecognizedText = committedSegments.join(' ').trim();
       _activeRecognizedText = latestRecognizedText;
+      onPartialResult?.call(latestRecognizedText);
     }
 
     _nativeSttChannel.setMethodCallHandler((call) async {
+      if (!acceptsEvent(call.arguments)) {
+        return;
+      }
       switch (call.method) {
         case 'partial':
-          updateRecognizedText(call.arguments?.toString() ?? '');
+          updateRecognizedText(eventText(call.arguments));
           break;
         case 'stopped':
-          updateRecognizedText(call.arguments?.toString() ?? '');
+          updateRecognizedText(eventText(call.arguments));
           commitActiveSession();
           _completeActiveListenFromText();
           break;
         case 'cancelled':
-          if (!completer.isCompleted) {
-            completer.complete(
-              SttListenResult.failure(
-                failure: SttListenFailure.silence,
-                message: '음성 입력을 취소했어요.',
-                text: latestRecognizedText,
-              ),
-            );
-          }
+          _completeActiveFailure(
+            failure: SttListenFailure.silence,
+            message: '음성 입력을 취소했어요.',
+          );
           break;
         case 'error':
-          if (!completer.isCompleted) {
-            completer.complete(
-              SttListenResult.failure(
-                failure: SttListenFailure.unavailable,
-                message: _genericMessage,
-                text: latestRecognizedText,
-              ),
-            );
-          }
+          _completeActiveFailure(
+            failure: SttListenFailure.unavailable,
+            message: _genericMessage,
+          );
           break;
         case 'restarted':
           restartCount += 1;
@@ -911,6 +853,7 @@ class SttService {
       _activeNativeListen = false;
       _activeCommittedSegments = null;
       _activeNativeSessionText = '';
+      _activeNativeSessionId = null;
       _nativeSttChannel.setMethodCallHandler(null);
       if (_activeCompleter == completer) {
         _activeCompleter = null;
@@ -932,14 +875,15 @@ const String _unsupportedLocaleMessage =
     '이 기기에서는 온디바이스 한국어 음성 인식을 사용할 수 없어요. 직접 입력으로 이어가 주세요.';
 const String _permissionMessage =
     '마이크 권한이 없어요. 설정에서 권한을 허용한 뒤 다시 시도하거나 직접 입력으로 이어가 주세요.';
+const String _silenceMessage = '음성이 인식되지 않았어요. 조금 더 크게 말하거나 직접 입력으로 이어가 주세요.';
+const String _genericMessage = '음성 입력을 시작하지 못했어요. 직접 입력으로 이어가 주세요.';
 
 const Set<String> _timePrefixTokens = <String>{
   '오전',
   '오후',
-  '새벽',
+  '저녁',
   '아침',
   '점심',
-  '저녁',
   '밤',
 };
 
@@ -949,6 +893,3 @@ class _VoiceCommandMatch {
   final SttVoiceCommand command;
   final int consumedTokens;
 }
-
-const String _silenceMessage = '음성이 인식되지 않았어요. 조금 더 크게 말하거나 직접 입력으로 이어가 주세요.';
-const String _genericMessage = '음성 입력을 시작하지 못했어요. 직접 입력으로 이어가 주세요.';

@@ -8,6 +8,7 @@ import 'core/constants.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
 import 'providers/auth_provider.dart';
+import 'services/google_calendar_auto_sync_service.dart';
 import 'services/oauth_callback_handler.dart';
 
 class PlanFlowApp extends StatefulWidget {
@@ -20,6 +21,8 @@ class PlanFlowApp extends StatefulWidget {
 class _PlanFlowAppState extends State<PlanFlowApp> {
   StreamSubscription<Uri?>? _homeWidgetClickSubscription;
   final OAuthCallbackHandler _oauthCallbackHandler = OAuthCallbackHandler();
+  final GoogleCalendarAutoSyncService _googleCalendarAutoSyncService =
+      GoogleCalendarAutoSyncService();
   late final AppLifecycleListener _lifecycleListener;
 
   @override
@@ -27,12 +30,21 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     super.initState();
     _oauthCallbackHandler.start();
     _lifecycleListener = AppLifecycleListener(
-      onResume: () => unawaited(authProvider.syncCurrentSession()),
+      onResume: () => unawaited(_syncSessionAndCalendar(reason: 'resume')),
     );
+    unawaited(_syncSessionAndCalendar(reason: 'startup'));
     _routeInitialHomeWidgetLaunch();
     _homeWidgetClickSubscription = HomeWidget.widgetClicked.listen(
       _handleHomeWidgetUri,
     );
+  }
+
+  Future<void> _syncSessionAndCalendar({required String reason}) async {
+    final signedIn = await authProvider.syncCurrentSession();
+    if (!signedIn) {
+      return;
+    }
+    await _googleCalendarAutoSyncService.syncIfAllowed(reason: reason);
   }
 
   @override
