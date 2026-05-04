@@ -44,6 +44,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     if (!signedIn) {
       return;
     }
+    final currentPath = appRouter.routeInformationProvider.value.uri.path;
+    if (currentPath == AppRoutes.login || currentPath == AppRoutes.root) {
+      appRouter.go(AppRoutes.home);
+    }
     await _googleCalendarAutoSyncService.syncIfAllowed(reason: reason);
   }
 

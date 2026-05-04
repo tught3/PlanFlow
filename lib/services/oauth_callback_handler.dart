@@ -13,6 +13,9 @@ class OAuthCallbackHandler {
   OAuthCallbackHandler({AppLinks? appLinks})
       : _appLinks = appLinks ?? AppLinks();
 
+  static final ValueNotifier<String?> latestUserMessage =
+      ValueNotifier<String?>(null);
+
   final AppLinks _appLinks;
   StreamSubscription<Uri>? _subscription;
   bool _initialLinkHandled = false;
@@ -54,7 +57,12 @@ class OAuthCallbackHandler {
       return;
     }
 
-    debugPrint('OAuth callback observed: ${uri.replace(query: '<redacted>')}');
+    latestUserMessage.value = null;
+    final normalizedUri = _normalizeAuthCallbackUri(uri);
+    debugPrint(
+      'OAuth callback observed: host=${uri.host} '
+      'queryKeys=${normalizedUri.queryParameters.keys.join(',')}',
+    );
 
     final client = Supabase.instance.client;
 
@@ -65,7 +73,7 @@ class OAuthCallbackHandler {
     }
 
     try {
-      final response = await client.auth.getSessionFromUrl(uri);
+      final response = await client.auth.getSessionFromUrl(normalizedUri);
       debugPrint(
         'OAuth callback exchange completed: user=${response.session.user.id}',
       );
@@ -75,15 +83,33 @@ class OAuthCallbackHandler {
         'OAuth callback exchange failed: ${error.message} '
         'code=${error.code} status=${error.statusCode}',
       );
+      latestUserMessage.value =
+          '네이버 인증은 완료되지 않았습니다. Supabase/Naver 콜백 설정을 확인해 주세요.';
     } catch (error) {
       debugPrint('OAuth callback exchange failed: $error');
+      latestUserMessage.value = '소셜 로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
     }
   }
 
   bool _isAuthCallback(Uri uri) {
-    return uri.scheme == 'planflow' &&
-        uri.host == 'auth-callback' &&
-        uri.queryParameters.containsKey('code');
+    return uri.scheme == 'planflow' && uri.host == 'auth-callback';
+  }
+
+  Uri _normalizeAuthCallbackUri(Uri uri) {
+    final fragmentParameters = Uri.splitQueryString(
+      uri.fragment.startsWith('#') ? uri.fragment.substring(1) : uri.fragment,
+    );
+    if (fragmentParameters.isEmpty) {
+      return uri;
+    }
+
+    return uri.replace(
+      queryParameters: <String, String>{
+        ...uri.queryParameters,
+        ...fragmentParameters,
+      },
+      fragment: '',
+    );
   }
 
   Future<void> _syncAndRouteHome() async {

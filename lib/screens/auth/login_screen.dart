@@ -6,6 +6,7 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
+import '../../services/oauth_callback_handler.dart';
 
 enum _AuthMode {
   login,
@@ -44,15 +45,24 @@ class _LoginScreenState extends State<LoginScreen> {
     _authService = AppEnv.isSupabaseReady
         ? widget._authService ?? AuthService()
         : widget._authService;
+    OAuthCallbackHandler.latestUserMessage.addListener(_handleOAuthMessage);
   }
 
   @override
   void dispose() {
+    OAuthCallbackHandler.latestUserMessage.removeListener(_handleOAuthMessage);
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _nameController.dispose();
     super.dispose();
+  }
+
+  void _handleOAuthMessage() {
+    final message = OAuthCallbackHandler.latestUserMessage.value;
+    if (message != null && message.trim().isNotEmpty) {
+      _setMessage(message);
+    }
   }
 
   Future<void> _submit() async {
@@ -226,6 +236,19 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           children: [
             const SizedBox(height: 20),
+            const Center(
+              child: Text(
+                'PlanFlow',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 38,
+                  fontWeight: FontWeight.w900,
+                  color: PlanFlowColors.primaryMid,
+                  letterSpacing: -1.2,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
               decoration: BoxDecoration(
@@ -235,16 +258,6 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    AppConstants.appName,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: const Color(0xFFCCE3F4),
-                      letterSpacing: 0.8,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
                   Text(
                     title,
                     textAlign: TextAlign.center,
@@ -527,19 +540,6 @@ class _SocialLoginCard extends StatelessWidget {
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: PlanFlowColors.primary,
                     fontWeight: FontWeight.w700,
-                  ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Supabase에 연결한 Google, Kakao, Naver 계정으로 로그인합니다.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '카카오에서 KOE205가 보이면 앱 문제가 아니라 Kakao Developers와 Supabase의 카카오 OAuth 설정을 먼저 확인해야 합니다.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: PlanFlowColors.textSecondary,
-                    height: 1.35,
                   ),
             ),
             const SizedBox(height: 12),
