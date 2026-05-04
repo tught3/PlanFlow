@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -130,7 +130,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final todayLabel = _koreanDateLabel(DateTime.now());
     final theme = Theme.of(context);
     final isLoading = _loadState == _HomeLoadState.loading;
 
@@ -194,14 +193,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          todayLabel,
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: PlanFlowColors.briefingLabel,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
                         Text(
                           _todayEvents.isEmpty
                               ? '오늘은 여유로운\n하루예요 😊'
@@ -398,19 +389,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return first.year == second.year &&
         first.month == second.month &&
         first.day == second.day;
-  }
-
-  String _koreanDateLabel(DateTime value) {
-    const weekdays = <int, String>{
-      DateTime.monday: '월요일',
-      DateTime.tuesday: '화요일',
-      DateTime.wednesday: '수요일',
-      DateTime.thursday: '목요일',
-      DateTime.friday: '금요일',
-      DateTime.saturday: '토요일',
-      DateTime.sunday: '일요일',
-    };
-    return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
   }
 }
 

@@ -428,14 +428,30 @@ class _MonthHeader extends StatelessWidget {
               ),
             ),
           ),
-          TextButton(
+          OutlinedButton.icon(
             onPressed: onToday,
-            child: Text(
-              '오늘',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: Colors.white.withValues(alpha: 0.85),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: BorderSide(
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              minimumSize: const Size(0, 38),
+              visualDensity: VisualDensity.compact,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+              textStyle: theme.textTheme.labelLarge?.copyWith(
+                fontSize: (theme.textTheme.labelLarge?.fontSize ?? 14) * 1.5,
+                fontWeight: FontWeight.w800,
               ),
             ),
+            icon: const Icon(Icons.today, size: 16),
+            label: const Text('오늘'),
           ),
           IconButton(
             icon: const Icon(Icons.chevron_right, color: Colors.white),
