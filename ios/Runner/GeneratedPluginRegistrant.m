@@ -24,6 +24,12 @@
 @import flutter_naver_map;
 #endif
 
+#if __has_include(<flutter_secure_storage/FlutterSecureStoragePlugin.h>)
+#import <flutter_secure_storage/FlutterSecureStoragePlugin.h>
+#else
+@import flutter_secure_storage;
+#endif
+
 #if __has_include(<flutter_tts/FlutterTtsPlugin.h>)
 #import <flutter_tts/FlutterTtsPlugin.h>
 #else
@@ -66,6 +72,7 @@
   [AppLinksIosPlugin registerWithRegistrar:[registry registrarForPlugin:@"AppLinksIosPlugin"]];
   [FlutterLocalNotificationsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterLocalNotificationsPlugin"]];
   [SwiftFlutterNaverMapPlugin registerWithRegistrar:[registry registrarForPlugin:@"SwiftFlutterNaverMapPlugin"]];
+  [FlutterSecureStoragePlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterSecureStoragePlugin"]];
   [FlutterTtsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterTtsPlugin"]];
   [FLTGoogleSignInPlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTGoogleSignInPlugin"]];
   [HomeWidgetPlugin registerWithRegistrar:[registry registrarForPlugin:@"HomeWidgetPlugin"]];

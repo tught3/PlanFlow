@@ -60,6 +60,7 @@ void main() {
     expect(find.text('Naver Calendar'), findsOneWidget);
     expect(find.text('연동 해제'), findsWidgets);
     expect(find.text('네이버 동기화'), findsOneWidget);
+    expect(find.text('네이버 CalDAV 연결 테스트'), findsOneWidget);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 

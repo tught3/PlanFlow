@@ -19,6 +19,7 @@ dependencies:
   flutter_riverpod: ^2.4.9
   flutter_tts: ^3.8.5
   flutter_naver_map: ^1.4.4
+  flutter_secure_storage: ^9.2.4
   go_router: ^13.2.0
   google_sign_in: ^6.2.1
   googleapis: ^12.0.0

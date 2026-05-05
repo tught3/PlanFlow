@@ -18,6 +18,7 @@ import '../../services/calendar_sync_service.dart';
 import '../../services/daily_backup_scheduler_service.dart';
 import '../../services/device_calendar_service.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/naver_caldav_service.dart';
 import '../../services/naver_calendar_permission_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -31,6 +32,7 @@ class SettingsScreen extends StatefulWidget {
     AuthService? authService,
     NaverCalendarPermissionService? naverCalendarPermissionService,
     DeviceCalendarService? deviceCalendarService,
+    NaverCalDavService? naverCalDavService,
     String? userId,
     bool? envConfigured,
   })  : _settingsRepository = settingsRepository,
@@ -40,6 +42,7 @@ class SettingsScreen extends StatefulWidget {
         _authService = authService,
         _naverCalendarPermissionService = naverCalendarPermissionService,
         _deviceCalendarService = deviceCalendarService,
+        _naverCalDavService = naverCalDavService,
         _userId = userId,
         _envConfigured = envConfigured;
 
@@ -50,6 +53,7 @@ class SettingsScreen extends StatefulWidget {
   final AuthService? _authService;
   final NaverCalendarPermissionService? _naverCalendarPermissionService;
   final DeviceCalendarService? _deviceCalendarService;
+  final NaverCalDavService? _naverCalDavService;
   final String? _userId;
   final bool? _envConfigured;
 
@@ -65,6 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   late final CalendarSyncService _calendarSyncService;
   late final DailyBackupSchedulerService _dailyBackupSchedulerService;
   late final DeviceCalendarService _deviceCalendarService;
+  late final NaverCalDavService _naverCalDavService;
 
   BackupService? _backupService;
   AuthService? _authService;
@@ -88,10 +93,13 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isDisconnectingNaverCalendar = false;
   bool _isImportingDeviceNaverCalendar = false;
   bool _isListingDeviceCalendars = false;
+  bool _isTestingNaverCalDav = false;
   bool _isLoadingBackups = false;
   bool _isSavingSettings = false;
   bool _isBackupActionRunning = false;
   bool _pendingNaverCalendarSyncAfterConsent = false;
+  bool _ownsNaverCalDavService = false;
+  NaverCalDavConnectionResult? _lastNaverCalDavResult;
 
   String? get _userId => widget._userId ?? authProvider.userId;
 
@@ -114,6 +122,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     _dailyBackupSchedulerService = const DailyBackupSchedulerService();
     _deviceCalendarService =
         widget._deviceCalendarService ?? DeviceCalendarService();
+    _ownsNaverCalDavService = widget._naverCalDavService == null;
+    _naverCalDavService = widget._naverCalDavService ?? NaverCalDavService();
     _backupService = widget._backupService ??
         (AppEnv.isSupabaseReady ? BackupService() : null);
     _authService =
@@ -132,6 +142,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _settingsProvider.dispose();
+    if (_ownsNaverCalDavService) {
+      unawaited(_naverCalDavService.dispose());
+    }
     super.dispose();
   }
 
@@ -474,6 +487,110 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  Future<void> _testNaverCalDavConnection() async {
+    if (_isTestingNaverCalDav) {
+      return;
+    }
+
+    final credentials = await _showNaverCalDavDialog();
+    if (credentials == null) {
+      return;
+    }
+
+    setState(() {
+      _isTestingNaverCalDav = true;
+      _lastNaverCalDavResult = null;
+    });
+
+    final result = await _naverCalDavService.testConnection(
+      naverId: credentials.naverId,
+      appPassword: credentials.appPassword,
+      saveOnSuccess: true,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _lastNaverCalDavResult = result;
+      _isTestingNaverCalDav = false;
+    });
+    _showSnack(result.message);
+  }
+
+  Future<_NaverCalDavCredentials?> _showNaverCalDavDialog() {
+    final idController = TextEditingController();
+    final passwordController = TextEditingController();
+
+    return showDialog<_NaverCalDavCredentials>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('네이버 CalDAV 연결 테스트'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '네이버 기존 일정을 직접 가져올 수 있는지 먼저 확인합니다. 2단계 인증을 사용 중이면 앱 비밀번호를 입력해 주세요.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: idController,
+                decoration: const InputDecoration(
+                  labelText: '네이버 ID',
+                  hintText: '예: tught3',
+                ),
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                decoration: const InputDecoration(
+                  labelText: '앱 비밀번호',
+                  hintText: '네이버 보안설정에서 발급한 비밀번호',
+                ),
+                obscureText: true,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) {
+                  Navigator.of(context).pop(
+                    _NaverCalDavCredentials(
+                      naverId: idController.text,
+                      appPassword: passwordController.text,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '비밀번호는 성공한 경우에만 이 기기의 보안 저장소에 저장되며, Supabase에는 저장하지 않습니다.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop(
+                  _NaverCalDavCredentials(
+                    naverId: idController.text,
+                    appPassword: passwordController.text,
+                  ),
+                );
+              },
+              child: const Text('연결 테스트'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _syncOrReconnectNaverCalendar() async {
     if (_isConnectingNaverCalendar ||
         _isSyncingNaverCalendar ||
@@ -520,6 +637,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         deleteProviderEvents: deleteProviderEvents,
       );
       await _naverCalendarPermissionServiceInstance.clearConnectionState();
+      await _naverCalDavService.clearCredentials();
       if (!mounted) {
         return;
       }
@@ -1079,6 +1197,66 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  const Divider(height: 1),
+                  const SizedBox(height: 16),
+                  _StatusRow(
+                    label: 'Naver CalDAV 직접 연결',
+                    value: _lastNaverCalDavResult?.message ?? '아직 테스트하지 않음',
+                    icon: Icons.dns_outlined,
+                    isConfigured: _lastNaverCalDavResult?.isSuccess ?? false,
+                  ),
+                  if (_lastNaverCalDavResult?.statusCode != null ||
+                      _lastNaverCalDavResult?.endpoint != null) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        [
+                          if (_lastNaverCalDavResult?.statusCode != null)
+                            '응답 코드 ${_lastNaverCalDavResult!.statusCode}',
+                          if (_lastNaverCalDavResult?.endpoint != null)
+                            '경로 ${_lastNaverCalDavResult!.endpoint}',
+                        ].join(' · '),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.textSecondary,
+                            ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      key: const ValueKey(
+                        'settings-naver-caldav-test-button',
+                      ),
+                      onPressed: _isTestingNaverCalDav
+                          ? null
+                          : _testNaverCalDavConnection,
+                      icon: _isTestingNaverCalDav
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.route_outlined),
+                      label: Text(
+                        _isTestingNaverCalDav
+                            ? 'CalDAV 확인 중...'
+                            : '네이버 CalDAV 연결 테스트',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Android 공식 계정 연동이 아니라 PlanFlow가 직접 CalDAV 서버에 접근 가능한지만 먼저 확인합니다.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1318,6 +1496,16 @@ class _HeaderCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _NaverCalDavCredentials {
+  const _NaverCalDavCredentials({
+    required this.naverId,
+    required this.appPassword,
+  });
+
+  final String naverId;
+  final String appPassword;
 }
 
 class _AccountSection extends StatelessWidget {

@@ -179,3 +179,9 @@
 - Normalized primary Google calendars to google:primary even when CalendarList returns the account email as calendar id, preventing duplicate imports.
 - Added tests for non-primary Google calendar import keys and primary key stability.
 - Validation: flutter analyze, full flutter test, flutter build apk --debug, adb install -r, and adb launch passed.
+
+## 2026-05-05 Naver CalDAV connection spike checkpoint
+- Added a minimal `NaverCalDavService.testConnection()` spike that sends direct CalDAV `PROPFIND` requests to `https://caldav.calendar.naver.com/` and `/calendars/{naverId}/` using Basic Auth, classifies 401/403/404/network/server failures, and only saves credentials to Flutter Secure Storage after a successful connection.
+- Added a Settings tab diagnostic action `네이버 CalDAV 연결 테스트` with Korean guidance that this is a direct PlanFlow server-access check, not Android's built-in CalDAV account support.
+- Added focused service tests covering successful credential save, 401 without save, 403 policy/access-denial messaging, and fallback from root 404 to the calendar path.
+- Validation: `flutter analyze`, targeted CalDAV/settings tests, full `flutter test` (84 passed), `flutter build apk --debug`, and `git diff --check` passed. ADB install/launch could not run because no device was connected and the previous wireless ADB address timed out.
