@@ -30,12 +30,15 @@ class _ShellScreenState extends State<ShellScreen> {
   bool _checkedPermissionOnboarding = false;
   bool _checkedNaverCalendarPermission = false;
   bool _showedNaverCalendarDialog = false;
+  String? _observedUserId;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _homeScrollController = ScrollController(keepScrollOffset: false);
+    _observedUserId = authProvider.userId;
+    authProvider.addListener(_handleAuthChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeOpenPermissionOnboarding();
     });
@@ -43,8 +46,32 @@ class _ShellScreenState extends State<ShellScreen> {
 
   @override
   void dispose() {
+    authProvider.removeListener(_handleAuthChanged);
     _homeScrollController.dispose();
     super.dispose();
+  }
+
+  void _handleAuthChanged() {
+    final currentUserId = authProvider.userId;
+    if (_observedUserId == currentUserId) {
+      return;
+    }
+
+    _observedUserId = currentUserId;
+    _checkedPermissionOnboarding = false;
+    _checkedNaverCalendarPermission = false;
+    _showedNaverCalendarDialog = false;
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _maybeOpenPermissionOnboarding();
+      }
+    });
   }
 
   @override
@@ -217,7 +244,10 @@ class _ShellScreenState extends State<ShellScreen> {
           children: [
             HomeScreen(scrollController: _homeScrollController),
             const CalendarScreen(),
-            const SettingsScreen(),
+            SettingsScreen(
+              key: ValueKey<String?>('settings-${authProvider.userId}'),
+              userId: authProvider.userId,
+            ),
           ],
         ),
         bottomNavigationBar: NavigationBar(
