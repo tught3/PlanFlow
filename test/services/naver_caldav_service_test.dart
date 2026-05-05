@@ -134,11 +134,12 @@ void main() {
   });
 
   test('getEvents parses CalDAV REPORT calendar data', () async {
+    final client = _FakePropfindClient(
+      responses: <int>[207],
+      bodies: <String>[_eventReportXml],
+    );
     final service = NaverCalDavService(
-      httpClient: _FakePropfindClient(
-        responses: <int>[207],
-        bodies: <String>[_eventReportXml],
-      ),
+      httpClient: client,
       credentialStore: _FakeCredentialStore(
         savedId: 'tught3',
         savedPassword: 'app-password',
@@ -156,6 +157,13 @@ void main() {
     expect(events.single.title, '한강 피크닉');
     expect(events.single.location, '한강');
     expect(events.single.startAt, DateTime.utc(2026, 5, 5, 1));
+    expect(events.single.etag, '"etag-1"');
+    expect(client.requests, hasLength(1));
+    expect(client.requests.single.method, 'REPORT');
+    expect(
+      (client.requests.single as http.Request).body,
+      contains('time-range'),
+    );
   });
 
   test('getEvents retries with full report when ranged query is empty',
@@ -241,6 +249,35 @@ END:VCALENDAR
     expect(event.title, '어린이날, 쉬는 날');
     expect(event.description, '메모\n두 번째 줄');
     expect(event.startAt, DateTime.utc(2026, 5, 5));
+  });
+
+  test('parsed CalDAV event maps etag and sync metadata to EventModel', () {
+    final event = NaverCalDavEvent(
+      uid: 'naver-event-1',
+      href: '/calendars/tught3/default/event-1.ics',
+      etag: '"etag-quick-1"',
+      icsData: _eventIcs,
+      title: 'Quick sync event',
+      startAt: DateTime.utc(2026, 5, 5, 1),
+      endAt: DateTime.utc(2026, 5, 5, 2),
+      location: 'Seoul',
+      description: 'Imported from Naver CalDAV',
+      lastModifiedAt: DateTime.utc(2026, 5, 4, 12),
+    );
+    final syncedAt = DateTime.utc(2026, 5, 5, 3);
+
+    final model = event.toEventModel(
+      userId: 'user-1',
+      calendarPath: '/calendars/tught3/default/',
+      syncedAt: syncedAt,
+    );
+
+    expect(model.source, 'naver_caldav');
+    expect(model.externalId, 'naver-caldav:naver-event-1');
+    expect(model.externalCalendarId, 'naver-caldav:/calendars/tught3/default/');
+    expect(model.externalEtag, '"etag-quick-1"');
+    expect(model.externalUpdatedAt, DateTime.utc(2026, 5, 4, 12));
+    expect(model.lastSyncedAt, syncedAt);
   });
 }
 

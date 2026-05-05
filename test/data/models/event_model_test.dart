@@ -17,7 +17,12 @@ void main() {
       isCritical: true,
       source: 'google',
       externalId: 'calendar-event-1',
+      externalCalendarId: 'google:primary',
+      externalEtag: '"etag-1"',
+      externalUpdatedAt: DateTime.parse('2026-04-30T12:30:00Z'),
+      lastSyncedAt: DateTime.parse('2026-04-30T12:31:00Z'),
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
+      updatedAt: DateTime.parse('2026-04-30T12:05:00Z'),
     );
 
     final json = model.toJson();
@@ -36,9 +41,15 @@ void main() {
     expect(restored.isCritical, isTrue);
     expect(restored.source, 'google');
     expect(restored.externalId, 'calendar-event-1');
+    expect(restored.externalCalendarId, 'google:primary');
+    expect(restored.externalEtag, '"etag-1"');
+    expect(restored.externalUpdatedAt, model.externalUpdatedAt);
+    expect(restored.lastSyncedAt, model.lastSyncedAt);
     expect(restored.createdAt, model.createdAt);
+    expect(restored.updatedAt, model.updatedAt);
     expect(json['location_lat'], 37.5665);
     expect(json['location_lng'], 126.978);
+    expect(json['external_etag'], '"etag-1"');
   });
 
   test('EventModel can omit id for inserts', () {
@@ -63,6 +74,8 @@ void main() {
       userId: 'user-1',
       title: 'Updated event',
       startAt: DateTime.parse('2026-05-01T09:00:00Z'),
+      externalEtag: '"etag-2"',
+      lastSyncedAt: DateTime.parse('2026-05-01T09:01:00Z'),
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
     );
 
@@ -73,6 +86,8 @@ void main() {
     expect(json.containsKey('created_at'), isFalse);
     expect(json['title'], 'Updated event');
     expect(json['source'], 'manual');
+    expect(json['external_etag'], '"etag-2"');
+    expect(json['last_synced_at'], '2026-05-01T09:01:00.000Z');
   });
 
   test('EventModel defaults source to manual when absent in JSON', () {
