@@ -56,7 +56,7 @@ void main() {
 
     expect(result.status, DeviceCalendarImportStatus.imported);
     expect(result.importedCount, 1);
-    expect(result.message, '휴대폰 네이버 일정 1개를 PlanFlow로 가져왔습니다.');
+    expect(result.message, '휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.');
     expect(repository.upserted, hasLength(1));
     expect(repository.upserted.single.source, 'naver_device');
     expect(repository.upserted.single.externalId, 'android:7:42');
@@ -97,7 +97,7 @@ void main() {
     expect(result.calendars.single.label, 'Samsung Calendar');
     expect(
       result.message,
-      contains('휴대폰 캘린더 저장소에서 네이버 캘린더를 찾지 못했습니다.'),
+      contains('휴대폰 캘린더 저장소에서 내부 캘린더를 찾지 못했습니다.'),
     );
   });
 
@@ -116,7 +116,7 @@ void main() {
     final result = await service.importNaverEvents();
 
     expect(result.status, DeviceCalendarImportStatus.noEvents);
-    expect(result.message, contains('네이버 기기 캘린더는 보이지만 가져올 일정이 없습니다.'));
+    expect(result.message, contains('휴대폰 내부 캘린더는 보이지만 가져올 일정이 없습니다.'));
     expect(result.message, contains('Naver Calendar'));
   });
 }

@@ -138,7 +138,7 @@ class DeviceCalendarEvent {
       id: '',
       userId: userId,
       title: normalizedTitle == null || normalizedTitle.isEmpty
-          ? '네이버 캘린더 일정'
+          ? '휴대폰 내부 캘린더 일정'
           : normalizedTitle,
       startAt: begin.toUtc(),
       endAt: end?.toUtc(),
@@ -316,7 +316,7 @@ class DeviceCalendarService {
         return DeviceCalendarImportResult(
           status: DeviceCalendarImportStatus.noNaverCalendars,
           message:
-              '휴대폰 캘린더 저장소에서 네이버 캘린더를 찾지 못했습니다. 네이버 캘린더 앱 또는 삼성 캘린더에서 기기 동기화가 켜져 있는지 확인해 주세요.',
+              '휴대폰 캘린더 저장소에서 내부 캘린더를 찾지 못했습니다. 네이버 캘린더 앱 또는 삼성 캘린더에서 기기 동기화가 켜져 있는지 확인해 주세요.',
           calendars: calendars,
         );
       }
@@ -350,7 +350,7 @@ class DeviceCalendarService {
         return DeviceCalendarImportResult(
           status: DeviceCalendarImportStatus.noEvents,
           message:
-              '네이버 기기 캘린더는 보이지만 가져올 일정이 없습니다. 확인된 캘린더: $labels. 네이버 캘린더 앱에서 휴대폰/삼성 캘린더 동기화가 켜져 있는지 확인해 주세요.',
+              '휴대폰 내부 캘린더는 보이지만 가져올 일정이 없습니다. 확인된 캘린더: $labels. 네이버 캘린더 앱에서 휴대폰/삼성 캘린더 동기화가 켜져 있는지 확인해 주세요.',
           calendars: naverCalendars,
         );
       }
@@ -368,7 +368,7 @@ class DeviceCalendarService {
 
       return DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.imported,
-        message: '휴대폰 네이버 일정 $imported개를 PlanFlow로 가져왔습니다.',
+        message: '휴대폰 내부 캘린더 일정 $imported개를 PlanFlow로 가져왔습니다.',
         importedCount: imported,
         calendars: naverCalendars,
       );
@@ -377,7 +377,7 @@ class DeviceCalendarService {
       debugPrintStack(stackTrace: stackTrace);
       return DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.failed,
-        message: '기기 캘린더 일정 가져오기에 실패했습니다. 권한과 캘린더 동기화 상태를 확인해 주세요.',
+        message: '휴대폰 내부 캘린더 일정 가져오기에 실패했습니다. 권한과 캘린더 동기화 상태를 확인해 주세요.',
         error: error,
       );
     }

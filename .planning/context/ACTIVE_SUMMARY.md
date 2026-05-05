@@ -233,3 +233,5 @@
 - The fallback covers both invalid JSON responses and partial parsed payloads that omit `start_at`, while keeping `end_at` untouched unless the model already provided it.
 - Added a focused unit test covering the next-day 11:00 case and reran the full validation stack.
 - Verification: `flutter analyze`, `flutter test`, and `flutter build apk --debug` passed; APK was reinstalled on the connected device. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+- Device-calendar UI checkpoint: renamed the Settings button and related copy from the Naver-specific phrasing to 휴대폰 내부 캘린더 일정 가져오기, aligned the device-calendar import service messages to the same wording, and updated the related widget tests. Validation: C:\src\flutter\bin\flutter.bat analyze and targeted lutter test test/screens/settings_screen_test.dart test/services/device_calendar_service_test.dart both passed.

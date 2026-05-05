@@ -417,7 +417,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     } catch (error, stackTrace) {
       debugPrint('Device calendar list failed: $error');
       debugPrintStack(stackTrace: stackTrace);
-      errorMessage = '기기 캘린더 목록을 읽지 못했습니다. 권한과 동기화 상태를 확인해 주세요.';
+      errorMessage = '휴대폰 내부 캘린더 목록을 읽지 못했습니다. 권한과 동기화 상태를 확인해 주세요.';
     } finally {
       if (mounted) {
         setState(() {
@@ -443,7 +443,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '기기 캘린더 목록',
+                  '휴대폰 내부 캘린더 목록',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -452,7 +452,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 if (errorMessage != null)
                   Text(errorMessage)
                 else if (calendars.isEmpty)
-                  const Text('휴대폰에서 읽을 수 있는 캘린더가 없습니다.')
+                  const Text('휴대폰에서 읽을 수 있는 내부 캘린더가 없습니다.')
                 else
                   Flexible(
                     child: ListView.separated(
@@ -625,7 +625,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('네이버 일정 가져오기'),
+        title: const Text('휴대폰 내부 캘린더 일정 가져오기'),
         content: const Text(
           '일정이 많으면 오래 걸릴 수 있습니다. 먼저 최근 3개월과 앞으로 6개월 일정만 빠르게 가져옵니다.',
         ),
@@ -1493,7 +1493,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.list_alt_outlined),
-                          label: const Text('기기 캘린더 목록'),
+                          label: const Text('휴대폰 내부 캘린더 목록'),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1516,7 +1516,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           label: Text(
                             _isImportingDeviceNaverCalendar
                                 ? '가져오는 중...'
-                                : '휴대폰 네이버 일정 가져오기',
+                                : '휴대폰 내부 캘린더 일정 가져오기',
                           ),
                         ),
                       ),

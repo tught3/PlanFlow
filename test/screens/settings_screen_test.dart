@@ -215,7 +215,7 @@ void main() {
     final deviceCalendarService = _FakeDeviceCalendarService(
       result: const DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.imported,
-        message: '휴대폰 네이버 일정 2개를 PlanFlow로 가져왔습니다.',
+        message: '휴대폰 내부 캘린더 일정 2개를 PlanFlow로 가져왔습니다.',
         importedCount: 2,
       ),
     );
@@ -250,7 +250,7 @@ void main() {
 
     expect(deviceCalendarService.importCallCount, 1);
     expect(
-      find.textContaining('휴대폰 네이버 일정 2개를 PlanFlow로 가져왔습니다.'),
+      find.textContaining('휴대폰 내부 캘린더 일정 2개를 PlanFlow로 가져왔습니다.'),
       findsWidgets,
     );
   });
