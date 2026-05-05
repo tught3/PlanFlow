@@ -132,6 +132,9 @@ class _PermissionOnboardingScreenState
       await _withPermissionTimeout(
         _permissionService.requestLocationPermission,
       );
+      await _withPermissionTimeout(
+        _permissionService.requestCalendarPermission,
+      );
       await _refresh();
       if (mounted) {
         setState(() {
@@ -277,6 +280,22 @@ class _PermissionOnboardingScreenState
                   deniedMessage:
                       '위치 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
                   request: _permissionService.requestLocationPermission,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _PermissionTile(
+                icon: Icons.calendar_month_outlined,
+                title: '기기 캘린더',
+                description:
+                    '네이버/삼성/구글 캘린더 앱이 휴대폰에 동기화한 일정을 PlanFlow에서 불러오기 위해 필요합니다.',
+                granted: snapshot?.calendarGranted == true,
+                isRequesting: _activeRequestKey == 'calendar',
+                onRequest: () => _requestOne(
+                  key: 'calendar',
+                  grantedMessage: '기기 캘린더 권한을 허용했습니다.',
+                  deniedMessage:
+                      '기기 캘린더 권한이 아직 허용되지 않았습니다. Android 앱 설정에서 PlanFlow 캘린더 권한을 켜 주세요.',
+                  request: _permissionService.requestCalendarPermission,
                 ),
               ),
             ],

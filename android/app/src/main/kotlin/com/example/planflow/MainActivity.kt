@@ -8,6 +8,7 @@ import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.CalendarContract
 import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -23,6 +24,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val REQUEST_MICROPHONE_PERMISSION = 4310
         private const val REQUEST_LOCATION_PERMISSION = 4311
+        private const val REQUEST_CALENDAR_PERMISSION = 4312
     }
 
     private var planFlowStt: PlanFlowSttChannel? = null
@@ -30,6 +32,7 @@ class MainActivity : FlutterActivity() {
     private var permissionsChannel: MethodChannel? = null
     private var microphonePermissionResult: MethodChannel.Result? = null
     private var locationPermissionResult: MethodChannel.Result? = null
+    private var calendarPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -57,7 +60,25 @@ class MainActivity : FlutterActivity() {
                     "requestMicrophonePermission" -> requestMicrophonePermission(result)
                     "checkLocationPermission" -> result.success(hasLocationPermission())
                     "requestLocationPermission" -> requestLocationPermission(result)
+                    "checkCalendarPermission" -> result.success(hasCalendarPermission())
+                    "requestCalendarPermission" -> requestCalendarPermission(result)
                     "getLastKnownLocation" -> result.success(getLastKnownLocationMap())
+                    "listDeviceCalendars" -> result.success(listDeviceCalendars())
+                    "listDeviceCalendarEvents" -> {
+                        val calendarIds = call.argument<List<Any>>("calendarIds")
+                            ?.mapNotNull { it.toString().toLongOrNull() }
+                        val startMillis = call.argument<Number>("startMillis")?.toLong()
+                            ?: (System.currentTimeMillis() - 24L * 60L * 60L * 1000L)
+                        val endMillis = call.argument<Number>("endMillis")?.toLong()
+                            ?: (System.currentTimeMillis() + 365L * 24L * 60L * 60L * 1000L)
+                        result.success(
+                            listDeviceCalendarEvents(
+                                calendarIds = calendarIds,
+                                startMillis = startMillis,
+                                endMillis = endMillis,
+                            ),
+                        )
+                    }
                     "openAppSettings" -> result.success(openAppSettings())
                     else -> result.notImplemented()
                 }
@@ -91,6 +112,10 @@ class MainActivity : FlutterActivity() {
             REQUEST_LOCATION_PERMISSION -> {
                 locationPermissionResult?.success(granted)
                 locationPermissionResult = null
+            }
+            REQUEST_CALENDAR_PERMISSION -> {
+                calendarPermissionResult?.success(granted)
+                calendarPermissionResult = null
             }
         }
     }
@@ -196,6 +221,32 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    private fun hasCalendarPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.READ_CALENDAR,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestCalendarPermission(result: MethodChannel.Result) {
+        if (hasCalendarPermission()) {
+            result.success(true)
+            return
+        }
+
+        if (calendarPermissionResult != null) {
+            result.success(false)
+            return
+        }
+
+        calendarPermissionResult = result
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.READ_CALENDAR),
+            REQUEST_CALENDAR_PERMISSION,
+        )
+    }
+
     private fun getLastKnownLocationMap(): Map<String, Double>? {
         if (!hasLocationPermission()) {
             return null
@@ -237,6 +288,137 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun listDeviceCalendars(): List<Map<String, Any?>> {
+        if (!hasCalendarPermission()) {
+            return emptyList()
+        }
+
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.NAME,
+            CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Calendars.ACCOUNT_NAME,
+            CalendarContract.Calendars.ACCOUNT_TYPE,
+            CalendarContract.Calendars.OWNER_ACCOUNT,
+            CalendarContract.Calendars.IS_PRIMARY,
+            CalendarContract.Calendars.VISIBLE,
+            CalendarContract.Calendars.SYNC_EVENTS,
+        )
+
+        val calendars = mutableListOf<Map<String, Any?>>()
+        try {
+            contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                projection,
+                null,
+                null,
+                "${CalendarContract.Calendars.CALENDAR_DISPLAY_NAME} COLLATE LOCALIZED ASC",
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    calendars.add(
+                        mapOf(
+                            "id" to cursor.getLongOrNull(0)?.toString(),
+                            "name" to cursor.getStringOrNull(1),
+                            "displayName" to cursor.getStringOrNull(2),
+                            "accountName" to cursor.getStringOrNull(3),
+                            "accountType" to cursor.getStringOrNull(4),
+                            "ownerAccount" to cursor.getStringOrNull(5),
+                            "isPrimary" to cursor.getBooleanOrNull(6),
+                            "visible" to cursor.getBooleanOrNull(7),
+                            "syncEvents" to cursor.getBooleanOrNull(8),
+                        ),
+                    )
+                }
+            }
+        } catch (error: Exception) {
+            return listOf(mapOf("error" to (error.message ?: error.javaClass.simpleName)))
+        }
+        return calendars
+    }
+
+    private fun listDeviceCalendarEvents(
+        calendarIds: List<Long>?,
+        startMillis: Long,
+        endMillis: Long,
+    ): List<Map<String, Any?>> {
+        if (!hasCalendarPermission()) {
+            return emptyList()
+        }
+
+        val projection = arrayOf(
+            CalendarContract.Instances.EVENT_ID,
+            CalendarContract.Instances.CALENDAR_ID,
+            CalendarContract.Instances.TITLE,
+            CalendarContract.Instances.DESCRIPTION,
+            CalendarContract.Instances.EVENT_LOCATION,
+            CalendarContract.Instances.BEGIN,
+            CalendarContract.Instances.END,
+            CalendarContract.Instances.ALL_DAY,
+            CalendarContract.Instances.LAST_DATE,
+            CalendarContract.Instances.DTSTART,
+            CalendarContract.Instances.DTEND,
+        )
+
+        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().apply {
+            appendPath(startMillis.toString())
+            appendPath(endMillis.toString())
+        }.build()
+
+        val selection: String?
+        val selectionArgs: Array<String>?
+        if (calendarIds.isNullOrEmpty()) {
+            selection = null
+            selectionArgs = null
+        } else {
+            selection = "${CalendarContract.Instances.CALENDAR_ID} IN (${calendarIds.joinToString(",") { "?" }})"
+            selectionArgs = calendarIds.map { it.toString() }.toTypedArray()
+        }
+
+        val events = mutableListOf<Map<String, Any?>>()
+        try {
+            contentResolver.query(
+                uri,
+                projection,
+                selection,
+                selectionArgs,
+                "${CalendarContract.Instances.BEGIN} ASC",
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    events.add(
+                        mapOf(
+                            "eventId" to cursor.getLongOrNull(0)?.toString(),
+                            "calendarId" to cursor.getLongOrNull(1)?.toString(),
+                            "title" to cursor.getStringOrNull(2),
+                            "description" to cursor.getStringOrNull(3),
+                            "location" to cursor.getStringOrNull(4),
+                            "beginMillis" to cursor.getLongOrNull(5),
+                            "endMillis" to cursor.getLongOrNull(6),
+                            "allDay" to cursor.getBooleanOrNull(7),
+                            "lastDateMillis" to cursor.getLongOrNull(8),
+                            "dtstartMillis" to cursor.getLongOrNull(9),
+                            "dtendMillis" to cursor.getLongOrNull(10),
+                        ),
+                    )
+                }
+            }
+        } catch (error: Exception) {
+            return listOf(mapOf("error" to (error.message ?: error.javaClass.simpleName)))
+        }
+        return events
+    }
+
+    private fun android.database.Cursor.getStringOrNull(index: Int): String? {
+        return if (isNull(index)) null else getString(index)
+    }
+
+    private fun android.database.Cursor.getLongOrNull(index: Int): Long? {
+        return if (isNull(index)) null else getLong(index)
+    }
+
+    private fun android.database.Cursor.getBooleanOrNull(index: Int): Boolean? {
+        return if (isNull(index)) null else getInt(index) != 0
     }
 }
 

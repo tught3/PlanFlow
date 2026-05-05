@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/screens/settings/settings_screen.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
+import 'package:planflow/services/device_calendar_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
 
@@ -203,6 +206,54 @@ void main() {
     expect(find.textContaining('Naver Calendar에 1개 일정을 반영했습니다.'), findsWidgets);
   });
 
+  testWidgets('device Naver calendar import button imports phone calendars',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final deviceCalendarService = _FakeDeviceCalendarService(
+      result: const DeviceCalendarImportResult(
+        status: DeviceCalendarImportStatus.imported,
+        message: '휴대폰 네이버 일정 2개를 PlanFlow로 가져왔습니다.',
+        importedCount: 2,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+            ),
+          ),
+          deviceCalendarService: deviceCalendarService,
+          notificationService: _FakeNotificationService(),
+          userId: 'user-1',
+          envConfigured: false,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final importButton = find.byKey(
+      const ValueKey('settings-device-calendar-import-button'),
+    );
+    await tester.scrollUntilVisible(importButton, 200);
+    await tester.ensureVisible(importButton);
+    await tester.tap(importButton);
+    await tester.pumpAndSettle();
+
+    expect(deviceCalendarService.importCallCount, 1);
+    expect(
+      find.textContaining('휴대폰 네이버 일정 2개를 PlanFlow로 가져왔습니다.'),
+      findsWidgets,
+    );
+  });
+
   testWidgets('SettingsScreen hides notification permission controls',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
@@ -324,4 +375,65 @@ class _FakeNotificationService extends NotificationService {
       fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
     );
   }
+}
+
+class _FakeDeviceCalendarService extends DeviceCalendarService {
+  _FakeDeviceCalendarService({required this.result})
+      : super(
+          gateway: _FakeDeviceCalendarGateway(),
+          eventRepository: _FakeDeviceEventRepository(),
+          currentUserId: 'user-1',
+        );
+
+  final DeviceCalendarImportResult result;
+  int importCallCount = 0;
+
+  @override
+  Future<DeviceCalendarImportResult> importNaverEvents({
+    String? userId,
+    DateTime? startAt,
+    DateTime? endAt,
+  }) async {
+    importCallCount += 1;
+    return result;
+  }
+}
+
+class _FakeDeviceCalendarGateway implements DeviceCalendarGateway {
+  @override
+  Future<bool> checkCalendarPermission() async => true;
+
+  @override
+  Future<List<Map<Object?, Object?>>> listDeviceCalendarEvents({
+    required List<String> calendarIds,
+    required DateTime startAt,
+    required DateTime endAt,
+  }) async {
+    return const [];
+  }
+
+  @override
+  Future<List<Map<Object?, Object?>>> listDeviceCalendars() async => const [];
+
+  @override
+  Future<bool> requestCalendarPermission() async => true;
+}
+
+class _FakeDeviceEventRepository extends EventRepository {
+  @override
+  Future<EventModel> createEvent(EventModel event) async => event;
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) async {}
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    return null;
+  }
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async => const [];
+
+  @override
+  Future<EventModel> updateEvent(EventModel event) async => event;
 }

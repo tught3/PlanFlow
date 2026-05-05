@@ -16,6 +16,8 @@ import '../../services/backup_service.dart';
 import '../../services/briefing_scheduler_service.dart';
 import '../../services/calendar_sync_service.dart';
 import '../../services/daily_backup_scheduler_service.dart';
+import '../../services/device_calendar_service.dart';
+import '../../services/event_refresh_bus.dart';
 import '../../services/naver_calendar_permission_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -28,6 +30,7 @@ class SettingsScreen extends StatefulWidget {
     BackupService? backupService,
     AuthService? authService,
     NaverCalendarPermissionService? naverCalendarPermissionService,
+    DeviceCalendarService? deviceCalendarService,
     String? userId,
     bool? envConfigured,
   })  : _settingsRepository = settingsRepository,
@@ -36,6 +39,7 @@ class SettingsScreen extends StatefulWidget {
         _backupService = backupService,
         _authService = authService,
         _naverCalendarPermissionService = naverCalendarPermissionService,
+        _deviceCalendarService = deviceCalendarService,
         _userId = userId,
         _envConfigured = envConfigured;
 
@@ -45,6 +49,7 @@ class SettingsScreen extends StatefulWidget {
   final BackupService? _backupService;
   final AuthService? _authService;
   final NaverCalendarPermissionService? _naverCalendarPermissionService;
+  final DeviceCalendarService? _deviceCalendarService;
   final String? _userId;
   final bool? _envConfigured;
 
@@ -59,6 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   late final BriefingSchedulerService _briefingSchedulerService;
   late final CalendarSyncService _calendarSyncService;
   late final DailyBackupSchedulerService _dailyBackupSchedulerService;
+  late final DeviceCalendarService _deviceCalendarService;
 
   BackupService? _backupService;
   AuthService? _authService;
@@ -80,6 +86,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isConnectingNaverCalendar = false;
   bool _isSyncingNaverCalendar = false;
   bool _isDisconnectingNaverCalendar = false;
+  bool _isImportingDeviceNaverCalendar = false;
+  bool _isListingDeviceCalendars = false;
   bool _isLoadingBackups = false;
   bool _isSavingSettings = false;
   bool _isBackupActionRunning = false;
@@ -104,6 +112,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           googleServerClientId: _googleCalendarServerClientId,
         );
     _dailyBackupSchedulerService = const DailyBackupSchedulerService();
+    _deviceCalendarService =
+        widget._deviceCalendarService ?? DeviceCalendarService();
     _backupService = widget._backupService ??
         (AppEnv.isSupabaseReady ? BackupService() : null);
     _authService =
@@ -328,6 +338,140 @@ class _SettingsScreenState extends State<SettingsScreen>
       _isSyncingNaverCalendar = false;
     });
     _showSnack(result.message);
+  }
+
+  Future<void> _importDeviceNaverCalendar() async {
+    if (_isImportingDeviceNaverCalendar) {
+      return;
+    }
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) {
+      _showSnack('먼저 PlanFlow에 로그인해 주세요.');
+      return;
+    }
+
+    setState(() {
+      _isImportingDeviceNaverCalendar = true;
+    });
+    final result = await _deviceCalendarService.importNaverEvents(
+      userId: userId,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isImportingDeviceNaverCalendar = false;
+    });
+    _showSnack(result.message);
+    if (result.isSuccess) {
+      EventRefreshBus.instance.notifyChanged(reason: 'device_naver_import');
+    } else if (result.status == DeviceCalendarImportStatus.noNaverCalendars) {
+      unawaited(_showDeviceCalendarList(initialCalendars: result.calendars));
+    }
+  }
+
+  Future<void> _showDeviceCalendarList({
+    List<DeviceCalendarInfo>? initialCalendars,
+  }) async {
+    if (_isListingDeviceCalendars) {
+      return;
+    }
+    setState(() {
+      _isListingDeviceCalendars = true;
+    });
+
+    List<DeviceCalendarInfo> calendars = initialCalendars ?? const [];
+    String? errorMessage;
+    try {
+      final hasPermission =
+          await _deviceCalendarService.checkCalendarPermission() ||
+              await _deviceCalendarService.requestCalendarPermission();
+      if (!hasPermission) {
+        errorMessage = '기기 캘린더 권한이 필요합니다. Android 앱 설정에서 캘린더 권한을 허용해 주세요.';
+      } else if (calendars.isEmpty) {
+        calendars = await _deviceCalendarService.listCalendars();
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Device calendar list failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      errorMessage = '기기 캘린더 목록을 읽지 못했습니다. 권한과 동기화 상태를 확인해 주세요.';
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isListingDeviceCalendars = false;
+        });
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '기기 캘린더 목록',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (errorMessage != null)
+                  Text(errorMessage)
+                else if (calendars.isEmpty)
+                  const Text('휴대폰에서 읽을 수 있는 캘린더가 없습니다.')
+                else
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: calendars.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final calendar = calendars[index];
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            calendar.isNaverCandidate
+                                ? Icons.check_circle_outline
+                                : Icons.calendar_month_outlined,
+                            color: calendar.isNaverCandidate
+                                ? PlanFlowColors.primary
+                                : PlanFlowColors.textSecondary,
+                          ),
+                          title: Text(calendar.label),
+                          subtitle: Text(
+                            [
+                              if (calendar.accountName != null)
+                                calendar.accountName,
+                              if (calendar.accountType != null)
+                                calendar.accountType,
+                              if (calendar.syncEvents != null)
+                                '동기화 ${calendar.syncEvents! ? '켜짐' : '꺼짐'}',
+                            ].whereType<String>().join(' · '),
+                          ),
+                          trailing: calendar.isNaverCandidate
+                              ? const Text('네이버 후보')
+                              : null,
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _syncOrReconnectNaverCalendar() async {
@@ -789,7 +933,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 )
                               : const Icon(Icons.link_off),
                           label: Text(
-                            _isDisconnectingGoogleCalendar ? '해제 중...' : '연동 해제',
+                            _isDisconnectingGoogleCalendar
+                                ? '해제 중...'
+                                : '연동 해제',
                           ),
                         ),
                       ),
@@ -870,6 +1016,64 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 : _isConnectingNaverCalendar
                                     ? '동의 화면 여는 중...'
                                     : '네이버 동기화',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '네이버 기존 일정은 휴대폰 캘린더 저장소에서 읽어옵니다.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const ValueKey(
+                            'settings-device-calendar-list-button',
+                          ),
+                          onPressed: _isListingDeviceCalendars ||
+                                  _isImportingDeviceNaverCalendar
+                              ? null
+                              : () => _showDeviceCalendarList(),
+                          icon: _isListingDeviceCalendars
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.list_alt_outlined),
+                          label: const Text('기기 캘린더 목록'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton.icon(
+                          key: const ValueKey(
+                            'settings-device-calendar-import-button',
+                          ),
+                          onPressed: _isImportingDeviceNaverCalendar ||
+                                  _isListingDeviceCalendars
+                              ? null
+                              : _importDeviceNaverCalendar,
+                          icon: _isImportingDeviceNaverCalendar
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.phone_android_outlined),
+                          label: Text(
+                            _isImportingDeviceNaverCalendar
+                                ? '가져오는 중...'
+                                : '휴대폰 네이버 일정 가져오기',
                           ),
                         ),
                       ),

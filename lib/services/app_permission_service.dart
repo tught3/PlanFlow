@@ -32,6 +32,7 @@ class AppPermissionService {
     return AppPermissionSnapshot(
       microphoneGranted: await checkMicrophonePermission(),
       locationGranted: await checkLocationPermission(),
+      calendarGranted: await checkCalendarPermission(),
       notificationStatus: notificationStatus,
     );
   }
@@ -95,6 +96,38 @@ class AppPermissionService {
           false;
     } catch (error, stackTrace) {
       debugPrint('Location permission check failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
+  }
+
+  Future<bool> requestCalendarPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return true;
+    }
+    try {
+      return await _androidPermissionsChannel.invokeMethod<bool>(
+            'requestCalendarPermission',
+          ) ??
+          false;
+    } catch (error, stackTrace) {
+      debugPrint('Calendar permission request failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
+  }
+
+  Future<bool> checkCalendarPermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return false;
+    }
+    try {
+      return await _androidPermissionsChannel.invokeMethod<bool>(
+            'checkCalendarPermission',
+          ) ??
+          false;
+    } catch (error, stackTrace) {
+      debugPrint('Calendar permission check failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return false;
     }
@@ -165,11 +198,13 @@ class AppPermissionSnapshot {
   const AppPermissionSnapshot({
     required this.microphoneGranted,
     required this.locationGranted,
+    required this.calendarGranted,
     required this.notificationStatus,
   });
 
   final bool microphoneGranted;
   final bool locationGranted;
+  final bool calendarGranted;
   final NotificationPermissionStatus notificationStatus;
 
   bool get notificationsGranted =>
@@ -181,7 +216,8 @@ class AppPermissionSnapshot {
       microphoneGranted &&
       notificationsGranted &&
       exactAlarmsGranted &&
-      locationGranted;
+      locationGranted &&
+      calendarGranted;
 }
 
 class GeoPoint {
