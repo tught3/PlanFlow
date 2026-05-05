@@ -65,6 +65,18 @@ class OAuthCallbackHandler {
       'queryKeys=${normalizedUri.queryParameters.keys.join(',')}',
     );
 
+    final callbackErrorMessage = _messageForCallbackError(normalizedUri);
+    if (callbackErrorMessage != null) {
+      debugPrint(
+        'OAuth callback reported error: '
+        'error=${normalizedUri.queryParameters['error']} '
+        'errorCode=${normalizedUri.queryParameters['error_code']} '
+        'description=${normalizedUri.queryParameters['error_description']}',
+      );
+      latestUserMessage.value = callbackErrorMessage;
+      return;
+    }
+
     final client = Supabase.instance.client;
 
     if (client.auth.currentSession != null) {
@@ -92,6 +104,35 @@ class OAuthCallbackHandler {
       debugPrint('OAuth callback exchange failed: $error');
       latestUserMessage.value = '소셜 로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
     }
+  }
+
+  String? _messageForCallbackError(Uri uri) {
+    final error = uri.queryParameters['error']?.toLowerCase().trim() ?? '';
+    final errorCode =
+        uri.queryParameters['error_code']?.toLowerCase().trim() ?? '';
+    final description =
+        uri.queryParameters['error_description']?.toLowerCase().trim() ?? '';
+
+    if (error.isEmpty && errorCode.isEmpty && description.isEmpty) {
+      return null;
+    }
+
+    final combined = '$error $errorCode $description';
+    if (combined.contains('access_denied')) {
+      return '네이버 동의 화면에서 권한이 취소되었거나 캘린더 일정담기 동의가 완료되지 않았습니다. 다시 시도해 주세요.';
+    }
+    if (combined.contains('manual_linking_disabled')) {
+      return 'Supabase에서 Manual Linking을 켜야 네이버 캘린더 권한을 추가 연결할 수 있습니다.';
+    }
+    if (combined.contains('bad_oauth_callback') || combined.contains('state')) {
+      return '네이버 인증 콜백이 잘못되어 연결을 완료하지 못했습니다. Supabase URL 설정을 확인해 주세요.';
+    }
+    if (combined.contains('provider_email_needs_verification') ||
+        combined.contains('getting user email')) {
+      return '네이버 로그인은 이메일 확인이 필요합니다. Naver Developers와 Supabase provider 설정을 확인해 주세요.';
+    }
+
+    return '네이버 인증이 완료되지 않았습니다. Supabase/Naver 콜백 설정을 확인해 주세요.';
   }
 
   String _messageForAuthException(AuthException error) {
