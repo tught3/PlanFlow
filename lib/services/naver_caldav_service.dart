@@ -290,6 +290,7 @@ class NaverCalDavService {
       appPassword: appPassword,
     );
     final homePaths = await _discoverCalendarHomePaths(credentials);
+    debugPrint('Naver CalDAV 캘린더 홈 후보: $homePaths');
     Object? lastError;
     for (final path in homePaths) {
       final endpoint = _baseUri.replace(path: path);
@@ -307,6 +308,7 @@ class NaverCalDavService {
         }
         _throwForCalDavStatus(response.statusCode, endpoint);
         final calendars = _parseCalendarsFromResponse(response.body);
+        debugPrint('Naver CalDAV 캘린더 목록: $path / ${calendars.length}개');
         if (calendars.isNotEmpty) {
           return calendars;
         }
@@ -342,6 +344,7 @@ class NaverCalDavService {
       appPassword: credentials.appPassword,
       body: _reportBody(startAt, endAt),
     );
+    debugPrint('Naver CalDAV 범위 REPORT: $calendarPath / ${rangedEvents.length}개');
     if (rangedEvents.isNotEmpty) {
       return rangedEvents;
     }
@@ -352,7 +355,18 @@ class NaverCalDavService {
       appPassword: credentials.appPassword,
       body: _reportBody(null, null, includeTimeRange: false),
     );
-    return fallbackEvents;
+    debugPrint('Naver CalDAV 전체 REPORT: $calendarPath / ${fallbackEvents.length}개');
+    if (fallbackEvents.isNotEmpty) {
+      return fallbackEvents;
+    }
+
+    final resourceEvents = await _loadEventsFromResources(
+      endpoint: endpoint,
+      naverId: credentials.naverId,
+      appPassword: credentials.appPassword,
+    );
+    debugPrint('Naver CalDAV 리소스 GET: $calendarPath / ${resourceEvents.length}개');
+    return resourceEvents;
   }
 
   Future<List<NaverCalDavEvent>> _queryEvents({
@@ -390,6 +404,114 @@ class NaverCalDavService {
     return events;
   }
 
+  Future<List<NaverCalDavEvent>> _loadEventsFromResources({
+    required Uri endpoint,
+    required String naverId,
+    required String appPassword,
+  }) async {
+    final hrefs = await _discoverEventHrefs(
+      endpoint: endpoint,
+      naverId: naverId,
+      appPassword: appPassword,
+    );
+    if (hrefs.isEmpty) {
+      return const <NaverCalDavEvent>[];
+    }
+
+    final events = <NaverCalDavEvent>[];
+    for (final href in hrefs) {
+      final event = await _loadEventFromHref(
+        href: href,
+        naverId: naverId,
+        appPassword: appPassword,
+      );
+      if (event != null) {
+        events.add(event);
+      }
+    }
+    return events;
+  }
+
+  Future<List<String>> _discoverEventHrefs({
+    required Uri endpoint,
+    required String naverId,
+    required String appPassword,
+  }) async {
+    final response = await _sendXmlRequest(
+      method: 'PROPFIND',
+      endpoint: endpoint,
+      naverId: naverId,
+      appPassword: appPassword,
+      body: _eventListPropfindBody,
+      depth: '1',
+    );
+    _throwForCalDavStatus(response.statusCode, endpoint);
+
+    final document = XmlDocument.parse(response.body);
+    final hrefs = <String>{};
+    for (final node in _descendantsByName(document, 'response')) {
+      final href = _firstDescendantText(node, 'href');
+      if (href == null || href.trim().isEmpty) {
+        continue;
+      }
+      final normalizedHref = _normalizeCalDavPath(href) ?? href;
+      if (normalizedHref == endpoint.path) {
+        continue;
+      }
+
+      final resourceTypes = _descendantsByName(node, 'resourcetype')
+          .expand((element) => element.descendantElements)
+          .map((element) => element.name.local)
+          .toSet();
+      final contentType =
+          _firstDescendantText(node, 'getcontenttype')?.toLowerCase() ?? '';
+      final looksLikeCalendarObject = resourceTypes.contains('calendar-object') ||
+          resourceTypes.contains('vevent') ||
+          contentType.contains('text/calendar') ||
+          normalizedHref.toLowerCase().endsWith('.ics');
+      if (!looksLikeCalendarObject) {
+        continue;
+      }
+
+      hrefs.add(normalizedHref);
+    }
+    debugPrint('Naver CalDAV 이벤트 리소스 후보: ${hrefs.length}');
+    return hrefs.toList(growable: false);
+  }
+
+  Future<NaverCalDavEvent?> _loadEventFromHref({
+    required String href,
+    required String naverId,
+    required String appPassword,
+  }) async {
+    try {
+      final endpoint = _baseUri.replace(path: href);
+      final request = http.Request('GET', endpoint)
+        ..headers.addAll(_authHeaders(naverId, appPassword));
+      final streamed = await _httpClient.send(request).timeout(_timeout);
+      final bytes = await streamed.stream.toBytes();
+      if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+        debugPrint(
+          'Naver CalDAV 이벤트 GET 실패: $href / ${streamed.statusCode}',
+        );
+        return null;
+      }
+      final icsData = utf8.decode(bytes, allowMalformed: true);
+      final parsed = parseIcal(
+        icsData,
+        etag: '',
+        href: href,
+      );
+      if (parsed == null) {
+        debugPrint('Naver CalDAV 이벤트 파싱 실패: $href');
+      }
+      return parsed;
+    } catch (error) {
+      debugPrint('Naver CalDAV 이벤트 로드 실패: $href / $error');
+      return null;
+    }
+  }
+
   Future<NaverCalDavSyncResult> syncAll({
     String? userId,
     DateTime? from,
@@ -420,6 +542,9 @@ class NaverCalDavService {
           calendarPath: calendar.path,
           from: from,
           to: to,
+        );
+        debugPrint(
+          'Naver CalDAV 동기화 대상: ${calendar.path} / ${events.length}개',
         );
         eventCount += events.length;
         for (final event in events) {
@@ -779,6 +904,18 @@ $timeRange      </c:comp-filter>
 </c:calendar-query>
 ''';
   }
+
+  static const String _eventListPropfindBody = '''
+<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:getetag />
+    <d:resourcetype />
+    <d:getcontenttype />
+    <d:displayname />
+  </d:prop>
+</d:propfind>
+''';
 
   String _formatCalDavUtc(DateTime value) {
     final utc = value.toUtc();

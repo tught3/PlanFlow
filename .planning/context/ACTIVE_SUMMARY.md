@@ -202,3 +202,8 @@
 - This makes the import path more tolerant of Naver CalDAV calendars that ignore or mishandle `time-range` filters even though the account and home path are correct.
 - Added a focused service test that proves the fallback path retries and still parses the event payload.
 - Validation: `flutter analyze`, targeted CalDAV service test, full `flutter test` (89 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## 2026-05-05 Naver CalDAV resource GET fallback checkpoint
+- When both range REPORT and full REPORT return empty, `NaverCalDavService` now does a `Depth:1 PROPFIND` over the calendar collection to discover `.ics` event resources and then `GET`s each resource directly before giving up. Added debug logging for calendar home candidates, calendar counts, REPORT counts, resource candidate counts, and sync counts so the next device import attempt can show where the server is empty versus where parsing fails.
+- Added a focused service test that proves the resource-list fallback path discovers one `.ics` resource, fetches it with `GET`, and parses it into an event.
+- Validation: `flutter analyze`, `flutter test`, `flutter build apk --debug`, `adb install -r`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.example.planflow` passed. `scripts/gsd-context-hygiene.mjs` remains absent.

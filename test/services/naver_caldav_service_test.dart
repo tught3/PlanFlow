@@ -183,6 +183,38 @@ void main() {
     expect(client.requests, hasLength(2));
   });
 
+  test('getEvents loads event resources when report queries stay empty',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[207, 207, 207, 200],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _emptyEventReportXml,
+        _eventListXml,
+        _eventIcs,
+      ],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+    );
+
+    final events = await service.getEvents(
+      calendarPath: '/calendars/tught3/default/',
+      from: DateTime.utc(2026, 5),
+      to: DateTime.utc(2026, 6),
+    );
+
+    expect(events, hasLength(1));
+    expect(events.single.uid, 'naver-event-1');
+    expect(client.requests, hasLength(4));
+    expect(client.requests[2].method, 'PROPFIND');
+    expect(client.requests[3].method, 'GET');
+  });
+
   test('parseIcal handles all-day dates and escaped text', () {
     final service = NaverCalDavService(
       httpClient: _FakePropfindClient(responses: <int>[207]),
@@ -360,4 +392,37 @@ const String _emptyEventReportXml = '''
 <?xml version="1.0" encoding="utf-8"?>
 <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
 </d:multistatus>
+''';
+
+const String _eventListXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/calendars/tught3/default/event-1.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-1"</d:getetag>
+        <d:getcontenttype>text/calendar; charset=utf-8</d:getcontenttype>
+        <d:resourcetype>
+          <d:collection/>
+          <c:calendar-object/>
+        </d:resourcetype>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';
+
+const String _eventIcs = '''
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:naver-event-1
+SUMMARY:Fallback Event
+DTSTART;TZID=Asia/Seoul:20260505T100000
+DTEND;TZID=Asia/Seoul:20260505T110000
+LOCATION:Seoul
+DESCRIPTION:Fallback import
+LAST-MODIFIED:20260504T120000Z
+END:VEVENT
+END:VCALENDAR
 ''';
