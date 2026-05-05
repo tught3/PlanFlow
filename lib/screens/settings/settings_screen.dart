@@ -16,6 +16,7 @@ import '../../services/backup_service.dart';
 import '../../services/briefing_scheduler_service.dart';
 import '../../services/calendar_sync_service.dart';
 import '../../services/daily_backup_scheduler_service.dart';
+import '../../services/naver_calendar_permission_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -70,6 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoadingSettings = true;
   bool _isLoadingCalendarStatus = true;
   bool _isSyncingGoogleCalendar = false;
+  bool _isConnectingNaverCalendar = false;
   bool _isLoadingBackups = false;
   bool _isSavingSettings = false;
   bool _isBackupActionRunning = false;
@@ -171,6 +173,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _isSyncingGoogleCalendar = false;
     });
     _showSnack(result.message);
+  }
+
+  Future<void> _connectNaverCalendar() async {
+    final authService = _authService;
+    if (authService == null) {
+      _showSnack('Supabase 설정 후 네이버 캘린더를 연결할 수 있습니다.');
+      return;
+    }
+    if (!authProvider.isSignedIn) {
+      _showSnack('먼저 PlanFlow에 로그인해 주세요.');
+      return;
+    }
+    if (_isConnectingNaverCalendar) {
+      return;
+    }
+
+    setState(() {
+      _isConnectingNaverCalendar = true;
+    });
+    try {
+      await NaverCalendarPermissionService().clearStatus();
+      _showSnack('네이버 동의 화면에서 “캘린더 일정담기”를 체크해 주세요.');
+      final launched = await authService.reconnectNaverCalendar();
+      if (!launched) {
+        _showSnack('네이버 동의 화면을 열지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Naver calendar connect failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showSnack('네이버 캘린더 연결을 시작하지 못했습니다. 설정을 확인해 주세요.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isConnectingNaverCalendar = false;
+        });
+      }
+    }
   }
 
   Future<void> _pickTime({required bool isMorning}) async {
@@ -479,7 +518,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             _SectionCard(
               title: '캘린더 연동',
-              subtitle: 'Google Calendar 일정을 PlanFlow로 가져옵니다.',
+              subtitle: 'Google/Naver 캘린더 권한을 연결하고 일정을 PlanFlow로 가져옵니다.',
               child: Column(
                 children: [
                   _StatusRow(
@@ -505,6 +544,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             )
                           : const Icon(Icons.sync),
                       label: Text(_googleCalendarActionLabel()),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(height: 1),
+                  const SizedBox(height: 16),
+                  const _StatusRow(
+                    label: 'Naver Calendar',
+                    value: '네이버 캘린더를 쓰려면 “캘린더 일정담기” 권한 동의가 필요합니다.',
+                    icon: Icons.event_available_outlined,
+                    isConfigured: false,
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _isConnectingNaverCalendar
+                          ? null
+                          : _connectNaverCalendar,
+                      icon: _isConnectingNaverCalendar
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.login),
+                      label: Text(
+                        _isConnectingNaverCalendar
+                            ? '네이버 동의 화면 여는 중...'
+                            : '네이버 캘린더 권한 동의',
+                      ),
                     ),
                   ),
                 ],

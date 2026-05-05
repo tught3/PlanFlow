@@ -8,7 +8,7 @@ import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/notification_service.dart';
 
 void main() {
-  testWidgets('SettingsScreen loads saved settings and hides Naver calendar UI',
+  testWidgets('SettingsScreen loads saved settings and shows Naver consent UI',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -52,7 +52,8 @@ void main() {
     expect(find.text('기본 알림'), findsNothing);
     expect(find.text('저장'), findsNothing);
     expect(find.text('계정'), findsOneWidget);
-    expect(find.textContaining('네이버 캘린더'), findsNothing);
+    expect(find.text('Naver Calendar'), findsOneWidget);
+    expect(find.text('네이버 캘린더 권한 동의'), findsOneWidget);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 
