@@ -338,6 +338,7 @@ class NaverCalDavService {
     final startAt = (from ?? now.subtract(const Duration(days: 90))).toUtc();
     final endAt = (to ?? now.add(const Duration(days: 180))).toUtc();
     final endpoint = _baseUri.replace(path: calendarPath);
+    debugPrint('Naver CalDAV 일정 조회 시작: $calendarPath');
     final rangedEvents = await _queryEvents(
       endpoint: endpoint,
       naverId: credentials.naverId,
@@ -418,18 +419,17 @@ class NaverCalDavService {
       return const <NaverCalDavEvent>[];
     }
 
-    final events = <NaverCalDavEvent>[];
-    for (final href in hrefs) {
-      final event = await _loadEventFromHref(
-        href: href,
-        naverId: naverId,
-        appPassword: appPassword,
-      );
-      if (event != null) {
-        events.add(event);
-      }
-    }
-    return events;
+    debugPrint('Naver CalDAV 리소스 GET 시작: ${hrefs.length}개');
+    final events = await Future.wait(
+      hrefs.map(
+        (href) => _loadEventFromHref(
+          href: href,
+          naverId: naverId,
+          appPassword: appPassword,
+        ),
+      ),
+    );
+    return events.whereType<NaverCalDavEvent>().toList(growable: false);
   }
 
   Future<List<String>> _discoverEventHrefs({
@@ -538,6 +538,7 @@ class NaverCalDavService {
       var eventCount = 0;
       var savedCount = 0;
       for (final calendar in calendars) {
+        debugPrint('Naver CalDAV 캘린더 동기화 시작: ${calendar.path}');
         final events = await getEvents(
           calendarPath: calendar.path,
           from: from,
