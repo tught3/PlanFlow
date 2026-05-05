@@ -174,7 +174,7 @@ class _ShellScreenState extends State<ShellScreen> {
         return;
       }
       _showSnack('네이버 동의 화면에서 “캘린더 일정담기”를 체크해 주세요.');
-      await _authService.signInWithOAuth(PlanFlowOAuthProvider.naver);
+      await _authService.reconnectNaverCalendar();
     }
   }
 

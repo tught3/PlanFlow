@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/env.dart';
 
@@ -67,14 +68,58 @@ class AuthService {
 
   Future<bool> signInWithOAuth(PlanFlowOAuthProvider provider) async {
     final oauthProvider = _oauthProvider(provider);
-    debugPrint('OAuth redirect: ${AppEnv.authRedirectUrl} provider=$provider');
-    return _client.auth.signInWithOAuth(
-      oauthProvider,
-      redirectTo: AppEnv.authRedirectUrl,
-      authScreenLaunchMode:
-          !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-              ? LaunchMode.externalApplication
-              : LaunchMode.inAppBrowserView,
+    return _launchOAuthUrl(
+      appProvider: provider,
+      supabaseProvider: oauthProvider,
+      urlFactory: () => _client.auth.getOAuthSignInUrl(
+        provider: oauthProvider,
+        redirectTo: AppEnv.authRedirectUrl,
+      ),
+      purpose: 'sign-in',
+    );
+  }
+
+  Future<bool> connectCalendarProvider(PlanFlowOAuthProvider provider) async {
+    final oauthProvider = _oauthProvider(provider);
+    if (_client.auth.currentSession == null) {
+      return signInWithOAuth(provider);
+    }
+
+    return _launchOAuthUrl(
+      appProvider: provider,
+      supabaseProvider: oauthProvider,
+      urlFactory: () => _client.auth.getLinkIdentityUrl(
+        oauthProvider,
+        redirectTo: AppEnv.authRedirectUrl,
+      ),
+      purpose: 'calendar-link',
+    );
+  }
+
+  Future<bool> reconnectNaverCalendar() {
+    return connectCalendarProvider(PlanFlowOAuthProvider.naver);
+  }
+
+  Future<bool> _launchOAuthUrl({
+    required PlanFlowOAuthProvider appProvider,
+    required OAuthProvider supabaseProvider,
+    required Future<OAuthResponse> Function() urlFactory,
+    required String purpose,
+  }) async {
+    final launchMode =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+            ? LaunchMode.externalApplication
+            : LaunchMode.inAppBrowserView;
+    final response = await urlFactory();
+    final uri = Uri.parse(response.url);
+    debugPrint(
+      'OAuth launch: purpose=$purpose appProvider=$appProvider '
+      'supabaseProvider=${response.provider} host=${uri.host} path=${uri.path}',
+    );
+    return launchUrl(
+      uri,
+      mode: launchMode,
+      webOnlyWindowName: '_self',
     );
   }
 
