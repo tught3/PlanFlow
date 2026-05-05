@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../core/constants.dart';
 import '../providers/auth_provider.dart';
 import '../services/app_permission_service.dart';
+import '../services/auth_service.dart';
+import '../services/naver_calendar_permission_service.dart';
 import 'calendar/calendar_screen.dart';
 import 'home_screen.dart';
 import 'settings/settings_screen.dart';
@@ -22,7 +24,12 @@ class _ShellScreenState extends State<ShellScreen> {
   late int _currentIndex;
   late final ScrollController _homeScrollController;
   final AppPermissionService _permissionService = AppPermissionService();
+  final NaverCalendarPermissionService _naverCalendarPermissionService =
+      NaverCalendarPermissionService();
+  final AuthService _authService = AuthService();
   bool _checkedPermissionOnboarding = false;
+  bool _checkedNaverCalendarPermission = false;
+  bool _showedNaverCalendarDialog = false;
 
   @override
   void initState() {
@@ -86,6 +93,88 @@ class _ShellScreenState extends State<ShellScreen> {
         await context.push(AppRoutes.permissionOnboarding);
       }
     }
+
+    if (mounted) {
+      await _maybeCheckNaverCalendarPermission();
+    }
+  }
+
+  Future<void> _maybeCheckNaverCalendarPermission() async {
+    if (_checkedNaverCalendarPermission ||
+        !mounted ||
+        !_naverCalendarPermissionService.isNaverSignedIn()) {
+      return;
+    }
+    _checkedNaverCalendarPermission = true;
+
+    final result = await _naverCalendarPermissionService.refreshStatus();
+    if (!mounted) {
+      return;
+    }
+
+    switch (result.status) {
+      case NaverCalendarPermissionStatus.granted:
+        return;
+      case NaverCalendarPermissionStatus.denied:
+        await _showNaverCalendarPermissionRequiredDialog(result.message);
+        return;
+      case NaverCalendarPermissionStatus.networkError:
+        _showSnack(
+          '네이버 캘린더 연결 확인 중 일시적인 문제가 발생했습니다. 앱은 계속 사용할 수 있습니다.',
+        );
+        return;
+      case NaverCalendarPermissionStatus.unknown:
+        _showSnack(result.message);
+        return;
+    }
+  }
+
+  Future<void> _showNaverCalendarPermissionRequiredDialog(
+    String reason,
+  ) async {
+    if (_showedNaverCalendarDialog || !mounted) {
+      return;
+    }
+    _showedNaverCalendarDialog = true;
+
+    final reconnect = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('네이버 캘린더 연결이 필요합니다'),
+          content: Text(
+            '$reason\n\n'
+            '네이버 로그인 동의 화면에서 선택 권한인 “캘린더 일정담기”를 체크해야 '
+            'PlanFlow 일정을 네이버 캘린더에 담을 수 있습니다.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('나중에 하기'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('네이버 권한 다시 동의하기'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (reconnect == true) {
+      await _naverCalendarPermissionService.clearStatus();
+      if (!mounted) {
+        return;
+      }
+      _showSnack('네이버 동의 화면에서 “캘린더 일정담기”를 체크해 주세요.');
+      await _authService.signInWithOAuth(PlanFlowOAuthProvider.naver);
+    }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
