@@ -51,6 +51,50 @@ class NaverCalDavCalendar {
   final String? ctag;
 }
 
+enum NaverCalDavSyncMode {
+  quick,
+  custom,
+  all,
+}
+
+enum NaverCalDavSyncStage {
+  preparing,
+  calendars,
+  querying,
+  saving,
+  completed,
+}
+
+class NaverCalDavSyncProgress {
+  const NaverCalDavSyncProgress({
+    required this.mode,
+    required this.stage,
+    required this.message,
+    this.currentCalendar,
+    this.currentCalendarIndex = 0,
+    this.totalCalendars = 0,
+    this.processedEvents = 0,
+    this.totalEvents = 0,
+    this.savedEvents = 0,
+    this.skippedEvents = 0,
+  });
+
+  final NaverCalDavSyncMode mode;
+  final NaverCalDavSyncStage stage;
+  final String message;
+  final String? currentCalendar;
+  final int currentCalendarIndex;
+  final int totalCalendars;
+  final int processedEvents;
+  final int totalEvents;
+  final int savedEvents;
+  final int skippedEvents;
+}
+
+typedef NaverCalDavProgressCallback = void Function(
+  NaverCalDavSyncProgress progress,
+);
+
 class NaverCalDavEvent {
   const NaverCalDavEvent({
     required this.uid,
@@ -95,8 +139,9 @@ class NaverCalDavEvent {
       suppliesChecked: const <String>[],
       isCritical: false,
       source: 'naver_caldav',
-      externalId: 'naver-caldav:$uid',
+      externalId: 'naver-caldav:${_stableExternalKey(calendarPath, uid)}',
       externalCalendarId: 'naver-caldav:$calendarPath',
+      externalEtag: _blankToNull(etag),
       externalUpdatedAt: lastModifiedAt?.toUtc() ?? syncedAt,
       lastSyncedAt: syncedAt,
     );
@@ -108,16 +153,24 @@ class NaverCalDavSyncResult {
     required this.success,
     required this.message,
     this.createdOrUpdated = 0,
+    this.skipped = 0,
     this.calendars = 0,
     this.events = 0,
+    this.mode = NaverCalDavSyncMode.custom,
+    this.from,
+    this.to,
     this.error,
   });
 
   final bool success;
   final String message;
   final int createdOrUpdated;
+  final int skipped;
   final int calendars;
   final int events;
+  final NaverCalDavSyncMode mode;
+  final DateTime? from;
+  final DateTime? to;
   final Object? error;
 }
 
@@ -329,6 +382,8 @@ class NaverCalDavService {
     DateTime? to,
     String? naverId,
     String? appPassword,
+    bool allowFullFallback = true,
+    bool allowResourceFallback = true,
   }) async {
     final credentials = await _resolveCredentials(
       naverId: naverId,
@@ -345,9 +400,13 @@ class NaverCalDavService {
       appPassword: credentials.appPassword,
       body: _reportBody(startAt, endAt),
     );
-    debugPrint('Naver CalDAV 범위 REPORT: $calendarPath / ${rangedEvents.length}개');
+    debugPrint(
+        'Naver CalDAV 범위 REPORT: $calendarPath / ${rangedEvents.length}개');
     if (rangedEvents.isNotEmpty) {
       return rangedEvents;
+    }
+    if (!allowFullFallback) {
+      return const <NaverCalDavEvent>[];
     }
 
     final fallbackEvents = await _queryEvents(
@@ -356,9 +415,13 @@ class NaverCalDavService {
       appPassword: credentials.appPassword,
       body: _reportBody(null, null, includeTimeRange: false),
     );
-    debugPrint('Naver CalDAV 전체 REPORT: $calendarPath / ${fallbackEvents.length}개');
+    debugPrint(
+        'Naver CalDAV 전체 REPORT: $calendarPath / ${fallbackEvents.length}개');
     if (fallbackEvents.isNotEmpty) {
       return fallbackEvents;
+    }
+    if (!allowResourceFallback) {
+      return const <NaverCalDavEvent>[];
     }
 
     final resourceEvents = await _loadEventsFromResources(
@@ -366,7 +429,8 @@ class NaverCalDavService {
       naverId: credentials.naverId,
       appPassword: credentials.appPassword,
     );
-    debugPrint('Naver CalDAV 리소스 GET: $calendarPath / ${resourceEvents.length}개');
+    debugPrint(
+        'Naver CalDAV 리소스 GET: $calendarPath / ${resourceEvents.length}개');
     return resourceEvents;
   }
 
@@ -420,16 +484,22 @@ class NaverCalDavService {
     }
 
     debugPrint('Naver CalDAV 리소스 GET 시작: ${hrefs.length}개');
-    final events = await Future.wait(
-      hrefs.map(
-        (href) => _loadEventFromHref(
-          href: href,
-          naverId: naverId,
-          appPassword: appPassword,
+    final events = <NaverCalDavEvent>[];
+    const batchSize = 8;
+    for (var index = 0; index < hrefs.length; index += batchSize) {
+      final chunk = hrefs.skip(index).take(batchSize);
+      final loaded = await Future.wait(
+        chunk.map(
+          (href) => _loadEventFromHref(
+            href: href,
+            naverId: naverId,
+            appPassword: appPassword,
+          ),
         ),
-      ),
-    );
-    return events.whereType<NaverCalDavEvent>().toList(growable: false);
+      );
+      events.addAll(loaded.whereType<NaverCalDavEvent>());
+    }
+    return events;
   }
 
   Future<List<String>> _discoverEventHrefs({
@@ -465,10 +535,11 @@ class NaverCalDavService {
           .toSet();
       final contentType =
           _firstDescendantText(node, 'getcontenttype')?.toLowerCase() ?? '';
-      final looksLikeCalendarObject = resourceTypes.contains('calendar-object') ||
-          resourceTypes.contains('vevent') ||
-          contentType.contains('text/calendar') ||
-          normalizedHref.toLowerCase().endsWith('.ics');
+      final looksLikeCalendarObject =
+          resourceTypes.contains('calendar-object') ||
+              resourceTypes.contains('vevent') ||
+              contentType.contains('text/calendar') ||
+              normalizedHref.toLowerCase().endsWith('.ics');
       if (!looksLikeCalendarObject) {
         continue;
       }
@@ -513,6 +584,207 @@ class NaverCalDavService {
   }
 
   Future<NaverCalDavSyncResult> syncAll({
+    String? userId,
+    DateTime? from,
+    DateTime? to,
+    NaverCalDavSyncMode mode = NaverCalDavSyncMode.custom,
+    bool skipUnchanged = true,
+    NaverCalDavProgressCallback? onProgress,
+  }) async {
+    final resolvedUserId = userId ?? _currentUserId ?? _currentSupabaseUserId();
+    final range = _resolveSyncRange(mode: mode, from: from, to: to);
+    if (resolvedUserId == null || resolvedUserId.isEmpty) {
+      return NaverCalDavSyncResult(
+        success: false,
+        message: '먼저 PlanFlow에 로그인해 주세요.',
+        mode: mode,
+        from: range.from,
+        to: range.to,
+      );
+    }
+
+    void emit(NaverCalDavSyncProgress progress) {
+      onProgress?.call(progress);
+    }
+
+    try {
+      emit(NaverCalDavSyncProgress(
+        mode: mode,
+        stage: NaverCalDavSyncStage.preparing,
+        message: '네이버 CalDAV 연결을 확인하는 중입니다.',
+      ));
+      final calendars = await getCalendars();
+      if (calendars.isEmpty) {
+        return NaverCalDavSyncResult(
+          success: false,
+          message: '네이버 CalDAV에서 읽을 수 있는 캘린더가 없습니다.',
+          mode: mode,
+          from: range.from,
+          to: range.to,
+        );
+      }
+
+      emit(NaverCalDavSyncProgress(
+        mode: mode,
+        stage: NaverCalDavSyncStage.calendars,
+        message: '${calendars.length}개 캘린더를 확인했습니다.',
+        totalCalendars: calendars.length,
+      ));
+      final syncedAt = DateTime.now().toUtc();
+      var eventCount = 0;
+      var savedCount = 0;
+      var skippedCount = 0;
+      for (var index = 0; index < calendars.length; index += 1) {
+        final calendar = calendars[index];
+        final calendarNumber = index + 1;
+        emit(NaverCalDavSyncProgress(
+          mode: mode,
+          stage: NaverCalDavSyncStage.querying,
+          message: '일정을 조회하는 중입니다.',
+          currentCalendar: calendar.displayName,
+          currentCalendarIndex: calendarNumber,
+          totalCalendars: calendars.length,
+          savedEvents: savedCount,
+          skippedEvents: skippedCount,
+        ));
+        final events = await getEvents(
+          calendarPath: calendar.path,
+          from: range.from,
+          to: range.to,
+          allowFullFallback: mode != NaverCalDavSyncMode.quick,
+          allowResourceFallback: mode != NaverCalDavSyncMode.quick,
+        );
+        eventCount += events.length;
+        for (var eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
+          final event = events[eventIndex];
+          final eventModel = event.toEventModel(
+            userId: resolvedUserId,
+            calendarPath: calendar.path,
+            syncedAt: syncedAt,
+          );
+          if (skipUnchanged && await _isUnchangedEvent(eventModel)) {
+            skippedCount += 1;
+            emit(NaverCalDavSyncProgress(
+              mode: mode,
+              stage: NaverCalDavSyncStage.saving,
+              message: '이미 가져온 일정은 건너뛰는 중입니다.',
+              currentCalendar: calendar.displayName,
+              currentCalendarIndex: calendarNumber,
+              totalCalendars: calendars.length,
+              processedEvents: eventIndex + 1,
+              totalEvents: events.length,
+              savedEvents: savedCount,
+              skippedEvents: skippedCount,
+            ));
+            continue;
+          }
+          await _eventRepository.upsertEventBySourceExternalId(eventModel);
+          savedCount += 1;
+          emit(NaverCalDavSyncProgress(
+            mode: mode,
+            stage: NaverCalDavSyncStage.saving,
+            message: '일정을 저장하는 중입니다.',
+            currentCalendar: calendar.displayName,
+            currentCalendarIndex: calendarNumber,
+            totalCalendars: calendars.length,
+            processedEvents: eventIndex + 1,
+            totalEvents: events.length,
+            savedEvents: savedCount,
+            skippedEvents: skippedCount,
+          ));
+        }
+      }
+
+      emit(NaverCalDavSyncProgress(
+        mode: mode,
+        stage: NaverCalDavSyncStage.completed,
+        message: '네이버 CalDAV 동기화를 마쳤습니다.',
+        totalCalendars: calendars.length,
+        processedEvents: eventCount,
+        totalEvents: eventCount,
+        savedEvents: savedCount,
+        skippedEvents: skippedCount,
+      ));
+      return NaverCalDavSyncResult(
+        success: true,
+        message: savedCount > 0
+            ? '네이버 CalDAV 일정 $savedCount개를 PlanFlow로 가져왔습니다.'
+            : skippedCount > 0
+                ? '새로 가져올 일정은 없고, 기존 일정 $skippedCount개는 건너뛰었습니다.'
+                : '네이버 CalDAV 연결은 성공했지만 가져올 일정이 없습니다.',
+        calendars: calendars.length,
+        events: eventCount,
+        createdOrUpdated: savedCount,
+        skipped: skippedCount,
+        mode: mode,
+        from: range.from,
+        to: range.to,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Naver CalDAV sync failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return NaverCalDavSyncResult(
+        success: false,
+        message: _syncFailureMessage(error),
+        mode: mode,
+        from: range.from,
+        to: range.to,
+        error: error,
+      );
+    }
+  }
+
+  ({DateTime? from, DateTime? to}) _resolveSyncRange({
+    required NaverCalDavSyncMode mode,
+    DateTime? from,
+    DateTime? to,
+  }) {
+    if (mode == NaverCalDavSyncMode.all) {
+      return (from: from?.toUtc(), to: to?.toUtc());
+    }
+    if (from != null || to != null) {
+      return (from: from?.toUtc(), to: to?.toUtc());
+    }
+    final now = DateTime.now().toUtc();
+    return (
+      from: DateTime.utc(now.year, now.month - 3, now.day),
+      to: DateTime.utc(now.year, now.month + 6, now.day),
+    );
+  }
+
+  Future<bool> _isUnchangedEvent(EventModel event) async {
+    final externalId = event.externalId;
+    if (externalId == null || externalId.trim().isEmpty) {
+      return false;
+    }
+    final existing = await _eventRepository.fetchEventBySourceExternalId(
+      source: event.source,
+      externalId: externalId,
+      userId: event.userId,
+    );
+    if (existing == null) {
+      return false;
+    }
+    final incomingEtag = event.externalEtag?.trim();
+    final existingEtag = existing.externalEtag?.trim();
+    if (incomingEtag != null &&
+        incomingEtag.isNotEmpty &&
+        existingEtag != null &&
+        existingEtag.isNotEmpty) {
+      return incomingEtag == existingEtag;
+    }
+    final incomingUpdatedAt = event.externalUpdatedAt;
+    final existingUpdatedAt = existing.externalUpdatedAt;
+    if (incomingUpdatedAt == null || existingUpdatedAt == null) {
+      return false;
+    }
+    return !incomingUpdatedAt.toUtc().isAfter(existingUpdatedAt.toUtc());
+  }
+
+  // Kept temporarily as a rollback reference while the progressive sync path
+  // settles; it is not called by the app.
+  // ignore: unused_element, unused_element_parameter
+  Future<NaverCalDavSyncResult> _syncAllLegacy({
     String? userId,
     DateTime? from,
     DateTime? to,
@@ -1133,6 +1405,10 @@ $timeRange      </c:comp-filter>
 String? _blankToNull(String? value) {
   final text = value?.trim();
   return text == null || text.isEmpty ? null : text;
+}
+
+String _stableExternalKey(String calendarPath, String uid) {
+  return base64Url.encode(utf8.encode('$calendarPath::$uid'));
 }
 
 extension _IterableFirstLastOrNull<T> on Iterable<T> {

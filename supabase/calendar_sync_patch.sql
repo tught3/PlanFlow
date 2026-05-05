@@ -3,6 +3,7 @@
 
 alter table public.events
   add column if not exists external_calendar_id text,
+  add column if not exists external_etag text,
   add column if not exists external_updated_at timestamptz,
   add column if not exists last_synced_at timestamptz,
   add column if not exists updated_at timestamptz not null default now();

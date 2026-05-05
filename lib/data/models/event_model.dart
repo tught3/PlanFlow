@@ -15,6 +15,7 @@ class EventModel {
     this.source = 'manual',
     this.externalId,
     this.externalCalendarId,
+    this.externalEtag,
     this.externalUpdatedAt,
     this.lastSyncedAt,
     this.createdAt,
@@ -38,6 +39,7 @@ class EventModel {
       source: _sourceValue(json['source']),
       externalId: _optionalStringValue(json['external_id']),
       externalCalendarId: _optionalStringValue(json['external_calendar_id']),
+      externalEtag: _optionalStringValue(json['external_etag']),
       externalUpdatedAt: _dateTimeValue(json['external_updated_at']),
       lastSyncedAt: _dateTimeValue(json['last_synced_at']),
       createdAt: _dateTimeValue(json['created_at']),
@@ -60,6 +62,7 @@ class EventModel {
   final String source;
   final String? externalId;
   final String? externalCalendarId;
+  final String? externalEtag;
   final DateTime? externalUpdatedAt;
   final DateTime? lastSyncedAt;
   final DateTime? createdAt;
@@ -82,6 +85,7 @@ class EventModel {
       'source': _sourceValue(source),
       'external_id': _optionalStringValue(externalId),
       'external_calendar_id': _optionalStringValue(externalCalendarId),
+      'external_etag': _optionalStringValue(externalEtag),
       'external_updated_at': externalUpdatedAt?.toIso8601String(),
       'last_synced_at': lastSyncedAt?.toIso8601String(),
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
@@ -104,6 +108,7 @@ class EventModel {
       'source': _sourceValue(source),
       'external_id': _optionalStringValue(externalId),
       'external_calendar_id': _optionalStringValue(externalCalendarId),
+      'external_etag': _optionalStringValue(externalEtag),
       'external_updated_at': externalUpdatedAt?.toIso8601String(),
       'last_synced_at': lastSyncedAt?.toIso8601String(),
     };

@@ -212,3 +212,10 @@
 ## 2026-05-05 Naver CalDAV import speed-up checkpoint
 - Parallelized the fallback `.ics` resource `GET` stage and added a clear `Naver CalDAV 일정 조회 시작` log so long imports no longer wait on a purely sequential resource fetch loop. The service still preserves the safer discovery -> REPORT -> full REPORT -> resource GET order, but the slowest fallback stage now resolves concurrently instead of one file at a time.
 - Validation: `flutter test test/services/naver_caldav_service_test.dart`, `flutter build apk --debug`, `adb install -r`, `adb launch`, and `adb pidof` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## Checkpoint - 2026-05-05 22:33:38 +09:00
+- 네이버 CalDAV 가져오기를 빠른 동기화(과거 3개월+미래 6개월)와 추가 범위 동기화로 분리했다.
+- 진행률/현재 캘린더/10초 이상 지연 안내/추가 범위 선택 모달을 설정 화면에 추가했다.
+- external_etag를 모델, 저장소, schema.sql, calendar_sync_patch.sql에 반영하고 etag/수정시각 기반 skip을 추가했다.
+- 같은 UID가 여러 캘린더에서 충돌하지 않도록 CalDAV external_id를 calendarPath+uid 안정 키로 변경했다.
+- 검증: flutter analyze, flutter test, flutter build apk --debug, adb install/launch 통과. scripts/gsd-context-hygiene.mjs는 없음.

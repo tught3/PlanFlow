@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 
 void main() {
@@ -223,6 +225,32 @@ void main() {
     expect(client.requests[3].method, 'GET');
   });
 
+  test('getEvents can stop after ranged report for quick sync', () async {
+    final client = _FakePropfindClient(
+      responses: <int>[207],
+      bodies: <String>[_emptyEventReportXml],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+    );
+
+    final events = await service.getEvents(
+      calendarPath: '/calendars/tught3/default/',
+      from: DateTime.utc(2026, 5),
+      to: DateTime.utc(2026, 6),
+      allowFullFallback: false,
+      allowResourceFallback: false,
+    );
+
+    expect(events, isEmpty);
+    expect(client.requests, hasLength(1));
+    expect(client.requests.single.method, 'REPORT');
+  });
+
   test('parseIcal handles all-day dates and escaped text', () {
     final service = NaverCalDavService(
       httpClient: _FakePropfindClient(responses: <int>[207]),
@@ -273,12 +301,118 @@ END:VCALENDAR
     );
 
     expect(model.source, 'naver_caldav');
-    expect(model.externalId, 'naver-caldav:naver-event-1');
+    expect(model.externalId, startsWith('naver-caldav:'));
+    expect(model.externalId, isNot(contains('/calendars/tught3/default/')));
     expect(model.externalCalendarId, 'naver-caldav:/calendars/tught3/default/');
     expect(model.externalEtag, '"etag-quick-1"');
     expect(model.externalUpdatedAt, DateTime.utc(2026, 5, 4, 12));
     expect(model.lastSyncedAt, syncedAt);
   });
+
+  test('syncAll skips unchanged events by etag and reports progress', () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        _eventReportXml,
+      ],
+    );
+    final repository = _FakeEventRepository(
+      existing: NaverCalDavEvent(
+        uid: 'naver-event-1',
+        href: '/calendars/tught3/default/event-1.ics',
+        etag: '"etag-1"',
+        icsData: _eventIcs,
+        title: 'Existing',
+        startAt: DateTime.utc(2026, 5, 5, 1),
+      )
+          .toEventModel(
+            userId: 'user-1',
+            calendarPath: '/calendars/tught3/default/',
+            syncedAt: DateTime.utc(2026, 5, 5, 3),
+          )
+          .externalId,
+    );
+    final progress = <NaverCalDavSyncProgress>[];
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      onProgress: progress.add,
+    );
+
+    expect(result.success, isTrue);
+    expect(result.createdOrUpdated, 0);
+    expect(result.skipped, 1);
+    expect(repository.upserted, isEmpty);
+    expect(progress.map((item) => item.stage),
+        contains(NaverCalDavSyncStage.saving));
+  });
+}
+
+class _FakeEventRepository extends EventRepository {
+  _FakeEventRepository({this.existing});
+
+  final String? existing;
+  final List<EventModel> upserted = <EventModel>[];
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async =>
+      null;
+
+  @override
+  Future<EventModel?> fetchEventBySourceExternalId({
+    required String source,
+    required String externalId,
+    String? userId,
+  }) async {
+    if (externalId != existing) {
+      return null;
+    }
+    return EventModel(
+      id: 'existing-1',
+      userId: userId ?? 'user-1',
+      title: 'Existing',
+      source: source,
+      externalId: externalId,
+      externalEtag: '"etag-1"',
+      externalUpdatedAt: DateTime.utc(2026, 5, 4, 12),
+    );
+  }
+
+  @override
+  Future<EventModel> createEvent(EventModel event) async => event;
+
+  @override
+  Future<EventModel> updateEvent(EventModel event) async => event;
+
+  @override
+  Future<EventModel> upsertEvent(EventModel event) async {
+    upserted.add(event);
+    return event;
+  }
+
+  @override
+  Future<EventModel> upsertEventBySourceExternalId(EventModel event) async {
+    upserted.add(event);
+    return event;
+  }
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) async {}
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async =>
+      const <EventModel>[];
 }
 
 class _FakePropfindClient extends http.BaseClient {

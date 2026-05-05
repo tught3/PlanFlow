@@ -101,6 +101,12 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _pendingNaverCalendarSyncAfterConsent = false;
   bool _ownsNaverCalDavService = false;
   NaverCalDavConnectionResult? _lastNaverCalDavResult;
+  final ValueNotifier<NaverCalDavSyncProgress?> _naverCalDavProgress =
+      ValueNotifier<NaverCalDavSyncProgress?>(null);
+  final ValueNotifier<bool> _naverCalDavLongRunning =
+      ValueNotifier<bool>(false);
+  Timer? _naverCalDavLongRunningTimer;
+  bool _isNaverCalDavProgressDialogOpen = false;
 
   String? get _userId => widget._userId ?? authProvider.userId;
 
@@ -146,6 +152,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (_ownsNaverCalDavService) {
       unawaited(_naverCalDavService.dispose());
     }
+    _naverCalDavLongRunningTimer?.cancel();
+    _naverCalDavProgress.dispose();
+    _naverCalDavLongRunning.dispose();
     super.dispose();
   }
 
@@ -527,12 +536,80 @@ class _SettingsScreenState extends State<SettingsScreen>
       _showSnack('먼저 PlanFlow에 로그인해 주세요.');
       return;
     }
+    final shouldStart = await _showNaverCalDavImportIntroDialog();
+    if (shouldStart != true) {
+      return;
+    }
+    final quickResult = await _runNaverCalDavImport(
+      userId: userId,
+      mode: NaverCalDavSyncMode.quick,
+      dismissibleProgress: false,
+    );
+    if (!mounted || quickResult == null || !quickResult.success) {
+      return;
+    }
+
+    final range = await _showNaverCalDavMoreRangeDialog();
+    if (!mounted || range == null) {
+      return;
+    }
+    await _runNaverCalDavImport(
+      userId: userId,
+      mode: range.mode,
+      from: range.from,
+      to: range.to,
+      dismissibleProgress: true,
+      additionalLabel: range.label,
+    );
+  }
+
+  Future<NaverCalDavSyncResult?> _runNaverCalDavImport({
+    required String userId,
+    required NaverCalDavSyncMode mode,
+    DateTime? from,
+    DateTime? to,
+    required bool dismissibleProgress,
+    String? additionalLabel,
+  }) async {
     setState(() {
       _isImportingNaverCalDav = true;
     });
-    final result = await _naverCalDavService.syncAll(userId: userId);
+    _naverCalDavProgress.value = NaverCalDavSyncProgress(
+      mode: mode,
+      stage: NaverCalDavSyncStage.preparing,
+      message: additionalLabel == null
+          ? '최근 3개월과 앞으로 6개월 일정을 먼저 가져옵니다.'
+          : '$additionalLabel 범위의 일정을 추가로 가져옵니다.',
+    );
+    _naverCalDavLongRunning.value = false;
+    _naverCalDavLongRunningTimer?.cancel();
+    _naverCalDavLongRunningTimer = Timer(const Duration(seconds: 10), () {
+      _naverCalDavLongRunning.value = true;
+    });
+    unawaited(_showNaverCalDavProgressDialog(
+      dismissible: dismissibleProgress,
+    ));
+    final result = await _naverCalDavService.syncAll(
+      userId: userId,
+      from: from,
+      to: to,
+      mode: mode,
+      skipUnchanged: true,
+      onProgress: (progress) {
+        if (!mounted) {
+          return;
+        }
+        _naverCalDavProgress.value = progress;
+      },
+    );
+    _naverCalDavLongRunningTimer?.cancel();
+    _naverCalDavLongRunning.value = false;
     if (!mounted) {
-      return;
+      return result;
+    }
+    if (_isNaverCalDavProgressDialogOpen &&
+        Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
     }
     setState(() {
       _isImportingNaverCalDav = false;
@@ -541,6 +618,228 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (result.success) {
       EventRefreshBus.instance.notifyChanged(reason: 'naver_caldav_import');
     }
+    return result;
+  }
+
+  Future<bool?> _showNaverCalDavImportIntroDialog() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('네이버 일정 가져오기'),
+        content: const Text(
+          '일정이 많으면 오래 걸릴 수 있습니다. 먼저 최근 3개월과 앞으로 6개월 일정만 빠르게 가져옵니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('가져오기'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showNaverCalDavProgressDialog({
+    required bool dismissible,
+  }) {
+    _isNaverCalDavProgressDialogOpen = true;
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: dismissible,
+      builder: (context) => PopScope(
+        canPop: dismissible,
+        child: AlertDialog(
+          title: const Text('네이버 일정 가져오는 중'),
+          content: ValueListenableBuilder<bool>(
+            valueListenable: _naverCalDavLongRunning,
+            builder: (context, isLongRunning, _) {
+              return ValueListenableBuilder<NaverCalDavSyncProgress?>(
+                valueListenable: _naverCalDavProgress,
+                builder: (context, progress, _) {
+                  final processed = progress?.processedEvents ?? 0;
+                  final total = progress?.totalEvents ?? 0;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Center(child: CircularProgressIndicator()),
+                      const SizedBox(height: 16),
+                      Text(
+                        isLongRunning
+                            ? '데이터가 많아 오래 걸립니다. 잠시만 기다려 주세요.'
+                            : '일정이 많으면 오래 걸릴 수 있습니다.',
+                      ),
+                      const SizedBox(height: 12),
+                      Text(progress?.message ?? '캘린더 확인 중입니다.'),
+                      if (progress?.currentCalendar != null) ...[
+                        const SizedBox(height: 8),
+                        Text('현재 캘린더: ${progress!.currentCalendar}'),
+                      ],
+                      if (total > 0) ...[
+                        const SizedBox(height: 8),
+                        Text('$processed / $total개 처리 중'),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        '저장 ${progress?.savedEvents ?? 0}개 · 건너뜀 ${progress?.skippedEvents ?? 0}개',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      if (dismissible) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          '창을 닫아도 동기화는 계속됩니다.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    ).whenComplete(() {
+      _isNaverCalDavProgressDialogOpen = false;
+    });
+  }
+
+  Future<_NaverCalDavImportRange?> _showNaverCalDavMoreRangeDialog() {
+    return showDialog<_NaverCalDavImportRange>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('추가 기록 가져오기'),
+        content: const Text(
+          '최근 3개월과 앞으로 6개월 일정을 저장했습니다. 더 과거 기록을 얼마나 불러올까요?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('나중에'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(
+              _NaverCalDavImportRange.months(6),
+            ),
+            child: const Text('6개월'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(
+              _NaverCalDavImportRange.years(1),
+            ),
+            child: const Text('1년'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(
+              _NaverCalDavImportRange.years(2),
+            ),
+            child: const Text('2년'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final range = await _showNaverCalDavCustomRangeDialog();
+              if (context.mounted && range != null) {
+                Navigator.of(context).pop(range);
+              }
+            },
+            child: const Text('직접 입력'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final confirmed = await _confirmNaverCalDavAllRange();
+              if (context.mounted && confirmed) {
+                Navigator.of(context).pop(_NaverCalDavImportRange.all());
+              }
+            },
+            child: const Text('전체'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<_NaverCalDavImportRange?> _showNaverCalDavCustomRangeDialog() {
+    final controller = TextEditingController(text: '12');
+    var unit = '개월';
+    return showDialog<_NaverCalDavImportRange>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('기간 직접 입력'),
+          content: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '숫자'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              DropdownButton<String>(
+                value: unit,
+                items: const [
+                  DropdownMenuItem(value: '개월', child: Text('개월')),
+                  DropdownMenuItem(value: '년', child: Text('년')),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() => unit = value);
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = int.tryParse(controller.text.trim());
+                if (value == null || value <= 0) {
+                  return;
+                }
+                Navigator.of(context).pop(
+                  unit == '개월'
+                      ? _NaverCalDavImportRange.months(value)
+                      : _NaverCalDavImportRange.years(value),
+                );
+              },
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _confirmNaverCalDavAllRange() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('전체 기록 가져오기'),
+        content: const Text(
+          '전체 기록은 일정 수에 따라 오래 걸릴 수 있습니다. 그래도 진행할까요?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('전체 가져오기'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
   }
 
   Future<_NaverCalDavCredentials?> _showNaverCalDavDialog() {
@@ -1555,6 +1854,49 @@ class _NaverCalDavCredentials {
 
   final String naverId;
   final String appPassword;
+}
+
+class _NaverCalDavImportRange {
+  _NaverCalDavImportRange({
+    required this.mode,
+    required this.from,
+    required this.to,
+    required this.label,
+  });
+
+  factory _NaverCalDavImportRange.months(int months) {
+    final now = DateTime.now().toUtc();
+    return _NaverCalDavImportRange(
+      mode: NaverCalDavSyncMode.custom,
+      from: DateTime.utc(now.year, now.month - months, now.day),
+      to: DateTime.utc(now.year, now.month + 6, now.day),
+      label: '과거 $months개월',
+    );
+  }
+
+  factory _NaverCalDavImportRange.years(int years) {
+    final now = DateTime.now().toUtc();
+    return _NaverCalDavImportRange(
+      mode: NaverCalDavSyncMode.custom,
+      from: DateTime.utc(now.year - years, now.month, now.day),
+      to: DateTime.utc(now.year, now.month + 6, now.day),
+      label: '과거 $years년',
+    );
+  }
+
+  factory _NaverCalDavImportRange.all() {
+    return _NaverCalDavImportRange(
+      mode: NaverCalDavSyncMode.all,
+      from: null,
+      to: null,
+      label: '전체',
+    );
+  }
+
+  final NaverCalDavSyncMode mode;
+  final DateTime? from;
+  final DateTime? to;
+  final String label;
 }
 
 class _AccountSection extends StatelessWidget {

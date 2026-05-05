@@ -64,7 +64,7 @@ class SupabaseEventRepository extends EventRepository {
   static const String _selectColumns =
       'id, user_id, title, start_at, end_at, location, location_lat, '
       'location_lng, memo, supplies, supplies_checked, is_critical, source, '
-      'external_id, external_calendar_id, external_updated_at, '
+      'external_id, external_calendar_id, external_etag, external_updated_at, '
       'last_synced_at, created_at, updated_at';
   static const String _legacySelectColumns =
       'id, user_id, title, start_at, end_at, location, location_lat, '
@@ -183,6 +183,7 @@ class SupabaseEventRepository extends EventRepository {
       source: normalizedSource,
       externalId: normalizedExternalId,
       externalCalendarId: event.externalCalendarId,
+      externalEtag: event.externalEtag,
       externalUpdatedAt: event.externalUpdatedAt,
       lastSyncedAt: event.lastSyncedAt,
       createdAt: existing.createdAt,
@@ -450,6 +451,7 @@ class SupabaseEventRepository extends EventRepository {
   Map<String, dynamic> _legacyPayload(Map<String, dynamic> payload) {
     return Map<String, dynamic>.from(payload)
       ..remove('external_calendar_id')
+      ..remove('external_etag')
       ..remove('external_updated_at')
       ..remove('last_synced_at')
       ..remove('updated_at');
@@ -459,6 +461,7 @@ class SupabaseEventRepository extends EventRepository {
     final text =
         '${error.code} ${error.message} ${error.details}'.toLowerCase();
     return text.contains('external_calendar_id') ||
+        text.contains('external_etag') ||
         text.contains('external_updated_at') ||
         text.contains('last_synced_at') ||
         text.contains('updated_at') ||

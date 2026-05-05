@@ -58,6 +58,7 @@ create table if not exists public.events (
   source text not null default 'manual',
   external_id text,
   external_calendar_id text,
+  external_etag text,
   external_updated_at timestamptz,
   last_synced_at timestamptz,
   created_at timestamptz not null default now(),
@@ -69,6 +70,7 @@ alter table public.events
   add column if not exists location_lng double precision,
   add column if not exists supplies_checked text[] not null default '{}',
   add column if not exists external_calendar_id text,
+  add column if not exists external_etag text,
   add column if not exists external_updated_at timestamptz,
   add column if not exists last_synced_at timestamptz,
   add column if not exists updated_at timestamptz not null default now();
@@ -550,7 +552,7 @@ begin
     insert into public.events (
       id, user_id, title, start_at, end_at, location, location_lat,
       location_lng, memo, supplies, supplies_checked, is_critical, source,
-      external_id, external_calendar_id, external_updated_at, last_synced_at,
+      external_id, external_calendar_id, external_etag, external_updated_at, last_synced_at,
       created_at, updated_at
     )
     values (
@@ -569,6 +571,7 @@ begin
       coalesce(nullif(item ->> 'source', ''), 'manual'),
       nullif(item ->> 'external_id', ''),
       nullif(item ->> 'external_calendar_id', ''),
+      nullif(item ->> 'external_etag', ''),
       nullif(item ->> 'external_updated_at', '')::timestamptz,
       nullif(item ->> 'last_synced_at', '')::timestamptz,
       coalesce(nullif(item ->> 'created_at', '')::timestamptz, now()),
@@ -588,6 +591,7 @@ begin
           source = excluded.source,
           external_id = excluded.external_id,
           external_calendar_id = excluded.external_calendar_id,
+          external_etag = excluded.external_etag,
           external_updated_at = excluded.external_updated_at,
           last_synced_at = excluded.last_synced_at,
           updated_at = excluded.updated_at
