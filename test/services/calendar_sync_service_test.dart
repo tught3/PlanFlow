@@ -1,32 +1,122 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
+import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
+import 'package:planflow/services/naver_calendar_permission_service.dart';
 
 void main() {
   group('CalendarSyncService', () {
-    test('returns scaffold states without requiring Google credentials',
+    test('returns setup states without requiring provider credentials',
         () async {
-      final service = CalendarSyncService();
+      final service = CalendarSyncService(
+        naverStatusProvider: () async {
+          return const NaverCalendarPermissionResult(
+            status: NaverCalendarPermissionStatus.unknown,
+            message: '네이버 권한 확인 필요',
+          );
+        },
+      );
 
       final status = await service.fetchStatus();
 
       expect(status.google.status, CalendarIntegrationStatus.notConfigured);
       expect(status.google.provider, CalendarProvider.google);
-      expect(status.naver.status, CalendarIntegrationStatus.unsupported);
+      expect(status.naver.status, CalendarIntegrationStatus.signedOut);
       expect(status.naver.provider, CalendarProvider.naver);
     });
 
-    test('returns a clear placeholder result for Naver sync', () async {
-      final service = CalendarSyncService();
+    test('exports upcoming PlanFlow events to Naver Calendar', () async {
+      final requests = <http.Request>[];
+      final event = EventModel(
+        id: 'event-1',
+        userId: 'user-1',
+        title: '한강 피크닉',
+        startAt: DateTime.now().add(const Duration(hours: 2)),
+        endAt: DateTime.now().add(const Duration(hours: 3)),
+        location: '한강',
+        memo: '돗자리 챙기기',
+      );
+
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: _FakeEventRepository(events: <EventModel>[event]),
+        naverStatusProvider: () async {
+          return const NaverCalendarPermissionResult(
+            status: NaverCalendarPermissionStatus.granted,
+            message: '권한 확인',
+          );
+        },
+        naverAccessTokenProvider: () async => 'naver-token',
+        naverStatusSaver: (_) async {},
+        httpClientFactory: () => MockClient((request) async {
+          requests.add(request);
+          return http.Response('{"result":"ok"}', 200);
+        }),
+      );
 
       final result = await service.syncNaverCalendar();
 
-      expect(result.status, CalendarIntegrationStatus.unsupported);
-      expect(result.message, contains('현재 사용할 수 없습니다'));
-      expect(result.provider, CalendarProvider.naver);
-      expect(result.isSuccess, isFalse);
+      expect(result.status, CalendarIntegrationStatus.synced);
+      expect(result.syncedItems, 1);
+      expect(requests, hasLength(1));
+      expect(requests.single.url.toString(),
+          'https://openapi.naver.com/calendar/createSchedule.json');
+      expect(requests.single.headers['authorization'], 'Bearer naver-token');
+      expect(requests.single.bodyFields['calendarId'], 'defaultCalendarId');
+      expect(
+        requests.single.bodyFields['scheduleIcalString'],
+        contains('SUMMARY:한강 피크닉'),
+      );
+      expect(
+        requests.single.bodyFields['scheduleIcalString'],
+        contains('UID:planflow-event-1@planflow'),
+      );
+    });
+
+    test('does not call Naver API when calendar permission is missing',
+        () async {
+      var requestCount = 0;
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: _FakeEventRepository(events: const <EventModel>[]),
+        naverStatusProvider: () async {
+          return const NaverCalendarPermissionResult(
+            status: NaverCalendarPermissionStatus.denied,
+            message: '권한 없음',
+          );
+        },
+        httpClientFactory: () => MockClient((request) async {
+          requestCount += 1;
+          return http.Response('{"result":"ok"}', 200);
+        }),
+      );
+
+      final result = await service.syncNaverCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.signedOut);
+      expect(requestCount, 0);
+    });
+
+    test('builds an iCalendar payload for Naver createSchedule', () {
+      final event = EventModel(
+        id: 'event-1',
+        userId: 'user-1',
+        title: '회의, 준비',
+        startAt: DateTime.utc(2026, 5, 5, 1),
+        location: '서울;강남',
+      );
+
+      final ical = CalendarSyncService.buildNaverScheduleIcal(event);
+
+      expect(ical, contains('BEGIN:VCALENDAR'));
+      expect(ical, contains(r'SUMMARY:회의\, 준비'));
+      expect(ical, contains(r'LOCATION:서울\;강남'));
+      expect(ical, contains('END:VCALENDAR'));
     });
 
     test('does not call Google sign-in on unsupported platforms', () async {
@@ -146,4 +236,32 @@ class _FakeGoogleSignIn extends GoogleSignIn {
     signInCallCount += 1;
     return null;
   }
+}
+
+class _FakeEventRepository extends EventRepository {
+  const _FakeEventRepository({required this.events});
+
+  final List<EventModel> events;
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async => events;
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    for (final event in events) {
+      if (event.id == eventId) {
+        return event;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<EventModel> createEvent(EventModel event) async => event;
+
+  @override
+  Future<EventModel> updateEvent(EventModel event) async => event;
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) async {}
 }

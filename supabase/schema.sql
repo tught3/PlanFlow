@@ -120,8 +120,11 @@ create table if not exists public.user_settings (
   created_at timestamptz not null default now()
 );
 
-alter table public.user_settings
+  alter table public.user_settings
   add column if not exists travel_mode text not null default 'car';
+
+  alter table public.user_settings
+  add column if not exists naver_calendar_token text;
 
 -- 8. early_bird_emails
 create table if not exists public.early_bird_emails (

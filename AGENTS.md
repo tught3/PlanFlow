@@ -48,7 +48,7 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - PlanFlow product scope is defined by `PlanFlow_Codex_Prompt_v3.md`.
 - Supabase schema source of truth is `supabase/schema.sql`.
 - For 1st release, do not implement billing, ads, reward ads, Kakao/SMS/call detection, or TEAM/BUSINESS features.
-- Naver Calendar is deferred for 1st release. Do not expose it as a working feature.
+- Naver Calendar is now a 1st-release working feature. Keep OAuth consent, token handling, and calendar export behavior visible and testable.
 - Keep all user-facing UI text Korean unless a platform/provider brand requires otherwise.
 - Voice files must never be sent to external servers. Only STT text may be stored or sent for parsing.
 - `speech_to_text` must use `SpeechListenOptions(onDevice: true)` for STT.

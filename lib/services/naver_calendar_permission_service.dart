@@ -80,10 +80,14 @@ class NaverCalendarPermissionService {
     return _persistCurrentProviderToken();
   }
 
+  Future<String?> resolveAccessTokenForCalendar() {
+    return _resolveAccessToken();
+  }
+
   Future<NaverCalendarPermissionResult> refreshStatus() async {
     final accessToken = await _resolveAccessToken();
     if (accessToken == null || accessToken.trim().isEmpty) {
-      final result = const NaverCalendarPermissionResult(
+      const result = NaverCalendarPermissionResult(
         status: NaverCalendarPermissionStatus.unknown,
         message: '네이버 로그인 토큰을 확인하지 못했습니다.',
       );
@@ -125,7 +129,7 @@ class NaverCalendarPermissionService {
     } on SocketException catch (error) {
       final result = NaverCalendarPermissionResult(
         status: NaverCalendarPermissionStatus.networkError,
-        message: '네이버 캘린더 권한 확인 중 네트워크 연결 문제가 발생했습니다.',
+        message: '네이버 캘린더 권한 확인 중 네트워크 문제가 발생했습니다.',
         error: error,
       );
       await saveStatus(result.status);
@@ -241,7 +245,8 @@ class NaverCalendarPermissionService {
 
   @visibleForTesting
   static NaverCalendarPermissionResult classifyResponse(
-      http.Response response) {
+    http.Response response,
+  ) {
     return _classifyResponse(response);
   }
 
@@ -276,7 +281,7 @@ class NaverCalendarPermissionService {
       return NaverCalendarPermissionResult(
         status: NaverCalendarPermissionStatus.granted,
         statusCode: statusCode,
-        message: '네이버 캘린더 권한이 확인되었습니다.',
+        message: '네이버 캘린더 권한을 확인했습니다.',
       );
     }
 

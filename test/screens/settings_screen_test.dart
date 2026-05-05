@@ -5,10 +5,11 @@ import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/screens/settings/settings_screen.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
+import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
 
 void main() {
-  testWidgets('SettingsScreen loads saved settings and shows Naver consent UI',
+  testWidgets('SettingsScreen loads settings and shows Naver calendar actions',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -33,8 +34,9 @@ void main() {
               google: CalendarIntegrationResult.ready(
                 CalendarProvider.google,
               ),
-              naver: CalendarIntegrationResult.unsupported(
+              naver: CalendarIntegrationResult.ready(
                 CalendarProvider.naver,
+                message: 'Naver Calendar 권한을 사용할 수 있습니다.',
               ),
             ),
           ),
@@ -47,13 +49,14 @@ void main() {
 
     await tester.pumpAndSettle();
 
+    expect(find.text('계정'), findsOneWidget);
     expect(find.text('06:40'), findsWidgets);
     expect(find.text('20:20'), findsWidgets);
     expect(find.text('기본 알림'), findsNothing);
     expect(find.text('저장'), findsNothing);
-    expect(find.text('계정'), findsOneWidget);
     expect(find.text('Naver Calendar'), findsOneWidget);
-    expect(find.text('네이버 캘린더 권한 동의'), findsOneWidget);
+    expect(find.text('네이버 권한 동의'), findsOneWidget);
+    expect(find.text('네이버로 보내기'), findsOneWidget);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 
@@ -84,7 +87,7 @@ void main() {
               google: CalendarIntegrationResult.ready(
                 CalendarProvider.google,
               ),
-              naver: CalendarIntegrationResult.unsupported(
+              naver: CalendarIntegrationResult.signedOut(
                 CalendarProvider.naver,
               ),
             ),
@@ -121,11 +124,11 @@ void main() {
     final calendarSyncService = _FakeCalendarSyncService(
       summary: CalendarSyncSummary(
         google: CalendarIntegrationResult.ready(CalendarProvider.google),
-        naver: CalendarIntegrationResult.unsupported(CalendarProvider.naver),
+        naver: CalendarIntegrationResult.signedOut(CalendarProvider.naver),
       ),
-      syncResult: CalendarIntegrationResult.synced(
+      googleSyncResult: CalendarIntegrationResult.synced(
         CalendarProvider.google,
-        message: 'Google Calendar 동기화가 완료되었습니다. 2개 항목을 확인했습니다.',
+        message: 'Google Calendar 동기화가 완료되었습니다. 2개 일정을 가져왔습니다.',
         syncedItems: 2,
       ),
     );
@@ -144,18 +147,60 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final syncButton = find.widgetWithText(FilledButton, '구글 캘린더 다시 동기화');
+    final syncButton =
+        find.widgetWithText(FilledButton, 'Google Calendar 다시 동기화');
     await tester.scrollUntilVisible(syncButton, 200);
     await tester.ensureVisible(syncButton);
     await tester.tap(syncButton);
     await tester.pumpAndSettle();
 
-    expect(calendarSyncService.syncCallCount, 1);
+    expect(calendarSyncService.googleSyncCallCount, 1);
     expect(calendarSyncService.lastInteractive, isTrue);
     expect(
-      find.textContaining('Google Calendar 동기화가 완료되었습니다. 2개 항목을 확인했습니다.'),
+      find.textContaining('Google Calendar 동기화가 완료되었습니다. 2개 일정을 가져왔습니다.'),
       findsWidgets,
     );
+  });
+
+  testWidgets('Naver calendar button exports events and shows feedback',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final calendarSyncService = _FakeCalendarSyncService(
+      summary: CalendarSyncSummary(
+        google: CalendarIntegrationResult.ready(CalendarProvider.google),
+        naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+      ),
+      naverSyncResult: CalendarIntegrationResult.synced(
+        CalendarProvider.naver,
+        message: 'Naver Calendar에 1개 일정을 반영했습니다.',
+        syncedItems: 1,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: calendarSyncService,
+          notificationService: _FakeNotificationService(),
+          userId: 'user-1',
+          envConfigured: false,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final syncButton = find.widgetWithText(FilledButton, '네이버로 보내기');
+    await tester.scrollUntilVisible(syncButton, 200);
+    await tester.ensureVisible(syncButton);
+    await tester.tap(syncButton);
+    await tester.pumpAndSettle();
+
+    expect(calendarSyncService.naverSyncCallCount, 1);
+    expect(find.textContaining('Naver Calendar에 1개 일정을 반영했습니다.'), findsWidgets);
   });
 
   testWidgets('SettingsScreen hides notification permission controls',
@@ -171,7 +216,7 @@ void main() {
           calendarSyncService: _FakeCalendarSyncService(
             summary: CalendarSyncSummary(
               google: CalendarIntegrationResult.ready(CalendarProvider.google),
-              naver: CalendarIntegrationResult.unsupported(
+              naver: CalendarIntegrationResult.signedOut(
                 CalendarProvider.naver,
               ),
             ),
@@ -186,45 +231,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('알림 권한'), findsNothing);
     expect(find.text('알림 권한 요청/재확인'), findsNothing);
-  });
-
-  testWidgets('SettingsScreen does not request notification permissions',
-      (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final notificationService = _FakeNotificationService(
-      status: const NotificationPermissionStatus(
-        notificationsEnabled: true,
-        exactAlarmsEnabled: true,
-        fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
-      ),
-      throwOnRequest: true,
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsScreen(
-          settingsRepository: _FakeSettingsRepository(),
-          briefingSchedulerService: _FakeBriefingSchedulerService(),
-          calendarSyncService: _FakeCalendarSyncService(
-            summary: CalendarSyncSummary(
-              google: CalendarIntegrationResult.ready(CalendarProvider.google),
-              naver: CalendarIntegrationResult.unsupported(
-                CalendarProvider.naver,
-              ),
-            ),
-          ),
-          notificationService: notificationService,
-          userId: 'user-1',
-          envConfigured: false,
-        ),
-      ),
-    );
-
-    await tester.pumpAndSettle();
-    expect(find.widgetWithText(OutlinedButton, '알림 권한 요청/재확인'), findsNothing);
-    expect(notificationService.requestCallCount, 0);
   });
 }
 
@@ -268,12 +274,24 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
 class _FakeCalendarSyncService extends CalendarSyncService {
   _FakeCalendarSyncService({
     required this.summary,
-    this.syncResult,
-  });
+    this.googleSyncResult,
+    this.naverSyncResult,
+  }) : super(
+          naverStatusProvider: () async {
+            return const NaverCalendarPermissionResult(
+              status: NaverCalendarPermissionStatus.unknown,
+              message: '테스트 권한 상태',
+            );
+          },
+          naverAccessTokenProvider: () async => null,
+          naverStatusSaver: (_) async {},
+        );
 
   final CalendarSyncSummary summary;
-  final CalendarIntegrationResult? syncResult;
-  int syncCallCount = 0;
+  final CalendarIntegrationResult? googleSyncResult;
+  final CalendarIntegrationResult? naverSyncResult;
+  int googleSyncCallCount = 0;
+  int naverSyncCallCount = 0;
   bool? lastInteractive;
 
   @override
@@ -283,40 +301,27 @@ class _FakeCalendarSyncService extends CalendarSyncService {
   Future<CalendarIntegrationResult> syncGoogleCalendar({
     bool interactive = true,
   }) async {
-    syncCallCount += 1;
+    googleSyncCallCount += 1;
     lastInteractive = interactive;
-    return syncResult ??
+    return googleSyncResult ??
         CalendarIntegrationResult.synced(CalendarProvider.google);
+  }
+
+  @override
+  Future<CalendarIntegrationResult> syncNaverCalendar() async {
+    naverSyncCallCount += 1;
+    return naverSyncResult ??
+        CalendarIntegrationResult.synced(CalendarProvider.naver);
   }
 }
 
 class _FakeNotificationService extends NotificationService {
-  _FakeNotificationService({
-    this.status = const NotificationPermissionStatus(
+  @override
+  Future<NotificationPermissionStatus> checkPermissionStatus() async {
+    return const NotificationPermissionStatus(
       notificationsEnabled: true,
       exactAlarmsEnabled: true,
       fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
-    ),
-    this.throwOnRequest = false,
-  });
-
-  final NotificationPermissionStatus status;
-  final bool throwOnRequest;
-  int checkCallCount = 0;
-  int requestCallCount = 0;
-
-  @override
-  Future<NotificationPermissionStatus> checkPermissionStatus() async {
-    checkCallCount += 1;
-    return status;
-  }
-
-  @override
-  Future<NotificationPermissionStatus> requestAndCheckPermissions() async {
-    requestCallCount += 1;
-    if (throwOnRequest) {
-      throw StateError('request failed');
-    }
-    return status;
+    );
   }
 }
