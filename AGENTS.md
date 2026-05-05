@@ -22,10 +22,12 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 ## Workflow rules
 - Every task must begin with context hygiene: check `.planning/STATE.md`, check `.planning/context/ACTIVE_SUMMARY.md`, and run `node scripts/gsd-context-hygiene.mjs` when it exists. If the script is missing, explicitly record that it is missing and continue.
 - Every completed task/logical change must end with verification, a planning-context checkpoint, a Git commit, and a push to the remote repository.
+- Every completed task/logical change must also end with a fresh build and, when the target device is available, a real run/launch check before reporting completion.
 - Before starting work, check `.planning/STATE.md` and `.planning/context/ACTIVE_SUMMARY.md`.
 - Run `node scripts/gsd-context-hygiene.mjs` at session start, before long work, and before final report. If the script is missing, record that and continue.
 - After every completed logical change, update `.planning/context/ACTIVE_SUMMARY.md` with a short checkpoint.
 - After every completed logical change, commit and push to the remote repository.
+- Do not leave unused helper terminals or sessions open; close them when they are no longer needed.
 - Do not commit unrelated or user-created untracked files unless explicitly requested.
 - Prefer existing code, shared helpers, and existing docs before creating new structures.
 - Create new code only when reuse is clearly worse.

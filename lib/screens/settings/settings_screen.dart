@@ -34,7 +34,6 @@ class SettingsScreen extends StatefulWidget {
     DeviceCalendarService? deviceCalendarService,
     NaverCalDavService? naverCalDavService,
     String? userId,
-    bool? envConfigured,
   })  : _settingsRepository = settingsRepository,
         _briefingSchedulerService = briefingSchedulerService,
         _calendarSyncService = calendarSyncService,
@@ -43,8 +42,7 @@ class SettingsScreen extends StatefulWidget {
         _naverCalendarPermissionService = naverCalendarPermissionService,
         _deviceCalendarService = deviceCalendarService,
         _naverCalDavService = naverCalDavService,
-        _userId = userId,
-        _envConfigured = envConfigured;
+        _userId = userId;
 
   final SettingsRepository? _settingsRepository;
   final BriefingSchedulerService? _briefingSchedulerService;
@@ -55,7 +53,6 @@ class SettingsScreen extends StatefulWidget {
   final DeviceCalendarService? _deviceCalendarService;
   final NaverCalDavService? _naverCalDavService;
   final String? _userId;
-  final bool? _envConfigured;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -630,13 +627,11 @@ class _SettingsScreenState extends State<SettingsScreen>
           '일정이 많으면 오래 걸릴 수 있습니다. 먼저 최근 3개월과 앞으로 6개월 일정만 빠르게 가져옵니다.',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('가져오기'),
+          _buildDialogButtonBar(
+            onCancel: () => Navigator.of(context).pop(false),
+            onConfirm: () => Navigator.of(context).pop(true),
+            cancelLabel: '취소',
+            confirmLabel: '가져오기',
           ),
         ],
       ),
@@ -706,6 +701,51 @@ class _SettingsScreenState extends State<SettingsScreen>
     ).whenComplete(() {
       _isNaverCalDavProgressDialogOpen = false;
     });
+  }
+
+  Widget _buildDialogButtonBar({
+    required VoidCallback onCancel,
+    required VoidCallback onConfirm,
+    required String cancelLabel,
+    required String confirmLabel,
+    Color? cancelForegroundColor,
+    Color? cancelBackgroundColor,
+    Color? confirmForegroundColor,
+    Color? confirmBackgroundColor,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: Row(
+        children: [
+          Expanded(
+            child: FilledButton.tonal(
+              onPressed: onCancel,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                foregroundColor:
+                    cancelForegroundColor ?? PlanFlowColors.primary,
+                backgroundColor:
+                    cancelBackgroundColor ?? PlanFlowColors.primaryFaint,
+              ),
+              child: Text(cancelLabel),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: FilledButton(
+              onPressed: onConfirm,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                foregroundColor: confirmForegroundColor ?? Colors.white,
+                backgroundColor:
+                    confirmBackgroundColor ?? PlanFlowColors.primary,
+              ),
+              child: Text(confirmLabel),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<_NaverCalDavImportRange?> _showNaverCalDavMoreRangeDialog() {
@@ -795,12 +835,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('취소'),
-            ),
-            FilledButton(
-              onPressed: () {
+            _buildDialogButtonBar(
+              onCancel: () => Navigator.of(context).pop(),
+              onConfirm: () {
                 final value = int.tryParse(controller.text.trim());
                 if (value == null || value <= 0) {
                   return;
@@ -811,7 +848,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                       : _NaverCalDavImportRange.years(value),
                 );
               },
-              child: const Text('확인'),
+              cancelLabel: '취소',
+              confirmLabel: '확인',
             ),
           ],
         ),
@@ -828,13 +866,11 @@ class _SettingsScreenState extends State<SettingsScreen>
           '전체 기록은 일정 수에 따라 오래 걸릴 수 있습니다. 그래도 진행할까요?',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('전체 가져오기'),
+          _buildDialogButtonBar(
+            onCancel: () => Navigator.of(context).pop(false),
+            onConfirm: () => Navigator.of(context).pop(true),
+            cancelLabel: '취소',
+            confirmLabel: '전체 가져오기',
           ),
         ],
       ),
@@ -895,12 +931,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('취소'),
-            ),
-            FilledButton(
-              onPressed: () {
+            _buildDialogButtonBar(
+              onCancel: () => Navigator.of(context).pop(),
+              onConfirm: () {
                 Navigator.of(context).pop(
                   _NaverCalDavCredentials(
                     naverId: idController.text,
@@ -908,7 +941,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                 );
               },
-              child: const Text('연결 테스트'),
+              cancelLabel: '취소',
+              confirmLabel: '연결 테스트',
             ),
           ],
         );
@@ -1195,14 +1229,13 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (context) => AlertDialog(
         title: const Text('백업 복원'),
         content: Text('${_formatDateTime(backup.createdAt)} 백업을 복원할까요?'),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('복원'),
+          _buildDialogButtonBar(
+            onCancel: () => Navigator.of(context).pop(false),
+            onConfirm: () => Navigator.of(context).pop(true),
+            cancelLabel: '취소',
+            confirmLabel: '복원',
           ),
         ],
       ),
@@ -1227,6 +1260,64 @@ class _SettingsScreenState extends State<SettingsScreen>
         });
       }
     }
+  }
+
+  Future<void> _showBackupRestoreDialog() async {
+    final backupService = _backupService;
+    if (backupService == null || !authProvider.isSignedIn) {
+      return;
+    }
+    if (!_isLoadingBackups && _backups.isEmpty) {
+      await _loadBackups();
+    }
+    if (!mounted) {
+      return;
+    }
+    if (_backups.isEmpty) {
+      _showSnack('백업된 항목이 없습니다. 먼저 백업을 만들어 주세요.');
+      return;
+    }
+    final selected = await showDialog<BackupSnapshot>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('복원할 백업 선택'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 420),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: _backups.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final backup = _backups[index];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.backup_outlined),
+                  title: Text(_formatDateTime(backup.createdAt)),
+                  subtitle: Text('총 ${backup.totalItems}개 항목'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).pop(backup),
+                );
+              },
+            ),
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        actions: [
+          _buildDialogButtonBar(
+            onCancel: () => Navigator.of(context).pop(),
+            onConfirm: () => Navigator.of(context).pop(_backups.first),
+            cancelLabel: '취소',
+            confirmLabel: '가장 최근 복원',
+          ),
+        ],
+      ),
+    );
+    if (selected == null) {
+      return;
+    }
+    await _restoreBackup(selected);
   }
 
   void _resetToDefaults() {
@@ -1257,8 +1348,6 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final envConfigured =
-        widget._envConfigured ?? AppEnv.openAiApiKey.isNotEmpty;
     final morningLabel = _formatTime(context, _morningBriefingAt);
     final eveningLabel = _formatTime(context, _eveningBriefingAt);
 
@@ -1609,7 +1698,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             ),
             const SizedBox(height: 16),
-            _DiagnosticsSection(envConfigured: envConfigured),
             if (authProvider.isSignedIn && _backupService != null) ...[
               const SizedBox(height: 16),
               _SectionCard(
@@ -1636,27 +1724,19 @@ class _SettingsScreenState extends State<SettingsScreen>
                           ),
                         ),
                         const SizedBox(width: 8),
-                        IconButton.outlined(
-                          tooltip: '백업 목록 새로고침',
-                          onPressed: _isLoadingBackups ? null : _loadBackups,
-                          icon: const Icon(Icons.refresh),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isBackupActionRunning
+                                ? null
+                                : _showBackupRestoreDialog,
+                            icon: const Icon(Icons.restore_outlined),
+                            label: const Text('복원'),
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    if (_isLoadingBackups)
-                      const Center(child: CircularProgressIndicator())
-                    else if (_backups.isEmpty)
-                      const Text('아직 저장된 백업이 없습니다.')
-                    else
-                      ..._backups.take(5).map(
-                            (backup) => _BackupTile(
-                              backup: backup,
-                              onRestore: _isBackupActionRunning
-                                  ? null
-                                  : () => _restoreBackup(backup),
-                            ),
-                          ),
+                    const Text('복원 버튼을 누르면 백업 목록이 열립니다.'),
                   ],
                 ),
               ),
@@ -1946,63 +2026,6 @@ class _AccountSection extends StatelessWidget {
   }
 }
 
-class _DiagnosticsSection extends StatelessWidget {
-  const _DiagnosticsSection({required this.envConfigured});
-
-  final bool envConfigured;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: PlanFlowColors.surface,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
-      ),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        title: const Text('개발/진단 상태'),
-        subtitle: const Text('일반 사용 중에는 펼치지 않아도 됩니다.'),
-        children: [
-          _StatusRow(
-            label: 'Supabase 초기화',
-            value: AppEnv.isSupabaseReady ? '설정됨' : '미설정',
-            icon: Icons.code_outlined,
-            isConfigured: AppEnv.isSupabaseReady,
-          ),
-          const SizedBox(height: 12),
-          _StatusRow(
-            label: 'OpenAI API 키',
-            value: envConfigured ? '설정됨' : '미설정',
-            icon: Icons.storage_outlined,
-            isConfigured: envConfigured,
-          ),
-          const SizedBox(height: 12),
-          _StatusRow(
-            label: 'T맵 API 키',
-            value: AppEnv.tmapApiKey.isNotEmpty ? '설정됨' : '미설정',
-            icon: Icons.map_outlined,
-            isConfigured: AppEnv.tmapApiKey.isNotEmpty,
-          ),
-          const SizedBox(height: 12),
-          _StatusRow(
-            label: '네이버 지도 API 키',
-            value: AppEnv.naverMapClientId.isNotEmpty &&
-                    AppEnv.naverMapClientSecret.isNotEmpty
-                ? '설정됨'
-                : '미설정',
-            icon: Icons.alt_route_outlined,
-            isConfigured: AppEnv.naverMapClientId.isNotEmpty &&
-                AppEnv.naverMapClientSecret.isNotEmpty,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _HeaderPill extends StatelessWidget {
   const _HeaderPill({required this.icon, required this.label});
 
@@ -2145,61 +2168,6 @@ class _TimeSettingTile extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             const Icon(Icons.chevron_right, color: PlanFlowColors.primaryMid),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BackupTile extends StatelessWidget {
-  const _BackupTile({required this.backup, required this.onRestore});
-
-  final BackupSnapshot backup;
-  final VoidCallback? onRestore;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final createdAt =
-        '${backup.createdAt.year}-${backup.createdAt.month.toString().padLeft(2, '0')}-${backup.createdAt.day.toString().padLeft(2, '0')} '
-        '${backup.createdAt.hour.toString().padLeft(2, '0')}:${backup.createdAt.minute.toString().padLeft(2, '0')}';
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: PlanFlowColors.background,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.cloud_done_outlined,
-              color: PlanFlowColors.primaryMid,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    backup.label == 'Manual backup'
-                        ? '수동 백업'
-                        : backup.label ?? '백업',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: PlanFlowColors.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$createdAt · ${backup.totalItems}개 항목',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            TextButton(onPressed: onRestore, child: const Text('복원')),
           ],
         ),
       ),

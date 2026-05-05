@@ -235,3 +235,8 @@
 - Verification: `flutter analyze`, `flutter test`, and `flutter build apk --debug` passed; APK was reinstalled on the connected device. `scripts/gsd-context-hygiene.mjs` remains absent.
 
 - Device-calendar UI checkpoint: renamed the Settings button and related copy from the Naver-specific phrasing to 휴대폰 내부 캘린더 일정 가져오기, aligned the device-calendar import service messages to the same wording, and updated the related widget tests. Validation: C:\src\flutter\bin\flutter.bat analyze and targeted lutter test test/screens/settings_screen_test.dart test/services/device_calendar_service_test.dart both passed.
+
+## 2026-05-06 Settings dialog/button layout checkpoint
+- Reworked the Settings dialog button layout helper so confirm/cancel style dialogs now render as two side-by-side buttons with clearer color contrast instead of the previous awkward wide-confirm/tiny-cancel look.
+- Simplified the Settings backup UX to use a restore button that opens a selectable backup list, and removed the inline backup tiles / developer-diagnostics card from the visible Settings surface.
+- Validation completed for this logical change: `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -n com.example.planflow/.MainActivity` on the connected device all succeeded.

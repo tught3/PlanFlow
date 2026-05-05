@@ -45,7 +45,6 @@ void main() {
           ),
           notificationService: _FakeNotificationService(),
           userId: 'user-1',
-          envConfigured: false,
         ),
       ),
     );
@@ -98,7 +97,6 @@ void main() {
           ),
           notificationService: _FakeNotificationService(),
           userId: 'user-1',
-          envConfigured: false,
         ),
       ),
     );
@@ -145,7 +143,6 @@ void main() {
           calendarSyncService: calendarSyncService,
           notificationService: _FakeNotificationService(),
           userId: 'user-1',
-          envConfigured: false,
         ),
       ),
     );
@@ -191,7 +188,6 @@ void main() {
           calendarSyncService: calendarSyncService,
           notificationService: _FakeNotificationService(),
           userId: 'user-1',
-          envConfigured: false,
         ),
       ),
     );
@@ -234,7 +230,6 @@ void main() {
           deviceCalendarService: deviceCalendarService,
           notificationService: _FakeNotificationService(),
           userId: 'user-1',
-          envConfigured: false,
         ),
       ),
     );
@@ -275,7 +270,6 @@ void main() {
           ),
           notificationService: _FakeNotificationService(),
           userId: 'user-1',
-          envConfigured: false,
         ),
       ),
     );
