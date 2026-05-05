@@ -196,3 +196,9 @@
 - Added CalDAV discovery through `current-user-principal` and `calendar-home-set`, then falls back to the previous `/calendars/{id}/` path if discovery is unavailable.
 - Added a focused test proving the service discovers `/principals/users/{id}/` -> `/calendars/{id}/` before listing calendars.
 - Validation: `flutter analyze`, targeted CalDAV service test, full `flutter test` (88 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## 2026-05-05 Naver CalDAV empty-result fallback checkpoint
+- Added a second `REPORT` fallback in `getEvents()` so if the normal date-range query returns zero events, PlanFlow retries the same calendar with a full query body before telling the user that there are no items.
+- This makes the import path more tolerant of Naver CalDAV calendars that ignore or mishandle `time-range` filters even though the account and home path are correct.
+- Added a focused service test that proves the fallback path retries and still parses the event payload.
+- Validation: `flutter analyze`, targeted CalDAV service test, full `flutter test` (89 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.

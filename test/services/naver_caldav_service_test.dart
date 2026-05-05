@@ -158,6 +158,31 @@ void main() {
     expect(events.single.startAt, DateTime.utc(2026, 5, 5, 1));
   });
 
+  test('getEvents retries with full report when ranged query is empty',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[207, 207],
+      bodies: <String>[_emptyEventReportXml, _eventReportXml],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+    );
+
+    final events = await service.getEvents(
+      calendarPath: '/calendars/tught3/default/',
+      from: DateTime.utc(2026, 5),
+      to: DateTime.utc(2026, 6),
+    );
+
+    expect(events, hasLength(1));
+    expect(events.single.uid, 'naver-event-1');
+    expect(client.requests, hasLength(2));
+  });
+
   test('parseIcal handles all-day dates and escaped text', () {
     final service = NaverCalDavService(
       httpClient: _FakePropfindClient(responses: <int>[207]),
@@ -328,5 +353,11 @@ END:VCALENDAR
       </d:prop>
     </d:propstat>
   </d:response>
+</d:multistatus>
+''';
+
+const String _emptyEventReportXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
 </d:multistatus>
 ''';

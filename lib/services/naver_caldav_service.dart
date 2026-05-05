@@ -336,12 +336,37 @@ class NaverCalDavService {
     final startAt = (from ?? now.subtract(const Duration(days: 90))).toUtc();
     final endAt = (to ?? now.add(const Duration(days: 180))).toUtc();
     final endpoint = _baseUri.replace(path: calendarPath);
-    final response = await _sendXmlRequest(
-      method: 'REPORT',
+    final rangedEvents = await _queryEvents(
       endpoint: endpoint,
       naverId: credentials.naverId,
       appPassword: credentials.appPassword,
       body: _reportBody(startAt, endAt),
+    );
+    if (rangedEvents.isNotEmpty) {
+      return rangedEvents;
+    }
+
+    final fallbackEvents = await _queryEvents(
+      endpoint: endpoint,
+      naverId: credentials.naverId,
+      appPassword: credentials.appPassword,
+      body: _reportBody(null, null, includeTimeRange: false),
+    );
+    return fallbackEvents;
+  }
+
+  Future<List<NaverCalDavEvent>> _queryEvents({
+    required Uri endpoint,
+    required String naverId,
+    required String appPassword,
+    required String body,
+  }) async {
+    final response = await _sendXmlRequest(
+      method: 'REPORT',
+      endpoint: endpoint,
+      naverId: naverId,
+      appPassword: appPassword,
+      body: body,
       depth: '1',
     );
     _throwForCalDavStatus(response.statusCode, endpoint);
@@ -728,9 +753,16 @@ class NaverCalDavService {
         _firstDescendantText(container, localName);
   }
 
-  String _reportBody(DateTime from, DateTime to) {
-    final start = _formatCalDavUtc(from);
-    final end = _formatCalDavUtc(to);
+  String _reportBody(
+    DateTime? from,
+    DateTime? to, {
+    bool includeTimeRange = true,
+  }) {
+    final start = from == null ? null : _formatCalDavUtc(from);
+    final end = to == null ? null : _formatCalDavUtc(to);
+    final timeRange = includeTimeRange && start != null && end != null
+        ? '        <c:time-range start="$start" end="$end"/>\n'
+        : '';
     return '''
 <?xml version="1.0" encoding="utf-8" ?>
 <c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
@@ -741,8 +773,7 @@ class NaverCalDavService {
   <c:filter>
     <c:comp-filter name="VCALENDAR">
       <c:comp-filter name="VEVENT">
-        <c:time-range start="$start" end="$end"/>
-      </c:comp-filter>
+$timeRange      </c:comp-filter>
     </c:comp-filter>
   </c:filter>
 </c:calendar-query>
