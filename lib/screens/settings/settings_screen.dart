@@ -202,7 +202,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (error, stackTrace) {
       debugPrint('Naver calendar connect failed: $error');
       debugPrintStack(stackTrace: stackTrace);
-      _showSnack('네이버 캘린더 연결을 시작하지 못했습니다. 설정을 확인해 주세요.');
+      if (_isManualLinkingDisabledError(error)) {
+        _showSnack(
+          'Supabase에서 Manual Linking을 켜야 네이버 캘린더 권한을 추가 연결할 수 있습니다.',
+        );
+      } else {
+        _showSnack('네이버 캘린더 연결을 시작하지 못했습니다. 설정을 확인해 주세요.');
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -210,6 +216,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     }
+  }
+
+  bool _isManualLinkingDisabledError(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('manual_linking_disabled') ||
+        text.contains('manual linking is disabled');
   }
 
   Future<void> _pickTime({required bool isMorning}) async {
