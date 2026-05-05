@@ -158,7 +158,32 @@ typedef GoogleAccessTokenProvider = Future<String?> Function({
   required bool interactive,
 });
 
-typedef GoogleCalendarEventsFetcher = Future<List<gcal.Event>> Function(
+class GoogleCalendarEventEntry {
+  const GoogleCalendarEventEntry({
+    required this.calendarId,
+    required this.event,
+    this.isPrimaryCalendar = false,
+  });
+
+  final String calendarId;
+  final gcal.Event event;
+  final bool isPrimaryCalendar;
+
+  String get normalizedCalendarId => isPrimaryCalendar ? 'primary' : calendarId;
+
+  String get externalCalendarId => 'google:$normalizedCalendarId';
+
+  String get stableExternalId {
+    final rawId = event.id?.trim() ?? '';
+    if (normalizedCalendarId == 'primary') {
+      return rawId;
+    }
+    return '$normalizedCalendarId:$rawId';
+  }
+}
+
+typedef GoogleCalendarEventsFetcher = Future<List<GoogleCalendarEventEntry>>
+    Function(
   gcal.CalendarApi api,
 );
 
@@ -177,6 +202,7 @@ class CalendarSyncService {
     String? googleServerClientId,
     List<String> googleScopes = const <String>[
       gcal.CalendarApi.calendarEventsScope,
+      gcal.CalendarApi.calendarReadonlyScope,
     ],
     GoogleSignIn? googleSignIn,
     EventRepository? eventRepository,
@@ -927,12 +953,15 @@ class CalendarSyncService {
     }
 
     if (errorText.contains('insufficient') ||
+        errorText.contains('insufficientpermissions') ||
+        errorText.contains('insufficient authentication scopes') ||
+        errorText.contains('insufficient permission') ||
         errorText.contains('permission') ||
         errorText.contains('forbidden') ||
         errorText.contains('unauthorized') ||
         errorText.contains('401') ||
         errorText.contains('403')) {
-      return 'Google Calendar 권한이 부족해 동기화하지 못했습니다. Calendar 권한 동의를 다시 확인해 주세요.';
+      return 'Google Calendar 권한이 부족해 동기화하지 못했습니다. Google Calendar 연결을 다시 눌러 전체 캘린더 목록 읽기 권한을 다시 동의해 주세요.';
     }
 
     return 'Google Calendar API 호출에 실패했습니다. Google Cloud Calendar API 사용 설정과 네트워크 상태를 확인해 주세요.';
@@ -994,19 +1023,27 @@ class CalendarSyncService {
     return authentication.accessToken;
   }
 
-  Future<int> _persistGoogleEvents(List<gcal.Event> googleEvents) async {
+  Future<int> _persistGoogleEvents(
+    List<GoogleCalendarEventEntry> googleEvents,
+  ) async {
     var syncedItems = 0;
-    for (final googleEvent in googleEvents) {
+    for (final entry in googleEvents) {
+      final googleEvent = entry.event;
       final externalId = googleEvent.id?.trim() ?? '';
       if (externalId.isEmpty) {
         continue;
       }
 
+      final storedExternalId = entry.stableExternalId;
       final model = _mapGoogleEvent(
         googleEvent,
-        externalId: externalId,
+        externalId: storedExternalId,
+        externalCalendarId: entry.externalCalendarId,
       );
-      final existing = await _findExistingGoogleEvent(externalId);
+      final existing = await _findExistingGoogleEvent(
+        storedExternalId,
+        externalCalendarId: entry.externalCalendarId,
+      );
       if (existing != null && _shouldKeepLocalEvent(existing, model)) {
         continue;
       }
@@ -1026,8 +1063,8 @@ class CalendarSyncService {
             suppliesChecked: existing.suppliesChecked,
             isCritical: existing.isCritical,
             source: existing.source,
-            externalId: externalId,
-            externalCalendarId: 'google:primary',
+            externalId: storedExternalId,
+            externalCalendarId: entry.externalCalendarId,
             externalUpdatedAt: model.externalUpdatedAt,
             lastSyncedAt: model.lastSyncedAt,
             createdAt: existing.createdAt,
@@ -1042,7 +1079,10 @@ class CalendarSyncService {
     return syncedItems;
   }
 
-  Future<EventModel?> _findExistingGoogleEvent(String externalId) async {
+  Future<EventModel?> _findExistingGoogleEvent(
+    String externalId, {
+    required String externalCalendarId,
+  }) async {
     final imported = await _eventRepository.fetchEventBySourceExternalId(
       source: 'google',
       externalId: externalId,
@@ -1055,7 +1095,7 @@ class CalendarSyncService {
     final events = await _eventRepository.listEvents(userId: _currentUserId());
     for (final event in events) {
       if (event.externalId == externalId &&
-          event.externalCalendarId == 'google:primary') {
+          event.externalCalendarId == externalCalendarId) {
         return event;
       }
     }
@@ -1074,6 +1114,7 @@ class CalendarSyncService {
   EventModel _mapGoogleEvent(
     gcal.Event event, {
     required String externalId,
+    required String externalCalendarId,
   }) {
     return EventModel(
       id: '',
@@ -1087,7 +1128,7 @@ class CalendarSyncService {
       isCritical: false,
       source: 'google',
       externalId: externalId,
-      externalCalendarId: 'google:primary',
+      externalCalendarId: externalCalendarId,
       externalUpdatedAt: event.updated?.toUtc(),
       lastSyncedAt: DateTime.now().toUtc(),
     );
@@ -1184,15 +1225,92 @@ class CalendarSyncService {
     }
   }
 
-  static Future<List<gcal.Event>> _defaultGoogleCalendarEventsFetcher(
+  static Future<List<GoogleCalendarEventEntry>>
+      _defaultGoogleCalendarEventsFetcher(
     gcal.CalendarApi api,
   ) async {
-    final events = <gcal.Event>[];
+    final entries = <GoogleCalendarEventEntry>[];
+    final calendars = await _fetchReadableGoogleCalendars(api);
+
+    if (calendars.isEmpty) {
+      calendars.add(
+        gcal.CalendarListEntry()
+          ..id = 'primary'
+          ..summary = 'Primary'
+          ..accessRole = 'owner',
+      );
+    }
+
+    for (final calendar in calendars) {
+      final calendarId = calendar.id?.trim();
+      if (calendarId == null || calendarId.isEmpty) {
+        continue;
+      }
+
+      entries.addAll(
+        await _fetchGoogleEventsForCalendar(
+          api,
+          calendarId,
+          isPrimaryCalendar: calendar.primary == true,
+        ),
+      );
+    }
+
+    return entries;
+  }
+
+  static Future<List<gcal.CalendarListEntry>> _fetchReadableGoogleCalendars(
+    gcal.CalendarApi api,
+  ) async {
+    final calendars = <gcal.CalendarListEntry>[];
+    String? pageToken;
+
+    do {
+      final response = await api.calendarList.list(
+        pageToken: pageToken,
+        maxResults: 250,
+        showDeleted: false,
+        showHidden: false,
+      );
+
+      for (final calendar
+          in response.items ?? const <gcal.CalendarListEntry>[]) {
+        final calendarId = calendar.id?.trim();
+        final accessRole = calendar.accessRole?.trim();
+        if (calendarId == null || calendarId.isEmpty) {
+          continue;
+        }
+        if (accessRole == 'freeBusyReader') {
+          continue;
+        }
+        calendars.add(calendar);
+      }
+      pageToken = response.nextPageToken;
+    } while (pageToken != null && pageToken.isNotEmpty);
+
+    calendars.sort((a, b) {
+      final aPrimary = a.primary == true ? 0 : 1;
+      final bPrimary = b.primary == true ? 0 : 1;
+      if (aPrimary != bPrimary) {
+        return aPrimary.compareTo(bPrimary);
+      }
+      return (a.summary ?? a.id ?? '').compareTo(b.summary ?? b.id ?? '');
+    });
+
+    return calendars;
+  }
+
+  static Future<List<GoogleCalendarEventEntry>> _fetchGoogleEventsForCalendar(
+    gcal.CalendarApi api,
+    String calendarId, {
+    bool isPrimaryCalendar = false,
+  }) async {
+    final entries = <GoogleCalendarEventEntry>[];
     String? pageToken;
 
     do {
       final response = await api.events.list(
-        'primary',
+        calendarId,
         pageToken: pageToken,
         maxResults: 250,
         singleEvents: true,
@@ -1201,11 +1319,19 @@ class CalendarSyncService {
         timeMin: DateTime.now().toUtc().subtract(const Duration(days: 1)),
       );
 
-      events.addAll(response.items ?? const <gcal.Event>[]);
+      for (final event in response.items ?? const <gcal.Event>[]) {
+        entries.add(
+          GoogleCalendarEventEntry(
+            calendarId: calendarId,
+            isPrimaryCalendar: isPrimaryCalendar,
+            event: event,
+          ),
+        );
+      }
       pageToken = response.nextPageToken;
     } while (pageToken != null && pageToken.isNotEmpty);
 
-    return events;
+    return entries;
   }
 
   @visibleForTesting

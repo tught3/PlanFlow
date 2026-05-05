@@ -172,3 +172,10 @@
 - Reinstalled and launched com.example.planflow on the connected Android device.
 - Google Calendar reaches OAuth/API but remote Supabase events insert is blocked by RLS until calendar_sync_patch.sql is applied.
 - Device calendar import sees the Naver account calendar, but Android Calendar Provider currently returns 0 synced event rows.
+
+## 2026-05-05 Google all-calendar sync checkpoint
+- Read PlanFlow_Calendar_Sync_Codex.md with UTF-8 output and separated its Edge Function/Cron architecture from the current client-side PlanFlow sync architecture.
+- Expanded Google Calendar import from primary-only to readable calendarList entries, while keeping PlanFlow exports to Google primary for safety.
+- Normalized primary Google calendars to google:primary even when CalendarList returns the account email as calendar id, preventing duplicate imports.
+- Added tests for non-primary Google calendar import keys and primary key stability.
+- Validation: flutter analyze, full flutter test, flutter build apk --debug, adb install -r, and adb launch passed.

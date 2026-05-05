@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:googleapis/calendar/v3.dart' as gcal;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -223,6 +224,64 @@ void main() {
       expect(result.message, contains('OAuth 설정'));
       expect(result.message, contains('Android SHA'));
     });
+
+    test('imports events from non-primary Google calendars with calendar id',
+        () async {
+      final repository = _FakeEventRepository(events: const <EventModel>[]);
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        eventRepository: repository,
+        googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+        googlePlatformSupported: true,
+        googleTargetPlatform: TargetPlatform.android,
+        googleAccessTokenProvider: ({required bool interactive}) async {
+          return 'google-token';
+        },
+        googleCalendarEventsFetcher: (_) async {
+          return <GoogleCalendarEventEntry>[
+            GoogleCalendarEventEntry(
+              calendarId: 'naver-calendar@example.com',
+              event: gcal.Event(
+                id: 'event-1',
+                summary: '네이버에서 온 일정',
+                updated: DateTime.utc(2026, 5, 5, 1),
+                start: gcal.EventDateTime(
+                  dateTime: DateTime.utc(2026, 5, 5, 2),
+                ),
+                end: gcal.EventDateTime(
+                  dateTime: DateTime.utc(2026, 5, 5, 3),
+                ),
+              ),
+            ),
+          ];
+        },
+      );
+
+      final result = await service.syncGoogleCalendar();
+
+      expect(result.status, CalendarIntegrationStatus.synced);
+      expect(repository.upsertedEvents, hasLength(1));
+      expect(
+        repository.upsertedEvents.single.externalId,
+        'naver-calendar@example.com:event-1',
+      );
+      expect(
+        repository.upsertedEvents.single.externalCalendarId,
+        'google:naver-calendar@example.com',
+      );
+    });
+
+    test('keeps primary Google calendar keys stable when id is account email',
+        () async {
+      final entry = GoogleCalendarEventEntry(
+        calendarId: 'tught3@gmail.com',
+        isPrimaryCalendar: true,
+        event: gcal.Event(id: 'primary-event-1'),
+      );
+
+      expect(entry.stableExternalId, 'primary-event-1');
+      expect(entry.externalCalendarId, 'google:primary');
+    });
   });
 }
 
@@ -242,9 +301,10 @@ class _FakeGoogleSignIn extends GoogleSignIn {
 }
 
 class _FakeEventRepository extends EventRepository {
-  const _FakeEventRepository({required this.events});
+  _FakeEventRepository({required this.events});
 
   final List<EventModel> events;
+  final List<EventModel> upsertedEvents = <EventModel>[];
 
   @override
   Future<List<EventModel>> listEvents({String? userId}) async => events;
@@ -264,6 +324,12 @@ class _FakeEventRepository extends EventRepository {
 
   @override
   Future<EventModel> updateEvent(EventModel event) async => event;
+
+  @override
+  Future<EventModel> upsertEventBySourceExternalId(EventModel event) async {
+    upsertedEvents.add(event);
+    return event;
+  }
 
   @override
   Future<void> deleteEvent(String eventId, {String? userId}) async {}
