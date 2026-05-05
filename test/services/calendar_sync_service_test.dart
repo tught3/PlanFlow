@@ -236,6 +236,9 @@ class _FakeGoogleSignIn extends GoogleSignIn {
     signInCallCount += 1;
     return null;
   }
+
+  @override
+  Future<GoogleSignInAccount?> signOut() async => null;
 }
 
 class _FakeEventRepository extends EventRepository {

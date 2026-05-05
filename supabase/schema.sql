@@ -57,13 +57,41 @@ create table if not exists public.events (
   is_critical boolean not null default false,
   source text not null default 'manual',
   external_id text,
-  created_at timestamptz not null default now()
+  external_calendar_id text,
+  external_updated_at timestamptz,
+  last_synced_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 alter table public.events
   add column if not exists location_lat double precision,
   add column if not exists location_lng double precision,
-  add column if not exists supplies_checked text[] not null default '{}';
+  add column if not exists supplies_checked text[] not null default '{}',
+  add column if not exists external_calendar_id text,
+  add column if not exists external_updated_at timestamptz,
+  add column if not exists last_synced_at timestamptz,
+  add column if not exists updated_at timestamptz not null default now();
+
+create index if not exists events_user_source_external_idx
+  on public.events (user_id, source, external_id)
+  where external_id is not null;
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists events_set_updated_at on public.events;
+create trigger events_set_updated_at
+  before update on public.events
+  for each row execute function public.set_updated_at();
 
 -- 3. pre_actions
 create table if not exists public.pre_actions (
@@ -126,14 +154,40 @@ create table if not exists public.user_settings (
   alter table public.user_settings
   add column if not exists naver_calendar_token text;
 
--- 8. early_bird_emails
+-- 8. calendar_connections
+create table if not exists public.calendar_connections (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users (id) on delete cascade,
+  provider text not null check (provider in ('google', 'naver')),
+  provider_account_email text,
+  status text not null default 'disconnected'
+    check (status in ('disconnected', 'connected', 'reauth_required', 'failed')),
+  access_token text,
+  refresh_token text,
+  last_synced_at timestamptz,
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, provider)
+);
+
+create index if not exists calendar_connections_user_provider_idx
+  on public.calendar_connections (user_id, provider);
+
+drop trigger if exists calendar_connections_set_updated_at
+  on public.calendar_connections;
+create trigger calendar_connections_set_updated_at
+  before update on public.calendar_connections
+  for each row execute function public.set_updated_at();
+
+-- 9. early_bird_emails
 create table if not exists public.early_bird_emails (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
   created_at timestamptz not null default now()
 );
 
--- 9. user_backups
+-- 10. user_backups
 create table if not exists public.user_backups (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users (id) on delete cascade,
@@ -172,6 +226,7 @@ alter table public.reminders enable row level security;
 alter table public.voice_logs enable row level security;
 alter table public.location_history enable row level security;
 alter table public.user_settings enable row level security;
+alter table public.calendar_connections enable row level security;
 alter table public.early_bird_emails enable row level security;
 alter table public.user_backups enable row level security;
 
@@ -405,6 +460,28 @@ create policy "user_settings_delete_own"
   for delete
   using (auth.uid() = user_id);
 
+drop policy if exists "calendar_connections_select_own" on public.calendar_connections;
+drop policy if exists "calendar_connections_insert_own" on public.calendar_connections;
+drop policy if exists "calendar_connections_update_own" on public.calendar_connections;
+drop policy if exists "calendar_connections_delete_own" on public.calendar_connections;
+create policy "calendar_connections_select_own"
+  on public.calendar_connections
+  for select
+  using (auth.uid() = user_id);
+create policy "calendar_connections_insert_own"
+  on public.calendar_connections
+  for insert
+  with check (auth.uid() = user_id);
+create policy "calendar_connections_update_own"
+  on public.calendar_connections
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+create policy "calendar_connections_delete_own"
+  on public.calendar_connections
+  for delete
+  using (auth.uid() = user_id);
+
 drop policy if exists "user_backups_select_own" on public.user_backups;
 drop policy if exists "user_backups_insert_own" on public.user_backups;
 drop policy if exists "user_backups_update_own" on public.user_backups;
@@ -472,8 +549,9 @@ begin
 
     insert into public.events (
       id, user_id, title, start_at, end_at, location, location_lat,
-      location_lng, memo, supplies, supplies_checked, is_critical, source, external_id,
-      created_at
+      location_lng, memo, supplies, supplies_checked, is_critical, source,
+      external_id, external_calendar_id, external_updated_at, last_synced_at,
+      created_at, updated_at
     )
     values (
       coalesce(nullif(item ->> 'id', '')::uuid, gen_random_uuid()),
@@ -490,7 +568,11 @@ begin
       coalesce(nullif(item ->> 'is_critical', '')::boolean, false),
       coalesce(nullif(item ->> 'source', ''), 'manual'),
       nullif(item ->> 'external_id', ''),
-      coalesce(nullif(item ->> 'created_at', '')::timestamptz, now())
+      nullif(item ->> 'external_calendar_id', ''),
+      nullif(item ->> 'external_updated_at', '')::timestamptz,
+      nullif(item ->> 'last_synced_at', '')::timestamptz,
+      coalesce(nullif(item ->> 'created_at', '')::timestamptz, now()),
+      coalesce(nullif(item ->> 'updated_at', '')::timestamptz, now())
     )
     on conflict (id) do update
       set title = excluded.title,
@@ -504,7 +586,11 @@ begin
           supplies_checked = excluded.supplies_checked,
           is_critical = excluded.is_critical,
           source = excluded.source,
-          external_id = excluded.external_id
+          external_id = excluded.external_id,
+          external_calendar_id = excluded.external_calendar_id,
+          external_updated_at = excluded.external_updated_at,
+          last_synced_at = excluded.last_synced_at,
+          updated_at = excluded.updated_at
       where public.events.user_id = uid;
   end loop;
 

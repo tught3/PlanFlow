@@ -76,6 +76,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isLoadingSettings = true;
   bool _isLoadingCalendarStatus = true;
   bool _isSyncingGoogleCalendar = false;
+  bool _isDisconnectingGoogleCalendar = false;
   bool _isConnectingNaverCalendar = false;
   bool _isSyncingNaverCalendar = false;
   bool _isDisconnectingNaverCalendar = false;
@@ -194,6 +195,69 @@ class _SettingsScreenState extends State<SettingsScreen>
     _showSnack(result.message);
   }
 
+  Future<void> _disconnectGoogleCalendar() async {
+    if (_isDisconnectingGoogleCalendar) {
+      return;
+    }
+    final deleteProviderEvents = await _askDisconnectPolicy('Google Calendar');
+    if (deleteProviderEvents == null) {
+      return;
+    }
+
+    setState(() {
+      _isDisconnectingGoogleCalendar = true;
+    });
+    try {
+      await _calendarSyncService.disconnectProvider(
+        CalendarProvider.google,
+        deleteProviderEvents: deleteProviderEvents,
+      );
+      if (!mounted) {
+        return;
+      }
+      await _loadCalendarStatus();
+      _showSnack('Google Calendar 연동을 해제했습니다.');
+    } catch (error, stackTrace) {
+      debugPrint('Google calendar disconnect failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showSnack('Google Calendar 연동 해제에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDisconnectingGoogleCalendar = false;
+        });
+      }
+    }
+  }
+
+  Future<bool?> _askDisconnectPolicy(String providerName) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('$providerName 연동 해제'),
+          content: const Text(
+            '가져온 일정을 PlanFlow에 남겨둘지, 해당 공급자 일정과 함께 정리할지 선택해 주세요.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(null),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('일정 유지'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('공급자 일정 삭제'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _connectNaverCalendar() async {
     final authService = _authService;
     if (authService == null) {
@@ -297,11 +361,20 @@ class _SettingsScreenState extends State<SettingsScreen>
       return;
     }
 
+    final deleteProviderEvents = await _askDisconnectPolicy('Naver Calendar');
+    if (deleteProviderEvents == null) {
+      return;
+    }
+
     setState(() {
       _isDisconnectingNaverCalendar = true;
     });
     try {
       final unlinked = await authService.disconnectNaverCalendar();
+      await _calendarSyncService.disconnectProvider(
+        CalendarProvider.naver,
+        deleteProviderEvents: deleteProviderEvents,
+      );
       await _naverCalendarPermissionServiceInstance.clearConnectionState();
       if (!mounted) {
         return;
@@ -698,21 +771,47 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ),
                   ),
                   const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed:
-                          _isLoadingCalendarStatus || _isSyncingGoogleCalendar
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isDisconnectingGoogleCalendar ||
+                                  !_canDisconnectCalendar(
+                                    _calendarSyncSummary?.google,
+                                  )
+                              ? null
+                              : _disconnectGoogleCalendar,
+                          icon: _isDisconnectingGoogleCalendar
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.link_off),
+                          label: Text(
+                            _isDisconnectingGoogleCalendar ? '해제 중...' : '연동 해제',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _isLoadingCalendarStatus ||
+                                  _isSyncingGoogleCalendar ||
+                                  _isDisconnectingGoogleCalendar
                               ? null
                               : _syncGoogleCalendar,
-                      icon: _isSyncingGoogleCalendar
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.sync),
-                      label: Text(_googleCalendarActionLabel()),
-                    ),
+                          icon: _isSyncingGoogleCalendar
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.sync),
+                          label: Text(_googleCalendarActionLabel()),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   const Divider(height: 1),
@@ -730,7 +829,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _isDisconnectingNaverCalendar
+                          onPressed: _isDisconnectingNaverCalendar ||
+                                  !_canDisconnectCalendar(
+                                    _calendarSyncSummary?.naver,
+                                  )
                               ? null
                               : _disconnectNaverCalendar,
                           icon: _isDisconnectingNaverCalendar
@@ -888,15 +990,26 @@ class _SettingsScreenState extends State<SettingsScreen>
       return false;
     }
     return switch (result.status) {
-      CalendarIntegrationStatus.signedOut ||
       CalendarIntegrationStatus.ready ||
       CalendarIntegrationStatus.syncing ||
       CalendarIntegrationStatus.synced =>
         true,
+      CalendarIntegrationStatus.signedOut ||
       CalendarIntegrationStatus.notConfigured ||
       CalendarIntegrationStatus.unsupported ||
       CalendarIntegrationStatus.failed =>
         false,
+    };
+  }
+
+  bool _canDisconnectCalendar(CalendarIntegrationResult? result) {
+    return switch (result?.status) {
+      CalendarIntegrationStatus.ready ||
+      CalendarIntegrationStatus.syncing ||
+      CalendarIntegrationStatus.synced ||
+      CalendarIntegrationStatus.failed =>
+        true,
+      _ => false,
     };
   }
 

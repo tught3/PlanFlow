@@ -14,7 +14,11 @@ class EventModel {
     this.isCritical = false,
     this.source = 'manual',
     this.externalId,
+    this.externalCalendarId,
+    this.externalUpdatedAt,
+    this.lastSyncedAt,
     this.createdAt,
+    this.updatedAt,
   });
 
   factory EventModel.fromJson(Map<String, dynamic> json) {
@@ -33,7 +37,11 @@ class EventModel {
       isCritical: _boolValue(json['is_critical']),
       source: _sourceValue(json['source']),
       externalId: _optionalStringValue(json['external_id']),
+      externalCalendarId: _optionalStringValue(json['external_calendar_id']),
+      externalUpdatedAt: _dateTimeValue(json['external_updated_at']),
+      lastSyncedAt: _dateTimeValue(json['last_synced_at']),
       createdAt: _dateTimeValue(json['created_at']),
+      updatedAt: _dateTimeValue(json['updated_at']),
     );
   }
 
@@ -51,7 +59,11 @@ class EventModel {
   final bool isCritical;
   final String source;
   final String? externalId;
+  final String? externalCalendarId;
+  final DateTime? externalUpdatedAt;
+  final DateTime? lastSyncedAt;
   final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   Map<String, dynamic> toJson({bool includeId = true}) {
     return <String, dynamic>{
@@ -69,7 +81,11 @@ class EventModel {
       'is_critical': isCritical,
       'source': _sourceValue(source),
       'external_id': _optionalStringValue(externalId),
+      'external_calendar_id': _optionalStringValue(externalCalendarId),
+      'external_updated_at': externalUpdatedAt?.toIso8601String(),
+      'last_synced_at': lastSyncedAt?.toIso8601String(),
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+      if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
     };
   }
 
@@ -87,6 +103,9 @@ class EventModel {
       'is_critical': isCritical,
       'source': _sourceValue(source),
       'external_id': _optionalStringValue(externalId),
+      'external_calendar_id': _optionalStringValue(externalCalendarId),
+      'external_updated_at': externalUpdatedAt?.toIso8601String(),
+      'last_synced_at': lastSyncedAt?.toIso8601String(),
     };
   }
 
