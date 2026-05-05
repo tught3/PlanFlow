@@ -11,6 +11,34 @@ create index if not exists events_user_source_external_idx
   on public.events (user_id, source, external_id)
   where external_id is not null;
 
+alter table public.events enable row level security;
+
+drop policy if exists "events_select_own" on public.events;
+drop policy if exists "events_insert_own" on public.events;
+drop policy if exists "events_update_own" on public.events;
+drop policy if exists "events_delete_own" on public.events;
+
+create policy "events_select_own"
+  on public.events
+  for select
+  using (auth.uid() = user_id);
+
+create policy "events_insert_own"
+  on public.events
+  for insert
+  with check (auth.uid() = user_id);
+
+create policy "events_update_own"
+  on public.events
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "events_delete_own"
+  on public.events
+  for delete
+  using (auth.uid() = user_id);
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql

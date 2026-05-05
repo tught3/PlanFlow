@@ -233,7 +233,8 @@ class SupabaseEventRepository extends EventRepository {
   }
 
   String _resolveCurrentUserId() {
-    final userId = _client.auth.currentUser?.id;
+    final userId =
+        _client.auth.currentSession?.user.id ?? _client.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) {
       throw StateError('A signed-in user is required for event writes.');
     }
@@ -241,7 +242,9 @@ class SupabaseEventRepository extends EventRepository {
   }
 
   String _resolveUserId(String? userId) {
-    final resolvedUserId = userId ?? _client.auth.currentUser?.id;
+    final resolvedUserId = userId ??
+        _client.auth.currentSession?.user.id ??
+        _client.auth.currentUser?.id;
     if (resolvedUserId == null || resolvedUserId.isEmpty) {
       throw StateError('A signed-in user is required for event queries.');
     }

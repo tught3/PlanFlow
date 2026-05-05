@@ -39,9 +39,9 @@ void main() {
           {
             'eventId': '42',
             'calendarId': '7',
-            'title': '한강 피크닉',
-            'location': '한강',
-            'description': '돗자리 챙기기',
+            'title': '서초 미팅',
+            'location': '서초',
+            'description': '자료 챙기기',
             'beginMillis': DateTime(2026, 5, 6, 10).millisecondsSinceEpoch,
             'endMillis': DateTime(2026, 5, 6, 11).millisecondsSinceEpoch,
             'lastDateMillis': DateTime(2026, 5, 5, 9).millisecondsSinceEpoch,
@@ -56,11 +56,12 @@ void main() {
 
     expect(result.status, DeviceCalendarImportStatus.imported);
     expect(result.importedCount, 1);
+    expect(result.message, '휴대폰 네이버 일정 1개를 PlanFlow로 가져왔습니다.');
     expect(repository.upserted, hasLength(1));
     expect(repository.upserted.single.source, 'naver_device');
     expect(repository.upserted.single.externalId, 'android:7:42');
     expect(repository.upserted.single.externalCalendarId, 'android:7');
-    expect(repository.upserted.single.title, '한강 피크닉');
+    expect(repository.upserted.single.title, '서초 미팅');
   });
 
   test('returns distinct failure when calendar permission is denied', () async {
@@ -73,6 +74,10 @@ void main() {
     final result = await service.importNaverEvents();
 
     expect(result.status, DeviceCalendarImportStatus.permissionDenied);
+    expect(
+      result.message,
+      '기기 캘린더 권한이 필요합니다. Android 앱 설정에서 캘린더 권한을 허용해 주세요.',
+    );
   });
 
   test('returns distinct failure when no Naver calendar is found', () async {
@@ -90,6 +95,10 @@ void main() {
 
     expect(result.status, DeviceCalendarImportStatus.noNaverCalendars);
     expect(result.calendars.single.label, 'Samsung Calendar');
+    expect(
+      result.message,
+      contains('휴대폰 캘린더 저장소에서 네이버 캘린더를 찾지 못했습니다.'),
+    );
   });
 
   test('returns distinct failure when Naver calendar has no events', () async {
@@ -107,6 +116,8 @@ void main() {
     final result = await service.importNaverEvents();
 
     expect(result.status, DeviceCalendarImportStatus.noEvents);
+    expect(result.message, contains('네이버 기기 캘린더는 보이지만 가져올 일정이 없습니다.'));
+    expect(result.message, contains('Naver Calendar'));
   });
 }
 

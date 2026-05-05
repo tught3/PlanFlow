@@ -178,8 +178,8 @@ class _ShellScreenState extends State<ShellScreen> {
           title: const Text('네이버 캘린더 연결이 필요합니다'),
           content: Text(
             '$reason\n\n'
-            '네이버 로그인 동의 화면에서 선택 권한인 “캘린더 일정담기”를 체크해야 '
-            'PlanFlow 일정을 네이버 캘린더에 담을 수 있습니다.',
+            '네이버 동의 화면에서 선택 권한인 캘린더 일정담기를 체크해야 '
+            'PlanFlow 일정을 네이버 캘린더에 보낼 수 있습니다.',
           ),
           actions: [
             TextButton(
@@ -200,7 +200,7 @@ class _ShellScreenState extends State<ShellScreen> {
       if (!mounted) {
         return;
       }
-      _showSnack('네이버 동의 화면에서 “캘린더 일정담기”를 체크해 주세요.');
+      _showSnack('네이버 동의 화면에서 캘린더 일정담기를 체크해 주세요.');
       await _authService.reconnectNaverCalendar();
     }
   }

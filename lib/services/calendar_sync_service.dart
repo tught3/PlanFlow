@@ -418,7 +418,8 @@ class CalendarSyncService {
     }
 
     try {
-      final existingConnection = await _fetchConnection(CalendarProvider.google);
+      final existingConnection =
+          await _fetchConnection(CalendarProvider.google);
       if (!interactive &&
           (existingConnection == null || !existingConnection.isConnected)) {
         return CalendarIntegrationResult.signedOut(
@@ -450,6 +451,8 @@ class CalendarSyncService {
               'Google 로그인 또는 Calendar 권한 동의가 완료되지 않았습니다. 다시 동기화를 눌러 계정과 권한을 확인해 주세요.',
         );
       }
+
+      await _ensureSupabaseSessionForCalendarWrite();
 
       if (existingConnection?.providerAccountEmail != null &&
           _lastGoogleAccountEmail != null &&
@@ -618,6 +621,8 @@ class CalendarSyncService {
         );
       }
 
+      await _ensureSupabaseSessionForCalendarWrite();
+
       final events = await _eventsForNaverExport();
       if (events.isEmpty) {
         return CalendarIntegrationResult.synced(
@@ -700,17 +705,16 @@ class CalendarSyncService {
         .where((event) => !event.startAt!.isBefore(lowerBound))
         .where((event) => event.source != 'naver')
         .where((event) {
-          if (event.externalCalendarId != 'naver:default') {
-            return true;
-          }
-          final lastSyncedAt = event.lastSyncedAt;
-          final updatedAt = event.updatedAt;
-          if (lastSyncedAt == null || updatedAt == null) {
-            return true;
-          }
-          return updatedAt.toUtc().isAfter(lastSyncedAt.toUtc());
-        })
-        .toList()
+      if (event.externalCalendarId != 'naver:default') {
+        return true;
+      }
+      final lastSyncedAt = event.lastSyncedAt;
+      final updatedAt = event.updatedAt;
+      if (lastSyncedAt == null || updatedAt == null) {
+        return true;
+      }
+      return updatedAt.toUtc().isAfter(lastSyncedAt.toUtc());
+    }).toList()
       ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
     return filtered.take(_naverExportLimit).toList(growable: false);
   }
@@ -917,6 +921,11 @@ class CalendarSyncService {
     }
 
     final errorText = error.toString().toLowerCase();
+    if (errorText.contains('row-level security') ||
+        errorText.contains('42501')) {
+      return 'Google Calendar 인증은 완료됐지만 Supabase 일정 저장 정책(RLS)에 막혔습니다. Supabase SQL 스키마와 events INSERT 정책을 적용해 주세요.';
+    }
+
     if (errorText.contains('insufficient') ||
         errorText.contains('permission') ||
         errorText.contains('forbidden') ||
@@ -1128,12 +1137,51 @@ class CalendarSyncService {
   }
 
   String _currentUserId() {
-    final userId =
-        _currentUserIdOverride ?? Supabase.instance.client.auth.currentUser?.id;
+    final override = _currentUserIdOverride;
+    if (override != null && override.isNotEmpty) {
+      return override;
+    }
+
+    String? userId;
+    try {
+      final auth = Supabase.instance.client.auth;
+      userId = auth.currentSession?.user.id ?? auth.currentUser?.id;
+    } catch (error) {
+      debugPrint('Calendar current user lookup failed: $error');
+    }
+
     if (userId == null || userId.isEmpty) {
       throw StateError('캘린더 일정을 동기화하려면 로그인된 사용자가 필요합니다.');
     }
     return userId;
+  }
+
+  Future<void> _ensureSupabaseSessionForCalendarWrite() async {
+    if (_currentUserIdOverride != null) {
+      return;
+    }
+
+    final auth = Supabase.instance.client.auth;
+    if (auth.currentSession == null) {
+      throw StateError('캘린더 일정을 저장하려면 PlanFlow 로그인이 필요합니다.');
+    }
+
+    try {
+      await auth.getUser();
+      return;
+    } catch (error) {
+      debugPrint('Calendar Supabase user check failed: $error');
+    }
+
+    try {
+      await auth.refreshSession();
+      await auth.getUser();
+    } catch (error) {
+      debugPrint('Calendar Supabase session refresh failed: $error');
+      throw StateError(
+        'PlanFlow 로그인 세션을 확인하지 못했습니다. 로그아웃 후 다시 로그인해 주세요.',
+      );
+    }
   }
 
   static Future<List<gcal.Event>> _defaultGoogleCalendarEventsFetcher(
@@ -1168,7 +1216,8 @@ class CalendarSyncService {
     }
     final endAt = event.endAt ?? startAt.add(const Duration(minutes: 30));
     final now = DateTime.now().toUtc();
-    final uid = 'planflow-${event.id.trim().isNotEmpty ? event.id.trim() : '${event.userId}-${event.title}-${startAt.toIso8601String()}'}@planflow';
+    final uid =
+        'planflow-${event.id.trim().isNotEmpty ? event.id.trim() : '${event.userId}-${event.title}-${startAt.toIso8601String()}'}@planflow';
 
     return [
       'BEGIN:VCALENDAR',

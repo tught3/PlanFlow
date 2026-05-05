@@ -102,7 +102,7 @@ class OAuthCallbackHandler {
       latestUserMessage.value = _messageForAuthException(error);
     } catch (error) {
       debugPrint('OAuth callback exchange failed: $error');
-      latestUserMessage.value = '소셜 로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      latestUserMessage.value = '로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
     }
   }
 
@@ -119,13 +119,16 @@ class OAuthCallbackHandler {
 
     final combined = '$error $errorCode $description';
     if (combined.contains('access_denied')) {
-      return '네이버 동의 화면에서 권한이 취소되었거나 캘린더 일정담기 동의가 완료되지 않았습니다. 다시 시도해 주세요.';
+      return '네이버 동의 화면에서 권한을 취소했거나 캘린더 일정담기 동의가 완료되지 않았습니다. 다시 시도해 주세요.';
     }
     if (combined.contains('manual_linking_disabled')) {
-      return 'Supabase에서 Manual Linking을 켜야 네이버 캘린더 권한을 추가 연결할 수 있습니다.';
+      return 'Supabase에서 Allow manual linking을 켜야 네이버 캘린더 권한을 추가 연결할 수 있습니다.';
     }
     if (combined.contains('bad_oauth_callback') || combined.contains('state')) {
-      return '네이버 인증 콜백이 잘못되어 연결을 완료하지 못했습니다. Supabase URL 설정을 확인해 주세요.';
+      return '네이버 인증 콜백이 올바르지 않아 연결을 완료하지 못했습니다. Supabase URL 설정을 확인해 주세요.';
+    }
+    if (combined.contains('identity_already_exists')) {
+      return '이 네이버 계정은 이미 다른 PlanFlow 계정에 연결되어 있습니다. 해당 네이버 계정으로 로그인하거나 Supabase Users에서 기존 연결을 정리한 뒤 다시 시도해 주세요.';
     }
     if (combined.contains('provider_email_needs_verification') ||
         combined.contains('getting user email')) {
@@ -137,6 +140,9 @@ class OAuthCallbackHandler {
 
   String _messageForAuthException(AuthException error) {
     final message = error.message.toLowerCase();
+    if (message.contains('identity_already_exists')) {
+      return '이 네이버 계정은 이미 다른 PlanFlow 계정에 연결되어 있습니다. 기존 연결을 정리하거나 같은 네이버 계정으로 로그인해 주세요.';
+    }
     if (message.contains('getting user email')) {
       return '네이버 인증은 됐지만 이메일 정보를 받지 못해 로그인을 완료하지 못했습니다. '
           'Naver Developers에서 이메일 제공 항목을 필수로 켜고, Supabase Userinfo URL을 naver-userinfo-proxy로 바꿔 주세요.';

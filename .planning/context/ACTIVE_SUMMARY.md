@@ -157,3 +157,18 @@
 
 - Calendar schema rollout safety checkpoint: added `supabase/calendar_sync_patch.sql` as a small 72-line SQL patch for Supabase SQL Editor when the full `schema.sql` is too large to paste. Hardened `EventRepository` so Home/Calendar/Event reads and normal event writes fall back to the legacy events column set if the remote DB has not received the new sync columns yet. This prevents the app from showing "일정 불러오기 실패" just because `external_calendar_id`/`external_updated_at`/`last_synced_at` are not applied yet. Validation: `flutter analyze`, full `flutter test` (72 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, and `adb pidof` passed.
 - Device Naver calendar import checkpoint: added Android `READ_CALENDAR` support, native Calendar Provider MethodChannel methods, login onboarding calendar permission, `DeviceCalendarService`, Settings actions for "휴대폰 네이버 일정 가져오기" and device calendar diagnostics, and tests for Naver calendar detection/import/failure states. Imported phone-calendar Naver events are saved as `source='naver_device'` with stable `android:{calendarId}:{eventId}` external IDs. Validation: `flutter analyze`, full `flutter test` (78 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `dumpsys package` confirmed `READ_CALENDAR` is declared but currently not yet granted on the test device.
+
+## 2026-05-05 Calendar sync ADB diagnosis checkpoint
+- Confirmed actual work path is E:\FluxStudio\PlanFlow and kept E:\Project\PlanFlow reference-only.
+- ADB verified PlanFlow package com.example.planflow after force-stopping unrelated com.aiexpense.tracker.
+- Google Calendar OAuth reaches API but Supabase events insert fails with PostgREST 42501 row-level security; app now reports this as Supabase RLS/schema issue instead of Google permission issue.
+- Added events RLS policies to supabase/calendar_sync_patch.sql so the short SQL patch can unblock Google Calendar event persistence when applied in Supabase SQL Editor.
+- Device calendar import logs now show detected calendars and Naver candidates; the test device exposes tugh3@naver.com as Samsung Calendar but has 0 event rows, so there is nothing for PlanFlow to import until the phone calendar store receives Naver events.
+- OAuth/Naver and shell user-facing messages were cleaned to Korean UTF-8 and identity_already_exists now explains the account-link conflict.
+- Verification: flutter analyze, flutter test, flutter build apk --debug passed; APK installed and PlanFlow launched on ADB device.
+
+## 2026-05-05 Calendar sync verification finish
+- Confirmed Flutter analyze/test/build all pass after calendar diagnostics fixes.
+- Reinstalled and launched com.example.planflow on the connected Android device.
+- Google Calendar reaches OAuth/API but remote Supabase events insert is blocked by RLS until calendar_sync_patch.sql is applied.
+- Device calendar import sees the Naver account calendar, but Android Calendar Provider currently returns 0 synced event rows.

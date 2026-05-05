@@ -276,8 +276,10 @@ class DeviceCalendarService {
     DateTime? startAt,
     DateTime? endAt,
   }) async {
-    final resolvedUserId =
-        userId ?? _currentUserId ?? _client?.auth.currentUser?.id;
+    final resolvedUserId = userId ??
+        _currentUserId ??
+        _client?.auth.currentSession?.user.id ??
+        _client?.auth.currentUser?.id;
     if (resolvedUserId == null || resolvedUserId.isEmpty) {
       return const DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.failed,
@@ -304,11 +306,17 @@ class DeviceCalendarService {
       }
 
       final naverCalendars = findNaverCalendars(calendars);
+      debugPrint(
+        'Device calendars: ${calendars.map((calendar) => '${calendar.id}:${calendar.label}:${calendar.accountName ?? ''}').join(', ')}',
+      );
+      debugPrint(
+        'Naver device calendar candidates: ${naverCalendars.map((calendar) => '${calendar.id}:${calendar.label}:${calendar.accountName ?? ''}').join(', ')}',
+      );
       if (naverCalendars.isEmpty) {
         return DeviceCalendarImportResult(
           status: DeviceCalendarImportStatus.noNaverCalendars,
           message:
-              '휴대폰 캘린더 저장소에서 네이버 캘린더를 찾지 못했습니다. 네이버 캘린더 앱의 기기 동기화 설정을 확인해 주세요.',
+              '휴대폰 캘린더 저장소에서 네이버 캘린더를 찾지 못했습니다. 네이버 캘린더 앱 또는 삼성 캘린더에서 기기 동기화가 켜져 있는지 확인해 주세요.',
           calendars: calendars,
         );
       }
@@ -320,17 +328,29 @@ class DeviceCalendarService {
         endAt: endAt ?? now.add(const Duration(days: 365)),
       );
       _throwIfNativeError(rows);
+      debugPrint(
+        'Naver device calendar event rows: ${rows.length} from calendars ${naverCalendars.map((calendar) => calendar.id).join(',')}',
+      );
 
       final events = rows
           .map(DeviceCalendarEvent.fromMap)
-          .where((event) =>
-              event.eventId.trim().isNotEmpty &&
-              event.calendarId.trim().isNotEmpty)
+          .where(
+            (event) =>
+                event.eventId.trim().isNotEmpty &&
+                event.calendarId.trim().isNotEmpty,
+          )
           .toList(growable: false);
       if (events.isEmpty) {
+        final labels = naverCalendars
+            .map(
+              (calendar) =>
+                  '${calendar.label}(${calendar.accountName ?? calendar.id})',
+            )
+            .join(', ');
         return DeviceCalendarImportResult(
           status: DeviceCalendarImportStatus.noEvents,
-          message: '네이버 기기 캘린더에 가져올 일정이 없습니다.',
+          message:
+              '네이버 기기 캘린더는 보이지만 가져올 일정이 없습니다. 확인된 캘린더: $labels. 네이버 캘린더 앱에서 휴대폰/삼성 캘린더 동기화가 켜져 있는지 확인해 주세요.',
           calendars: naverCalendars,
         );
       }

@@ -56,7 +56,8 @@ class SupabaseCalendarConnectionRepository
     if (response == null) {
       return null;
     }
-    return CalendarConnectionModel.fromJson(Map<String, dynamic>.from(response));
+    return CalendarConnectionModel.fromJson(
+        Map<String, dynamic>.from(response));
   }
 
   @override
@@ -73,7 +74,8 @@ class SupabaseCalendarConnectionRepository
         .select(_selectColumns)
         .single();
 
-    return CalendarConnectionModel.fromJson(Map<String, dynamic>.from(response));
+    return CalendarConnectionModel.fromJson(
+        Map<String, dynamic>.from(response));
   }
 
   @override
@@ -107,7 +109,8 @@ class SupabaseCalendarConnectionRepository
   }
 
   void _validateUser(String userId) {
-    final currentUserId = _client.auth.currentUser?.id;
+    final currentUserId =
+        _client.auth.currentSession?.user.id ?? _client.auth.currentUser?.id;
     if (currentUserId != null &&
         currentUserId.isNotEmpty &&
         currentUserId != userId) {
