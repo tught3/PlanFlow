@@ -87,6 +87,27 @@ void main() {
     expect(client.requests.last.url.path, '/calendars/tught3/');
   });
 
+  test('testConnection tries home path after root and calendar path 404',
+      () async {
+    final client = _FakePropfindClient(responses: <int>[404, 404, 207]);
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(),
+    );
+
+    final result = await service.testConnection(
+      naverId: 'tught3',
+      appPassword: 'app-password',
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(client.requests.map((request) => request.url.path), <String>[
+      '/',
+      '/calendars/tught3/',
+      '/calendars/tught3/home/',
+    ]);
+  });
+
   test('getCalendars parses CalDAV calendar list', () async {
     final service = NaverCalDavService(
       httpClient: _FakePropfindClient(
@@ -223,12 +244,43 @@ void main() {
     expect(client.requests, hasLength(4));
     expect(client.requests[2].method, 'PROPFIND');
     expect(client.requests[3].method, 'GET');
+    expect(
+        client.requests[3].url.path, '/calendars/tught3/default/event-1.ics');
   });
 
-  test('getEvents can stop after ranged report for quick sync', () async {
+  test('getEvents keeps zero-duration events exactly at range start', () async {
     final client = _FakePropfindClient(
-      responses: <int>[207],
-      bodies: <String>[_emptyEventReportXml],
+      responses: <int>[207, 207],
+      bodies: <String>[_emptyEventReportXml, _zeroDurationEventReportXml],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+    );
+
+    final events = await service.getEvents(
+      calendarPath: '/calendars/tught3/default/',
+      from: DateTime.utc(2026, 5, 5, 1),
+      to: DateTime.utc(2026, 5, 6),
+    );
+
+    expect(events, hasLength(1));
+    expect(events.single.uid, 'zero-duration-1');
+  });
+
+  test('quick sync diagnoses empty ranged report with fallback paths',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[207, 207, 207, 200],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _emptyEventReportXml,
+        _eventListXml,
+        _eventIcs,
+      ],
     );
     final service = NaverCalDavService(
       httpClient: client,
@@ -242,13 +294,17 @@ void main() {
       calendarPath: '/calendars/tught3/default/',
       from: DateTime.utc(2026, 5),
       to: DateTime.utc(2026, 6),
-      allowFullFallback: false,
-      allowResourceFallback: false,
+      allowFullFallback: true,
+      allowResourceFallback: true,
     );
 
-    expect(events, isEmpty);
-    expect(client.requests, hasLength(1));
-    expect(client.requests.single.method, 'REPORT');
+    expect(events, hasLength(1));
+    expect(client.requests.map((request) => request.method), <String>[
+      'REPORT',
+      'REPORT',
+      'PROPFIND',
+      'GET',
+    ]);
   });
 
   test('parseIcal handles all-day dates and escaped text', () {
@@ -356,6 +412,33 @@ END:VCALENDAR
     expect(repository.upserted, isEmpty);
     expect(progress.map((item) => item.stage),
         contains(NaverCalDavSyncStage.saving));
+  });
+
+  test('getCalendars tries home path when calendar root is empty', () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _emptyEventReportXml,
+        _calendarListXml,
+      ],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+    );
+
+    final calendars = await service.getCalendars();
+
+    expect(calendars, hasLength(1));
+    expect(client.requests.map((request) => request.url.path), <String>[
+      '/',
+      '/calendars/tught3/',
+      '/calendars/tught3/home/',
+    ]);
   });
 }
 
@@ -562,6 +645,29 @@ END:VCALENDAR
 const String _emptyEventReportXml = '''
 <?xml version="1.0" encoding="utf-8"?>
 <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+</d:multistatus>
+''';
+
+const String _zeroDurationEventReportXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/calendars/tught3/default/zero-duration-1.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-zero-1"</d:getetag>
+        <c:calendar-data><![CDATA[
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:zero-duration-1
+SUMMARY:범위 시작 일정
+DTSTART:20260505T010000Z
+END:VEVENT
+END:VCALENDAR
+        ]]></c:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
 </d:multistatus>
 ''';
 

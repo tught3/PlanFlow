@@ -362,6 +362,12 @@ class NaverCalDavService {
         _throwForCalDavStatus(response.statusCode, endpoint);
         final calendars = _parseCalendarsFromResponse(response.body);
         debugPrint('Naver CalDAV 캘린더 목록: $path / ${calendars.length}개');
+        for (final calendar in calendars) {
+          debugPrint(
+            'Naver CalDAV 캘린더: name="${calendar.displayName}", '
+            'path="${calendar.path}", ctag="${calendar.ctag ?? ''}"',
+          );
+        }
         if (calendars.isNotEmpty) {
           return calendars;
         }
@@ -393,7 +399,11 @@ class NaverCalDavService {
     final startAt = (from ?? now.subtract(const Duration(days: 90))).toUtc();
     final endAt = (to ?? now.add(const Duration(days: 180))).toUtc();
     final endpoint = _baseUri.replace(path: calendarPath);
-    debugPrint('Naver CalDAV 일정 조회 시작: $calendarPath');
+    debugPrint(
+      'Naver CalDAV 일정 조회 시작: path=$calendarPath, url=$endpoint, '
+      'utc=${_formatCalDavUtc(startAt)}~${_formatCalDavUtc(endAt)}, '
+      'kst=${startAt.toLocal()}~${endAt.toLocal()}',
+    );
     final rangedEvents = await _queryEvents(
       endpoint: endpoint,
       naverId: credentials.naverId,
@@ -415,10 +425,14 @@ class NaverCalDavService {
       appPassword: credentials.appPassword,
       body: _reportBody(null, null, includeTimeRange: false),
     );
+    final filteredFallbackEvents =
+        _filterEventsByRange(fallbackEvents, startAt, endAt);
     debugPrint(
-        'Naver CalDAV 전체 REPORT: $calendarPath / ${fallbackEvents.length}개');
-    if (fallbackEvents.isNotEmpty) {
-      return fallbackEvents;
+      'Naver CalDAV 전체 REPORT: $calendarPath / '
+      '${fallbackEvents.length}개, 범위 내 ${filteredFallbackEvents.length}개',
+    );
+    if (filteredFallbackEvents.isNotEmpty) {
+      return filteredFallbackEvents;
     }
     if (!allowResourceFallback) {
       return const <NaverCalDavEvent>[];
@@ -429,9 +443,13 @@ class NaverCalDavService {
       naverId: credentials.naverId,
       appPassword: credentials.appPassword,
     );
+    final filteredResourceEvents =
+        _filterEventsByRange(resourceEvents, startAt, endAt);
     debugPrint(
-        'Naver CalDAV 리소스 GET: $calendarPath / ${resourceEvents.length}개');
-    return resourceEvents;
+      'Naver CalDAV 리소스 GET: $calendarPath / '
+      '${resourceEvents.length}개, 범위 내 ${filteredResourceEvents.length}개',
+    );
+    return filteredResourceEvents;
   }
 
   Future<List<NaverCalDavEvent>> _queryEvents({
@@ -448,6 +466,7 @@ class NaverCalDavService {
       body: body,
       depth: '1',
     );
+    debugPrint('Naver CalDAV REPORT 응답: $endpoint / ${response.statusCode}');
     _throwForCalDavStatus(response.statusCode, endpoint);
 
     final document = XmlDocument.parse(response.body);
@@ -467,6 +486,21 @@ class NaverCalDavService {
       }
     }
     return events;
+  }
+
+  List<NaverCalDavEvent> _filterEventsByRange(
+    List<NaverCalDavEvent> events,
+    DateTime startAt,
+    DateTime endAt,
+  ) {
+    return events.where((event) {
+      final eventStart = event.startAt.toUtc();
+      final eventEnd = event.endAt?.toUtc() ?? eventStart;
+      if (eventEnd == eventStart) {
+        return !eventStart.isBefore(startAt) && eventStart.isBefore(endAt);
+      }
+      return eventEnd.isAfter(startAt) && eventStart.isBefore(endAt);
+    }).toList(growable: false);
   }
 
   Future<List<NaverCalDavEvent>> _loadEventsFromResources({
@@ -524,7 +558,7 @@ class NaverCalDavService {
       if (href == null || href.trim().isEmpty) {
         continue;
       }
-      final normalizedHref = _normalizeCalDavPath(href) ?? href;
+      final normalizedHref = _normalizeCalDavResourcePath(href) ?? href;
       if (normalizedHref == endpoint.path) {
         continue;
       }
@@ -651,8 +685,8 @@ class NaverCalDavService {
           calendarPath: calendar.path,
           from: range.from,
           to: range.to,
-          allowFullFallback: mode != NaverCalDavSyncMode.quick,
-          allowResourceFallback: mode != NaverCalDavSyncMode.quick,
+          allowFullFallback: true,
+          allowResourceFallback: true,
         );
         eventCount += events.length;
         for (var eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
@@ -890,6 +924,7 @@ class NaverCalDavService {
     return <Uri>[
       _baseUri.replace(path: '/'),
       _baseUri.replace(path: '/calendars/$encodedId/'),
+      _baseUri.replace(path: '/calendars/$encodedId/home/'),
     ];
   }
 
@@ -1004,7 +1039,9 @@ class NaverCalDavService {
       debugPrint('Naver CalDAV root discovery failed: $error');
     }
 
-    addPath('/calendars/${Uri.encodeComponent(credentials.naverId)}/');
+    final encodedId = Uri.encodeComponent(credentials.naverId);
+    addPath('/calendars/$encodedId/');
+    addPath('/calendars/$encodedId/home/');
     return paths.toList(growable: false);
   }
 
@@ -1073,6 +1110,16 @@ class NaverCalDavService {
     return withLeadingSlash.endsWith('/')
         ? withLeadingSlash
         : '$withLeadingSlash/';
+  }
+
+  String? _normalizeCalDavResourcePath(String? rawPath) {
+    final text = rawPath?.trim();
+    if (text == null || text.isEmpty) {
+      return null;
+    }
+    final parsed = Uri.tryParse(text);
+    final path = parsed != null && parsed.hasScheme ? parsed.path : text;
+    return path.startsWith('/') ? path : '/$path';
   }
 
   Future<_NaverCalDavHttpResponse> _sendXmlRequest({

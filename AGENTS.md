@@ -50,6 +50,7 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - For 1st release, do not implement billing, ads, reward ads, Kakao/SMS/call detection, or TEAM/BUSINESS features.
 - Naver Calendar is now a 1st-release working feature. Keep OAuth consent, token handling, and calendar export behavior visible and testable.
 - Keep all user-facing UI text Korean unless a platform/provider brand requires otherwise.
+- If Korean text appears broken/mojibake in terminal output, re-read the file or output explicitly as UTF-8 before interpreting or editing it. Do not make decisions from broken Korean text.
 - Voice files must never be sent to external servers. Only STT text may be stored or sent for parsing.
 - `speech_to_text` must use `SpeechListenOptions(onDevice: true)` for STT.
 - If ADB screenshots or mirroring are black, ask the user to turn on the phone screen before visual verification.

@@ -219,3 +219,11 @@
 - external_etag를 모델, 저장소, schema.sql, calendar_sync_patch.sql에 반영하고 etag/수정시각 기반 skip을 추가했다.
 - 같은 UID가 여러 캘린더에서 충돌하지 않도록 CalDAV external_id를 calendarPath+uid 안정 키로 변경했다.
 - 검증: flutter analyze, flutter test, flutter build apk --debug, adb install/launch 통과. scripts/gsd-context-hygiene.mjs는 없음.
+
+## 2026-05-05 Voice action and Naver CalDAV diagnostics checkpoint
+- Added AGENTS.md rule to re-read broken Korean/mojibake output explicitly as UTF-8 before interpreting or editing.
+- Changed voice input routing so ordinary schedule phrases default to add/confirm flow, while explicit edit/delete/query/manage intents still open the voice action screen.
+- Improved VoiceActionScreen empty/error states so action buttons visibly change state and offer recovery actions: add as new schedule, retry voice, or open calendar.
+- Strengthened Naver CalDAV diagnostics with calendar name/path/ctag logs, REPORT URL/range/status logs, `/home/` candidate paths, full/resource fallback even during quick sync, stable resource href handling, and inclusive zero-duration range filtering.
+- Added tests for ordinary voice add routing, explicit voice edit routing, CalDAV home connection fallback, quick fallback diagnostics, resource href path preservation, and range-start zero-duration events.
+- Verification: flutter analyze, targeted voice/CalDAV tests, full flutter test, flutter build apk --debug, adb install, and adb launch passed. scripts/gsd-context-hygiene.mjs remains absent.

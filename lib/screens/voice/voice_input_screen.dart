@@ -164,6 +164,17 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
 
     final commandAction = _detectCommandAction(rawText);
+    if (commandAction == _VoiceCommandAction.add) {
+      context.push(
+        AppRoutes.confirm,
+        extra: <String, dynamic>{
+          'raw_text': rawText,
+          'memo': rawText,
+          'parse_pending': true,
+        },
+      );
+      return;
+    }
     context.push(
       AppRoutes.voiceAction,
       extra: <String, dynamic>{
@@ -175,6 +186,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
   _VoiceCommandAction _detectCommandAction(String text) {
     final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
+    if (RegExp(r'(일정\s*관리|관리해|무엇을\s*할|뭘\s*할|어떻게\s*할|선택)')
+        .hasMatch(normalized)) {
+      return _VoiceCommandAction.choose;
+    }
     if (RegExp(r'(삭제|지워|없애)').hasMatch(normalized)) {
       return _VoiceCommandAction.delete;
     }
@@ -187,7 +202,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (RegExp(r'(추가|등록|만들|넣어|예약|기록)').hasMatch(normalized)) {
       return _VoiceCommandAction.add;
     }
-    return _VoiceCommandAction.choose;
+    return _VoiceCommandAction.add;
   }
 
   void _setTranscriptText(String text) {

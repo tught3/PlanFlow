@@ -188,7 +188,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
           ..clear()
           ..addAll(ranked);
         _message = ranked.isEmpty
-            ? '조건에 맞는 일정을 찾지 못했어요. 내용을 다시 말해 보거나 직접 선택해 보세요.'
+            ? '조건에 맞는 일정을 찾지 못했어요. 아래에서 새 일정으로 추가하거나 다시 말해 주세요.'
             : null;
         _isLoading = false;
       });
@@ -210,7 +210,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       _selectedAction = action;
       _hasChosenAction = true;
       _events.clear();
-      _message = null;
+      _message = action == VoiceScheduleAction.add ? '일정 확인 화면으로 이동합니다.' : null;
       _isLoading = action != VoiceScheduleAction.add;
     });
 
@@ -549,7 +549,14 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                   ),
                 )
               else if (_message != null)
-                _EmptyCard(message: _message!)
+                _EmptyCard(
+                  message: _message!,
+                  rawText: widget.rawText,
+                  showRecoveryActions: !_isAdd,
+                  onAdd: _openAddConfirm,
+                  onRetryVoice: () => context.go(AppRoutes.voice),
+                  onOpenCalendar: () => context.go(AppRoutes.calendar),
+                )
               else ...[
                 Text(
                   _isQuery ? '단순 조회 결과' : '대상 일정',
@@ -778,9 +785,21 @@ class _ActionChooserCard extends StatelessWidget {
 }
 
 class _EmptyCard extends StatelessWidget {
-  const _EmptyCard({required this.message});
+  const _EmptyCard({
+    required this.message,
+    this.rawText,
+    this.showRecoveryActions = false,
+    this.onAdd,
+    this.onRetryVoice,
+    this.onOpenCalendar,
+  });
 
   final String message;
+  final String? rawText;
+  final bool showRecoveryActions;
+  final VoidCallback? onAdd;
+  final VoidCallback? onRetryVoice;
+  final VoidCallback? onOpenCalendar;
 
   @override
   Widget build(BuildContext context) {
@@ -791,11 +810,48 @@ class _EmptyCard extends StatelessWidget {
       color: PlanFlowColors.surface,
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Text(
-          message,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: PlanFlowColors.textSecondary,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+            if (showRecoveryActions) ...[
+              const SizedBox(height: 12),
+              if (rawText != null && rawText!.trim().isNotEmpty)
+                Text(
+                  '말한 내용: ${rawText!.trim()}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: onAdd,
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('새 일정으로 추가'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: onRetryVoice,
+                    icon: const Icon(Icons.mic_none),
+                    label: const Text('다시 말하기'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: onOpenCalendar,
+                    icon: const Icon(Icons.calendar_month_outlined),
+                    label: const Text('일정 탭 보기'),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
       ),
     );
