@@ -185,6 +185,11 @@ class GptService {
     normalized.putIfAbsent('travel_mode', () => null);
     normalized['supplies'] = _normalizeSupplies(normalized['supplies']);
     normalized['pre_actions'] = _normalizePreActions(normalized['pre_actions']);
+    final inferredStartAt = _inferStartAtFromRawText(rawText);
+    if (_parseDateTime(normalized['start_at']) == null &&
+        inferredStartAt != null) {
+      normalized['start_at'] = inferredStartAt.toIso8601String();
+    }
     return normalized;
   }
 
@@ -192,6 +197,7 @@ class GptService {
     required String rawText,
     String? rawResponse,
   }) {
+    final inferredStartAt = _inferStartAtFromRawText(rawText);
     return <String, dynamic>{
       'parse_failed': true,
       'raw_text': rawText,
@@ -199,7 +205,7 @@ class GptService {
         'raw_response': rawResponse,
       'title': rawText.trim(),
       'date': null,
-      'start_at': null,
+      'start_at': inferredStartAt?.toIso8601String(),
       'end_at': null,
       'location': null,
       'location_lat': null,
@@ -245,6 +251,168 @@ class GptService {
         .where((item) => item['title'] != null && item['offset_hours'] != null)
         .toList(growable: false);
   }
+
+  DateTime? _parseDateTime(Object? value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is DateTime) {
+      return value;
+    }
+    final text = value.toString().trim();
+    if (text.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(text);
+  }
+
+  DateTime? _inferStartAtFromRawText(String rawText) {
+    final normalized = _normalizeKoreanText(rawText);
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    final now = DateTime.now();
+    final date = _extractDateFromText(normalized, now);
+    final time = _extractTimeFromText(normalized);
+
+    if (date == null && time == null) {
+      return null;
+    }
+
+    final baseDate = date ?? DateTime(now.year, now.month, now.day);
+    final clock = time ?? const _ClockTime(hour: 9, minute: 0);
+    var candidate = DateTime(
+      baseDate.year,
+      baseDate.month,
+      baseDate.day,
+      clock.hour,
+      clock.minute,
+    );
+
+    if (date == null && time != null && candidate.isBefore(now)) {
+      candidate = candidate.add(const Duration(days: 1));
+    }
+
+    return candidate;
+  }
+
+  DateTime? _extractDateFromText(String text, DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (text.contains('내일')) {
+      return today.add(const Duration(days: 1));
+    }
+    if (text.contains('모레')) {
+      return today.add(const Duration(days: 2));
+    }
+    if (text.contains('글피')) {
+      return today.add(const Duration(days: 3));
+    }
+    if (text.contains('오늘')) {
+      return today;
+    }
+
+    final explicitDate = RegExp(
+      r'(?:(?<year>\d{4})년\s*)?(?<month>\d{1,2})월\s*(?<day>\d{1,2})일',
+    ).firstMatch(text);
+    if (explicitDate != null) {
+      final yearText = explicitDate.namedGroup('year');
+      final monthText = explicitDate.namedGroup('month');
+      final dayText = explicitDate.namedGroup('day');
+      final month = int.tryParse(monthText ?? '');
+      final day = int.tryParse(dayText ?? '');
+      if (month != null && day != null) {
+        final year = int.tryParse(yearText ?? '') ?? now.year;
+        var candidate = DateTime(year, month, day);
+        if (yearText == null &&
+            candidate.isBefore(today) &&
+            candidate.year == now.year) {
+          candidate = DateTime(year + 1, month, day);
+        }
+        return candidate;
+      }
+    }
+
+    final weekDay = _extractWeekdayOffset(text);
+    if (weekDay != null) {
+      return weekDay;
+    }
+
+    return null;
+  }
+
+  DateTime? _extractWeekdayOffset(String text) {
+    const weekdays = <String, int>{
+      '일요일': DateTime.sunday,
+      '월요일': DateTime.monday,
+      '화요일': DateTime.tuesday,
+      '수요일': DateTime.wednesday,
+      '목요일': DateTime.thursday,
+      '금요일': DateTime.friday,
+      '토요일': DateTime.saturday,
+    };
+
+    final now = DateTime.now();
+    for (final entry in weekdays.entries) {
+      if (!text.contains(entry.key)) {
+        continue;
+      }
+      final currentWeekday = now.weekday;
+      final targetWeekday = entry.value;
+      var delta = targetWeekday - currentWeekday;
+      if (delta <= 0) {
+        delta += 7;
+      }
+      return DateTime(now.year, now.month, now.day).add(Duration(days: delta));
+    }
+
+    return null;
+  }
+
+  _ClockTime? _extractTimeFromText(String text) {
+    final match = RegExp(
+      r'(?:(오전|오후)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?',
+    ).firstMatch(text);
+    if (match == null) {
+      return null;
+    }
+
+    final period = match.group(1);
+    var hour = int.tryParse(match.group(2) ?? '');
+    final minute = int.tryParse(match.group(3) ?? '') ?? 0;
+    if (hour == null || minute < 0 || minute > 59) {
+      return null;
+    }
+    if (hour < 0 || hour > 23) {
+      return null;
+    }
+
+    if (period == '오후' && hour < 12) {
+      hour += 12;
+    } else if (period == '오전' && hour == 12) {
+      hour = 0;
+    }
+
+    return _ClockTime(hour: hour, minute: minute);
+  }
+
+  String _normalizeKoreanText(String text) {
+    return text
+        .replaceAll(RegExp(r'[,\.\!\?\(\)\[\]\{\}]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+}
+
+class _ClockTime {
+  const _ClockTime({
+    required this.hour,
+    required this.minute,
+  });
+
+  final int hour;
+  final int minute;
 }
 
 const String _scheduleSystemPrompt = '''

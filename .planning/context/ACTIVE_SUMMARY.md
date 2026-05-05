@@ -227,3 +227,9 @@
 - Strengthened Naver CalDAV diagnostics with calendar name/path/ctag logs, REPORT URL/range/status logs, `/home/` candidate paths, full/resource fallback even during quick sync, stable resource href handling, and inclusive zero-duration range filtering.
 - Added tests for ordinary voice add routing, explicit voice edit routing, CalDAV home connection fallback, quick fallback diagnostics, resource href path preservation, and range-start zero-duration events.
 - Verification: flutter analyze, targeted voice/CalDAV tests, full flutter test, flutter build apk --debug, adb install, and adb launch passed. scripts/gsd-context-hygiene.mjs remains absent.
+
+## 2026-05-05 Korean relative time fallback checkpoint
+- Added Korean relative-time fallback parsing to `GptService` so phrases like `내일 오전 11시 공임나라` now infer `start_at` instead of falling back to the current time.
+- The fallback covers both invalid JSON responses and partial parsed payloads that omit `start_at`, while keeping `end_at` untouched unless the model already provided it.
+- Added a focused unit test covering the next-day 11:00 case and reran the full validation stack.
+- Verification: `flutter analyze`, `flutter test`, and `flutter build apk --debug` passed; APK was reinstalled on the connected device. `scripts/gsd-context-hygiene.mjs` remains absent.

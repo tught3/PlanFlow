@@ -47,6 +47,44 @@ void main() {
       expect(result['title'], 'meeting tomorrow at 3pm');
     });
 
+    test('infers a Korean relative start time when JSON omits start_at',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': 'not valid json',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        apiKey: 'test-key',
+      );
+
+      final result = await service.parseSchedule('내일 오전 11시 공임나라');
+      final parsedStartAt = DateTime.parse(result['start_at'] as String);
+      final now = DateTime.now();
+      final tomorrow =
+          DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+
+      expect(parsedStartAt.year, tomorrow.year);
+      expect(parsedStartAt.month, tomorrow.month);
+      expect(parsedStartAt.day, tomorrow.day);
+      expect(parsedStartAt.hour, 11);
+      expect(parsedStartAt.minute, 0);
+    });
+
     test('uses the morning briefing prompt', () async {
       late Map<String, dynamic> body;
 
