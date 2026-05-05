@@ -76,6 +76,32 @@ class NaverCalendarPermissionService {
     await _preferences.remove(_lastCheckedAtKey);
   }
 
+  Future<void> clearStoredToken() async {
+    final client = _clientOrNull;
+    final userId = client?.auth.currentUser?.id;
+    if (client == null || userId == null || userId.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      await client.from('user_settings').upsert(
+        <String, dynamic>{
+          'user_id': userId,
+          'naver_calendar_token': null,
+        },
+        onConflict: 'user_id',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Naver calendar token clear skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> clearConnectionState() async {
+    await clearStatus();
+    await clearStoredToken();
+  }
+
   Future<bool> captureCurrentProviderToken() {
     return _persistCurrentProviderToken();
   }

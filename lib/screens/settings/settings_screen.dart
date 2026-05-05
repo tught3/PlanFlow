@@ -52,7 +52,8 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   late final SettingsRepository _settingsRepository;
   late final SettingsProvider _settingsProvider;
   late final BriefingSchedulerService _briefingSchedulerService;
@@ -77,15 +78,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isSyncingGoogleCalendar = false;
   bool _isConnectingNaverCalendar = false;
   bool _isSyncingNaverCalendar = false;
+  bool _isDisconnectingNaverCalendar = false;
   bool _isLoadingBackups = false;
   bool _isSavingSettings = false;
   bool _isBackupActionRunning = false;
+  bool _pendingNaverCalendarSyncAfterConsent = false;
 
   String? get _userId => widget._userId ?? authProvider.userId;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _settingsRepository = widget._settingsRepository ??
         (AppEnv.isSupabaseReady
             ? SettingsRepository.supabase()
@@ -115,8 +119,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _settingsProvider.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _pendingNaverCalendarSyncAfterConsent) {
+      unawaited(_resumePendingNaverCalendarSync());
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -197,10 +210,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     setState(() {
       _isConnectingNaverCalendar = true;
+      _pendingNaverCalendarSyncAfterConsent = true;
     });
     try {
       await _naverCalendarPermissionServiceInstance.clearStatus();
-      _showSnack('네이버 동의 화면에서 캘린더 일정담기를 체크해 주세요.');
+      _showSnack(
+        '네이버 동의 화면에서 캘린더 일정담기를 체크해 주세요. 동의가 끝나면 자동으로 동기화를 시도합니다.',
+      );
       final launched = await authService.reconnectNaverCalendar();
       if (!launched) {
         _showSnack('네이버 동의 화면을 열지 못했습니다. 잠시 후 다시 시도해 주세요.');
@@ -248,6 +264,89 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _isSyncingNaverCalendar = false;
     });
     _showSnack(result.message);
+  }
+
+  Future<void> _syncOrReconnectNaverCalendar() async {
+    if (_isConnectingNaverCalendar ||
+        _isSyncingNaverCalendar ||
+        _isDisconnectingNaverCalendar) {
+      return;
+    }
+
+    final naverStatus = _calendarSyncSummary?.naver.status;
+    if (naverStatus == CalendarIntegrationStatus.ready ||
+        naverStatus == CalendarIntegrationStatus.synced) {
+      await _syncNaverCalendar();
+      return;
+    }
+
+    await _connectNaverCalendar();
+  }
+
+  Future<void> _disconnectNaverCalendar() async {
+    final authService = _authService;
+    if (authService == null) {
+      _showSnack('Supabase 설정 후 네이버 연동을 해제할 수 있습니다.');
+      return;
+    }
+    if (!authProvider.isSignedIn) {
+      _showSnack('먼저 PlanFlow에 로그인해 주세요.');
+      return;
+    }
+    if (_isDisconnectingNaverCalendar) {
+      return;
+    }
+
+    setState(() {
+      _isDisconnectingNaverCalendar = true;
+    });
+    try {
+      final unlinked = await authService.disconnectNaverCalendar();
+      await _naverCalendarPermissionServiceInstance.clearConnectionState();
+      if (!mounted) {
+        return;
+      }
+      await _loadCalendarStatus();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _pendingNaverCalendarSyncAfterConsent = false;
+      });
+      _showSnack(
+        unlinked ? '네이버 연동을 해제했습니다.' : '네이버 연동 정보를 정리했습니다. 다시 동기화하면 새로 연결됩니다.',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Naver calendar disconnect failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showSnack('네이버 연동 해제에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDisconnectingNaverCalendar = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _resumePendingNaverCalendarSync() async {
+    if (!mounted || !_pendingNaverCalendarSyncAfterConsent) {
+      return;
+    }
+
+    await _loadCalendarStatus();
+    if (!mounted) {
+      return;
+    }
+
+    final naverStatus = _calendarSyncSummary?.naver.status;
+    if (naverStatus == CalendarIntegrationStatus.ready ||
+        naverStatus == CalendarIntegrationStatus.synced) {
+      setState(() {
+        _pendingNaverCalendarSyncAfterConsent = false;
+      });
+      await _syncNaverCalendar();
+    }
   }
 
   bool _isManualLinkingDisabledError(Object error) {
@@ -631,20 +730,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _isConnectingNaverCalendar
+                          onPressed: _isDisconnectingNaverCalendar
                               ? null
-                              : _connectNaverCalendar,
-                          icon: _isConnectingNaverCalendar
+                              : _disconnectNaverCalendar,
+                          icon: _isDisconnectingNaverCalendar
                               ? const SizedBox.square(
                                   dimension: 18,
                                   child:
                                       CircularProgressIndicator(strokeWidth: 2),
                                 )
-                              : const Icon(Icons.login),
+                              : const Icon(Icons.link_off),
                           label: Text(
-                            _isConnectingNaverCalendar
-                                ? '동의 화면 여는 중...'
-                                : '네이버 권한 동의',
+                            _isDisconnectingNaverCalendar ? '해제 중...' : '연동 해제',
                           ),
                         ),
                       ),
@@ -652,18 +749,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Expanded(
                         child: FilledButton.icon(
                           onPressed: _isLoadingCalendarStatus ||
-                                  _isSyncingNaverCalendar
+                                  _isSyncingNaverCalendar ||
+                                  _isConnectingNaverCalendar ||
+                                  _isDisconnectingNaverCalendar
                               ? null
-                              : _syncNaverCalendar,
-                          icon: _isSyncingNaverCalendar
+                              : _syncOrReconnectNaverCalendar,
+                          icon: _isSyncingNaverCalendar ||
+                                  _isConnectingNaverCalendar
                               ? const SizedBox.square(
                                   dimension: 18,
                                   child:
                                       CircularProgressIndicator(strokeWidth: 2),
                                 )
-                              : const Icon(Icons.upload_outlined),
+                              : const Icon(Icons.sync),
                           label: Text(
-                            _isSyncingNaverCalendar ? '보내는 중...' : '네이버로 보내기',
+                            _isSyncingNaverCalendar
+                                ? '동기화 중...'
+                                : _isConnectingNaverCalendar
+                                    ? '동의 화면 여는 중...'
+                                    : '네이버 동기화',
                           ),
                         ),
                       ),

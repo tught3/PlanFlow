@@ -100,6 +100,36 @@ class AuthService {
     return connectCalendarProvider(PlanFlowOAuthProvider.naver);
   }
 
+  Future<bool> disconnectNaverCalendar() async {
+    final currentUser = _client.auth.currentUser;
+    if (currentUser == null) {
+      return false;
+    }
+
+    try {
+      final identities = await _client.auth.getUserIdentities();
+      UserIdentity? naverIdentity;
+      for (final identity in identities) {
+        final provider = identity.provider.toLowerCase();
+        if (provider.contains('naver')) {
+          naverIdentity = identity;
+          break;
+        }
+      }
+
+      if (naverIdentity == null) {
+        return false;
+      }
+
+      await _client.auth.unlinkIdentity(naverIdentity);
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('Naver calendar disconnect failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
+  }
+
   Future<bool> _launchOAuthUrl({
     required PlanFlowOAuthProvider appProvider,
     required OAuthProvider supabaseProvider,

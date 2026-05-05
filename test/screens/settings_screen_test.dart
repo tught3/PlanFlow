@@ -55,8 +55,8 @@ void main() {
     expect(find.text('기본 알림'), findsNothing);
     expect(find.text('저장'), findsNothing);
     expect(find.text('Naver Calendar'), findsOneWidget);
-    expect(find.text('네이버 권한 동의'), findsOneWidget);
-    expect(find.text('네이버로 보내기'), findsOneWidget);
+    expect(find.text('연동 해제'), findsOneWidget);
+    expect(find.text('네이버 동기화'), findsOneWidget);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 
@@ -193,7 +193,7 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final syncButton = find.widgetWithText(FilledButton, '네이버로 보내기');
+    final syncButton = find.widgetWithText(FilledButton, '네이버 동기화');
     await tester.scrollUntilVisible(syncButton, 200);
     await tester.ensureVisible(syncButton);
     await tester.tap(syncButton);
