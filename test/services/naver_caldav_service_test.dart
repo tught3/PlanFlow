@@ -88,7 +88,7 @@ void main() {
   test('getCalendars parses CalDAV calendar list', () async {
     final service = NaverCalDavService(
       httpClient: _FakePropfindClient(
-        responses: <int>[207],
+        responses: <int>[404, 207],
         bodies: <String>[_calendarListXml],
       ),
       credentialStore: _FakeCredentialStore(
@@ -103,6 +103,34 @@ void main() {
     expect(calendars.single.path, '/calendars/tught3/default/');
     expect(calendars.single.displayName, '내 캘린더');
     expect(calendars.single.ctag, '123');
+  });
+
+  test('getCalendars discovers calendar home before listing calendars',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[207, 207, 207],
+      bodies: <String>[
+        _principalDiscoveryXml,
+        _calendarHomeDiscoveryXml,
+        _calendarListXml,
+      ],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+    );
+
+    final calendars = await service.getCalendars();
+
+    expect(calendars.single.path, '/calendars/tught3/default/');
+    expect(client.requests.map((request) => request.url.path), <String>[
+      '/',
+      '/principals/users/tught3/',
+      '/calendars/tught3/',
+    ]);
   });
 
   test('getEvents parses CalDAV REPORT calendar data', () async {
@@ -238,6 +266,38 @@ const String _calendarListXml = '''
           <d:collection/>
           <c:calendar/>
         </d:resourcetype>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';
+
+const String _principalDiscoveryXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:current-user-principal>
+          <d:href>/principals/users/tught3/</d:href>
+        </d:current-user-principal>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';
+
+const String _calendarHomeDiscoveryXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/principals/users/tught3/</d:href>
+    <d:propstat>
+      <d:prop>
+        <c:calendar-home-set>
+          <d:href>/calendars/tught3/</d:href>
+        </c:calendar-home-set>
       </d:prop>
     </d:propstat>
   </d:response>

@@ -289,44 +289,36 @@ class NaverCalDavService {
       naverId: naverId,
       appPassword: appPassword,
     );
-    final endpoint = _baseUri.replace(
-        path: '/calendars/${Uri.encodeComponent(credentials.naverId)}/');
-    final response = await _sendXmlRequest(
-      method: 'PROPFIND',
-      endpoint: endpoint,
-      naverId: credentials.naverId,
-      appPassword: credentials.appPassword,
-      body: _propfindBody,
-    );
-    _throwForCalDavStatus(response.statusCode, endpoint);
-
-    final document = XmlDocument.parse(response.body);
-    final calendars = <NaverCalDavCalendar>[];
-    for (final node in _descendantsByName(document, 'response')) {
-      final href = _firstDescendantText(node, 'href');
-      if (href == null || href.trim().isEmpty) {
-        continue;
+    final homePaths = await _discoverCalendarHomePaths(credentials);
+    Object? lastError;
+    for (final path in homePaths) {
+      final endpoint = _baseUri.replace(path: path);
+      try {
+        final response = await _sendXmlRequest(
+          method: 'PROPFIND',
+          endpoint: endpoint,
+          naverId: credentials.naverId,
+          appPassword: credentials.appPassword,
+          body: _calendarListPropfindBody,
+        );
+        if (response.statusCode == 404) {
+          lastError = StateError('CalDAV calendar-home not found: $endpoint');
+          continue;
+        }
+        _throwForCalDavStatus(response.statusCode, endpoint);
+        final calendars = _parseCalendarsFromResponse(response.body);
+        if (calendars.isNotEmpty) {
+          return calendars;
+        }
+      } catch (error) {
+        lastError = error;
+        debugPrint('Naver CalDAV calendar path failed: $path / $error');
       }
-      final resourceTypes = _descendantsByName(node, 'resourcetype')
-          .expand((element) => element.descendantElements)
-          .map((element) => element.name.local)
-          .toSet();
-      if (!resourceTypes.contains('calendar')) {
-        continue;
-      }
-      final displayName = _firstDescendantText(node, 'displayname') ??
-          Uri.decodeComponent(
-              href.split('/').where((part) => part.isNotEmpty).lastOrNull ??
-                  href);
-      calendars.add(
-        NaverCalDavCalendar(
-          path: href,
-          displayName: displayName,
-          ctag: _firstDescendantText(node, 'getctag'),
-        ),
-      );
     }
-    return calendars;
+    if (lastError != null) {
+      throw StateError('네이버 CalDAV 캘린더 경로를 찾지 못했습니다. 서버 경로를 추가 확인해야 합니다.');
+    }
+    return const <NaverCalDavCalendar>[];
   }
 
   Future<List<NaverCalDavEvent>> getEvents({
@@ -551,6 +543,115 @@ class NaverCalDavService {
     return stored;
   }
 
+  Future<List<String>> _discoverCalendarHomePaths(
+    NaverCalDavCredentials credentials,
+  ) async {
+    final paths = <String>{};
+    void addPath(String? rawPath) {
+      final normalized = _normalizeCalDavPath(rawPath);
+      if (normalized != null) {
+        paths.add(normalized);
+      }
+    }
+
+    try {
+      final root = await _sendXmlRequest(
+        method: 'PROPFIND',
+        endpoint: _baseUri.replace(path: '/'),
+        naverId: credentials.naverId,
+        appPassword: credentials.appPassword,
+        body: _discoveryPropfindBody,
+        depth: '0',
+      );
+      if (root.statusCode >= 200 && root.statusCode < 300) {
+        final document = XmlDocument.parse(root.body);
+        final rootCalendarHome =
+            _firstNestedHrefText(document, 'calendar-home-set');
+        addPath(rootCalendarHome);
+        final principalPath =
+            _firstNestedHrefText(document, 'current-user-principal');
+        if (principalPath != null) {
+          addPath(await _discoverCalendarHomeFromPrincipal(
+            credentials,
+            principalPath,
+          ));
+        }
+      }
+    } catch (error) {
+      debugPrint('Naver CalDAV root discovery failed: $error');
+    }
+
+    addPath('/calendars/${Uri.encodeComponent(credentials.naverId)}/');
+    return paths.toList(growable: false);
+  }
+
+  Future<String?> _discoverCalendarHomeFromPrincipal(
+    NaverCalDavCredentials credentials,
+    String principalPath,
+  ) async {
+    final normalizedPrincipal = _normalizeCalDavPath(principalPath);
+    if (normalizedPrincipal == null) {
+      return null;
+    }
+    final endpoint = _baseUri.replace(path: normalizedPrincipal);
+    final response = await _sendXmlRequest(
+      method: 'PROPFIND',
+      endpoint: endpoint,
+      naverId: credentials.naverId,
+      appPassword: credentials.appPassword,
+      body: _calendarHomePropfindBody,
+      depth: '0',
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return null;
+    }
+    final document = XmlDocument.parse(response.body);
+    return _firstNestedHrefText(document, 'calendar-home-set');
+  }
+
+  List<NaverCalDavCalendar> _parseCalendarsFromResponse(String body) {
+    final document = XmlDocument.parse(body);
+    final calendars = <NaverCalDavCalendar>[];
+    for (final node in _descendantsByName(document, 'response')) {
+      final href = _firstDescendantText(node, 'href');
+      if (href == null || href.trim().isEmpty) {
+        continue;
+      }
+      final resourceTypes = _descendantsByName(node, 'resourcetype')
+          .expand((element) => element.descendantElements)
+          .map((element) => element.name.local)
+          .toSet();
+      if (!resourceTypes.contains('calendar')) {
+        continue;
+      }
+      final displayName = _firstDescendantText(node, 'displayname') ??
+          Uri.decodeComponent(
+            href.split('/').where((part) => part.isNotEmpty).lastOrNull ?? href,
+          );
+      calendars.add(
+        NaverCalDavCalendar(
+          path: _normalizeCalDavPath(href) ?? href,
+          displayName: displayName,
+          ctag: _firstDescendantText(node, 'getctag'),
+        ),
+      );
+    }
+    return calendars;
+  }
+
+  String? _normalizeCalDavPath(String? rawPath) {
+    final text = rawPath?.trim();
+    if (text == null || text.isEmpty) {
+      return null;
+    }
+    final parsed = Uri.tryParse(text);
+    final path = parsed != null && parsed.hasScheme ? parsed.path : text;
+    final withLeadingSlash = path.startsWith('/') ? path : '/$path';
+    return withLeadingSlash.endsWith('/')
+        ? withLeadingSlash
+        : '$withLeadingSlash/';
+  }
+
   Future<_NaverCalDavHttpResponse> _sendXmlRequest({
     required String method,
     required Uri endpoint,
@@ -616,6 +717,15 @@ class NaverCalDavService {
     final text = _descendantsByName(node, localName).firstOrNull?.innerText;
     final normalized = text?.trim();
     return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  String? _firstNestedHrefText(XmlNode node, String localName) {
+    final container = _descendantsByName(node, localName).firstOrNull;
+    if (container == null) {
+      return null;
+    }
+    return _firstDescendantText(container, 'href') ??
+        _firstDescendantText(container, localName);
   }
 
   String _reportBody(DateTime from, DateTime to) {
@@ -810,6 +920,36 @@ class NaverCalDavService {
   }
 
   static const String _propfindBody = '''
+<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/">
+  <d:prop>
+    <d:displayname />
+    <cs:getctag />
+    <d:resourcetype />
+  </d:prop>
+</d:propfind>
+''';
+
+  static const String _discoveryPropfindBody = '''
+<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:current-user-principal />
+    <c:calendar-home-set />
+  </d:prop>
+</d:propfind>
+''';
+
+  static const String _calendarHomePropfindBody = '''
+<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <c:calendar-home-set />
+  </d:prop>
+</d:propfind>
+''';
+
+  static const String _calendarListPropfindBody = '''
 <?xml version="1.0" encoding="utf-8" ?>
 <d:propfind xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/">
   <d:prop>

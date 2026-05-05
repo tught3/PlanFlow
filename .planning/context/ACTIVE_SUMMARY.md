@@ -190,3 +190,9 @@
 - Added CalDAV calendar discovery, `REPORT calendar-query` event loading, UTF-8 XML response decoding, minimal iCalendar parsing for UID/SUMMARY/DTSTART/DTEND/LOCATION/DESCRIPTION/LAST-MODIFIED, and Supabase upsert through `source='naver_caldav'` plus stable `naver-caldav:{uid}` external ids.
 - Added Settings action `네이버 CalDAV 일정 가져오기` so saved CalDAV credentials can import existing Naver events into PlanFlow and refresh Home/Calendar state.
 - Validation: `flutter analyze`, targeted CalDAV service test, targeted Settings screen test, full `flutter test` (87 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## 2026-05-05 Naver CalDAV discovery fallback checkpoint
+- Fixed the follow-up failure where CalDAV authentication succeeded but `네이버 CalDAV 일정 가져오기` showed "CalDAV 경로를 찾지 못했습니다" because the app assumed `/calendars/{id}/` directly.
+- Added CalDAV discovery through `current-user-principal` and `calendar-home-set`, then falls back to the previous `/calendars/{id}/` path if discovery is unavailable.
+- Added a focused test proving the service discovers `/principals/users/{id}/` -> `/calendars/{id}/` before listing calendars.
+- Validation: `flutter analyze`, targeted CalDAV service test, full `flutter test` (88 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
