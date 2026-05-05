@@ -8,6 +8,7 @@ import '../core/constants.dart';
 import '../core/env.dart';
 import '../core/router.dart';
 import '../providers/auth_provider.dart';
+import 'naver_calendar_permission_service.dart';
 
 class OAuthCallbackHandler {
   OAuthCallbackHandler({AppLinks? appLinks})
@@ -76,6 +77,9 @@ class OAuthCallbackHandler {
       final response = await client.auth.getSessionFromUrl(normalizedUri);
       debugPrint(
         'OAuth callback exchange completed: user=${response.session.user.id}',
+      );
+      unawaited(
+        NaverCalendarPermissionService().captureCurrentProviderToken(),
       );
       await _syncAndRouteHome();
     } on AuthException catch (error) {

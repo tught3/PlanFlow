@@ -76,6 +76,10 @@ class NaverCalendarPermissionService {
     await _preferences.remove(_lastCheckedAtKey);
   }
 
+  Future<bool> captureCurrentProviderToken() {
+    return _persistCurrentProviderToken();
+  }
+
   Future<NaverCalendarPermissionResult> refreshStatus() async {
     final accessToken = await _resolveAccessToken();
     if (accessToken == null || accessToken.trim().isEmpty) {
@@ -193,16 +197,17 @@ class NaverCalendarPermissionService {
     }
   }
 
-  Future<void> _persistCurrentProviderToken() async {
+  Future<bool> _persistCurrentProviderToken() async {
     final token = _currentProviderToken();
     final client = _clientOrNull;
     final userId = client?.auth.currentUser?.id;
     if (client == null ||
         userId == null ||
         userId.trim().isEmpty ||
+        !isNaverSignedIn() ||
         token == null ||
         token.trim().isEmpty) {
-      return;
+      return false;
     }
 
     try {
@@ -213,9 +218,12 @@ class NaverCalendarPermissionService {
         },
         onConflict: 'user_id',
       );
+      debugPrint('Naver calendar provider token captured.');
+      return true;
     } catch (error, stackTrace) {
       debugPrint('Naver calendar token persistence skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
+      return false;
     }
   }
 

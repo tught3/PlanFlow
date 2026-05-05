@@ -278,15 +278,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       return aStart.compareTo(bStart);
     });
 
-    final hasPositiveMatch = ranked.any((item) => item.matchScore > 0);
-    final visible = hasPositiveMatch
-        ? ranked.where((item) => item.matchScore > 0)
-        : ranked.where((item) {
-            final startAt = item.event.startAt;
-            return startAt == null || !startAt.isBefore(now);
-          });
-
-    return visible.map((item) => item.event).take(10).toList(growable: false);
+    return ranked.map((item) => item.event).take(10).toList(growable: false);
   }
 
   List<String> _tokens(String text) {
@@ -316,8 +308,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     };
     return text
         .toLowerCase()
-        .replaceAll(RegExp(r'[^0-9a-z가-힣\\s]'), ' ')
-        .split(RegExp(r'\\s+'))
+        .replaceAll(RegExp(r'[^0-9a-z가-힣\s]'), ' ')
+        .split(RegExp(r'\s+'))
         .map((token) => token.trim())
         .where((token) => token.length >= 2 && !stopWords.contains(token))
         .toList(growable: false);
@@ -526,6 +518,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         child: RefreshIndicator(
           onRefresh: _loadCandidates,
           child: ListView(
+            cacheExtent: 1200,
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             children: [
               _CommandCard(

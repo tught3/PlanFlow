@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
 import '../services/auth_service.dart';
+import '../services/naver_calendar_permission_service.dart';
 
 final AuthProvider authProvider = AuthProvider();
 
@@ -35,6 +36,11 @@ class AuthProvider extends ChangeNotifier {
         'user=${authState.session?.user.id ?? '<none>'}',
       );
       _isPasswordRecovery = authState.event == AuthChangeEvent.passwordRecovery;
+      if (authState.session != null) {
+        unawaited(
+          NaverCalendarPermissionService().captureCurrentProviderToken(),
+        );
+      }
       await _syncProfileAndApplyUser(service, authState.session?.user);
     }, onError: (Object error, StackTrace stackTrace) {
       debugPrint('Auth state listener error: $error');
@@ -46,6 +52,9 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
     final service = AuthService();
+    unawaited(
+      NaverCalendarPermissionService().captureCurrentProviderToken(),
+    );
     await _syncProfileAndApplyUser(service, service.currentUser);
     return isSignedIn;
   }

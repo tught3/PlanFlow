@@ -125,6 +125,12 @@ class _ShellScreenState extends State<ShellScreen> {
         );
         return;
       case NaverCalendarPermissionStatus.unknown:
+        if (result.message.contains('토큰')) {
+          await _showNaverCalendarPermissionRequiredDialog(
+            '네이버 캘린더 연결을 완료하려면 네이버 권한 동의가 한 번 더 필요합니다.',
+          );
+          return;
+        }
         _logNaverCalendarStatus(result);
         return;
     }
