@@ -94,6 +94,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isImportingDeviceNaverCalendar = false;
   bool _isListingDeviceCalendars = false;
   bool _isTestingNaverCalDav = false;
+  bool _isImportingNaverCalDav = false;
   bool _isLoadingBackups = false;
   bool _isSavingSettings = false;
   bool _isBackupActionRunning = false;
@@ -515,6 +516,31 @@ class _SettingsScreenState extends State<SettingsScreen>
       _isTestingNaverCalDav = false;
     });
     _showSnack(result.message);
+  }
+
+  Future<void> _importNaverCalDavEvents() async {
+    if (_isImportingNaverCalDav) {
+      return;
+    }
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) {
+      _showSnack('먼저 PlanFlow에 로그인해 주세요.');
+      return;
+    }
+    setState(() {
+      _isImportingNaverCalDav = true;
+    });
+    final result = await _naverCalDavService.syncAll(userId: userId);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isImportingNaverCalDav = false;
+    });
+    _showSnack(result.message);
+    if (result.success) {
+      EventRefreshBus.instance.notifyChanged(reason: 'naver_caldav_import');
+    }
   }
 
   Future<_NaverCalDavCredentials?> _showNaverCalDavDialog() {
@@ -1244,6 +1270,29 @@ class _SettingsScreenState extends State<SettingsScreen>
                         _isTestingNaverCalDav
                             ? 'CalDAV 확인 중...'
                             : '네이버 CalDAV 연결 테스트',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      key: const ValueKey(
+                        'settings-naver-caldav-import-button',
+                      ),
+                      onPressed: _isImportingNaverCalDav
+                          ? null
+                          : _importNaverCalDavEvents,
+                      icon: _isImportingNaverCalDav
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.download_outlined),
+                      label: Text(
+                        _isImportingNaverCalDav
+                            ? 'CalDAV 일정 가져오는 중...'
+                            : '네이버 CalDAV 일정 가져오기',
                       ),
                     ),
                   ),

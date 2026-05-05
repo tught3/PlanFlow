@@ -84,23 +84,104 @@ void main() {
     expect(client.requests, hasLength(2));
     expect(client.requests.last.url.path, '/calendars/tught3/');
   });
+
+  test('getCalendars parses CalDAV calendar list', () async {
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(
+        responses: <int>[207],
+        bodies: <String>[_calendarListXml],
+      ),
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+    );
+
+    final calendars = await service.getCalendars();
+
+    expect(calendars, hasLength(1));
+    expect(calendars.single.path, '/calendars/tught3/default/');
+    expect(calendars.single.displayName, '내 캘린더');
+    expect(calendars.single.ctag, '123');
+  });
+
+  test('getEvents parses CalDAV REPORT calendar data', () async {
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(
+        responses: <int>[207],
+        bodies: <String>[_eventReportXml],
+      ),
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+    );
+
+    final events = await service.getEvents(
+      calendarPath: '/calendars/tught3/default/',
+      from: DateTime.utc(2026, 5),
+      to: DateTime.utc(2026, 6),
+    );
+
+    expect(events, hasLength(1));
+    expect(events.single.uid, 'naver-event-1');
+    expect(events.single.title, '한강 피크닉');
+    expect(events.single.location, '한강');
+    expect(events.single.startAt, DateTime.utc(2026, 5, 5, 1));
+  });
+
+  test('parseIcal handles all-day dates and escaped text', () {
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(responses: <int>[207]),
+      credentialStore: _FakeCredentialStore(),
+    );
+
+    final event = service.parseIcal(
+      '''
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:all-day-1
+SUMMARY:어린이날\\, 쉬는 날
+DTSTART;VALUE=DATE:20260505
+DESCRIPTION:메모\\n두 번째 줄
+END:VEVENT
+END:VCALENDAR
+''',
+      etag: '"abc"',
+      href: '/calendars/tught3/default/all-day-1.ics',
+    );
+
+    expect(event, isNotNull);
+    expect(event!.isAllDay, isTrue);
+    expect(event.title, '어린이날, 쉬는 날');
+    expect(event.description, '메모\n두 번째 줄');
+    expect(event.startAt, DateTime.utc(2026, 5, 5));
+  });
 }
 
 class _FakePropfindClient extends http.BaseClient {
-  _FakePropfindClient({required this.responses});
+  _FakePropfindClient({
+    required this.responses,
+    this.bodies = const <String>[],
+  });
 
   final List<int> responses;
+  final List<String> bodies;
   final List<http.BaseRequest> requests = <http.BaseRequest>[];
   var _index = 0;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     requests.add(request);
-    final statusCode = responses[_index.clamp(0, responses.length - 1)];
+    final index = _index;
+    final statusCode = responses[index.clamp(0, responses.length - 1)];
+    final body = bodies.isEmpty
+        ? '<multistatus />'
+        : bodies[index.clamp(0, bodies.length - 1)];
     _index += 1;
     return http.StreamedResponse(
       Stream<List<int>>.fromIterable(<List<int>>[
-        utf8.encode('<multistatus />'),
+        utf8.encode(body),
       ]),
       statusCode,
     );
@@ -108,9 +189,24 @@ class _FakePropfindClient extends http.BaseClient {
 }
 
 class _FakeCredentialStore extends NaverCalDavCredentialStore {
+  _FakeCredentialStore({
+    this.savedId,
+    this.savedPassword,
+  });
+
   String? savedId;
   String? savedPassword;
   bool cleared = false;
+
+  @override
+  Future<NaverCalDavCredentials?> readCredentials() async {
+    final id = savedId;
+    final password = savedPassword;
+    if (id == null || password == null) {
+      return null;
+    }
+    return NaverCalDavCredentials(naverId: id, appPassword: password);
+  }
 
   @override
   Future<void> clearCredentials() async {
@@ -128,3 +224,49 @@ class _FakeCredentialStore extends NaverCalDavCredentialStore {
     savedPassword = appPassword;
   }
 }
+
+const String _calendarListXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/calendars/tught3/default/</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:displayname>내 캘린더</d:displayname>
+        <cs:getctag>123</cs:getctag>
+        <d:resourcetype>
+          <d:collection/>
+          <c:calendar/>
+        </d:resourcetype>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';
+
+const String _eventReportXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/calendars/tught3/default/event-1.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-1"</d:getetag>
+        <c:calendar-data><![CDATA[
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:naver-event-1
+SUMMARY:한강 피크닉
+DTSTART;TZID=Asia/Seoul:20260505T100000
+DTEND;TZID=Asia/Seoul:20260505T110000
+LOCATION:한강
+DESCRIPTION:도시락 챙기기
+LAST-MODIFIED:20260504T120000Z
+END:VEVENT
+END:VCALENDAR
+        ]]></c:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';

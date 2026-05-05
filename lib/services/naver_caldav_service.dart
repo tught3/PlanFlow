@@ -5,6 +5,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:xml/xml.dart';
+
+import '../data/models/event_model.dart';
+import '../data/repositories/event_repository.dart';
 
 enum NaverCalDavConnectionStatus {
   success,
@@ -34,8 +39,92 @@ class NaverCalDavConnectionResult {
   bool get isSuccess => status == NaverCalDavConnectionStatus.success;
 }
 
+class NaverCalDavCalendar {
+  const NaverCalDavCalendar({
+    required this.path,
+    required this.displayName,
+    this.ctag,
+  });
+
+  final String path;
+  final String displayName;
+  final String? ctag;
+}
+
+class NaverCalDavEvent {
+  const NaverCalDavEvent({
+    required this.uid,
+    required this.href,
+    required this.etag,
+    required this.icsData,
+    required this.title,
+    required this.startAt,
+    this.endAt,
+    this.location,
+    this.description,
+    this.lastModifiedAt,
+    this.isAllDay = false,
+  });
+
+  final String uid;
+  final String href;
+  final String etag;
+  final String icsData;
+  final String title;
+  final DateTime startAt;
+  final DateTime? endAt;
+  final String? location;
+  final String? description;
+  final DateTime? lastModifiedAt;
+  final bool isAllDay;
+
+  EventModel toEventModel({
+    required String userId,
+    required String calendarPath,
+    required DateTime syncedAt,
+  }) {
+    return EventModel(
+      id: '',
+      userId: userId,
+      title: title.trim().isEmpty ? '네이버 캘린더 일정' : title.trim(),
+      startAt: startAt.toUtc(),
+      endAt: endAt?.toUtc(),
+      location: _blankToNull(location),
+      memo: _blankToNull(description),
+      supplies: const <String>[],
+      suppliesChecked: const <String>[],
+      isCritical: false,
+      source: 'naver_caldav',
+      externalId: 'naver-caldav:$uid',
+      externalCalendarId: 'naver-caldav:$calendarPath',
+      externalUpdatedAt: lastModifiedAt?.toUtc() ?? syncedAt,
+      lastSyncedAt: syncedAt,
+    );
+  }
+}
+
+class NaverCalDavSyncResult {
+  const NaverCalDavSyncResult({
+    required this.success,
+    required this.message,
+    this.createdOrUpdated = 0,
+    this.calendars = 0,
+    this.events = 0,
+    this.error,
+  });
+
+  final bool success;
+  final String message;
+  final int createdOrUpdated;
+  final int calendars;
+  final int events;
+  final Object? error;
+}
+
 abstract class NaverCalDavCredentialStore {
   const NaverCalDavCredentialStore();
+
+  Future<NaverCalDavCredentials?> readCredentials();
 
   Future<void> saveCredentials({
     required String naverId,
@@ -43,6 +132,16 @@ abstract class NaverCalDavCredentialStore {
   });
 
   Future<void> clearCredentials();
+}
+
+class NaverCalDavCredentials {
+  const NaverCalDavCredentials({
+    required this.naverId,
+    required this.appPassword,
+  });
+
+  final String naverId;
+  final String appPassword;
 }
 
 class FlutterSecureNaverCalDavCredentialStore
@@ -55,6 +154,22 @@ class FlutterSecureNaverCalDavCredentialStore
   static const String _passwordKey = 'naver_caldav_app_password';
 
   final FlutterSecureStorage _storage;
+
+  @override
+  Future<NaverCalDavCredentials?> readCredentials() async {
+    final id = await _storage.read(key: _idKey);
+    final password = await _storage.read(key: _passwordKey);
+    if (id == null ||
+        id.trim().isEmpty ||
+        password == null ||
+        password.trim().isEmpty) {
+      return null;
+    }
+    return NaverCalDavCredentials(
+      naverId: id,
+      appPassword: password,
+    );
+  }
 
   @override
   Future<void> saveCredentials({
@@ -77,11 +192,17 @@ class NaverCalDavService {
     http.Client? httpClient,
     NaverCalDavCredentialStore credentialStore =
         const FlutterSecureNaverCalDavCredentialStore(),
+    EventRepository? eventRepository,
+    SupabaseClient? client,
+    String? currentUserId,
     Duration timeout = const Duration(seconds: 10),
     Uri? baseUri,
   })  : _httpClient = httpClient ?? http.Client(),
         _ownsHttpClient = httpClient == null,
         _credentialStore = credentialStore,
+        _eventRepositoryOverride = eventRepository,
+        _client = client,
+        _currentUserId = currentUserId,
         _timeout = timeout,
         _baseUri = baseUri ??
             Uri(
@@ -92,8 +213,14 @@ class NaverCalDavService {
   final http.Client _httpClient;
   final bool _ownsHttpClient;
   final NaverCalDavCredentialStore _credentialStore;
+  final EventRepository? _eventRepositoryOverride;
+  final SupabaseClient? _client;
+  final String? _currentUserId;
   final Duration _timeout;
   final Uri _baseUri;
+
+  EventRepository get _eventRepository =>
+      _eventRepositoryOverride ?? EventRepository.supabase(client: _client);
 
   Future<void> dispose() async {
     if (_ownsHttpClient) {
@@ -154,6 +281,195 @@ class NaverCalDavService {
     return _credentialStore.clearCredentials();
   }
 
+  Future<List<NaverCalDavCalendar>> getCalendars({
+    String? naverId,
+    String? appPassword,
+  }) async {
+    final credentials = await _resolveCredentials(
+      naverId: naverId,
+      appPassword: appPassword,
+    );
+    final endpoint = _baseUri.replace(
+        path: '/calendars/${Uri.encodeComponent(credentials.naverId)}/');
+    final response = await _sendXmlRequest(
+      method: 'PROPFIND',
+      endpoint: endpoint,
+      naverId: credentials.naverId,
+      appPassword: credentials.appPassword,
+      body: _propfindBody,
+    );
+    _throwForCalDavStatus(response.statusCode, endpoint);
+
+    final document = XmlDocument.parse(response.body);
+    final calendars = <NaverCalDavCalendar>[];
+    for (final node in _descendantsByName(document, 'response')) {
+      final href = _firstDescendantText(node, 'href');
+      if (href == null || href.trim().isEmpty) {
+        continue;
+      }
+      final resourceTypes = _descendantsByName(node, 'resourcetype')
+          .expand((element) => element.descendantElements)
+          .map((element) => element.name.local)
+          .toSet();
+      if (!resourceTypes.contains('calendar')) {
+        continue;
+      }
+      final displayName = _firstDescendantText(node, 'displayname') ??
+          Uri.decodeComponent(
+              href.split('/').where((part) => part.isNotEmpty).lastOrNull ??
+                  href);
+      calendars.add(
+        NaverCalDavCalendar(
+          path: href,
+          displayName: displayName,
+          ctag: _firstDescendantText(node, 'getctag'),
+        ),
+      );
+    }
+    return calendars;
+  }
+
+  Future<List<NaverCalDavEvent>> getEvents({
+    required String calendarPath,
+    DateTime? from,
+    DateTime? to,
+    String? naverId,
+    String? appPassword,
+  }) async {
+    final credentials = await _resolveCredentials(
+      naverId: naverId,
+      appPassword: appPassword,
+    );
+    final now = DateTime.now().toUtc();
+    final startAt = (from ?? now.subtract(const Duration(days: 90))).toUtc();
+    final endAt = (to ?? now.add(const Duration(days: 180))).toUtc();
+    final endpoint = _baseUri.replace(path: calendarPath);
+    final response = await _sendXmlRequest(
+      method: 'REPORT',
+      endpoint: endpoint,
+      naverId: credentials.naverId,
+      appPassword: credentials.appPassword,
+      body: _reportBody(startAt, endAt),
+      depth: '1',
+    );
+    _throwForCalDavStatus(response.statusCode, endpoint);
+
+    final document = XmlDocument.parse(response.body);
+    final events = <NaverCalDavEvent>[];
+    for (final node in _descendantsByName(document, 'response')) {
+      final icsData = _firstDescendantText(node, 'calendar-data');
+      if (icsData == null || icsData.trim().isEmpty) {
+        continue;
+      }
+      final parsed = parseIcal(
+        icsData,
+        etag: _firstDescendantText(node, 'getetag') ?? '',
+        href: _firstDescendantText(node, 'href') ?? '',
+      );
+      if (parsed != null) {
+        events.add(parsed);
+      }
+    }
+    return events;
+  }
+
+  Future<NaverCalDavSyncResult> syncAll({
+    String? userId,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final resolvedUserId = userId ?? _currentUserId ?? _currentSupabaseUserId();
+    if (resolvedUserId == null || resolvedUserId.isEmpty) {
+      return const NaverCalDavSyncResult(
+        success: false,
+        message: '먼저 PlanFlow에 로그인해 주세요.',
+      );
+    }
+
+    try {
+      final calendars = await getCalendars();
+      if (calendars.isEmpty) {
+        return const NaverCalDavSyncResult(
+          success: false,
+          message: '네이버 CalDAV에서 읽을 수 있는 캘린더가 없습니다.',
+        );
+      }
+
+      final syncedAt = DateTime.now().toUtc();
+      var eventCount = 0;
+      var savedCount = 0;
+      for (final calendar in calendars) {
+        final events = await getEvents(
+          calendarPath: calendar.path,
+          from: from,
+          to: to,
+        );
+        eventCount += events.length;
+        for (final event in events) {
+          await _eventRepository.upsertEventBySourceExternalId(
+            event.toEventModel(
+              userId: resolvedUserId,
+              calendarPath: calendar.path,
+              syncedAt: syncedAt,
+            ),
+          );
+          savedCount += 1;
+        }
+      }
+
+      return NaverCalDavSyncResult(
+        success: true,
+        message: savedCount > 0
+            ? '네이버 CalDAV 일정 $savedCount개를 PlanFlow로 가져왔습니다.'
+            : '네이버 CalDAV 연결은 성공했지만 가져올 일정이 없습니다.',
+        calendars: calendars.length,
+        events: eventCount,
+        createdOrUpdated: savedCount,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Naver CalDAV sync failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return NaverCalDavSyncResult(
+        success: false,
+        message: _syncFailureMessage(error),
+        error: error,
+      );
+    }
+  }
+
+  @visibleForTesting
+  NaverCalDavEvent? parseIcal(
+    String icsData, {
+    required String etag,
+    required String href,
+  }) {
+    final fields = _parseIcalFields(icsData);
+    final uid = fields['UID']?.firstOrNull?.trim();
+    final startRaw = fields['DTSTART']?.firstOrNull;
+    if (uid == null || uid.isEmpty || startRaw == null) {
+      return null;
+    }
+    final startAt = _parseIcalDateTime(startRaw);
+    if (startAt == null) {
+      return null;
+    }
+    final endAt = _parseIcalDateTime(fields['DTEND']?.firstOrNull);
+    return NaverCalDavEvent(
+      uid: uid,
+      href: href,
+      etag: etag,
+      icsData: icsData,
+      title: _unescapeIcalText(fields['SUMMARY']?.firstOrNull) ?? '',
+      startAt: startAt,
+      endAt: endAt,
+      location: _unescapeIcalText(fields['LOCATION']?.firstOrNull),
+      description: _unescapeIcalText(fields['DESCRIPTION']?.firstOrNull),
+      lastModifiedAt: _parseIcalDateTime(fields['LAST-MODIFIED']?.firstOrNull),
+      isAllDay: startRaw.contains('VALUE=DATE') ||
+          RegExp(r':\d{8}$').hasMatch(startRaw.trim()),
+    );
+  }
+
   List<Uri> _candidateEndpoints(String naverId) {
     final encodedId = Uri.encodeComponent(naverId);
     return <Uri>[
@@ -212,6 +528,66 @@ class NaverCalDavService {
     }
   }
 
+  Future<NaverCalDavCredentials> _resolveCredentials({
+    String? naverId,
+    String? appPassword,
+  }) async {
+    final directId = naverId?.trim();
+    final directPassword = appPassword?.trim();
+    if (directId != null &&
+        directId.isNotEmpty &&
+        directPassword != null &&
+        directPassword.isNotEmpty) {
+      return NaverCalDavCredentials(
+        naverId: directId,
+        appPassword: directPassword,
+      );
+    }
+
+    final stored = await _credentialStore.readCredentials();
+    if (stored == null) {
+      throw StateError('네이버 CalDAV 연결 정보가 없습니다. 먼저 연결 테스트를 완료해 주세요.');
+    }
+    return stored;
+  }
+
+  Future<_NaverCalDavHttpResponse> _sendXmlRequest({
+    required String method,
+    required Uri endpoint,
+    required String naverId,
+    required String appPassword,
+    required String body,
+    String depth = '1',
+  }) async {
+    final request = http.Request(method, endpoint)
+      ..headers.addAll(
+        _authHeaders(naverId, appPassword)..['Depth'] = depth,
+      )
+      ..body = body;
+    final streamed = await _httpClient.send(request).timeout(_timeout);
+    final bytes = await streamed.stream.toBytes();
+    return _NaverCalDavHttpResponse(
+      statusCode: streamed.statusCode,
+      body: utf8.decode(bytes, allowMalformed: true),
+    );
+  }
+
+  void _throwForCalDavStatus(int statusCode, Uri endpoint) {
+    if (statusCode >= 200 && statusCode < 300) {
+      return;
+    }
+    if (statusCode == 401) {
+      throw StateError('네이버 ID 또는 앱 비밀번호를 확인해 주세요.');
+    }
+    if (statusCode == 403) {
+      throw StateError('네이버 CalDAV 접근이 거부되었습니다.');
+    }
+    if (statusCode == 404) {
+      throw StateError('네이버 CalDAV 경로를 찾지 못했습니다: $endpoint');
+    }
+    throw StateError('네이버 CalDAV 응답 코드가 올바르지 않습니다: $statusCode');
+  }
+
   Map<String, String> _authHeaders(String naverId, String appPassword) {
     final encoded = base64Encode(utf8.encode('$naverId:$appPassword'));
     return <String, String>{
@@ -219,6 +595,166 @@ class NaverCalDavService {
       HttpHeaders.contentTypeHeader: 'application/xml; charset=utf-8',
       'Depth': '1',
     };
+  }
+
+  String? _currentSupabaseUserId() {
+    try {
+      final auth = _client?.auth ?? Supabase.instance.client.auth;
+      return auth.currentSession?.user.id ?? auth.currentUser?.id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Iterable<XmlElement> _descendantsByName(XmlNode node, String localName) {
+    return node.descendantElements.where(
+      (element) => element.name.local == localName,
+    );
+  }
+
+  String? _firstDescendantText(XmlNode node, String localName) {
+    final text = _descendantsByName(node, localName).firstOrNull?.innerText;
+    final normalized = text?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  String _reportBody(DateTime from, DateTime to) {
+    final start = _formatCalDavUtc(from);
+    final end = _formatCalDavUtc(to);
+    return '''
+<?xml version="1.0" encoding="utf-8" ?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:getetag />
+    <c:calendar-data />
+  </d:prop>
+  <c:filter>
+    <c:comp-filter name="VCALENDAR">
+      <c:comp-filter name="VEVENT">
+        <c:time-range start="$start" end="$end"/>
+      </c:comp-filter>
+    </c:comp-filter>
+  </c:filter>
+</c:calendar-query>
+''';
+  }
+
+  String _formatCalDavUtc(DateTime value) {
+    final utc = value.toUtc();
+    return '${utc.year.toString().padLeft(4, '0')}'
+        '${utc.month.toString().padLeft(2, '0')}'
+        '${utc.day.toString().padLeft(2, '0')}T'
+        '${utc.hour.toString().padLeft(2, '0')}'
+        '${utc.minute.toString().padLeft(2, '0')}'
+        '${utc.second.toString().padLeft(2, '0')}Z';
+  }
+
+  Map<String, List<String>> _parseIcalFields(String icsData) {
+    final unfolded = <String>[];
+    for (final rawLine in icsData.replaceAll('\r\n', '\n').split('\n')) {
+      if (rawLine.startsWith(' ') || rawLine.startsWith('\t')) {
+        if (unfolded.isNotEmpty) {
+          unfolded[unfolded.length - 1] += rawLine.substring(1);
+        }
+      } else {
+        unfolded.add(rawLine);
+      }
+    }
+
+    final fields = <String, List<String>>{};
+    for (final line in unfolded) {
+      final separator = line.indexOf(':');
+      if (separator <= 0) {
+        continue;
+      }
+      final key = line.substring(0, separator).split(';').first.toUpperCase();
+      final value = line.substring(separator + 1);
+      fields.putIfAbsent(key, () => <String>[]).add(line.contains(';')
+          ? '${line.substring(0, separator)}:$value'
+          : value);
+    }
+    return fields;
+  }
+
+  DateTime? _parseIcalDateTime(String? rawValue) {
+    if (rawValue == null || rawValue.trim().isEmpty) {
+      return null;
+    }
+    final trimmed = rawValue.trim();
+    final separator = trimmed.indexOf(':');
+    final params = separator >= 0 ? trimmed.substring(0, separator) : '';
+    final value = separator >= 0 ? trimmed.substring(separator + 1) : trimmed;
+    if (RegExp(r'^\d{8}$').hasMatch(value)) {
+      return DateTime.utc(
+        int.parse(value.substring(0, 4)),
+        int.parse(value.substring(4, 6)),
+        int.parse(value.substring(6, 8)),
+      );
+    }
+    final match = RegExp(r'^(\d{8})T(\d{6})(Z?)$').firstMatch(value);
+    if (match == null) {
+      return null;
+    }
+    final date = match.group(1)!;
+    final time = match.group(2)!;
+    final localLike = DateTime(
+      int.parse(date.substring(0, 4)),
+      int.parse(date.substring(4, 6)),
+      int.parse(date.substring(6, 8)),
+      int.parse(time.substring(0, 2)),
+      int.parse(time.substring(2, 4)),
+      int.parse(time.substring(4, 6)),
+    );
+    if (match.group(3) == 'Z') {
+      return DateTime.utc(
+        localLike.year,
+        localLike.month,
+        localLike.day,
+        localLike.hour,
+        localLike.minute,
+        localLike.second,
+      );
+    }
+    if (params.toUpperCase().contains('TZID=ASIA/SEOUL')) {
+      return DateTime.utc(
+        localLike.year,
+        localLike.month,
+        localLike.day,
+        localLike.hour - 9,
+        localLike.minute,
+        localLike.second,
+      );
+    }
+    return localLike.toUtc();
+  }
+
+  String? _unescapeIcalText(String? value) {
+    if (value == null) {
+      return null;
+    }
+    final separator = value.indexOf(':');
+    final raw = separator >= 0 && value.substring(0, separator).contains(';')
+        ? value.substring(separator + 1)
+        : value;
+    return raw
+        .replaceAll(r'\n', '\n')
+        .replaceAll(r'\,', ',')
+        .replaceAll(r'\;', ';')
+        .replaceAll(r'\\', r'\');
+  }
+
+  String _syncFailureMessage(Object error) {
+    final text = error.toString();
+    if (text.contains('앱 비밀번호') || text.contains('ID')) {
+      return '네이버 CalDAV 인증에 실패했습니다. ID와 앱 비밀번호를 확인해 주세요.';
+    }
+    if (text.contains('접근이 거부')) {
+      return '네이버 CalDAV 접근이 거부되었습니다. 네이버 정책 또는 계정 보안 설정을 확인해 주세요.';
+    }
+    if (text.contains('경로')) {
+      return '네이버 CalDAV 경로를 찾지 못했습니다. 서버 경로를 추가 확인해야 합니다.';
+    }
+    return '네이버 CalDAV 일정 가져오기에 실패했습니다. 네트워크와 계정 설정을 확인해 주세요.';
   }
 
   NaverCalDavConnectionResult _resultForStatusCode(
@@ -283,4 +819,41 @@ class NaverCalDavService {
   </d:prop>
 </d:propfind>
 ''';
+}
+
+String? _blankToNull(String? value) {
+  final text = value?.trim();
+  return text == null || text.isEmpty ? null : text;
+}
+
+extension _IterableFirstLastOrNull<T> on Iterable<T> {
+  T? get firstOrNull {
+    final iterator = this.iterator;
+    if (!iterator.moveNext()) {
+      return null;
+    }
+    return iterator.current;
+  }
+
+  T? get lastOrNull {
+    final iterator = this.iterator;
+    if (!iterator.moveNext()) {
+      return null;
+    }
+    var current = iterator.current;
+    while (iterator.moveNext()) {
+      current = iterator.current;
+    }
+    return current;
+  }
+}
+
+class _NaverCalDavHttpResponse {
+  const _NaverCalDavHttpResponse({
+    required this.statusCode,
+    required this.body,
+  });
+
+  final int statusCode;
+  final String body;
 }

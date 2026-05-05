@@ -185,3 +185,8 @@
 - Added a Settings tab diagnostic action `네이버 CalDAV 연결 테스트` with Korean guidance that this is a direct PlanFlow server-access check, not Android's built-in CalDAV account support.
 - Added focused service tests covering successful credential save, 401 without save, 403 policy/access-denial messaging, and fallback from root 404 to the calendar path.
 - Validation: `flutter analyze`, targeted CalDAV/settings tests, full `flutter test` (84 passed), `flutter build apk --debug`, and `git diff --check` passed. ADB install/launch could not run because no device was connected and the previous wireless ADB address timed out.
+## 2026-05-05 Naver CalDAV import success path checkpoint
+- After the user confirmed the Naver CalDAV connection test succeeds, expanded `NaverCalDavService` from a connection spike into a read/import path.
+- Added CalDAV calendar discovery, `REPORT calendar-query` event loading, UTF-8 XML response decoding, minimal iCalendar parsing for UID/SUMMARY/DTSTART/DTEND/LOCATION/DESCRIPTION/LAST-MODIFIED, and Supabase upsert through `source='naver_caldav'` plus stable `naver-caldav:{uid}` external ids.
+- Added Settings action `네이버 CalDAV 일정 가져오기` so saved CalDAV credentials can import existing Naver events into PlanFlow and refresh Home/Calendar state.
+- Validation: `flutter analyze`, targeted CalDAV service test, targeted Settings screen test, full `flutter test` (87 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
