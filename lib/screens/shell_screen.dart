@@ -119,12 +119,13 @@ class _ShellScreenState extends State<ShellScreen> {
         await _showNaverCalendarPermissionRequiredDialog(result.message);
         return;
       case NaverCalendarPermissionStatus.networkError:
-        _showSnack(
-          '네이버 캘린더 연결 확인 중 일시적인 문제가 발생했습니다. 앱은 계속 사용할 수 있습니다.',
+        _logNaverCalendarStatus(
+          result,
+          fallback: '네이버 캘린더 연결 확인 중 일시적인 문제가 발생했습니다.',
         );
         return;
       case NaverCalendarPermissionStatus.unknown:
-        _showSnack(result.message);
+        _logNaverCalendarStatus(result);
         return;
     }
   }
@@ -174,6 +175,16 @@ class _ShellScreenState extends State<ShellScreen> {
   void _showSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  void _logNaverCalendarStatus(
+    NaverCalendarPermissionResult result, {
+    String? fallback,
+  }) {
+    debugPrint(
+      'Naver calendar connection skipped: status=${result.status.name} '
+      'message=${fallback ?? result.message}',
     );
   }
 
