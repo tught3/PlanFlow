@@ -1,17 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
+import '../../core/env.dart';
 import '../../core/theme.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../../services/stt_service.dart';
 
 class VoiceInputScreen extends StatefulWidget {
   const VoiceInputScreen({
     super.key,
     this.sttService = const SttService(),
+    this.autoStartOverride,
+    this.settingsRepository,
   });
 
   final SttService sttService;
+  final bool? autoStartOverride;
+  final SettingsRepository? settingsRepository;
 
   @override
   State<VoiceInputScreen> createState() => _VoiceInputScreenState();
@@ -26,11 +33,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   String? _recognizedText;
   String? _statusMessage;
   int _sttRestartCount = 0;
+  bool _didResolveAutoStart = false;
 
   @override
   void initState() {
     super.initState();
     _rawTextController.addListener(_handleRawTextChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeAutoStartVoiceInput();
+    });
   }
 
   @override
@@ -45,6 +56,42 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   void _handleRawTextChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  Future<void> _maybeAutoStartVoiceInput() async {
+    if (!mounted || _didResolveAutoStart) {
+      return;
+    }
+    _didResolveAutoStart = true;
+
+    final shouldAutoStart = widget.autoStartOverride ??
+        await _resolveAutoStartSetting(defaultValue: true);
+    if (!mounted || !shouldAutoStart || _rawTextController.text.isNotEmpty) {
+      return;
+    }
+
+    await _startVoiceFlow();
+  }
+
+  Future<bool> _resolveAutoStartSetting({required bool defaultValue}) async {
+    if (!AppEnv.isSupabaseReady) {
+      return defaultValue;
+    }
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null || userId.trim().isEmpty) {
+      return defaultValue;
+    }
+
+    try {
+      final repository =
+          widget.settingsRepository ?? SettingsRepository.supabase();
+      final settings = await repository.fetchSettings(userId);
+      return settings?.voiceAutoStart ?? defaultValue;
+    } catch (error, stackTrace) {
+      debugPrint('Voice auto-start setting lookup failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return defaultValue;
     }
   }
 

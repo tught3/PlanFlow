@@ -62,7 +62,7 @@ void main() {
     expect(find.text('변경 즉시 적용'), findsNothing);
     expect(find.text('네이버 캘린더'), findsOneWidget);
     expect(find.text('연동 해제'), findsWidgets);
-    expect(find.text('네이버 동기화'), findsOneWidget);
+    expect(find.text('네이버 일정 동기화'), findsOneWidget);
     expect(find.text('Naver CalDAV 직접 연결'), findsNothing);
     expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
     expect(find.text('네이버 CalDAV 일정 가져오기'), findsNothing);
@@ -123,6 +123,48 @@ void main() {
     expect(scheduler.lastMorningTime, '07:10');
     expect(scheduler.lastEveningTime, '21:20');
     expect(scheduler.callCount, 1);
+  });
+
+  testWidgets('SettingsScreen saves voice auto-start toggle', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final settingsRepository = _FakeSettingsRepository(
+      fetched: const UserSettingsModel(
+        id: 'settings-1',
+        userId: 'user-1',
+        voiceAutoStart: true,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: settingsRepository,
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.signedOut(
+                CalendarProvider.naver,
+              ),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final toggle = find.text('마이크 버튼을 누르면 바로 듣기 시작');
+    await tester.scrollUntilVisible(toggle, 200);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+
+    expect(settingsRepository.savedSettings, isNotNull);
+    expect(settingsRepository.savedSettings!.voiceAutoStart, isFalse);
   });
 
   testWidgets('Google calendar button syncs interactively and shows feedback',
@@ -206,7 +248,7 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final syncButton = find.widgetWithText(FilledButton, '네이버 동기화');
+    final syncButton = find.widgetWithText(FilledButton, '네이버 일정 동기화');
     await tester.scrollUntilVisible(syncButton, 200);
     await tester.ensureVisible(syncButton);
     await tester.tap(syncButton);

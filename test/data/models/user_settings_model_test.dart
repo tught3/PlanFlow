@@ -10,6 +10,7 @@ void main() {
       eveningBriefingAt: '21:00',
       defaultReminderMin: 45,
       travelMode: 'transit',
+      voiceAutoStart: false,
       googleCalendarToken: 'google-token',
       naverCalendarToken: 'naver-token',
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
@@ -27,6 +28,8 @@ void main() {
     expect(restored.eveningBriefingAt, '21:00');
     expect(restored.defaultReminderMin, model.defaultReminderMin);
     expect(restored.travelMode, 'transit');
+    expect(restored.voiceAutoStart, isFalse);
+    expect(restored.toJson()['voice_auto_start'], isFalse);
     expect(restored.googleCalendarToken, model.googleCalendarToken);
     expect(restored.naverCalendarToken, model.naverCalendarToken);
     expect(restored.createdAt, model.createdAt);
@@ -40,6 +43,7 @@ void main() {
     });
 
     expect(restored.travelMode, 'car');
+    expect(restored.voiceAutoStart, isTrue);
     expect(restored.toJson()['travel_mode'], 'car');
   });
 }

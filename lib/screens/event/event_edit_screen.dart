@@ -589,12 +589,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
               SwitchListTile.adaptive(
-                tileColor: PlanFlowColors.surface,
+                tileColor: _critical
+                    ? const Color(0xFFFFE3DD)
+                    : PlanFlowColors.surface,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                  side: const BorderSide(
-                    color: PlanFlowColors.primaryFaint,
-                    width: 0.5,
+                  side: BorderSide(
+                    color: _critical
+                        ? const Color(0xFFB42318)
+                        : PlanFlowColors.primaryFaint,
+                    width: _critical ? 1.2 : 0.5,
                   ),
                 ),
                 contentPadding: const EdgeInsets.symmetric(
@@ -603,6 +607,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 ),
                 title: const Text('중요 일정'),
                 subtitle: const Text('긴급 알림을 함께 예약합니다.'),
+                secondary: Icon(
+                  _critical
+                      ? Icons.priority_high_rounded
+                      : Icons.notifications_active_outlined,
+                  color: _critical
+                      ? const Color(0xFFB42318)
+                      : PlanFlowColors.textSecondary,
+                ),
+                activeThumbColor: const Color(0xFFB42318),
+                activeTrackColor: const Color(0xFFFFC9BE),
                 value: _critical,
                 onChanged: (value) {
                   setState(() {

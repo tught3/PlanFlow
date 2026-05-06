@@ -11,7 +11,8 @@ void main() {
       routes: [
         GoRoute(
           path: AppRoutes.voice,
-          builder: (context, state) => const VoiceInputScreen(),
+          builder: (context, state) =>
+              const VoiceInputScreen(autoStartOverride: false),
         ),
         GoRoute(
           path: AppRoutes.confirm,
@@ -50,7 +51,8 @@ void main() {
       routes: [
         GoRoute(
           path: AppRoutes.voice,
-          builder: (context, state) => const VoiceInputScreen(),
+          builder: (context, state) =>
+              const VoiceInputScreen(autoStartOverride: false),
         ),
         GoRoute(
           path: AppRoutes.confirm,

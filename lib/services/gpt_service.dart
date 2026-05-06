@@ -10,14 +10,17 @@ class GptService {
     http.Client? client,
     Uri? endpoint,
     String? apiKey,
+    DateTime Function()? now,
   })  : _client = client,
         _endpoint =
             endpoint ?? Uri.parse('https://api.openai.com/v1/chat/completions'),
-        _apiKey = apiKey ?? AppEnv.openAiApiKey;
+        _apiKey = apiKey ?? AppEnv.openAiApiKey,
+        _now = now ?? DateTime.now;
 
   final http.Client? _client;
   final Uri _endpoint;
   final String _apiKey;
+  final DateTime Function() _now;
 
   static const String _model = 'gpt-4o-mini';
   static const Map<String, dynamic> _responseFormat = <String, dynamic>{
@@ -187,8 +190,12 @@ class GptService {
     normalized['supplies'] = _normalizeSupplies(normalized['supplies']);
     normalized['pre_actions'] = _normalizePreActions(normalized['pre_actions']);
     final inferredStartAt = _inferStartAtFromRawText(rawText);
-    if (_parseDateTime(normalized['start_at']) == null &&
-        inferredStartAt != null) {
+    if (inferredStartAt != null &&
+        _shouldPreferInferredStartAt(
+          rawText: rawText,
+          parsedStartAt: _parseDateTime(normalized['start_at']),
+          inferredStartAt: inferredStartAt,
+        )) {
       normalized['start_at'] = inferredStartAt.toIso8601String();
     }
     normalized['pre_actions'] =
@@ -286,7 +293,12 @@ class GptService {
       return null;
     }
 
-    final now = DateTime.now();
+    final now = _now();
+    final relative = _extractRelativeOffsetFromText(normalized, now);
+    if (relative != null) {
+      return relative;
+    }
+
     final date = _extractDateFromText(normalized, now);
     final time = _extractTimeFromText(normalized);
 
@@ -309,6 +321,57 @@ class GptService {
     }
 
     return candidate;
+  }
+
+  bool _shouldPreferInferredStartAt({
+    required String rawText,
+    required DateTime? parsedStartAt,
+    required DateTime inferredStartAt,
+  }) {
+    if (parsedStartAt == null) {
+      return true;
+    }
+    if (!_hasExplicitKoreanTimeExpression(rawText)) {
+      return false;
+    }
+    return parsedStartAt.difference(inferredStartAt).abs() >
+        const Duration(minutes: 1);
+  }
+
+  bool _hasExplicitKoreanTimeExpression(String rawText) {
+    final text = _normalizeKoreanText(rawText);
+    return RegExp(r'\d{1,2}\s*분\s*(뒤|후|있다가|이따)').hasMatch(text) ||
+        RegExp(r'\d{1,2}\s*시간(?:\s*\d{1,2}\s*분)?\s*(뒤|후|있다가|이따)')
+            .hasMatch(text) ||
+        RegExp(r'(오늘|내일|모레|글피)').hasMatch(text) ||
+        RegExp(r'(?:(?:\d{4})년\s*)?\d{1,2}월\s*\d{1,2}일').hasMatch(text) ||
+        RegExp(r'(?:(오전|오후)\s*)?\d{1,2}\s*시').hasMatch(text);
+  }
+
+  DateTime? _extractRelativeOffsetFromText(String text, DateTime now) {
+    final hourMinuteMatch = RegExp(
+      r'(?:(?<hours>\d{1,2})\s*시간)\s*(?:(?<minutes>\d{1,2})\s*분)?\s*(뒤|후|있다가|이따)',
+    ).firstMatch(text);
+    if (hourMinuteMatch != null) {
+      final hours = int.tryParse(hourMinuteMatch.namedGroup('hours') ?? '');
+      final minutes =
+          int.tryParse(hourMinuteMatch.namedGroup('minutes') ?? '') ?? 0;
+      if (hours != null && hours >= 0 && minutes >= 0 && minutes < 60) {
+        return now.add(Duration(hours: hours, minutes: minutes));
+      }
+    }
+
+    final minuteMatch = RegExp(
+      r'(?<minutes>\d{1,3})\s*분\s*(뒤|후|있다가|이따)',
+    ).firstMatch(text);
+    if (minuteMatch != null) {
+      final minutes = int.tryParse(minuteMatch.namedGroup('minutes') ?? '');
+      if (minutes != null && minutes >= 0) {
+        return now.add(Duration(minutes: minutes));
+      }
+    }
+
+    return null;
   }
 
   DateTime? _extractDateFromText(String text, DateTime now) {
@@ -367,7 +430,7 @@ class GptService {
       '토요일': DateTime.saturday,
     };
 
-    final now = DateTime.now();
+    final now = _now();
     for (final entry in weekdays.entries) {
       if (!text.contains(entry.key)) {
         continue;
@@ -435,6 +498,7 @@ Return only a valid JSON object.
 Use these keys:
 title, date, start_at, end_at, location, location_lat, location_lng, travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies, is_critical, pre_actions.
 start_at and end_at must be ISO-8601 date-time strings when possible.
+For Korean relative expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", resolve them from the current local date and time.
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.
 supplies must be an array of strings.
 is_critical must be a boolean.

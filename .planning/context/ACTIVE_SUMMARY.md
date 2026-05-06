@@ -315,3 +315,11 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 ## 2026-05-06 CalDAV range dialog layout polish
 - Reworked the CalDAV extra-history range dialog so the buttons render compactly in three columns instead of a tall single-stack layout, matching the user's request for a cleaner and less bulky action grid.
 - Verification: `flutter analyze`, targeted Settings screen test, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -n com.example.planflow/.MainActivity` all passed on the connected device.
+
+## 2026-05-06 Voice timing and Naver sync UX checkpoint
+- Added per-user `voice_auto_start` settings support with Supabase schema/patch updates and repository fallback so the app stays usable before the remote DB column is applied.
+- Added a Settings `음성 입력 방식` toggle so microphone entry can either start listening immediately or wait for the user to press the listen button.
+- Strengthened Korean voice time parsing so phrases such as `3분 뒤`, `2시간 후`, and `내일 오전 10시` override incorrect GPT/current-time fallbacks when creating schedules.
+- Made important-alarm toggles visually distinct in both confirmation and edit screens with warm warning colors and clearer on/off styling.
+- Renamed the Naver button to `네이버 일정 동기화`, improved the first CalDAV progress message, upserted Naver `calendar_connections` as connected after successful CalDAV sync, enabled disconnect when a connected record exists, and made connected status checks green.
+- Verification: `flutter analyze`, full `flutter test` (120 passed), `flutter build apk --debug`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, PID check, and focus check on `com.example.planflow/.MainActivity` all passed. `scripts/gsd-context-hygiene.mjs` remains absent.

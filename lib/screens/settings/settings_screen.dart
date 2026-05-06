@@ -7,7 +7,9 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
+import '../../data/models/calendar_connection_model.dart';
 import '../../data/models/user_settings_model.dart';
+import '../../data/repositories/calendar_connection_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
@@ -76,6 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   TimeOfDay _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
   int _defaultReminderMinutes = 60;
   String _travelMode = 'car';
+  bool _voiceAutoStart = true;
 
   CalendarSyncSummary? _calendarSyncSummary;
   List<BackupSnapshot> _backups = const <BackupSnapshot>[];
@@ -389,6 +392,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return false;
     }
 
+    await _markNaverCalDavConnection(
+      status: CalendarConnectionStatus.connected,
+      lastError: null,
+    );
     await _loadCalendarStatus();
     if (!mounted) {
       return false;
@@ -452,7 +459,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       mode: mode,
       stage: NaverCalDavSyncStage.preparing,
       message: additionalLabel == null
-          ? '최근 3개월과 앞으로 6개월 일정을 먼저 가져옵니다.'
+          ? '네이버 캘린더에 연결 중입니다. 데이터가 많으면 1~2분 정도 걸릴 수 있어요.'
           : '$additionalLabel 범위의 일정을 추가로 가져옵니다.',
     );
     _naverCalDavLongRunning.value = false;
@@ -490,9 +497,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
     _showSnack(result.message);
     if (result.success) {
+      await _markNaverCalDavConnection(
+        status: CalendarConnectionStatus.connected,
+        lastError: result.createdOrUpdated == 0 && result.skipped == 0
+            ? result.message
+            : null,
+      );
+      if (mounted) {
+        await _loadCalendarStatus();
+      }
       EventRefreshBus.instance.notifyChanged(reason: 'naver_caldav_import');
+    } else {
+      await _markNaverCalDavConnection(
+        status: CalendarConnectionStatus.failed,
+        lastError: result.message,
+      );
     }
     return result;
+  }
+
+  Future<void> _markNaverCalDavConnection({
+    required CalendarConnectionStatus status,
+    String? lastError,
+  }) async {
+    final userId = _userId;
+    if (!AppEnv.isSupabaseReady || userId == null || userId.isEmpty) {
+      return;
+    }
+    try {
+      await CalendarConnectionRepository.supabase().upsertConnection(
+        CalendarConnectionModel(
+          userId: userId,
+          provider: 'naver',
+          status: status,
+          lastSyncedAt: status == CalendarConnectionStatus.connected
+              ? DateTime.now().toUtc()
+              : null,
+          lastError: lastError,
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Naver CalDAV connection state save skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<bool?> _showNaverCalDavImportIntroDialog() {
@@ -501,7 +548,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => AlertDialog(
         title: const Text('네이버 캘린더 동기화'),
         content: const Text(
-          '데이터가 많은 경우 오래 걸릴 수 있습니다. 먼저 최근 3개월과 앞으로 6개월 일정만 빠르게 가져옵니다.',
+          '데이터가 많은 경우 오래 걸릴 수 있습니다. 보통 1~2분 사이에 완료됩니다. 먼저 최근 3개월과 앞으로 6개월 일정만 빠르게 가져옵니다.',
         ),
         actions: [
           _buildDialogButtonBar(
@@ -981,6 +1028,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         eveningBriefingAt: _formatTimeValue(_eveningBriefingAt),
         defaultReminderMin: _defaultReminderMinutes,
         travelMode: _travelMode,
+        voiceAutoStart: _voiceAutoStart,
       );
       final saved = await _settingsProvider.save(draft);
       if (!mounted) {
@@ -1221,6 +1269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
       _defaultReminderMinutes = 60;
       _travelMode = 'car';
+      _voiceAutoStart = true;
     });
     unawaited(_persistSettings(successMessage: '설정을 기본값으로 되돌렸습니다.'));
   }
@@ -1230,6 +1279,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _eveningBriefingAt = _parseTime(settings.eveningBriefingAt);
     _defaultReminderMinutes = settings.defaultReminderMin;
     _travelMode = settings.travelMode;
+    _voiceAutoStart = settings.voiceAutoStart;
   }
 
   void _showSnack(String message) {
@@ -1322,6 +1372,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 16),
             _SectionCard(
+              title: '음성 입력 방식',
+              subtitle: '홈이나 위젯의 마이크 버튼을 눌렀을 때 바로 듣기 시작할지 정합니다.',
+              child: SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _voiceAutoStart,
+                activeThumbColor: PlanFlowColors.primary,
+                activeTrackColor: PlanFlowColors.primaryFaint,
+                title: const Text('마이크 버튼을 누르면 바로 듣기 시작'),
+                subtitle: Text(
+                  _voiceAutoStart ? '바로 음성입력' : '버튼 눌러서 입력',
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _voiceAutoStart = value;
+                  });
+                  unawaited(_persistSettings());
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SectionCard(
               title: '캘린더 연동',
               subtitle:
                   'Google과 Naver 일정을 PlanFlow와 동기화합니다. Naver는 CalDAV로 연결합니다.',
@@ -1407,9 +1478,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Expanded(
                                 child: OutlinedButton.icon(
                                   onPressed: _isDisconnectingNaverCalendar ||
-                                          !_canDisconnectCalendar(
-                                            _calendarSyncSummary?.naver,
-                                          )
+                                          !(_hasNaverCalDavCredentials ||
+                                              _canDisconnectCalendar(
+                                                _calendarSyncSummary?.naver,
+                                              ))
                                       ? null
                                       : _disconnectNaverCalendar,
                                   icon: _isDisconnectingNaverCalendar
@@ -1450,7 +1522,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         ? '동기화 중...'
                                         : _isTestingNaverCalDav
                                             ? '연결 확인 중...'
-                                            : '네이버 동기화',
+                                            : '네이버 일정 동기화',
                                   ),
                                 ),
                               ),
@@ -1952,7 +2024,7 @@ class _StatusRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color =
-        isConfigured ? PlanFlowColors.primaryMid : PlanFlowColors.textSecondary;
+        isConfigured ? const Color(0xFF1F8A4C) : PlanFlowColors.textSecondary;
     return Row(
       children: [
         Container(

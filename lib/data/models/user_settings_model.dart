@@ -6,6 +6,7 @@ class UserSettingsModel {
     this.eveningBriefingAt = '21:00',
     this.defaultReminderMin = 60,
     this.travelMode = 'car',
+    this.voiceAutoStart = true,
     this.googleCalendarToken,
     this.naverCalendarToken,
     this.createdAt,
@@ -22,6 +23,7 @@ class UserSettingsModel {
       morningBriefingAt: '07:30',
       eveningBriefingAt: '21:00',
       defaultReminderMin: 60,
+      voiceAutoStart: true,
       createdAt: createdAt,
     );
   }
@@ -34,6 +36,7 @@ class UserSettingsModel {
       eveningBriefingAt: _timeValue(json['evening_briefing_at']),
       defaultReminderMin: _intValue(json['default_reminder_min'], 60),
       travelMode: _travelModeValue(json['travel_mode']),
+      voiceAutoStart: _boolValue(json['voice_auto_start'], true),
       googleCalendarToken: json['google_calendar_token'] as String?,
       naverCalendarToken: json['naver_calendar_token'] as String?,
       createdAt: _dateTimeValue(json['created_at']),
@@ -46,6 +49,7 @@ class UserSettingsModel {
   final String eveningBriefingAt;
   final int defaultReminderMin;
   final String travelMode;
+  final bool voiceAutoStart;
   final String? googleCalendarToken;
   final String? naverCalendarToken;
   final DateTime? createdAt;
@@ -57,6 +61,7 @@ class UserSettingsModel {
     String? eveningBriefingAt,
     int? defaultReminderMin,
     String? travelMode,
+    bool? voiceAutoStart,
     String? googleCalendarToken,
     String? naverCalendarToken,
     DateTime? createdAt,
@@ -71,6 +76,7 @@ class UserSettingsModel {
       eveningBriefingAt: eveningBriefingAt ?? this.eveningBriefingAt,
       defaultReminderMin: defaultReminderMin ?? this.defaultReminderMin,
       travelMode: travelMode ?? this.travelMode,
+      voiceAutoStart: voiceAutoStart ?? this.voiceAutoStart,
       googleCalendarToken: clearGoogleCalendarToken
           ? null
           : googleCalendarToken ?? this.googleCalendarToken,
@@ -89,6 +95,7 @@ class UserSettingsModel {
       'evening_briefing_at': eveningBriefingAt,
       'default_reminder_min': defaultReminderMin,
       'travel_mode': _travelModeValue(travelMode),
+      'voice_auto_start': voiceAutoStart,
       'google_calendar_token': googleCalendarToken,
       'naver_calendar_token': naverCalendarToken,
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
@@ -128,6 +135,20 @@ class UserSettingsModel {
       return value.toInt();
     }
     return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  static bool _boolValue(Object? value, bool fallback) {
+    if (value is bool) {
+      return value;
+    }
+    final text = value?.toString().trim().toLowerCase();
+    if (text == 'true' || text == '1' || text == 'yes') {
+      return true;
+    }
+    if (text == 'false' || text == '0' || text == 'no') {
+      return false;
+    }
+    return fallback;
   }
 
   static String _travelModeValue(Object? value) {

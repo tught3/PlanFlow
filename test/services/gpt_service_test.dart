@@ -85,6 +85,79 @@ void main() {
       expect(parsedStartAt.minute, 0);
     });
 
+    test('infers short relative minute offsets from Korean voice text',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': 'not valid json',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final now = DateTime(2026, 5, 6, 23, 0);
+      final service = GptService(
+        client: client,
+        apiKey: 'test-key',
+        now: () => now,
+      );
+
+      final result = await service.parseSchedule('3분 뒤에 누구한테 연락하기');
+      final parsedStartAt = DateTime.parse(result['start_at'] as String);
+
+      expect(parsedStartAt, now.add(const Duration(minutes: 3)));
+    });
+
+    test('explicit Korean time overrides a wrong model-provided current time',
+        () async {
+      final now = DateTime(2026, 5, 6, 23, 0);
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '정장집 방문',
+                    'start_at': now.toIso8601String(),
+                    'end_at': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        apiKey: 'test-key',
+        now: () => now,
+      );
+
+      final result = await service.parseSchedule('내일 오전 10시에 정장집 방문');
+      final parsedStartAt = DateTime.parse(result['start_at'] as String);
+
+      expect(parsedStartAt, DateTime(2026, 5, 7, 10, 0));
+    });
+
     test('uses the morning briefing prompt', () async {
       late Map<String, dynamic> body;
 

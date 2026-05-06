@@ -1394,8 +1394,33 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         });
                       },
                       title: const Text('중요 알림'),
-                      subtitle: const Text('중요 일정이면 더 강한 알림에 함께 등록돼요.'),
-                      contentPadding: EdgeInsets.zero,
+                      subtitle: const Text('긴급 알림을 함께 예약합니다.'),
+                      secondary: Icon(
+                        _isCritical
+                            ? Icons.priority_high_rounded
+                            : Icons.notifications_active_outlined,
+                        color: _isCritical
+                            ? const Color(0xFFB42318)
+                            : PlanFlowColors.textSecondary,
+                      ),
+                      activeThumbColor: const Color(0xFFB42318),
+                      activeTrackColor: const Color(0xFFFFC9BE),
+                      tileColor: _isCritical
+                          ? const Color(0xFFFFE3DD)
+                          : PlanFlowColors.surface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(
+                          color: _isCritical
+                              ? const Color(0xFFB42318)
+                              : PlanFlowColors.primaryFaint,
+                          width: _isCritical ? 1.2 : 0.5,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                     ),
                     const SizedBox(height: 24),
                     FilledButton.icon(

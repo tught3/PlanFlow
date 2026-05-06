@@ -1,6 +1,9 @@
 -- PlanFlow calendar sync patch
 -- Apply this in Supabase SQL Editor if the full schema.sql is too large.
 
+alter table public.user_settings
+  add column if not exists voice_auto_start boolean not null default true;
+
 alter table public.events
   add column if not exists external_calendar_id text,
   add column if not exists external_etag text,

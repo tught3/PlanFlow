@@ -71,17 +71,17 @@ class SupabaseSettingsGateway implements SettingsGateway {
 
   static const String tableName = 'user_settings';
   static const String selectColumns =
-      'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, travel_mode, google_calendar_token, naver_calendar_token, created_at';
+      'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
+      'travel_mode, voice_auto_start, google_calendar_token, naver_calendar_token, created_at';
+  static const String _legacySelectColumns =
+      'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
+      'travel_mode, google_calendar_token, naver_calendar_token, created_at';
 
   final SupabaseClient _client;
 
   @override
   Future<Map<String, dynamic>?> fetchSettings(String userId) async {
-    final response = await _client
-        .from(tableName)
-        .select(selectColumns)
-        .eq('user_id', userId)
-        .maybeSingle();
+    final response = await _selectSettings(userId, selectColumns);
 
     if (response == null) {
       return null;
@@ -94,15 +94,66 @@ class SupabaseSettingsGateway implements SettingsGateway {
   Future<Map<String, dynamic>> upsertSettings(
     Map<String, dynamic> payload,
   ) async {
-    final response = await _client
-        .from(tableName)
-        .upsert(
-          payload,
-          onConflict: 'user_id',
-        )
-        .select(selectColumns)
-        .single();
+    final response = await _upsertSettings(payload, selectColumns);
 
     return Map<String, dynamic>.from(response as Map);
+  }
+
+  Future<dynamic> _selectSettings(String userId, String columns) async {
+    try {
+      return await _client
+          .from(tableName)
+          .select(columns)
+          .eq('user_id', userId)
+          .maybeSingle();
+    } on PostgrestException catch (error) {
+      if (!_isMissingVoiceAutoStartError(error) ||
+          columns == _legacySelectColumns) {
+        rethrow;
+      }
+      return _client
+          .from(tableName)
+          .select(_legacySelectColumns)
+          .eq('user_id', userId)
+          .maybeSingle();
+    }
+  }
+
+  Future<dynamic> _upsertSettings(
+    Map<String, dynamic> payload,
+    String columns,
+  ) async {
+    try {
+      return await _client
+          .from(tableName)
+          .upsert(
+            payload,
+            onConflict: 'user_id',
+          )
+          .select(columns)
+          .single();
+    } on PostgrestException catch (error) {
+      if (!_isMissingVoiceAutoStartError(error) ||
+          columns == _legacySelectColumns) {
+        rethrow;
+      }
+      final legacyPayload = Map<String, dynamic>.from(payload)
+        ..remove('voice_auto_start');
+      return _client
+          .from(tableName)
+          .upsert(
+            legacyPayload,
+            onConflict: 'user_id',
+          )
+          .select(_legacySelectColumns)
+          .single();
+    }
+  }
+
+  bool _isMissingVoiceAutoStartError(PostgrestException error) {
+    final text =
+        '${error.code} ${error.message} ${error.details}'.toLowerCase();
+    return text.contains('voice_auto_start') ||
+        text.contains('schema cache') && text.contains('user_settings');
   }
 }
