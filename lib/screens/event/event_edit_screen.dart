@@ -306,28 +306,96 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }).toList(growable: false)
         ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
       final nextEvent = nextEvents.isEmpty ? fallbackEvent : nextEvents.first;
-      return widget.homeWidgetService.updateNextEvent(
-        title: nextEvent.title,
-        eventId: nextEvent.id,
-        startAt: nextEvent.startAt,
-        location: nextEvent.location,
-        isCritical: nextEvent.isCritical,
-        upcomingEvents: nextEvents
-            .take(3)
-            .map(
-              (event) => HomeWidgetListEventData(
-                title: event.title,
-                startAt: event.startAt,
-                location: event.location,
-              ),
-            )
-            .toList(growable: false),
+      return widget.homeWidgetService.updateScheduleData(
+        nextEvent: HomeWidgetNextEventData(
+          title: nextEvent.title,
+          eventId: nextEvent.id,
+          startAt: nextEvent.startAt,
+          location: nextEvent.location,
+          isCritical: nextEvent.isCritical,
+        ),
+        todayEvents: _todayWidgetEvents(nextEvents, now),
+        month: now,
+        monthDays: _monthWidgetDays(nextEvents, now),
+        weekDays: _weekWidgetDays(nextEvents, now),
       );
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen widget refresh failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return false;
     }
+  }
+
+  List<HomeWidgetListEventData> _todayWidgetEvents(
+    List<EventModel> events,
+    DateTime now,
+  ) {
+    return events
+        .where((event) {
+          final startAt = event.startAt;
+          return startAt != null &&
+              startAt.year == now.year &&
+              startAt.month == now.month &&
+              startAt.day == now.day;
+        })
+        .take(6)
+        .map(_homeWidgetListEvent)
+        .toList(growable: false);
+  }
+
+  List<HomeWidgetMonthDayData> _monthWidgetDays(
+    List<EventModel> events,
+    DateTime now,
+  ) {
+    final counts = <int, int>{};
+    for (final event in events) {
+      final startAt = event.startAt;
+      if (startAt == null ||
+          startAt.year != now.year ||
+          startAt.month != now.month) {
+        continue;
+      }
+      counts[startAt.day] = (counts[startAt.day] ?? 0) + 1;
+    }
+    return counts.entries
+        .map(
+          (entry) => HomeWidgetMonthDayData(
+            day: entry.key,
+            summary: '일정 ${entry.value}',
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<HomeWidgetWeekDayData> _weekWidgetDays(
+    List<EventModel> events,
+    DateTime now,
+  ) {
+    final weekStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    return List<HomeWidgetWeekDayData>.generate(7, (index) {
+      final day = weekStart.add(Duration(days: index));
+      final dayEvents = events.where((event) {
+        final startAt = event.startAt;
+        return startAt != null &&
+            startAt.year == day.year &&
+            startAt.month == day.month &&
+            startAt.day == day.day;
+      }).toList(growable: false);
+      return HomeWidgetWeekDayData(
+        date: day,
+        summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}개',
+        events: dayEvents.map(_homeWidgetListEvent).toList(growable: false),
+      );
+    });
+  }
+
+  HomeWidgetListEventData _homeWidgetListEvent(EventModel event) {
+    return HomeWidgetListEventData(
+      title: event.title,
+      startAt: event.startAt,
+      location: event.location,
+    );
   }
 
   String? _emptyToNull(String value) {

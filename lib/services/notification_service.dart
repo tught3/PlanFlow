@@ -16,6 +16,7 @@ class NotificationService {
   static const String _eventReminderChannelId = 'event_reminders';
   static const String _eventReminderChannelName = '일정 알림';
   static const String _eventReminderChannelDescription = '다가오는 일정 알림';
+  static const int _maxSmartPreparationAlarmsPerEvent = 20;
 
   static const String _criticalAlarmChannelId = 'critical_alarms';
   static const String _criticalAlarmChannelName = '중요 일정 알람';
@@ -104,6 +105,15 @@ class NotificationService {
   Future<void> cancelEventNotifications(String eventId) async {
     await cancel(notificationIdFor('$eventId:push'));
     await cancel(notificationIdFor('$eventId:critical'));
+    await cancelSmartPreparationAlarms(eventId);
+  }
+
+  Future<void> cancelSmartPreparationAlarms(String eventId) async {
+    for (var index = 0;
+        index < _maxSmartPreparationAlarmsPerEvent;
+        index += 1) {
+      await cancel(notificationIdFor('$eventId:smart_preparation:$index'));
+    }
   }
 
   Future<NotificationPermissionStatus> checkPermissionStatus() async {

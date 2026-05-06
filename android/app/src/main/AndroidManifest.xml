@@ -87,13 +87,57 @@
         <receiver
             android:name=".PlanFlowHomeWidgetProvider"
             android:exported="true"
-            android:label="PlanFlow">
+            android:label="@string/planflow_next_widget_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/planflow_home_widget" />
+        </receiver>
+        <receiver
+            android:name=".PlanFlowMonthlyWidgetProvider"
+            android:exported="true"
+            android:label="@string/planflow_monthly_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/planflow_monthly_widget" />
+        </receiver>
+        <receiver
+            android:name=".PlanFlowVerticalScheduleWidgetProvider"
+            android:exported="true"
+            android:label="@string/planflow_vertical_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/planflow_vertical_schedule_widget" />
+        </receiver>
+        <receiver
+            android:name=".PlanFlowWeeklyWidgetProvider"
+            android:exported="true"
+            android:label="@string/planflow_weekly_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/planflow_weekly_widget" />
+        </receiver>
+        <receiver
+            android:name=".PlanFlowMicWidgetProvider"
+            android:exported="true"
+            android:label="@string/planflow_mic_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/planflow_mic_widget" />
         </receiver>
     </application>
 </manifest>

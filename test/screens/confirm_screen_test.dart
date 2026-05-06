@@ -11,7 +11,8 @@ import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/notification_service.dart';
 
 void main() {
-  testWidgets('ConfirmScreen shows a pre-action card from both add buttons',
+  testWidgets(
+      'ConfirmScreen shows a smart preparation card from both add buttons',
       (tester) async {
     await tester.pumpWidget(
       _testApp(
@@ -26,17 +27,13 @@ void main() {
       ),
     );
 
-    await tester.ensureVisible(find.text('선행행동 추가'));
-    await tester.tap(find.text('선행행동 추가'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('선행행동 1'), findsOneWidget);
+    expect(find.text('스마트 준비 알람 1'), findsOneWidget);
 
     await tester.ensureVisible(find.widgetWithText(TextButton, '추가'));
     await tester.tap(find.widgetWithText(TextButton, '추가'));
     await tester.pumpAndSettle();
 
-    expect(find.text('선행행동 2'), findsOneWidget);
+    expect(find.text('스마트 준비 알람 2'), findsOneWidget);
   });
 
   testWidgets(
@@ -275,6 +272,22 @@ class _FakeNotificationService extends NotificationService {
 }
 
 class _FakeHomeWidgetService extends HomeWidgetService {
+  @override
+  Future<bool> updateScheduleData({
+    required HomeWidgetNextEventData nextEvent,
+    List<HomeWidgetListEventData> todayEvents =
+        const <HomeWidgetListEventData>[],
+    DateTime? month,
+    List<HomeWidgetMonthDayData> monthDays = const <HomeWidgetMonthDayData>[],
+    List<HomeWidgetWeekDayData> weekDays = const <HomeWidgetWeekDayData>[],
+    String widgetName = HomeWidgetService.defaultWidgetName,
+    String? androidName,
+    String? iOSName,
+    String? qualifiedAndroidName,
+  }) async {
+    return true;
+  }
+
   @override
   Future<bool> updateNextEvent({
     required String title,

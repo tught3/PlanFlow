@@ -19,6 +19,7 @@ import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/travel_time_buffer_service.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
@@ -33,6 +34,7 @@ class ConfirmScreen extends StatefulWidget {
     NotificationService? notificationService,
     HomeWidgetService? homeWidgetService,
     LocationLookupService? locationLookupService,
+    SmartPreparationAlarmService? smartPreparationAlarmService,
     this.permissionService,
     TravelTimeBufferService? travelTimeBufferService,
   })  : backend = backend ?? const SupabaseConfirmScreenBackend(),
@@ -41,6 +43,10 @@ class ConfirmScreen extends StatefulWidget {
         homeWidgetService = homeWidgetService ?? HomeWidgetService(),
         locationLookupService =
             locationLookupService ?? LocationLookupService(),
+        smartPreparationAlarmService = smartPreparationAlarmService ??
+            SmartPreparationAlarmService(
+              notificationService: notificationService,
+            ),
         travelTimeBufferService =
             travelTimeBufferService ?? TravelTimeBufferService();
 
@@ -52,6 +58,7 @@ class ConfirmScreen extends StatefulWidget {
   final NotificationService notificationService;
   final HomeWidgetService homeWidgetService;
   final LocationLookupService locationLookupService;
+  final SmartPreparationAlarmService smartPreparationAlarmService;
   final AppPermissionService? permissionService;
   final TravelTimeBufferService travelTimeBufferService;
 
@@ -464,7 +471,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           _supplies.addAll(supplies.map(_SupplyDraft.new));
         }
 
-        final parsedPreActions = _preActionsFromValue(parsed['pre_actions']);
+        final parsedPreActions = _preActionsFromValue(
+          _smartPreparationAlarmValues(parsed),
+        );
         if (parsedPreActions.isNotEmpty && _preActions.isEmpty) {
           _preActions.addAll(parsedPreActions);
         }
@@ -617,6 +626,14 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     await _tryFollowUp(
       () => widget.backend.insertPreActions(preActionPayloads),
       label: 'pre_actions',
+    );
+    await _tryFollowUp(
+      () => widget.smartPreparationAlarmService.schedulePayloads(
+        eventId: event.id,
+        eventTitle: event.title,
+        payloads: preActionPayloads,
+      ),
+      label: 'smart_preparation_alarm_notifications',
     );
     await _tryFollowUp(
       () => widget.backend.insertReminders(reminderPayloads),
@@ -825,24 +842,98 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     try {
       final nextEvent = await _resolveNextEvent(repository) ?? fallbackEvent;
       final upcomingEvents = await _resolveUpcomingEvents(repository);
-      await widget.homeWidgetService.updateNextEvent(
-        title: nextEvent.title,
-        eventId: nextEvent.id,
-        startAt: nextEvent.startAt,
-        location: nextEvent.location,
-        travelOrigin: _resolveTravelOrigin(),
-        isCritical: nextEvent.isCritical,
-        upcomingEvents: upcomingEvents
-            .map(
-              (event) => HomeWidgetListEventData(
-                title: event.title,
-                startAt: event.startAt,
-                location: event.location,
-              ),
-            )
-            .toList(growable: false),
+      await widget.homeWidgetService.updateScheduleData(
+        nextEvent: HomeWidgetNextEventData(
+          title: nextEvent.title,
+          eventId: nextEvent.id,
+          startAt: nextEvent.startAt,
+          location: nextEvent.location,
+          isCritical: nextEvent.isCritical,
+          travelBufferMinutes:
+              await _resolveTravelBufferMinutesForWidget(nextEvent),
+        ),
+        todayEvents: _todayWidgetEvents(upcomingEvents),
+        month: DateTime.now(),
+        monthDays: _monthWidgetDays(upcomingEvents),
+        weekDays: _weekWidgetDays(upcomingEvents),
       );
     } catch (_) {}
+  }
+
+  Future<int> _resolveTravelBufferMinutesForWidget(EventModel event) {
+    return widget.travelTimeBufferService.estimateMinutesWithGoogleMaps(
+      origin: _resolveTravelOrigin() ?? '',
+      destination: event.location ?? '',
+      latitude: event.locationLat,
+      longitude: event.locationLng,
+      locationText: event.location,
+    );
+  }
+
+  List<HomeWidgetListEventData> _todayWidgetEvents(List<EventModel> events) {
+    final now = DateTime.now();
+    return events
+        .where((event) {
+          final startAt = event.startAt;
+          return startAt != null &&
+              startAt.year == now.year &&
+              startAt.month == now.month &&
+              startAt.day == now.day;
+        })
+        .take(6)
+        .map(_homeWidgetListEvent)
+        .toList(growable: false);
+  }
+
+  List<HomeWidgetMonthDayData> _monthWidgetDays(List<EventModel> events) {
+    final now = DateTime.now();
+    final counts = <int, int>{};
+    for (final event in events) {
+      final startAt = event.startAt;
+      if (startAt == null ||
+          startAt.year != now.year ||
+          startAt.month != now.month) {
+        continue;
+      }
+      counts[startAt.day] = (counts[startAt.day] ?? 0) + 1;
+    }
+    return counts.entries
+        .map(
+          (entry) => HomeWidgetMonthDayData(
+            day: entry.key,
+            summary: '일정 ${entry.value}',
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<HomeWidgetWeekDayData> _weekWidgetDays(List<EventModel> events) {
+    final now = DateTime.now();
+    final weekStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    return List<HomeWidgetWeekDayData>.generate(7, (index) {
+      final day = weekStart.add(Duration(days: index));
+      final dayEvents = events.where((event) {
+        final startAt = event.startAt;
+        return startAt != null &&
+            startAt.year == day.year &&
+            startAt.month == day.month &&
+            startAt.day == day.day;
+      }).toList(growable: false);
+      return HomeWidgetWeekDayData(
+        date: day,
+        summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}개',
+        events: dayEvents.map(_homeWidgetListEvent).toList(growable: false),
+      );
+    });
+  }
+
+  HomeWidgetListEventData _homeWidgetListEvent(EventModel event) {
+    return HomeWidgetListEventData(
+      title: event.title,
+      startAt: event.startAt,
+      location: event.location,
+    );
   }
 
   Future<EventModel?> _resolveNextEvent(EventRepository repository) async {
@@ -948,7 +1039,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     setState(() {
       _preActions.add(draft);
     });
-    _showMessage('선행행동을 추가했어요. 내용을 바로 입력해 주세요.');
+    _showMessage('스마트 준비 알람을 추가했어요. 내용을 바로 입력해 주세요.');
     _focusNewPreAction(draft);
   }
 
@@ -969,7 +1060,20 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   List<_PreActionDraft> _initialPreActions() {
-    return _preActionsFromValue(widget.parsedSchedule['pre_actions']);
+    return _preActionsFromValue(
+      _smartPreparationAlarmValues(widget.parsedSchedule),
+    );
+  }
+
+  List<Map<String, dynamic>> _smartPreparationAlarmValues(
+    Map<String, dynamic> schedule,
+  ) {
+    return widget.smartPreparationAlarmService.enrichParsedSchedule(
+      schedule,
+      rawText: _stringValue(schedule['raw_text']) ??
+          _stringValue(schedule['title']) ??
+          '',
+    );
   }
 
   List<_PreActionDraft> _preActionsFromValue(Object? rawPreActions) {
@@ -1007,6 +1111,42 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _showSmartPreparationAlarmInfo() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  SmartPreparationAlarmService.label,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  '일정 등록 시 AI가 준비물, 이동시간, 금식/출발처럼 미리 해야 할 일을 감지해 적절한 시간에 알려주는 기능입니다.',
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '자동으로 제안된 항목도 저장 전에 직접 수정하거나 삭제할 수 있어요.',
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _scrollToKey(GlobalKey key, {FocusNode? focusNode}) {
@@ -1204,16 +1344,18 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _SectionHeader(
-                            title: '선행행동',
+                            title: SmartPreparationAlarmService.label,
                             actionLabel: '추가',
                             onAction: _addPreAction,
+                            infoTooltip: '스마트 준비 알람 안내',
+                            onInfo: _showSmartPreparationAlarmInfo,
                           ),
                           const SizedBox(height: 8),
                           if (_preActions.isEmpty)
                             _EmptyInlineHint(
                               message:
-                                  '선행행동이 없어요. 추가 버튼을 누르면 바로 아래에 입력 카드가 생겨요.',
-                              actionLabel: '선행행동 추가',
+                                  '스마트 준비 알람이 없어요. 추가 버튼을 누르면 바로 아래에 입력 카드가 생겨요.',
+                              actionLabel: '스마트 준비 알람 추가',
                               onAction: _addPreAction,
                             )
                           else
@@ -1513,11 +1655,15 @@ class _SectionHeader extends StatelessWidget {
     required this.title,
     required this.actionLabel,
     required this.onAction,
+    this.infoTooltip,
+    this.onInfo,
   });
 
   final String title;
   final String actionLabel;
   final VoidCallback onAction;
+  final String? infoTooltip;
+  final VoidCallback? onInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -1526,12 +1672,32 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: PlanFlowColors.primary,
-              fontWeight: FontWeight.w700,
-            ),
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (onInfo != null) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: infoTooltip,
+                  onPressed: onInfo,
+                  icon: const Icon(Icons.help_outline, size: 18),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 32,
+                    height: 32,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
         TextButton.icon(
@@ -1809,7 +1975,7 @@ class _PreActionEditorCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '선행행동 $index',
+              '스마트 준비 알람 $index',
               style: theme.textTheme.titleSmall?.copyWith(
                 color: PlanFlowColors.primary,
                 fontWeight: FontWeight.w700,

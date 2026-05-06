@@ -247,3 +247,11 @@
 - Added Android Calendar Provider write support with READ/WRITE calendar permission handling, stable `planflow:{eventId}` event keys, and writable-calendar selection that prefers local/Samsung calendars before Google where available.
 - Removed app-level orientation forcing from Flutter startup and Android manifest so builds/runs no longer impose portrait or otherwise override the user's phone rotation setting.
 - Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, and `adb shell pidof com.example.planflow` passed. ADB rotation setting was `accelerometer_rotation=1` before and after install/run, confirming this build did not change the system value.
+
+## 2026-05-06 Smart preparation alarm and widget expansion checkpoint
+- Completed the user-facing rename from legacy pre-action wording to `스마트 준비 알람` in confirm/detail/home/settings surfaces while keeping the existing `pre_actions` storage model.
+- Added rule/GPT-assisted smart preparation alarm enrichment for medical/checkup, travel/visit/meeting, and supplies scenarios; added tests proving candidates and local notification scheduling.
+- Confirm screen now shows a `?` help bottom sheet, saves smart preparation alarm rows, and schedules per-alarm local notifications with stable cancellation through event notification cleanup.
+- Event detail now loads and displays saved smart preparation alarms, and Home shows one faded past schedule plus real DB-backed smart-prep badges.
+- Expanded Android home widgets to five providers: next event, monthly calendar, vertical schedule, weekly schedule, and 1x1 mic shortcut; save/update/delete widget refresh now feeds today/month/week data.
+- Verification: flutter analyze, full flutter test (104 passed), flutter build apk --debug, adb install/run, and package receiver dump for all 5 widget providers passed. scripts/gsd-context-hygiene.mjs remains absent.

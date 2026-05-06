@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/planflow_monthly_widget_description"
+    android:initialLayout="@layout/planflow_monthly_widget"
+    android:minWidth="280dp"
+    android:minHeight="280dp"
+    android:previewLayout="@layout/planflow_monthly_widget"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

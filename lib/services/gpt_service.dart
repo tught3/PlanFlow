@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../core/env.dart';
+import 'smart_preparation_alarm_service.dart';
 
 class GptService {
   GptService({
@@ -190,6 +191,11 @@ class GptService {
         inferredStartAt != null) {
       normalized['start_at'] = inferredStartAt.toIso8601String();
     }
+    normalized['pre_actions'] =
+        const SmartPreparationAlarmService().enrichParsedSchedule(
+      normalized,
+      rawText: rawText,
+    );
     return normalized;
   }
 
@@ -216,7 +222,15 @@ class GptService {
       'memo': null,
       'supplies': <String>[],
       'is_critical': false,
-      'pre_actions': <Map<String, dynamic>>[],
+      'pre_actions': const SmartPreparationAlarmService().enrichParsedSchedule(
+        <String, dynamic>{
+          'title': rawText.trim(),
+          'start_at': inferredStartAt?.toIso8601String(),
+          'supplies': <String>[],
+          'pre_actions': <Map<String, dynamic>>[],
+        },
+        rawText: rawText,
+      ),
     };
   }
 
@@ -425,6 +439,9 @@ If only a date is known, use 09:00 local time unless the user clearly implies al
 supplies must be an array of strings.
 is_critical must be a boolean.
 pre_actions must be an array of objects with title and offset_hours.
+Return pre_actions aggressively when the schedule implies preparation, movement, supplies, medical checks, fasting, departure, documents, or reservation follow-up.
+Use Korean user-facing pre_action titles. Examples: "준비물 챙기기", "이동시간과 출발 시간 확인", "금식/복약 안내 확인", "병원 준비사항 확인".
+Prefer practical offsets: 24 hours for medical/checkup preparation, 12 hours for fasting/medication checks, 2-3 hours for departure or supplies, 1 hour for simple final checks.
 travel_mode must be "car", "transit", or null.
 Only include latitude/longitude values when they are explicitly known from the input or prior context.
 If a field is not known, use null or an empty array.

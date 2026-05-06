@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="planflow_home_widget_description">오늘 다음 일정과 음성 입력 바로가기를 보여줍니다.</string>
+    <string name="planflow_next_widget_label">PlanFlow 다음 일정</string>
+    <string name="planflow_next_widget_description">가장 가까운 일정과 음성 입력 바로가기를 보여줍니다.</string>
+    <string name="planflow_monthly_widget_label">PlanFlow 월간 달력</string>
+    <string name="planflow_monthly_widget_description">이번 달 날짜별 일정 요약과 마이크 버튼을 보여줍니다.</string>
+    <string name="planflow_vertical_widget_label">PlanFlow 오늘 일정</string>
+    <string name="planflow_vertical_widget_description">현재 일정과 오늘 남은 일정을 세로 목록으로 보여줍니다.</string>
+    <string name="planflow_weekly_widget_label">PlanFlow 주간 일정</string>
+    <string name="planflow_weekly_widget_description">이번 주 7일의 주요 일정 요약을 보여줍니다.</string>
+    <string name="planflow_mic_widget_label">PlanFlow 마이크</string>
+    <string name="planflow_mic_widget_description">음성 일정 입력으로 바로 이동하는 1x1 마이크 위젯입니다.</string>
 
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
@@ -8,5 +18,15 @@
 
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">#EEF5FB</item>
+    </style>
+
+    <style name="PlanFlowWidgetListText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">3dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">#26352B</item>
+        <item name="android:textSize">13sp</item>
     </style>
 </resources>

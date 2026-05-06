@@ -9,6 +9,7 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/early_bird_email_repository.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/smart_preparation_alarm_service.dart';
 import '../../widgets/planflow_voice_fab.dart';
 
 enum _HomeLoadState {
@@ -32,8 +33,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  EventModel? _pastTodayEvent;
   List<EventModel> _todayEvents = const <EventModel>[];
   List<EventModel> _upcomingEvents = const <EventModel>[];
+  Set<String> _smartPreparationEventIds = const <String>{};
   _HomeLoadState _loadState = _HomeLoadState.loading;
   String? _loadMessage;
 
@@ -65,8 +68,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!AppEnv.isSupabaseReady) {
       if (mounted) {
         setState(() {
+          _pastTodayEvent = null;
           _todayEvents = const <EventModel>[];
           _upcomingEvents = const <EventModel>[];
+          _smartPreparationEventIds = const <String>{};
           _loadState = _HomeLoadState.supabaseMissing;
         });
       }
@@ -76,8 +81,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (user == null) {
       if (mounted) {
         setState(() {
+          _pastTodayEvent = null;
           _todayEvents = const <EventModel>[];
           _upcomingEvents = const <EventModel>[];
+          _smartPreparationEventIds = const <String>{};
           _loadState = _HomeLoadState.signedOut;
         });
       }
@@ -98,6 +105,12 @@ class _HomeScreenState extends State<HomeScreen> {
             startAt.day == now.day;
       }).toList(growable: false)
         ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+      final pastTodayEvents = todayEvents
+          .where((event) => _isPastEvent(event, now))
+          .toList(growable: false);
+      final currentTodayEvents = todayEvents
+          .where((event) => !_isPastEvent(event, now))
+          .toList(growable: false);
       final upcomingEvents = allEvents.where((event) {
         final startAt = event.startAt;
         return startAt != null &&
@@ -105,19 +118,40 @@ class _HomeScreenState extends State<HomeScreen> {
             !_isSameDate(startAt, now);
       }).toList(growable: false)
         ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+      final visibleEventIds = <String>{
+        if (pastTodayEvents.isNotEmpty) pastTodayEvents.last.id,
+        ...currentTodayEvents.map((event) => event.id),
+        ...upcomingEvents.take(3).map((event) => event.id),
+      };
+      var smartPreparationEventIds = const <String>{};
+      try {
+        smartPreparationEventIds = await const SmartPreparationAlarmService()
+            .listEventIdsWithSmartAlarms(
+          userId: user.id,
+          eventIds: visibleEventIds,
+        );
+      } catch (error, stackTrace) {
+        debugPrint('Home smart preparation lookup failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
 
       if (mounted) {
         setState(() {
-          _todayEvents = todayEvents;
+          _pastTodayEvent =
+              pastTodayEvents.isEmpty ? null : pastTodayEvents.last;
+          _todayEvents = currentTodayEvents;
           _upcomingEvents = upcomingEvents.take(3).toList(growable: false);
+          _smartPreparationEventIds = smartPreparationEventIds;
           _loadState = _HomeLoadState.ready;
         });
       }
     } catch (error) {
       if (mounted) {
         setState(() {
+          _pastTodayEvent = null;
           _todayEvents = const <EventModel>[];
           _upcomingEvents = const <EventModel>[];
+          _smartPreparationEventIds = const <String>{};
           _loadState = _HomeLoadState.error;
           _loadMessage = '오늘 일정을 불러오지 못했어요. 새로고침해 주세요.';
         });
@@ -277,7 +311,28 @@ class _HomeScreenState extends State<HomeScreen> {
                       onRefresh: _loadTodayEvents,
                     ),
                     const SizedBox(height: 12),
-                  ] else if (_todayEvents.isNotEmpty) ...[
+                  ] else ...[
+                    if (_pastTodayEvent != null) ...[
+                      Text(
+                        '지나간 일정',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _TodayEventCard(
+                        event: _pastTodayEvent!,
+                        isPast: true,
+                        hasSmartPrepAlarm: _smartPreparationEventIds
+                            .contains(_pastTodayEvent!.id),
+                        onTap: () => context.push(
+                          '${AppRoutes.eventDetail}/${Uri.encodeComponent(_pastTodayEvent!.id)}',
+                          extra: _pastTodayEvent,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     Text(
                       '오늘 일정',
                       style: theme.textTheme.titleMedium?.copyWith(
@@ -286,67 +341,72 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ..._todayEvents.map(
-                      (event) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: _TodayEventCard(
-                          event: event,
-                          onTap: () => context.push(
-                            '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-                            extra: event,
+                    if (_todayEvents.isNotEmpty) ...[
+                      ..._todayEvents.map(
+                        (event) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _TodayEventCard(
+                            event: event,
+                            hasSmartPrepAlarm:
+                                _smartPreparationEventIds.contains(event.id),
+                            onTap: () => context.push(
+                              '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                              extra: event,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                  ] else
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: PlanFlowColors.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: PlanFlowColors.primaryFaint,
-                          width: 0.8,
+                      const SizedBox(height: 12),
+                    ] else ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: PlanFlowColors.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: PlanFlowColors.primaryFaint,
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: PlanFlowColors.primaryFaint,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Icon(
+                                Icons.calendar_month_outlined,
+                                color: PlanFlowColors.primaryMid,
+                                size: 26,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              '오늘 일정 안내',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: PlanFlowColors.primary,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '현재 남은 오늘 일정이 없어요. 새 일정이 생기면 준비물과 스마트 준비 알람을 함께 정리해 드릴게요.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: PlanFlowColors.textSecondary,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: PlanFlowColors.primaryFaint,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(
-                              Icons.calendar_month_outlined,
-                              color: PlanFlowColors.primaryMid,
-                              size: 26,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            '오늘 일정 안내',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: PlanFlowColors.primary,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '등록된 일정이 없어도 괜찮아요. 새 일정이 생기면 준비물과 알림을 함께 정리해 드릴게요.',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: PlanFlowColors.textSecondary,
-                              height: 1.35,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
+                  ],
                   if (_loadState == _HomeLoadState.ready &&
                       _upcomingEvents.isNotEmpty) ...[
                     const SizedBox(height: 4),
@@ -389,6 +449,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return first.year == second.year &&
         first.month == second.month &&
         first.day == second.day;
+  }
+
+  bool _isPastEvent(EventModel event, DateTime now) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    return (event.endAt ?? startAt).isBefore(now);
   }
 }
 
@@ -550,10 +618,14 @@ class _HomeHeader extends StatelessWidget {
 class _TodayEventCard extends StatelessWidget {
   const _TodayEventCard({
     required this.event,
+    this.isPast = false,
+    this.hasSmartPrepAlarm = false,
     this.onTap,
   });
 
   final EventModel event;
+  final bool isPast;
+  final bool hasSmartPrepAlarm;
   final VoidCallback? onTap;
 
   @override
@@ -564,16 +636,23 @@ class _TodayEventCard extends StatelessWidget {
         ? '${startAt.hour.toString().padLeft(2, '0')}:${startAt.minute.toString().padLeft(2, '0')}'
         : '';
 
+    final borderColor = event.isCritical && !isPast
+        ? const Color(0xFFB42318).withValues(alpha: 0.4)
+        : PlanFlowColors.primaryFaint;
+    final accentColor = isPast
+        ? PlanFlowColors.textSecondary
+        : event.isCritical
+            ? const Color(0xFFB42318)
+            : PlanFlowColors.primaryMid;
+
     return Card(
-      color: PlanFlowColors.surface,
+      color: isPast ? PlanFlowColors.surfaceFaint : PlanFlowColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color: event.isCritical
-              ? const Color(0xFFB42318).withValues(alpha: 0.4)
-              : PlanFlowColors.primaryFaint,
-          width: event.isCritical ? 1.5 : 0.5,
+          color: borderColor,
+          width: event.isCritical && !isPast ? 1.5 : 0.5,
         ),
       ),
       child: InkWell(
@@ -587,9 +666,11 @@ class _TodayEventCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: event.isCritical
-                      ? const Color(0xFFFFE3DD)
-                      : PlanFlowColors.primaryFaint,
+                  color: isPast
+                      ? PlanFlowColors.tagDoneBg
+                      : event.isCritical
+                          ? const Color(0xFFFFE3DD)
+                          : PlanFlowColors.primaryFaint,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Center(
@@ -598,9 +679,7 @@ class _TodayEventCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: event.isCritical
-                          ? const Color(0xFFB42318)
-                          : PlanFlowColors.primaryMid,
+                      color: accentColor,
                     ),
                   ),
                 ),
@@ -613,7 +692,9 @@ class _TodayEventCard extends StatelessWidget {
                     Text(
                       event.title,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: PlanFlowColors.primary,
+                        color: isPast
+                            ? PlanFlowColors.textSecondary
+                            : PlanFlowColors.primary,
                         fontWeight: FontWeight.w500,
                       ),
                       maxLines: 1,
@@ -623,7 +704,9 @@ class _TodayEventCard extends StatelessWidget {
                       Text(
                         event.location!,
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: PlanFlowColors.textSecondary,
+                          color: isPast
+                              ? PlanFlowColors.textDisabled
+                              : PlanFlowColors.textSecondary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -632,23 +715,66 @@ class _TodayEventCard extends StatelessWidget {
                 ),
               ),
               if (event.supplies.isNotEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
                   child: Icon(
                     Icons.backpack_outlined,
                     size: 16,
-                    color: PlanFlowColors.primaryMid,
+                    color: accentColor,
                   ),
                 ),
+              if (hasSmartPrepAlarm)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: _SmallBadge(
+                    label: '스마트 준비',
+                    isPast: isPast,
+                  ),
+                ),
+              if (isPast)
+                const Padding(
+                  padding: EdgeInsets.only(left: 8),
+                  child: _SmallBadge(label: '지난 일정', isPast: true),
+                ),
               const SizedBox(width: 4),
-              const Icon(
+              Icon(
                 Icons.chevron_right,
-                color: PlanFlowColors.primaryMid,
+                color: accentColor,
                 size: 20,
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SmallBadge extends StatelessWidget {
+  const _SmallBadge({
+    required this.label,
+    this.isPast = false,
+  });
+
+  final String label;
+  final bool isPast;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: isPast ? PlanFlowColors.tagDoneBg : PlanFlowColors.tagNormalBg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: isPast
+                  ? PlanFlowColors.textSecondary
+                  : PlanFlowColors.tagNormalText,
+              fontWeight: FontWeight.w800,
+            ),
       ),
     );
   }
@@ -903,7 +1029,7 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
           ),
           const SizedBox(height: 6),
           Text(
-            '무제한 음성 등록, AI 브리핑, 선행역산 알림을 먼저 만나보세요.\n출시 시 특별 할인 혜택을 드립니다.',
+            '무제한 음성 등록, AI 브리핑, 스마트 준비 알람을 먼저 만나보세요.\n출시 시 특별 할인 혜택을 드립니다.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: Color(0xFF222222),
               height: 1.4,

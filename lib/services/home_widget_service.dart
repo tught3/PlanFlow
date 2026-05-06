@@ -31,6 +31,28 @@ class HomeWidgetListEventData {
   final String? location;
 }
 
+class HomeWidgetMonthDayData {
+  const HomeWidgetMonthDayData({
+    required this.day,
+    required this.summary,
+  });
+
+  final int day;
+  final String summary;
+}
+
+class HomeWidgetWeekDayData {
+  const HomeWidgetWeekDayData({
+    required this.date,
+    this.summary,
+    this.events = const <HomeWidgetListEventData>[],
+  });
+
+  final DateTime date;
+  final String? summary;
+  final List<HomeWidgetListEventData> events;
+}
+
 class HomeWidgetService {
   HomeWidgetService({
     HomeWidgetPlatform? platform,
@@ -41,6 +63,13 @@ class HomeWidgetService {
             travelTimeBufferService ?? TravelTimeBufferService();
 
   static const String defaultWidgetName = 'PlanFlowHomeWidgetProvider';
+  static const List<String> defaultAndroidWidgetNames = <String>[
+    'PlanFlowHomeWidgetProvider',
+    'PlanFlowMonthlyWidgetProvider',
+    'PlanFlowVerticalScheduleWidgetProvider',
+    'PlanFlowWeeklyWidgetProvider',
+    'PlanFlowMicWidgetProvider',
+  ];
 
   final HomeWidgetPlatform _platform;
   final TravelTimeBufferService _travelTimeBufferService;
@@ -124,10 +153,67 @@ class HomeWidgetService {
         success;
     success =
         await _saveValue('next_event_is_critical', data.isCritical) && success;
-    success = await _saveUpcomingEvents(upcomingEvents) && success;
+    success = await _saveTodayEvents(upcomingEvents) && success;
 
-    final refreshed = await _platform.updateWidget(
-      name: widgetName,
+    final refreshed = await _refreshWidgets(
+      widgetName: widgetName,
+      androidName: androidName,
+      iOSName: iOSName,
+      qualifiedAndroidName: qualifiedAndroidName,
+    );
+
+    return success && refreshed;
+  }
+
+  Future<bool> updateScheduleData({
+    required HomeWidgetNextEventData nextEvent,
+    List<HomeWidgetListEventData> todayEvents =
+        const <HomeWidgetListEventData>[],
+    DateTime? month,
+    List<HomeWidgetMonthDayData> monthDays = const <HomeWidgetMonthDayData>[],
+    List<HomeWidgetWeekDayData> weekDays = const <HomeWidgetWeekDayData>[],
+    String widgetName = defaultWidgetName,
+    String? androidName,
+    String? iOSName,
+    String? qualifiedAndroidName,
+  }) async {
+    if (!isSupported) {
+      return false;
+    }
+
+    if (!await _ensureConfigured()) {
+      return false;
+    }
+
+    var success = true;
+    success =
+        await _saveValue('next_event_title', nextEvent.title.trim()) && success;
+    success =
+        await _saveOptionalValue('next_event_id', nextEvent.eventId) && success;
+    success = await _saveOptionalValue(
+          'next_event_start_at',
+          nextEvent.startAt?.toUtc().toIso8601String(),
+        ) &&
+        success;
+    success =
+        await _saveOptionalValue('next_event_location', nextEvent.location) &&
+            success;
+    success = await _saveOptionalValue(
+          'next_event_travel_buffer_minutes',
+          nextEvent.travelBufferMinutes,
+        ) &&
+        success;
+    success = await _saveValue(
+          'next_event_is_critical',
+          nextEvent.isCritical,
+        ) &&
+        success;
+    success = await _saveTodayEvents(todayEvents) && success;
+    success = await _saveMonthData(month: month, days: monthDays) && success;
+    success = await _saveWeekData(weekDays) && success;
+
+    final refreshed = await _refreshWidgets(
+      widgetName: widgetName,
       androidName: androidName,
       iOSName: iOSName,
       qualifiedAndroidName: qualifiedAndroidName,
@@ -161,11 +247,13 @@ class HomeWidgetService {
     );
   }
 
-  Future<bool> _saveUpcomingEvents(List<HomeWidgetListEventData> events) async {
+  Future<bool> _saveTodayEvents(List<HomeWidgetListEventData> events) async {
     var success = true;
-    final slots = events.take(3).toList(growable: false);
+    final slots = events.take(6).toList(growable: false);
 
-    for (var index = 0; index < 3; index += 1) {
+    success = await _saveValue('today_event_count', slots.length) && success;
+
+    for (var index = 0; index < 6; index += 1) {
       final event = index < slots.length ? slots[index] : null;
       final slot = index + 1;
       success = await _saveOptionalValue(
@@ -183,6 +271,101 @@ class HomeWidgetService {
             event?.location,
           ) &&
           success;
+    }
+
+    return success;
+  }
+
+  Future<bool> _saveMonthData({
+    required DateTime? month,
+    required List<HomeWidgetMonthDayData> days,
+  }) async {
+    var success = true;
+    final resolvedMonth = month ?? DateTime.now();
+    success = await _saveValue(
+          'month_title',
+          '${resolvedMonth.year}년 ${resolvedMonth.month}월',
+        ) &&
+        success;
+
+    final summaries = <int, String>{};
+    for (final day in days) {
+      if (day.day >= 1 && day.day <= 31) {
+        summaries[day.day] = day.summary.trim();
+      }
+    }
+
+    for (var day = 1; day <= 31; day += 1) {
+      success = await _saveOptionalValue(
+            'month_day_${day}_summary',
+            summaries[day],
+          ) &&
+          success;
+    }
+
+    return success;
+  }
+
+  Future<bool> _saveWeekData(List<HomeWidgetWeekDayData> days) async {
+    var success = true;
+    final slots = days.take(7).toList(growable: false);
+
+    for (var index = 0; index < 7; index += 1) {
+      final day = index < slots.length ? slots[index] : null;
+      final slot = index + 1;
+      success = await _saveOptionalValue(
+            'week_day_${slot}_date',
+            day?.date.toUtc().toIso8601String(),
+          ) &&
+          success;
+      success = await _saveOptionalValue(
+            'week_day_${slot}_summary',
+            day?.summary,
+          ) &&
+          success;
+
+      final events = day?.events.take(2).toList(growable: false) ??
+          const <HomeWidgetListEventData>[];
+      for (var eventIndex = 0; eventIndex < 2; eventIndex += 1) {
+        final event = eventIndex < events.length ? events[eventIndex] : null;
+        final eventSlot = eventIndex + 1;
+        success = await _saveOptionalValue(
+              'week_day_${slot}_event_${eventSlot}_title',
+              event?.title,
+            ) &&
+            success;
+        success = await _saveOptionalValue(
+              'week_day_${slot}_event_${eventSlot}_time',
+              event?.startAt?.toUtc().toIso8601String(),
+            ) &&
+            success;
+      }
+    }
+
+    return success;
+  }
+
+  Future<bool> _refreshWidgets({
+    required String widgetName,
+    String? androidName,
+    String? iOSName,
+    String? qualifiedAndroidName,
+  }) async {
+    if (widgetName != defaultWidgetName ||
+        androidName != null ||
+        iOSName != null ||
+        qualifiedAndroidName != null) {
+      return _platform.updateWidget(
+        name: widgetName,
+        androidName: androidName,
+        iOSName: iOSName,
+        qualifiedAndroidName: qualifiedAndroidName,
+      );
+    }
+
+    var success = true;
+    for (final defaultName in defaultAndroidWidgetNames) {
+      success = await _platform.updateWidget(name: defaultName) && success;
     }
 
     return success;

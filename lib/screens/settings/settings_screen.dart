@@ -1408,7 +1408,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: 16),
             _SectionCard(
               title: '이동수단',
-              subtitle: '위치 기반 이동시간 계산과 선행행동 알림에 우선 적용할 방식을 정합니다.',
+              subtitle: '위치 기반 이동시간 계산과 스마트 준비 알람에 우선 적용할 방식을 정합니다.',
               child: SegmentedButton<String>(
                 segments: const <ButtonSegment<String>>[
                   ButtonSegment<String>(

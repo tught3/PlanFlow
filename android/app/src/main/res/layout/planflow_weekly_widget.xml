@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/widget_week_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <TextView
+        android:id="@+id/widget_week_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#1F2A24"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        tools:text="이번 주 일정" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView android:id="@+id/widget_week_day_1_label" style="@style/PlanFlowWidgetListText" tools:text="월 5/4" />
+        <TextView android:id="@+id/widget_week_day_1_summary" style="@style/PlanFlowWidgetListText" tools:text="아침 회의 · 병원" />
+        <TextView android:id="@+id/widget_week_day_2_label" style="@style/PlanFlowWidgetListText" tools:text="화 5/5" />
+        <TextView android:id="@+id/widget_week_day_2_summary" style="@style/PlanFlowWidgetListText" tools:text="일정 없음" />
+        <TextView android:id="@+id/widget_week_day_3_label" style="@style/PlanFlowWidgetListText" tools:text="수 5/6" />
+        <TextView android:id="@+id/widget_week_day_3_summary" style="@style/PlanFlowWidgetListText" tools:text="공임나라" />
+        <TextView android:id="@+id/widget_week_day_4_label" style="@style/PlanFlowWidgetListText" />
+        <TextView android:id="@+id/widget_week_day_4_summary" style="@style/PlanFlowWidgetListText" />
+        <TextView android:id="@+id/widget_week_day_5_label" style="@style/PlanFlowWidgetListText" />
+        <TextView android:id="@+id/widget_week_day_5_summary" style="@style/PlanFlowWidgetListText" />
+        <TextView android:id="@+id/widget_week_day_6_label" style="@style/PlanFlowWidgetListText" />
+        <TextView android:id="@+id/widget_week_day_6_summary" style="@style/PlanFlowWidgetListText" />
+        <TextView android:id="@+id/widget_week_day_7_label" style="@style/PlanFlowWidgetListText" />
+        <TextView android:id="@+id/widget_week_day_7_summary" style="@style/PlanFlowWidgetListText" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_week_voice_button"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:background="#5D61A8"
+        android:gravity="center"
+        android:text="마이크로 일정 관리"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+</LinearLayout>

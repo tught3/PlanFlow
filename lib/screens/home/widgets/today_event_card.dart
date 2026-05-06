@@ -130,7 +130,7 @@ class TodayEventCard extends StatelessWidget {
               children: [
                 if (supplies.isNotEmpty)
                   _Tag(label: '준비물 ${supplies.length}', active: _isActive),
-                if (hasPreActions) _Tag(label: '사전 액션', active: _isActive),
+                if (hasPreActions) _Tag(label: '스마트 준비', active: _isActive),
               ],
             ),
           ],
@@ -147,7 +147,7 @@ class _StatusBadge extends StatelessWidget {
         background = Colors.white;
 
   const _StatusBadge.done()
-      : label = '완료',
+      : label = '지난 일정',
         foreground = PlanFlowColors.textDisabled,
         background = PlanFlowColors.tagDoneBg;
 

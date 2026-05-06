@@ -8,10 +8,12 @@ import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
+import '../../data/models/pre_action_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
+import '../../services/smart_preparation_alarm_service.dart';
 
 class EventDetailScreen extends StatefulWidget {
   EventDetailScreen({
@@ -21,15 +23,19 @@ class EventDetailScreen extends StatefulWidget {
     this.eventRepository,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
+    SmartPreparationAlarmService? smartPreparationAlarmService,
   })  : sideEffectService =
             sideEffectService ?? const ManualEventSideEffectService(),
-        homeWidgetService = homeWidgetService ?? HomeWidgetService();
+        homeWidgetService = homeWidgetService ?? HomeWidgetService(),
+        smartPreparationAlarmService = smartPreparationAlarmService ??
+            const SmartPreparationAlarmService();
 
   final EventModel? event;
   final String? eventId;
   final EventRepository? eventRepository;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
+  final SmartPreparationAlarmService smartPreparationAlarmService;
 
   @override
   State<EventDetailScreen> createState() => _EventDetailScreenState();
@@ -42,6 +48,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool _isSavingSupplies = false;
   String? _loadError;
   final Set<String> _checkedSupplies = <String>{};
+  List<PreActionModel> _smartPreparationAlarms = const <PreActionModel>[];
 
   String? get _resolvedEventId {
     final routeId = widget.eventId?.trim();
@@ -93,11 +100,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         eventId,
         userId: user.id,
       );
+      final smartPreparationAlarms = latestEvent == null
+          ? const <PreActionModel>[]
+          : await widget.smartPreparationAlarmService.listForEvent(
+              eventId: latestEvent.id,
+              userId: user.id,
+            );
       if (!mounted) {
         return;
       }
       setState(() {
         _event = latestEvent ?? _event;
+        _smartPreparationAlarms = smartPreparationAlarms;
         _loadError = latestEvent == null ? '일정을 다시 찾지 못했습니다.' : null;
         _syncCheckedSupplies();
       });
@@ -278,33 +292,101 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
       final widgetService = widget.homeWidgetService;
       if (nextEvents.isEmpty) {
-        await widgetService.updateNextEventData(
-          const HomeWidgetNextEventData(title: '예정된 일정이 없어요'),
+        await widgetService.updateScheduleData(
+          nextEvent: const HomeWidgetNextEventData(title: '예정된 일정이 없어요'),
         );
         return;
       }
 
       final nextEvent = nextEvents.first;
-      await widgetService.updateNextEvent(
-        title: nextEvent.title,
-        eventId: nextEvent.id,
-        startAt: nextEvent.startAt,
-        location: nextEvent.location,
-        isCritical: nextEvent.isCritical,
-        upcomingEvents: nextEvents
-            .take(3)
-            .map(
-              (event) => HomeWidgetListEventData(
-                title: event.title,
-                startAt: event.startAt,
-                location: event.location,
-              ),
-            )
-            .toList(growable: false),
+      await widgetService.updateScheduleData(
+        nextEvent: HomeWidgetNextEventData(
+          title: nextEvent.title,
+          eventId: nextEvent.id,
+          startAt: nextEvent.startAt,
+          location: nextEvent.location,
+          isCritical: nextEvent.isCritical,
+        ),
+        todayEvents: _todayWidgetEvents(nextEvents, now),
+        month: now,
+        monthDays: _monthWidgetDays(nextEvents, now),
+        weekDays: _weekWidgetDays(nextEvents, now),
       );
     } catch (_) {
       // Widget refresh should not block event deletion.
     }
+  }
+
+  List<HomeWidgetListEventData> _todayWidgetEvents(
+    List<EventModel> events,
+    DateTime now,
+  ) {
+    return events
+        .where((event) {
+          final startAt = event.startAt;
+          return startAt != null &&
+              startAt.year == now.year &&
+              startAt.month == now.month &&
+              startAt.day == now.day;
+        })
+        .take(6)
+        .map(_homeWidgetListEvent)
+        .toList(growable: false);
+  }
+
+  List<HomeWidgetMonthDayData> _monthWidgetDays(
+    List<EventModel> events,
+    DateTime now,
+  ) {
+    final counts = <int, int>{};
+    for (final event in events) {
+      final startAt = event.startAt;
+      if (startAt == null ||
+          startAt.year != now.year ||
+          startAt.month != now.month) {
+        continue;
+      }
+      counts[startAt.day] = (counts[startAt.day] ?? 0) + 1;
+    }
+    return counts.entries
+        .map(
+          (entry) => HomeWidgetMonthDayData(
+            day: entry.key,
+            summary: '일정 ${entry.value}',
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<HomeWidgetWeekDayData> _weekWidgetDays(
+    List<EventModel> events,
+    DateTime now,
+  ) {
+    final weekStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    return List<HomeWidgetWeekDayData>.generate(7, (index) {
+      final day = weekStart.add(Duration(days: index));
+      final dayEvents = events.where((event) {
+        final startAt = event.startAt;
+        return startAt != null &&
+            startAt.year == day.year &&
+            startAt.month == day.month &&
+            startAt.day == day.day;
+      }).toList(growable: false);
+      return HomeWidgetWeekDayData(
+        date: day,
+        summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}개',
+        events: dayEvents.map(_homeWidgetListEvent).toList(growable: false),
+      );
+    });
+  }
+
+  HomeWidgetListEventData _homeWidgetListEvent(EventModel event) {
+    return HomeWidgetListEventData(
+      title: event.title,
+      startAt: event.startAt,
+      location: event.location,
+    );
   }
 
   @override
@@ -425,6 +507,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 ],
               ),
             ],
+            if (_smartPreparationAlarms.isNotEmpty) ...[
+              const SizedBox(height: AppConstants.sectionSpacing),
+              _InfoCard(
+                title: SmartPreparationAlarmService.label,
+                children: [
+                  _SmartPreparationAlarmList(
+                    alarms: _smartPreparationAlarms,
+                    formatDateTime: _formatDateTime,
+                  ),
+                ],
+              ),
+            ],
             if (event.memo != null && event.memo!.trim().isNotEmpty) ...[
               const SizedBox(height: AppConstants.sectionSpacing),
               _InfoCard(
@@ -491,6 +585,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   String _formatDate(DateTime value) {
     return '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+  }
+
+  String _formatDateTime(DateTime value) {
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '${_formatDate(value)} $hour:$minute';
   }
 }
 
@@ -570,6 +670,75 @@ class _HeaderCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SmartPreparationAlarmList extends StatelessWidget {
+  const _SmartPreparationAlarmList({
+    required this.alarms,
+    required this.formatDateTime,
+  });
+
+  final List<PreActionModel> alarms;
+  final String Function(DateTime value) formatDateTime;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      children: [
+        for (var index = 0; index < alarms.length; index += 1) ...[
+          if (index > 0)
+            const Divider(
+              height: 18,
+              color: PlanFlowColors.primaryFaint,
+            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: PlanFlowColors.primaryFaint,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.notifications_active_outlined,
+                  color: PlanFlowColors.primaryMid,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      alarms[index].title,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      alarms[index].notifyAt == null
+                          ? '알림 시간 미정'
+                          : '${formatDateTime(alarms[index].notifyAt!)} 알림',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }

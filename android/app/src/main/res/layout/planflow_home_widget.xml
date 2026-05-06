@@ -29,7 +29,7 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="#1F2A24"
-        android:textSize="17sp"
+        android:textSize="19sp"
         android:textStyle="bold"
         tools:text="JW제약 미팅" />
 
@@ -39,7 +39,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textColor="#5F6B62"
-        android:textSize="13sp"
+        android:textSize="14sp"
         tools:text="5/1 14:00" />
 
     <TextView
@@ -50,7 +50,7 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="#5F6B62"
-        android:textSize="13sp"
+        android:textSize="14sp"
         tools:text="강남역" />
 
     <LinearLayout
@@ -96,12 +96,12 @@
     <TextView
         android:id="@+id/widget_voice_button"
         android:layout_width="match_parent"
-        android:layout_height="34dp"
+        android:layout_height="40dp"
         android:layout_marginTop="8dp"
         android:background="#D95F43"
         android:gravity="center"
-        android:text="마이크로 추가"
+        android:text="🎙  마이크로 추가"
         android:textColor="#FFFFFF"
-        android:textSize="13sp"
+        android:textSize="15sp"
         android:textStyle="bold" />
 </LinearLayout>
