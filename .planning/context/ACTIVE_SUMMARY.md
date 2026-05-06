@@ -273,3 +273,8 @@
 - Improved Naver CalDAV progress/result reporting to show pre-save stages, `00/00개 처리 중` style save counters, saved/skipped/failed counts, and explicit failure diagnostics when many events are read but none are saved.
 - Added tests for the cleaned Settings surface and CalDAV-backed Naver sync button behavior.
 - Verification: `flutter analyze`, full `flutter test` (108 passed), `flutter build apk --debug`, `adb install -r`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, focus check on `com.example.planflow/.MainActivity`, and recent log scan passed. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## 2026-05-06 Naver CalDAV progress copy/layout checkpoint
+- Updated the long-running Naver CalDAV import copy to set a clearer expectation: large imports can take time and usually finish in about 1-2 minutes.
+- Reworked the additional-history range dialog from a tall vertical action stack into compact horizontal/wrapping buttons for `나중에`, `6개월`, `1년`, `2년`, `직접 입력`, and `전체`.
+- Verification: `dart format`, `flutter analyze`, Settings screen test, full `flutter test` (108 passed), `flutter build apk --debug`, `adb install -r`, and explicit ADB launch/focus check on `com.example.planflow/.MainActivity` passed. `scripts/gsd-context-hygiene.mjs` remains absent.

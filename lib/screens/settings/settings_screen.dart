@@ -622,7 +622,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const SizedBox(height: 16),
                       Text(
                         isLongRunning
-                            ? '데이터가 많아 오래 걸립니다. 잠시만 기다려 주세요.'
+                            ? '데이터가 많아 오래 걸릴 수 있습니다. 보통 1~2분 사이에 완료됩니다. 잠시만 기다려 주세요.'
                             : '데이터가 많은 경우 오래 걸릴 수 있습니다.',
                       ),
                       const SizedBox(height: 12),
@@ -722,45 +722,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
           '최근 3개월과 앞으로 6개월 일정을 저장했습니다. 더 과거 기록을 얼마나 불러올까요?',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('나중에'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(
-              _NaverCalDavImportRange.months(6),
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('나중에'),
+                ),
+                FilledButton.tonal(
+                  onPressed: () => Navigator.of(context).pop(
+                    _NaverCalDavImportRange.months(6),
+                  ),
+                  child: const Text('6개월'),
+                ),
+                FilledButton.tonal(
+                  onPressed: () => Navigator.of(context).pop(
+                    _NaverCalDavImportRange.years(1),
+                  ),
+                  child: const Text('1년'),
+                ),
+                FilledButton.tonal(
+                  onPressed: () => Navigator.of(context).pop(
+                    _NaverCalDavImportRange.years(2),
+                  ),
+                  child: const Text('2년'),
+                ),
+                OutlinedButton(
+                  onPressed: () async {
+                    final range = await _showNaverCalDavCustomRangeDialog();
+                    if (context.mounted && range != null) {
+                      Navigator.of(context).pop(range);
+                    }
+                  },
+                  child: const Text('직접 입력'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final confirmed = await _confirmNaverCalDavAllRange();
+                    if (context.mounted && confirmed) {
+                      Navigator.of(context).pop(_NaverCalDavImportRange.all());
+                    }
+                  },
+                  child: const Text('전체'),
+                ),
+              ],
             ),
-            child: const Text('6개월'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(
-              _NaverCalDavImportRange.years(1),
-            ),
-            child: const Text('1년'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(
-              _NaverCalDavImportRange.years(2),
-            ),
-            child: const Text('2년'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final range = await _showNaverCalDavCustomRangeDialog();
-              if (context.mounted && range != null) {
-                Navigator.of(context).pop(range);
-              }
-            },
-            child: const Text('직접 입력'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final confirmed = await _confirmNaverCalDavAllRange();
-              if (context.mounted && confirmed) {
-                Navigator.of(context).pop(_NaverCalDavImportRange.all());
-              }
-            },
-            child: const Text('전체'),
           ),
         ],
       ),
@@ -1469,8 +1479,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   _isDisconnectingNaverCalendar
                               ? null
                               : _syncOrReconnectNaverCalendar,
-                          icon: _isTestingNaverCalDav ||
-                                  _isImportingNaverCalDav
+                          icon: _isTestingNaverCalDav || _isImportingNaverCalDav
                               ? const SizedBox.square(
                                   dimension: 18,
                                   child:
