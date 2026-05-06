@@ -265,3 +265,11 @@
 - Added Flutter dependencies for ndroid_intent_plus, eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved Android plugin JVM target mismatches in Gradle so debug APK builds successfully.
 - Removed the wrong BACKUP_DO_NOT_WORK_HERE.md marker from the real Flux working tree; backup markers remain for E:\Project\PlanFlow only.
 - Verification: lutter analyze, full lutter test, lutter build apk --debug, db install -r, db shell am start -n com.example.planflow/.MainActivity, and db shell pidof com.example.planflow all passed. scripts/gsd-context-hygiene.mjs remains absent.
+
+## 2026-05-06 Naver CalDAV settings cleanup checkpoint
+- Re-centered the Settings calendar flow around the existing `Naver Calendar` card: the visible Naver action now uses CalDAV credentials, saves them only after a successful connection test, and immediately runs the quick sync path.
+- Removed the visible `변경 즉시 적용` header, standalone `Naver CalDAV 직접 연결` diagnostics, separate CalDAV test/import buttons, and normal-surface ICS entry point so Settings no longer mixes debug and user flows.
+- Clarified the Naver CalDAV credential dialog with original Naver ID/app-password guidance, kept phone internal calendar import as a generic Samsung/Google/device-calendar fallback, and made disconnect clear CalDAV secure credentials plus PlanFlow Naver connection state.
+- Improved Naver CalDAV progress/result reporting to show pre-save stages, `00/00개 처리 중` style save counters, saved/skipped/failed counts, and explicit failure diagnostics when many events are read but none are saved.
+- Added tests for the cleaned Settings surface and CalDAV-backed Naver sync button behavior.
+- Verification: `flutter analyze`, full `flutter test` (108 passed), `flutter build apk --debug`, `adb install -r`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, focus check on `com.example.planflow/.MainActivity`, and recent log scan passed. `scripts/gsd-context-hygiene.mjs` remains absent.

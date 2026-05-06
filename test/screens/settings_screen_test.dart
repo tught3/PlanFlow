@@ -8,6 +8,7 @@ import 'package:planflow/screens/settings/settings_screen.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
+import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
 
@@ -44,6 +45,8 @@ void main() {
             ),
           ),
           notificationService: _FakeNotificationService(),
+          naverCalDavService:
+              _FakeNaverCalDavService(initialHasCredentials: true),
           userId: 'user-1',
         ),
       ),
@@ -56,10 +59,13 @@ void main() {
     expect(find.text('20:20'), findsWidgets);
     expect(find.text('기본 알림'), findsNothing);
     expect(find.text('저장'), findsNothing);
+    expect(find.text('변경 즉시 적용'), findsNothing);
     expect(find.text('Naver Calendar'), findsOneWidget);
     expect(find.text('연동 해제'), findsWidgets);
     expect(find.text('네이버 동기화'), findsOneWidget);
-    expect(find.text('네이버 CalDAV 연결 테스트'), findsOneWidget);
+    expect(find.text('Naver CalDAV 직접 연결'), findsNothing);
+    expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
+    expect(find.text('네이버 CalDAV 일정 가져오기'), findsNothing);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 
@@ -96,6 +102,7 @@ void main() {
             ),
           ),
           notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
           userId: 'user-1',
         ),
       ),
@@ -142,6 +149,7 @@ void main() {
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: calendarSyncService,
           notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
           userId: 'user-1',
         ),
       ),
@@ -163,7 +171,7 @@ void main() {
     );
   });
 
-  testWidgets('Naver calendar button exports events and shows feedback',
+  testWidgets('Naver calendar button runs CalDAV quick sync and shows feedback',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -171,12 +179,16 @@ void main() {
     final calendarSyncService = _FakeCalendarSyncService(
       summary: CalendarSyncSummary(
         google: CalendarIntegrationResult.ready(CalendarProvider.google),
-        naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+        naver: CalendarIntegrationResult.signedOut(CalendarProvider.naver),
       ),
-      naverSyncResult: CalendarIntegrationResult.synced(
-        CalendarProvider.naver,
-        message: 'Naver Calendar에 1개 일정을 반영했습니다.',
-        syncedItems: 1,
+    );
+    final naverCalDavService = _FakeNaverCalDavService(
+      initialHasCredentials: true,
+      syncResult: const NaverCalDavSyncResult(
+        success: true,
+        message: '네이버 CalDAV 일정 1개를 PlanFlow로 가져왔습니다.',
+        createdOrUpdated: 1,
+        events: 1,
       ),
     );
 
@@ -187,6 +199,7 @@ void main() {
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: calendarSyncService,
           notificationService: _FakeNotificationService(),
+          naverCalDavService: naverCalDavService,
           userId: 'user-1',
         ),
       ),
@@ -199,8 +212,12 @@ void main() {
     await tester.tap(syncButton);
     await tester.pumpAndSettle();
 
-    expect(calendarSyncService.naverSyncCallCount, 1);
-    expect(find.textContaining('Naver Calendar에 1개 일정을 반영했습니다.'), findsWidgets);
+    expect(calendarSyncService.naverSyncCallCount, 0);
+    expect(naverCalDavService.syncCallCount, 1);
+    expect(
+      find.textContaining('네이버 CalDAV 일정 1개를 PlanFlow로 가져왔습니다.'),
+      findsWidgets,
+    );
   });
 
   testWidgets('device Naver calendar import button imports phone calendars',
@@ -229,6 +246,7 @@ void main() {
           ),
           deviceCalendarService: deviceCalendarService,
           notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
           userId: 'user-1',
         ),
       ),
@@ -269,6 +287,7 @@ void main() {
             ),
           ),
           notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
           userId: 'user-1',
         ),
       ),
@@ -321,7 +340,6 @@ class _FakeCalendarSyncService extends CalendarSyncService {
   _FakeCalendarSyncService({
     required this.summary,
     this.googleSyncResult,
-    this.naverSyncResult,
   }) : super(
           naverStatusProvider: () async {
             return const NaverCalendarPermissionResult(
@@ -335,7 +353,6 @@ class _FakeCalendarSyncService extends CalendarSyncService {
 
   final CalendarSyncSummary summary;
   final CalendarIntegrationResult? googleSyncResult;
-  final CalendarIntegrationResult? naverSyncResult;
   int googleSyncCallCount = 0;
   int naverSyncCallCount = 0;
   bool? lastInteractive;
@@ -356,8 +373,7 @@ class _FakeCalendarSyncService extends CalendarSyncService {
   @override
   Future<CalendarIntegrationResult> syncNaverCalendar() async {
     naverSyncCallCount += 1;
-    return naverSyncResult ??
-        CalendarIntegrationResult.synced(CalendarProvider.naver);
+    return CalendarIntegrationResult.synced(CalendarProvider.naver);
   }
 }
 
@@ -434,4 +450,67 @@ class _FakeDeviceEventRepository extends EventRepository {
 
   @override
   Future<EventModel> updateEvent(EventModel event) async => event;
+}
+
+class _FakeNaverCalDavService extends NaverCalDavService {
+  _FakeNaverCalDavService({
+    this.initialHasCredentials = false,
+    this.syncResult = const NaverCalDavSyncResult(
+      success: true,
+      message: '네이버 CalDAV 연결은 성공했지만 가져올 일정이 없습니다.',
+    ),
+  });
+
+  final bool initialHasCredentials;
+  final NaverCalDavSyncResult syncResult;
+  int syncCallCount = 0;
+  int clearCallCount = 0;
+
+  @override
+  Future<bool> hasCredentials() async => initialHasCredentials;
+
+  @override
+  Future<NaverCalDavConnectionResult> testConnection({
+    required String naverId,
+    required String appPassword,
+    bool saveOnSuccess = false,
+  }) async {
+    return const NaverCalDavConnectionResult(
+      status: NaverCalDavConnectionStatus.success,
+      message: '네이버 CalDAV 연결 테스트에 성공했습니다.',
+    );
+  }
+
+  @override
+  Future<NaverCalDavSyncResult> syncAll({
+    String? userId,
+    DateTime? from,
+    DateTime? to,
+    NaverCalDavSyncMode mode = NaverCalDavSyncMode.custom,
+    bool skipUnchanged = true,
+    NaverCalDavProgressCallback? onProgress,
+  }) async {
+    syncCallCount += 1;
+    onProgress?.call(
+      NaverCalDavSyncProgress(
+        mode: mode,
+        stage: NaverCalDavSyncStage.saving,
+        message: '일정을 저장하는 중입니다.',
+        processedEvents: syncResult.events,
+        totalEvents: syncResult.events,
+        savedEvents: syncResult.createdOrUpdated,
+        skippedEvents: syncResult.skipped,
+        failedEvents: syncResult.failed,
+      ),
+    );
+    return syncResult;
+  }
+
+  @override
+  Future<void> clearCredentials() async {
+    clearCallCount += 1;
+  }
+
+  @override
+  Future<void> dispose() async {}
 }

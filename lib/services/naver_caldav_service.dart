@@ -77,6 +77,7 @@ class NaverCalDavSyncProgress {
     this.totalEvents = 0,
     this.savedEvents = 0,
     this.skippedEvents = 0,
+    this.failedEvents = 0,
   });
 
   final NaverCalDavSyncMode mode;
@@ -89,6 +90,7 @@ class NaverCalDavSyncProgress {
   final int totalEvents;
   final int savedEvents;
   final int skippedEvents;
+  final int failedEvents;
 }
 
 typedef NaverCalDavProgressCallback = void Function(
@@ -154,6 +156,7 @@ class NaverCalDavSyncResult {
     required this.message,
     this.createdOrUpdated = 0,
     this.skipped = 0,
+    this.failed = 0,
     this.calendars = 0,
     this.events = 0,
     this.mode = NaverCalDavSyncMode.custom,
@@ -166,6 +169,7 @@ class NaverCalDavSyncResult {
   final String message;
   final int createdOrUpdated;
   final int skipped;
+  final int failed;
   final int calendars;
   final int events;
   final NaverCalDavSyncMode mode;
@@ -673,6 +677,7 @@ class NaverCalDavService {
       var eventCount = 0;
       var savedCount = 0;
       var skippedCount = 0;
+      var failedCount = 0;
       for (var index = 0; index < calendars.length; index += 1) {
         final calendar = calendars[index];
         final calendarNumber = index + 1;
@@ -685,6 +690,7 @@ class NaverCalDavService {
           totalCalendars: calendars.length,
           savedEvents: savedCount,
           skippedEvents: skippedCount,
+          failedEvents: failedCount,
         ));
         final events = await getEvents(
           calendarPath: calendar.path,
@@ -714,15 +720,26 @@ class NaverCalDavService {
               totalEvents: events.length,
               savedEvents: savedCount,
               skippedEvents: skippedCount,
+              failedEvents: failedCount,
             ));
             continue;
           }
-          await _eventRepository.upsertEventBySourceExternalId(eventModel);
-          savedCount += 1;
+          try {
+            await _eventRepository.upsertEventBySourceExternalId(eventModel);
+            savedCount += 1;
+          } catch (error, stackTrace) {
+            failedCount += 1;
+            debugPrint(
+              'Naver CalDAV event save failed: '
+              'calendar="${calendar.displayName}", uid="${event.uid}", '
+              'title="${event.title}", error=$error',
+            );
+            debugPrintStack(stackTrace: stackTrace);
+          }
           emit(NaverCalDavSyncProgress(
             mode: mode,
             stage: NaverCalDavSyncStage.saving,
-            message: '일정을 저장하는 중입니다.',
+            message: failedCount > 0 ? '일부 일정 저장에 실패했습니다.' : '일정을 저장하는 중입니다.',
             currentCalendar: calendar.displayName,
             currentCalendarIndex: calendarNumber,
             totalCalendars: calendars.length,
@@ -730,6 +747,7 @@ class NaverCalDavService {
             totalEvents: events.length,
             savedEvents: savedCount,
             skippedEvents: skippedCount,
+            failedEvents: failedCount,
           ));
         }
       }
@@ -743,18 +761,21 @@ class NaverCalDavService {
         totalEvents: eventCount,
         savedEvents: savedCount,
         skippedEvents: skippedCount,
+        failedEvents: failedCount,
       ));
       return NaverCalDavSyncResult(
-        success: true,
-        message: savedCount > 0
-            ? '네이버 CalDAV 일정 $savedCount개를 PlanFlow로 가져왔습니다.'
-            : skippedCount > 0
-                ? '새로 가져올 일정은 없고, 기존 일정 $skippedCount개는 건너뛰었습니다.'
-                : '네이버 CalDAV 연결은 성공했지만 가져올 일정이 없습니다.',
+        success: failedCount == 0 || savedCount > 0 || skippedCount > 0,
+        message: _syncSuccessMessage(
+          readCount: eventCount,
+          savedCount: savedCount,
+          skippedCount: skippedCount,
+          failedCount: failedCount,
+        ),
         calendars: calendars.length,
         events: eventCount,
         createdOrUpdated: savedCount,
         skipped: skippedCount,
+        failed: failedCount,
         mode: mode,
         from: range.from,
         to: range.to,
@@ -1460,6 +1481,32 @@ $timeRange      </c:comp-filter>
       return '네이버 CalDAV 경로를 찾지 못했습니다. 서버 경로를 추가 확인해야 합니다.';
     }
     return '네이버 CalDAV 일정 가져오기에 실패했습니다. 네트워크와 계정 설정을 확인해 주세요.';
+  }
+
+  String _syncSuccessMessage({
+    required int readCount,
+    required int savedCount,
+    required int skippedCount,
+    required int failedCount,
+  }) {
+    if (savedCount > 0) {
+      final parts = <String>[
+        '네이버 CalDAV 일정 $savedCount개를 PlanFlow로 가져왔습니다.',
+        if (skippedCount > 0) '중복/변경 없음 $skippedCount개는 건너뛰었습니다.',
+        if (failedCount > 0) '저장 실패 $failedCount개가 있습니다.',
+      ];
+      return parts.join(' ');
+    }
+    if (failedCount > 0) {
+      return '네이버 CalDAV에서 일정 $readCount개를 읽었지만 $failedCount개 저장에 실패했습니다. Supabase 스키마/RLS 또는 네트워크 로그를 확인해 주세요.';
+    }
+    if (skippedCount > 0) {
+      return '네이버 CalDAV에서 일정 $readCount개를 읽었고, 기존 일정 $skippedCount개는 중복 또는 변경 없음으로 건너뛰었습니다.';
+    }
+    if (readCount > 0) {
+      return '네이버 CalDAV에서 일정 $readCount개를 읽었지만 저장할 새 일정이 없습니다.';
+    }
+    return '네이버 CalDAV 연결은 성공했지만 가져올 일정이 없습니다.';
   }
 
   NaverCalDavConnectionResult _resultForStatusCode(
