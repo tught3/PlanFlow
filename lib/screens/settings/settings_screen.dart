@@ -651,45 +651,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
               runSpacing: 8,
               alignment: WrapAlignment.center,
               children: [
-                OutlinedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('나중에'),
-                ),
-                FilledButton.tonal(
-                  onPressed: () => Navigator.of(context).pop(
-                    _NaverCalDavImportRange.months(6),
+                SizedBox(
+                  width: 80,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('나중에'),
                   ),
-                  child: const Text('6개월'),
                 ),
-                FilledButton.tonal(
-                  onPressed: () => Navigator.of(context).pop(
-                    _NaverCalDavImportRange.years(1),
+                SizedBox(
+                  width: 80,
+                  child: FilledButton.tonal(
+                    onPressed: () => Navigator.of(context).pop(
+                      _NaverCalDavImportRange.months(6),
+                    ),
+                    child: const Text('6개월'),
                   ),
-                  child: const Text('1년'),
                 ),
-                FilledButton.tonal(
-                  onPressed: () => Navigator.of(context).pop(
-                    _NaverCalDavImportRange.years(2),
+                SizedBox(
+                  width: 80,
+                  child: FilledButton.tonal(
+                    onPressed: () => Navigator.of(context).pop(
+                      _NaverCalDavImportRange.years(1),
+                    ),
+                    child: const Text('1년'),
                   ),
-                  child: const Text('2년'),
                 ),
-                OutlinedButton(
-                  onPressed: () async {
-                    final range = await _showNaverCalDavCustomRangeDialog();
-                    if (context.mounted && range != null) {
-                      Navigator.of(context).pop(range);
-                    }
-                  },
-                  child: const Text('직접 입력'),
+                SizedBox(
+                  width: 80,
+                  child: FilledButton.tonal(
+                    onPressed: () => Navigator.of(context).pop(
+                      _NaverCalDavImportRange.years(2),
+                    ),
+                    child: const Text('2년'),
+                  ),
                 ),
-                FilledButton(
-                  onPressed: () async {
-                    final confirmed = await _confirmNaverCalDavAllRange();
-                    if (context.mounted && confirmed) {
-                      Navigator.of(context).pop(_NaverCalDavImportRange.all());
-                    }
-                  },
-                  child: const Text('전체'),
+                SizedBox(
+                  width: 80,
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final range = await _showNaverCalDavCustomRangeDialog();
+                      if (context.mounted && range != null) {
+                        Navigator.of(context).pop(range);
+                      }
+                    },
+                    child: const Text('직접 입력'),
+                  ),
+                ),
+                SizedBox(
+                  width: 80,
+                  child: FilledButton(
+                    onPressed: () async {
+                      final confirmed = await _confirmNaverCalDavAllRange();
+                      if (context.mounted && confirmed) {
+                        Navigator.of(context).pop(
+                          _NaverCalDavImportRange.all(),
+                        );
+                      }
+                    },
+                    child: const Text('전체'),
+                  ),
                 ),
               ],
             ),

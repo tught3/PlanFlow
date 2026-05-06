@@ -311,3 +311,7 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Device-calendar import now stays on the main action path and surfaces Korean error messages directly when login, permission, or internal calendar data is missing.
 - Fixed the Settings screen syntax that got temporarily malformed during the edit, updated the Korean label expectations in the Settings widget test, and re-ran the full validation stack.
 - Verification: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -n com.example.planflow/.MainActivity` all passed on the connected device.
+
+## 2026-05-06 CalDAV range dialog layout polish
+- Reworked the CalDAV extra-history range dialog so the buttons render compactly in three columns instead of a tall single-stack layout, matching the user's request for a cleaner and less bulky action grid.
+- Verification: `flutter analyze`, targeted Settings screen test, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -n com.example.planflow/.MainActivity` all passed on the connected device.
