@@ -16,10 +16,13 @@ void main() {
         ),
         GoRoute(
           path: AppRoutes.confirm,
-          builder: (context, state) => Text(
-            '일정 확인: ${(state.extra as Map<String, dynamic>)['raw_text']}',
-            textDirection: TextDirection.ltr,
-          ),
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '일정 확인: ${extra['raw_text']} / ${extra['start_at']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
         ),
         GoRoute(
           path: AppRoutes.voiceAction,
@@ -42,6 +45,7 @@ void main() {
 
     expect(find.textContaining('일정 확인:'), findsOneWidget);
     expect(find.textContaining('5분 뒤 요미 허리 약 주기'), findsOneWidget);
+    expect(find.textContaining('T'), findsOneWidget);
     expect(find.text('음성 관리 화면'), findsNothing);
   });
 

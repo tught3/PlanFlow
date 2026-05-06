@@ -45,6 +45,10 @@ class GptService {
     return _normalizeSchedule(parsed, rawText);
   }
 
+  DateTime? inferStartAtFromRawText(String rawText) {
+    return _inferStartAtFromRawText(rawText);
+  }
+
   Future<String> generateMorningBriefing(String rawText) {
     return generateBriefing(rawText: rawText, isMorning: true);
   }

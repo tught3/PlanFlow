@@ -6,6 +6,7 @@ import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../services/gpt_service.dart';
 import '../../services/stt_service.dart';
 
 class VoiceInputScreen extends StatefulWidget {
@@ -212,11 +213,14 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
     final commandAction = _detectCommandAction(rawText);
     if (commandAction == _VoiceCommandAction.add) {
+      final inferredStartAt = GptService().inferStartAtFromRawText(rawText);
       context.push(
         AppRoutes.confirm,
         extra: <String, dynamic>{
           'raw_text': rawText,
           'memo': rawText,
+          if (inferredStartAt != null)
+            'start_at': inferredStartAt.toIso8601String(),
           'parse_pending': true,
         },
       );

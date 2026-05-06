@@ -81,6 +81,12 @@ void main() {
       SttService.normalizeVoiceTranscript('내일 미팅 마지막 거 지워 오후 3시에'),
       '내일 오후 3시에',
     );
+    expect(
+      SttService.normalizeVoiceTranscript(
+        '요미 허리 약5 요미 허리 약 5분 뒤에 주 요미 허리 약 5분 뒤에 주기',
+      ),
+      '요미 허리 약 5분 뒤에 주기',
+    );
   });
 
   test('SttService appends only new speech when Android partials overlap', () {

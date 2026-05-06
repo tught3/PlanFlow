@@ -105,6 +105,7 @@ class SttService {
     }
 
     tokens = _applyInlineCorrections(tokens);
+    tokens = _collapseRepeatedSpeechPrefixes(tokens);
     final output = <String>[];
 
     var index = 0;
@@ -137,6 +138,41 @@ class SttService {
     }
 
     return output.join(' ').trim();
+  }
+
+  static List<String> _collapseRepeatedSpeechPrefixes(List<String> tokens) {
+    final normalized = tokens
+        .map(_normalizeTranscriptToken)
+        .where((token) => token.isNotEmpty)
+        .toList();
+    if (normalized.length < 4) {
+      return tokens;
+    }
+
+    var bestStart = -1;
+    var bestOverlap = 0;
+    final firstToken = normalized.first;
+    for (var index = 1; index < normalized.length; index += 1) {
+      if (normalized[index] != firstToken) {
+        continue;
+      }
+      final suffixLength = normalized.length - index;
+      final prefixLimit = suffixLength < index ? suffixLength : index;
+      var overlap = 0;
+      while (overlap < prefixLimit &&
+          normalized[overlap] == normalized[index + overlap]) {
+        overlap += 1;
+      }
+      if (overlap >= 2 && (index > bestStart || overlap >= bestOverlap)) {
+        bestStart = index;
+        bestOverlap = overlap;
+      }
+    }
+
+    if (bestStart <= 0) {
+      return tokens;
+    }
+    return tokens.sublist(bestStart);
   }
 
   static List<String> _applyInlineCorrections(List<String> tokens) {

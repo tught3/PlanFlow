@@ -118,6 +118,58 @@ void main() {
       expect(parsedStartAt, now.add(const Duration(minutes: 3)));
     });
 
+    test('infers relative hour offsets from Korean voice text', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '원주로 출발',
+                    'start_at': null,
+                    'end_at': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final now = DateTime(2026, 5, 7, 9, 30);
+      final service = GptService(
+        client: client,
+        apiKey: 'test-key',
+        now: () => now,
+      );
+
+      final result = await service.parseSchedule('1시간뒤 원주로 출발');
+      final parsedStartAt = DateTime.parse(result['start_at'] as String);
+
+      expect(parsedStartAt, now.add(const Duration(hours: 1)));
+    });
+
+    test('public local inference handles relative hour offsets', () {
+      final now = DateTime(2026, 5, 7, 9, 30);
+      final service = GptService(
+        apiKey: 'test-key',
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('1시간뒤 원주로 출발'),
+        now.add(const Duration(hours: 1)),
+      );
+    });
+
     test('explicit Korean time overrides a wrong model-provided current time',
         () async {
       final now = DateTime(2026, 5, 6, 23, 0);

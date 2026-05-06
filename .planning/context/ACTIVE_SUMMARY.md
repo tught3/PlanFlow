@@ -323,3 +323,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Made important-alarm toggles visually distinct in both confirmation and edit screens with warm warning colors and clearer on/off styling.
 - Renamed the Naver button to `네이버 일정 동기화`, improved the first CalDAV progress message, upserted Naver `calendar_connections` as connected after successful CalDAV sync, enabled disconnect when a connected record exists, and made connected status checks green.
 - Verification: `flutter analyze`, full `flutter test` (120 passed), `flutter build apk --debug`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, PID check, and focus check on `com.example.planflow/.MainActivity` all passed. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## 2026-05-07 Voice relative-time and duplicate transcript fix
+- Fixed voice-add routing so locally inferred start times are passed to the confirm screen immediately; phrases like `1시간뒤 원주로 출발` no longer show/save the current time while waiting for GPT hydration.
+- Exposed the local Korean time inference helper from `GptService` and added coverage for `1시간뒤` hour offsets in both parser normalization and direct local inference.
+- Added final transcript cleanup for repeated expanding STT chunks, so inputs like `요미 허리 약5 요미 허리 약 5분 뒤에 주 요미 허리 약 5분 뒤에 주기` normalize to the final intended phrase.
+- Verification: `flutter analyze`, full `flutter test` (122 passed), `flutter build apk --debug`, `adb connect 192.168.0.102:5555`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, PID check, and focus check on `com.example.planflow/.MainActivity` all passed. `scripts/gsd-context-hygiene.mjs` remains absent.
