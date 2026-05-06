@@ -11,6 +11,7 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../location/location_picker_screen.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/calendar_auto_sync_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
@@ -160,6 +161,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         reminderOffset: _reminderOffset,
         criticalAlarmOffset: _reminderOffset,
       );
+      unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
       final widgetRefreshed = await _refreshHomeWidget(_repository, savedEvent);
 
       if (mounted) {

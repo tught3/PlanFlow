@@ -412,6 +412,9 @@ class _FakeDeviceCalendarGateway implements DeviceCalendarGateway {
 
   @override
   Future<bool> requestCalendarPermission() async => true;
+
+  @override
+  Future<bool> upsertDeviceCalendarEvent(EventModel event) async => true;
 }
 
 class _FakeDeviceEventRepository extends EventRepository {

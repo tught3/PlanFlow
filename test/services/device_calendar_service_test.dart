@@ -151,6 +151,9 @@ class _FakeDeviceCalendarGateway implements DeviceCalendarGateway {
         .where((event) => calendarIds.contains(event['calendarId'].toString()))
         .toList(growable: false);
   }
+
+  @override
+  Future<bool> upsertDeviceCalendarEvent(EventModel event) async => true;
 }
 
 class _FakeEventRepository extends EventRepository {

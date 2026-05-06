@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,7 @@ import '../core/constants.dart';
 import '../providers/auth_provider.dart';
 import '../services/app_permission_service.dart';
 import '../services/auth_service.dart';
+import '../services/calendar_auto_sync_service.dart';
 import '../services/naver_calendar_permission_service.dart';
 import 'calendar/calendar_screen.dart';
 import 'home_screen.dart';
@@ -20,12 +23,14 @@ class ShellScreen extends StatefulWidget {
   State<ShellScreen> createState() => _ShellScreenState();
 }
 
-class _ShellScreenState extends State<ShellScreen> {
+class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   late int _currentIndex;
   late final ScrollController _homeScrollController;
   final AppPermissionService _permissionService = AppPermissionService();
   final NaverCalendarPermissionService _naverCalendarPermissionService =
       NaverCalendarPermissionService();
+  final CalendarAutoSyncService _calendarAutoSyncService =
+      CalendarAutoSyncService();
   final AuthService _authService = AuthService();
   bool _checkedPermissionOnboarding = false;
   bool _checkedNaverCalendarPermission = false;
@@ -38,17 +43,32 @@ class _ShellScreenState extends State<ShellScreen> {
     _currentIndex = widget.initialIndex;
     _homeScrollController = ScrollController(keepScrollOffset: false);
     _observedUserId = authProvider.userId;
+    WidgetsBinding.instance.addObserver(this);
     authProvider.addListener(_handleAuthChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeOpenPermissionOnboarding();
+      unawaited(_calendarAutoSyncService.syncConnectedCalendars(
+        reason: 'app_start',
+      ));
     });
   }
 
   @override
   void dispose() {
     authProvider.removeListener(_handleAuthChanged);
+    WidgetsBinding.instance.removeObserver(this);
     _homeScrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_calendarAutoSyncService.syncConnectedCalendars(
+        reason: 'app_resumed',
+      ));
+    }
   }
 
   void _handleAuthChanged() {
@@ -70,6 +90,10 @@ class _ShellScreenState extends State<ShellScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _maybeOpenPermissionOnboarding();
+        unawaited(_calendarAutoSyncService.syncConnectedCalendars(
+          reason: 'auth_changed',
+          force: true,
+        ));
       }
     });
   }

@@ -240,3 +240,10 @@
 - Reworked the Settings dialog button layout helper so confirm/cancel style dialogs now render as two side-by-side buttons with clearer color contrast instead of the previous awkward wide-confirm/tiny-cancel look.
 - Simplified the Settings backup UX to use a restore button that opens a selectable backup list, and removed the inline backup tiles / developer-diagnostics card from the visible Settings surface.
 - Validation completed for this logical change: `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -n com.example.planflow/.MainActivity` on the connected device all succeeded.
+
+## 2026-05-06 Calendar fan-out and auto-sync checkpoint
+- Added a calendar auto-sync service that runs after PlanFlow event saves and best-effort fans out manual events to connected Google, Naver CalDAV, Naver API export, and writable Android device calendars.
+- Added app-start, app-resume, auth-change, and daily 03:30 sync hooks so connected calendars are rechecked per PlanFlow account instead of relying on stale device/provider cache state.
+- Added Android Calendar Provider write support with READ/WRITE calendar permission handling, stable `planflow:{eventId}` event keys, and writable-calendar selection that prefers local/Samsung calendars before Google where available.
+- Removed app-level orientation forcing from Flutter startup and Android manifest so builds/runs no longer impose portrait or otherwise override the user's phone rotation setting.
+- Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, and `adb shell pidof com.example.planflow` passed. ADB rotation setting was `accelerometer_rotation=1` before and after install/run, confirming this build did not change the system value.

@@ -1,19 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/env.dart';
 import 'providers/auth_provider.dart';
+import 'services/calendar_auto_sync_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations(
-    <DeviceOrientation>[DeviceOrientation.portraitUp],
-  );
   try {
     await dotenv.load(fileName: '.env');
   } catch (_) {
@@ -49,6 +48,7 @@ Future<void> main() async {
       ).timeout(const Duration(seconds: 10));
       AppEnv.markSupabaseInitialized();
       authProvider.start();
+      unawaited(const DailyCalendarSyncSchedulerService().scheduleDaily());
     } catch (error) {
       debugPrint('Supabase initialization skipped: $error');
     }

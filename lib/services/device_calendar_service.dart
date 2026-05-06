@@ -168,6 +168,8 @@ abstract class DeviceCalendarGateway {
     required DateTime startAt,
     required DateTime endAt,
   });
+
+  Future<bool> upsertDeviceCalendarEvent(EventModel event);
 }
 
 class MethodChannelDeviceCalendarGateway implements DeviceCalendarGateway {
@@ -217,6 +219,30 @@ class MethodChannelDeviceCalendarGateway implements DeviceCalendarGateway {
       },
     );
     return _mapListResult(result);
+  }
+
+  @override
+  Future<bool> upsertDeviceCalendarEvent(EventModel event) async {
+    final startAt = event.startAt;
+    if (startAt == null ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android) {
+      return false;
+    }
+    final result = await _channel.invokeMethod<bool>(
+      'upsertDeviceCalendarEvent',
+      <String, Object?>{
+        'eventKey': 'planflow:${event.id}',
+        'title': event.title,
+        'description': event.memo,
+        'location': event.location,
+        'startMillis': startAt.millisecondsSinceEpoch,
+        'endMillis': (event.endAt ?? startAt.add(const Duration(minutes: 30)))
+            .millisecondsSinceEpoch,
+        'allDay': false,
+      },
+    );
+    return result ?? false;
   }
 
   List<Map<Object?, Object?>> _mapListResult(List<Object?>? result) {
@@ -380,6 +406,23 @@ class DeviceCalendarService {
         message: '휴대폰 내부 캘린더 일정 가져오기에 실패했습니다. 권한과 캘린더 동기화 상태를 확인해 주세요.',
         error: error,
       );
+    }
+  }
+
+  Future<bool> exportEvent(EventModel event) async {
+    if (event.source == 'google' ||
+        event.source == 'naver' ||
+        event.source == 'naver_caldav' ||
+        event.source == 'naver_device' ||
+        event.source == 'device_calendar') {
+      return true;
+    }
+    try {
+      return await _gateway.upsertDeviceCalendarEvent(event);
+    } catch (error, stackTrace) {
+      debugPrint('Device calendar export failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
     }
   }
 

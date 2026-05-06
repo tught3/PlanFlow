@@ -281,6 +281,11 @@ class NaverCalDavService {
     }
   }
 
+  Future<bool> hasCredentials() async {
+    final credentials = await _credentialStore.readCredentials();
+    return credentials != null;
+  }
+
   Future<NaverCalDavConnectionResult> testConnection({
     required String naverId,
     required String appPassword,
@@ -768,6 +773,50 @@ class NaverCalDavService {
     }
   }
 
+  Future<bool> exportEvent(EventModel event) async {
+    if (event.source == 'google' ||
+        event.source == 'naver' ||
+        event.source == 'naver_caldav' ||
+        event.source == 'naver_device' ||
+        event.source == 'device_calendar' ||
+        event.startAt == null) {
+      return true;
+    }
+
+    try {
+      final credentials = await _resolveCredentials();
+      final calendars = await getCalendars(
+        naverId: credentials.naverId,
+        appPassword: credentials.appPassword,
+      );
+      if (calendars.isEmpty) {
+        return false;
+      }
+      final resourcePath =
+          '${calendars.first.path}planflow-${Uri.encodeComponent(event.id)}.ics';
+      final endpoint = _baseUri.replace(path: resourcePath);
+      final request = http.Request('PUT', endpoint)
+        ..headers.addAll(_authHeaders(
+          credentials.naverId,
+          credentials.appPassword,
+        ))
+        ..headers[HttpHeaders.contentTypeHeader] =
+            'text/calendar; charset=utf-8'
+        ..body = _buildPlanFlowIcal(event);
+      final streamed = await _httpClient.send(request).timeout(_timeout);
+      await streamed.stream.drain<void>();
+      if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
+        return true;
+      }
+      debugPrint('Naver CalDAV export failed: ${streamed.statusCode}');
+      return false;
+    } catch (error, stackTrace) {
+      debugPrint('Naver CalDAV export skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
+  }
+
   ({DateTime? from, DateTime? to}) _resolveSyncRange({
     required NaverCalDavSyncMode mode,
     DateTime? from,
@@ -1166,6 +1215,64 @@ class NaverCalDavService {
       HttpHeaders.contentTypeHeader: 'application/xml; charset=utf-8',
       'Depth': '1',
     };
+  }
+
+  String _buildPlanFlowIcal(EventModel event) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      throw ArgumentError.value(event.startAt, 'event.startAt');
+    }
+    final endAt = event.endAt ?? startAt.add(const Duration(minutes: 30));
+    final now = DateTime.now().toUtc();
+    final uid = 'planflow-${event.id}@planflow';
+    return <String>[
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//PlanFlow//PlanFlow Calendar//KO',
+      'CALSCALE:GREGORIAN',
+      'BEGIN:VEVENT',
+      'UID:${_escapeIcalText(uid)}',
+      'SUMMARY:${_escapeIcalText(event.title)}',
+      'DTSTART;TZID=Asia/Seoul:${_formatLocalIcalDateTime(startAt)}',
+      'DTEND;TZID=Asia/Seoul:${_formatLocalIcalDateTime(endAt)}',
+      if ((event.memo ?? '').trim().isNotEmpty)
+        'DESCRIPTION:${_escapeIcalText(event.memo!.trim())}',
+      if ((event.location ?? '').trim().isNotEmpty)
+        'LOCATION:${_escapeIcalText(event.location!.trim())}',
+      'DTSTAMP:${_formatUtcIcalDateTime(now)}',
+      'LAST-MODIFIED:${_formatUtcIcalDateTime(now)}',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+  }
+
+  String _formatLocalIcalDateTime(DateTime value) {
+    final local = value.toLocal();
+    return '${local.year.toString().padLeft(4, '0')}'
+        '${local.month.toString().padLeft(2, '0')}'
+        '${local.day.toString().padLeft(2, '0')}T'
+        '${local.hour.toString().padLeft(2, '0')}'
+        '${local.minute.toString().padLeft(2, '0')}'
+        '${local.second.toString().padLeft(2, '0')}';
+  }
+
+  String _formatUtcIcalDateTime(DateTime value) {
+    final utc = value.toUtc();
+    return '${utc.year.toString().padLeft(4, '0')}'
+        '${utc.month.toString().padLeft(2, '0')}'
+        '${utc.day.toString().padLeft(2, '0')}T'
+        '${utc.hour.toString().padLeft(2, '0')}'
+        '${utc.minute.toString().padLeft(2, '0')}'
+        '${utc.second.toString().padLeft(2, '0')}Z';
+  }
+
+  String _escapeIcalText(String value) {
+    return value
+        .replaceAll(r'\', r'\\')
+        .replaceAll(';', r'\;')
+        .replaceAll(',', r'\,')
+        .replaceAll('\n', r'\n')
+        .replaceAll('\r', '');
   }
 
   String? _currentSupabaseUserId() {

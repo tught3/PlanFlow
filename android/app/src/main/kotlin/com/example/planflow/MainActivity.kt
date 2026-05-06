@@ -1,6 +1,7 @@
 package com.example.planflow
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -76,6 +77,26 @@ class MainActivity : FlutterActivity() {
                                 calendarIds = calendarIds,
                                 startMillis = startMillis,
                                 endMillis = endMillis,
+                            ),
+                        )
+                    }
+                    "upsertDeviceCalendarEvent" -> {
+                        val eventKey = call.argument<String>("eventKey")
+                        val title = call.argument<String>("title")
+                        val description = call.argument<String>("description")
+                        val location = call.argument<String>("location")
+                        val startMillis = call.argument<Number>("startMillis")?.toLong()
+                        val endMillis = call.argument<Number>("endMillis")?.toLong()
+                        val allDay = call.argument<Boolean>("allDay") ?: false
+                        result.success(
+                            upsertDeviceCalendarEvent(
+                                eventKey = eventKey,
+                                title = title,
+                                description = description,
+                                location = location,
+                                startMillis = startMillis,
+                                endMillis = endMillis,
+                                allDay = allDay,
                             ),
                         )
                     }
@@ -222,10 +243,15 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun hasCalendarPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(
+        val readGranted = ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.READ_CALENDAR,
         ) == PackageManager.PERMISSION_GRANTED
+        val writeGranted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.WRITE_CALENDAR,
+        ) == PackageManager.PERMISSION_GRANTED
+        return readGranted && writeGranted
     }
 
     private fun requestCalendarPermission(result: MethodChannel.Result) {
@@ -242,7 +268,10 @@ class MainActivity : FlutterActivity() {
         calendarPermissionResult = result
         ActivityCompat.requestPermissions(
             this,
-            arrayOf(Manifest.permission.READ_CALENDAR),
+            arrayOf(
+                Manifest.permission.READ_CALENDAR,
+                Manifest.permission.WRITE_CALENDAR,
+            ),
             REQUEST_CALENDAR_PERMISSION,
         )
     }
@@ -305,6 +334,7 @@ class MainActivity : FlutterActivity() {
             CalendarContract.Calendars.IS_PRIMARY,
             CalendarContract.Calendars.VISIBLE,
             CalendarContract.Calendars.SYNC_EVENTS,
+            CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,
         )
 
         val calendars = mutableListOf<Map<String, Any?>>()
@@ -328,6 +358,7 @@ class MainActivity : FlutterActivity() {
                             "isPrimary" to cursor.getBooleanOrNull(6),
                             "visible" to cursor.getBooleanOrNull(7),
                             "syncEvents" to cursor.getBooleanOrNull(8),
+                            "accessLevel" to cursor.getLongOrNull(9),
                         ),
                     )
                 }
@@ -407,6 +438,104 @@ class MainActivity : FlutterActivity() {
             return listOf(mapOf("error" to (error.message ?: error.javaClass.simpleName)))
         }
         return events
+    }
+
+    private fun upsertDeviceCalendarEvent(
+        eventKey: String?,
+        title: String?,
+        description: String?,
+        location: String?,
+        startMillis: Long?,
+        endMillis: Long?,
+        allDay: Boolean,
+    ): Boolean {
+        if (!hasCalendarPermission() ||
+            eventKey.isNullOrBlank() ||
+            title.isNullOrBlank() ||
+            startMillis == null
+        ) {
+            return false
+        }
+
+        return try {
+            val calendarId = findWritableCalendarId() ?: return false
+            val safeEndMillis = endMillis?.takeIf { it > startMillis }
+                ?: (startMillis + 30L * 60L * 1000L)
+            val values = ContentValues().apply {
+                put(CalendarContract.Events.CALENDAR_ID, calendarId)
+                put(CalendarContract.Events.TITLE, title)
+                put(CalendarContract.Events.DESCRIPTION, description)
+                put(CalendarContract.Events.EVENT_LOCATION, location)
+                put(CalendarContract.Events.DTSTART, startMillis)
+                put(CalendarContract.Events.DTEND, safeEndMillis)
+                put(CalendarContract.Events.ALL_DAY, if (allDay) 1 else 0)
+                put(CalendarContract.Events.EVENT_TIMEZONE, "Asia/Seoul")
+                put(CalendarContract.Events.UID_2445, eventKey)
+            }
+
+            val existingId = findEventIdByUid(eventKey)
+            if (existingId == null) {
+                contentResolver.insert(CalendarContract.Events.CONTENT_URI, values) != null
+            } else {
+                val uri = Uri.withAppendedPath(
+                    CalendarContract.Events.CONTENT_URI,
+                    existingId.toString(),
+                )
+                contentResolver.update(uri, values, null, null) > 0
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun findWritableCalendarId(): Long? {
+        val projection = arrayOf(
+            CalendarContract.Calendars._ID,
+            CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+            CalendarContract.Calendars.ACCOUNT_TYPE,
+            CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,
+            CalendarContract.Calendars.VISIBLE,
+        )
+        val candidates = mutableListOf<Pair<Long, Int>>()
+        contentResolver.query(
+            CalendarContract.Calendars.CONTENT_URI,
+            projection,
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val id = cursor.getLongOrNull(0) ?: continue
+                val name = cursor.getStringOrNull(1).orEmpty().lowercase(Locale.getDefault())
+                val accountType = cursor.getStringOrNull(2).orEmpty().lowercase(Locale.getDefault())
+                val accessLevel = cursor.getLongOrNull(3)?.toInt() ?: 0
+                val visible = cursor.getBooleanOrNull(4) ?: true
+                if (!visible || accessLevel < CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR) {
+                    continue
+                }
+                val priority = when {
+                    accountType.contains("samsung") || name.contains("samsung") -> 0
+                    accountType.contains("local") || name.contains("local") -> 1
+                    accountType.contains("google") -> 3
+                    else -> 2
+                }
+                candidates.add(id to priority)
+            }
+        }
+        return candidates.minByOrNull { it.second }?.first
+    }
+
+    private fun findEventIdByUid(eventKey: String): Long? {
+        val projection = arrayOf(CalendarContract.Events._ID)
+        return contentResolver.query(
+            CalendarContract.Events.CONTENT_URI,
+            projection,
+            "${CalendarContract.Events.UID_2445} = ?",
+            arrayOf(eventKey),
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLongOrNull(0) else null
+        }
     }
 
     private fun android.database.Cursor.getStringOrNull(index: Int): String? {
