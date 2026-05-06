@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,7 +10,9 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/early_bird_email_repository.dart';
+import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/home_header_summary_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../widgets/planflow_voice_fab.dart';
 
@@ -37,14 +41,17 @@ class _HomeScreenState extends State<HomeScreen> {
   List<EventModel> _todayEvents = const <EventModel>[];
   List<EventModel> _upcomingEvents = const <EventModel>[];
   Set<String> _smartPreparationEventIds = const <String>{};
+  HomeHeaderSummary? _headerSummary;
   _HomeLoadState _loadState = _HomeLoadState.loading;
   String? _loadMessage;
+  bool _headerSummaryLoading = true;
 
   @override
   void initState() {
     super.initState();
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _loadTodayEvents();
+    unawaited(_loadHomeHeaderSummary());
   }
 
   @override
@@ -55,6 +62,43 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _handleEventRefresh() {
     _loadTodayEvents();
+    unawaited(_loadHomeHeaderSummary());
+  }
+
+  Future<void> _loadHomeHeaderSummary() async {
+    if (mounted) {
+      setState(() {
+        _headerSummaryLoading = true;
+      });
+    }
+    try {
+      final permissionService = AppPermissionService();
+      final locationGranted = await permissionService.checkLocationPermission();
+      final location = locationGranted
+          ? await permissionService.getLastKnownLocation()
+          : null;
+      final summary = await HomeHeaderSummaryService().load(location: location);
+      if (mounted) {
+        setState(() {
+          _headerSummary = summary;
+          _headerSummaryLoading = false;
+        });
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Home header summary load failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(() {
+          _headerSummary = const HomeHeaderSummary(
+            locationLabel: '현재 위치',
+            weatherLabel: '날씨 확인 중',
+            detailLine: '날씨를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
+            isReady: false,
+          );
+          _headerSummaryLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadTodayEvents() async {
@@ -239,36 +283,57 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          crossAxisAlignment: WrapCrossAlignment.center,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 7,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.18),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                _todayEvents.isEmpty ? '일정 없음' : '브리핑 준비 완료',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                ),
+                            Expanded(
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  _HomeInfoChip(
+                                    icon: Icons.place_outlined,
+                                    label: _headerSummaryLoading
+                                        ? '위치 확인 중'
+                                        : (_headerSummary?.locationLabel ??
+                                            '현재 위치'),
+                                    backgroundColor:
+                                        Colors.white.withValues(alpha: 0.16),
+                                    borderColor:
+                                        Colors.white.withValues(alpha: 0.30),
+                                    foregroundColor: Colors.white,
+                                    onTap: _headerSummaryLoading
+                                        ? null
+                                        : () => _showHeaderSummarySheet(
+                                              context,
+                                              title: '현재 위치',
+                                              summary: _headerSummary,
+                                            ),
+                                  ),
+                                  _HomeInfoChip(
+                                    icon: _headerSummary?.weatherIcon ??
+                                        Icons.wb_sunny_outlined,
+                                    label: _headerSummaryLoading
+                                        ? '날씨 확인 중'
+                                        : (_headerSummary?.weatherLabel ??
+                                            '날씨 확인 중'),
+                                    backgroundColor:
+                                        Colors.white.withValues(alpha: 0.16),
+                                    borderColor:
+                                        Colors.white.withValues(alpha: 0.30),
+                                    foregroundColor: Colors.white,
+                                    onTap: _headerSummaryLoading
+                                        ? null
+                                        : () => _showHeaderSummarySheet(
+                                              context,
+                                              title: '현재 날씨',
+                                              summary: _headerSummary,
+                                            ),
+                                  ),
+                                ],
                               ),
                             ),
-                            Icon(
-                              _todayEvents.isEmpty
-                                  ? Icons.wb_sunny_outlined
-                                  : Icons.event_note,
-                              color: Colors.white,
-                              size: 20,
-                            ),
+                            const SizedBox(width: 8),
                             OutlinedButton.icon(
                               onPressed: () => context.go(AppRoutes.calendar),
                               style: OutlinedButton.styleFrom(
@@ -551,6 +616,64 @@ class _HomeStatusCard extends StatelessWidget {
   }
 }
 
+class _HomeInfoChip extends StatelessWidget {
+  const _HomeInfoChip({
+    required this.icon,
+    required this.label,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.foregroundColor,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color backgroundColor;
+  final Color borderColor;
+  final Color foregroundColor;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: foregroundColor),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: foregroundColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (onTap == null) {
+      return chip;
+    }
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: chip,
+    );
+  }
+}
+
 class _HomeHeader extends StatelessWidget {
   const _HomeHeader({required this.onVoice});
 
@@ -612,6 +735,61 @@ class _HomeHeader extends StatelessWidget {
     };
     return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
   }
+}
+
+Future<void> _showHeaderSummarySheet(
+  BuildContext context, {
+  required String title,
+  required HomeHeaderSummary? summary,
+}) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    backgroundColor: PlanFlowColors.surface,
+    builder: (context) {
+      final effectiveSummary = summary;
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              effectiveSummary?.locationLabel ?? '현재 위치',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: PlanFlowColors.primaryMid,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              effectiveSummary?.weatherLabel ?? '날씨 확인 중',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              effectiveSummary?.detailLine ?? '날씨 정보를 불러오지 못했어요.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                    height: 1.4,
+                  ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 // --- Today Event Card ---
@@ -963,13 +1141,13 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFF9DFC9),
+          color: const Color(0xFFFDF0E7),
           border: Border.all(
-            color: const Color(0xFFC67E52).withValues(alpha: 0.72),
+            color: const Color(0xFFC67E52).withValues(alpha: 0.48),
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFC67E52).withValues(alpha: 0.14),
+              color: const Color(0xFFC67E52).withValues(alpha: 0.10),
               blurRadius: 12,
               offset: const Offset(0, 6),
             ),
@@ -1003,13 +1181,13 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9DFC9),
+        color: const Color(0xFFFDF0E7),
         border: Border.all(
-          color: const Color(0xFFC67E52).withValues(alpha: 0.72),
+          color: const Color(0xFFC67E52).withValues(alpha: 0.48),
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFC67E52).withValues(alpha: 0.14),
+            color: const Color(0xFFC67E52).withValues(alpha: 0.10),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),

@@ -707,8 +707,18 @@ class NaverCalDavService {
             calendarPath: calendar.path,
             syncedAt: syncedAt,
           );
-          if (skipUnchanged && await _isUnchangedEvent(eventModel)) {
+          final skipReason =
+              skipUnchanged ? await _skipUnchangedReason(eventModel) : null;
+          if (skipReason != null) {
             skippedCount += 1;
+            debugPrint(
+              'Naver CalDAV skip reason: '
+              'calendar="${calendar.displayName}", '
+              'uid="${event.uid}", '
+              'externalId="${eventModel.externalId}", '
+              'title="${event.title}", '
+              'reason=$skipReason',
+            );
             emit(NaverCalDavSyncProgress(
               mode: mode,
               stage: NaverCalDavSyncStage.saving,
@@ -750,6 +760,14 @@ class NaverCalDavService {
             failedEvents: failedCount,
           ));
         }
+        debugPrint(
+          'Naver CalDAV calendar summary: '
+          'calendar="${calendar.displayName}", '
+          'read=${events.length}, '
+          'saved=$savedCount, '
+          'skipped=$skippedCount, '
+          'failed=$failedCount',
+        );
       }
 
       emit(NaverCalDavSyncProgress(
@@ -856,10 +874,10 @@ class NaverCalDavService {
     );
   }
 
-  Future<bool> _isUnchangedEvent(EventModel event) async {
+  Future<String?> _skipUnchangedReason(EventModel event) async {
     final externalId = event.externalId;
     if (externalId == null || externalId.trim().isEmpty) {
-      return false;
+      return null;
     }
     final existing = await _eventRepository.fetchEventBySourceExternalId(
       source: event.source,
@@ -867,7 +885,7 @@ class NaverCalDavService {
       userId: event.userId,
     );
     if (existing == null) {
-      return false;
+      return null;
     }
     final incomingEtag = event.externalEtag?.trim();
     final existingEtag = existing.externalEtag?.trim();
@@ -875,14 +893,16 @@ class NaverCalDavService {
         incomingEtag.isNotEmpty &&
         existingEtag != null &&
         existingEtag.isNotEmpty) {
-      return incomingEtag == existingEtag;
+      return incomingEtag == existingEtag ? 'external_etag 일치' : null;
     }
     final incomingUpdatedAt = event.externalUpdatedAt;
     final existingUpdatedAt = existing.externalUpdatedAt;
     if (incomingUpdatedAt == null || existingUpdatedAt == null) {
-      return false;
+      return null;
     }
-    return !incomingUpdatedAt.toUtc().isAfter(existingUpdatedAt.toUtc());
+    return !incomingUpdatedAt.toUtc().isAfter(existingUpdatedAt.toUtc())
+        ? 'external_updated_at이 기존값보다 최신이 아님'
+        : null;
   }
 
   // Kept temporarily as a rollback reference while the progressive sync path

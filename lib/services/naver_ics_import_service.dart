@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:ical_parser/ical_parser.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -64,13 +65,20 @@ class NaverIcsImportService {
 
     for (final parsed in parsedEvents) {
       final externalId = parsed.externalId;
-      final duplicate = _hasDuplicate(
+      final duplicateReason = _duplicateReason(
         existingEvents: existingEvents,
         externalId: externalId,
         title: parsed.title,
         startAt: parsed.startAt,
       );
-      if (duplicate) {
+      if (duplicateReason != null) {
+        debugPrint(
+          'Naver ICS duplicate skipped: '
+          'externalId=$externalId, '
+          'title="${parsed.title}", '
+          'startAt=${parsed.startAt.toIso8601String()}, '
+          'reason=$duplicateReason',
+        );
         skipped += 1;
         continue;
       }
@@ -155,7 +163,7 @@ class NaverIcsImportService {
     return events;
   }
 
-  bool _hasDuplicate({
+  String? _duplicateReason({
     required List<EventModel> existingEvents,
     required String externalId,
     required String title,
@@ -164,7 +172,7 @@ class NaverIcsImportService {
     final normalizedTitle = _normalizeTitle(title);
     for (final event in existingEvents) {
       if ((event.externalId ?? '').trim() == externalId) {
-        return true;
+        return 'external_id 일치';
       }
       final existingStart = event.startAt;
       if (existingStart == null) {
@@ -172,10 +180,10 @@ class NaverIcsImportService {
       }
       if (_sameLocalDay(existingStart, startAt) &&
           _normalizeTitle(event.title) == normalizedTitle) {
-        return true;
+        return '같은 날짜+제목 중복';
       }
     }
-    return false;
+    return null;
   }
 
   String? _resolveUserId(String? userId) {

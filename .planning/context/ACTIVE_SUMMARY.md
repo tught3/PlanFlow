@@ -278,3 +278,9 @@
 - Updated the long-running Naver CalDAV import copy to set a clearer expectation: large imports can take time and usually finish in about 1-2 minutes.
 - Reworked the additional-history range dialog from a tall vertical action stack into compact horizontal/wrapping buttons for `나중에`, `6개월`, `1년`, `2년`, `직접 입력`, and `전체`.
 - Verification: `dart format`, `flutter analyze`, Settings screen test, full `flutter test` (108 passed), `flutter build apk --debug`, `adb install -r`, and explicit ADB launch/focus check on `com.example.planflow/.MainActivity` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## 2026-05-06 Home weather/location and sync-skip diagnostics checkpoint
+- Added a reusable home header summary service that shows current location plus weather summary in the top blue Home card, with a tap target that opens a detail bottom sheet.
+- Removed the center emoji/briefing-ready chip from the Home hero card and lightened the PRO early-bird card background so the voice entry CTA stands out more cleanly.
+- Added explicit CalDAV/ICS skip-reason logs so `300 read / 0 saved` can now be diagnosed from logcat as `external_etag` matches, stale `external_updated_at`, or duplicate same-date/title skips.
+- Verification: `flutter analyze`, targeted home-header summary test, full `flutter test` (110 passed), `flutter build apk --debug`, `adb install -r`, and ADB launch/pid checks all passed. `scripts/gsd-context-hygiene.mjs` remains absent.
