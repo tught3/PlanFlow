@@ -71,6 +71,7 @@ class _FakeNotificationService extends NotificationService {
     required String title,
     required String body,
     required DateTime notifyAt,
+    String? payload,
   }) async {
     scheduledIds.add(id);
     titles.add(title);

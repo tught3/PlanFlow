@@ -1554,6 +1554,26 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ],
                   ),
                   const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      key: const ValueKey('settings-naver-ics-import-button'),
+                      onPressed: () => context.go(AppRoutes.naverIcsImport),
+                      icon: const Icon(Icons.ios_share_outlined),
+                      label: const Text('네이버 캘린더 가져오기'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '네이버 앱에서 내보낸 ICS 공유 파일을 받아 기존 일정을 중복 없이 저장합니다.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(

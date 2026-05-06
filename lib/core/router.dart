@@ -7,6 +7,7 @@ import '../data/models/event_model.dart';
 import '../screens/event/event_detail_screen.dart';
 import '../screens/event/event_edit_screen.dart';
 import '../screens/placeholder_screen.dart';
+import '../screens/settings/naver_ics_import_screen.dart';
 import '../screens/splash/splash_screen.dart';
 import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
@@ -76,6 +77,18 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.settings,
       builder: (context, state) => const ShellScreen(initialIndex: 2),
+    ),
+    GoRoute(
+      path: AppRoutes.naverIcsImport,
+      builder: (context, state) {
+        final paths = state.extra is List
+            ? (state.extra! as List)
+                .map((item) => item.toString())
+                .where((path) => path.trim().isNotEmpty)
+                .toList(growable: false)
+            : const <String>[];
+        return NaverIcsImportScreen(initialPaths: paths);
+      },
     ),
     GoRoute(
       path: AppRoutes.voice,

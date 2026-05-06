@@ -14,7 +14,7 @@ import 'package:planflow/services/notification_service.dart';
 void main() {
   testWidgets('SettingsScreen loads settings and shows Naver calendar actions',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final settingsRepository = _FakeSettingsRepository(
@@ -66,7 +66,7 @@ void main() {
   testWidgets(
       'SettingsScreen auto-saves setting changes and schedules briefing',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final settingsRepository = _FakeSettingsRepository(
@@ -205,7 +205,7 @@ void main() {
 
   testWidgets('device Naver calendar import button imports phone calendars',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final deviceCalendarService = _FakeDeviceCalendarService(

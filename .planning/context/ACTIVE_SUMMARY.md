@@ -255,3 +255,13 @@
 - Event detail now loads and displays saved smart preparation alarms, and Home shows one faded past schedule plus real DB-backed smart-prep badges.
 - Expanded Android home widgets to five providers: next event, monthly calendar, vertical schedule, weekly schedule, and 1x1 mic shortcut; save/update/delete widget refresh now feeds today/month/week data.
 - Verification: flutter analyze, full flutter test (104 passed), flutter build apk --debug, adb install/run, and package receiver dump for all 5 widget providers passed. scripts/gsd-context-hygiene.mjs remains absent.
+
+## 2026-05-06 13:49:02 +09:00 Naver ICS share import checkpoint
+- Implemented the new Naver ICS import flow from the updated v3 direction: PlanFlow opens the Naver Calendar Android package, receives shared .ics files through Android share intents, and also supports direct .ics file selection.
+- Added NaverIcsImportService with ICS parsing, source='naver_ics', stable UID/date-title external ids, and duplicate skipping by same local date + title.
+- Added NaverIcsImportScreen guide UI, Settings entry point, pending-share storage for login-before-import cases, and app-level receive_sharing_intent handling for warm/cold starts.
+- Added monthly reminder scheduling for “새 일정이 있을 수 있어요. 다시 가져올까요?” and routes notification taps to the import guide.
+- Android manifest now declares Naver Calendar package visibility and ICS share receive filters for 	ext/calendar, 	ext/x-vcalendar, pplication/octet-stream, and SEND_MULTIPLE.
+- Added Flutter dependencies for ndroid_intent_plus, eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved Android plugin JVM target mismatches in Gradle so debug APK builds successfully.
+- Removed the wrong BACKUP_DO_NOT_WORK_HERE.md marker from the real Flux working tree; backup markers remain for E:\Project\PlanFlow only.
+- Verification: lutter analyze, full lutter test, lutter build apk --debug, db install -r, db shell am start -n com.example.planflow/.MainActivity, and db shell pidof com.example.planflow all passed. scripts/gsd-context-hygiene.mjs remains absent.

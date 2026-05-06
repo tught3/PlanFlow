@@ -257,6 +257,7 @@ class _FakeNotificationService extends NotificationService {
     required String title,
     required String body,
     required DateTime notifyAt,
+    String? payload,
   }) async {}
 
   @override

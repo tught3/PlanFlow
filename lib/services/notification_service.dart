@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
+import '../core/constants.dart';
+import '../core/router.dart';
+
 class NotificationService {
   NotificationService({FlutterLocalNotificationsPlugin? plugin})
       : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
@@ -52,6 +55,7 @@ class NotificationService {
     required String title,
     required String body,
     required DateTime notifyAt,
+    String? payload,
   }) async {
     if (!notifyAt.isAfter(DateTime.now())) {
       return;
@@ -65,6 +69,19 @@ class NotificationService {
       notifyAt: notifyAt,
       details: _eventReminderDetails,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      payload: payload,
+    );
+  }
+
+  Future<void> scheduleMonthlyNaverIcsReminder({DateTime? now}) {
+    final basis = now ?? DateTime.now();
+    final nextReminder = _nextMonthlyNaverIcsReminderAt(basis);
+    return scheduleEventReminder(
+      id: notificationIdFor('naver_ics_monthly_reminder'),
+      title: '네이버 캘린더 가져오기',
+      body: '새 일정이 있을 수 있어요. 다시 가져올까요?',
+      notifyAt: nextReminder,
+      payload: 'naver_ics_monthly_reminder',
     );
   }
 
@@ -203,7 +220,14 @@ class NotificationService {
       linux: LinuxInitializationSettings(defaultActionName: '알림 열기'),
     );
 
-    await _plugin.initialize(settings: initializationSettings);
+    await _plugin.initialize(
+      settings: initializationSettings,
+      onDidReceiveNotificationResponse: (response) {
+        if (response.payload == 'naver_ics_monthly_reminder') {
+          appRouter.go(AppRoutes.naverIcsImport);
+        }
+      },
+    );
     await _runPermissionRequestBestEffort(
       'initial notification permission',
       _requestNotificationPermissionIfNeeded,
@@ -280,6 +304,7 @@ class NotificationService {
     required DateTime notifyAt,
     required NotificationDetails details,
     required AndroidScheduleMode androidScheduleMode,
+    String? payload,
   }) async {
     if (!notifyAt.isAfter(DateTime.now())) {
       return;
@@ -294,7 +319,7 @@ class NotificationService {
       androidScheduleMode: androidScheduleMode,
       title: title,
       body: body,
-      payload: id.toString(),
+      payload: payload ?? id.toString(),
     );
   }
 
@@ -358,6 +383,14 @@ class NotificationService {
     }
 
     return hash == 0 ? 1 : hash;
+  }
+
+  DateTime _nextMonthlyNaverIcsReminderAt(DateTime now) {
+    var reminder = DateTime(now.year, now.month, 1, 9);
+    if (!reminder.isAfter(now)) {
+      reminder = DateTime(now.year, now.month + 1, 1, 9);
+    }
+    return reminder;
   }
 }
 
