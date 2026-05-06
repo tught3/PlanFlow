@@ -335,6 +335,72 @@ END:VCALENDAR
     expect(event.startAt, DateTime.utc(2026, 5, 5));
   });
 
+  test('parseIcal maps DTSTART to startAt and DTEND to endAt', () {
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(responses: <int>[207]),
+      credentialStore: _FakeCredentialStore(),
+    );
+
+    final event = service.parseIcal(
+      '''
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:range-1
+SUMMARY:Range event
+DTSTART;TZID=Asia/Seoul:20260501T140000
+DTEND;TZID=Asia/Seoul:20260501T150000
+END:VEVENT
+END:VCALENDAR
+''',
+      etag: '"range-etag"',
+      href: '/calendars/tught3/default/range-1.ics',
+    );
+
+    expect(event, isNotNull);
+    expect(event!.startAt, DateTime.utc(2026, 5, 1, 5));
+    expect(event.endAt, DateTime.utc(2026, 5, 1, 6));
+  });
+
+  test('parseIcal skips suspicious or invalid dates instead of saving', () {
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(responses: <int>[207]),
+      credentialStore: _FakeCredentialStore(),
+    );
+
+    final suspicious = service.parseIcal(
+      '''
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:suspicious-1
+SUMMARY:Suspicious event
+DTSTART:19700101T000000Z
+DTEND:19700101T010000Z
+END:VEVENT
+END:VCALENDAR
+''',
+      etag: '"suspicious"',
+      href: '/calendars/tught3/default/suspicious.ics',
+    );
+
+    final invalidEnd = service.parseIcal(
+      '''
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:invalid-end-1
+SUMMARY:Invalid end event
+DTSTART;TZID=Asia/Seoul:20260501T140000
+DTEND;TZID=Asia/Seoul:20260501T250000
+END:VEVENT
+END:VCALENDAR
+''',
+      etag: '"invalid-end"',
+      href: '/calendars/tught3/default/invalid-end.ics',
+    );
+
+    expect(suspicious, isNull);
+    expect(invalidEnd, isNull);
+  });
+
   test('parsed CalDAV event maps etag and sync metadata to EventModel', () {
     final event = NaverCalDavEvent(
       uid: 'naver-event-1',
@@ -414,6 +480,39 @@ END:VCALENDAR
         contains(NaverCalDavSyncStage.saving));
   });
 
+  test('syncAll deletes suspicious imported events before re-syncing',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 404, 404],
+      bodies: <String>[''],
+    );
+    final repository = _FakeEventRepository(
+      seedEvents: <EventModel>[
+        EventModel(
+          id: 'bad-1',
+          userId: 'user-1',
+          title: 'Bad imported event',
+          startAt: DateTime.utc(1969, 12, 31, 15),
+          source: 'naver_caldav',
+        ),
+      ],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+
+    expect(result.success, isFalse);
+    expect(repository.deletedIds, contains('bad-1'));
+  });
+
   test('getCalendars tries home path when calendar root is empty', () async {
     final client = _FakePropfindClient(
       responses: <int>[404, 207, 207],
@@ -443,10 +542,15 @@ END:VCALENDAR
 }
 
 class _FakeEventRepository extends EventRepository {
-  _FakeEventRepository({this.existing});
+  _FakeEventRepository({
+    this.existing,
+    List<EventModel> seedEvents = const <EventModel>[],
+  }) : events = List<EventModel>.from(seedEvents);
 
   final String? existing;
+  final List<EventModel> events;
   final List<EventModel> upserted = <EventModel>[];
+  final List<String> deletedIds = <String>[];
 
   @override
   Future<EventModel?> fetchEvent(String eventId, {String? userId}) async =>
@@ -491,11 +595,15 @@ class _FakeEventRepository extends EventRepository {
   }
 
   @override
-  Future<void> deleteEvent(String eventId, {String? userId}) async {}
+  Future<void> deleteEvent(String eventId, {String? userId}) async {
+    deletedIds.add(eventId);
+    events.removeWhere((event) => event.id == eventId);
+  }
 
   @override
-  Future<List<EventModel>> listEvents({String? userId}) async =>
-      const <EventModel>[];
+  Future<List<EventModel>> listEvents({String? userId}) async => events
+      .where((event) => userId == null || event.userId == userId)
+      .toList(growable: false);
 }
 
 class _FakePropfindClient extends http.BaseClient {

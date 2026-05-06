@@ -59,11 +59,38 @@ class NaverIcsImportService {
     final existingEvents = List<EventModel>.from(
       await _eventRepository.listEvents(userId: resolvedUserId),
     );
+    final cleanedCount = await _cleanupSuspiciousImportedEvents(
+      resolvedUserId,
+    );
+    if (cleanedCount > 0) {
+      debugPrint(
+        'Naver ICS cleanup removed $cleanedCount suspicious imported events before import.',
+      );
+      existingEvents.removeWhere(
+        (event) =>
+            _isImportedSource(event.source) &&
+            event.startAt != null &&
+            _isSuspiciousImportedDate(event.startAt!),
+      );
+    }
     var imported = 0;
     var skipped = 0;
     var failed = 0;
 
     for (final parsed in parsedEvents) {
+      if (_isSuspiciousImportedDate(parsed.startAt) ||
+          (parsed.endAt != null && _isSuspiciousImportedDate(parsed.endAt!)) ||
+          (parsed.endAt != null && parsed.endAt!.isBefore(parsed.startAt))) {
+        debugPrint(
+          'Naver ICS suspicious event skipped: '
+          'externalId=${parsed.externalId}, '
+          'title="${parsed.title}", '
+          'startAt=${parsed.startAt.toIso8601String()}, '
+          'endAt=${parsed.endAt?.toIso8601String()}',
+        );
+        skipped += 1;
+        continue;
+      }
       final externalId = parsed.externalId;
       final duplicateReason = _duplicateReason(
         existingEvents: existingEvents,
@@ -141,7 +168,15 @@ class NaverIcsImportService {
       if (title == null || title.isEmpty || startAt == null) {
         continue;
       }
+      final hasEndRaw = _hasProperty(data, 'DTEND');
       final endAt = _dateTimeProperty(data, 'DTEND');
+      if (hasEndRaw && endAt == null) {
+        debugPrint(
+          'Naver ICS event skipped because DTEND failed to parse: '
+          'title="$title", rawEnd=${_textProperty(data, "DTEND")}',
+        );
+        continue;
+      }
       final uid = _textProperty(data, 'UID')?.trim();
       events.add(
         NaverIcsParsedEvent(
@@ -196,6 +231,38 @@ class NaverIcsImportService {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<int> _cleanupSuspiciousImportedEvents(String userId) async {
+    final events = await _eventRepository.listEvents(userId: userId);
+    var deletedCount = 0;
+    for (final event in events) {
+      if (!_isImportedSource(event.source)) {
+        continue;
+      }
+      final startAt = event.startAt;
+      if (startAt == null || !_isSuspiciousImportedDate(startAt)) {
+        continue;
+      }
+      try {
+        await _eventRepository.deleteEvent(event.id, userId: userId);
+        deletedCount += 1;
+      } catch (error) {
+        debugPrint('Naver ICS cleanup delete failed: ${event.id} / $error');
+      }
+    }
+    return deletedCount;
+  }
+
+  bool _isImportedSource(String source) {
+    return source == 'naver_caldav' ||
+        source == 'naver_ics' ||
+        source == 'naver_device' ||
+        source == 'device_calendar';
+  }
+
+  bool _isSuspiciousImportedDate(DateTime value) {
+    return value.toUtc().year < 2000;
   }
 }
 
@@ -313,14 +380,25 @@ DateTime? _parseIcsDateTime(String value, String key) {
     final year = int.parse(normalized.substring(0, 4));
     final month = int.parse(normalized.substring(4, 6));
     final day = int.parse(normalized.substring(6, 8));
-    return DateTime(year, month, day).toUtc();
+    final localLike = DateTime(year, month, day);
+    if (localLike.year != year ||
+        localLike.month != month ||
+        localLike.day != day) {
+      return null;
+    }
+    final parsed = DateTime.utc(year, month, day);
+    return _isSuspiciousImportedDate(parsed) ? null : parsed;
   }
 
   final match = RegExp(
     r'^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$',
   ).firstMatch(normalized);
   if (match == null) {
-    return DateTime.tryParse(normalized)?.toUtc();
+    final parsed = DateTime.tryParse(normalized)?.toUtc();
+    if (parsed == null || _isSuspiciousImportedDate(parsed)) {
+      return null;
+    }
+    return parsed;
   }
 
   final year = int.parse(match.group(1)!);
@@ -329,13 +407,44 @@ DateTime? _parseIcsDateTime(String value, String key) {
   final hour = int.parse(match.group(4)!);
   final minute = int.parse(match.group(5)!);
   final second = int.parse(match.group(6)!);
-  final isUtc = match.group(7) == 'Z';
-  if (isUtc) {
-    return DateTime.utc(year, month, day, hour, minute, second);
+  final localLike = DateTime(
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second,
+  );
+  if (localLike.year != year ||
+      localLike.month != month ||
+      localLike.day != day ||
+      localLike.hour != hour ||
+      localLike.minute != minute ||
+      localLike.second != second) {
+    return null;
   }
-
-  // Naver exports Korean local times without Z for many calendars.
-  return DateTime(year, month, day, hour, minute, second).toUtc();
+  final isUtc = match.group(7) == 'Z';
+  final hasAsiaSeoulTz = key.toUpperCase().contains('TZID=ASIA/SEOUL');
+  final parsed = isUtc
+      ? DateTime.utc(
+          localLike.year,
+          localLike.month,
+          localLike.day,
+          localLike.hour,
+          localLike.minute,
+          localLike.second,
+        )
+      : hasAsiaSeoulTz
+          ? DateTime.utc(
+              localLike.year,
+              localLike.month,
+              localLike.day,
+              localLike.hour - 9,
+              localLike.minute,
+              localLike.second,
+            )
+          : localLike.toUtc();
+  return _isSuspiciousImportedDate(parsed) ? null : parsed;
 }
 
 String _unescapeText(String text) {
@@ -363,4 +472,12 @@ bool _sameLocalDay(DateTime a, DateTime b) {
   return localA.year == localB.year &&
       localA.month == localB.month &&
       localA.day == localB.day;
+}
+
+bool _hasProperty(Map<String, String> data, String name) {
+  return data.keys.any((key) => key.split(';').first.toUpperCase() == name);
+}
+
+bool _isSuspiciousImportedDate(DateTime value) {
+  return value.toUtc().year < 2000;
 }

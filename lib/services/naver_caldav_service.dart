@@ -651,6 +651,15 @@ class NaverCalDavService {
     }
 
     try {
+      final cleanedCount = await _cleanupSuspiciousImportedEvents(
+        resolvedUserId,
+      );
+      if (cleanedCount > 0) {
+        debugPrint(
+          'Naver CalDAV cleanup removed $cleanedCount suspicious imported events before sync.',
+        );
+      }
+
       emit(NaverCalDavSyncProgress(
         mode: mode,
         stage: NaverCalDavSyncStage.preparing,
@@ -992,7 +1001,25 @@ class NaverCalDavService {
     if (startAt == null) {
       return null;
     }
-    final endAt = _parseIcalDateTime(fields['DTEND']?.firstOrNull);
+    final hasEndRaw = fields.containsKey('DTEND');
+    final endRaw = fields['DTEND']?.firstOrNull;
+    final endAt = _parseIcalDateTime(endRaw);
+    if (hasEndRaw && endRaw != null && endAt == null) {
+      debugPrint(
+        'Naver CalDAV parsed event skipped because DTEND failed to parse: '
+        'uid=$uid, href=$href, rawEnd=$endRaw',
+      );
+      return null;
+    }
+    if (_isSuspiciousImportedDate(startAt) ||
+        (endAt != null && _isSuspiciousImportedDate(endAt)) ||
+        (endAt != null && endAt.isBefore(startAt))) {
+      debugPrint(
+        'Naver CalDAV parsed suspicious event skipped: '
+        'uid=$uid, href=$href, startAt=$startAt, endAt=$endAt, rawStart=$startRaw',
+      );
+      return null;
+    }
     return NaverCalDavEvent(
       uid: uid,
       href: href,
@@ -1431,11 +1458,17 @@ $timeRange      </c:comp-filter>
     final params = separator >= 0 ? trimmed.substring(0, separator) : '';
     final value = separator >= 0 ? trimmed.substring(separator + 1) : trimmed;
     if (RegExp(r'^\d{8}$').hasMatch(value)) {
-      return DateTime.utc(
-        int.parse(value.substring(0, 4)),
-        int.parse(value.substring(4, 6)),
-        int.parse(value.substring(6, 8)),
-      );
+      final year = int.parse(value.substring(0, 4));
+      final month = int.parse(value.substring(4, 6));
+      final day = int.parse(value.substring(6, 8));
+      final localLike = DateTime(year, month, day);
+      if (localLike.year != year ||
+          localLike.month != month ||
+          localLike.day != day) {
+        return null;
+      }
+      final parsed = DateTime.utc(year, month, day);
+      return _isSuspiciousImportedDate(parsed) ? null : parsed;
     }
     final match = RegExp(r'^(\d{8})T(\d{6})(Z?)$').firstMatch(value);
     if (match == null) {
@@ -1451,8 +1484,22 @@ $timeRange      </c:comp-filter>
       int.parse(time.substring(2, 4)),
       int.parse(time.substring(4, 6)),
     );
+    final expectedYear = int.parse(date.substring(0, 4));
+    final expectedMonth = int.parse(date.substring(4, 6));
+    final expectedDay = int.parse(date.substring(6, 8));
+    final expectedHour = int.parse(time.substring(0, 2));
+    final expectedMinute = int.parse(time.substring(2, 4));
+    final expectedSecond = int.parse(time.substring(4, 6));
+    if (localLike.year != expectedYear ||
+        localLike.month != expectedMonth ||
+        localLike.day != expectedDay ||
+        localLike.hour != expectedHour ||
+        localLike.minute != expectedMinute ||
+        localLike.second != expectedSecond) {
+      return null;
+    }
     if (match.group(3) == 'Z') {
-      return DateTime.utc(
+      final parsed = DateTime.utc(
         localLike.year,
         localLike.month,
         localLike.day,
@@ -1460,18 +1507,54 @@ $timeRange      </c:comp-filter>
         localLike.minute,
         localLike.second,
       );
+      return _isSuspiciousImportedDate(parsed) ? null : parsed;
     }
-    if (params.toUpperCase().contains('TZID=ASIA/SEOUL')) {
-      return DateTime.utc(
-        localLike.year,
-        localLike.month,
-        localLike.day,
-        localLike.hour - 9,
-        localLike.minute,
-        localLike.second,
-      );
+    final parsed = params.toUpperCase().contains('TZID=ASIA/SEOUL')
+        ? DateTime.utc(
+            localLike.year,
+            localLike.month,
+            localLike.day,
+            localLike.hour - 9,
+            localLike.minute,
+            localLike.second,
+          )
+        : localLike.toUtc();
+    return _isSuspiciousImportedDate(parsed) ? null : parsed;
+  }
+
+  Future<int> _cleanupSuspiciousImportedEvents(String userId) async {
+    final events = await _eventRepository.listEvents(userId: userId);
+    var deletedCount = 0;
+    for (final event in events) {
+      if (!_isImportedSource(event.source)) {
+        continue;
+      }
+      final startAt = event.startAt;
+      if (startAt == null) {
+        continue;
+      }
+      if (!_isSuspiciousImportedDate(startAt)) {
+        continue;
+      }
+      try {
+        await _eventRepository.deleteEvent(event.id, userId: userId);
+        deletedCount += 1;
+      } catch (error) {
+        debugPrint('Naver CalDAV cleanup delete failed: ${event.id} / $error');
+      }
     }
-    return localLike.toUtc();
+    return deletedCount;
+  }
+
+  bool _isImportedSource(String source) {
+    return source == 'naver_caldav' ||
+        source == 'naver_ics' ||
+        source == 'naver_device' ||
+        source == 'device_calendar';
+  }
+
+  bool _isSuspiciousImportedDate(DateTime value) {
+    return value.toUtc().year < 2000;
   }
 
   String? _unescapeIcalText(String? value) {

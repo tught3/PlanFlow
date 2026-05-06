@@ -23,6 +23,27 @@ void main() {
       expect(events.single.startAt.toLocal().hour, 11);
     });
 
+    test('skips suspicious or invalid ICS dates before import', () {
+      final service = NaverIcsImportService(
+        eventRepository: _FakeEventRepository(),
+      );
+
+      final suspicious = service.parseEvents(_sampleIcsWithDate(
+        uid: 'suspicious-uid',
+        startLine: 'DTSTART:19700101T000000Z',
+        endLine: 'DTEND:19700101T010000Z',
+      ));
+
+      final invalidEnd = service.parseEvents(_sampleIcsWithDate(
+        uid: 'invalid-end-uid',
+        startLine: 'DTSTART;TZID=Asia/Seoul:20260506T110000',
+        endLine: 'DTEND;TZID=Asia/Seoul:20260506T250000',
+      ));
+
+      expect(suspicious, isEmpty);
+      expect(invalidEnd, isEmpty);
+    });
+
     test('imports ICS events and uses UID based stable external id', () async {
       final repository = _FakeEventRepository();
       final service = NaverIcsImportService(
@@ -39,6 +60,32 @@ void main() {
       expect(result.imported, 1);
       expect(repository.events.single.source, 'naver_ics');
       expect(repository.events.single.externalId, 'naver-ics:uid:stable-uid');
+    });
+
+    test('deletes suspicious imported rows before re-importing', () async {
+      final repository = _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'bad-1',
+            userId: 'user-1',
+            title: 'Bad imported event',
+            startAt: DateTime.utc(1969, 12, 31, 15),
+            source: 'naver_ics',
+          ),
+        ],
+      );
+      final service = NaverIcsImportService(
+        eventRepository: repository,
+      );
+
+      final result = await service.importContent(
+        _sampleIcs(uid: 'stable-uid'),
+        userId: 'user-1',
+      );
+
+      expect(result.success, isTrue);
+      expect(repository.deletedIds, contains('bad-1'));
+      expect(repository.events.any((event) => event.id == 'bad-1'), isFalse);
     });
 
     test('skips duplicate events by same local date and title', () async {
@@ -96,11 +143,34 @@ END:VCALENDAR
 ''';
 }
 
+String _sampleIcsWithDate({
+  required String? uid,
+  required String startLine,
+  required String endLine,
+}) {
+  return '''
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//NAVER Calendar//PlanFlow Test//KO
+BEGIN:VEVENT
+${uid == null ? '' : 'UID:$uid'}
+SUMMARY:Test event
+$startLine
+$endLine
+LOCATION:Seoul
+DESCRIPTION:Test description
+LAST-MODIFIED:20260505T120000Z
+END:VEVENT
+END:VCALENDAR
+''';
+}
+
 class _FakeEventRepository extends EventRepository {
   _FakeEventRepository({List<EventModel> events = const <EventModel>[]})
       : events = List<EventModel>.from(events);
 
   final List<EventModel> events;
+  final List<String> deletedIds = <String>[];
   int createCount = 0;
 
   @override
@@ -164,6 +234,8 @@ class _FakeEventRepository extends EventRepository {
 
   @override
   Future<void> deleteEvent(String eventId, {String? userId}) {
-    throw UnimplementedError();
+    deletedIds.add(eventId);
+    events.removeWhere((event) => event.id == eventId);
+    return Future<void>.value();
   }
 }
