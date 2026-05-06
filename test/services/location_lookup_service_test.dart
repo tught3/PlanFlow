@@ -19,7 +19,7 @@ void main() {
       }),
     );
 
-    final results = await service.search('서울시청');
+    final results = await service.search('Seoul City Hall');
 
     expect(results, hasLength(1));
     expect(results.single.label, 'Seoul City Hall');
@@ -37,7 +37,7 @@ void main() {
     );
 
     expect(
-      () => service.search('서울역'),
+      () => service.search('Seoul Station'),
       throwsA(
         isA<LocationLookupException>().having(
           (error) => error.isAuthFailure,
@@ -105,5 +105,19 @@ void main() {
     expect(results.single.name, '원주시청');
     expect(results.single.latitude, 37.3422);
     expect(results.single.longitude, 127.9197);
+  });
+
+  test('LocationLookupService returns Korean region hints for simple names',
+      () async {
+    final service = LocationLookupService();
+
+    final results = await service.search('서울');
+
+    expect(results, hasLength(1));
+    expect(results.single.provider, LocationLookupProvider.manual);
+    expect(results.single.name, '서울');
+    expect(results.single.label, '서울');
+    expect(results.single.latitude, closeTo(37.5665, 0.0001));
+    expect(results.single.longitude, closeTo(126.978, 0.0001));
   });
 }

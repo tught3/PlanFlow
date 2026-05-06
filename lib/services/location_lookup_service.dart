@@ -86,6 +86,11 @@ class LocationLookupService {
       return const <LocationLookupResult>[];
     }
 
+    final regionResult = _lookupKoreanRegion(normalized);
+    if (regionResult != null) {
+      return <LocationLookupResult>[regionResult];
+    }
+
     final results = <LocationLookupResult>[];
     LocationLookupException? authFailure;
 
@@ -411,6 +416,22 @@ class LocationLookupService {
     return deduped;
   }
 
+  LocationLookupResult? _lookupKoreanRegion(String query) {
+    final normalized = query.replaceAll(RegExp(r'\s+'), '');
+    for (final region in _koreanRegionHints) {
+      if (region.matches(normalized)) {
+        return LocationLookupResult(
+          name: region.displayName,
+          address: region.displayName,
+          latitude: region.latitude,
+          longitude: region.longitude,
+          provider: LocationLookupProvider.manual,
+        );
+      }
+    }
+    return null;
+  }
+
   String _textValue(Object? value) {
     final text = value?.toString().trim();
     if (text == null || text.isEmpty) {
@@ -443,3 +464,125 @@ class LocationLookupService {
     );
   }
 }
+
+class _KoreanRegionHint {
+  const _KoreanRegionHint({
+    required this.displayName,
+    required this.latitude,
+    required this.longitude,
+    required this.aliases,
+  });
+
+  final String displayName;
+  final double latitude;
+  final double longitude;
+  final List<String> aliases;
+
+  bool matches(String normalizedQuery) {
+    for (final alias in aliases) {
+      if (normalizedQuery == alias || normalizedQuery.contains(alias)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
+const List<_KoreanRegionHint> _koreanRegionHints = <_KoreanRegionHint>[
+  _KoreanRegionHint(
+    displayName: '서울',
+    latitude: 37.5665,
+    longitude: 126.978,
+    aliases: <String>['서울', '서울시', '서울특별시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '대전',
+    latitude: 36.3504,
+    longitude: 127.3845,
+    aliases: <String>['대전', '대전시', '대전광역시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '광주',
+    latitude: 35.1595,
+    longitude: 126.8526,
+    aliases: <String>['광주', '광주시', '광주광역시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '대구',
+    latitude: 35.8714,
+    longitude: 128.6014,
+    aliases: <String>['대구', '대구시', '대구광역시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '부산',
+    latitude: 35.1796,
+    longitude: 129.0756,
+    aliases: <String>['부산', '부산시', '부산광역시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '남양주',
+    latitude: 37.6364,
+    longitude: 127.2147,
+    aliases: <String>['남양주', '남양주시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '성남',
+    latitude: 37.4200,
+    longitude: 127.1260,
+    aliases: <String>['성남', '성남시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '안양',
+    latitude: 37.3943,
+    longitude: 126.9568,
+    aliases: <String>['안양', '안양시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '수원',
+    latitude: 37.2636,
+    longitude: 127.0286,
+    aliases: <String>['수원', '수원시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '인천',
+    latitude: 37.4563,
+    longitude: 126.7052,
+    aliases: <String>['인천', '인천시', '인천광역시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '울산',
+    latitude: 35.5384,
+    longitude: 129.3114,
+    aliases: <String>['울산', '울산시', '울산광역시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '세종',
+    latitude: 36.4800,
+    longitude: 127.2890,
+    aliases: <String>['세종', '세종시', '세종특별자치시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '고양',
+    latitude: 37.6564,
+    longitude: 126.8395,
+    aliases: <String>['고양', '고양시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '용인',
+    latitude: 37.2411,
+    longitude: 127.1776,
+    aliases: <String>['용인', '용인시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '부천',
+    latitude: 37.5035,
+    longitude: 126.7660,
+    aliases: <String>['부천', '부천시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '창원',
+    latitude: 35.2285,
+    longitude: 128.6811,
+    aliases: <String>['창원', '창원시'],
+  ),
+];
