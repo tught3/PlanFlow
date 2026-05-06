@@ -258,6 +258,12 @@
 
 ## 2026-05-06 13:49:02 +09:00 Naver ICS share import checkpoint
 - Implemented the new Naver ICS import flow from the updated v3 direction: PlanFlow opens the Naver Calendar Android package, receives shared .ics files through Android share intents, and also supports direct .ics file selection.
+
+## 2026-05-06 Home location/weather polish checkpoint
+- Tightened the Home location label fallback so it no longer shows a vague "현재 위치" placeholder when data is missing; it now prefers parsed place text and otherwise shows coordinates or "위치 확인 중".
+- Upgraded the Home location/weather popup to a rounded card-based bottom sheet with separate location and weather tiles.
+- Styled the signed-in Settings logout button as a blue filled button to better match the app tone.
+- Verification: `flutter test`, `flutter build apk --debug`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, and `adb shell pidof com.example.planflow` all passed on the connected device.
 - Added NaverIcsImportService with ICS parsing, source='naver_ics', stable UID/date-title external ids, and duplicate skipping by same local date + title.
 - Added NaverIcsImportScreen guide UI, Settings entry point, pending-share storage for login-before-import cases, and app-level receive_sharing_intent handling for warm/cold starts.
 - Added monthly reminder scheduling for “새 일정이 있을 수 있어요. 다시 가져올까요?” and routes notification taps to the import guide.

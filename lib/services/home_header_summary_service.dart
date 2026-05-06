@@ -60,7 +60,7 @@ class HomeHeaderSummaryService {
             )
           : _parseWeatherSummary(weatherResponse.body);
       return HomeHeaderSummary(
-        locationLabel: locationLabel ?? '현재 위치',
+        locationLabel: locationLabel ?? _coordinateLabel(location),
         weatherLabel: weatherSummary.label,
         detailLine: weatherSummary.detailLine,
         isReady: reverseResponse != null || weatherResponse != null,
@@ -70,7 +70,7 @@ class HomeHeaderSummaryService {
       debugPrint('Home header summary load failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return const HomeHeaderSummary(
-        locationLabel: '현재 위치',
+        locationLabel: '위치 확인 중',
         weatherLabel: '날씨 확인 중',
         detailLine: '날씨를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
         isReady: false,
@@ -107,11 +107,26 @@ class HomeHeaderSummaryService {
         return null;
       }
       final name = _textValue(first['name']);
+      final city = _textValue(first['city']);
+      final admin3 = _textValue(first['admin3']);
+      final admin2 = _textValue(first['admin2']);
       final admin1 = _textValue(first['admin1']);
       final country = _textValue(first['country']);
       final pieces = <String>[
         if (name.isNotEmpty) name,
-        if (admin1.isNotEmpty && admin1 != name) admin1,
+        if (city.isNotEmpty && city != name) city,
+        if (admin3.isNotEmpty && admin3 != name && admin3 != city) admin3,
+        if (admin2.isNotEmpty &&
+            admin2 != name &&
+            admin2 != city &&
+            admin2 != admin3)
+          admin2,
+        if (admin1.isNotEmpty &&
+            admin1 != name &&
+            admin1 != city &&
+            admin1 != admin3 &&
+            admin1 != admin2)
+          admin1,
       ];
       if (pieces.isNotEmpty) {
         return pieces.join(' · ');
@@ -214,6 +229,12 @@ class HomeHeaderSummaryService {
       return value.toInt();
     }
     return int.tryParse(value?.toString() ?? '');
+  }
+
+  String _coordinateLabel(GeoPoint location) {
+    final latitude = location.latitude.toStringAsFixed(4);
+    final longitude = location.longitude.toStringAsFixed(4);
+    return '좌표 $latitude, $longitude';
   }
 }
 

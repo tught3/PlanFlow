@@ -1821,15 +1821,23 @@ class _AccountSection extends StatelessWidget {
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: signedIn
-                      ? () async {
+                child: signedIn
+                    ? FilledButton(
+                        onPressed: () async {
                           await authService?.signOut();
                           onSignedOut();
-                        }
-                      : () => context.go(AppRoutes.login),
-                  child: Text(signedIn ? '로그아웃' : '로그인'),
-                ),
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: PlanFlowColors.primaryMid,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                        child: const Text('로그아웃'),
+                      )
+                    : OutlinedButton(
+                        onPressed: () => context.go(AppRoutes.login),
+                        child: const Text('로그인'),
+                      ),
               ),
             ],
           );

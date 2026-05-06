@@ -90,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _headerSummary = const HomeHeaderSummary(
-            locationLabel: '현재 위치',
+            locationLabel: '위치 확인 중',
             weatherLabel: '날씨 확인 중',
             detailLine: '날씨를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
             isReady: false,
@@ -296,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     label: _headerSummaryLoading
                                         ? '위치 확인 중'
                                         : (_headerSummary?.locationLabel ??
-                                            '현재 위치'),
+                                            '위치 확인 중'),
                                     backgroundColor:
                                         Colors.white.withValues(alpha: 0.16),
                                     borderColor:
@@ -306,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         ? null
                                         : () => _showHeaderSummarySheet(
                                               context,
-                                              title: '현재 위치',
+                                              title: '위치 정보',
                                               summary: _headerSummary,
                                             ),
                                   ),
@@ -745,51 +745,155 @@ Future<void> _showHeaderSummarySheet(
   await showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
-    backgroundColor: PlanFlowColors.surface,
+    backgroundColor: Colors.transparent,
     builder: (context) {
       final effectiveSummary = summary;
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: PlanFlowColors.primary,
-                    fontWeight: FontWeight.w900,
-                  ),
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Container(
+            decoration: BoxDecoration(
+              color: PlanFlowColors.surface,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: PlanFlowColors.primaryFaint,
+                width: 0.8,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: PlanFlowColors.primary.withValues(alpha: 0.10),
+                  blurRadius: 24,
+                  offset: const Offset(0, 14),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              effectiveSummary?.locationLabel ?? '현재 위치',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: PlanFlowColors.primaryMid,
-                    fontWeight: FontWeight.w800,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: PlanFlowColors.primary,
+                          fontWeight: FontWeight.w900,
+                        ),
                   ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              effectiveSummary?.weatherLabel ?? '날씨 확인 중',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: PlanFlowColors.primary,
-                    fontWeight: FontWeight.w700,
+                  const SizedBox(height: 6),
+                  Text(
+                    '위치와 날씨를 한눈에 확인할 수 있어요.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                        ),
                   ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              effectiveSummary?.detailLine ?? '날씨 정보를 불러오지 못했어요.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: PlanFlowColors.textSecondary,
-                    height: 1.4,
+                  const SizedBox(height: 16),
+                  _SummaryDetailTile(
+                    icon: Icons.place_outlined,
+                    accentColor: const Color(0xFF2F6EA9),
+                    backgroundColor: const Color(0xFFEAF4FF),
+                    title: '위치 정보',
+                    value: effectiveSummary?.locationLabel ?? '위치 확인 중',
+                    detail: effectiveSummary?.detailLine ??
+                        '위치 권한을 허용하면 현재 위치와 날씨를 보여드려요.',
                   ),
+                  const SizedBox(height: 12),
+                  _SummaryDetailTile(
+                    icon: effectiveSummary?.weatherIcon ??
+                        Icons.wb_sunny_outlined,
+                    accentColor: const Color(0xFF7A5C2E),
+                    backgroundColor: const Color(0xFFFFF4E6),
+                    title: '날씨',
+                    value: effectiveSummary?.weatherLabel ?? '날씨 확인 중',
+                    detail: effectiveSummary?.detailLine ?? '현재 날씨를 불러오지 못했어요.',
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       );
     },
   );
+}
+
+class _SummaryDetailTile extends StatelessWidget {
+  const _SummaryDetailTile({
+    required this.icon,
+    required this.accentColor,
+    required this.backgroundColor,
+    required this.title,
+    required this.value,
+    required this.detail,
+  });
+
+  final IconData icon;
+  final Color accentColor;
+  final Color backgroundColor;
+  final String title;
+  final String value;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: accentColor.withValues(alpha: 0.18),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.88),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: accentColor, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  detail,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                        height: 1.35,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // --- Today Event Card ---
