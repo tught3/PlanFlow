@@ -60,7 +60,7 @@ void main() {
     expect(find.text('기본 알림'), findsNothing);
     expect(find.text('저장'), findsNothing);
     expect(find.text('변경 즉시 적용'), findsNothing);
-    expect(find.text('Naver Calendar'), findsOneWidget);
+    expect(find.text('네이버 캘린더'), findsOneWidget);
     expect(find.text('연동 해제'), findsWidgets);
     expect(find.text('네이버 동기화'), findsOneWidget);
     expect(find.text('Naver CalDAV 직접 연결'), findsNothing);

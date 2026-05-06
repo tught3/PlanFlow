@@ -294,6 +294,10 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Added explicit CalDAV/ICS skip-reason logs so `300 read / 0 saved` can now be diagnosed from logcat as `external_etag` matches, stale `external_updated_at`, or duplicate same-date/title skips.
 - Verification: `flutter analyze`, targeted home-header summary test, full `flutter test` (110 passed), `flutter build apk --debug`, `adb install -r`, and ADB launch/pid checks all passed. `scripts/gsd-context-hygiene.mjs` remains absent.
 
+## 2026-05-06 Device calendar UX simplification checkpoint
+- Removed the separate "휴대폰 내부 캘린더 목록" flow from Settings and changed the left-side action to "연동 해제" so the device-calendar section now matches the simpler sync/disconnect pattern the user asked for.
+- Device calendar import now goes straight through the import action and surfaces Korean error messages when permission or device calendar data is missing instead of opening a list dialog.
+
 ## 2026-05-06 Map selection, TMAP lookup, critical alarm stability checkpoint
 - Unified confirm/edit location picking through a shared flow that searches TMAP POI, Naver Geocoding, and Google Geocoding, then falls back to internal Google map selection or external Google/Naver/TMAP map links when needed.
 - Added Google Maps Android API-key manifest plumbing from GOOGLE_MAPS_API_KEY and a Google Maps fallback picker for devices where Naver native map auth fails.
@@ -301,3 +305,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Made critical alarm scheduling return explicit statuses for scheduled, past-skipped, permission-blocked, and error outcomes; future events whose requested alert offset is already past are now adjusted to an immediate near-future alert instead of failing silently.
 - Added/updated tests for TMAP-first location lookup, shared external map options, and critical-alarm result handling.
 - Verification: `flutter analyze`, full `flutter test` (111 passed), and `flutter build apk --debug` passed. ADB install/run could not be completed because no Android device was currently connected; `adb devices` returned an empty list and the previous wireless ADB address refused connection. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## 2026-05-06 Device calendar UX cleanup verification
+- Simplified the Settings device-calendar surface so the left action is now `연동 해제` and the previous `휴대폰 내부 캘린더 목록` chooser no longer appears on the normal UI.
+- Device-calendar import now stays on the main action path and surfaces Korean error messages directly when login, permission, or internal calendar data is missing.
+- Fixed the Settings screen syntax that got temporarily malformed during the edit, updated the Korean label expectations in the Settings widget test, and re-ran the full validation stack.
+- Verification: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -n com.example.planflow/.MainActivity` all passed on the connected device.
