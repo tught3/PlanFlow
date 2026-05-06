@@ -4,14 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
-import '../location/location_picker_screen.dart';
+import '../location/location_pick_flow.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/app_permission_service.dart';
@@ -302,20 +301,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     });
 
     try {
-      final results = await widget.locationLookupService.search(query);
-      if (!mounted) {
-        return;
-      }
-
-      if (results.isEmpty && !AppEnv.isNaverMapReady) {
-        await _showExternalMapOptions(
-          query,
-          message: '앱 안에서 장소를 찾지 못했어요. 외부 지도에서 직접 확인해 보세요.',
-        );
-        return;
-      }
-
-      final selected = await _chooseLocation(query, results);
+      debugPrint('PlanFlow operation start: confirm.pick_location');
+      final selected = await pickLocationFromQuery(
+        context: context,
+        query: query,
+        locationLookupService: widget.locationLookupService,
+      );
 
       if (!mounted || selected == null) {
         return;
@@ -327,93 +318,17 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         _locationLng = selected.longitude;
       });
       _showMessage('정확한 위치를 선택했어요.');
-    } on LocationLookupException catch (error) {
-      if (mounted) {
-        await _showExternalMapOptions(
-          query,
-          message: error.isAuthFailure
-              ? '네이버 지도 API 인증에 실패했어요. Naver Cloud의 Geocoding/Directions 권한과 키 제한을 확인해 주세요.'
-              : '네이버 지도 API 호출에 실패했어요. 잠시 후 다시 시도해 주세요.',
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        await _showExternalMapOptions(
-          query,
-          message: '위치 검색에 실패했어요. 외부 지도에서 직접 확인해 보세요.',
-        );
-      }
+    } catch (error, stackTrace) {
+      debugPrint('ConfirmScreen location pick failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showMessage('위치 선택에 실패했어요. 잠시 후 다시 시도해 주세요.');
     } finally {
+      debugPrint('PlanFlow operation end: confirm.pick_location');
       if (mounted) {
         setState(() {
           _isLookingUpLocation = false;
         });
       }
-    }
-  }
-
-  Future<LocationLookupResult?> _chooseLocation(
-    String query,
-    List<LocationLookupResult> results,
-  ) {
-    if (AppEnv.isNaverMapReady) {
-      return Navigator.of(context).push<LocationLookupResult>(
-        MaterialPageRoute(
-          builder: (_) => LocationPickerScreen(
-            initialQuery: query,
-            initialResults: results,
-            locationLookupService: widget.locationLookupService,
-          ),
-        ),
-      );
-    }
-
-    return showModalBottomSheet<LocationLookupResult>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) =>
-          _LocationLookupSheet(initialQuery: query, results: results),
-    );
-  }
-
-  Future<void> _showExternalMapOptions(String query, {String? message}) async {
-    if (!mounted) {
-      return;
-    }
-
-    final selected = await showModalBottomSheet<_MapSearchTarget>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) =>
-          _ExternalMapSearchSheet(query: query, message: message),
-    );
-    if (!mounted || selected == null) {
-      return;
-    }
-
-    await _launchMapSearch(query, selected);
-  }
-
-  Future<void> _launchMapSearch(String query, _MapSearchTarget target) async {
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) {
-      _showMessage('장소를 먼저 입력해 주세요.');
-      return;
-    }
-
-    final uri = target == _MapSearchTarget.google
-        ? Uri.https('www.google.com', '/maps/search/', <String, String>{
-            'api': '1',
-            'query': trimmed,
-          })
-        : Uri.parse(
-            'https://map.naver.com/p/search/${Uri.encodeComponent(trimmed)}',
-          );
-
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!launched && mounted) {
-      _showMessage('지도를 열지 못했어요. 장소명을 수정해서 다시 시도해 주세요.');
     }
   }
 
@@ -681,18 +596,34 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
 
     if (_isCritical && reminderOffset != null) {
-      final criticalAlarmNotifyAt = eventStartAt.subtract(reminderOffset);
-      await _tryFollowUp(
-        () => widget.notificationService.scheduleCriticalAlarm(
-          id: widget.notificationService.notificationIdFor(
-            '${event.id}:critical',
-          ),
-          title: event.title,
-          notifyAt: criticalAlarmNotifyAt,
-          body: '중요 일정이 곧 시작됩니다.',
-        ),
-        label: 'critical_alarm',
+      final criticalAlarmNotifyAt = _resolveCriticalNotifyAt(
+        eventStartAt: eventStartAt,
+        offset: reminderOffset,
       );
+      if (criticalAlarmNotifyAt == null) {
+        _hasFollowUpFailures = true;
+        debugPrint(
+          'ConfirmScreen critical alarm skipped because event is not future.',
+        );
+      } else {
+        await _tryFollowUp(
+          () async {
+            final result = await widget.notificationService
+                .scheduleCriticalAlarmWithResult(
+              id: widget.notificationService.notificationIdFor(
+                '${event.id}:critical',
+              ),
+              title: event.title,
+              notifyAt: criticalAlarmNotifyAt,
+              body: '중요 일정이 곧 시작됩니다.',
+            );
+            if (!result.isScheduled) {
+              throw StateError(result.message ?? '중요 알람 예약 실패');
+            }
+          },
+          label: 'critical_alarm',
+        );
+      }
     }
   }
 
@@ -818,7 +749,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     final criticalNotifyAt = criticalAlarmOffset == null
         ? null
-        : eventStartAt.subtract(criticalAlarmOffset);
+        : _resolveCriticalNotifyAt(
+            eventStartAt: eventStartAt,
+            offset: criticalAlarmOffset,
+          );
     if (_isCritical &&
         criticalNotifyAt != null &&
         criticalNotifyAt.isAfter(now)) {
@@ -833,6 +767,21 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
 
     return payloads;
+  }
+
+  DateTime? _resolveCriticalNotifyAt({
+    required DateTime eventStartAt,
+    required Duration offset,
+  }) {
+    final now = DateTime.now();
+    if (!eventStartAt.isAfter(now)) {
+      return null;
+    }
+    final desired = eventStartAt.subtract(offset);
+    if (desired.isAfter(now)) {
+      return desired;
+    }
+    return now.add(const Duration(seconds: 10));
   }
 
   Future<void> _updateHomeWidget(
@@ -2483,141 +2432,6 @@ class _TimeField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         border: const OutlineInputBorder(),
-      ),
-    );
-  }
-}
-
-class _LocationLookupSheet extends StatelessWidget {
-  const _LocationLookupSheet({
-    required this.initialQuery,
-    required this.results,
-  });
-
-  final String initialQuery;
-  final List<LocationLookupResult> results;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '정확한 위치 선택',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '검색어: $initialQuery',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: results.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final result = results[index];
-                  return Card(
-                    elevation: 0,
-                    color: PlanFlowColors.surface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: const BorderSide(
-                        color: PlanFlowColors.primaryFaint,
-                        width: 0.5,
-                      ),
-                    ),
-                    child: ListTile(
-                      title: Text(result.name),
-                      subtitle: Text(
-                        '${result.label}\n위도 ${result.latitude.toStringAsFixed(6)}, 경도 ${result.longitude.toStringAsFixed(6)}',
-                      ),
-                      isThreeLine: true,
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).pop(result),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('닫기'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-enum _MapSearchTarget { google, naver }
-
-class _ExternalMapSearchSheet extends StatelessWidget {
-  const _ExternalMapSearchSheet({required this.query, this.message});
-
-  final String query;
-  final String? message;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '지도에서 장소 찾기',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: PlanFlowColors.primary,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              message ?? '외부 지도에서 "$query"를 검색해 정확한 장소를 확인해 보세요.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () =>
-                  Navigator.of(context).pop(_MapSearchTarget.google),
-              icon: const Icon(Icons.map_outlined),
-              label: const Text('Google 지도에서 찾기'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () =>
-                  Navigator.of(context).pop(_MapSearchTarget.naver),
-              icon: const Icon(Icons.place_outlined),
-              label: const Text('네이버 지도에서 찾기'),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('닫기'),
-            ),
-          ],
-        ),
       ),
     );
   }

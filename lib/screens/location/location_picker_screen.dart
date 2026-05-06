@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as google_maps;
 
 import '../../core/env.dart';
 import '../../core/theme.dart';
@@ -26,10 +27,12 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   late List<LocationLookupResult> _results;
   LocationLookupResult? _selected;
   NaverMapController? _mapController;
+  google_maps.GoogleMapController? _googleMapController;
   bool _isSearching = false;
   String? _message;
 
   bool get _canUseNaverMap => AppEnv.isNaverMapReady;
+  bool get _canUseGoogleMap => AppEnv.googleMapsApiKey.trim().isNotEmpty;
 
   NLatLng get _initialTarget {
     final selected = _selected;
@@ -37,6 +40,14 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       return NLatLng(selected.latitude, selected.longitude);
     }
     return const NLatLng(37.5666, 126.979);
+  }
+
+  google_maps.LatLng get _googleInitialTarget {
+    final selected = _selected;
+    if (selected != null) {
+      return google_maps.LatLng(selected.latitude, selected.longitude);
+    }
+    return const google_maps.LatLng(37.5666, 126.979);
   }
 
   @override
@@ -104,6 +115,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   Future<void> _moveMapTo(LocationLookupResult result) async {
+    await _moveNaverMapTo(result);
+    await _moveGoogleMapTo(result);
+  }
+
+  Future<void> _moveNaverMapTo(LocationLookupResult result) async {
     final controller = _mapController;
     if (controller == null) {
       return;
@@ -122,6 +138,19 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     );
   }
 
+  Future<void> _moveGoogleMapTo(LocationLookupResult result) async {
+    final controller = _googleMapController;
+    if (controller == null) {
+      return;
+    }
+    await controller.animateCamera(
+      google_maps.CameraUpdate.newLatLngZoom(
+        google_maps.LatLng(result.latitude, result.longitude),
+        15,
+      ),
+    );
+  }
+
   Future<void> _selectResult(LocationLookupResult result) async {
     setState(() {
       _selected = result;
@@ -137,6 +166,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       address: '지도에서 직접 선택한 위치',
       latitude: latLng.latitude,
       longitude: latLng.longitude,
+      provider: LocationLookupProvider.manual,
     );
     setState(() {
       _selected = result;
@@ -234,7 +264,41 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                       },
                       onMapTapped: (_, latLng) => _selectTappedPoint(latLng),
                     )
-                  : _MapUnavailablePanel(query: widget.initialQuery),
+                  : _canUseGoogleMap
+                      ? google_maps.GoogleMap(
+                          initialCameraPosition: google_maps.CameraPosition(
+                            target: _googleInitialTarget,
+                            zoom: 15,
+                          ),
+                          myLocationButtonEnabled: false,
+                          myLocationEnabled: false,
+                          markers: {
+                            if (_selected != null)
+                              google_maps.Marker(
+                                markerId:
+                                    const google_maps.MarkerId('selected'),
+                                position: google_maps.LatLng(
+                                  _selected!.latitude,
+                                  _selected!.longitude,
+                                ),
+                                infoWindow: google_maps.InfoWindow(
+                                  title: _selected!.name,
+                                  snippet: _selected!.address,
+                                ),
+                              ),
+                          },
+                          onMapCreated: (controller) async {
+                            _googleMapController = controller;
+                            final selected = _selected;
+                            if (selected != null) {
+                              await _moveGoogleMapTo(selected);
+                            }
+                          },
+                          onTap: (latLng) => _selectTappedPoint(
+                            NLatLng(latLng.latitude, latLng.longitude),
+                          ),
+                        )
+                      : _MapUnavailablePanel(query: widget.initialQuery),
             ),
             _BottomSelectionPanel(
               results: _results,
@@ -307,10 +371,27 @@ class _BottomSelectionPanel extends StatelessWidget {
                   final result = results[index];
                   final isSelected = result == selected;
                   return ChoiceChip(
-                    label: Text(
-                      result.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    label: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          result.providerLabel,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: isSelected
+                                ? PlanFlowColors.surface
+                                : PlanFlowColors.textSecondary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            result.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     selected: isSelected,
                     onSelected: (_) => onSelect(result),

@@ -8,6 +8,27 @@ import 'package:timezone/timezone.dart' as tz;
 import '../core/constants.dart';
 import '../core/router.dart';
 
+enum NotificationScheduleStatus {
+  scheduled,
+  skippedPast,
+  permissionBlocked,
+  error,
+}
+
+class NotificationScheduleResult {
+  const NotificationScheduleResult({
+    required this.status,
+    required this.notifyAt,
+    this.message,
+  });
+
+  final NotificationScheduleStatus status;
+  final DateTime notifyAt;
+  final String? message;
+
+  bool get isScheduled => status == NotificationScheduleStatus.scheduled;
+}
+
 class NotificationService {
   NotificationService({FlutterLocalNotificationsPlugin? plugin})
       : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
@@ -57,20 +78,55 @@ class NotificationService {
     required DateTime notifyAt,
     String? payload,
   }) async {
-    if (!notifyAt.isAfter(DateTime.now())) {
-      return;
-    }
-
-    await initialize();
-    await _scheduleNotification(
+    await scheduleEventReminderWithResult(
       id: id,
       title: title,
       body: body,
       notifyAt: notifyAt,
-      details: _eventReminderDetails,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       payload: payload,
     );
+  }
+
+  Future<NotificationScheduleResult> scheduleEventReminderWithResult({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime notifyAt,
+    String? payload,
+  }) async {
+    if (!notifyAt.isAfter(DateTime.now())) {
+      debugPrint('Notification skipped because notifyAt is past: $notifyAt');
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.skippedPast,
+        notifyAt: notifyAt,
+        message: '알림 시간이 이미 지나 예약하지 않았습니다.',
+      );
+    }
+
+    try {
+      await initialize();
+      await _scheduleNotification(
+        id: id,
+        title: title,
+        body: body,
+        notifyAt: notifyAt,
+        details: _eventReminderDetails,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: payload,
+      );
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.scheduled,
+        notifyAt: notifyAt,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Event reminder scheduling failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.error,
+        notifyAt: notifyAt,
+        message: '알림 예약 중 오류가 발생했습니다.',
+      );
+    }
   }
 
   Future<void> scheduleMonthlyNaverIcsReminder({DateTime? now}) {
@@ -91,27 +147,74 @@ class NotificationService {
     required DateTime notifyAt,
     String? body,
   }) async {
-    if (!notifyAt.isAfter(DateTime.now())) {
-      return;
-    }
-
-    await initialize();
-    await _runPermissionRequestBestEffort(
-      'exact alarm before critical notification',
-      _requestExactAlarmPermissionIfNeeded,
-    );
-    await _runPermissionRequestBestEffort(
-      'full-screen intent before critical notification',
-      _requestFullScreenIntentPermissionIfNeeded,
-    );
-    await _scheduleNotification(
+    await scheduleCriticalAlarmWithResult(
       id: id,
       title: title,
-      body: body ?? '중요 일정이 곧 시작됩니다.',
       notifyAt: notifyAt,
-      details: _criticalAlarmDetails,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      body: body,
     );
+  }
+
+  Future<NotificationScheduleResult> scheduleCriticalAlarmWithResult({
+    required int id,
+    required String title,
+    required DateTime notifyAt,
+    String? body,
+  }) async {
+    if (!notifyAt.isAfter(DateTime.now())) {
+      debugPrint('Critical alarm skipped because notifyAt is past: $notifyAt');
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.skippedPast,
+        notifyAt: notifyAt,
+        message: '중요 알람 시간이 이미 지나 예약하지 않았습니다.',
+      );
+    }
+
+    try {
+      await initialize();
+      await _runPermissionRequestBestEffort(
+        'exact alarm before critical notification',
+        _requestExactAlarmPermissionIfNeeded,
+      );
+      await _runPermissionRequestBestEffort(
+        'full-screen intent before critical notification',
+        _requestFullScreenIntentPermissionIfNeeded,
+      );
+      final status = await checkPermissionStatus();
+      if (status.notificationsEnabled == false ||
+          status.exactAlarmsEnabled == false) {
+        debugPrint(
+          'Critical alarm permission blocked: '
+          'notifications=${status.notificationsEnabled}, '
+          'exact=${status.exactAlarmsEnabled}',
+        );
+        return NotificationScheduleResult(
+          status: NotificationScheduleStatus.permissionBlocked,
+          notifyAt: notifyAt,
+          message: '알림 또는 정확한 알람 권한이 꺼져 있습니다.',
+        );
+      }
+      await _scheduleNotification(
+        id: id,
+        title: title,
+        body: body ?? '중요 일정이 곧 시작됩니다.',
+        notifyAt: notifyAt,
+        details: _criticalAlarmDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.scheduled,
+        notifyAt: notifyAt,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Critical alarm scheduling failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.error,
+        notifyAt: notifyAt,
+        message: '중요 알람 예약 중 오류가 발생했습니다.',
+      );
+    }
   }
 
   Future<void> cancel(int id) async {

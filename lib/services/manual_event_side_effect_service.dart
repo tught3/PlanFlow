@@ -166,13 +166,16 @@ class ManualEventSideEffectService {
       );
     }
 
-    if (event.isCritical && criticalAlarmOffset != null) {
+    final criticalNotifyAt = criticalAlarmOffset == null
+        ? null
+        : _resolveCriticalNotifyAt(startAt, criticalAlarmOffset);
+    if (event.isCritical && criticalNotifyAt != null) {
       payloads.add(
         _reminderPayload(
           eventId: event.id,
           userId: userId,
           type: 'system_alarm',
-          notifyAt: startAt.subtract(criticalAlarmOffset),
+          notifyAt: criticalNotifyAt,
         ),
       );
     }
@@ -204,17 +207,30 @@ class ManualEventSideEffectService {
 
     final criticalNotifyAt = criticalAlarmOffset == null
         ? null
-        : startAt.subtract(criticalAlarmOffset);
-    if (event.isCritical &&
-        criticalNotifyAt != null &&
-        criticalNotifyAt.isAfter(now)) {
-      await _notifications.scheduleCriticalAlarm(
+        : _resolveCriticalNotifyAt(startAt, criticalAlarmOffset);
+    if (event.isCritical && criticalNotifyAt != null) {
+      final result = await _notifications.scheduleCriticalAlarmWithResult(
         id: _notifications.notificationIdFor('${event.id}:critical'),
         title: event.title,
         body: '중요 일정이 곧 시작됩니다.',
         notifyAt: criticalNotifyAt,
       );
+      if (!result.isScheduled) {
+        throw StateError(result.message ?? '중요 알람 예약 실패');
+      }
     }
+  }
+
+  DateTime? _resolveCriticalNotifyAt(DateTime eventStartAt, Duration offset) {
+    final now = DateTime.now();
+    if (!eventStartAt.isAfter(now)) {
+      return null;
+    }
+    final desired = eventStartAt.subtract(offset);
+    if (desired.isAfter(now)) {
+      return desired;
+    }
+    return now.add(const Duration(seconds: 10));
   }
 
   Map<String, dynamic> _reminderPayload({

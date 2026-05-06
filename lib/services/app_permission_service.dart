@@ -157,6 +157,30 @@ class AppPermissionService {
     }
   }
 
+  Future<GeoPoint?> getCurrentLocation() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return null;
+    }
+    try {
+      final result = await _androidPermissionsChannel
+          .invokeMethod<Object?>('getCurrentLocation')
+          .timeout(const Duration(seconds: 12));
+      if (result is! Map) {
+        return getLastKnownLocation();
+      }
+      final latitude = _doubleValue(result['latitude']);
+      final longitude = _doubleValue(result['longitude']);
+      if (latitude == null || longitude == null) {
+        return getLastKnownLocation();
+      }
+      return GeoPoint(latitude: latitude, longitude: longitude);
+    } catch (error, stackTrace) {
+      debugPrint('Current location read failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return getLastKnownLocation();
+    }
+  }
+
   Future<NotificationPermissionStatus> requestNotificationPermissions() {
     return _notificationService.requestAndCheckPermissions();
   }

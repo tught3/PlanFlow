@@ -9,7 +9,7 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
-import '../location/location_picker_screen.dart';
+import '../location/location_pick_flow.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/home_widget_service.dart';
@@ -445,24 +445,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
 
     try {
-      final lookupService = LocationLookupService();
-      final results = await lookupService.search(query);
-      if (!mounted) {
-        return;
-      }
-      if (results.isEmpty && !AppEnv.isNaverMapReady) {
-        _showMessage('지도 키가 없어 앱 안 지도를 열 수 없습니다. 장소명을 더 자세히 입력해 주세요.');
-        return;
-      }
-
-      final selected = await Navigator.of(context).push<LocationLookupResult>(
-        MaterialPageRoute(
-          builder: (_) => LocationPickerScreen(
-            initialQuery: query,
-            initialResults: results,
-            locationLookupService: lookupService,
-          ),
-        ),
+      debugPrint('PlanFlow operation start: event_edit.pick_location');
+      final selected = await pickLocationFromQuery(
+        context: context,
+        query: query,
+        locationLookupService: LocationLookupService(),
       );
       if (!mounted || selected == null) {
         return;
@@ -473,22 +460,14 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _locationLng = selected.longitude;
       });
       _showMessage('정확한 위치를 선택했어요.');
-    } on LocationLookupException catch (error, stackTrace) {
-      debugPrint('EventEditScreen location auth failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      if (mounted) {
-        _showMessage(
-          error.isAuthFailure
-              ? '네이버 지도 API 인증에 실패했어요. Naver Cloud의 지도 권한과 키 제한을 확인해 주세요.'
-              : '위치 검색에 실패했어요. 잠시 후 다시 시도해 주세요.',
-        );
-      }
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen location pick failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
         _showMessage('위치 선택을 열지 못했어요. 지도 키와 네트워크를 확인해 주세요.');
       }
+    } finally {
+      debugPrint('PlanFlow operation end: event_edit.pick_location');
     }
   }
 

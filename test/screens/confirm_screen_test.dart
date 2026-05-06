@@ -100,9 +100,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('지도에서 장소 찾기'), findsOneWidget);
-    expect(find.text('Google 지도에서 찾기'), findsOneWidget);
-    expect(find.text('네이버 지도에서 찾기'), findsOneWidget);
+    expect(find.text('외부 지도에서 확인'), findsOneWidget);
+    expect(find.text('Google 지도'), findsOneWidget);
+    expect(find.text('네이버 지도'), findsOneWidget);
+    expect(find.text('TMAP'), findsOneWidget);
   });
 
   testWidgets('ConfirmScreen shows supplies as compact editable rows',
@@ -269,6 +270,21 @@ class _FakeNotificationService extends NotificationService {
   }) async {
     criticalAlarmTitles.add(title);
     criticalAlarmNotifyAts.add(notifyAt);
+  }
+
+  @override
+  Future<NotificationScheduleResult> scheduleCriticalAlarmWithResult({
+    required int id,
+    required String title,
+    required DateTime notifyAt,
+    String? body,
+  }) async {
+    criticalAlarmTitles.add(title);
+    criticalAlarmNotifyAts.add(notifyAt);
+    return NotificationScheduleResult(
+      status: NotificationScheduleStatus.scheduled,
+      notifyAt: notifyAt,
+    );
   }
 }
 

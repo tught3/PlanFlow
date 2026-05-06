@@ -89,24 +89,26 @@ class MapService {
 
     final client = _httpClientFactory();
     try {
-      final response = await client.post(
-        Uri.https('apis.openapi.sk.com', '/tmap/routes', <String, String>{
-          'version': '1',
-        }),
-        headers: <String, String>{
-          'appKey': _tmapApiKey,
-          'content-type': 'application/json',
-          'accept': 'application/json',
-        },
-        body: jsonEncode(<String, String>{
-          'startX': originLng.toString(),
-          'startY': originLat.toString(),
-          'endX': destinationLng.toString(),
-          'endY': destinationLat.toString(),
-          'reqCoordType': 'WGS84GEO',
-          'resCoordType': 'WGS84GEO',
-        }),
-      );
+      final response = await client
+          .post(
+            Uri.https('apis.openapi.sk.com', '/tmap/routes', <String, String>{
+              'version': '1',
+            }),
+            headers: <String, String>{
+              'appKey': _tmapApiKey,
+              'content-type': 'application/json',
+              'accept': 'application/json',
+            },
+            body: jsonEncode(<String, String>{
+              'startX': originLng.toString(),
+              'startY': originLat.toString(),
+              'endX': destinationLng.toString(),
+              'endY': destinationLat.toString(),
+              'reqCoordType': 'WGS84GEO',
+              'resCoordType': 'WGS84GEO',
+            }),
+          )
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;
@@ -169,7 +171,7 @@ class MapService {
           'X-NCP-APIGW-API-KEY': _naverClientSecret,
           'accept': 'application/json',
         },
-      );
+      ).timeout(const Duration(seconds: 8));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;

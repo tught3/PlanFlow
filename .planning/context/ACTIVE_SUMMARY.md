@@ -268,7 +268,8 @@
 - Added NaverIcsImportScreen guide UI, Settings entry point, pending-share storage for login-before-import cases, and app-level receive_sharing_intent handling for warm/cold starts.
 - Added monthly reminder scheduling for “새 일정이 있을 수 있어요. 다시 가져올까요?” and routes notification taps to the import guide.
 - Android manifest now declares Naver Calendar package visibility and ICS share receive filters for 	ext/calendar, 	ext/x-vcalendar, pplication/octet-stream, and SEND_MULTIPLE.
-- Added Flutter dependencies for ndroid_intent_plus, eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved Android plugin JVM target mismatches in Gradle so debug APK builds successfully.
+- Added Flutter dependencies for ndroid_intent_plus,
+eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved Android plugin JVM target mismatches in Gradle so debug APK builds successfully.
 - Removed the wrong BACKUP_DO_NOT_WORK_HERE.md marker from the real Flux working tree; backup markers remain for E:\Project\PlanFlow only.
 - Verification: lutter analyze, full lutter test, lutter build apk --debug, db install -r, db shell am start -n com.example.planflow/.MainActivity, and db shell pidof com.example.planflow all passed. scripts/gsd-context-hygiene.mjs remains absent.
 
@@ -290,3 +291,11 @@
 - Removed the center emoji/briefing-ready chip from the Home hero card and lightened the PRO early-bird card background so the voice entry CTA stands out more cleanly.
 - Added explicit CalDAV/ICS skip-reason logs so `300 read / 0 saved` can now be diagnosed from logcat as `external_etag` matches, stale `external_updated_at`, or duplicate same-date/title skips.
 - Verification: `flutter analyze`, targeted home-header summary test, full `flutter test` (110 passed), `flutter build apk --debug`, `adb install -r`, and ADB launch/pid checks all passed. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## 2026-05-06 Map selection, TMAP lookup, critical alarm stability checkpoint
+- Unified confirm/edit location picking through a shared flow that searches TMAP POI, Naver Geocoding, and Google Geocoding, then falls back to internal Google map selection or external Google/Naver/TMAP map links when needed.
+- Added Google Maps Android API-key manifest plumbing from GOOGLE_MAPS_API_KEY and a Google Maps fallback picker for devices where Naver native map auth fails.
+- Added Android one-shot current-location retrieval so Home/weather and travel-time flows do not rely only on stale last-known location.
+- Made critical alarm scheduling return explicit statuses for scheduled, past-skipped, permission-blocked, and error outcomes; future events whose requested alert offset is already past are now adjusted to an immediate near-future alert instead of failing silently.
+- Added/updated tests for TMAP-first location lookup, shared external map options, and critical-alarm result handling.
+- Verification: `flutter analyze`, full `flutter test` (111 passed), and `flutter build apk --debug` passed. ADB install/run could not be completed because no Android device was currently connected; `adb devices` returned an empty list and the previous wireless ADB address refused connection. `scripts/gsd-context-hygiene.mjs` remains absent.

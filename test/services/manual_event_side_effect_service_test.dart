@@ -145,4 +145,19 @@ class _FakeNotificationService extends NotificationService {
     scheduledCriticalAlarmIds.add(id);
     scheduledCriticalNotifyAts.add(notifyAt);
   }
+
+  @override
+  Future<NotificationScheduleResult> scheduleCriticalAlarmWithResult({
+    required int id,
+    required String title,
+    required DateTime notifyAt,
+    String? body,
+  }) async {
+    scheduledCriticalAlarmIds.add(id);
+    scheduledCriticalNotifyAts.add(notifyAt);
+    return NotificationScheduleResult(
+      status: NotificationScheduleStatus.scheduled,
+      notifyAt: notifyAt,
+    );
+  }
 }

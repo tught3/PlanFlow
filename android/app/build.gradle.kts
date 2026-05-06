@@ -4,6 +4,21 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+fun readDotEnvValue(key: String): String {
+    val envFile = rootProject.projectDir.parentFile.resolve(".env")
+    if (!envFile.exists()) return ""
+    return envFile.readLines()
+        .firstOrNull { line ->
+            val trimmed = line.trim()
+            trimmed.startsWith("$key=") && !trimmed.startsWith("#")
+        }
+        ?.substringAfter("=")
+        ?.trim()
+        ?.trim('"')
+        ?.trim('\'')
+        ?: ""
+}
+
 android {
     namespace = "com.example.planflow"
     compileSdk = flutter.compileSdkVersion
@@ -25,6 +40,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["googleMapsApiKey"] =
+            System.getenv("GOOGLE_MAPS_API_KEY") ?: readDotEnvValue("GOOGLE_MAPS_API_KEY")
     }
 
     buildTypes {

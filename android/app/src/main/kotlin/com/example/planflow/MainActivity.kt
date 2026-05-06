@@ -6,9 +6,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.CalendarContract
 import android.provider.Settings
 import android.speech.RecognitionListener
@@ -34,6 +37,9 @@ class MainActivity : FlutterActivity() {
     private var microphonePermissionResult: MethodChannel.Result? = null
     private var locationPermissionResult: MethodChannel.Result? = null
     private var calendarPermissionResult: MethodChannel.Result? = null
+    private var currentLocationResult: MethodChannel.Result? = null
+    private var currentLocationListener: LocationListener? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -64,6 +70,7 @@ class MainActivity : FlutterActivity() {
                     "checkCalendarPermission" -> result.success(hasCalendarPermission())
                     "requestCalendarPermission" -> requestCalendarPermission(result)
                     "getLastKnownLocation" -> result.success(getLastKnownLocationMap())
+                    "getCurrentLocation" -> requestCurrentLocation(result)
                     "listDeviceCalendars" -> result.success(listDeviceCalendars())
                     "listDeviceCalendarEvents" -> {
                         val calendarIds = call.argument<List<Any>>("calendarIds")
@@ -108,6 +115,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        finishCurrentLocationRequest(null)
         planFlowStt?.dispose()
         planFlowStt = null
         settingsChannel?.setMethodCallHandler(null)
@@ -302,6 +310,78 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun requestCurrentLocation(result: MethodChannel.Result) {
+        if (!hasLocationPermission()) {
+            result.success(null)
+            return
+        }
+        if (currentLocationResult != null) {
+            result.success(getLastKnownLocationMap())
+            return
+        }
+
+        val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val provider = listOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+            LocationManager.PASSIVE_PROVIDER,
+        ).firstOrNull { providerName ->
+            try {
+                manager.isProviderEnabled(providerName)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        if (provider == null) {
+            result.success(getLastKnownLocationMap())
+            return
+        }
+
+        currentLocationResult = result
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                finishCurrentLocationRequest(
+                    mapOf(
+                        "latitude" to location.latitude,
+                        "longitude" to location.longitude,
+                    ),
+                )
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+            override fun onProviderEnabled(provider: String) = Unit
+            override fun onProviderDisabled(provider: String) = Unit
+        }
+        currentLocationListener = listener
+        mainHandler.postDelayed({
+            finishCurrentLocationRequest(getLastKnownLocationMap())
+        }, 10000L)
+
+        try {
+            manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+        } catch (_: Exception) {
+            finishCurrentLocationRequest(getLastKnownLocationMap())
+        }
+    }
+
+    private fun finishCurrentLocationRequest(value: Map<String, Double>?) {
+        val result = currentLocationResult ?: return
+        val listener = currentLocationListener
+        currentLocationResult = null
+        currentLocationListener = null
+        if (listener != null) {
+            try {
+                val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                manager.removeUpdates(listener)
+            } catch (_: Exception) {
+                // Best-effort cleanup only.
+            }
+        }
+        result.success(value)
     }
 
     private fun safeLastKnownLocation(

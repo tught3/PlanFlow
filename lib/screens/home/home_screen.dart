@@ -74,9 +74,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final permissionService = AppPermissionService();
       final locationGranted = await permissionService.checkLocationPermission();
-      final location = locationGranted
-          ? await permissionService.getLastKnownLocation()
-          : null;
+      final location =
+          locationGranted ? await permissionService.getCurrentLocation() : null;
       final summary = await HomeHeaderSummaryService().load(location: location);
       if (mounted) {
         setState(() {
