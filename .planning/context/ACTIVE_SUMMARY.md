@@ -384,3 +384,8 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Re-verified the app after continuing from the backup-path warning: `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed.
 - Device verification showed `com.example.planflow/.MainActivity` as the focused app with process id `2694` on `192.168.0.103:5555`.
 - Note: the current Naver guide assets exist in `assets/naver_app_password/`, but replacing them with the exact chat-provided original screenshots still requires the original image files to be available in the workspace.
+
+## 2026-05-08 Naver original guide image replacement checkpoint
+- Replaced the Naver CalDAV app-password guide images with the user-provided originals at `assets/naver_app_password/naver_web_id_entry.png` and `assets/naver_app_password/naver_app_id_entry.png`.
+- Verified both images render from the expected asset paths and that `pubspec.yaml` already includes `assets/naver_app_password/`.
+- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER`, PID check, and focused app check all passed on `192.168.0.103:5555`.
