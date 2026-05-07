@@ -399,3 +399,8 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Reworked the Naver CalDAV range picker into a two-row modal dialog with dark navy buttons and no label wrapping, matching the user's requested button order.
 - Converted the external map selector and the Home weather detail view from bottom sheets to modal dialogs, and widened the three map buttons so they fill the available row more evenly with larger labels.
 - Verification: `dart format`, `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and focus checks all passed on `192.168.0.103:5555`.
+
+## 2026-05-08 map long-press location adjustment checkpoint
+- Added direct map location adjustment to the in-app location picker: users can tap or long-press on Naver/Google maps to move the selected place before confirming.
+- Added an in-map hint chip so users know they can long-press another point to change the location, while preserving search candidate selection and manual coordinate storage.
+- Verification: `dart format`, `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and focus checks all passed.
