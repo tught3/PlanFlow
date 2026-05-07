@@ -540,6 +540,7 @@ class _FakeNaverCalDavService extends NaverCalDavService {
     DateTime? to,
     NaverCalDavSyncMode mode = NaverCalDavSyncMode.custom,
     bool skipUnchanged = true,
+    bool diagnosticImport = false,
     NaverCalDavProgressCallback? onProgress,
   }) async {
     syncCallCount += 1;

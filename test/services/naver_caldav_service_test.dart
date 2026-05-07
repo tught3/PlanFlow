@@ -522,7 +522,7 @@ END:VCALENDAR
     );
 
     expect(result.success, isTrue);
-    expect(result.readEvents, 1);
+    expect(result.events, 1);
     expect(result.createdOrUpdated, 1);
     expect(result.skipped, 0);
     expect(repository.upserted, hasLength(1));
