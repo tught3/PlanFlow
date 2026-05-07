@@ -332,29 +332,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            OutlinedButton.icon(
-                              onPressed: () => context.go(AppRoutes.calendar),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white,
-                                side: BorderSide(
-                                  color: Colors.white.withValues(alpha: 0.65),
-                                ),
-                                backgroundColor:
-                                    Colors.white.withValues(alpha: 0.10),
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 7,
-                                ),
-                                minimumSize: const Size(0, 34),
-                              ),
-                              icon: const Icon(
-                                Icons.event_note_outlined,
-                                size: 17,
-                              ),
-                              label: const Text('일정 보기'),
-                            ),
                           ],
                         ),
                       ],

@@ -18,6 +18,31 @@ enum _CalendarLoadState {
   error,
 }
 
+const calendarCriticalEventMarkerColor = Color(0xFFB42318);
+
+@visibleForTesting
+Map<int, Color> buildCalendarEventMarkerColorsByDay({
+  required Iterable<EventModel> events,
+  required DateTime focusedMonth,
+}) {
+  final markerColors = <int, Color>{};
+  for (final event in events) {
+    final startAt = event.startAt;
+    if (startAt != null &&
+        startAt.year == focusedMonth.year &&
+        startAt.month == focusedMonth.month) {
+      final currentColor = markerColors[startAt.day];
+      if (event.isCritical ||
+          currentColor != calendarCriticalEventMarkerColor) {
+        markerColors[startAt.day] = event.isCritical
+            ? calendarCriticalEventMarkerColor
+            : PlanFlowColors.active;
+      }
+    }
+  }
+  return markerColors;
+}
+
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
 
@@ -121,17 +146,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }).toList(growable: false);
   }
 
-  Set<int> get _daysWithEvents {
-    final days = <int>{};
-    for (final event in _allEvents) {
-      final startAt = event.startAt;
-      if (startAt != null &&
-          startAt.year == _focusedMonth.year &&
-          startAt.month == _focusedMonth.month) {
-        days.add(startAt.day);
-      }
-    }
-    return days;
+  Map<int, Color> get _eventMarkerColorsByDay {
+    return buildCalendarEventMarkerColorsByDay(
+      events: _allEvents,
+      focusedMonth: _focusedMonth,
+    );
   }
 
   void _changeMonth(int delta) {
@@ -204,7 +223,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               _MiniCalendarGrid(
                 focusedMonth: _focusedMonth,
                 selectedDate: _selectedDate,
-                daysWithEvents: _daysWithEvents,
+                eventMarkerColorsByDay: _eventMarkerColorsByDay,
                 onDaySelected: (day) {
                   setState(() {
                     _selectedDate = day;
@@ -470,13 +489,13 @@ class _MiniCalendarGrid extends StatelessWidget {
   const _MiniCalendarGrid({
     required this.focusedMonth,
     required this.selectedDate,
-    required this.daysWithEvents,
+    required this.eventMarkerColorsByDay,
     required this.onDaySelected,
   });
 
   final DateTime focusedMonth;
   final DateTime selectedDate;
-  final Set<int> daysWithEvents;
+  final Map<int, Color> eventMarkerColorsByDay;
   final ValueChanged<DateTime> onDaySelected;
 
   @override
@@ -550,7 +569,7 @@ class _MiniCalendarGrid extends StatelessWidget {
                     final isSelected = selectedDate.year == dayDate.year &&
                         selectedDate.month == dayDate.month &&
                         selectedDate.day == dayDate.day;
-                    final hasEvent = daysWithEvents.contains(dayNumber);
+                    final markerColor = eventMarkerColorsByDay[dayNumber];
 
                     return Expanded(
                       child: GestureDetector(
@@ -583,15 +602,13 @@ class _MiniCalendarGrid extends StatelessWidget {
                                           : PlanFlowColors.textPrimary,
                                 ),
                               ),
-                              if (hasEvent)
+                              if (markerColor != null)
                                 Container(
                                   width: 4,
                                   height: 4,
                                   margin: const EdgeInsets.only(top: 2),
                                   decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? Colors.white
-                                        : PlanFlowColors.active,
+                                    color: markerColor,
                                     shape: BoxShape.circle,
                                   ),
                                 ),

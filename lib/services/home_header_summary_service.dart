@@ -60,7 +60,7 @@ class HomeHeaderSummaryService {
             )
           : _parseWeatherSummary(weatherResponse.body);
       return HomeHeaderSummary(
-        locationLabel: locationLabel ?? _coordinateLabel(location),
+        locationLabel: locationLabel ?? '위치 정보 확인 중',
         weatherLabel: weatherSummary.label,
         detailLine: weatherSummary.detailLine,
         isReady: reverseResponse != null || weatherResponse != null,
@@ -106,35 +106,7 @@ class HomeHeaderSummaryService {
       if (first is! Map) {
         return null;
       }
-      final name = _textValue(first['name']);
-      final city = _textValue(first['city']);
-      final admin3 = _textValue(first['admin3']);
-      final admin2 = _textValue(first['admin2']);
-      final admin1 = _textValue(first['admin1']);
-      final country = _textValue(first['country']);
-      final pieces = <String>[
-        if (name.isNotEmpty) name,
-        if (city.isNotEmpty && city != name) city,
-        if (admin3.isNotEmpty && admin3 != name && admin3 != city) admin3,
-        if (admin2.isNotEmpty &&
-            admin2 != name &&
-            admin2 != city &&
-            admin2 != admin3)
-          admin2,
-        if (admin1.isNotEmpty &&
-            admin1 != name &&
-            admin1 != city &&
-            admin1 != admin3 &&
-            admin1 != admin2)
-          admin1,
-      ];
-      if (pieces.isNotEmpty) {
-        return pieces.join(' · ');
-      }
-      if (country.isNotEmpty) {
-        return country;
-      }
-      return null;
+      return _koreanLocationLabel(first);
     } catch (_) {
       return null;
     }
@@ -214,6 +186,56 @@ class HomeHeaderSummaryService {
     return text;
   }
 
+  String? _koreanLocationLabel(Map<dynamic, dynamic> result) {
+    final name = _textValue(result['name']);
+    final city = _textValue(result['city']);
+    final admin1 = _textValue(result['admin1']);
+    final admin2 = _textValue(result['admin2']);
+    final admin3 = _textValue(result['admin3']);
+    final admin4 = _textValue(result['admin4']);
+
+    final province = _preferredArea(<String>[
+      admin1
+    ], suffixes: const <String>[
+      '특별시',
+      '광역시',
+      '특별자치시',
+      '특별자치도',
+      '도',
+    ]);
+    final municipality = _preferredArea(
+      <String>[city, admin2, name],
+      suffixes: const <String>['시', '군'],
+    );
+    final district = _preferredArea(
+      <String>[admin4, admin3, admin2, name],
+      suffixes: const <String>['구'],
+    );
+
+    final pieces = <String>[];
+    for (final piece in <String?>[province, municipality, district]) {
+      if (piece != null && !pieces.contains(piece)) {
+        pieces.add(piece);
+      }
+    }
+    return pieces.isEmpty ? null : pieces.join(' ');
+  }
+
+  String? _preferredArea(
+    List<String> values, {
+    required List<String> suffixes,
+  }) {
+    for (final value in values) {
+      if (value.isEmpty) {
+        continue;
+      }
+      if (suffixes.any(value.endsWith)) {
+        return value;
+      }
+    }
+    return null;
+  }
+
   double? _numValue(Object? value) {
     if (value is num) {
       return value.toDouble();
@@ -229,12 +251,6 @@ class HomeHeaderSummaryService {
       return value.toInt();
     }
     return int.tryParse(value?.toString() ?? '');
-  }
-
-  String _coordinateLabel(GeoPoint location) {
-    final latitude = location.latitude.toStringAsFixed(4);
-    final longitude = location.longitude.toStringAsFixed(4);
-    return '좌표 $latitude, $longitude';
   }
 }
 

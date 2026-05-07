@@ -47,9 +47,42 @@ void main() {
     );
 
     expect(summary.isReady, isTrue);
-    expect(summary.locationLabel, isNotEmpty);
+    expect(summary.locationLabel, '서울특별시 강남구');
     expect(summary.weatherLabel, contains('맑음'));
     expect(summary.detailLine, contains('체감'));
+  });
+
+  test('HomeHeaderSummaryService does not fall back to coordinates', () async {
+    final service = HomeHeaderSummaryService(
+      httpClientFactory: () => MockClient((request) async {
+        if (request.url.host == 'geocoding-api.open-meteo.com') {
+          return http.Response('not found', 500);
+        }
+        return http.Response(
+          '''
+          {
+            "current": {
+              "temperature_2m": 18.0,
+              "apparent_temperature": 18.0,
+              "weather_code": 3,
+              "windspeed_10m": 1.2
+            }
+          }
+          ''',
+          200,
+        );
+      }),
+    );
+
+    final summary = await service.load(
+      location: const GeoPoint(latitude: 37.5665, longitude: 126.9780),
+    );
+
+    expect(summary.isReady, isTrue);
+    expect(summary.locationLabel, '위치 정보 확인 중');
+    expect(summary.locationLabel, isNot(contains('좌표')));
+    expect(summary.locationLabel, isNot(contains('37.')));
+    expect(summary.weatherLabel, contains('흐림'));
   });
 
   test('HomeHeaderSummaryService falls back without location', () async {
