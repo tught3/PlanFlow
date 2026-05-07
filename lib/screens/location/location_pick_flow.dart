@@ -140,10 +140,13 @@ Future<void> showExternalMapOptions(
   String query, {
   String? message,
 }) async {
-  final selected = await showModalBottomSheet<_ExternalMapTarget>(
+  final selected = await showDialog<_ExternalMapTarget>(
     context: context,
-    showDragHandle: true,
-    builder: (context) => _ExternalMapSheet(query: query, message: message),
+    builder: (context) => Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      child: _ExternalMapSheet(query: query, message: message),
+    ),
   );
   if (!context.mounted || selected == null) {
     return;
@@ -199,47 +202,66 @@ class _ExternalMapSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '외부 지도에서 확인',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: PlanFlowColors.primary,
-                fontWeight: FontWeight.w800,
-              ),
+    Widget mapButton(_ExternalMapTarget target) {
+      return SizedBox(
+        height: 46,
+        child: FilledButton.tonalIcon(
+          onPressed: () => Navigator.of(context).pop(target),
+          style: FilledButton.styleFrom(
+            backgroundColor: PlanFlowColors.primaryFaint,
+            foregroundColor: PlanFlowColors.primary,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            minimumSize: Size.zero,
+          ),
+          icon: const Icon(Icons.map_outlined, size: 18),
+          label: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              target.label,
+              maxLines: 1,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 6),
-            Text(
-              message ?? '"$query"를 외부 지도에서 검색합니다.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final target in _ExternalMapTarget.values)
-                  ActionChip(
-                    avatar: const Icon(Icons.map_outlined, size: 18),
-                    label: Text(target.label),
-                    onPressed: () => Navigator.of(context).pop(target),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('닫기'),
-            ),
-          ],
+          ),
         ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '외부 지도에서 확인',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: PlanFlowColors.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message ?? '"$query"를 외부 지도에서 검색합니다.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: mapButton(_ExternalMapTarget.google)),
+              const SizedBox(width: 8),
+              Expanded(child: mapButton(_ExternalMapTarget.naver)),
+              const SizedBox(width: 8),
+              Expanded(child: mapButton(_ExternalMapTarget.tmap)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('닫기'),
+          ),
+        ],
       ),
     );
   }

@@ -721,63 +721,53 @@ Future<void> _showHeaderSummarySheet(
   required String title,
   required HomeHeaderSummary? summary,
 }) async {
-  await showModalBottomSheet<void>(
+  await showDialog<void>(
     context: context,
-    showDragHandle: true,
-    backgroundColor: Colors.transparent,
     builder: (context) {
       final effectiveSummary = summary;
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          child: Container(
-            decoration: BoxDecoration(
-              color: PlanFlowColors.surface,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: PlanFlowColors.primaryFaint,
-                width: 0.8,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: PlanFlowColors.primary.withValues(alpha: 0.10),
-                  blurRadius: 24,
-                  offset: const Offset(0, 14),
+      return Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '오늘 날씨를 한눈에 확인할 수 있어요.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                _SummaryDetailTile(
+                  icon:
+                      effectiveSummary?.weatherIcon ?? Icons.wb_sunny_outlined,
+                  accentColor: const Color(0xFF7A5C2E),
+                  backgroundColor: const Color(0xFFFFF4E6),
+                  title: '날씨 정보',
+                  value: effectiveSummary?.weatherLabel ?? '날씨 확인 중',
+                  detail: effectiveSummary?.detailLine ?? '현재 날씨를 불러오지 못했어요.',
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('닫기'),
+                  ),
                 ),
               ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: PlanFlowColors.primary,
-                          fontWeight: FontWeight.w900,
-                        ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '오늘 날씨를 한눈에 확인할 수 있어요.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: PlanFlowColors.textSecondary,
-                        ),
-                  ),
-                  const SizedBox(height: 16),
-                  _SummaryDetailTile(
-                    icon: effectiveSummary?.weatherIcon ??
-                        Icons.wb_sunny_outlined,
-                    accentColor: const Color(0xFF7A5C2E),
-                    backgroundColor: const Color(0xFFFFF4E6),
-                    title: '날씨 정보',
-                    value: effectiveSummary?.weatherLabel ?? '날씨 확인 중',
-                    detail: effectiveSummary?.detailLine ?? '현재 날씨를 불러오지 못했어요.',
-                  ),
-                ],
-              ),
             ),
           ),
         ),

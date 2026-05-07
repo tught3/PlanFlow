@@ -699,6 +699,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<_NaverCalDavImportRange?> _showNaverCalDavMoreRangeDialog() {
+    Widget buildRangeButton({
+      required String label,
+      required VoidCallback onPressed,
+    }) {
+      return SizedBox(
+        width: 100,
+        height: 42,
+        child: FilledButton(
+          onPressed: onPressed,
+          style: FilledButton.styleFrom(
+            backgroundColor: PlanFlowColors.primary,
+            foregroundColor: Colors.white,
+            padding: EdgeInsets.zero,
+            minimumSize: Size.zero,
+          ),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              maxLines: 1,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
     return showDialog<_NaverCalDavImportRange>(
       context: context,
       builder: (context) => AlertDialog(
@@ -708,71 +735,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         actions: [
           SizedBox(
-            width: double.infinity,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(
-                  width: 80,
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('나중에'),
-                  ),
-                ),
-                SizedBox(
-                  width: 80,
-                  child: FilledButton.tonal(
-                    onPressed: () => Navigator.of(context).pop(
-                      _NaverCalDavImportRange.months(6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: buildRangeButton(
+                        label: '나중에',
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
                     ),
-                    child: const Text('6개월'),
-                  ),
-                ),
-                SizedBox(
-                  width: 80,
-                  child: FilledButton.tonal(
-                    onPressed: () => Navigator.of(context).pop(
-                      _NaverCalDavImportRange.years(1),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: buildRangeButton(
+                        label: '6개월',
+                        onPressed: () => Navigator.of(context).pop(
+                          _NaverCalDavImportRange.months(6),
+                        ),
+                      ),
                     ),
-                    child: const Text('1년'),
-                  ),
-                ),
-                SizedBox(
-                  width: 80,
-                  child: FilledButton.tonal(
-                    onPressed: () => Navigator.of(context).pop(
-                      _NaverCalDavImportRange.years(2),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: buildRangeButton(
+                        label: '1년',
+                        onPressed: () => Navigator.of(context).pop(
+                          _NaverCalDavImportRange.years(1),
+                        ),
+                      ),
                     ),
-                    child: const Text('2년'),
-                  ),
+                  ],
                 ),
-                SizedBox(
-                  width: 80,
-                  child: OutlinedButton(
-                    onPressed: () async {
-                      final range = await _showNaverCalDavCustomRangeDialog();
-                      if (context.mounted && range != null) {
-                        Navigator.of(context).pop(range);
-                      }
-                    },
-                    child: const Text('직접 입력'),
-                  ),
-                ),
-                SizedBox(
-                  width: 80,
-                  child: FilledButton(
-                    onPressed: () async {
-                      final confirmed = await _confirmNaverCalDavAllRange();
-                      if (context.mounted && confirmed) {
-                        Navigator.of(context).pop(
-                          _NaverCalDavImportRange.all(),
-                        );
-                      }
-                    },
-                    child: const Text('전체'),
-                  ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: buildRangeButton(
+                        label: '2년',
+                        onPressed: () => Navigator.of(context).pop(
+                          _NaverCalDavImportRange.years(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: buildRangeButton(
+                        label: '직접입력',
+                        onPressed: () async {
+                          final range =
+                              await _showNaverCalDavCustomRangeDialog();
+                          if (context.mounted && range != null) {
+                            Navigator.of(context).pop(range);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: buildRangeButton(
+                        label: '전체',
+                        onPressed: () async {
+                          final confirmed = await _confirmNaverCalDavAllRange();
+                          if (context.mounted && confirmed) {
+                            Navigator.of(context).pop(
+                              _NaverCalDavImportRange.all(),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
