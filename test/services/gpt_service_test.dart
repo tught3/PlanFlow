@@ -284,6 +284,36 @@ void main() {
       );
     });
 
+    test('briefing generation exposes OpenAI failure reasons', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'error': <String, dynamic>{'message': 'rate limited'},
+          }),
+          429,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        apiKey: 'test-key',
+      );
+
+      await expectLater(
+        service.generateEveningBriefing('내일 일정 2개'),
+        throwsA(
+          isA<GptCompletionException>().having(
+            (error) => error.reason,
+            'reason',
+            'http_429',
+          ),
+        ),
+      );
+    });
+
     test('schedule prompt blocks place-only medical and fasting inference',
         () async {
       late Map<String, dynamic> body;

@@ -940,7 +940,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Text.rich(
                             TextSpan(
                               text:
-                                  '앱 비밀번호는 네이버 앱/웹에서 2단계 인증 관리 → 애플리케이션 비밀번호 생성 → Android 선택 후 발급받은 값을 입력해 주세요.',
+                                  '앱 비밀번호는 네이버 앱/웹에서 ID 관리 → 2단계 인증 관리 → 애플리케이션 비밀번호 생성 → Android 선택 후 발급받은 값을 입력해 주세요.',
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -950,6 +950,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               fontWeight: FontWeight.w900,
                               color: theme.colorScheme.error,
                             ),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: const [
+                              Expanded(
+                                child: _NaverGuideThumbnail(
+                                  title: '웹에서 찾기',
+                                  assetPath:
+                                      'assets/naver_app_password/naver_web_id_entry.png',
+                                ),
+                              ),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: _NaverGuideThumbnail(
+                                  title: '앱에서 찾기',
+                                  assetPath:
+                                      'assets/naver_app_password/naver_app_id_entry.png',
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -1232,11 +1252,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     try {
-      await _briefingSchedulerService.executeBriefing(
+      final result = await _briefingSchedulerService.executeBriefing(
         isMorning: isMorning,
         userId: userId,
       );
-      _showSnack(isMorning ? '모닝 브리핑을 테스트 재생했습니다.' : '이브닝 브리핑을 테스트 재생했습니다.');
+      _showSnack(result.message);
     } catch (error, stackTrace) {
       debugPrint('Briefing test failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -2094,6 +2114,124 @@ class _AccountSection extends StatelessWidget {
       ),
     );
   }
+}
+
+class _NaverGuideThumbnail extends StatelessWidget {
+  const _NaverGuideThumbnail({
+    required this.title,
+    required this.assetPath,
+  });
+
+  final String title;
+  final String assetPath;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: () => _showNaverGuideImage(
+        context,
+        title: title,
+        assetPath: assetPath,
+      ),
+      borderRadius: BorderRadius.circular(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: PlanFlowColors.primary,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: AspectRatio(
+              aspectRatio: 1.55,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(
+                    color: PlanFlowColors.primaryFaint,
+                  ),
+                ),
+                child: Image.asset(
+                  assetPath,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Center(
+                      child: Icon(
+                        Icons.image_not_supported_outlined,
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showNaverGuideImage(
+  BuildContext context, {
+  required String title,
+  required String assetPath,
+}) async {
+  await showDialog<void>(
+    context: context,
+    builder: (context) {
+      return Dialog.fullscreen(
+        backgroundColor: const Color(0xFF101820),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '닫기',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: InteractiveViewer(
+                  minScale: 0.7,
+                  maxScale: 4,
+                  child: Center(
+                    child: Image.asset(
+                      assetPath,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _SectionCard extends StatelessWidget {

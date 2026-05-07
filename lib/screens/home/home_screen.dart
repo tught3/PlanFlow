@@ -295,47 +295,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          _todayEvents.isEmpty
-                              ? '오늘은 여유로운\n하루예요 😊'
-                              : '오늘 ${_todayEvents.length}개의\n일정이 있어요',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                            fontSize: 25,
-                            fontWeight: FontWeight.w900,
-                            height: 1.18,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
-                              child: Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  _HomeInfoChip(
-                                    icon: _headerSummary?.weatherIcon ??
-                                        Icons.wb_sunny_outlined,
-                                    label: _headerSummaryLoading
-                                        ? '날씨 확인 중'
-                                        : (_headerSummary?.weatherLabel ??
-                                            '날씨 확인 중'),
-                                    backgroundColor:
-                                        Colors.white.withValues(alpha: 0.16),
-                                    borderColor:
-                                        Colors.white.withValues(alpha: 0.30),
-                                    foregroundColor: Colors.white,
-                                    onTap: _headerSummaryLoading
-                                        ? null
-                                        : () => _showHeaderSummarySheet(
-                                              context,
-                                              title: '날씨 정보',
-                                              summary: _headerSummary,
-                                            ),
-                                  ),
-                                ],
+                              child: Text(
+                                _todayEvents.isEmpty
+                                    ? '오늘은 여유로운\n하루예요 😊'
+                                    : '오늘 ${_todayEvents.length}개의\n일정이 있어요',
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  color: Colors.white,
+                                  fontSize: 25,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.18,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 132),
+                              child: _HomeInfoChip(
+                                icon: _headerSummary?.weatherIcon ??
+                                    Icons.wb_sunny_outlined,
+                                label: _headerSummaryLoading
+                                    ? '날씨 확인 중'
+                                    : (_headerSummary?.weatherLabel ??
+                                        '날씨 확인 중'),
+                                backgroundColor:
+                                    Colors.white.withValues(alpha: 0.16),
+                                borderColor:
+                                    Colors.white.withValues(alpha: 0.30),
+                                foregroundColor: Colors.white,
+                                onTap: _headerSummaryLoading
+                                    ? null
+                                    : () => _showHeaderSummarySheet(
+                                          context,
+                                          title: '날씨 정보',
+                                          summary: _headerSummary,
+                                        ),
                               ),
                             ),
                           ],

@@ -5,6 +5,33 @@ import 'package:http/http.dart' as http;
 import '../core/env.dart';
 import 'smart_preparation_alarm_service.dart';
 
+class GptCompletionException implements Exception {
+  const GptCompletionException(
+    this.reason,
+    this.message, {
+    this.statusCode,
+    this.bodySnippet,
+    this.cause,
+  });
+
+  final String reason;
+  final String message;
+  final int? statusCode;
+  final String? bodySnippet;
+  final Object? cause;
+
+  @override
+  String toString() {
+    final parts = <String>[
+      'GptCompletionException(reason: $reason, message: $message',
+      if (statusCode != null) 'statusCode: $statusCode',
+      if (bodySnippet != null && bodySnippet!.isNotEmpty) 'body: $bodySnippet',
+      if (cause != null) 'cause: $cause',
+    ];
+    return '${parts.join(', ')})';
+  }
+}
+
 class GptService {
   GptService({
     http.Client? client,
@@ -64,11 +91,15 @@ class GptService {
     final content = await _requestCompletion(
       systemPrompt: isMorning ? _morningBriefingPrompt : _eveningBriefingPrompt,
       userPrompt: rawText,
+      throwOnFailure: true,
     );
 
     final briefing = content?.trim();
     if (briefing == null || briefing.isEmpty) {
-      return isMorning ? '모닝 브리핑을 불러오지 못했습니다.' : '이브닝 브리핑을 불러오지 못했습니다.';
+      throw const GptCompletionException(
+        'empty_content',
+        'OpenAI 응답이 비어 있습니다.',
+      );
     }
 
     return briefing;
@@ -78,8 +109,15 @@ class GptService {
     required String systemPrompt,
     required String userPrompt,
     Map<String, dynamic>? responseFormat,
+    bool throwOnFailure = false,
   }) async {
     if (_apiKey.isEmpty) {
+      if (throwOnFailure) {
+        throw const GptCompletionException(
+          'missing_api_key',
+          'OpenAI API 키가 설정되지 않았습니다.',
+        );
+      }
       return null;
     }
 
@@ -108,42 +146,107 @@ class GptService {
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (throwOnFailure) {
+          throw GptCompletionException(
+            'http_${response.statusCode}',
+            'OpenAI 요청이 실패했습니다.',
+            statusCode: response.statusCode,
+            bodySnippet: _safeBodySnippet(response),
+          );
+        }
         return null;
       }
 
-      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      final decodedText = utf8.decode(response.bodyBytes);
+      final decoded = jsonDecode(decodedText);
       if (decoded is! Map<String, dynamic>) {
+        if (throwOnFailure) {
+          throw GptCompletionException(
+            'invalid_json_shape',
+            'OpenAI 응답 형식이 올바르지 않습니다.',
+            bodySnippet: _truncate(decodedText),
+          );
+        }
         return null;
       }
 
       final choices = decoded['choices'];
       if (choices is! List || choices.isEmpty) {
+        if (throwOnFailure) {
+          throw const GptCompletionException(
+            'missing_choices',
+            'OpenAI 응답에 choices가 없습니다.',
+          );
+        }
         return null;
       }
 
       final firstChoice = choices.first;
       if (firstChoice is! Map<String, dynamic>) {
+        if (throwOnFailure) {
+          throw const GptCompletionException(
+            'invalid_choice',
+            'OpenAI choices 항목 형식이 올바르지 않습니다.',
+          );
+        }
         return null;
       }
 
       final message = firstChoice['message'];
       if (message is! Map<String, dynamic>) {
+        if (throwOnFailure) {
+          throw const GptCompletionException(
+            'missing_message',
+            'OpenAI 응답에 message가 없습니다.',
+          );
+        }
         return null;
       }
 
       final content = message['content'];
       if (content is! String) {
+        if (throwOnFailure) {
+          throw const GptCompletionException(
+            'missing_content',
+            'OpenAI 응답에 content가 없습니다.',
+          );
+        }
         return null;
       }
 
       return content;
-    } catch (_) {
+    } on GptCompletionException {
+      rethrow;
+    } catch (error) {
+      if (throwOnFailure) {
+        throw GptCompletionException(
+          'network_or_parse_error',
+          'OpenAI 요청 또는 응답 처리 중 오류가 발생했습니다.',
+          cause: error,
+        );
+      }
       return null;
     } finally {
       if (_client == null) {
         client.close();
       }
     }
+  }
+
+  String _safeBodySnippet(http.Response response) {
+    try {
+      return _truncate(utf8.decode(response.bodyBytes));
+    } catch (_) {
+      return _truncate(response.body);
+    }
+  }
+
+  String _truncate(String text) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= 300) {
+      return normalized;
+    }
+    return '${normalized.substring(0, 300)}...';
   }
 
   Map<String, dynamic>? _decodeJsonMap(String? content) {

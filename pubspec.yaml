@@ -49,3 +49,4 @@ flutter:
   uses-material-design: true
   assets:
     - .env
+    - assets/naver_app_password/
