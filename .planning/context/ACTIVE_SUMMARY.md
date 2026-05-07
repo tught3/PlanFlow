@@ -404,3 +404,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Added direct map location adjustment to the in-app location picker: users can tap or long-press on Naver/Google maps to move the selected place before confirming.
 - Added an in-map hint chip so users know they can long-press another point to change the location, while preserving search candidate selection and manual coordinate storage.
 - Verification: `dart format`, `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and focus checks all passed.
+
+## 2026-05-08 Naver CalDAV import diagnostics verification checkpoint
+- Verified the latest Naver CalDAV diagnostic implementation in `E:\FluxStudio\PlanFlow`: sync results now separate read, parse, save candidate, broad duplicate skip, unchanged skip, save success, and save failure counts.
+- Confirmed the diagnostic import path bypasses only the broad same-title/start duplicate rule while still preserving `external_id`/etag unchanged protection, so it can prove whether “read many, save zero” is caused by overly broad duplicate detection.
+- Settings now exposes a `저장 누락 진단` action in the Naver calendar section and displays a Korean diagnostic result dialog with summary counts and safe VEVENT samples (`UID`, title, raw DTSTART/DTEND-derived values, and parsed start time only).
+- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, targeted `test/services/naver_caldav_service_test.dart`, full `flutter test` (137 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and focus checks all passed on `192.168.0.103:5555`.
