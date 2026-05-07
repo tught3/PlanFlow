@@ -31,6 +31,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _nameController = TextEditingController();
+  final _nameFocusNode = FocusNode();
+  final _emailFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
+  final _confirmPasswordFocusNode = FocusNode();
 
   late final AuthService? _authService;
 
@@ -55,6 +59,10 @@ class _LoginScreenState extends State<LoginScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _nameController.dispose();
+    _nameFocusNode.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _confirmPasswordFocusNode.dispose();
     super.dispose();
   }
 
@@ -296,6 +304,10 @@ class _LoginScreenState extends State<LoginScreen> {
               passwordController: _passwordController,
               confirmPasswordController: _confirmPasswordController,
               nameController: _nameController,
+              nameFocusNode: _nameFocusNode,
+              emailFocusNode: _emailFocusNode,
+              passwordFocusNode: _passwordFocusNode,
+              confirmPasswordFocusNode: _confirmPasswordFocusNode,
               onModeChanged: _setMode,
               onSubmit: _submit,
             ),
@@ -321,6 +333,10 @@ class _EmailLoginCard extends StatelessWidget {
     required this.passwordController,
     required this.confirmPasswordController,
     required this.nameController,
+    required this.nameFocusNode,
+    required this.emailFocusNode,
+    required this.passwordFocusNode,
+    required this.confirmPasswordFocusNode,
     required this.onModeChanged,
     required this.onSubmit,
   });
@@ -331,6 +347,10 @@ class _EmailLoginCard extends StatelessWidget {
   final TextEditingController passwordController;
   final TextEditingController confirmPasswordController;
   final TextEditingController nameController;
+  final FocusNode nameFocusNode;
+  final FocusNode emailFocusNode;
+  final FocusNode passwordFocusNode;
+  final FocusNode confirmPasswordFocusNode;
   final ValueChanged<_AuthMode> onModeChanged;
   final VoidCallback onSubmit;
 
@@ -394,16 +414,21 @@ class _EmailLoginCard extends StatelessWidget {
             if (mode == _AuthMode.signUp) ...[
               TextField(
                 controller: nameController,
+                focusNode: nameFocusNode,
                 decoration: const InputDecoration(
                   labelText: '이름 또는 닉네임',
                   border: OutlineInputBorder(),
                 ),
                 textInputAction: TextInputAction.next,
+                scrollPadding: const EdgeInsets.only(bottom: 180),
+                onSubmitted: (_) =>
+                    FocusScope.of(context).requestFocus(emailFocusNode),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
             ],
             TextField(
               controller: emailController,
+              focusNode: emailFocusNode,
               decoration: const InputDecoration(
                 labelText: '이메일',
                 border: OutlineInputBorder(),
@@ -411,29 +436,52 @@ class _EmailLoginCard extends StatelessWidget {
               keyboardType: TextInputType.emailAddress,
               autofillHints: const [AutofillHints.email],
               textInputAction: TextInputAction.next,
+              scrollPadding: const EdgeInsets.only(bottom: 180),
+              onSubmitted: (_) {
+                if (mode == _AuthMode.reset) {
+                  onSubmit();
+                  return;
+                }
+                FocusScope.of(context).requestFocus(passwordFocusNode);
+              },
             ),
             if (mode != _AuthMode.reset) ...[
               const SizedBox(height: AppConstants.sectionSpacing),
               TextField(
                 controller: passwordController,
+                focusNode: passwordFocusNode,
                 decoration: const InputDecoration(
                   labelText: '비밀번호',
                   border: OutlineInputBorder(),
                 ),
                 obscureText: true,
                 autofillHints: const [AutofillHints.password],
-                onSubmitted: (_) => onSubmit(),
+                textInputAction: mode == _AuthMode.signUp
+                    ? TextInputAction.next
+                    : TextInputAction.done,
+                scrollPadding: const EdgeInsets.only(bottom: 180),
+                onSubmitted: (_) {
+                  if (mode == _AuthMode.signUp) {
+                    FocusScope.of(context)
+                        .requestFocus(confirmPasswordFocusNode);
+                  } else {
+                    onSubmit();
+                  }
+                },
               ),
             ],
             if (mode == _AuthMode.signUp) ...[
               const SizedBox(height: AppConstants.sectionSpacing),
               TextField(
                 controller: confirmPasswordController,
+                focusNode: confirmPasswordFocusNode,
                 decoration: const InputDecoration(
                   labelText: '비밀번호 확인',
                   border: OutlineInputBorder(),
                 ),
                 obscureText: true,
+                textInputAction: TextInputAction.done,
+                scrollPadding: const EdgeInsets.only(bottom: 180),
                 onSubmitted: (_) => onSubmit(),
               ),
             ],
