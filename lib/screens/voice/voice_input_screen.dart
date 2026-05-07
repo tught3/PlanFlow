@@ -367,6 +367,8 @@ class _VoiceCommandGuide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const bullets = <String>[
+      '“오늘 일정 알려줘”라고 말하면 오늘 일정을 시간순으로 정리해 보여줍니다.',
+      '“내일 일정 보여줘”, “이번 주 일정 알려줘”처럼 조회할 수 있어요.',
       '잘못 말했으면 “아니”라고 말한 뒤 새 표현을 말하세요.',
       '“마지막 거 지워”라고 말하면 마지막 말 조각을 지웁니다.',
       '“다시”라고 말하면 전체 입력을 비웁니다.',

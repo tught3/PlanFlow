@@ -75,7 +75,104 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('단순 조회 결과'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('상세 보기'), 120);
     expect(find.text('상세 보기'), findsOneWidget);
+  });
+
+  testWidgets('오늘 일정 조회는 오늘 일정만 요약해서 보여준다', (tester) async {
+    final now = DateTime.now();
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'today-1',
+          title: '공임나라 방문',
+          startAt: DateTime(now.year, now.month, now.day, 11),
+          location: '원주',
+        ),
+        _event(
+          id: 'tomorrow-1',
+          title: '내일 미팅',
+          startAt: DateTime(now.year, now.month, now.day + 1, 9),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '오늘 일정 알려줘',
+            action: VoiceScheduleAction.query,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('오늘 일정 요약'), findsOneWidget);
+    expect(find.textContaining('오늘 일정은 1개입니다'), findsOneWidget);
+    expect(find.textContaining('오전 11시 공임나라 방문'), findsOneWidget);
+    expect(find.text('공임나라 방문'), findsOneWidget);
+    expect(find.text('내일 미팅'), findsNothing);
+  });
+
+  testWidgets('오늘 일정 조회 결과가 없으면 자연스러운 안내를 보여준다', (tester) async {
+    final now = DateTime.now();
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'tomorrow-1',
+          title: '내일 미팅',
+          startAt: DateTime(now.year, now.month, now.day + 1, 9),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '오늘 일정 알려줘',
+            action: VoiceScheduleAction.query,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => const Text(
+            '음성 입력',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('오늘 일정은 아직 없어요'), findsOneWidget);
+    expect(find.text('내일 미팅'), findsNothing);
   });
 
   testWidgets('음성 수정 명령은 후보 일정을 편집 화면으로 연결한다', (tester) async {
@@ -168,13 +265,15 @@ void main() {
 EventModel _event({
   required String id,
   required String title,
+  DateTime? startAt,
+  String? location,
 }) {
   return EventModel(
     id: id,
     userId: 'user-1',
     title: title,
-    startAt: DateTime(2026, 5, 5, 10),
-    location: title.contains('한강') ? '한강' : null,
+    startAt: startAt ?? DateTime(2026, 5, 5, 10),
+    location: location ?? (title.contains('한강') ? '한강' : null),
   );
 }
 

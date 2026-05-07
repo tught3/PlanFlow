@@ -366,3 +366,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Added Naver CalDAV app-password guide thumbnails under the credential guidance, registered `assets/naver_app_password/`, and added a full-screen zoom viewer for the guide images.
 - Strengthened briefing execution diagnostics: OpenAI failures now expose typed reasons, `Briefing execute`/`Briefing GPT failed`/`Briefing fallback used`/`Briefing TTS failed` logs are emitted, and GPT failure falls back to a local schedule-based morning/evening briefing instead of only saying the briefing failed.
 - Verification: `dart format`, `flutter analyze`, full `flutter test` (132 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER`, PID/focus checks passed on `192.168.0.103:5555`. The ADB screenshot was black because the device screen was off/locked, so visual inspection needs the user to turn the screen on if needed.
+
+## 2026-05-07 Voice schedule query summary checkpoint
+- Added a Korean voice command guide for schedule lookup phrases such as `오늘 일정 알려줘`, `내일 일정 보여줘`, and `이번 주 일정 알려줘`.
+- Updated voice command routing so lookup phrases open the query flow and show a Korean schedule summary card with the requested date range, event count, times, titles, and locations.
+- Query results now filter explicit ranges like today/tomorrow/this week and show a natural empty-state message when there are no matching events.
+- Verification: `flutter analyze`, targeted voice tests, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch via `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1` all passed on `192.168.0.103:5555`.

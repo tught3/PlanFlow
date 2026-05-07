@@ -179,7 +179,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       }
 
       final events = await _repository.listEvents(userId: userId);
-      final ranked = _rankEvents(events, widget.rawText);
+      final filteredEvents = _filterEventsForAction(events);
+      final ranked = _rankEvents(filteredEvents, widget.rawText);
       if (!mounted) {
         return;
       }
@@ -187,9 +188,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         _events
           ..clear()
           ..addAll(ranked);
-        _message = ranked.isEmpty
-            ? '조건에 맞는 일정을 찾지 못했어요. 아래에서 새 일정으로 추가하거나 다시 말해 주세요.'
-            : null;
+        _message = _emptyMessageForAction(ranked);
         _isLoading = false;
       });
     } catch (error, stackTrace) {
@@ -225,6 +224,105 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     }
 
     await _loadCandidates();
+  }
+
+  List<EventModel> _filterEventsForAction(List<EventModel> events) {
+    if (!_isQuery) {
+      return events;
+    }
+
+    final range = _queryDateRange(widget.rawText);
+    if (range == null) {
+      return events;
+    }
+
+    return events.where((event) {
+      final startAt = event.startAt;
+      return startAt != null &&
+          !startAt.isBefore(range.start) &&
+          startAt.isBefore(range.end);
+    }).toList(growable: false);
+  }
+
+  String? _emptyMessageForAction(List<EventModel> ranked) {
+    if (ranked.isNotEmpty) {
+      return null;
+    }
+    if (!_isQuery) {
+      return '조건에 맞는 일정을 찾지 못했어요. 아래에서 새 일정으로 추가하거나 다시 말해 주세요.';
+    }
+
+    final rangeLabel = _queryRangeLabel(widget.rawText);
+    return '$rangeLabel 일정은 아직 없어요. 새 일정이 필요하면 “추가”로 바로 등록할 수 있습니다.';
+  }
+
+  _DateRange? _queryDateRange(String rawText) {
+    final normalized = rawText.replaceAll(RegExp(r'\s+'), ' ');
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (normalized.contains('내일')) {
+      final start = today.add(const Duration(days: 1));
+      return _DateRange(start, start.add(const Duration(days: 1)));
+    }
+    if (normalized.contains('모레')) {
+      final start = today.add(const Duration(days: 2));
+      return _DateRange(start, start.add(const Duration(days: 1)));
+    }
+    if (RegExp(r'(이번\s*주|이번주|주간)').hasMatch(normalized)) {
+      final start = today.subtract(Duration(days: today.weekday - 1));
+      return _DateRange(start, start.add(const Duration(days: 7)));
+    }
+    if (normalized.contains('오늘')) {
+      return _DateRange(today, today.add(const Duration(days: 1)));
+    }
+    return null;
+  }
+
+  String _queryRangeLabel(String rawText) {
+    final normalized = rawText.replaceAll(RegExp(r'\s+'), ' ');
+    if (normalized.contains('내일')) {
+      return '내일';
+    }
+    if (normalized.contains('모레')) {
+      return '모레';
+    }
+    if (RegExp(r'(이번\s*주|이번주|주간)').hasMatch(normalized)) {
+      return '이번 주';
+    }
+    if (normalized.contains('오늘')) {
+      return '오늘';
+    }
+    return '다가오는';
+  }
+
+  String _querySummaryText(List<EventModel> events) {
+    final rangeLabel = _queryRangeLabel(widget.rawText);
+    if (events.isEmpty) {
+      return '$rangeLabel 일정은 아직 없습니다.';
+    }
+
+    final highlights = events.take(4).map((event) {
+      final time = _formatEventTime(event.startAt);
+      final location = event.location == null || event.location!.trim().isEmpty
+          ? ''
+          : ', 장소는 ${event.location}';
+      return '$time ${event.title}$location';
+    }).join('. ');
+    final suffix =
+        events.length > 4 ? ' 외 ${events.length - 4}개 일정이 더 있습니다.' : '.';
+    return '$rangeLabel 일정은 ${events.length}개입니다. $highlights$suffix';
+  }
+
+  String _formatEventTime(DateTime? value) {
+    if (value == null) {
+      return '시간 미정';
+    }
+    final period = value.hour < 12 ? '오전' : '오후';
+    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    final minute =
+        value.minute == 0 ? '' : ' ${value.minute.toString().padLeft(2, '0')}분';
+    return '$period $hour시$minute';
   }
 
   String? _resolveUserId() {
@@ -566,6 +664,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
+                if (_isQuery) ...[
+                  _QuerySummaryCard(
+                    summary: _querySummaryText(_events),
+                    rangeLabel: _queryRangeLabel(widget.rawText),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 ..._events.map(
                   (event) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -602,6 +707,13 @@ class _RankedEvent {
   final EventModel event;
   final int score;
   final int matchScore;
+}
+
+class _DateRange {
+  const _DateRange(this.start, this.end);
+
+  final DateTime start;
+  final DateTime end;
 }
 
 class _CommandCard extends StatelessWidget {
@@ -657,6 +769,72 @@ class _CommandCard extends StatelessWidget {
             Text(
               rawText.trim().isEmpty ? '내용이 비어 있어요.' : rawText.trim(),
               style: theme.textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuerySummaryCard extends StatelessWidget {
+  const _QuerySummaryCard({
+    required this.summary,
+    required this.rangeLabel,
+  });
+
+  final String summary;
+  final String rangeLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      color: const Color(0xFFEAF4FF),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFF92BEE8), width: 0.8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.record_voice_over_outlined,
+                color: PlanFlowColors.primaryMid,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$rangeLabel 일정 요약',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    summary,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: PlanFlowColors.textPrimary,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
