@@ -338,3 +338,8 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Integrated briefing scheduling/test UI and stronger important-alarm channel messaging from the worker pass, then fixed tests for the new schedule result contract and transit routing behavior.
 - Tightened smart-preparation context so `건강검진센터` or hospital-like place names alone do not generate medical/fasting alarms.
 - Verification: `flutter analyze`, full `flutter test` (131 passed), `flutter build apk --debug`, `adb install`, `adb shell am start -n com.example.planflow/.MainActivity`, PID/focus checks passed on `172.16.141.42:5555`. Initial `adb install -r` failed due signature mismatch, so the old package was removed and the debug APK was installed fresh. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## 2026-05-07 GSD context hygiene script checkpoint
+- Added `scripts/gsd-context-hygiene.mjs` so the AGENTS-required context hygiene command now exists in this repo.
+- The script is read-only: it finds the repo root, checks `AGENTS.md`, `.planning/STATE.md`, `.planning/context/ACTIVE_SUMMARY.md`, reports optional planning/codebase docs, prints the latest active checkpoint, and warns about a dirty worktree without modifying files.
+- Verification: `node scripts/gsd-context-hygiene.mjs` passed and reported the expected dirty-worktree warning for the newly added script before commit.
