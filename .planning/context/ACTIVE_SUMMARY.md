@@ -378,3 +378,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Added a query timeline grouping helper and a card layout that mirrors the home schedule style more closely, while keeping query actions like open detail, edit, and delete intact.
 - Updated voice query tests to assert the card/timeline structure instead of the previous text-heavy summary.
 - Verification: `flutter analyze`, targeted voice tests, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch via `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1` all passed on `192.168.0.103:5555`.
+
+## 2026-05-07 Voice/briefing continuation verification checkpoint
+- Confirmed the current `main` working tree is aligned with `origin/main` and already contains the latest voice input default, briefing launch route, and Naver credential security wording changes.
+- Re-verified the app after continuing from the backup-path warning: `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed.
+- Device verification showed `com.example.planflow/.MainActivity` as the focused app with process id `2694` on `192.168.0.103:5555`.
+- Note: the current Naver guide assets exist in `assets/naver_app_password/`, but replacing them with the exact chat-provided original screenshots still requires the original image files to be available in the workspace.
