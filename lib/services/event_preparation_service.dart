@@ -37,9 +37,8 @@ class EventPreparationService {
 
     try {
       preparedEvent = await _ensureLocationCoordinates(preparedEvent);
-      locationResolved =
-          preparedEvent.locationLat != event.locationLat ||
-              preparedEvent.locationLng != event.locationLng;
+      locationResolved = preparedEvent.locationLat != event.locationLat ||
+          preparedEvent.locationLng != event.locationLng;
     } catch (error, stackTrace) {
       debugPrint('Event preparation location lookup skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -104,19 +103,18 @@ class EventPreparationService {
       return 0;
     }
 
-    final sameDay = (await _events.listEvents(userId: event.userId))
-        .where((candidate) {
-          final candidateStart = candidate.startAt;
-          return candidate.id != event.id &&
-              candidateStart != null &&
-              candidateStart.year == startAt.year &&
-              candidateStart.month == startAt.month &&
-              candidateStart.day == startAt.day &&
-              candidate.locationLat != null &&
-              candidate.locationLng != null;
-        })
-        .toList(growable: false)
-      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+    final sameDay =
+        (await _events.listEvents(userId: event.userId)).where((candidate) {
+      final candidateStart = candidate.startAt;
+      return candidate.id != event.id &&
+          candidateStart != null &&
+          candidateStart.year == startAt.year &&
+          candidateStart.month == startAt.month &&
+          candidateStart.day == startAt.day &&
+          candidate.locationLat != null &&
+          candidate.locationLng != null;
+    }).toList(growable: false)
+          ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
 
     EventModel? previous;
     EventModel? next;
