@@ -389,3 +389,8 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Replaced the Naver CalDAV app-password guide images with the user-provided originals at `assets/naver_app_password/naver_web_id_entry.png` and `assets/naver_app_password/naver_app_id_entry.png`.
 - Verified both images render from the expected asset paths and that `pubspec.yaml` already includes `assets/naver_app_password/`.
 - Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER`, PID check, and focused app check all passed on `192.168.0.103:5555`.
+
+## 2026-05-08 Naver ID hint anonymization checkpoint
+- Replaced the Naver connection dialog ID hint example with an anonymous placeholder (`예: myname123`) so the modal no longer exposes the current account name.
+- The dialog still keeps the same validation and connection flow; only the example text changed.
+- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` (initial start returned an unknown error, but `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1` successfully focused the app), PID/focus checks, and package-wide asset checks all passed on `192.168.0.103:5555`.

@@ -983,7 +983,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       focusNode: idFocusNode,
                       decoration: const InputDecoration(
                         labelText: '네이버 ID',
-                        hintText: '예: tught3',
+                        hintText: '예: myname123',
                       ),
                       textInputAction: TextInputAction.next,
                       scrollPadding: const EdgeInsets.only(bottom: 80),
