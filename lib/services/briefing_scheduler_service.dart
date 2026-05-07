@@ -10,6 +10,38 @@ import 'gpt_service.dart';
 import 'notification_service.dart';
 import 'tts_service.dart';
 
+class BriefingScheduleEntry {
+  const BriefingScheduleEntry({
+    required this.scheduledAt,
+    required this.scheduled,
+  });
+
+  final DateTime scheduledAt;
+  final bool scheduled;
+}
+
+class BriefingDailyScheduleResult {
+  const BriefingDailyScheduleResult({
+    required this.morning,
+    required this.evening,
+  });
+
+  final BriefingScheduleEntry morning;
+  final BriefingScheduleEntry evening;
+
+  bool get allScheduled => morning.scheduled && evening.scheduled;
+}
+
+class BriefingNextTimes {
+  const BriefingNextTimes({
+    required this.morning,
+    required this.evening,
+  });
+
+  final DateTime morning;
+  final DateTime evening;
+}
+
 class BriefingSchedulerService {
   BriefingSchedulerService({
     AlarmService? alarmService,
@@ -32,23 +64,46 @@ class BriefingSchedulerService {
   static const String _morningAlarmId = 'briefing:morning';
   static const String _eveningAlarmId = 'briefing:evening';
 
-  Future<void> scheduleDaily({
+  Future<BriefingDailyScheduleResult> scheduleDaily({
     required String morningTime,
     required String eveningTime,
     String? userId,
   }) async {
     final resolvedUserId = _resolveUserId(userId);
+    final morningAt = _nextOccurrence(morningTime);
+    final eveningAt = _nextOccurrence(eveningTime);
 
-    await _alarmService.scheduleMorningBriefing(
+    final morningScheduled = await _alarmService.scheduleMorningBriefing(
       id: _morningAlarmId,
-      scheduledAt: _nextOccurrence(morningTime),
+      scheduledAt: morningAt,
       userId: resolvedUserId,
     );
 
-    await _alarmService.scheduleEveningBriefing(
+    final eveningScheduled = await _alarmService.scheduleEveningBriefing(
       id: _eveningAlarmId,
-      scheduledAt: _nextOccurrence(eveningTime),
+      scheduledAt: eveningAt,
       userId: resolvedUserId,
+    );
+
+    return BriefingDailyScheduleResult(
+      morning: BriefingScheduleEntry(
+        scheduledAt: morningAt,
+        scheduled: morningScheduled,
+      ),
+      evening: BriefingScheduleEntry(
+        scheduledAt: eveningAt,
+        scheduled: eveningScheduled,
+      ),
+    );
+  }
+
+  BriefingNextTimes nextDailyTimes({
+    required String morningTime,
+    required String eveningTime,
+  }) {
+    return BriefingNextTimes(
+      morning: _nextOccurrence(morningTime),
+      evening: _nextOccurrence(eveningTime),
     );
   }
 

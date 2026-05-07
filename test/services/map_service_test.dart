@@ -63,15 +63,15 @@ void main() {
     expect(estimate.minutes, 32);
   });
 
-  test('MapService still tries Tmap first for transit mode', () async {
+  test('MapService uses Naver first for transit mode', () async {
     final service = MapService(
       tmapApiKey: 'tmap-key',
       naverClientId: 'naver-id',
       naverClientSecret: 'naver-secret',
       httpClientFactory: () => MockClient((request) async {
-        expect(request.url.host, 'apis.openapi.sk.com');
+        expect(request.url.host, 'naveropenapi.apigw.ntruss.com');
         return http.Response(
-          '{"features":[{"properties":{"totalTime":900}}]}',
+          '{"route":{"trafast":[{"summary":{"duration":900000}}]}}',
           200,
         );
       }),
@@ -86,7 +86,7 @@ void main() {
     );
 
     expect(estimate, isNotNull);
-    expect(estimate!.provider, MapTravelProvider.tmap);
+    expect(estimate!.provider, MapTravelProvider.naver);
     expect(estimate.minutes, 15);
   });
 }

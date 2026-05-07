@@ -122,7 +122,7 @@ void main() {
     expect(settingsRepository.savedSettings!.eveningBriefingAt, '21:20');
     expect(scheduler.lastMorningTime, '07:10');
     expect(scheduler.lastEveningTime, '21:20');
-    expect(scheduler.callCount, 1);
+    expect(scheduler.callCount, 2);
   });
 
   testWidgets('SettingsScreen saves voice auto-start toggle', (tester) async {
@@ -367,7 +367,7 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
   String? lastEveningTime;
 
   @override
-  Future<void> scheduleDaily({
+  Future<BriefingDailyScheduleResult> scheduleDaily({
     required String morningTime,
     required String eveningTime,
     String? userId,
@@ -375,6 +375,16 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
     callCount += 1;
     lastMorningTime = morningTime;
     lastEveningTime = eveningTime;
+    return BriefingDailyScheduleResult(
+      morning: BriefingScheduleEntry(
+        scheduledAt: DateTime(2026, 5, 7, 7, 30),
+        scheduled: true,
+      ),
+      evening: BriefingScheduleEntry(
+        scheduledAt: DateTime(2026, 5, 7, 21),
+        scheduled: true,
+      ),
+    );
   }
 }
 

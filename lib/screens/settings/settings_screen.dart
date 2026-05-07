@@ -94,6 +94,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasNaverCalDavCredentials = false;
   bool _isLoadingBackups = false;
   bool _isSavingSettings = false;
+  bool _isTestingMorningBriefing = false;
+  bool _isTestingEveningBriefing = false;
   bool _isBackupActionRunning = false;
   bool _ownsNaverCalDavService = false;
   NaverCalDavConnectionResult? _lastNaverCalDavResult;
@@ -170,6 +172,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _savedSettings = effective;
       _applySettings(effective);
     });
+    unawaited(_scheduleBriefingsFromSettings(
+      effective,
+      reason: 'settings_loaded',
+    ));
   }
 
   Future<void> _loadCalendarStatus() async {
@@ -1038,17 +1044,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _savedSettings = saved;
         _applySettings(saved);
       });
-      await _briefingSchedulerService.scheduleDaily(
-        morningTime: saved.morningBriefingAt,
-        eveningTime: saved.eveningBriefingAt,
-        userId: userId,
-      );
-      debugPrint(
-        'Briefing schedule updated: morning=${saved.morningBriefingAt}, '
-        'evening=${saved.eveningBriefingAt}, userId=$userId',
+      final scheduleResult = await _scheduleBriefingsFromSettings(
+        saved,
+        reason: 'settings_saved',
       );
       if (successMessage != null) {
-        _showSnack(successMessage);
+        final suffix = scheduleResult?.allScheduled == false
+            ? ' 브리핑 예약은 Android 알람 설정을 확인해 주세요.'
+            : '';
+        _showSnack('$successMessage$suffix');
       }
     } catch (error, stackTrace) {
       debugPrint('Settings save failed: $error');
@@ -1058,6 +1062,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         setState(() {
           _isSavingSettings = false;
+        });
+      }
+    }
+  }
+
+  Future<BriefingDailyScheduleResult?> _scheduleBriefingsFromSettings(
+    UserSettingsModel settings, {
+    required String reason,
+  }) async {
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) {
+      debugPrint('Briefing schedule skipped ($reason): signed out');
+      return null;
+    }
+
+    try {
+      final result = await _briefingSchedulerService.scheduleDaily(
+        morningTime: settings.morningBriefingAt,
+        eveningTime: settings.eveningBriefingAt,
+        userId: userId,
+      );
+      debugPrint(
+        'Briefing schedule updated ($reason): '
+        'morning=${result.morning.scheduledAt.toIso8601String()} '
+        'scheduled=${result.morning.scheduled}, '
+        'evening=${result.evening.scheduledAt.toIso8601String()} '
+        'scheduled=${result.evening.scheduled}, userId=$userId',
+      );
+      return result;
+    } catch (error, stackTrace) {
+      debugPrint('Briefing schedule failed ($reason): $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted && reason == 'settings_saved') {
+        _showSnack('설정은 저장했지만 브리핑 예약에 실패했습니다. Android 알람 설정을 확인해 주세요.');
+      }
+      return null;
+    }
+  }
+
+  Future<void> _testBriefing({required bool isMorning}) async {
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) {
+      _showSnack('로그인 후 브리핑을 테스트할 수 있습니다.');
+      return;
+    }
+    if (_isTestingMorningBriefing || _isTestingEveningBriefing) {
+      return;
+    }
+
+    setState(() {
+      if (isMorning) {
+        _isTestingMorningBriefing = true;
+      } else {
+        _isTestingEveningBriefing = true;
+      }
+    });
+
+    try {
+      await _briefingSchedulerService.executeBriefing(
+        isMorning: isMorning,
+        userId: userId,
+      );
+      _showSnack(isMorning ? '모닝 브리핑을 테스트 재생했습니다.' : '이브닝 브리핑을 테스트 재생했습니다.');
+    } catch (error, stackTrace) {
+      debugPrint('Briefing test failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showSnack('브리핑 테스트 재생에 실패했습니다. 알림/TTS 설정을 확인해 주세요.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          if (isMorning) {
+            _isTestingMorningBriefing = false;
+          } else {
+            _isTestingEveningBriefing = false;
+          }
         });
       }
     }
@@ -1295,6 +1374,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final morningLabel = _formatTime(context, _morningBriefingAt);
     final eveningLabel = _formatTime(context, _eveningBriefingAt);
+    final nextBriefings = _briefingSchedulerService.nextDailyTimes(
+      morningTime: _formatTimeValue(_morningBriefingAt),
+      eveningTime: _formatTimeValue(_eveningBriefingAt),
+    );
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -1328,18 +1411,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _TimeSettingTile(
                     title: '모닝 브리핑',
-                    subtitle: '하루를 시작하는 브리핑 시간',
+                    subtitle: '다음 예약 ${_formatDateTime(nextBriefings.morning)}',
                     value: morningLabel,
                     icon: Icons.wb_sunny_outlined,
                     onTap: () => _pickTime(isMorning: true),
+                    trailingAction: _BriefingTestButton(
+                      isLoading: _isTestingMorningBriefing,
+                      tooltip: '모닝 브리핑 테스트 재생',
+                      onPressed: () => _testBriefing(isMorning: true),
+                    ),
                   ),
                   const Divider(height: 1),
                   _TimeSettingTile(
                     title: '이브닝 브리핑',
-                    subtitle: '하루를 마감하는 브리핑 시간',
+                    subtitle: '다음 예약 ${_formatDateTime(nextBriefings.evening)}',
                     value: eveningLabel,
                     icon: Icons.nightlight_outlined,
                     onTap: () => _pickTime(isMorning: false),
+                    trailingAction: _BriefingTestButton(
+                      isLoading: _isTestingEveningBriefing,
+                      tooltip: '이브닝 브리핑 테스트 재생',
+                      onPressed: () => _testBriefing(isMorning: false),
+                    ),
                   ),
                 ],
               ),
@@ -1948,6 +2041,7 @@ class _TimeSettingTile extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.onTap,
+    this.trailingAction,
   });
 
   final String title;
@@ -1955,6 +2049,7 @@ class _TimeSettingTile extends StatelessWidget {
   final String value;
   final IconData icon;
   final VoidCallback onTap;
+  final Widget? trailingAction;
 
   @override
   Widget build(BuildContext context) {
@@ -2000,9 +2095,39 @@ class _TimeSettingTile extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             const Icon(Icons.chevron_right, color: PlanFlowColors.primaryMid),
+            if (trailingAction != null) ...[
+              const SizedBox(width: 4),
+              trailingAction!,
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _BriefingTestButton extends StatelessWidget {
+  const _BriefingTestButton({
+    required this.isLoading,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final bool isLoading;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: isLoading ? null : onPressed,
+      icon: isLoading
+          ? const SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.play_arrow_outlined),
     );
   }
 }

@@ -329,3 +329,12 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Exposed the local Korean time inference helper from `GptService` and added coverage for `1시간뒤` hour offsets in both parser normalization and direct local inference.
 - Added final transcript cleanup for repeated expanding STT chunks, so inputs like `요미 허리 약5 요미 허리 약 5분 뒤에 주 요미 허리 약 5분 뒤에 주기` normalize to the final intended phrase.
 - Verification: `flutter analyze`, full `flutter test` (122 passed), `flutter build apk --debug`, `adb connect 192.168.0.102:5555`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, PID check, and focus check on `com.example.planflow/.MainActivity` all passed. `scripts/gsd-context-hygiene.mjs` remains absent.
+
+## 2026-05-07 Calendar, alarm, map, and departure reliability checkpoint
+- Removed coordinate fallback from Home location display through the pushed home-marker work, kept the Home `일정 보기` CTA removed, and preserved red calendar dots for days with important schedules.
+- Added route-based `DepartureAlarmService` with app start/resume monitoring, save-time scheduling, current-location injection for tests, TMAP car/Naver transit routing, and a 30-minute safety margin for “지금 출발 준비” notifications.
+- Strengthened calendar auto-sync diagnostics by persisting provider-level success/failure status, last attempt, and provider-specific action messages for Google, Naver CalDAV, Naver API, and device calendars.
+- Improved map selection so SDK load stalls show an in-page fallback banner with place candidates instead of leaving a blank map surface.
+- Integrated briefing scheduling/test UI and stronger important-alarm channel messaging from the worker pass, then fixed tests for the new schedule result contract and transit routing behavior.
+- Tightened smart-preparation context so `건강검진센터` or hospital-like place names alone do not generate medical/fasting alarms.
+- Verification: `flutter analyze`, full `flutter test` (131 passed), `flutter build apk --debug`, `adb install`, `adb shell am start -n com.example.planflow/.MainActivity`, PID/focus checks passed on `172.16.141.42:5555`. Initial `adb install -r` failed due signature mismatch, so the old package was removed and the debug APK was installed fresh. `scripts/gsd-context-hygiene.mjs` remains absent.

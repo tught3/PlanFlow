@@ -290,10 +290,35 @@ class SmartPreparationAlarmService {
       return false;
     }
 
-    final hasMedicalAction = _containsAny(purposeText, const <String>[
+    final hasMedicalAction = _containsContextualMedicalAction(purposeText);
+    if (_containsAny(purposeText, const <String>[
+          '회의',
+          '미팅',
+          '업무',
+          '출근',
+          '면접',
+          '병문안',
+          '문병',
+          '납품',
+          '배송',
+          '배달',
+          '강의',
+          '수업',
+        ]) &&
+        !hasMedicalAction) {
+      return false;
+    }
+
+    return hasMedicalAction;
+  }
+
+  bool _containsContextualMedicalAction(String text) {
+    if (RegExp(r'검진(?!센터)').hasMatch(text)) {
+      return true;
+    }
+    return _containsAny(text, const <String>[
       '의료',
       '진료',
-      '검진',
       '검사',
       '수술',
       '채혈',
@@ -305,25 +330,6 @@ class SmartPreparationAlarmService {
       '예약',
       '상담',
     ]);
-    if (_containsAny(purposeText, const <String>[
-      '회의',
-      '미팅',
-      '업무',
-      '출근',
-      '면접',
-      '병문안',
-      '문병',
-      '납품',
-      '배송',
-      '배달',
-      '강의',
-      '수업',
-    ]) &&
-        !hasMedicalAction) {
-      return false;
-    }
-
-    return hasMedicalAction;
   }
 
   bool _hasFastingContext({

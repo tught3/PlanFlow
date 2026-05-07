@@ -48,10 +48,12 @@ class MapService {
     required double destinationLng,
     MapTravelMode mode = MapTravelMode.car,
   }) async {
-    const providers = <MapTravelProvider>[
-      MapTravelProvider.tmap,
-      MapTravelProvider.naver,
-    ];
+    final providers = mode == MapTravelMode.transit
+        ? const <MapTravelProvider>[MapTravelProvider.naver]
+        : const <MapTravelProvider>[
+            MapTravelProvider.tmap,
+            MapTravelProvider.naver,
+          ];
 
     for (final provider in providers) {
       final minutes = switch (provider) {

@@ -10,6 +10,7 @@ import 'app.dart';
 import 'core/env.dart';
 import 'providers/auth_provider.dart';
 import 'services/calendar_auto_sync_service.dart';
+import 'services/departure_alarm_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,6 +50,7 @@ Future<void> main() async {
       AppEnv.markSupabaseInitialized();
       authProvider.start();
       unawaited(const DailyCalendarSyncSchedulerService().scheduleDaily());
+      unawaited(const DepartureAlarmService().scheduleNextMonitor());
     } catch (error) {
       debugPrint('Supabase initialization skipped: $error');
     }

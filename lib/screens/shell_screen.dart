@@ -5,10 +5,15 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/constants.dart';
+import '../core/env.dart';
+import '../data/models/user_settings_model.dart';
+import '../data/repositories/settings_repository.dart';
 import '../providers/auth_provider.dart';
 import '../services/app_permission_service.dart';
 import '../services/auth_service.dart';
+import '../services/briefing_scheduler_service.dart';
 import '../services/calendar_auto_sync_service.dart';
+import '../services/departure_alarm_service.dart';
 import '../services/naver_calendar_permission_service.dart';
 import 'calendar/calendar_screen.dart';
 import 'home_screen.dart';
@@ -31,6 +36,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       NaverCalendarPermissionService();
   final CalendarAutoSyncService _calendarAutoSyncService =
       CalendarAutoSyncService();
+  final DepartureAlarmService _departureAlarmService =
+      const DepartureAlarmService();
+  final BriefingSchedulerService _briefingSchedulerService =
+      BriefingSchedulerService();
   final AuthService _authService = AuthService();
   bool _checkedPermissionOnboarding = false;
   bool _checkedNaverCalendarPermission = false;
@@ -50,6 +59,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       unawaited(_calendarAutoSyncService.syncConnectedCalendars(
         reason: 'app_start',
       ));
+      unawaited(_departureAlarmService.refreshUpcoming());
+      unawaited(_departureAlarmService.scheduleNextMonitor());
+      unawaited(_ensureBriefingsScheduled(reason: 'app_start'));
     });
   }
 
@@ -68,6 +80,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       unawaited(_calendarAutoSyncService.syncConnectedCalendars(
         reason: 'app_resumed',
       ));
+      unawaited(_departureAlarmService.refreshUpcoming());
     }
   }
 
@@ -94,6 +107,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           reason: 'auth_changed',
           force: true,
         ));
+        unawaited(_departureAlarmService.refreshUpcoming());
+        unawaited(_departureAlarmService.scheduleNextMonitor());
+        unawaited(_ensureBriefingsScheduled(reason: 'auth_changed'));
       }
     });
   }
@@ -233,6 +249,49 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  Future<void> _ensureBriefingsScheduled({required String reason}) async {
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty) {
+      debugPrint('Briefing schedule skipped ($reason): signed out');
+      return;
+    }
+
+    try {
+      final settings = await _loadBriefingSettings(userId);
+      final result = await _briefingSchedulerService.scheduleDaily(
+        morningTime: settings.morningBriefingAt,
+        eveningTime: settings.eveningBriefingAt,
+        userId: userId,
+      );
+      debugPrint(
+        'Briefing schedule ensured ($reason): '
+        'morning=${result.morning.scheduledAt.toIso8601String()} '
+        'scheduled=${result.morning.scheduled}, '
+        'evening=${result.evening.scheduledAt.toIso8601String()} '
+        'scheduled=${result.evening.scheduled}, userId=$userId',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Briefing schedule setup skipped ($reason): $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<UserSettingsModel> _loadBriefingSettings(String userId) async {
+    if (!AppEnv.isSupabaseReady) {
+      return UserSettingsModel.defaults(userId: userId);
+    }
+
+    try {
+      final repository = SettingsRepository.supabase();
+      return await repository.fetchSettings(userId) ??
+          UserSettingsModel.defaults(userId: userId);
+    } catch (error, stackTrace) {
+      debugPrint('Briefing settings load failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return UserSettingsModel.defaults(userId: userId);
+    }
   }
 
   void _logNaverCalendarStatus(

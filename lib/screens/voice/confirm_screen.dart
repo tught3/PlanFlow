@@ -12,6 +12,7 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/calendar_auto_sync_service.dart';
+import '../../services/departure_alarm_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/gpt_service.dart';
@@ -553,6 +554,19 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     await _tryFollowUp(
       () => widget.backend.insertReminders(reminderPayloads),
       label: 'reminders',
+    );
+    await _tryFollowUp(
+      () async {
+        final result = await const DepartureAlarmService().scheduleForEvent(
+          event,
+        );
+        if (!result.isScheduled) {
+          debugPrint(
+            'Departure alarm skipped: ${result.skippedReason ?? 'unknown'}',
+          );
+        }
+      },
+      label: 'departure_alarm',
     );
 
     final location = _emptyToNull(_locationController.text);

@@ -44,7 +44,8 @@ class NotificationService {
 
   static const String _criticalAlarmChannelId = 'critical_alarms';
   static const String _criticalAlarmChannelName = '중요 일정 알람';
-  static const String _criticalAlarmChannelDescription = '중요 일정 긴급 알람';
+  static const String _criticalAlarmChannelDescription =
+      '중요 일정 알람. Android 알림/정확한 알람/전체 화면 알림 권한이 꺼져 있으면 강한 알림이 제한될 수 있습니다.';
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
   );
@@ -176,10 +177,8 @@ class NotificationService {
         'exact alarm before critical notification',
         _requestExactAlarmPermissionIfNeeded,
       );
-      await _runPermissionRequestBestEffort(
-        'full-screen intent before critical notification',
-        _requestFullScreenIntentPermissionIfNeeded,
-      );
+      final fullScreenIntentAllowed =
+          await _requestFullScreenIntentPermissionBestEffort();
       final status = await checkPermissionStatus();
       if (status.notificationsEnabled == false ||
           status.exactAlarmsEnabled == false) {
@@ -191,7 +190,7 @@ class NotificationService {
         return NotificationScheduleResult(
           status: NotificationScheduleStatus.permissionBlocked,
           notifyAt: notifyAt,
-          message: '알림 또는 정확한 알람 권한이 꺼져 있습니다.',
+          message: _criticalAlarmPermissionMessage(status),
         );
       }
       await _scheduleNotification(
@@ -205,6 +204,9 @@ class NotificationService {
       return NotificationScheduleResult(
         status: NotificationScheduleStatus.scheduled,
         notifyAt: notifyAt,
+        message: fullScreenIntentAllowed == false
+            ? '중요 알람은 예약했지만 Android 전체 화면 알림이 꺼져 있어 잠금화면 팝업이 제한될 수 있습니다. 휴대폰 설정에서 PlanFlow 전체 화면 알림을 허용해 주세요.'
+            : null,
       );
     } catch (error, stackTrace) {
       debugPrint('Critical alarm scheduling failed: $error');
@@ -212,7 +214,8 @@ class NotificationService {
       return NotificationScheduleResult(
         status: NotificationScheduleStatus.error,
         notifyAt: notifyAt,
-        message: '중요 알람 예약 중 오류가 발생했습니다.',
+        message:
+            '중요 알람 예약 중 오류가 발생했습니다. Android 알림, 정확한 알람, 전체 화면 알림 설정을 확인해 주세요.',
       );
     }
   }
@@ -400,6 +403,23 @@ class NotificationService {
         ?.requestFullScreenIntentPermission();
   }
 
+  Future<bool?> _requestFullScreenIntentPermissionBestEffort() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return null;
+    }
+
+    try {
+      return await _plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestFullScreenIntentPermission();
+    } catch (error, stackTrace) {
+      debugPrint('Full-screen intent permission request skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
+    }
+  }
+
   Future<void> _scheduleNotification({
     required int id,
     required String title,
@@ -446,7 +466,7 @@ class NotificationService {
   }
 
   NotificationDetails get _criticalAlarmDetails {
-    return const NotificationDetails(
+    return NotificationDetails(
       android: AndroidNotificationDetails(
         _criticalAlarmChannelId,
         _criticalAlarmChannelName,
@@ -455,18 +475,27 @@ class NotificationService {
         priority: Priority.max,
         category: AndroidNotificationCategory.alarm,
         fullScreenIntent: true,
+        channelAction: AndroidNotificationChannelAction.update,
+        audioAttributesUsage: AudioAttributesUsage.alarm,
+        playSound: true,
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList(
+          <int>[0, 900, 250, 900, 250, 1200],
+        ),
+        visibility: NotificationVisibility.public,
+        ticker: '중요 일정 알람',
       ),
-      iOS: DarwinNotificationDetails(
+      iOS: const DarwinNotificationDetails(
         presentAlert: true,
         presentSound: true,
         interruptionLevel: InterruptionLevel.critical,
       ),
-      macOS: DarwinNotificationDetails(
+      macOS: const DarwinNotificationDetails(
         presentAlert: true,
         presentSound: true,
         interruptionLevel: InterruptionLevel.critical,
       ),
-      linux: LinuxNotificationDetails(
+      linux: const LinuxNotificationDetails(
         urgency: LinuxNotificationUrgency.critical,
         suppressSound: false,
       ),
@@ -494,6 +523,24 @@ class NotificationService {
       reminder = DateTime(now.year, now.month + 1, 1, 9);
     }
     return reminder;
+  }
+
+  String _criticalAlarmPermissionMessage(NotificationPermissionStatus status) {
+    final blockers = <String>[];
+    if (status.notificationsEnabled == false) {
+      blockers.add('앱 알림');
+    }
+    if (status.exactAlarmsEnabled == false) {
+      blockers.add('정확한 알람');
+    }
+    if (status.fullScreenIntentStatus == PermissionCheckState.denied) {
+      blockers.add('전체 화면 알림');
+    }
+
+    final blockerText =
+        blockers.isEmpty ? 'Android 알림 설정' : blockers.join(', ');
+    return '중요 알람을 강하게 울리려면 $blockerText 권한이 필요합니다. '
+        '휴대폰 설정에서 PlanFlow 알림, 알람 및 리마인더, 전체 화면 알림 허용 상태를 확인해 주세요.';
   }
 }
 

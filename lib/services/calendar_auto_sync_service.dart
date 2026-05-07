@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
@@ -50,6 +51,11 @@ class CalendarAutoSyncService {
 
   Future<CalendarAutoSyncResult> syncAfterEventSave(EventModel event) async {
     if (!_canSync) {
+      await _recordProviderStatus(
+        'all',
+        success: false,
+        message: '로그인 또는 Supabase 설정이 필요합니다.',
+      );
       return CalendarAutoSyncResult.skipped('not_signed_in');
     }
 
@@ -78,6 +84,7 @@ class CalendarAutoSyncService {
       eventId: event.id,
       startAt: event.startAt,
     );
+    await _recordSummary(result, reason: 'event_save');
     return result;
   }
 
@@ -86,6 +93,11 @@ class CalendarAutoSyncService {
     bool force = false,
   }) async {
     if (!_canSync || _isSyncing) {
+      await _recordProviderStatus(
+        'all',
+        success: false,
+        message: '로그인 또는 Supabase 설정이 필요합니다.',
+      );
       return CalendarAutoSyncResult.skipped('not_ready');
     }
 
@@ -136,6 +148,7 @@ class CalendarAutoSyncService {
       EventRefreshBus.instance.notifyChanged(
         reason: 'calendar_auto_sync:$reason',
       );
+      await _recordSummary(result, reason: reason);
       return result;
     } finally {
       _isSyncing = false;
@@ -167,14 +180,83 @@ class CalendarAutoSyncService {
       final success = await step();
       if (success) {
         result.completed.add(name);
+        await _recordProviderStatus(
+          name,
+          success: true,
+          message: '정상 동기화됨',
+        );
       } else {
         result.failed.add(name);
+        await _recordProviderStatus(
+          name,
+          success: false,
+          message: _failureMessageFor(name),
+        );
       }
     } catch (error, stackTrace) {
       result.failed.add(name);
+      await _recordProviderStatus(
+        name,
+        success: false,
+        message: '$name 동기화 중 오류가 발생했습니다.',
+      );
       debugPrint('Calendar auto sync step failed: $name $error');
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  Future<void> _recordSummary(
+    CalendarAutoSyncResult result, {
+    required String reason,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'calendar_sync:last_reason',
+      reason,
+    );
+    await prefs.setString(
+      'calendar_sync:last_attempt_at',
+      _now().toIso8601String(),
+    );
+    await prefs.setStringList(
+      'calendar_sync:last_completed',
+      result.completed,
+    );
+    await prefs.setStringList(
+      'calendar_sync:last_failed',
+      result.failed,
+    );
+  }
+
+  Future<void> _recordProviderStatus(
+    String provider, {
+    required bool success,
+    required String message,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'calendar_sync:provider:$provider';
+    await prefs.setString('$key:status', success ? 'connected' : 'attention');
+    await prefs.setString('$key:message', message);
+    await prefs.setString('$key:checked_at', _now().toIso8601String());
+    if (success) {
+      await prefs.setString('$key:last_success_at', _now().toIso8601String());
+    }
+  }
+
+  String _failureMessageFor(String name) {
+    if (name.contains('google')) {
+      return 'Google 로그인이 끊겼거나 Calendar 권한 동의가 필요합니다.';
+    }
+    if (name.contains('naver_caldav')) {
+      return 'Naver CalDAV 아이디 또는 앱 비밀번호를 확인해 주세요.';
+    }
+    if (name.contains('device_calendar')) {
+      return '휴대폰 캘린더 권한이 필요하거나 기기 캘린더에 노출된 일정이 없습니다.';
+    }
+    if (name.contains('naver_api')) {
+      return 'Naver 캘린더 직접 연동 상태를 확인해 주세요.';
+    }
+    return '$name 동기화가 완료되지 않았습니다.';
   }
 }
 
