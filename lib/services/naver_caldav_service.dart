@@ -291,10 +291,29 @@ class NaverCalDavParseStats {
   NaverCalDavParseStats._({
     required this.calendarPath,
     required _NaverCalDavMutableDiagnostics diagnostics,
+    required this.from,
+    required this.to,
   }) : _diagnostics = diagnostics;
 
   final String calendarPath;
+  final DateTime? from;
+  final DateTime? to;
   final _NaverCalDavMutableDiagnostics _diagnostics;
+
+  bool shouldKeepSample(NaverCalDavEvent event) {
+    final startBoundary = from;
+    final endBoundary = to;
+    if (startBoundary == null || endBoundary == null) {
+      return true;
+    }
+    final eventStart = event.startAt.toUtc();
+    final eventEnd = event.endAt?.toUtc() ?? eventStart;
+    if (eventEnd == eventStart) {
+      return !eventStart.isBefore(startBoundary) &&
+          eventStart.isBefore(endBoundary);
+    }
+    return eventEnd.isAfter(startBoundary) && eventStart.isBefore(endBoundary);
+  }
 }
 
 abstract class NaverCalDavCredentialStore {
@@ -621,7 +640,7 @@ class NaverCalDavService {
           parsed,
           calendarPath: parseStats?.calendarPath ?? endpoint.path,
         );
-        if (sample != null) {
+        if (sample != null && parseStats?.shouldKeepSample(parsed) != false) {
           parseStats?._diagnostics.addSample(sample);
         }
         events.add(parsed);
@@ -764,7 +783,7 @@ class NaverCalDavService {
           parsed,
           calendarPath: parseStats?.calendarPath ?? endpoint.path,
         );
-        if (sample != null) {
+        if (sample != null && parseStats?.shouldKeepSample(parsed) != false) {
           parseStats?._diagnostics.addSample(sample);
         }
       }
@@ -862,6 +881,8 @@ class NaverCalDavService {
           parseStats: NaverCalDavParseStats._(
             calendarPath: calendar.path,
             diagnostics: diagnostics,
+            from: range.from,
+            to: range.to,
           ),
         );
         eventCount += events.length;

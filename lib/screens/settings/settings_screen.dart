@@ -556,6 +556,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ) {
     final diagnostics = result.diagnostics;
     final samples = diagnostics.samples;
+    final reasonText = _naverCalDavDiagnosticReasonText(diagnostics);
     return showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -565,16 +566,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(diagnostics.toSummaryMessage()),
+              Text(
+                diagnostics.toSummaryMessage(),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
               const SizedBox(height: 12),
               Text(
-                '저장 0개라면 위 숫자에서 중복 스킵인지, 변경 없음인지, 저장 실패인지 확인할 수 있습니다.',
+                reasonText,
                 style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '참고: 읽음/파싱 수는 네이버 서버가 반환한 원본 일정 후보입니다. 저장 범위 밖의 오래된 구독/방송 캘린더 일정은 저장하지 않습니다.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
               ),
               if (samples.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 Text(
-                  '샘플 일정',
+                  '저장 범위 안 샘플 일정',
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 8),
@@ -588,6 +601,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
+                ),
+              ] else ...[
+                const SizedBox(height: 16),
+                Text(
+                  '저장 범위 안에서 보여줄 샘플 일정이 없습니다. 네이버가 오래된 구독 캘린더나 범위 밖 일정만 반환했을 수 있습니다.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
                 ),
               ],
             ],
@@ -604,6 +625,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  String _naverCalDavDiagnosticReasonText(
+    NaverCalDavSyncDiagnostics diagnostics,
+  ) {
+    if (diagnostics.saved > 0) {
+      return '저장까지 성공했습니다. 홈/일정 탭에 보이지 않으면 날짜 범위나 선택된 날짜를 확인해 주세요.';
+    }
+    if (diagnostics.failed > 0) {
+      return '저장 실패가 있습니다. Supabase 스키마/RLS 또는 네트워크 오류가 원인일 수 있습니다.';
+    }
+    if (diagnostics.duplicateSkipped > 0) {
+      return '같은 제목과 시간이 이미 있는 일정으로 판단되어 저장하지 않았습니다. 이 판단이 너무 넓은지 확인하려면 이 진단 결과를 기준으로 중복 규칙을 조정해야 합니다.';
+    }
+    if (diagnostics.unchangedSkipped > 0) {
+      return '이미 가져온 일정과 etag/수정 시간이 같아서 변경 없음으로 건너뛰었습니다.';
+    }
+    if (diagnostics.invalidEvents > 0 && diagnostics.saveCandidates == 0) {
+      return '날짜 파싱 실패가 있어 저장 대상이 만들어지지 않았습니다. DTSTART/DTEND 원본 형식을 추가로 확인해야 합니다.';
+    }
+    if (diagnostics.parsedEvents > 0 && diagnostics.saveCandidates == 0) {
+      return '네이버에서 일정은 읽었지만 현재 빠른 동기화 범위 안에 저장할 일정이 없었습니다.';
+    }
+    return '저장 0개라면 중복 스킵, 변경 없음, 저장 실패, 날짜 파싱 실패 중 어디에 해당하는지 위 숫자로 확인할 수 있습니다.';
   }
 
   Future<void> _markNaverCalDavConnection({

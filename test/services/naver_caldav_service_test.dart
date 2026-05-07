@@ -572,6 +572,39 @@ END:VCALENDAR
     expect(result.diagnostics.skipReasons['같은 제목+시간 중복'], 1);
   });
 
+  test('syncAll diagnostics only keeps samples inside selected sync range',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        _emptyEventReportXml,
+        _oldBroadcastEventReportXml,
+      ],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: _FakeEventRepository(),
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      diagnosticImport: true,
+    );
+
+    expect(result.success, isTrue);
+    expect(result.events, 0);
+    expect(result.diagnostics.rawEvents, 2);
+    expect(result.diagnostics.parsedEvents, 2);
+    expect(result.diagnostics.samples, isEmpty);
+  });
+
   test('syncAll deletes suspicious imported events before re-syncing',
       () async {
     final client = _FakePropfindClient(
@@ -862,6 +895,30 @@ BEGIN:VEVENT
 UID:zero-duration-1
 SUMMARY:범위 시작 일정
 DTSTART:20260505T010000Z
+END:VEVENT
+END:VCALENDAR
+        ]]></c:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';
+
+const String _oldBroadcastEventReportXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/calendars/tught3/default/broadcast-2013.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-broadcast-2013"</d:getetag>
+        <c:calendar-data><![CDATA[
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:broadcast-2013
+SUMMARY:[방송]학교 2013
+DTSTART;TZID=Asia/Seoul:20130112T220000
+DTEND;TZID=Asia/Seoul:20130112T230000
 END:VEVENT
 END:VCALENDAR
         ]]></c:calendar-data>

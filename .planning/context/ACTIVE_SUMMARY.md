@@ -410,3 +410,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Confirmed the diagnostic import path bypasses only the broad same-title/start duplicate rule while still preserving `external_id`/etag unchanged protection, so it can prove whether “read many, save zero” is caused by overly broad duplicate detection.
 - Settings now exposes a `저장 누락 진단` action in the Naver calendar section and displays a Korean diagnostic result dialog with summary counts and safe VEVENT samples (`UID`, title, raw DTSTART/DTEND-derived values, and parsed start time only).
 - Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, targeted `test/services/naver_caldav_service_test.dart`, full `flutter test` (137 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and focus checks all passed on `192.168.0.103:5555`.
+
+## 2026-05-08 Naver CalDAV diagnostic sample clarity checkpoint
+- Clarified the Naver CalDAV save-missing diagnostic dialog so raw read/parse counts are explained separately from actual save candidates.
+- Filtered diagnostic sample events to the selected sync range, preventing old out-of-range broadcast/subscription schedules from appearing as misleading samples in quick-sync diagnostics.
+- Added result-specific Korean guidance for saved, failed, duplicate-skipped, unchanged-skipped, invalid-date, and out-of-range cases.
+- Verification: `node scripts/gsd-context-hygiene.mjs`, targeted `test/services/naver_caldav_service_test.dart`, full `flutter test` (138 passed), `flutter analyze`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed on `192.168.0.103:5555`.
