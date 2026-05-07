@@ -283,5 +283,49 @@ void main() {
         contains('내일을 위한 전략적 제언'),
       );
     });
+
+    test('schedule prompt blocks place-only medical and fasting inference',
+        () async {
+      late Map<String, dynamic> body;
+
+      final client = MockClient((request) async {
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '병원',
+                    'start_at': null,
+                    'end_at': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        apiKey: 'test-key',
+      );
+
+      await service.parseSchedule('내일 오전 10시 병원');
+
+      final prompt = (body['messages'] as List).first['content'] as String;
+      expect(prompt, contains('Do not infer medical or fasting pre_actions'));
+      expect(prompt, contains('"병원", "병원 방문", "병원 미팅", and "병문안"'));
+      expect(prompt, contains('Input: "내일 오전 10시 병원" -> pre_actions: []'));
+      expect(prompt, contains('Input: "내일 법원" or "내일 학교"'));
+    });
   });
 }

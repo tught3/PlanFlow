@@ -45,14 +45,28 @@ class SmartPreparationAlarmService {
     final candidates = <SmartPreparationAlarmCandidate>[
       ..._existingCandidates(existingPreActions, eventStartAt: eventStartAt),
     ];
-    final searchable = _normalizeText(
+    final purposeText = _normalizeText(
       <String>[
         rawText,
         title ?? '',
-        location ?? '',
         memo ?? '',
         ...supplies,
       ].join(' '),
+    );
+    final locationText = _normalizeText(location ?? '');
+    final searchable = _normalizeText(
+      <String>[
+        purposeText,
+        locationText,
+      ].join(' '),
+    );
+    final hasMedicalContext = _hasMedicalContext(
+      purposeText: purposeText,
+      locationText: locationText,
+    );
+    final hasFastingContext = _hasFastingContext(
+      purposeText: purposeText,
+      locationText: locationText,
     );
 
     void add(String title, int offsetHours) {
@@ -65,31 +79,12 @@ class SmartPreparationAlarmService {
       );
     }
 
-    if (_containsAny(searchable, const <String>[
-      '의료',
-      '검사',
-      '내시경',
-      '병원',
-      '건강검진',
-      '검진',
-      '진료',
-      '수술',
-      '치과',
-      '채혈',
-    ])) {
+    if (hasMedicalContext) {
       add('병원 준비사항 확인', 24);
       add('신분증과 서류 챙기기', 3);
     }
 
-    if (_containsAny(searchable, const <String>[
-      '내시경',
-      '위내시경',
-      '대장내시경',
-      '금식',
-      '마취',
-      '검진',
-      '검사',
-    ])) {
+    if (hasFastingContext) {
       add('금식/복약 안내 확인', 12);
     }
 
@@ -267,6 +262,102 @@ class SmartPreparationAlarmService {
 
   bool _containsAny(String text, List<String> keywords) {
     return keywords.any(text.contains);
+  }
+
+  bool _hasMedicalContext({
+    required String purposeText,
+    required String locationText,
+  }) {
+    final combined = '$purposeText $locationText'.trim();
+    if (_containsExplicitMedicalProcedure(purposeText)) {
+      return true;
+    }
+
+    final hasMedicalPlace = _containsAny(combined, const <String>[
+      '병원',
+      '의원',
+      '클리닉',
+      '치과',
+      '한의원',
+      '내과',
+      '외과',
+      '산부인과',
+      '정형외과',
+      '이비인후과',
+      '검진센터',
+    ]);
+    if (!hasMedicalPlace) {
+      return false;
+    }
+
+    final hasMedicalAction = _containsAny(purposeText, const <String>[
+      '의료',
+      '진료',
+      '검진',
+      '검사',
+      '수술',
+      '채혈',
+      '치료',
+      '접종',
+      '처방',
+      '입원',
+      '퇴원',
+      '예약',
+      '상담',
+    ]);
+    if (_containsAny(purposeText, const <String>[
+      '회의',
+      '미팅',
+      '업무',
+      '출근',
+      '면접',
+      '병문안',
+      '문병',
+      '납품',
+      '배송',
+      '배달',
+      '강의',
+      '수업',
+    ]) &&
+        !hasMedicalAction) {
+      return false;
+    }
+
+    return hasMedicalAction;
+  }
+
+  bool _hasFastingContext({
+    required String purposeText,
+    required String locationText,
+  }) {
+    if (_containsExplicitFastingContext(purposeText)) {
+      return true;
+    }
+
+    if (!_hasMedicalContext(
+      purposeText: purposeText,
+      locationText: locationText,
+    )) {
+      return false;
+    }
+
+    return _containsAny(purposeText, const <String>[
+      '검진',
+      '검사',
+      '수술',
+    ]);
+  }
+
+  bool _containsExplicitMedicalProcedure(String text) {
+    return RegExp(r'(?:위내시경|대장내시경|내시경|건강검진)(?!센터)').hasMatch(text);
+  }
+
+  bool _containsExplicitFastingContext(String text) {
+    return _containsExplicitMedicalProcedure(text) ||
+        _containsAny(text, const <String>[
+          '금식',
+          '마취',
+        ]);
   }
 
   String _normalizeText(String text) {

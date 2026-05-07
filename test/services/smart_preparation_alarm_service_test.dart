@@ -24,6 +24,66 @@ void main() {
         candidates.length);
   });
 
+  test('buildCandidates does not infer medical alarms from locations alone',
+      () {
+    final service = SmartPreparationAlarmService();
+
+    for (final rawText in const <String>[
+      '내일 오전 10시 병원',
+      '내일 오후 2시 병원 미팅',
+      '토요일 병원 병문안',
+      '내일 법원',
+      '내일 학교',
+      '내일 건강검진센터',
+    ]) {
+      final candidates = service.buildCandidates(
+        rawText: rawText,
+        eventStartAt: DateTime(2026, 5, 8, 10),
+      );
+
+      expect(
+        candidates.map((candidate) => candidate.title),
+        isNot(contains('병원 준비사항 확인')),
+        reason: rawText,
+      );
+      expect(
+        candidates.map((candidate) => candidate.title),
+        isNot(contains('금식/복약 안내 확인')),
+        reason: rawText,
+      );
+    }
+  });
+
+  test('buildCandidates requires medical action with medical location', () {
+    final service = SmartPreparationAlarmService();
+    final candidates = service.buildCandidates(
+      rawText: '월요일 오전 8시 건강검진',
+      location: '서울병원',
+      eventStartAt: DateTime(2026, 5, 11, 8),
+    );
+
+    expect(
+      candidates.map((candidate) => candidate.title),
+      containsAll(<String>[
+        '병원 준비사항 확인',
+        '금식/복약 안내 확인',
+      ]),
+    );
+  });
+
+  test('buildCandidates keeps explicit medical action over work context', () {
+    final service = SmartPreparationAlarmService();
+    final candidates = service.buildCandidates(
+      rawText: '내일 병원 업무 후 진료 예약',
+      eventStartAt: DateTime(2026, 5, 8, 10),
+    );
+
+    expect(
+      candidates.map((candidate) => candidate.title),
+      contains('병원 준비사항 확인'),
+    );
+  });
+
   test('schedulePayloads schedules future smart preparation notifications',
       () async {
     final notifications = _FakeNotificationService();

@@ -507,9 +507,20 @@ If only a date is known, use 09:00 local time unless the user clearly implies al
 supplies must be an array of strings.
 is_critical must be a boolean.
 pre_actions must be an array of objects with title and offset_hours.
-Return pre_actions aggressively when the schedule implies preparation, movement, supplies, medical checks, fasting, departure, documents, or reservation follow-up.
+Return pre_actions when the schedule clearly implies preparation, movement, supplies, medical checks, fasting, departure, documents, or reservation follow-up.
 Use Korean user-facing pre_action titles. Examples: "준비물 챙기기", "이동시간과 출발 시간 확인", "금식/복약 안내 확인", "병원 준비사항 확인".
 Prefer practical offsets: 24 hours for medical/checkup preparation, 12 hours for fasting/medication checks, 2-3 hours for departure or supplies, 1 hour for simple final checks.
+Do not infer medical or fasting pre_actions from place names alone.
+Hospital, clinic, dental, court, and school names are locations unless the user's action/purpose is also clear.
+For hospitals, distinguish medical care, work/meetings, visiting a patient, and unclear purpose. "병원", "병원 방문", "병원 미팅", and "병문안" must not produce medical or fasting pre_actions unless the text also says 진료, 검진, 검사, 수술, 채혈, 치료, 접종, 처방, 내시경, 금식, or another explicit medical action.
+Fasting/medication pre_actions require explicit fasting-sensitive context such as 내시경, 금식, 마취, 수술, or a medical 검사/검진 context. Do not add them for a generic hospital location.
+Few-shot guidance:
+- Input: "내일 오전 10시 병원" -> pre_actions: []
+- Input: "내일 오후 2시 병원 미팅" -> pre_actions may include movement if needed, but no "병원 준비사항 확인" and no "금식/복약 안내 확인".
+- Input: "토요일 병원 병문안" -> no medical or fasting pre_actions.
+- Input: "월요일 오전 8시 병원 건강검진" -> include "병원 준비사항 확인" and "금식/복약 안내 확인".
+- Input: "모레 오전 8시 위내시경 검사" -> include "병원 준비사항 확인" and "금식/복약 안내 확인".
+- Input: "내일 법원" or "내일 학교" -> do not infer legal, school, medical, or fasting pre_actions from the place alone.
 travel_mode must be "car", "transit", or null.
 Only include latitude/longitude values when they are explicitly known from the input or prior context.
 If a field is not known, use null or an empty array.
