@@ -457,6 +457,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     DateTime? to,
     required bool dismissibleProgress,
     String? additionalLabel,
+    bool diagnosticImport = false,
   }) async {
     setState(() {
       _isImportingNaverCalDav = true;
@@ -482,6 +483,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       to: to,
       mode: mode,
       skipUnchanged: true,
+      diagnosticImport: diagnosticImport,
       onProgress: (progress) {
         if (!mounted) {
           return;
@@ -502,6 +504,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _isImportingNaverCalDav = false;
     });
     _showSnack(result.message);
+    if (diagnosticImport) {
+      await _showNaverCalDavDiagnosticResult(result);
+    }
     if (result.success) {
       await _markNaverCalDavConnection(
         status: CalendarConnectionStatus.connected,
@@ -520,6 +525,85 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
     return result;
+  }
+
+  Future<void> _runNaverCalDavDiagnosticImport() async {
+    if (_isImportingNaverCalDav || _isTestingNaverCalDav) {
+      return;
+    }
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) {
+      _showSnack('먼저 PlanFlow에 로그인해 주세요.');
+      return;
+    }
+    if (!_hasNaverCalDavCredentials) {
+      final connected = await _connectNaverCalDavAndImport();
+      if (!connected || !mounted) {
+        return;
+      }
+    }
+    await _runNaverCalDavImport(
+      userId: userId,
+      mode: NaverCalDavSyncMode.quick,
+      dismissibleProgress: false,
+      additionalLabel: '진단',
+      diagnosticImport: true,
+    );
+  }
+
+  Future<void> _showNaverCalDavDiagnosticResult(
+    NaverCalDavSyncResult result,
+  ) {
+    final diagnostics = result.diagnostics;
+    final samples = diagnostics.samples;
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('네이버 동기화 진단 결과'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(diagnostics.toSummaryMessage()),
+              const SizedBox(height: 12),
+              Text(
+                '저장 0개라면 위 숫자에서 중복 스킵인지, 변경 없음인지, 저장 실패인지 확인할 수 있습니다.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (samples.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  '샘플 일정',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                ...samples.map(
+                  (sample) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      '${sample.title.isEmpty ? '제목 없음' : sample.title}\n'
+                      '원본 시작: ${sample.rawStart}\n'
+                      '저장 시작: ${_formatDateTime(sample.startAt.toLocal())}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        actions: [
+          _buildDialogButtonBar(
+            onCancel: () => Navigator.of(context).pop(),
+            onConfirm: () => Navigator.of(context).pop(),
+            cancelLabel: '닫기',
+            confirmLabel: '확인',
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _markNaverCalDavConnection({
@@ -1785,6 +1869,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ),
                             ],
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              key: const ValueKey(
+                                'settings-naver-caldav-diagnostic-button',
+                              ),
+                              onPressed: _isLoadingCalendarStatus ||
+                                      _isTestingNaverCalDav ||
+                                      _isImportingNaverCalDav ||
+                                      _isDisconnectingNaverCalendar
+                                  ? null
+                                  : _runNaverCalDavDiagnosticImport,
+                              icon: const Icon(Icons.bug_report_outlined),
+                              label: const Text('저장 누락 진단'),
+                            ),
                           ),
                           const SizedBox(height: 12),
                           Align(

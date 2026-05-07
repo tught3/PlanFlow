@@ -97,6 +97,74 @@ typedef NaverCalDavProgressCallback = void Function(
   NaverCalDavSyncProgress progress,
 );
 
+class NaverCalDavDebugSample {
+  const NaverCalDavDebugSample({
+    required this.calendarPath,
+    required this.href,
+    required this.uid,
+    required this.title,
+    required this.rawStart,
+    required this.rawEnd,
+    required this.startAt,
+    this.endAt,
+    this.etag,
+  });
+
+  final String calendarPath;
+  final String href;
+  final String uid;
+  final String title;
+  final String rawStart;
+  final String? rawEnd;
+  final DateTime startAt;
+  final DateTime? endAt;
+  final String? etag;
+
+  String toSafeLogLine() {
+    return 'calendar="$calendarPath", href="$href", uid="$uid", '
+        'title="$title", rawStart="$rawStart", rawEnd="${rawEnd ?? ''}", '
+        'startAt=${startAt.toIso8601String()}, '
+        'endAt=${endAt?.toIso8601String() ?? ''}, etag="${etag ?? ''}"';
+  }
+}
+
+class NaverCalDavSyncDiagnostics {
+  const NaverCalDavSyncDiagnostics({
+    this.rawEvents = 0,
+    this.parsedEvents = 0,
+    this.invalidEvents = 0,
+    this.saveCandidates = 0,
+    this.duplicateSkipped = 0,
+    this.unchangedSkipped = 0,
+    this.saved = 0,
+    this.failed = 0,
+    this.skipReasons = const <String, int>{},
+    this.samples = const <NaverCalDavDebugSample>[],
+  });
+
+  final int rawEvents;
+  final int parsedEvents;
+  final int invalidEvents;
+  final int saveCandidates;
+  final int duplicateSkipped;
+  final int unchangedSkipped;
+  final int saved;
+  final int failed;
+  final Map<String, int> skipReasons;
+  final List<NaverCalDavDebugSample> samples;
+
+  String toSummaryMessage() {
+    final reasonText = skipReasons.entries
+        .map((entry) => '${entry.key} ${entry.value}개')
+        .join(' · ');
+    return '읽음 $rawEvents개 · 파싱 성공 $parsedEvents개 · '
+        '파싱 실패 $invalidEvents개 · 저장 대상 $saveCandidates개 · '
+        '저장 $saved개 · 중복 스킵 $duplicateSkipped개 · '
+        '변경 없음 $unchangedSkipped개 · 실패 $failed개'
+        '${reasonText.isEmpty ? '' : ' ($reasonText)'}';
+  }
+}
+
 class NaverCalDavEvent {
   const NaverCalDavEvent({
     required this.uid,
@@ -163,6 +231,7 @@ class NaverCalDavSyncResult {
     this.from,
     this.to,
     this.error,
+    this.diagnostics = const NaverCalDavSyncDiagnostics(),
   });
 
   final bool success;
@@ -176,6 +245,56 @@ class NaverCalDavSyncResult {
   final DateTime? from;
   final DateTime? to;
   final Object? error;
+  final NaverCalDavSyncDiagnostics diagnostics;
+}
+
+class _NaverCalDavMutableDiagnostics {
+  int rawEvents = 0;
+  int parsedEvents = 0;
+  int invalidEvents = 0;
+  int saveCandidates = 0;
+  int duplicateSkipped = 0;
+  int unchangedSkipped = 0;
+  int saved = 0;
+  int failed = 0;
+  final Map<String, int> skipReasons = <String, int>{};
+  final List<NaverCalDavDebugSample> samples = <NaverCalDavDebugSample>[];
+
+  void addSkipReason(String reason) {
+    skipReasons.update(reason, (count) => count + 1, ifAbsent: () => 1);
+  }
+
+  void addSample(NaverCalDavDebugSample sample) {
+    if (samples.length >= 5) {
+      return;
+    }
+    samples.add(sample);
+  }
+
+  NaverCalDavSyncDiagnostics freeze() {
+    return NaverCalDavSyncDiagnostics(
+      rawEvents: rawEvents,
+      parsedEvents: parsedEvents,
+      invalidEvents: invalidEvents,
+      saveCandidates: saveCandidates,
+      duplicateSkipped: duplicateSkipped,
+      unchangedSkipped: unchangedSkipped,
+      saved: saved,
+      failed: failed,
+      skipReasons: Map<String, int>.unmodifiable(skipReasons),
+      samples: List<NaverCalDavDebugSample>.unmodifiable(samples),
+    );
+  }
+}
+
+class NaverCalDavParseStats {
+  NaverCalDavParseStats._({
+    required this.calendarPath,
+    required _NaverCalDavMutableDiagnostics diagnostics,
+  }) : _diagnostics = diagnostics;
+
+  final String calendarPath;
+  final _NaverCalDavMutableDiagnostics _diagnostics;
 }
 
 abstract class NaverCalDavCredentialStore {
@@ -399,6 +518,7 @@ class NaverCalDavService {
     String? appPassword,
     bool allowFullFallback = true,
     bool allowResourceFallback = true,
+    NaverCalDavParseStats? parseStats,
   }) async {
     final credentials = await _resolveCredentials(
       naverId: naverId,
@@ -418,6 +538,7 @@ class NaverCalDavService {
       naverId: credentials.naverId,
       appPassword: credentials.appPassword,
       body: _reportBody(startAt, endAt),
+      parseStats: parseStats,
     );
     debugPrint(
         'Naver CalDAV 범위 REPORT: $calendarPath / ${rangedEvents.length}개');
@@ -433,6 +554,7 @@ class NaverCalDavService {
       naverId: credentials.naverId,
       appPassword: credentials.appPassword,
       body: _reportBody(null, null, includeTimeRange: false),
+      parseStats: parseStats,
     );
     final filteredFallbackEvents =
         _filterEventsByRange(fallbackEvents, startAt, endAt);
@@ -451,6 +573,7 @@ class NaverCalDavService {
       endpoint: endpoint,
       naverId: credentials.naverId,
       appPassword: credentials.appPassword,
+      parseStats: parseStats,
     );
     final filteredResourceEvents =
         _filterEventsByRange(resourceEvents, startAt, endAt);
@@ -466,6 +589,7 @@ class NaverCalDavService {
     required String naverId,
     required String appPassword,
     required String body,
+    NaverCalDavParseStats? parseStats,
   }) async {
     final response = await _sendXmlRequest(
       method: 'REPORT',
@@ -485,13 +609,24 @@ class NaverCalDavService {
       if (icsData == null || icsData.trim().isEmpty) {
         continue;
       }
+      parseStats?._diagnostics.rawEvents += 1;
       final parsed = parseIcal(
         icsData,
         etag: _firstDescendantText(node, 'getetag') ?? '',
         href: _firstDescendantText(node, 'href') ?? '',
       );
       if (parsed != null) {
+        parseStats?._diagnostics.parsedEvents += 1;
+        final sample = _buildDebugSample(
+          parsed,
+          calendarPath: parseStats?.calendarPath ?? endpoint.path,
+        );
+        if (sample != null) {
+          parseStats?._diagnostics.addSample(sample);
+        }
         events.add(parsed);
+      } else {
+        parseStats?._diagnostics.invalidEvents += 1;
       }
     }
     return events;
@@ -516,6 +651,7 @@ class NaverCalDavService {
     required Uri endpoint,
     required String naverId,
     required String appPassword,
+    NaverCalDavParseStats? parseStats,
   }) async {
     final hrefs = await _discoverEventHrefs(
       endpoint: endpoint,
@@ -537,6 +673,7 @@ class NaverCalDavService {
             href: href,
             naverId: naverId,
             appPassword: appPassword,
+            parseStats: parseStats,
           ),
         ),
       );
@@ -597,6 +734,7 @@ class NaverCalDavService {
     required String href,
     required String naverId,
     required String appPassword,
+    NaverCalDavParseStats? parseStats,
   }) async {
     try {
       final endpoint = _baseUri.replace(path: href);
@@ -611,13 +749,24 @@ class NaverCalDavService {
         return null;
       }
       final icsData = utf8.decode(bytes, allowMalformed: true);
+      parseStats?._diagnostics.rawEvents += 1;
       final parsed = parseIcal(
         icsData,
         etag: '',
         href: href,
       );
       if (parsed == null) {
+        parseStats?._diagnostics.invalidEvents += 1;
         debugPrint('Naver CalDAV 이벤트 파싱 실패: $href');
+      } else {
+        parseStats?._diagnostics.parsedEvents += 1;
+        final sample = _buildDebugSample(
+          parsed,
+          calendarPath: parseStats?.calendarPath ?? endpoint.path,
+        );
+        if (sample != null) {
+          parseStats?._diagnostics.addSample(sample);
+        }
       }
       return parsed;
     } catch (error) {
@@ -632,10 +781,12 @@ class NaverCalDavService {
     DateTime? to,
     NaverCalDavSyncMode mode = NaverCalDavSyncMode.custom,
     bool skipUnchanged = true,
+    bool diagnosticImport = false,
     NaverCalDavProgressCallback? onProgress,
   }) async {
     final resolvedUserId = userId ?? _currentUserId ?? _currentSupabaseUserId();
     final range = _resolveSyncRange(mode: mode, from: from, to: to);
+    final diagnostics = _NaverCalDavMutableDiagnostics();
     if (resolvedUserId == null || resolvedUserId.isEmpty) {
       return NaverCalDavSyncResult(
         success: false,
@@ -643,6 +794,7 @@ class NaverCalDavService {
         mode: mode,
         from: range.from,
         to: range.to,
+        diagnostics: diagnostics.freeze(),
       );
     }
 
@@ -707,6 +859,10 @@ class NaverCalDavService {
           to: range.to,
           allowFullFallback: true,
           allowResourceFallback: true,
+          parseStats: NaverCalDavParseStats._(
+            calendarPath: calendar.path,
+            diagnostics: diagnostics,
+          ),
         );
         eventCount += events.length;
         for (var eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
@@ -716,11 +872,13 @@ class NaverCalDavService {
             calendarPath: calendar.path,
             syncedAt: syncedAt,
           );
-          final duplicateReason = await _sameTitleStartDuplicateReason(
-            eventModel,
-          );
+          final duplicateReason = diagnosticImport
+              ? null
+              : await _sameTitleStartDuplicateReason(eventModel);
           if (duplicateReason != null) {
             skippedCount += 1;
+            diagnostics.duplicateSkipped += 1;
+            diagnostics.addSkipReason('같은 제목+시간 중복');
             debugPrint(
               'Naver CalDAV duplicate skipped: '
               'calendar="${calendar.displayName}", '
@@ -743,11 +901,24 @@ class NaverCalDavService {
               failedEvents: failedCount,
             ));
             continue;
+          } else if (diagnosticImport) {
+            final broadDuplicateReason =
+                await _sameTitleStartDuplicateReason(eventModel);
+            if (broadDuplicateReason != null) {
+              debugPrint(
+                'Naver CalDAV diagnostic duplicate warning: '
+                'calendar="${calendar.displayName}", '
+                'uid="${event.uid}", externalId="${eventModel.externalId}", '
+                'title="${event.title}", reason=$broadDuplicateReason',
+              );
+            }
           }
           final skipReason =
               skipUnchanged ? await _skipUnchangedReason(eventModel) : null;
           if (skipReason != null) {
             skippedCount += 1;
+            diagnostics.unchangedSkipped += 1;
+            diagnostics.addSkipReason(skipReason);
             debugPrint(
               'Naver CalDAV skip reason: '
               'calendar="${calendar.displayName}", '
@@ -771,11 +942,15 @@ class NaverCalDavService {
             ));
             continue;
           }
+          diagnostics.saveCandidates += 1;
           try {
             await _eventRepository.upsertEventBySourceExternalId(eventModel);
             savedCount += 1;
+            diagnostics.saved += 1;
           } catch (error, stackTrace) {
             failedCount += 1;
+            diagnostics.failed += 1;
+            diagnostics.addSkipReason('Supabase 저장 실패');
             debugPrint(
               'Naver CalDAV event save failed: '
               'calendar="${calendar.displayName}", uid="${event.uid}", '
@@ -818,6 +993,14 @@ class NaverCalDavService {
         skippedEvents: skippedCount,
         failedEvents: failedCount,
       ));
+      final frozenDiagnostics = diagnostics.freeze();
+      debugPrint(
+        'Naver CalDAV diagnostics summary: '
+        '${frozenDiagnostics.toSummaryMessage()}',
+      );
+      for (final sample in frozenDiagnostics.samples) {
+        debugPrint('Naver CalDAV safe sample: ${sample.toSafeLogLine()}');
+      }
       return NaverCalDavSyncResult(
         success: failedCount == 0 || savedCount > 0 || skippedCount > 0,
         message: _syncSuccessMessage(
@@ -825,6 +1008,7 @@ class NaverCalDavService {
           savedCount: savedCount,
           skippedCount: skippedCount,
           failedCount: failedCount,
+          diagnostics: frozenDiagnostics,
         ),
         calendars: calendars.length,
         events: eventCount,
@@ -834,6 +1018,7 @@ class NaverCalDavService {
         mode: mode,
         from: range.from,
         to: range.to,
+        diagnostics: frozenDiagnostics,
       );
     } catch (error, stackTrace) {
       debugPrint('Naver CalDAV sync failed: $error');
@@ -845,6 +1030,7 @@ class NaverCalDavService {
         from: range.from,
         to: range.to,
         error: error,
+        diagnostics: diagnostics.freeze(),
       );
     }
   }
@@ -1078,6 +1264,28 @@ class NaverCalDavService {
       lastModifiedAt: _parseIcalDateTime(fields['LAST-MODIFIED']?.firstOrNull),
       isAllDay: startRaw.contains('VALUE=DATE') ||
           RegExp(r':\d{8}$').hasMatch(startRaw.trim()),
+    );
+  }
+
+  NaverCalDavDebugSample? _buildDebugSample(
+    NaverCalDavEvent event, {
+    required String calendarPath,
+  }) {
+    final fields = _parseIcalFields(event.icsData);
+    final rawStart = fields['DTSTART']?.firstOrNull;
+    if (rawStart == null || rawStart.trim().isEmpty) {
+      return null;
+    }
+    return NaverCalDavDebugSample(
+      calendarPath: calendarPath,
+      href: event.href,
+      uid: event.uid,
+      title: event.title,
+      rawStart: rawStart,
+      rawEnd: fields['DTEND']?.firstOrNull,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      etag: event.etag,
     );
   }
 
@@ -1636,6 +1844,7 @@ $timeRange      </c:comp-filter>
     required int savedCount,
     required int skippedCount,
     required int failedCount,
+    NaverCalDavSyncDiagnostics? diagnostics,
   }) {
     if (savedCount > 0) {
       final parts = <String>[
@@ -1648,11 +1857,14 @@ $timeRange      </c:comp-filter>
     if (failedCount > 0) {
       return '네이버 CalDAV에서 일정 $readCount개를 읽었지만 $failedCount개 저장에 실패했습니다. Supabase 스키마/RLS 또는 네트워크 로그를 확인해 주세요.';
     }
+    final diagnosticSummary = diagnostics?.toSummaryMessage();
     if (skippedCount > 0) {
-      return '네이버 CalDAV에서 일정 $readCount개를 읽었고, 기존 일정 $skippedCount개는 중복 또는 변경 없음으로 건너뛰었습니다.';
+      return '네이버 CalDAV에서 일정 $readCount개를 읽었고, 기존 일정 $skippedCount개는 중복 또는 변경 없음으로 건너뛰었습니다.'
+          '${diagnosticSummary == null ? '' : ' 진단: $diagnosticSummary'}';
     }
     if (readCount > 0) {
-      return '네이버 CalDAV에서 일정 $readCount개를 읽었지만 저장할 새 일정이 없습니다.';
+      return '네이버 CalDAV에서 일정 $readCount개를 읽었지만 저장할 새 일정이 없습니다.'
+          '${diagnosticSummary == null ? '' : ' 진단: $diagnosticSummary'}';
     }
     return '네이버 CalDAV 연결은 성공했지만 가져올 일정이 없습니다.';
   }

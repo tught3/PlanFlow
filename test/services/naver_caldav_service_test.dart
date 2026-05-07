@@ -478,6 +478,98 @@ END:VCALENDAR
     expect(repository.upserted, isEmpty);
     expect(progress.map((item) => item.stage),
         contains(NaverCalDavSyncStage.saving));
+    expect(result.diagnostics.rawEvents, 1);
+    expect(result.diagnostics.parsedEvents, 1);
+    expect(result.diagnostics.unchangedSkipped, 1);
+    expect(result.diagnostics.skipReasons['external_etag 일치'], 1);
+    expect(result.diagnostics.samples.single.rawStart,
+        'DTSTART;TZID=Asia/Seoul:20260505T100000');
+  });
+
+  test('syncAll diagnostic import bypasses broad title and start duplicate',
+      () async {
+    final broadDuplicate = EventModel(
+      id: 'manual-1',
+      userId: 'user-1',
+      title: '한강 피크닉',
+      startAt: DateTime.utc(2026, 5, 5, 1),
+      source: 'manual',
+    );
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        _eventReportXml,
+      ],
+    );
+    final repository = _FakeEventRepository(
+      seedEvents: <EventModel>[broadDuplicate],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.quick,
+      diagnosticImport: true,
+    );
+
+    expect(result.success, isTrue);
+    expect(result.readEvents, 1);
+    expect(result.createdOrUpdated, 1);
+    expect(result.skipped, 0);
+    expect(repository.upserted, hasLength(1));
+    expect(result.diagnostics.saveCandidates, 1);
+    expect(result.diagnostics.saved, 1);
+    expect(result.diagnostics.duplicateSkipped, 0);
+  });
+
+  test('syncAll normal import records broad duplicate skip separately',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        _eventReportXml,
+      ],
+    );
+    final repository = _FakeEventRepository(
+      seedEvents: <EventModel>[
+        EventModel(
+          id: 'manual-1',
+          userId: 'user-1',
+          title: '한강 피크닉',
+          startAt: DateTime.utc(2026, 5, 5, 1),
+          source: 'manual',
+        ),
+      ],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+
+    expect(result.success, isTrue);
+    expect(result.createdOrUpdated, 0);
+    expect(result.skipped, 1);
+    expect(repository.upserted, isEmpty);
+    expect(result.diagnostics.duplicateSkipped, 1);
+    expect(result.diagnostics.skipReasons['같은 제목+시간 중복'], 1);
   });
 
   test('syncAll deletes suspicious imported events before re-syncing',
