@@ -343,3 +343,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Added `scripts/gsd-context-hygiene.mjs` so the AGENTS-required context hygiene command now exists in this repo.
 - The script is read-only: it finds the repo root, checks `AGENTS.md`, `.planning/STATE.md`, `.planning/context/ACTIVE_SUMMARY.md`, reports optional planning/codebase docs, prints the latest active checkpoint, and warns about a dirty worktree without modifying files.
 - Verification: `node scripts/gsd-context-hygiene.mjs` passed and reported the expected dirty-worktree warning for the newly added script before commit.
+
+## 2026-05-07 Home weather refresh and Naver dialog readability checkpoint
+- Simplified the Home header so the user-facing summary now focuses on weather and schedule chips, while the noisy location chip/detail sheet was removed from the visible Home flow.
+- Reduced weather latency by loading last-known location first on resume, refreshing again with current location when available, and parallelizing weather + reverse-geocoding requests inside `HomeHeaderSummaryService`.
+- Reworked the Naver CalDAV connection dialog into a keyboard-safe, scrollable layout with a boxed and enlarged ID/app-password guidance section and a bold color-emphasized warning that the app password is not the normal Naver password.
+- Verification: `flutter analyze`, full `flutter test` (131 passed), `flutter build apk --debug`, `adb uninstall com.example.planflow`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/com.example.planflow.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER`, and focus checks on `com.example.planflow/.MainActivity` all passed on the connected device. `scripts/gsd-context-hygiene.mjs` was run before the work and remained present.

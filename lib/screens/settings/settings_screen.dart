@@ -855,36 +855,118 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return showDialog<_NaverCalDavCredentials>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('네이버 캘린더 연결'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'PlanFlow가 네이버 CalDAV 서버에 직접 연결해 기존 일정을 가져옵니다.\n\n'
-                'ID는 로그인 전용 ID가 아니라 원본 네이버 ID를 입력해 주세요.\n\n'
-                '앱 비밀번호는 네이버 앱/웹에서 2단계 인증 관리 → 애플리케이션 비밀번호 생성 → Android 선택 후 발급받은 값을 입력해 주세요. 네이버 일반 비밀번호가 아닙니다.',
+        final theme = Theme.of(context);
+        final bodyStyle = theme.textTheme.bodyMedium?.copyWith(
+              fontSize: (theme.textTheme.bodyMedium?.fontSize ?? 14) + 2,
+              height: 1.45,
+            ) ??
+            const TextStyle(fontSize: 16, height: 1.45);
+
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 160),
+          padding:
+              EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: AlertDialog(
+            scrollable: true,
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            title: const Text('네이버 캘린더 연결'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'PlanFlow가 네이버 CalDAV 서버에 직접 연결해 기존 일정을 가져옵니다.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color:
+                          PlanFlowColors.primaryFaint.withValues(alpha: 0.38),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: PlanFlowColors.primary.withValues(alpha: 0.16),
+                      ),
+                    ),
+                    child: DefaultTextStyle(
+                      style: bodyStyle.copyWith(
+                        color: PlanFlowColors.textPrimary,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'ID는 로그인 전용 ID가 아니라 원본 네이버 ID를 입력해 주세요.',
+                          ),
+                          const SizedBox(height: 10),
+                          Text.rich(
+                            TextSpan(
+                              text:
+                                  '앱 비밀번호는 네이버 앱/웹에서 2단계 인증 관리 → 애플리케이션 비밀번호 생성 → Android 선택 후 발급받은 값을 입력해 주세요. ',
+                              children: [
+                                TextSpan(
+                                  text: '네이버 일반 비밀번호가 아닙니다.',
+                                  style: bodyStyle.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: theme.colorScheme.error,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: idController,
+                    decoration: const InputDecoration(
+                      labelText: '네이버 ID',
+                      hintText: '예: tught3',
+                    ),
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: passwordController,
+                    decoration: const InputDecoration(
+                      labelText: '앱 비밀번호',
+                      hintText: '네이버 보안설정에서 발급한 비밀번호',
+                    ),
+                    obscureText: true,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) {
+                      Navigator.of(context).pop(
+                        _NaverCalDavCredentials(
+                          naverId: idController.text,
+                          appPassword: passwordController.text,
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '연결에 성공한 경우에만 이 기기의 보안 저장소에 저장되며, Supabase에는 저장하지 않습니다.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: idController,
-                decoration: const InputDecoration(
-                  labelText: '네이버 ID',
-                  hintText: '예: tught3',
-                ),
-                textInputAction: TextInputAction.next,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: passwordController,
-                decoration: const InputDecoration(
-                  labelText: '앱 비밀번호',
-                  hintText: '네이버 보안설정에서 발급한 비밀번호',
-                ),
-                obscureText: true,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) {
+            ),
+            actions: [
+              _buildDialogButtonBar(
+                onCancel: () => Navigator.of(context).pop(),
+                onConfirm: () {
                   Navigator.of(context).pop(
                     _NaverCalDavCredentials(
                       naverId: idController.text,
@@ -892,31 +974,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   );
                 },
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '연결에 성공한 경우에만 이 기기의 보안 저장소에 저장되며, Supabase에는 저장하지 않습니다.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
+                cancelLabel: '취소',
+                confirmLabel: '연결하고 가져오기',
               ),
             ],
           ),
-          actions: [
-            _buildDialogButtonBar(
-              onCancel: () => Navigator.of(context).pop(),
-              onConfirm: () {
-                Navigator.of(context).pop(
-                  _NaverCalDavCredentials(
-                    naverId: idController.text,
-                    appPassword: passwordController.text,
-                  ),
-                );
-              },
-              cancelLabel: '취소',
-              confirmLabel: '연결하고 가져오기',
-            ),
-          ],
         );
       },
     );

@@ -17,9 +17,8 @@ class HomeHeaderSummaryService {
   }) async {
     if (location == null) {
       return const HomeHeaderSummary(
-        locationLabel: '위치 확인 중',
         weatherLabel: '날씨 확인 중',
-        detailLine: '위치 권한을 허용하면 현재 위치와 날씨를 보여드려요.',
+        detailLine: '날씨를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
         isReady: false,
       );
     }
@@ -48,8 +47,14 @@ class HomeHeaderSummaryService {
         },
       );
 
-      final reverseResponse = await _safeGet(client, reverseUri);
-      final weatherResponse = await _safeGet(client, weatherUri);
+      final reverseResponseFuture = _safeGet(client, reverseUri);
+      final weatherResponseFuture = _safeGet(client, weatherUri);
+      final responses = await Future.wait<http.Response?>([
+        reverseResponseFuture,
+        weatherResponseFuture,
+      ]);
+      final reverseResponse = responses[0];
+      final weatherResponse = responses[1];
       final locationLabel = reverseResponse == null
           ? null
           : _parseLocationLabel(reverseResponse.body);
@@ -70,7 +75,6 @@ class HomeHeaderSummaryService {
       debugPrint('Home header summary load failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return const HomeHeaderSummary(
-        locationLabel: '위치 확인 중',
         weatherLabel: '날씨 확인 중',
         detailLine: '날씨를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
         isReady: false,
@@ -256,10 +260,10 @@ class HomeHeaderSummaryService {
 
 class HomeHeaderSummary {
   const HomeHeaderSummary({
-    required this.locationLabel,
     required this.weatherLabel,
     required this.detailLine,
     required this.isReady,
+    this.locationLabel = '위치 확인 중',
     this.weatherIcon = Icons.cloud_outlined,
   });
 

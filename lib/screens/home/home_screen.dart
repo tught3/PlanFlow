@@ -36,7 +36,9 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  final HomeHeaderSummaryService _headerSummaryService =
+      HomeHeaderSummaryService();
   EventModel? _pastTodayEvent;
   List<EventModel> _todayEvents = const <EventModel>[];
   List<EventModel> _upcomingEvents = const <EventModel>[];
@@ -49,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _loadTodayEvents();
     unawaited(_loadHomeHeaderSummary());
@@ -57,7 +60,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadTodayEvents();
+      unawaited(_loadHomeHeaderSummary());
+    }
   }
 
   void _handleEventRefresh() {
@@ -74,9 +86,23 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final permissionService = AppPermissionService();
       final locationGranted = await permissionService.checkLocationPermission();
-      final location =
-          locationGranted ? await permissionService.getCurrentLocation() : null;
-      final summary = await HomeHeaderSummaryService().load(location: location);
+      GeoPoint? location;
+      if (locationGranted) {
+        final lastKnownLocation =
+            await permissionService.getLastKnownLocation();
+        if (lastKnownLocation != null && mounted) {
+          final cachedSummary = await _headerSummaryService.load(
+            location: lastKnownLocation,
+          );
+          setState(() {
+            _headerSummary = cachedSummary;
+            _headerSummaryLoading = false;
+          });
+        }
+        location = await permissionService.getCurrentLocation();
+        location ??= lastKnownLocation;
+      }
+      final summary = await _headerSummaryService.load(location: location);
       if (mounted) {
         setState(() {
           _headerSummary = summary;
@@ -89,7 +115,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _headerSummary = const HomeHeaderSummary(
-            locationLabel: '위치 확인 중',
             weatherLabel: '날씨 확인 중',
             detailLine: '날씨를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
             isReady: false,
@@ -291,25 +316,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 runSpacing: 8,
                                 children: [
                                   _HomeInfoChip(
-                                    icon: Icons.place_outlined,
-                                    label: _headerSummaryLoading
-                                        ? '위치 확인 중'
-                                        : (_headerSummary?.locationLabel ??
-                                            '위치 확인 중'),
-                                    backgroundColor:
-                                        Colors.white.withValues(alpha: 0.16),
-                                    borderColor:
-                                        Colors.white.withValues(alpha: 0.30),
-                                    foregroundColor: Colors.white,
-                                    onTap: _headerSummaryLoading
-                                        ? null
-                                        : () => _showHeaderSummarySheet(
-                                              context,
-                                              title: '위치 정보',
-                                              summary: _headerSummary,
-                                            ),
-                                  ),
-                                  _HomeInfoChip(
                                     icon: _headerSummary?.weatherIcon ??
                                         Icons.wb_sunny_outlined,
                                     label: _headerSummaryLoading
@@ -325,7 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         ? null
                                         : () => _showHeaderSummarySheet(
                                               context,
-                                              title: '현재 날씨',
+                                              title: '날씨 정보',
                                               summary: _headerSummary,
                                             ),
                                   ),
@@ -758,28 +764,18 @@ Future<void> _showHeaderSummarySheet(
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    '위치와 날씨를 한눈에 확인할 수 있어요.',
+                    '오늘 날씨를 한눈에 확인할 수 있어요.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: PlanFlowColors.textSecondary,
                         ),
                   ),
                   const SizedBox(height: 16),
                   _SummaryDetailTile(
-                    icon: Icons.place_outlined,
-                    accentColor: const Color(0xFF2F6EA9),
-                    backgroundColor: const Color(0xFFEAF4FF),
-                    title: '위치 정보',
-                    value: effectiveSummary?.locationLabel ?? '위치 확인 중',
-                    detail: effectiveSummary?.detailLine ??
-                        '위치 권한을 허용하면 현재 위치와 날씨를 보여드려요.',
-                  ),
-                  const SizedBox(height: 12),
-                  _SummaryDetailTile(
                     icon: effectiveSummary?.weatherIcon ??
                         Icons.wb_sunny_outlined,
                     accentColor: const Color(0xFF7A5C2E),
                     backgroundColor: const Color(0xFFFFF4E6),
-                    title: '날씨',
+                    title: '날씨 정보',
                     value: effectiveSummary?.weatherLabel ?? '날씨 확인 중',
                     detail: effectiveSummary?.detailLine ?? '현재 날씨를 불러오지 못했어요.',
                   ),
