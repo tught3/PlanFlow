@@ -372,3 +372,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Updated voice command routing so lookup phrases open the query flow and show a Korean schedule summary card with the requested date range, event count, times, titles, and locations.
 - Query results now filter explicit ranges like today/tomorrow/this week and show a natural empty-state message when there are no matching events.
 - Verification: `flutter analyze`, targeted voice tests, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch via `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1` all passed on `192.168.0.103:5555`.
+
+## 2026-05-07 Voice query card timeline checkpoint
+- Reworked voice lookup results so `오늘/내일/이번 주 일정 알려줘` flows no longer dump a text list; they now show a compact overview card plus date-grouped timeline cards with time buckets.
+- Added a query timeline grouping helper and a card layout that mirrors the home schedule style more closely, while keeping query actions like open detail, edit, and delete intact.
+- Updated voice query tests to assert the card/timeline structure instead of the previous text-heavy summary.
+- Verification: `flutter analyze`, targeted voice tests, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch via `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1` all passed on `192.168.0.103:5555`.

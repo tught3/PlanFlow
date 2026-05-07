@@ -302,27 +302,103 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       return '$rangeLabel 일정은 아직 없습니다.';
     }
 
-    final highlights = events.take(4).map((event) {
-      final time = _formatEventTime(event.startAt);
-      final location = event.location == null || event.location!.trim().isEmpty
-          ? ''
-          : ', 장소는 ${event.location}';
-      return '$time ${event.title}$location';
-    }).join('. ');
-    final suffix =
-        events.length > 4 ? ' 외 ${events.length - 4}개 일정이 더 있습니다.' : '.';
-    return '$rangeLabel 일정은 ${events.length}개입니다. $highlights$suffix';
+    return '$rangeLabel 일정은 ${events.length}개입니다.';
   }
 
-  String _formatEventTime(DateTime? value) {
+  List<_QueryDayGroup> _buildQueryTimeline(List<EventModel> events) {
+    final ordered = [...events]..sort((a, b) {
+        final aStart = a.startAt;
+        final bStart = b.startAt;
+        if (aStart == null && bStart == null) {
+          return a.title.compareTo(b.title);
+        }
+        if (aStart == null) {
+          return 1;
+        }
+        if (bStart == null) {
+          return -1;
+        }
+        final compare = aStart.compareTo(bStart);
+        if (compare != 0) {
+          return compare;
+        }
+        return a.title.compareTo(b.title);
+      });
+
+    final grouped = <DateTime, List<EventModel>>{};
+    final nullStartEvents = <EventModel>[];
+    for (final event in ordered) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        nullStartEvents.add(event);
+        continue;
+      }
+      final dayKey = DateTime(startAt.year, startAt.month, startAt.day);
+      grouped.putIfAbsent(dayKey, () => <EventModel>[]).add(event);
+    }
+
+    final dayGroups = grouped.entries.map((entry) {
+      final buckets = <String, List<EventModel>>{
+        '오전': <EventModel>[],
+        '오후': <EventModel>[],
+        '저녁': <EventModel>[],
+        '시간 미정': <EventModel>[],
+      };
+
+      for (final event in entry.value) {
+        final label = _queryBucketLabel(event.startAt);
+        buckets.putIfAbsent(label, () => <EventModel>[]).add(event);
+      }
+
+      return _QueryDayGroup(
+        label: _koreanDateLabel(entry.key),
+        events: entry.value,
+        buckets: buckets.entries
+            .where((bucket) => bucket.value.isNotEmpty)
+            .map((bucket) => MapEntry(bucket.key, bucket.value))
+            .toList(growable: false),
+      );
+    }).toList(growable: false);
+
+    if (nullStartEvents.isNotEmpty) {
+      dayGroups.add(
+        _QueryDayGroup(
+          label: '시간 미정',
+          events: nullStartEvents,
+          buckets: <MapEntry<String, List<EventModel>>>[
+            MapEntry<String, List<EventModel>>('시간 미정', nullStartEvents),
+          ],
+        ),
+      );
+    }
+
+    return dayGroups;
+  }
+
+  String _queryBucketLabel(DateTime? value) {
     if (value == null) {
       return '시간 미정';
     }
-    final period = value.hour < 12 ? '오전' : '오후';
-    final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
-    final minute =
-        value.minute == 0 ? '' : ' ${value.minute.toString().padLeft(2, '0')}분';
-    return '$period $hour시$minute';
+    if (value.hour < 12) {
+      return '오전';
+    }
+    if (value.hour < 18) {
+      return '오후';
+    }
+    return '저녁';
+  }
+
+  String _koreanDateLabel(DateTime value) {
+    const weekdays = <int, String>{
+      DateTime.monday: '월요일',
+      DateTime.tuesday: '화요일',
+      DateTime.wednesday: '수요일',
+      DateTime.thursday: '목요일',
+      DateTime.friday: '금요일',
+      DateTime.saturday: '토요일',
+      DateTime.sunday: '일요일',
+    };
+    return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
   }
 
   String? _resolveUserId() {
@@ -665,29 +741,43 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                 ),
                 const SizedBox(height: 8),
                 if (_isQuery) ...[
-                  _QuerySummaryCard(
+                  _QueryOverviewCard(
                     summary: _querySummaryText(_events),
                     rangeLabel: _queryRangeLabel(widget.rawText),
                   ),
                   const SizedBox(height: 12),
-                ],
-                ..._events.map(
-                  (event) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _EventCandidateCard(
-                      event: event,
-                      actionLabel: _candidateActionLabel(),
-                      actionIcon: _candidateActionIcon(),
-                      isDanger: _isDelete,
-                      disabled: _isDeleting,
-                      onTap: () => _isDelete
-                          ? _confirmDelete(event)
-                          : _isEdit
-                              ? _openEdit(event)
-                              : _openQueryResult(event),
+                  ..._buildQueryTimeline(_events).map(
+                    (dayGroup) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _QueryDayGroupCard(
+                        dayGroup: dayGroup,
+                        actionLabel: _candidateActionLabel(),
+                        actionIcon: _candidateActionIcon(),
+                        isDanger: _isDelete,
+                        disabled: _isDeleting,
+                        onTapEvent: (event) => _openQueryResult(event),
+                      ),
                     ),
                   ),
-                ),
+                ] else ...[
+                  ..._events.map(
+                    (event) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _EventCandidateCard(
+                        event: event,
+                        actionLabel: _candidateActionLabel(),
+                        actionIcon: _candidateActionIcon(),
+                        isDanger: _isDelete,
+                        disabled: _isDeleting,
+                        onTap: () => _isDelete
+                            ? _confirmDelete(event)
+                            : _isEdit
+                                ? _openEdit(event)
+                                : _openQueryResult(event),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
@@ -777,8 +867,20 @@ class _CommandCard extends StatelessWidget {
   }
 }
 
-class _QuerySummaryCard extends StatelessWidget {
-  const _QuerySummaryCard({
+class _QueryDayGroup {
+  const _QueryDayGroup({
+    required this.label,
+    required this.events,
+    required this.buckets,
+  });
+
+  final String label;
+  final List<EventModel> events;
+  final List<MapEntry<String, List<EventModel>>> buckets;
+}
+
+class _QueryOverviewCard extends StatelessWidget {
+  const _QueryOverviewCard({
     required this.summary,
     required this.rangeLabel,
   });
@@ -840,6 +942,270 @@ class _QuerySummaryCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _QueryDayGroupCard extends StatelessWidget {
+  const _QueryDayGroupCard({
+    required this.dayGroup,
+    required this.actionLabel,
+    required this.actionIcon,
+    required this.isDanger,
+    required this.disabled,
+    required this.onTapEvent,
+  });
+
+  final _QueryDayGroup dayGroup;
+  final String actionLabel;
+  final IconData actionIcon;
+  final bool isDanger;
+  final bool disabled;
+  final ValueChanged<EventModel> onTapEvent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      elevation: 0,
+      color: PlanFlowColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: PlanFlowColors.primaryFaint,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    dayGroup.label,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${dayGroup.events.length}개',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...dayGroup.buckets.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _QueryBucketSection(
+                  label: entry.key,
+                  events: entry.value,
+                  actionLabel: actionLabel,
+                  actionIcon: actionIcon,
+                  isDanger: isDanger,
+                  disabled: disabled,
+                  onTapEvent: onTapEvent,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QueryBucketSection extends StatelessWidget {
+  const _QueryBucketSection({
+    required this.label,
+    required this.events,
+    required this.actionLabel,
+    required this.actionIcon,
+    required this.isDanger,
+    required this.disabled,
+    required this.onTapEvent,
+  });
+
+  final String label;
+  final List<EventModel> events;
+  final String actionLabel;
+  final IconData actionIcon;
+  final bool isDanger;
+  final bool disabled;
+  final ValueChanged<EventModel> onTapEvent;
+
+  @override
+  Widget build(BuildContext context) {
+    if (events.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: PlanFlowColors.primaryMid,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+        ...events.map(
+          (event) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _QueryEventCard(
+              event: event,
+              actionLabel: actionLabel,
+              actionIcon: actionIcon,
+              isDanger: isDanger,
+              disabled: disabled,
+              onTap: () => onTapEvent(event),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QueryEventCard extends StatelessWidget {
+  const _QueryEventCard({
+    required this.event,
+    required this.actionLabel,
+    required this.actionIcon,
+    required this.isDanger,
+    required this.disabled,
+    required this.onTap,
+  });
+
+  final EventModel event;
+  final String actionLabel;
+  final IconData actionIcon;
+  final bool isDanger;
+  final bool disabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final startAt = event.startAt;
+    final timeStr = _formatTimeChip(startAt);
+
+    return Card(
+      elevation: 0,
+      color: PlanFlowColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: disabled ? null : onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: PlanFlowColors.primaryFaint,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    timeStr,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontWeight: FontWeight.w800,
+                      height: 1.05,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      event.title,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      startAt == null
+                          ? '시간 미정'
+                          : '${MaterialLocalizations.of(context).formatFullDate(startAt)} · ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(startAt))}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                    ),
+                    if ((event.location ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        event.location!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton.tonalIcon(
+                onPressed: disabled ? null : onTap,
+                icon: Icon(actionIcon),
+                label: Text(actionLabel),
+                style: FilledButton.styleFrom(
+                  foregroundColor: isDanger ? const Color(0xFFB42318) : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatTimeChip(DateTime? value) {
+    if (value == null) {
+      return '미정';
+    }
+    final hour = value.hour;
+    final period = hour < 12
+        ? '오전'
+        : hour < 18
+            ? '오후'
+            : '저녁';
+    final displayHour = hour % 12 == 0 ? 12 : hour % 12;
+    final minute =
+        value.minute == 0 ? '' : '\n${value.minute.toString().padLeft(2, '0')}';
+    return '$period\n$displayHour시$minute';
   }
 }
 

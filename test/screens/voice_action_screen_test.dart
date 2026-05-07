@@ -116,8 +116,9 @@ void main() {
 
     expect(find.text('오늘 일정 요약'), findsOneWidget);
     expect(find.textContaining('오늘 일정은 1개입니다'), findsOneWidget);
-    expect(find.textContaining('오전 11시 공임나라 방문'), findsOneWidget);
     expect(find.text('공임나라 방문'), findsOneWidget);
+    expect(find.textContaining('오전'), findsWidgets);
+    expect(find.textContaining('11시'), findsWidgets);
     expect(find.text('내일 미팅'), findsNothing);
   });
 
