@@ -161,18 +161,23 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     await _moveMapTo(result);
   }
 
-  Future<void> _selectTappedPoint(NLatLng latLng) async {
+  Future<void> _selectMapPoint(
+    NLatLng latLng, {
+    bool longPressed = false,
+  }) async {
     final query = _queryController.text.trim();
     final result = LocationLookupResult(
       name: query.isEmpty ? '지도에서 선택한 위치' : query,
-      address: '지도에서 직접 선택한 위치',
+      address: longPressed ? '지도에서 길게 눌러 지정한 위치' : '지도에서 직접 선택한 위치',
       latitude: latLng.latitude,
       longitude: latLng.longitude,
       provider: LocationLookupProvider.manual,
     );
     setState(() {
       _selected = result;
-      _message = '지도에서 위치를 선택했어요. 아래 버튼으로 확정해 주세요.';
+      _message = longPressed
+          ? '길게 누른 위치로 바꿨어요. 아래 버튼으로 확정해 주세요.'
+          : '지도에서 위치를 선택했어요. 아래 버튼으로 확정해 주세요.';
     });
     await _moveMapTo(result);
   }
@@ -291,8 +296,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                                 await _moveMapTo(selected);
                               }
                             },
-                            onMapTapped: (_, latLng) =>
-                                _selectTappedPoint(latLng),
+                            onMapTapped: (_, latLng) => _selectMapPoint(latLng),
+                            onMapLongTapped: (_, latLng) => _selectMapPoint(
+                              latLng,
+                              longPressed: true,
+                            ),
                           )
                         : _canUseGoogleMap
                             ? google_maps.GoogleMap(
@@ -330,12 +338,25 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                                     await _moveGoogleMapTo(selected);
                                   }
                                 },
-                                onTap: (latLng) => _selectTappedPoint(
+                                onTap: (latLng) => _selectMapPoint(
                                   NLatLng(latLng.latitude, latLng.longitude),
+                                ),
+                                onLongPress: (latLng) => _selectMapPoint(
+                                  NLatLng(latLng.latitude, latLng.longitude),
+                                  longPressed: true,
                                 ),
                               )
                             : _MapUnavailablePanel(query: widget.initialQuery),
                   ),
+                  if (_canUseNaverMap || _canUseGoogleMap)
+                    Positioned(
+                      left: 16,
+                      right: 16,
+                      bottom: 16,
+                      child: _MapGestureHint(
+                        hasSelectedLocation: _selected != null,
+                      ),
+                    ),
                   if (_mapLoadMessage != null)
                     Positioned(
                       left: 16,
@@ -358,6 +379,57 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               onConfirm: _confirm,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapGestureHint extends StatelessWidget {
+  const _MapGestureHint({required this.hasSelectedLocation});
+
+  final bool hasSelectedLocation;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: Alignment.center,
+      child: Material(
+        elevation: 5,
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: PlanFlowColors.surface.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: PlanFlowColors.primaryFaint),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.touch_app_outlined,
+                size: 18,
+                color: PlanFlowColors.primary,
+              ),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  hasSelectedLocation
+                      ? '다른 곳을 길게 누르면 위치를 바꿀 수 있어요'
+                      : '지도에서 원하는 곳을 길게 눌러 위치를 지정하세요',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
