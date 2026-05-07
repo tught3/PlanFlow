@@ -416,3 +416,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Filtered diagnostic sample events to the selected sync range, preventing old out-of-range broadcast/subscription schedules from appearing as misleading samples in quick-sync diagnostics.
 - Added result-specific Korean guidance for saved, failed, duplicate-skipped, unchanged-skipped, invalid-date, and out-of-range cases.
 - Verification: `node scripts/gsd-context-hygiene.mjs`, targeted `test/services/naver_caldav_service_test.dart`, full `flutter test` (138 passed), `flutter analyze`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed on `192.168.0.103:5555`.
+
+## 2026-05-08 Naver CalDAV unchanged-skip correction checkpoint
+- Interpreted the updated save-missing diagnostic: Naver returned in-range events, but they were skipped as `external_updated_at` not newer than existing rows.
+- Fixed the unchanged-skip logic so an existing `external_id` is not skipped solely by `external_updated_at` when the incoming title, start/end time, location, or memo differs from the stored row.
+- Added a regression test proving a Naver event with older external update time still updates the PlanFlow row when the actual event content changed.
+- Verification: `dart format`, targeted `test/services/naver_caldav_service_test.dart`, `flutter analyze`, full `flutter test` (139 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed on `192.168.0.103:5555`.

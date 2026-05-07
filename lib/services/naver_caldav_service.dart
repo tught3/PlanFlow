@@ -1144,9 +1144,40 @@ class NaverCalDavService {
     if (incomingUpdatedAt == null || existingUpdatedAt == null) {
       return null;
     }
+    if (_hasMeaningfulEventDifference(event, existing)) {
+      return null;
+    }
     return !incomingUpdatedAt.toUtc().isAfter(existingUpdatedAt.toUtc())
         ? 'external_updated_at이 기존값보다 최신이 아님'
         : null;
+  }
+
+  bool _hasMeaningfulEventDifference(EventModel incoming, EventModel existing) {
+    if (incoming.title.trim() != existing.title.trim()) {
+      return true;
+    }
+    if (!_sameInstant(incoming.startAt, existing.startAt)) {
+      return true;
+    }
+    if (!_sameInstant(incoming.endAt, existing.endAt)) {
+      return true;
+    }
+    if ((_blankToNull(incoming.location) ?? '') !=
+        (_blankToNull(existing.location) ?? '')) {
+      return true;
+    }
+    if ((_blankToNull(incoming.memo) ?? '') !=
+        (_blankToNull(existing.memo) ?? '')) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _sameInstant(DateTime? left, DateTime? right) {
+    if (left == null || right == null) {
+      return left == null && right == null;
+    }
+    return left.toUtc().isAtSameMomentAs(right.toUtc());
   }
 
   Future<String?> _sameTitleStartDuplicateReason(EventModel event) async {

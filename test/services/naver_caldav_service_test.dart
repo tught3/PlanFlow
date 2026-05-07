@@ -486,6 +486,61 @@ END:VCALENDAR
         'DTSTART;TZID=Asia/Seoul:20260505T100000');
   });
 
+  test(
+      'syncAll updates existing event when content changed despite older updated timestamp',
+      () async {
+    final incomingExternalId = NaverCalDavEvent(
+      uid: 'naver-event-1',
+      href: '/calendars/tught3/default/event-1.ics',
+      etag: '"etag-1"',
+      icsData: _eventIcs,
+      title: '한강 피크닉',
+      startAt: DateTime.utc(2026, 5, 5, 1),
+    )
+        .toEventModel(
+          userId: 'user-1',
+          calendarPath: '/calendars/tught3/default/',
+          syncedAt: DateTime.utc(2026, 5, 5, 3),
+        )
+        .externalId!;
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        _eventReportXml,
+      ],
+    );
+    final repository = _FakeEventRepository(
+      existingEvent: EventModel(
+        id: 'existing-1',
+        userId: 'user-1',
+        title: '한강 피크닉',
+        startAt: DateTime.utc(2026, 5, 4, 1),
+        source: 'naver_caldav',
+        externalId: incomingExternalId,
+        externalUpdatedAt: DateTime.utc(2026, 5, 7),
+      ),
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+
+    expect(result.createdOrUpdated, 1);
+    expect(result.skipped, 0);
+    expect(result.diagnostics.saveCandidates, 1);
+    expect(result.diagnostics.unchangedSkipped, 0);
+    expect(repository.upserted.single.startAt, DateTime.utc(2026, 5, 5, 1));
+  });
+
   test('syncAll diagnostic import bypasses broad title and start duplicate',
       () async {
     final broadDuplicate = EventModel(
@@ -669,10 +724,12 @@ END:VCALENDAR
 class _FakeEventRepository extends EventRepository {
   _FakeEventRepository({
     this.existing,
+    this.existingEvent,
     List<EventModel> seedEvents = const <EventModel>[],
   }) : events = List<EventModel>.from(seedEvents);
 
   final String? existing;
+  final EventModel? existingEvent;
   final List<EventModel> events;
   final List<EventModel> upserted = <EventModel>[];
   final List<String> deletedIds = <String>[];
@@ -687,6 +744,10 @@ class _FakeEventRepository extends EventRepository {
     required String externalId,
     String? userId,
   }) async {
+    final seededExisting = existingEvent;
+    if (seededExisting != null && externalId == seededExisting.externalId) {
+      return seededExisting;
+    }
     if (externalId != existing) {
       return null;
     }
