@@ -382,19 +382,38 @@ class DeviceCalendarService {
       }
 
       var imported = 0;
+      var skipped = 0;
       for (final event in events) {
+        final eventModel = event.toEventModel(
+          userId: resolvedUserId,
+          importedAt: now,
+        );
+        final duplicate = await _eventRepository.findEventByTitleAndStart(
+          title: eventModel.title,
+          startAt: eventModel.startAt!,
+          userId: resolvedUserId,
+          excludedSources: const <String>{'device_calendar', 'naver_device'},
+        );
+        if (duplicate != null) {
+          skipped += 1;
+          debugPrint(
+            'Device calendar import duplicate skipped by title/start: '
+            'incoming="${eventModel.title}" ${eventModel.startAt} '
+            'existing=${duplicate.id} source=${duplicate.source}',
+          );
+          continue;
+        }
         await _eventRepository.upsertEventBySourceExternalId(
-          event.toEventModel(
-            userId: resolvedUserId,
-            importedAt: now,
-          ),
+          eventModel,
         );
         imported += 1;
       }
 
       return DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.imported,
-        message: '휴대폰 내부 캘린더 일정 $imported개를 PlanFlow로 가져왔습니다.',
+        message: skipped > 0
+            ? '휴대폰 내부 캘린더 일정 $imported개를 가져오고, 중복 $skipped개는 건너뛰었습니다.'
+            : '휴대폰 내부 캘린더 일정 $imported개를 PlanFlow로 가져왔습니다.',
         importedCount: imported,
         calendars: naverCalendars,
       );

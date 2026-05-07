@@ -21,21 +21,38 @@ class PermissionOnboardingScreen extends StatefulWidget {
       _PermissionOnboardingScreenState();
 }
 
-class _PermissionOnboardingScreenState
-    extends State<PermissionOnboardingScreen> {
+class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
+    with WidgetsBindingObserver {
   late final AppPermissionService _permissionService;
 
   AppPermissionSnapshot? _snapshot;
   bool _isLoading = true;
   bool _isRequestingAll = false;
+  bool _resumeRequestAll = false;
   String? _activeRequestKey;
   String? _message;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _permissionService = widget._permissionService ?? AppPermissionService();
     unawaited(_refresh());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !_resumeRequestAll) {
+      return;
+    }
+    _resumeRequestAll = false;
+    unawaited(_continueRequestAllAfterResume());
   }
 
   Future<void> _refresh({bool clearMessage = false}) async {
@@ -123,33 +140,7 @@ class _PermissionOnboardingScreenState
     });
 
     try {
-      await _withPermissionTimeout(
-        _permissionService.requestMicrophonePermission,
-      );
-      await _permissionService
-          .requestNotificationPermissions()
-          .timeout(const Duration(seconds: 8));
-      await _withPermissionTimeout(
-        _permissionService.requestLocationPermission,
-      );
-      await _withPermissionTimeout(
-        _permissionService.requestCalendarPermission,
-      );
-      await _refresh();
-      if (mounted) {
-        setState(() {
-          _message =
-              '권한 요청을 마쳤습니다. 허용되지 않은 항목은 아래 상태를 확인한 뒤 Android 설정에서 다시 켤 수 있어요.';
-        });
-      }
-    } catch (_) {
-      await _refresh();
-      if (mounted) {
-        setState(() {
-          _message =
-              '일부 권한 요청이 완료되지 않았습니다. 아래 상태를 확인하고 Android 앱 설정에서 직접 켜 주세요.';
-        });
-      }
+      await _requestAllSteps();
     } finally {
       if (mounted) {
         setState(() {
@@ -159,8 +150,136 @@ class _PermissionOnboardingScreenState
     }
   }
 
-  Future<bool> _withPermissionTimeout(Future<bool> Function() request) {
-    return request().timeout(const Duration(seconds: 8));
+  Future<void> _continueRequestAllAfterResume() async {
+    if (!mounted || _isRequestingAll || _activeRequestKey != null) {
+      return;
+    }
+    setState(() {
+      _isRequestingAll = true;
+      _message = '앱으로 돌아왔습니다. 남은 권한을 이어서 확인하고 요청할게요.';
+    });
+    try {
+      await _requestAllSteps();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRequestingAll = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _requestAllSteps() async {
+    final failures = <String>[];
+
+    await _runPermissionStep(
+      key: 'microphone',
+      label: '마이크',
+      failures: failures,
+      isGranted: (snapshot) => snapshot.microphoneGranted,
+      request: _permissionService.requestMicrophonePermission,
+    );
+    await _runPermissionStep(
+      key: 'notifications',
+      label: '앱 알림',
+      failures: failures,
+      isGranted: (snapshot) => snapshot.notificationsGranted,
+      request: () async {
+        final status = await _permissionService
+            .requestNotificationPermissions()
+            .timeout(const Duration(seconds: 12));
+        return status.notificationsEnabled == true &&
+            status.exactAlarmsEnabled == true;
+      },
+      mayOpenSettings: true,
+    );
+    await _runPermissionStep(
+      key: 'location',
+      label: '위치',
+      failures: failures,
+      isGranted: (snapshot) => snapshot.locationGranted,
+      request: _permissionService.requestLocationPermission,
+    );
+    await _runPermissionStep(
+      key: 'calendar',
+      label: '기기 캘린더',
+      failures: failures,
+      isGranted: (snapshot) => snapshot.calendarGranted,
+      request: _permissionService.requestCalendarPermission,
+    );
+
+    await _refresh();
+    if (!mounted) {
+      return;
+    }
+    final snapshot = _snapshot;
+    final allGranted = snapshot?.requiredPermissionsGranted == true;
+    setState(() {
+      _message = allGranted
+          ? '필요 권한이 모두 준비되었습니다.'
+          : failures.isEmpty
+              ? '권한 요청을 마쳤습니다. 허용되지 않은 항목은 아래 상태를 확인한 뒤 Android 설정에서 다시 켤 수 있어요.'
+              : '일부 권한을 아직 확인하지 못했습니다: ${failures.join(', ')}. 설정 화면에서 허용 후 돌아오면 자동으로 이어서 확인합니다.';
+    });
+  }
+
+  Future<void> _runPermissionStep({
+    required String key,
+    required String label,
+    required List<String> failures,
+    required bool Function(AppPermissionSnapshot snapshot) isGranted,
+    required Future<bool> Function() request,
+    bool mayOpenSettings = false,
+  }) async {
+    final before = await _safeCheckAll();
+    if (before != null && isGranted(before)) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _activeRequestKey = key;
+        _message = '$label 권한을 요청하는 중입니다.';
+      });
+    }
+
+    try {
+      await _withPermissionTimeout(request,
+          timeout: const Duration(seconds: 12));
+    } catch (error) {
+      debugPrint('Permission request step failed: $key $error');
+      failures.add(label);
+      if (mayOpenSettings) {
+        _resumeRequestAll = true;
+      }
+    } finally {
+      final after = await _safeCheckAll();
+      if (mounted) {
+        setState(() {
+          _snapshot = after ?? _snapshot;
+          _activeRequestKey = null;
+        });
+      }
+      if (after != null && !isGranted(after) && mayOpenSettings) {
+        _resumeRequestAll = true;
+      }
+    }
+  }
+
+  Future<AppPermissionSnapshot?> _safeCheckAll() async {
+    try {
+      return await _permissionService.checkAll();
+    } catch (error) {
+      debugPrint('Permission check skipped during all-request flow: $error');
+      return null;
+    }
+  }
+
+  Future<bool> _withPermissionTimeout(
+    Future<bool> Function() request, {
+    Duration timeout = const Duration(seconds: 8),
+  }) {
+    return request().timeout(timeout);
   }
 
   Future<void> _complete() async {

@@ -562,6 +562,99 @@ class CalendarSyncService {
     }
   }
 
+  Future<CalendarIntegrationResult> exportEventToGoogle(
+    EventModel event, {
+    bool interactive = false,
+  }) async {
+    final configurationIssue = _googleConfigurationIssue;
+    if (configurationIssue != null) {
+      return CalendarIntegrationResult.notConfigured(
+        CalendarProvider.google,
+        message: configurationIssue,
+      );
+    }
+
+    if (!_isGooglePlatformSupported) {
+      return CalendarIntegrationResult.unsupported(
+        CalendarProvider.google,
+        message: '현재 기기에서는 Google Calendar 동기화를 아직 지원하지 않습니다.',
+      );
+    }
+
+    try {
+      final existingConnection =
+          await _fetchConnection(CalendarProvider.google);
+      if (existingConnection == null || !existingConnection.isConnected) {
+        return CalendarIntegrationResult.signedOut(
+          CalendarProvider.google,
+          message: '현재 PlanFlow 계정에 Google Calendar가 연결되어 있지 않아 내보내기를 건너뜁니다.',
+        );
+      }
+
+      final accessToken = await _fetchGoogleAccessToken(
+        interactive: interactive,
+      );
+      if (accessToken == null || accessToken.isEmpty) {
+        await _saveConnection(
+          CalendarProvider.google,
+          status: CalendarConnectionStatus.reauthRequired,
+          lastError: 'Google access token missing during export',
+        );
+        return CalendarIntegrationResult.signedOut(
+          CalendarProvider.google,
+          message: 'Google Calendar 토큰을 확인하지 못해 내보내기를 건너뜁니다.',
+        );
+      }
+
+      await _ensureSupabaseSessionForCalendarWrite();
+
+      final credentials = gauth.AccessCredentials(
+        gauth.AccessToken(
+          'Bearer',
+          accessToken,
+          DateTime.now().toUtc().add(const Duration(minutes: 45)),
+        ),
+        null,
+        _googleScopes,
+        idToken: null,
+      );
+      final client = gauth.authenticatedClient(
+        _httpClientFactory(),
+        credentials,
+      );
+      try {
+        final api = gcal.CalendarApi(client);
+        final exported = await _exportPlanFlowEventToGoogle(api, event);
+        await _saveConnection(
+          CalendarProvider.google,
+          status: CalendarConnectionStatus.connected,
+          providerAccountEmail: _lastGoogleAccountEmail ??
+              existingConnection.providerAccountEmail,
+          accessToken: accessToken,
+          lastSyncedAt: DateTime.now().toUtc(),
+        );
+        return CalendarIntegrationResult.synced(
+          CalendarProvider.google,
+          message: exported > 0
+              ? 'Google Calendar로 일정을 내보냈습니다.'
+              : 'Google Calendar로 내보낼 새 변경사항이 없습니다.',
+          syncedItems: exported,
+        );
+      } finally {
+        client.close();
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Google Calendar event export failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return CalendarIntegrationResult.failed(
+        CalendarProvider.google,
+        error: error,
+        stackTrace: stackTrace,
+        message: _googleApiFailureMessage(error),
+      );
+    }
+  }
+
   Future<CalendarIntegrationResult> getNaverStatus() async {
     final connection = await _fetchConnection(CalendarProvider.naver);
     if (connection != null && connection.isConnected) {
@@ -829,44 +922,78 @@ class CalendarSyncService {
         continue;
       }
 
-      final googleEvent = _eventToGoogleEvent(event);
-      final gcal.Event saved;
-      if (externalId.isEmpty) {
-        saved = await api.events.insert(googleEvent, 'primary');
-      } else {
-        saved = await api.events.update(googleEvent, 'primary', externalId);
-      }
-
-      final savedExternalId = saved.id?.trim();
-      if (savedExternalId != null && savedExternalId.isNotEmpty) {
-        await _eventRepository.updateEvent(
-          EventModel(
-            id: event.id,
-            userId: event.userId,
-            title: event.title,
-            startAt: event.startAt,
-            endAt: event.endAt,
-            location: event.location,
-            locationLat: event.locationLat,
-            locationLng: event.locationLng,
-            memo: event.memo,
-            supplies: event.supplies,
-            suppliesChecked: event.suppliesChecked,
-            isCritical: event.isCritical,
-            source: event.source,
-            externalId: savedExternalId,
-            externalCalendarId: 'google:primary',
-            externalUpdatedAt: saved.updated?.toUtc() ?? now,
-            lastSyncedAt: now,
-            createdAt: event.createdAt,
-            updatedAt: event.updatedAt,
-          ),
-        );
-      }
-      exportedItems += 1;
+      exportedItems += await _exportPlanFlowEventToGoogle(api, event);
     }
 
     return exportedItems;
+  }
+
+  Future<int> _exportPlanFlowEventToGoogle(
+    gcal.CalendarApi api,
+    EventModel event,
+  ) async {
+    final now = DateTime.now().toUtc();
+    final lowerBound = now.subtract(const Duration(days: 1));
+    final startAt = event.startAt;
+    if (startAt == null || startAt.isBefore(lowerBound)) {
+      return 0;
+    }
+    if (event.source == 'google' || event.source == 'naver') {
+      return 0;
+    }
+
+    final externalCalendarId = event.externalCalendarId ?? '';
+    final externalId = event.externalId ?? '';
+    if (externalId.isNotEmpty &&
+        externalCalendarId.isNotEmpty &&
+        externalCalendarId != 'google:primary') {
+      return 0;
+    }
+    if (externalId.isNotEmpty &&
+        event.externalUpdatedAt != null &&
+        event.updatedAt != null &&
+        event.externalUpdatedAt!.toUtc().isAfter(event.updatedAt!.toUtc())) {
+      debugPrint(
+        'Google export skipped because external event is newer: ${event.id}',
+      );
+      return 0;
+    }
+
+    final googleEvent = _eventToGoogleEvent(event);
+    final gcal.Event saved;
+    if (externalId.isEmpty) {
+      saved = await api.events.insert(googleEvent, 'primary');
+    } else {
+      saved = await api.events.update(googleEvent, 'primary', externalId);
+    }
+
+    final savedExternalId = saved.id?.trim();
+    if (savedExternalId != null && savedExternalId.isNotEmpty) {
+      await _eventRepository.updateEvent(
+        EventModel(
+          id: event.id,
+          userId: event.userId,
+          title: event.title,
+          startAt: event.startAt,
+          endAt: event.endAt,
+          location: event.location,
+          locationLat: event.locationLat,
+          locationLng: event.locationLng,
+          memo: event.memo,
+          supplies: event.supplies,
+          suppliesChecked: event.suppliesChecked,
+          isCritical: event.isCritical,
+          source: event.source,
+          externalId: savedExternalId,
+          externalCalendarId: 'google:primary',
+          externalUpdatedAt: saved.updated?.toUtc() ?? now,
+          lastSyncedAt: now,
+          createdAt: event.createdAt,
+          updatedAt: event.updatedAt,
+        ),
+      );
+    }
+    return 1;
   }
 
   Future<void> _markEventSyncedToNaver(EventModel event) async {
@@ -1072,6 +1199,19 @@ class CalendarSyncService {
           ),
         );
       } else {
+        final duplicate = await _findSameTitleStartDuplicate(
+          model,
+          excludedSources: const <String>{'google'},
+        );
+        if (duplicate != null) {
+          debugPrint(
+            'Google import duplicate skipped by title/start: '
+            'incoming="${model.title}" ${model.startAt} '
+            'existing=${duplicate.id} source=${duplicate.source}',
+          );
+          syncedItems += 1;
+          continue;
+        }
         await _eventRepository.upsertEventBySourceExternalId(model);
       }
       syncedItems += 1;
@@ -1100,6 +1240,22 @@ class CalendarSyncService {
       }
     }
     return null;
+  }
+
+  Future<EventModel?> _findSameTitleStartDuplicate(
+    EventModel incoming, {
+    Set<String> excludedSources = const <String>{},
+  }) async {
+    final startAt = incoming.startAt;
+    if (startAt == null) {
+      return null;
+    }
+    return _eventRepository.findEventByTitleAndStart(
+      title: incoming.title,
+      startAt: startAt,
+      userId: _currentUserId(),
+      excludedSources: excludedSources,
+    );
   }
 
   bool _shouldKeepLocalEvent(EventModel local, EventModel external) {

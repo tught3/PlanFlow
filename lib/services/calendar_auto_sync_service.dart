@@ -61,16 +61,13 @@ class CalendarAutoSyncService {
 
     final result = CalendarAutoSyncResult();
     await _runStep(result, 'google_export', () async {
-      final google = await _calendarSync.syncGoogleCalendar(interactive: false);
+      final google = await _calendarSync.exportEventToGoogle(
+        event,
+        interactive: false,
+      );
       return google.status == CalendarIntegrationStatus.synced ||
           google.status == CalendarIntegrationStatus.ready ||
           google.status == CalendarIntegrationStatus.signedOut;
-    });
-    await _runStep(result, 'naver_api_export', () async {
-      final naver = await _calendarSync.syncNaverCalendar();
-      return naver.status == CalendarIntegrationStatus.synced ||
-          naver.status == CalendarIntegrationStatus.ready ||
-          naver.status == CalendarIntegrationStatus.signedOut;
     });
     await _runStep(result, 'naver_caldav_export', () {
       return _naverCalDav.exportEvent(event);

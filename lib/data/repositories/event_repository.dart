@@ -20,6 +20,36 @@ abstract class EventRepository {
     return Future<EventModel?>.value(null);
   }
 
+  Future<EventModel?> findEventByTitleAndStart({
+    required String title,
+    required DateTime startAt,
+    String? userId,
+    Duration tolerance = const Duration(minutes: 1),
+    Set<String> excludedSources = const <String>{},
+  }) async {
+    final normalizedTitle = _normalizeDuplicateTitle(title);
+    if (normalizedTitle.isEmpty) {
+      return null;
+    }
+    final events = await listEvents(userId: userId);
+    for (final event in events) {
+      if (excludedSources.contains(event.source)) {
+        continue;
+      }
+      final eventStartAt = event.startAt;
+      if (eventStartAt == null) {
+        continue;
+      }
+      final sameTitle =
+          _normalizeDuplicateTitle(event.title) == normalizedTitle;
+      final startDelta = eventStartAt.toUtc().difference(startAt.toUtc()).abs();
+      if (sameTitle && startDelta <= tolerance) {
+        return event;
+      }
+    }
+    return null;
+  }
+
   Future<EventModel> createEvent(EventModel event);
 
   Future<EventModel> updateEvent(EventModel event);
@@ -54,6 +84,10 @@ abstract class EventRepository {
     }
     return updateEvent(event);
   }
+}
+
+String _normalizeDuplicateTitle(String value) {
+  return value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 }
 
 class SupabaseEventRepository extends EventRepository {

@@ -648,6 +648,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required VoidCallback onConfirm,
     required String cancelLabel,
     required String confirmLabel,
+    int cancelFlex = 1,
+    int confirmFlex = 1,
     Color? cancelForegroundColor,
     Color? cancelBackgroundColor,
     Color? confirmForegroundColor,
@@ -658,6 +660,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Row(
         children: [
           Expanded(
+            flex: cancelFlex,
             child: FilledButton.tonal(
               onPressed: onCancel,
               style: FilledButton.styleFrom(
@@ -672,6 +675,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(width: 12),
           Expanded(
+            flex: confirmFlex,
             child: FilledButton(
               onPressed: onConfirm,
               style: FilledButton.styleFrom(
@@ -680,7 +684,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 backgroundColor:
                     confirmBackgroundColor ?? PlanFlowColors.primary,
               ),
-              child: Text(confirmLabel),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  confirmLabel,
+                  maxLines: 1,
+                ),
+              ),
             ),
           ),
         ],
@@ -851,6 +861,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<_NaverCalDavCredentials?> _showNaverCalDavDialog() {
     final idController = TextEditingController();
     final passwordController = TextEditingController();
+    final idFocusNode = FocusNode();
+    final passwordFocusNode = FocusNode();
+    final idKey = GlobalKey();
+    final passwordKey = GlobalKey();
+
+    void ensureVisible(GlobalKey key) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final context = key.currentContext;
+        if (context == null) {
+          return;
+        }
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          alignment: 0.42,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+        );
+      });
+    }
 
     return showDialog<_NaverCalDavCredentials>(
       context: context,
@@ -861,18 +891,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               height: 1.45,
             ) ??
             const TextStyle(fontSize: 16, height: 1.45);
+        final screenHeight = MediaQuery.sizeOf(context).height;
 
-        return AnimatedPadding(
-          duration: const Duration(milliseconds: 160),
-          padding:
-              EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          child: AlertDialog(
-            scrollable: true,
-            insetPadding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-            title: const Text('네이버 캘린더 연결'),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
+        return AlertDialog(
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          title: const Text('네이버 캘린더 연결'),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 460,
+              maxHeight: screenHeight * 0.58,
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -909,16 +940,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Text.rich(
                             TextSpan(
                               text:
-                                  '앱 비밀번호는 네이버 앱/웹에서 2단계 인증 관리 → 애플리케이션 비밀번호 생성 → Android 선택 후 발급받은 값을 입력해 주세요. ',
-                              children: [
-                                TextSpan(
-                                  text: '네이버 일반 비밀번호가 아닙니다.',
-                                  style: bodyStyle.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                    color: theme.colorScheme.error,
-                                  ),
-                                ),
-                              ],
+                                  '앱 비밀번호는 네이버 앱/웹에서 2단계 인증 관리 → 애플리케이션 비밀번호 생성 → Android 선택 후 발급받은 값을 입력해 주세요.',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '네이버 일반 비밀번호가 아닙니다.',
+                            style: bodyStyle.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: theme.colorScheme.error,
                             ),
                           ),
                         ],
@@ -926,32 +956,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: idController,
-                    decoration: const InputDecoration(
-                      labelText: '네이버 ID',
-                      hintText: '예: tught3',
+                  KeyedSubtree(
+                    key: idKey,
+                    child: TextField(
+                      controller: idController,
+                      focusNode: idFocusNode,
+                      decoration: const InputDecoration(
+                        labelText: '네이버 ID',
+                        hintText: '예: tught3',
+                      ),
+                      textInputAction: TextInputAction.next,
+                      scrollPadding: const EdgeInsets.only(bottom: 80),
+                      onTap: () => ensureVisible(idKey),
+                      onSubmitted: (_) {
+                        passwordFocusNode.requestFocus();
+                        ensureVisible(passwordKey);
+                      },
                     ),
-                    textInputAction: TextInputAction.next,
-                    onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: passwordController,
-                    decoration: const InputDecoration(
-                      labelText: '앱 비밀번호',
-                      hintText: '네이버 보안설정에서 발급한 비밀번호',
+                  KeyedSubtree(
+                    key: passwordKey,
+                    child: TextField(
+                      controller: passwordController,
+                      focusNode: passwordFocusNode,
+                      decoration: const InputDecoration(
+                        labelText: '앱 비밀번호',
+                        hintText: '네이버 보안설정에서 발급한 비밀번호',
+                      ),
+                      obscureText: true,
+                      textInputAction: TextInputAction.done,
+                      scrollPadding: const EdgeInsets.only(bottom: 96),
+                      onTap: () => ensureVisible(passwordKey),
+                      onSubmitted: (_) {
+                        Navigator.of(context).pop(
+                          _NaverCalDavCredentials(
+                            naverId: idController.text,
+                            appPassword: passwordController.text,
+                          ),
+                        );
+                      },
                     ),
-                    obscureText: true,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) {
-                      Navigator.of(context).pop(
-                        _NaverCalDavCredentials(
-                          naverId: idController.text,
-                          appPassword: passwordController.text,
-                        ),
-                      );
-                    },
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -963,25 +1008,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            actions: [
-              _buildDialogButtonBar(
-                onCancel: () => Navigator.of(context).pop(),
-                onConfirm: () {
-                  Navigator.of(context).pop(
-                    _NaverCalDavCredentials(
-                      naverId: idController.text,
-                      appPassword: passwordController.text,
-                    ),
-                  );
-                },
-                cancelLabel: '취소',
-                confirmLabel: '연결하고 가져오기',
-              ),
-            ],
           ),
+          actions: [
+            _buildDialogButtonBar(
+              onCancel: () => Navigator.of(context).pop(),
+              onConfirm: () {
+                Navigator.of(context).pop(
+                  _NaverCalDavCredentials(
+                    naverId: idController.text,
+                    appPassword: passwordController.text,
+                  ),
+                );
+              },
+              cancelLabel: '취소',
+              confirmLabel: '연결하고 가져오기',
+              cancelFlex: 3,
+              confirmFlex: 7,
+            ),
+          ],
         );
       },
-    );
+    ).whenComplete(() {
+      idFocusNode.dispose();
+      passwordFocusNode.dispose();
+    });
   }
 
   Future<void> _syncOrReconnectNaverCalendar() async {

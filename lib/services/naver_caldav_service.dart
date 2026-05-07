@@ -716,6 +716,34 @@ class NaverCalDavService {
             calendarPath: calendar.path,
             syncedAt: syncedAt,
           );
+          final duplicateReason = await _sameTitleStartDuplicateReason(
+            eventModel,
+          );
+          if (duplicateReason != null) {
+            skippedCount += 1;
+            debugPrint(
+              'Naver CalDAV duplicate skipped: '
+              'calendar="${calendar.displayName}", '
+              'uid="${event.uid}", '
+              'externalId="${eventModel.externalId}", '
+              'title="${event.title}", '
+              'reason=$duplicateReason',
+            );
+            emit(NaverCalDavSyncProgress(
+              mode: mode,
+              stage: NaverCalDavSyncStage.saving,
+              message: '이미 PlanFlow에 있는 일정은 건너뛰는 중입니다.',
+              currentCalendar: calendar.displayName,
+              currentCalendarIndex: calendarNumber,
+              totalCalendars: calendars.length,
+              processedEvents: eventIndex + 1,
+              totalEvents: events.length,
+              savedEvents: savedCount,
+              skippedEvents: skippedCount,
+              failedEvents: failedCount,
+            ));
+            continue;
+          }
           final skipReason =
               skipUnchanged ? await _skipUnchangedReason(eventModel) : null;
           if (skipReason != null) {
@@ -912,6 +940,23 @@ class NaverCalDavService {
     return !incomingUpdatedAt.toUtc().isAfter(existingUpdatedAt.toUtc())
         ? 'external_updated_at이 기존값보다 최신이 아님'
         : null;
+  }
+
+  Future<String?> _sameTitleStartDuplicateReason(EventModel event) async {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return null;
+    }
+    final duplicate = await _eventRepository.findEventByTitleAndStart(
+      title: event.title,
+      startAt: startAt,
+      userId: event.userId,
+      excludedSources: const <String>{'naver_caldav'},
+    );
+    if (duplicate == null) {
+      return null;
+    }
+    return '같은 시작시간+제목 일정 존재(${duplicate.id}, source=${duplicate.source})';
   }
 
   // Kept temporarily as a rollback reference while the progressive sync path
