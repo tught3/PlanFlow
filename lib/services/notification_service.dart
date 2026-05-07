@@ -331,6 +331,12 @@ class NotificationService {
       onDidReceiveNotificationResponse: (response) {
         if (response.payload == 'naver_ics_monthly_reminder') {
           appRouter.go(AppRoutes.naverIcsImport);
+          return;
+        }
+        final payload = response.payload ?? '';
+        if (payload == 'briefing:morning' || payload == 'briefing:evening') {
+          final type = payload.endsWith('evening') ? 'evening' : 'morning';
+          appRouter.go('${AppRoutes.briefing}?type=$type');
         }
       },
     );

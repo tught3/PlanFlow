@@ -113,7 +113,6 @@ Future<void> _briefingAlarmCallback(
 ) async {
   final briefingType = params['briefing_type'] as String? ?? 'morning';
   final isMorning = briefingType == 'morning';
-  final userId = params['user_id'] as String?;
 
   try {
     // Re-initialize environment in the background isolate
@@ -128,7 +127,7 @@ Future<void> _briefingAlarmCallback(
     }
 
     final scheduler = BriefingSchedulerService();
-    await scheduler.executeBriefing(isMorning: isMorning, userId: userId);
+    await scheduler.showBriefingStartNotification(isMorning: isMorning);
   } catch (_) {
     // Background isolate must never crash
   }

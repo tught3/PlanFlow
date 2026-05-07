@@ -14,6 +14,7 @@ import '../location/location_pick_flow.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/event_preparation_service.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
@@ -485,6 +486,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       await _saveRelatedRecords(userId: userId, event: savedEvent);
       await _updateHomeWidget(repository, savedEvent);
       unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
+      unawaited(EventPreparationService().prepareAfterSave(savedEvent));
 
       if (mounted) {
         _showMessage(

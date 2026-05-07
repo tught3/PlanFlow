@@ -158,7 +158,7 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final toggle = find.text('마이크 버튼을 누르면 바로 듣기 시작');
+    final toggle = find.text('화면 열면 바로 시작');
     await tester.scrollUntilVisible(toggle, 200);
     await tester.tap(toggle);
     await tester.pumpAndSettle();

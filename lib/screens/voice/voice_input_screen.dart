@@ -67,7 +67,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     _didResolveAutoStart = true;
 
     final shouldAutoStart = widget.autoStartOverride ??
-        await _resolveAutoStartSetting(defaultValue: true);
+        await _resolveAutoStartSetting(defaultValue: false);
     if (!mounted || !shouldAutoStart || _rawTextController.text.isNotEmpty) {
       return;
     }
@@ -318,6 +318,14 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: PlanFlowColors.primary,
                   fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '시작 방식은 설정에서 바꿀 수 있어요. 기본은 버튼을 눌러 말하기이고, 원하면 화면을 열자마자 바로 듣게 할 수 있습니다.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                  height: 1.35,
                 ),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),

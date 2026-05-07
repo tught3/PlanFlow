@@ -145,7 +145,7 @@ create table if not exists public.user_settings (
   evening_briefing_at time not null default '21:00',
   default_reminder_min integer not null default 60,
   travel_mode text not null default 'car',
-  voice_auto_start boolean not null default true,
+  voice_auto_start boolean not null default false,
   google_calendar_token text,
   naver_calendar_token text,
   created_at timestamptz not null default now()
@@ -155,7 +155,7 @@ create table if not exists public.user_settings (
   add column if not exists travel_mode text not null default 'car';
 
   alter table public.user_settings
-  add column if not exists voice_auto_start boolean not null default true;
+  add column if not exists voice_auto_start boolean not null default false;
 
   alter table public.user_settings
   add column if not exists naver_calendar_token text;

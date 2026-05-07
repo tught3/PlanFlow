@@ -9,6 +9,7 @@ import '../data/repositories/settings_repository.dart';
 import 'alarm_service.dart';
 import 'gpt_service.dart';
 import 'notification_service.dart';
+import 'travel_time_buffer_service.dart';
 import 'tts_service.dart';
 
 class BriefingScheduleEntry {
@@ -197,7 +198,10 @@ class BriefingSchedulerService {
             : 'unknown_gpt_error';
         debugPrint('Briefing GPT failed: type=$type error=$error');
         debugPrintStack(stackTrace: stackTrace);
-        briefingText = _buildLocalBriefing(events, isMorning: isMorning);
+        briefingText = await _buildLocalBriefing(
+          events,
+          isMorning: isMorning,
+        );
         usedFallback = true;
         debugPrint(
           'Briefing fallback used: type=$type events=${events.length} reason=$failureReason',
@@ -235,6 +239,22 @@ class BriefingSchedulerService {
     }
   }
 
+  Future<void> showBriefingStartNotification({
+    required bool isMorning,
+  }) {
+    final title = isMorning ? '모닝 브리핑' : '이브닝 브리핑';
+    final body = isMorning
+        ? '알림을 누르면 오늘 일정을 시간순으로 정리해 드릴게요.'
+        : '알림을 누르면 내일 일정을 시간순으로 정리해 드릴게요.';
+    return _notificationService.scheduleEventReminder(
+      id: isMorning ? 91001 : 91002,
+      title: title,
+      body: body,
+      notifyAt: DateTime.now().add(const Duration(seconds: 1)),
+      payload: isMorning ? 'briefing:morning' : 'briefing:evening',
+    );
+  }
+
   Future<List<EventModel>> _fetchRelevantEvents({
     required String userId,
     required bool isMorning,
@@ -268,10 +288,10 @@ class BriefingSchedulerService {
     }).join('\n');
   }
 
-  String _buildLocalBriefing(
+  Future<String> _buildLocalBriefing(
     List<EventModel> events, {
     required bool isMorning,
-  }) {
+  }) async {
     final prefix = isMorning
         ? '좋은 아침이에요. 오늘 일정은 ${events.length}개입니다.'
         : '오늘 하루도 고생하셨어요. 내일 일정은 ${events.length}개입니다.';
@@ -280,11 +300,58 @@ class BriefingSchedulerService {
           ? '시간 미정'
           : '${event.startAt!.hour.toString().padLeft(2, '0')}:${event.startAt!.minute.toString().padLeft(2, '0')}';
       final location = event.location == null ? '' : ' ${event.location}';
-      return '$time ${event.title}$location';
+      final critical = event.isCritical ? ' 중요한 일정입니다' : '';
+      return '$time ${event.title}$location$critical';
     }).join(', ');
-    final suffix =
-        isMorning ? '준비물과 이동 시간을 먼저 확인해 주세요.' : '잠들기 전 준비할 항목을 확인해 주세요.';
-    return '$prefix $highlights. $suffix';
+    final tightGapWarning = await _buildTightGapWarning(events);
+    return '$prefix $highlights.${tightGapWarning == null ? '' : ' $tightGapWarning'}';
+  }
+
+  Future<String?> _buildTightGapWarning(List<EventModel> events) async {
+    if (events.length < 2) {
+      return null;
+    }
+    for (var index = 1; index < events.length; index += 1) {
+      final previous = events[index - 1];
+      final current = events[index];
+      final previousStart = previous.startAt;
+      final currentStart = current.startAt;
+      if (previousStart == null || currentStart == null) {
+        continue;
+      }
+      final gapMinutes = currentStart.difference(previousStart).inMinutes;
+      if (gapMinutes <= 0) {
+        continue;
+      }
+
+      var requiredMinutes = 45;
+      final previousLat = previous.locationLat;
+      final previousLng = previous.locationLng;
+      final currentLat = current.locationLat;
+      final currentLng = current.locationLng;
+      if (previousLat != null &&
+          previousLng != null &&
+          currentLat != null &&
+          currentLng != null) {
+        try {
+          final estimate = await TravelTimeBufferService().estimateWithMapApis(
+            originLat: previousLat,
+            originLng: previousLng,
+            destinationLat: currentLat,
+            destinationLng: currentLng,
+            locationText: current.location,
+          );
+          requiredMinutes = estimate.minutes + 30;
+        } catch (error) {
+          debugPrint('Briefing travel estimate skipped: $error');
+        }
+      }
+
+      if (gapMinutes < requiredMinutes) {
+        return '${previous.title} 다음 ${current.title}까지 시간이 빠듯하니 이동을 서둘러 주세요.';
+      }
+    }
+    return null;
   }
 
   Future<void> _deliverBriefing(

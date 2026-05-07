@@ -6,7 +6,7 @@ class UserSettingsModel {
     this.eveningBriefingAt = '21:00',
     this.defaultReminderMin = 60,
     this.travelMode = 'car',
-    this.voiceAutoStart = true,
+    this.voiceAutoStart = false,
     this.googleCalendarToken,
     this.naverCalendarToken,
     this.createdAt,
@@ -23,7 +23,7 @@ class UserSettingsModel {
       morningBriefingAt: '07:30',
       eveningBriefingAt: '21:00',
       defaultReminderMin: 60,
-      voiceAutoStart: true,
+      voiceAutoStart: false,
       createdAt: createdAt,
     );
   }
@@ -36,7 +36,7 @@ class UserSettingsModel {
       eveningBriefingAt: _timeValue(json['evening_briefing_at']),
       defaultReminderMin: _intValue(json['default_reminder_min'], 60),
       travelMode: _travelModeValue(json['travel_mode']),
-      voiceAutoStart: _boolValue(json['voice_auto_start'], true),
+      voiceAutoStart: _boolValue(json['voice_auto_start'], false),
       googleCalendarToken: json['google_calendar_token'] as String?,
       naverCalendarToken: json['naver_calendar_token'] as String?,
       createdAt: _dateTimeValue(json['created_at']),

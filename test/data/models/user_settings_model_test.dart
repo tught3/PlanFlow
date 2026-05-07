@@ -43,7 +43,7 @@ void main() {
     });
 
     expect(restored.travelMode, 'car');
-    expect(restored.voiceAutoStart, isTrue);
+    expect(restored.voiceAutoStart, isFalse);
     expect(restored.toJson()['travel_mode'], 'car');
   });
 }

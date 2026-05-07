@@ -22,5 +22,6 @@ class AppRoutes {
   static const String eventEdit = '/event/edit';
   static const String eventEditWithId = '/event/edit/:eventId';
   static const String settings = '/settings';
+  static const String briefing = '/briefing';
   static const String naverIcsImport = '/settings/naver-ics-import';
 }

@@ -78,7 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   TimeOfDay _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
   int _defaultReminderMinutes = 60;
   String _travelMode = 'car';
-  bool _voiceAutoStart = true;
+  bool _voiceAutoStart = false;
 
   CalendarSyncSummary? _calendarSyncSummary;
   List<BackupSnapshot> _backups = const <BackupSnapshot>[];
@@ -1020,7 +1020,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '연결에 성공한 경우에만 이 기기의 보안 저장소에 저장되며, Supabase에는 저장하지 않습니다.',
+                    '연결에 성공한 경우에만 이 기기의 보안 저장소에 저장됩니다. 서버에 저장하거나 전송되지 않으니 걱정하지 마세요.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: PlanFlowColors.textSecondary,
                     ),
@@ -1480,7 +1480,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
       _defaultReminderMinutes = 60;
       _travelMode = 'car';
-      _voiceAutoStart = true;
+      _voiceAutoStart = false;
     });
     unawaited(_persistSettings(successMessage: '설정을 기본값으로 되돌렸습니다.'));
   }
@@ -1604,9 +1604,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: _voiceAutoStart,
                 activeThumbColor: PlanFlowColors.primary,
                 activeTrackColor: PlanFlowColors.primaryFaint,
-                title: const Text('마이크 버튼을 누르면 바로 듣기 시작'),
+                title: const Text('화면 열면 바로 시작'),
                 subtitle: Text(
-                  _voiceAutoStart ? '바로 음성입력' : '버튼 눌러서 입력',
+                  _voiceAutoStart ? '화면을 열자마자 듣기 시작' : '버튼 눌러 시작(기본)',
                 ),
                 onChanged: (value) {
                   setState(() {

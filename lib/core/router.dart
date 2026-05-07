@@ -4,6 +4,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/onboarding/permission_onboarding_screen.dart';
 import '../screens/auth/reset_password_screen.dart';
 import '../data/models/event_model.dart';
+import '../screens/briefing/briefing_launch_screen.dart';
 import '../screens/event/event_detail_screen.dart';
 import '../screens/event/event_edit_screen.dart';
 import '../screens/placeholder_screen.dart';
@@ -77,6 +78,13 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.settings,
       builder: (context, state) => const ShellScreen(initialIndex: 2),
+    ),
+    GoRoute(
+      path: AppRoutes.briefing,
+      builder: (context, state) {
+        final type = state.uri.queryParameters['type'] ?? 'morning';
+        return BriefingLaunchScreen(isMorning: type != 'evening');
+      },
     ),
     GoRoute(
       path: AppRoutes.naverIcsImport,
