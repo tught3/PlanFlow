@@ -11,6 +11,7 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/early_bird_email_repository.dart';
 import '../../services/app_permission_service.dart';
+import '../../services/briefing_scheduler_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_header_summary_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
@@ -28,9 +29,11 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     this.scrollController,
-  });
+    BriefingSchedulerService? briefingSchedulerService,
+  }) : _briefingSchedulerService = briefingSchedulerService;
 
   final ScrollController? scrollController;
+  final BriefingSchedulerService? _briefingSchedulerService;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -39,6 +42,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final HomeHeaderSummaryService _headerSummaryService =
       HomeHeaderSummaryService();
+  late final BriefingSchedulerService _briefingSchedulerService;
   EventModel? _pastTodayEvent;
   List<EventModel> _todayEvents = const <EventModel>[];
   List<EventModel> _upcomingEvents = const <EventModel>[];
@@ -47,10 +51,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   _HomeLoadState _loadState = _HomeLoadState.loading;
   String? _loadMessage;
   bool _headerSummaryLoading = true;
+  bool _isPlayingMorningBriefing = false;
+  bool _isPlayingEveningBriefing = false;
 
   @override
   void initState() {
     super.initState();
+    _briefingSchedulerService =
+        widget._briefingSchedulerService ?? BriefingSchedulerService();
     WidgetsBinding.instance.addObserver(this);
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _loadTodayEvents();
@@ -225,6 +233,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _playBriefing({required bool isMorning}) async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      _showSnack('로그인 후 브리핑을 들을 수 있습니다.');
+      return;
+    }
+    if (_isPlayingMorningBriefing || _isPlayingEveningBriefing) {
+      return;
+    }
+
+    setState(() {
+      if (isMorning) {
+        _isPlayingMorningBriefing = true;
+      } else {
+        _isPlayingEveningBriefing = true;
+      }
+    });
+
+    try {
+      final result = await _briefingSchedulerService.executeBriefing(
+        isMorning: isMorning,
+        userId: user.id,
+      );
+      _showSnack(result.message);
+    } catch (error, stackTrace) {
+      debugPrint('Home briefing play failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showSnack('브리핑 재생에 실패했습니다. 알림/TTS 설정을 확인해 주세요.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          if (isMorning) {
+            _isPlayingMorningBriefing = false;
+          } else {
+            _isPlayingEveningBriefing = false;
+          }
+        });
+      }
+    }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -334,6 +392,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  _BriefingQuickActions(
+                    isMorningLoading: _isPlayingMorningBriefing,
+                    isEveningLoading: _isPlayingEveningBriefing,
+                    onMorning: () => _playBriefing(isMorning: true),
+                    onEvening: () => _playBriefing(isMorning: false),
                   ),
                   const SizedBox(height: 12),
                   if (isLoading)
@@ -507,6 +572,91 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final dayEnd = dayStart.add(const Duration(days: 1));
     final endAt = event.endAt ?? startAt;
     return startAt.isBefore(dayEnd) && !endAt.isBefore(dayStart);
+  }
+}
+
+class _BriefingQuickActions extends StatelessWidget {
+  const _BriefingQuickActions({
+    required this.isMorningLoading,
+    required this.isEveningLoading,
+    required this.onMorning,
+    required this.onEvening,
+  });
+
+  final bool isMorningLoading;
+  final bool isEveningLoading;
+  final VoidCallback onMorning;
+  final VoidCallback onEvening;
+
+  @override
+  Widget build(BuildContext context) {
+    final isBusy = isMorningLoading || isEveningLoading;
+
+    return Row(
+      children: [
+        Expanded(
+          child: _BriefingQuickButton(
+            icon: Icons.wb_sunny_outlined,
+            label: '모닝 브리핑 듣기',
+            isLoading: isMorningLoading,
+            onPressed: isBusy ? null : onMorning,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _BriefingQuickButton(
+            icon: Icons.nightlight_outlined,
+            label: '이브닝 브리핑 듣기',
+            isLoading: isEveningLoading,
+            onPressed: isBusy ? null : onEvening,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BriefingQuickButton extends StatelessWidget {
+  const _BriefingQuickButton({
+    required this.icon,
+    required this.label,
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool isLoading;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.tonalIcon(
+      onPressed: onPressed,
+      icon: isLoading
+          ? const SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(icon, size: 18),
+      label: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      style: FilledButton.styleFrom(
+        backgroundColor: PlanFlowColors.surface,
+        foregroundColor: PlanFlowColors.primary,
+        disabledBackgroundColor: PlanFlowColors.surface.withValues(alpha: 0.72),
+        disabledForegroundColor:
+            PlanFlowColors.textSecondary.withValues(alpha: 0.82),
+        side: BorderSide(color: PlanFlowColors.primaryFaint),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        textStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+      ),
+    );
   }
 }
 

@@ -469,3 +469,8 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Settings now explains that PlanFlow owns notification scheduling while external app default notifications may still be controlled by those apps.
 - Regression tests cover Google serialized reminder payload, Naver VALARM-free export/reflected UID skip, Android native event-only export, and device eventKey reflected import.
 - Verification: `flutter analyze`, full `flutter test` (162 passed), `flutter build apk --debug`, and `git diff --check` passed.
+
+## 2026-05-08 home briefing quick play checkpoint
+- Added Home-tab quick play controls for `모닝 브리핑 듣기` and `이브닝 브리핑 듣기`, reusing the same `BriefingSchedulerService.executeBriefing()` path as the Settings play buttons.
+- The Home buttons show per-briefing loading state, prevent double playback while one briefing is running, and surface success/failure messages through Korean SnackBars.
+- Verification: `flutter analyze`, full `flutter test` (162 passed), `flutter build apk --debug`, and `git diff --check` passed.
