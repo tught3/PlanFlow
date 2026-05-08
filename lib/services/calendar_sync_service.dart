@@ -26,6 +26,7 @@ enum CalendarIntegrationStatus {
   ready,
   syncing,
   synced,
+  reauthRequired,
   unsupported,
   failed,
 }
@@ -112,6 +113,18 @@ class CalendarIntegrationResult {
               ? '캘린더 동기화가 완료되었습니다. $syncedItems개 일정을 반영했습니다.'
               : '캘린더 동기화가 완료되었습니다. 새로 반영할 일정은 없습니다.'),
       syncedItems: syncedItems,
+    );
+  }
+
+  factory CalendarIntegrationResult.reauthRequired(
+    CalendarProvider provider, {
+    String? message,
+  }) {
+    return CalendarIntegrationResult(
+      provider: provider,
+      status: CalendarIntegrationStatus.reauthRequired,
+      message: message ??
+          '캘린더 연결은 유지되어 있지만 다시 로그인이 필요합니다.',
     );
   }
 
@@ -403,9 +416,10 @@ class CalendarSyncService {
         suppressErrors: true,
       );
       if (account == null) {
-        return CalendarIntegrationResult.signedOut(
+        return CalendarIntegrationResult.reauthRequired(
           CalendarProvider.google,
-          message: 'Google Calendar 설정은 있지만 Google 계정 로그인이 필요합니다.',
+          message:
+              'Google Calendar 연결은 유지되어 있지만 현재 기기에서 Google 계정을 다시 확인해 주세요.',
         );
       }
 

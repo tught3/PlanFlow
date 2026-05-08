@@ -2329,7 +2329,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return switch (result.status) {
       CalendarIntegrationStatus.ready ||
       CalendarIntegrationStatus.syncing ||
-      CalendarIntegrationStatus.synced =>
+      CalendarIntegrationStatus.synced ||
+      CalendarIntegrationStatus.reauthRequired =>
         true,
       CalendarIntegrationStatus.signedOut ||
       CalendarIntegrationStatus.notConfigured ||
@@ -2344,6 +2345,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       CalendarIntegrationStatus.ready ||
       CalendarIntegrationStatus.syncing ||
       CalendarIntegrationStatus.synced ||
+      CalendarIntegrationStatus.reauthRequired ||
       CalendarIntegrationStatus.failed =>
         true,
       _ => false,

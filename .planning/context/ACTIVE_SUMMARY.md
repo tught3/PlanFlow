@@ -481,3 +481,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Strengthened GPT/local fallback parsing for all-day, multi-day, category, and recurrence phrases such as `매주 화요일`, `격주 금요일`, and `매월 첫 번째 월요일`.
 - Removed the visible Naver save-missing diagnostic button from Settings while keeping the internal diagnostic path available for future debugging.
 - Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, full `flutter test` (165 passed), `flutter build apk --debug`, and `git diff --check` passed.
+
+## 2026-05-08 Google calendar reauth visibility checkpoint
+- Changed Google Calendar status handling so a missing silent account no longer looks like a lost connection after rebuild/relaunch; it now surfaces as `reauthRequired` while keeping the existing connection record intact.
+- Updated Settings to treat `reauthRequired` as an active connection so the Google disconnect action stays enabled instead of toggling off unexpectedly after app rebuilds.
+- Added a regression test that covers the silent-sign-in-missing case for an already connected Google account.
+- Verification: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch all passed. The device currently has the launcher focused with the notification shade open on top.

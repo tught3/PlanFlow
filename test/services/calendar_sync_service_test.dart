@@ -219,6 +219,32 @@ void main() {
     });
 
     test(
+        'treats existing Google connection without silent account as reauthRequired',
+        () async {
+      final googleSignIn = _FakeGoogleSignIn();
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+        googleSignIn: googleSignIn,
+        calendarConnectionRepository: _FakeCalendarConnectionRepository(
+          initial: CalendarConnectionModel(
+            userId: 'user-1',
+            provider: 'google',
+            status: CalendarConnectionStatus.connected,
+          ),
+        ),
+        googlePlatformSupported: true,
+        googleTargetPlatform: TargetPlatform.android,
+      );
+
+      final status = await service.getGoogleStatus();
+
+      expect(status.status, CalendarIntegrationStatus.reauthRequired);
+      expect(status.message, contains('다시 확인'));
+      expect(googleSignIn.signInSilentCallCount, 1);
+    });
+
+    test(
         'returns notConfigured on Android when serverClientId is missing even if clientId exists',
         () async {
       final googleSignIn = _FakeGoogleSignIn();
@@ -531,10 +557,20 @@ class _FakeGoogleSignIn extends GoogleSignIn {
   _FakeGoogleSignIn() : super(scopes: const <String>[]);
 
   int signInCallCount = 0;
+  int signInSilentCallCount = 0;
 
   @override
   Future<GoogleSignInAccount?> signIn() async {
     signInCallCount += 1;
+    return null;
+  }
+
+  @override
+  Future<GoogleSignInAccount?> signInSilently({
+    bool reAuthenticate = false,
+    bool suppressErrors = true,
+  }) async {
+    signInSilentCallCount += 1;
     return null;
   }
 
