@@ -428,3 +428,9 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Captured up to five safe invalid samples with calendar path, href, component type, UID, title, raw DTSTART/DTEND, and a Korean reason such as `DTSTART 없음`, `DTSTART 파싱 실패`, or non-VEVENT component.
 - Updated the Settings diagnostic result dialog to show `파싱 실패 샘플`, making it possible to prove whether missing Naver app events are returned in an unsupported shape or not returned by CalDAV at all.
 - Verification: `node scripts/gsd-context-hygiene.mjs`, targeted `test/services/naver_caldav_service_test.dart`, full `flutter test` (140 passed), `flutter analyze`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed on `192.168.0.103:5555`.
+
+## 2026-05-08 Naver CalDAV placeholder DTSTART recovery checkpoint
+- Used the new diagnostics on-device and confirmed that many real Naver app events are returned by CalDAV as `DTSTART:19700101T000000` with the actual schedule timestamp in `DTEND`.
+- Updated `NaverCalDavService.parseIcal()` to recover that Naver-specific placeholder format by treating the valid `DTEND` as the event start time and importing it as a single-point event instead of dropping it.
+- Added regression coverage for the placeholder DTSTART shape so future parser changes do not re-break existing Naver app schedule imports.
+- Verification: targeted `test/services/naver_caldav_service_test.dart`, `flutter analyze`, full `flutter test` (141 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed on `192.168.0.103:5555`.

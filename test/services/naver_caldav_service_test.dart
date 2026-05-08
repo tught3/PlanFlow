@@ -361,6 +361,33 @@ END:VCALENDAR
     expect(event.endAt, DateTime.utc(2026, 5, 1, 6));
   });
 
+  test('parseIcal recovers Naver placeholder DTSTART from DTEND', () {
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(responses: <int>[207]),
+      credentialStore: _FakeCredentialStore(),
+    );
+
+    final event = service.parseIcal(
+      '''
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:naver-placeholder-start
+SUMMARY:네이버 기존 일정
+DTSTART:19700101T000000
+DTEND;TZID=Asia/Seoul:20260508T093000
+END:VEVENT
+END:VCALENDAR
+''',
+      etag: '"placeholder-etag"',
+      href: '/caldav/tught3/calendar/1691926/placeholder.ics',
+    );
+
+    expect(event, isNotNull);
+    expect(event!.title, '네이버 기존 일정');
+    expect(event.startAt, DateTime.utc(2026, 5, 8, 0, 30));
+    expect(event.endAt, isNull);
+  });
+
   test('parseIcal skips suspicious or invalid dates instead of saving', () {
     final service = NaverCalDavService(
       httpClient: _FakePropfindClient(responses: <int>[207]),

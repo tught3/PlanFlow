@@ -1346,14 +1346,32 @@ class NaverCalDavService {
     if (uid == null || uid.isEmpty || startRaw == null) {
       return null;
     }
-    final startAt = _parseIcalDateTime(startRaw);
+    final hasEndRaw = fields.containsKey('DTEND');
+    final endRaw = fields['DTEND']?.firstOrNull;
+    final parsedStartAt = _parseIcalDateTime(startRaw);
+    final parsedEndAt = _parseIcalDateTime(endRaw);
+    var startAt = parsedStartAt;
+    var endAt = parsedEndAt;
+
+    // Naver sometimes returns personal app-created items with a Unix-epoch
+    // placeholder DTSTART and the real schedule time in DTEND. Treat that as
+    // a single-point event instead of dropping the user's original calendar.
+    if (startAt == null &&
+        _isNaverPlaceholderStart(startRaw) &&
+        parsedEndAt != null) {
+      startAt = parsedEndAt;
+      endAt = null;
+      debugPrint(
+        'Naver CalDAV recovered placeholder DTSTART from DTEND: '
+        'uid=$uid, href=$href, rawStart=$startRaw, rawEnd=$endRaw, '
+        'startAt=$startAt',
+      );
+    }
+
     if (startAt == null) {
       return null;
     }
-    final hasEndRaw = fields.containsKey('DTEND');
-    final endRaw = fields['DTEND']?.firstOrNull;
-    final endAt = _parseIcalDateTime(endRaw);
-    if (hasEndRaw && endRaw != null && endAt == null) {
+    if (hasEndRaw && endRaw != null && parsedEndAt == null) {
       debugPrint(
         'Naver CalDAV parsed event skipped because DTEND failed to parse: '
         'uid=$uid, href=$href, rawEnd=$endRaw',
@@ -1992,6 +2010,12 @@ $timeRange      </c:comp-filter>
 
   bool _isSuspiciousImportedDate(DateTime value) {
     return value.toUtc().year < 2000;
+  }
+
+  bool _isNaverPlaceholderStart(String rawValue) {
+    final separator = rawValue.indexOf(':');
+    final value = separator >= 0 ? rawValue.substring(separator + 1) : rawValue;
+    return value.trim().startsWith('19700101');
   }
 
   String? _unescapeIcalText(String? value) {
