@@ -492,3 +492,8 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Changed the Home-tab `모닝 브리핑 듣기` and `이브닝 브리핑 듣기` buttons from the default white-looking fill to a lighter blue tone so they remain visible without looking too heavy.
 - Kept the same loading/disabled behavior and label layout; only the button color treatment changed.
 - Verification: `dart format`, `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch/focus check all passed on the connected Android device.
+
+## 2026-05-08 calendar month swipe checkpoint
+- Added horizontal swipe navigation to the 일정 tab month calendar so dragging the month header/grid area from left-to-right moves to the previous month and right-to-left moves to the next month.
+- Reused the existing month change helper so arrow buttons, today reset, and swipe gestures all stay in sync without changing the date tap behavior.
+- Verification: `dart format lib/screens/calendar/calendar_screen.dart`, `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed.

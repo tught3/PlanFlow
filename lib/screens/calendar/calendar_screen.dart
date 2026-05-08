@@ -517,6 +517,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     });
   }
 
+  void _handleMonthSwipe(DragEndDetails details) {
+    final velocityX = details.primaryVelocity ?? 0;
+    if (velocityX.abs() < 250) {
+      return;
+    }
+    if (velocityX < 0) {
+      _changeMonth(1);
+    } else {
+      _changeMonth(-1);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -591,32 +603,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
                 const SizedBox(height: 12),
               ],
-              // Month header with navigation
-              _MonthHeader(
-                monthLabel: monthLabel,
-                onPrevious: () => _changeMonth(-1),
-                onNext: () => _changeMonth(1),
-                onToday: () {
-                  setState(() {
-                    _focusedMonth = DateTime.now();
-                    _selectedDate = DateTime.now();
-                  });
-                },
-              ),
-              const SizedBox(height: 12),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragEnd: _handleMonthSwipe,
+                child: Column(
+                  children: [
+                    // Month header with navigation
+                    _MonthHeader(
+                      monthLabel: monthLabel,
+                      onPrevious: () => _changeMonth(-1),
+                      onNext: () => _changeMonth(1),
+                      onToday: () {
+                        setState(() {
+                          _focusedMonth = DateTime.now();
+                          _selectedDate = DateTime.now();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
 
-              // Mini calendar grid
-              _MiniCalendarGrid(
-                focusedMonth: _focusedMonth,
-                selectedDate: _selectedDate,
-                eventMarkerColorsByDay: _eventMarkerColorsByDay,
-                eventsByDay: _eventsByDay,
-                onDaySelected: (day) {
-                  setState(() {
-                    _selectedDate = day;
-                  });
-                  _showDayEventsSheet(day);
-                },
+                    // Mini calendar grid
+                    _MiniCalendarGrid(
+                      focusedMonth: _focusedMonth,
+                      selectedDate: _selectedDate,
+                      eventMarkerColorsByDay: _eventMarkerColorsByDay,
+                      eventsByDay: _eventsByDay,
+                      onDaySelected: (day) {
+                        setState(() {
+                          _selectedDate = day;
+                        });
+                        _showDayEventsSheet(day);
+                      },
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
 
