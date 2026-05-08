@@ -12,7 +12,6 @@ abstract class SettingsRepository {
 
   Future<UserSettingsModel> upsertSettings(UserSettingsModel settings);
 
-  @Deprecated('Use upsertSettings instead.')
   Future<UserSettingsModel> saveSettings(UserSettingsModel settings) {
     return upsertSettings(settings);
   }
@@ -72,6 +71,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
   static const String tableName = 'user_settings';
   static const String selectColumns =
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
+      'prep_time_min, prep_pre_alarm_offset, depart_pre_alarm_offset, '
       'travel_mode, voice_auto_start, google_calendar_token, naver_calendar_token, created_at';
   static const String _legacySelectColumns =
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
@@ -107,7 +107,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
           .eq('user_id', userId)
           .maybeSingle();
     } on PostgrestException catch (error) {
-      if (!_isMissingVoiceAutoStartError(error) ||
+      if (!_isMissingSettingsColumnError(error) ||
           columns == _legacySelectColumns) {
         rethrow;
       }
@@ -133,12 +133,15 @@ class SupabaseSettingsGateway implements SettingsGateway {
           .select(columns)
           .single();
     } on PostgrestException catch (error) {
-      if (!_isMissingVoiceAutoStartError(error) ||
+      if (!_isMissingSettingsColumnError(error) ||
           columns == _legacySelectColumns) {
         rethrow;
       }
       final legacyPayload = Map<String, dynamic>.from(payload)
-        ..remove('voice_auto_start');
+        ..remove('voice_auto_start')
+        ..remove('prep_time_min')
+        ..remove('prep_pre_alarm_offset')
+        ..remove('depart_pre_alarm_offset');
       return _client
           .from(tableName)
           .upsert(
@@ -150,10 +153,13 @@ class SupabaseSettingsGateway implements SettingsGateway {
     }
   }
 
-  bool _isMissingVoiceAutoStartError(PostgrestException error) {
+  bool _isMissingSettingsColumnError(PostgrestException error) {
     final text =
         '${error.code} ${error.message} ${error.details}'.toLowerCase();
     return text.contains('voice_auto_start') ||
+        text.contains('prep_time_min') ||
+        text.contains('prep_pre_alarm_offset') ||
+        text.contains('depart_pre_alarm_offset') ||
         text.contains('schema cache') && text.contains('user_settings');
   }
 }

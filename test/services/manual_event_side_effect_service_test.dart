@@ -90,6 +90,7 @@ class _FakeManualEventGateway extends ManualEventSideEffectGateway {
   final deletedReminderEventIds = <String>[];
   final deletedPreActionEventIds = <String>[];
   final insertedReminders = <Map<String, dynamic>>[];
+  final insertedPreActions = <Map<String, dynamic>>[];
 
   @override
   Future<void> deleteRemindersForEvent({
@@ -110,6 +111,11 @@ class _FakeManualEventGateway extends ManualEventSideEffectGateway {
   @override
   Future<void> insertReminders(List<Map<String, dynamic>> payloads) async {
     insertedReminders.addAll(payloads);
+  }
+
+  @override
+  Future<void> insertPreActions(List<Map<String, dynamic>> payloads) async {
+    insertedPreActions.addAll(payloads);
   }
 }
 

@@ -9,6 +9,9 @@ void main() {
       morningBriefingAt: '07:30',
       eveningBriefingAt: '21:00',
       defaultReminderMin: 45,
+      prepTimeMin: 45,
+      prepPreAlarmOffset: 10,
+      departPreAlarmOffset: 0,
       travelMode: 'transit',
       voiceAutoStart: false,
       googleCalendarToken: 'google-token',
@@ -27,6 +30,9 @@ void main() {
     expect(restored.morningBriefingAt, '07:30');
     expect(restored.eveningBriefingAt, '21:00');
     expect(restored.defaultReminderMin, model.defaultReminderMin);
+    expect(restored.prepTimeMin, 45);
+    expect(restored.prepPreAlarmOffset, 10);
+    expect(restored.departPreAlarmOffset, 0);
     expect(restored.travelMode, 'transit');
     expect(restored.voiceAutoStart, isFalse);
     expect(restored.toJson()['voice_auto_start'], isFalse);
@@ -44,6 +50,9 @@ void main() {
 
     expect(restored.travelMode, 'car');
     expect(restored.voiceAutoStart, isFalse);
+    expect(restored.prepTimeMin, 30);
+    expect(restored.prepPreAlarmOffset, 30);
+    expect(restored.departPreAlarmOffset, 30);
     expect(restored.toJson()['travel_mode'], 'car');
   });
 }

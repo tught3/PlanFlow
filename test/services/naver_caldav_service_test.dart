@@ -508,7 +508,10 @@ END:VCALENDAR
     expect(result.diagnostics.rawEvents, 1);
     expect(result.diagnostics.parsedEvents, 1);
     expect(result.diagnostics.unchangedSkipped, 1);
-    expect(result.diagnostics.skipReasons['external_etag 일치'], 1);
+    expect(
+      result.diagnostics.skipReasons.keys,
+      contains(startsWith('external_etag')),
+    );
     expect(result.diagnostics.samples.single.rawStart,
         'DTSTART;TZID=Asia/Seoul:20260505T100000');
   });
@@ -566,6 +569,79 @@ END:VCALENDAR
     expect(result.diagnostics.saveCandidates, 1);
     expect(result.diagnostics.unchangedSkipped, 0);
     expect(repository.upserted.single.startAt, DateTime.utc(2026, 5, 5, 1));
+  });
+
+  test('syncAll imports a personal in-range event after noisy range report',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        _oldBroadcastEventReportXml,
+        _personalInRangeEventReportXml,
+      ],
+    );
+    final repository = _FakeEventRepository();
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.custom,
+      from: DateTime.utc(2026, 5),
+      to: DateTime.utc(2026, 6),
+    );
+
+    expect(result.success, isTrue);
+    expect(result.events, 1);
+    expect(result.createdOrUpdated, 1);
+    expect(result.diagnostics.rawEvents, 2);
+    expect(result.diagnostics.parsedEvents, 2);
+    expect(result.diagnostics.saveCandidates, 1);
+    expect(repository.upserted.single.title, 'Personal in range');
+    expect(repository.upserted.single.startAt, DateTime.utc(2026, 5, 8, 0, 30));
+  });
+
+  test('syncAll saves recovered placeholder DTSTART event as open-ended',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        _oldBroadcastEventReportXml,
+        _placeholderPersonalEventReportXml,
+      ],
+    );
+    final repository = _FakeEventRepository();
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(
+      mode: NaverCalDavSyncMode.custom,
+      from: DateTime.utc(2026, 5),
+      to: DateTime.utc(2026, 6),
+    );
+
+    expect(result.createdOrUpdated, 1);
+    expect(result.diagnostics.saveCandidates, 1);
+    expect(repository.upserted.single.title, 'Naver placeholder personal');
+    expect(repository.upserted.single.startAt, DateTime.utc(2026, 5, 8, 0, 30));
+    expect(repository.upserted.single.endAt, isNull);
   });
 
   test('syncAll diagnostic import bypasses broad title and start duplicate',
@@ -1042,6 +1118,56 @@ UID:broadcast-2013
 SUMMARY:[방송]학교 2013
 DTSTART;TZID=Asia/Seoul:20130112T220000
 DTEND;TZID=Asia/Seoul:20130112T230000
+END:VEVENT
+END:VCALENDAR
+        ]]></c:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';
+
+const String _personalInRangeEventReportXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/calendars/tught3/default/personal-in-range.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-personal-in-range"</d:getetag>
+        <c:calendar-data><![CDATA[
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:personal-in-range
+SUMMARY:Personal in range
+DTSTART;TZID=Asia/Seoul:20260508T093000
+DTEND;TZID=Asia/Seoul:20260508T103000
+LAST-MODIFIED:20260504T120000Z
+END:VEVENT
+END:VCALENDAR
+        ]]></c:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';
+
+const String _placeholderPersonalEventReportXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/calendars/tught3/default/placeholder-personal.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-placeholder-personal"</d:getetag>
+        <c:calendar-data><![CDATA[
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:placeholder-personal
+SUMMARY:Naver placeholder personal
+DTSTART:19700101T000000
+DTEND;TZID=Asia/Seoul:20260508T093000
+LAST-MODIFIED:20260504T120000Z
 END:VEVENT
 END:VCALENDAR
         ]]></c:calendar-data>

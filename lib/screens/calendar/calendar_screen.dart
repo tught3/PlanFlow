@@ -20,6 +20,15 @@ enum _CalendarLoadState {
 
 const calendarCriticalEventMarkerColor = Color(0xFFB42318);
 
+Color _categoryColor(String category) {
+  return switch (category) {
+    '업무' => const Color(0xFF1A4FD6),
+    '개인' => const Color(0xFF1D9E75),
+    '가족' => const Color(0xFFE07B30),
+    _ => const Color(0xFF7AB3D4),
+  };
+}
+
 @visibleForTesting
 Map<int, Color> buildCalendarEventMarkerColorsByDay({
   required Iterable<EventModel> events,
@@ -56,17 +65,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
   List<EventModel> _allEvents = const <EventModel>[];
   _CalendarLoadState _loadState = _CalendarLoadState.loading;
   String? _loadMessage;
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
+    _searchController.addListener(() => setState(() {}));
     _loadEvents();
   }
 
   @override
   void dispose() {
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -135,21 +148,253 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   List<EventModel> get _eventsForSelectedDate {
-    return _allEvents.where((event) {
+    return _visibleEvents.where((event) {
       final startAt = event.startAt;
       if (startAt == null) {
         return false;
       }
-      return startAt.year == _selectedDate.year &&
-          startAt.month == _selectedDate.month &&
-          startAt.day == _selectedDate.day;
+      return _eventIntersectsDay(event, _selectedDate);
     }).toList(growable: false);
   }
 
   Map<int, Color> get _eventMarkerColorsByDay {
     return buildCalendarEventMarkerColorsByDay(
-      events: _allEvents,
+      events: _visibleEvents,
       focusedMonth: _focusedMonth,
+    );
+  }
+
+  List<EventModel> get _filteredEvents {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) {
+      return _allEvents;
+    }
+    return _allEvents.where((event) {
+      final searchable = <String>[
+        event.title,
+        event.location ?? '',
+        event.memo ?? '',
+        event.category,
+      ].join(' ').toLowerCase();
+      return searchable.contains(query);
+    }).toList(growable: false);
+  }
+
+  List<EventModel> get _visibleEvents {
+    final monthStart = DateTime(_focusedMonth.year, _focusedMonth.month);
+    final monthEnd = DateTime(_focusedMonth.year, _focusedMonth.month + 1, 0)
+        .add(const Duration(days: 1));
+    final expanded = <EventModel>[];
+    for (final event in _filteredEvents) {
+      expanded.addAll(
+        _expandRecurringEvent(
+          event,
+          rangeStart: monthStart,
+          rangeEnd: monthEnd,
+        ),
+      );
+    }
+    expanded.sort(
+      (a, b) => (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)),
+    );
+    return expanded;
+  }
+
+  Map<int, List<EventModel>> get _eventsByDay {
+    final result = <int, List<EventModel>>{};
+    for (final event in _visibleEvents) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        continue;
+      }
+      final eventEnd = event.endAt ?? startAt;
+      final firstDay = DateTime(startAt.year, startAt.month, startAt.day);
+      final lastDay = DateTime(eventEnd.year, eventEnd.month, eventEnd.day);
+      for (var day = firstDay;
+          !day.isAfter(lastDay);
+          day = day.add(const Duration(days: 1))) {
+        if (day.year != _focusedMonth.year ||
+            day.month != _focusedMonth.month) {
+          continue;
+        }
+        result.putIfAbsent(day.day, () => <EventModel>[]).add(event);
+      }
+    }
+    for (final list in result.values) {
+      list.sort((a, b) =>
+          (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)));
+    }
+    return result;
+  }
+
+  bool _eventIntersectsDay(EventModel event, DateTime day) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final eventEnd = event.endAt ?? startAt;
+    return startAt.isBefore(dayEnd) && !eventEnd.isBefore(dayStart);
+  }
+
+  List<EventModel> _expandRecurringEvent(
+    EventModel event, {
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+  }) {
+    final rule = event.recurrenceRule?.toUpperCase();
+    final startAt = event.startAt;
+    if (rule == null || rule.isEmpty || startAt == null) {
+      return <EventModel>[event];
+    }
+
+    final freq = RegExp(r'FREQ=([A-Z]+)').firstMatch(rule)?.group(1);
+    if (freq == null) {
+      return <EventModel>[event];
+    }
+
+    final intervalText = RegExp(r'INTERVAL=(\d+)').firstMatch(rule)?.group(1);
+    final interval = int.tryParse(intervalText ?? '1')?.clamp(1, 365) ?? 1;
+    final until = _parseRRuleUntil(
+      RegExp(r'UNTIL=([0-9TzZ]+)').firstMatch(rule)?.group(1),
+    );
+    final hardEnd = until?.isBefore(rangeEnd) == true ? until! : rangeEnd;
+    final duration = event.endAt?.difference(startAt);
+    final occurrences = <EventModel>[];
+
+    var current = startAt;
+    var safety = 0;
+    while (current.isBefore(hardEnd) && safety < 420) {
+      safety += 1;
+      final occurrenceEnd = duration == null ? null : current.add(duration);
+      final candidate = _copyEventWithTime(
+        event,
+        startAt: current,
+        endAt: occurrenceEnd,
+      );
+      if (_eventIntersectsRange(candidate, rangeStart, rangeEnd)) {
+        occurrences.add(candidate);
+      }
+      current = switch (freq) {
+        'DAILY' => current.add(Duration(days: interval)),
+        'WEEKLY' => current.add(Duration(days: 7 * interval)),
+        'MONTHLY' => DateTime(
+            current.year,
+            current.month + interval,
+            current.day,
+            current.hour,
+            current.minute,
+            current.second,
+          ),
+        'YEARLY' => DateTime(
+            current.year + interval,
+            current.month,
+            current.day,
+            current.hour,
+            current.minute,
+            current.second,
+          ),
+        _ => hardEnd,
+      };
+    }
+    return occurrences.isEmpty ? <EventModel>[event] : occurrences;
+  }
+
+  bool _eventIntersectsRange(
+    EventModel event,
+    DateTime rangeStart,
+    DateTime rangeEnd,
+  ) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final eventEnd = event.endAt ?? startAt;
+    return startAt.isBefore(rangeEnd) && !eventEnd.isBefore(rangeStart);
+  }
+
+  DateTime? _parseRRuleUntil(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    final normalized = value.replaceAll('Z', '');
+    if (normalized.length < 8) {
+      return null;
+    }
+    final year = int.tryParse(normalized.substring(0, 4));
+    final month = int.tryParse(normalized.substring(4, 6));
+    final day = int.tryParse(normalized.substring(6, 8));
+    if (year == null || month == null || day == null) {
+      return null;
+    }
+    return DateTime(year, month, day).add(const Duration(days: 1));
+  }
+
+  EventModel _copyEventWithTime(
+    EventModel event, {
+    required DateTime startAt,
+    DateTime? endAt,
+  }) {
+    return EventModel(
+      id: event.id,
+      userId: event.userId,
+      title: event.title,
+      startAt: startAt,
+      endAt: endAt,
+      location: event.location,
+      locationLat: event.locationLat,
+      locationLng: event.locationLng,
+      memo: event.memo,
+      supplies: event.supplies,
+      suppliesChecked: event.suppliesChecked,
+      isCritical: event.isCritical,
+      recurrenceRule: event.recurrenceRule,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
+      parentEventId: event.parentEventId,
+      category: event.category,
+      source: event.source,
+      externalId: event.externalId,
+      externalCalendarId: event.externalCalendarId,
+      externalEtag: event.externalEtag,
+      externalUpdatedAt: event.externalUpdatedAt,
+      lastSyncedAt: event.lastSyncedAt,
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    );
+  }
+
+  void _showDayEventsSheet(DateTime day) {
+    final events = _visibleEvents.where((event) {
+      return _eventIntersectsDay(event, day);
+    }).toList(growable: false);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: PlanFlowColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => _DayEventsSheet(
+        day: day,
+        events: events,
+        onAdd: () {
+          Navigator.of(context).pop();
+          context.push(AppRoutes.eventEdit);
+        },
+        onVoice: () {
+          Navigator.of(context).pop();
+          context.push(AppRoutes.voice);
+        },
+        onEventTap: (event) {
+          Navigator.of(context).pop();
+          context.push(
+            '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+            extra: event,
+          );
+        },
+      ),
     );
   }
 
@@ -175,6 +420,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: AppBar(
         title: const Text('일정'),
         actions: [
+          IconButton(
+            tooltip: _isSearching ? '검색 닫기' : '일정 검색',
+            onPressed: () {
+              setState(() {
+                _isSearching = !_isSearching;
+                if (!_isSearching) {
+                  _searchController.clear();
+                }
+              });
+            },
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+          ),
           IconButton(
             tooltip: '새로고침',
             onPressed: isLoading ? null : () => _loadEvents(),
@@ -205,6 +462,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
                 const SizedBox(height: 12),
               ],
+              if (_isSearching) ...[
+                TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: '제목, 장소, 메모로 검색',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: '검색어 지우기',
+                            onPressed: _searchController.clear,
+                            icon: const Icon(Icons.clear),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               // Month header with navigation
               _MonthHeader(
                 monthLabel: monthLabel,
@@ -224,10 +500,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 focusedMonth: _focusedMonth,
                 selectedDate: _selectedDate,
                 eventMarkerColorsByDay: _eventMarkerColorsByDay,
+                eventsByDay: _eventsByDay,
                 onDaySelected: (day) {
                   setState(() {
                     _selectedDate = day;
                   });
+                  _showDayEventsSheet(day);
                 },
               ),
               const SizedBox(height: 16),
@@ -312,6 +590,140 @@ class _CalendarScreenState extends State<CalendarScreen> {
       DateTime.sunday: '일요일',
     };
     return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
+  }
+}
+
+class _DayEventsSheet extends StatelessWidget {
+  const _DayEventsSheet({
+    required this.day,
+    required this.events,
+    required this.onAdd,
+    required this.onVoice,
+    required this.onEventTap,
+  });
+
+  final DateTime day;
+  final List<EventModel> events;
+  final VoidCallback onAdd;
+  final VoidCallback onVoice;
+  final ValueChanged<EventModel> onEventTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final title = _koreanDateLabel(day);
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.72,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: PlanFlowColors.surface,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: PlanFlowColors.primaryFaint),
+                    ),
+                    child: Text('${events.length}개'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onAdd,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('직접 추가'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: onVoice,
+                      icon: const Icon(Icons.mic_none, size: 18),
+                      label: const Text('음성 추가'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: events.isEmpty
+                    ? const _SheetEmptyState()
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: events.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final event = events[index];
+                          return _EventAgendaCard(
+                            event: event,
+                            onTap: () => onEventTap(event),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _koreanDateLabel(DateTime value) {
+    const weekdays = <int, String>{
+      DateTime.monday: '월요일',
+      DateTime.tuesday: '화요일',
+      DateTime.wednesday: '수요일',
+      DateTime.thursday: '목요일',
+      DateTime.friday: '금요일',
+      DateTime.saturday: '토요일',
+      DateTime.sunday: '일요일',
+    };
+    return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
+  }
+}
+
+class _SheetEmptyState extends StatelessWidget {
+  const _SheetEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: PlanFlowColors.primaryFaint),
+      ),
+      child: const Text(
+        '이 날은 아직 일정이 없어요. 직접 추가하거나 음성으로 빠르게 등록할 수 있습니다.',
+        style: TextStyle(color: PlanFlowColors.textSecondary, height: 1.35),
+      ),
+    );
   }
 }
 
@@ -490,12 +902,14 @@ class _MiniCalendarGrid extends StatelessWidget {
     required this.focusedMonth,
     required this.selectedDate,
     required this.eventMarkerColorsByDay,
+    required this.eventsByDay,
     required this.onDaySelected,
   });
 
   final DateTime focusedMonth;
   final DateTime selectedDate;
   final Map<int, Color> eventMarkerColorsByDay;
+  final Map<int, List<EventModel>> eventsByDay;
   final ValueChanged<DateTime> onDaySelected;
 
   @override
@@ -555,7 +969,7 @@ class _MiniCalendarGrid extends StatelessWidget {
                     final dayNumber =
                         weekIndex * 7 + dayIndex - startWeekday + 1;
                     if (dayNumber < 1 || dayNumber > lastDay) {
-                      return const Expanded(child: SizedBox(height: 40));
+                      return const Expanded(child: SizedBox(height: 74));
                     }
 
                     final dayDate = DateTime(
@@ -570,13 +984,18 @@ class _MiniCalendarGrid extends StatelessWidget {
                         selectedDate.month == dayDate.month &&
                         selectedDate.day == dayDate.day;
                     final markerColor = eventMarkerColorsByDay[dayNumber];
+                    final dayEvents = eventsByDay[dayNumber] ?? const [];
 
                     return Expanded(
                       child: GestureDetector(
                         onTap: () => onDaySelected(dayDate),
                         child: Container(
-                          height: 40,
-                          margin: const EdgeInsets.all(1),
+                          height: 74,
+                          margin: const EdgeInsets.all(1.5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 3,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? PlanFlowColors.primaryMid
@@ -586,7 +1005,7 @@ class _MiniCalendarGrid extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.start,
                             children: [
                               Text(
                                 '$dayNumber',
@@ -612,6 +1031,24 @@ class _MiniCalendarGrid extends StatelessWidget {
                                     shape: BoxShape.circle,
                                   ),
                                 ),
+                              const SizedBox(height: 2),
+                              ...dayEvents.take(3).map(
+                                    (event) => _CalendarMiniEventLabel(
+                                      event: event,
+                                      isSelected: isSelected,
+                                    ),
+                                  ),
+                              if (dayEvents.length > 3)
+                                Text(
+                                  '+${dayEvents.length - 3}',
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    height: 1.1,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : PlanFlowColors.textSecondary,
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -622,6 +1059,44 @@ class _MiniCalendarGrid extends StatelessWidget {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarMiniEventLabel extends StatelessWidget {
+  const _CalendarMiniEventLabel({
+    required this.event,
+    required this.isSelected,
+  });
+
+  final EventModel event;
+  final bool isSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = isSelected
+        ? Colors.white.withValues(alpha: 0.18)
+        : _categoryColor(event.category).withValues(alpha: 0.16);
+    final fg = isSelected ? Colors.white : _categoryColor(event.category);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(
+        event.isAllDay ? '종일 ${event.title}' : event.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 7.5,
+          height: 1.1,
+          color: fg,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

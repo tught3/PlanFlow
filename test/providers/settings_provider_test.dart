@@ -12,6 +12,7 @@ void main() {
         morningBriefingAt: '06:30',
         eveningBriefingAt: '20:30',
         defaultReminderMin: 30,
+        prepTimeMin: 45,
       ),
     );
     final provider = SettingsProvider(repository);
@@ -20,6 +21,7 @@ void main() {
 
     expect(loaded, isNotNull);
     expect(provider.settings?.morningBriefingAt, '06:30');
+    expect(provider.settings?.prepTimeMin, 45);
     expect(provider.isLoading, isFalse);
     expect(repository.fetchUserIds.single, 'user-1');
   });
@@ -35,6 +37,9 @@ void main() {
         morningBriefingAt: '07:00',
         eveningBriefingAt: '21:00',
         defaultReminderMin: 60,
+        prepTimeMin: 60,
+        prepPreAlarmOffset: 10,
+        departPreAlarmOffset: 0,
       ),
     );
 
@@ -42,6 +47,9 @@ void main() {
     expect(provider.settings?.eveningBriefingAt, '21:00');
     expect(provider.isSaving, isFalse);
     expect(repository.savedSettings?.morningBriefingAt, '07:00');
+    expect(repository.savedSettings?.prepTimeMin, 60);
+    expect(repository.savedSettings?.prepPreAlarmOffset, 10);
+    expect(repository.savedSettings?.departPreAlarmOffset, 0);
   });
 }
 

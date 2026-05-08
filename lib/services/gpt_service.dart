@@ -294,6 +294,10 @@ class GptService {
     normalized.putIfAbsent('travel_origin_lat', () => null);
     normalized.putIfAbsent('travel_origin_lng', () => null);
     normalized.putIfAbsent('travel_mode', () => null);
+    normalized.putIfAbsent('recurrence_rule', () => null);
+    normalized.putIfAbsent('is_all_day', () => false);
+    normalized.putIfAbsent('is_multi_day', () => false);
+    normalized.putIfAbsent('category', () => '기타');
     normalized['supplies'] = _normalizeSupplies(normalized['supplies']);
     normalized['pre_actions'] = _normalizePreActions(normalized['pre_actions']);
     final inferredStartAt = _inferStartAtFromRawText(rawText);
@@ -333,6 +337,10 @@ class GptService {
       'travel_origin_lat': null,
       'travel_origin_lng': null,
       'travel_mode': null,
+      'recurrence_rule': null,
+      'is_all_day': false,
+      'is_multi_day': false,
+      'category': '기타',
       'memo': null,
       'supplies': <String>[],
       'is_critical': false,
@@ -603,10 +611,13 @@ const String _scheduleSystemPrompt = '''
 You are a Korean schedule parser.
 Return only a valid JSON object.
 Use these keys:
-title, date, start_at, end_at, location, location_lat, location_lng, travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies, is_critical, pre_actions.
+title, date, start_at, end_at, location, location_lat, location_lng, travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies, is_critical, recurrence_rule, is_all_day, is_multi_day, category, pre_actions.
 start_at and end_at must be ISO-8601 date-time strings when possible.
 For Korean relative expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", resolve them from the current local date and time.
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.
+For recurring schedules, return recurrence_rule as an iCal RRULE such as "FREQ=WEEKLY;BYDAY=TU". Otherwise return null.
+For all-day schedules, set is_all_day true. For multi-day schedules such as "5월 1일부터 3일까지", set is_multi_day true and return both start_at and end_at.
+category must be one of "업무", "개인", "가족", "기타"; infer conservatively and default to "기타".
 supplies must be an array of strings.
 is_critical must be a boolean.
 pre_actions must be an array of objects with title and offset_hours.

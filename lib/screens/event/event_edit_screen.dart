@@ -9,6 +9,7 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/calendar_auto_sync_service.dart';
@@ -16,6 +17,7 @@ import '../../services/event_preparation_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
+import '../../services/smart_preparation_alarm_service.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
 class EventEditScreen extends StatefulWidget {
@@ -143,10 +145,21 @@ class _EventEditScreenState extends State<EventEditScreen> {
         locationLng: _locationLng,
         memo: _emptyToNull(_memoController.text),
         supplies: supplies,
+        suppliesChecked: _loadedEvent?.suppliesChecked ?? const <String>[],
         isCritical: _critical,
+        recurrenceRule: _loadedEvent?.recurrenceRule,
+        isAllDay: _loadedEvent?.isAllDay ?? false,
+        isMultiDay: _loadedEvent?.isMultiDay ?? false,
+        parentEventId: _loadedEvent?.parentEventId,
+        category: _loadedEvent?.category ?? '기타',
         source: _loadedEvent?.source ?? 'manual',
         externalId: _loadedEvent?.externalId,
+        externalCalendarId: _loadedEvent?.externalCalendarId,
+        externalEtag: _loadedEvent?.externalEtag,
+        externalUpdatedAt: _loadedEvent?.externalUpdatedAt,
+        lastSyncedAt: _loadedEvent?.lastSyncedAt,
         createdAt: _loadedEvent?.createdAt,
+        updatedAt: _loadedEvent?.updatedAt,
       );
 
       late final EventModel savedEvent;
@@ -156,11 +169,20 @@ class _EventEditScreenState extends State<EventEditScreen> {
         savedEvent = await _repository.updateEvent(updatedEvent);
       }
 
+      final settings = await SettingsRepository.supabase().fetchSettings(
+        user.id,
+      );
       final sideEffectResult = await widget.sideEffectService.syncAfterSave(
         event: savedEvent,
         userId: user.id,
         reminderOffset: _reminderOffset,
         criticalAlarmOffset: _reminderOffset,
+        prepTimeMin: settings?.prepTimeMin ??
+            SmartPreparationAlarmService.defaultPrepTimeMin,
+        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+        departPreAlarmOffset: settings?.departPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
       );
       unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
       unawaited(EventPreparationService().prepareAfterSave(savedEvent));

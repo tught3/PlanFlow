@@ -77,6 +77,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   TimeOfDay _morningBriefingAt = const TimeOfDay(hour: 7, minute: 30);
   TimeOfDay _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
   int _defaultReminderMinutes = 60;
+  int _prepTimeMin = 30;
+  int _prepPreAlarmOffset = 30;
+  int _departPreAlarmOffset = 30;
   String _travelMode = 'car';
   bool _voiceAutoStart = false;
 
@@ -1355,6 +1358,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         morningBriefingAt: _formatTimeValue(_morningBriefingAt),
         eveningBriefingAt: _formatTimeValue(_eveningBriefingAt),
         defaultReminderMin: _defaultReminderMinutes,
+        prepTimeMin: _prepTimeMin,
+        prepPreAlarmOffset: _prepPreAlarmOffset,
+        departPreAlarmOffset: _departPreAlarmOffset,
         travelMode: _travelMode,
         voiceAutoStart: _voiceAutoStart,
       );
@@ -1669,6 +1675,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _morningBriefingAt = const TimeOfDay(hour: 7, minute: 30);
       _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
       _defaultReminderMinutes = 60;
+      _prepTimeMin = 30;
+      _prepPreAlarmOffset = 30;
+      _departPreAlarmOffset = 30;
       _travelMode = 'car';
       _voiceAutoStart = false;
     });
@@ -1679,6 +1688,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _morningBriefingAt = _parseTime(settings.morningBriefingAt);
     _eveningBriefingAt = _parseTime(settings.eveningBriefingAt);
     _defaultReminderMinutes = settings.defaultReminderMin;
+    _prepTimeMin = settings.prepTimeMin;
+    _prepPreAlarmOffset = settings.prepPreAlarmOffset;
+    _departPreAlarmOffset = settings.departPreAlarmOffset;
     _travelMode = settings.travelMode;
     _voiceAutoStart = settings.voiceAutoStart;
   }
@@ -1689,6 +1701,153 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _pickCustomPrepTime() async {
+    final controller = TextEditingController(text: _prepTimeMin.toString());
+    final value = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('준비 시간 직접 입력'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '분 단위',
+            hintText: '예: 50',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed = int.tryParse(controller.text.trim());
+              Navigator.of(context).pop(parsed);
+            },
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null) {
+      return;
+    }
+    final normalized = value.clamp(5, 240).toInt();
+    setState(() {
+      _prepTimeMin = normalized;
+    });
+    unawaited(_persistSettings());
+  }
+
+  Widget _buildSmartAlarmSettings() {
+    final prepSelection =
+        <int>{15, 30, 45, 60}.contains(_prepTimeMin) ? _prepTimeMin : -1;
+
+    return _SectionCard(
+      title: '스마트 준비 알람 설정',
+      subtitle: '첫 외부 일정의 준비 시작과 모든 외부 일정의 출발 알림 기준을 정합니다.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SmartAlarmControl(
+            title: '하루 평균 준비 시간',
+            helperText: '첫 외부 일정에만 적용돼요.',
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<int>(
+                key: const ValueKey('settings-prep-time-selector'),
+                showSelectedIcon: false,
+                segments: const <ButtonSegment<int>>[
+                  ButtonSegment<int>(value: 15, label: Text('15분')),
+                  ButtonSegment<int>(value: 30, label: Text('30분')),
+                  ButtonSegment<int>(value: 45, label: Text('45분')),
+                  ButtonSegment<int>(value: 60, label: Text('1시간')),
+                  ButtonSegment<int>(value: -1, label: Text('직접입력')),
+                ],
+                selected: <int>{prepSelection},
+                onSelectionChanged: (selected) {
+                  final value = selected.first;
+                  if (value == -1) {
+                    unawaited(_pickCustomPrepTime());
+                    return;
+                  }
+                  setState(() {
+                    _prepTimeMin = value;
+                  });
+                  unawaited(_persistSettings());
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SmartAlarmControl(
+            title: '준비 시작 사전 알림',
+            helperText: '“둘 다”는 현재 설정 구조상 30분 대표값으로 저장해요.',
+            child: _buildOffsetSelector(
+              key: const ValueKey('settings-prep-pre-alarm-selector'),
+              value: _prepPreAlarmOffset,
+              onChanged: (value) {
+                setState(() {
+                  _prepPreAlarmOffset = value == 31 ? 30 : value;
+                });
+                unawaited(_persistSettings());
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SmartAlarmControl(
+            title: '출발 사전 알림',
+            helperText: '0분이면 사전 알림 없이 출발 알림만 받아요.',
+            child: _buildOffsetSelector(
+              key: const ValueKey('settings-depart-pre-alarm-selector'),
+              value: _departPreAlarmOffset,
+              onChanged: (value) {
+                setState(() {
+                  _departPreAlarmOffset = value == 31 ? 30 : value;
+                });
+                unawaited(_persistSettings());
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '준비 시간은 하루 첫 외부 일정에만 적용돼요.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOffsetSelector({
+    required Key key,
+    required int value,
+    required ValueChanged<int> onChanged,
+  }) {
+    final selected = value == 0 || value == 10 || value == 30 ? value : 30;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SegmentedButton<int>(
+        key: key,
+        showSelectedIcon: false,
+        segments: const <ButtonSegment<int>>[
+          ButtonSegment<int>(value: 0, label: Text('안 받기')),
+          ButtonSegment<int>(value: 10, label: Text('10분 전')),
+          ButtonSegment<int>(value: 30, label: Text('30분 전')),
+          ButtonSegment<int>(value: 31, label: Text('둘 다')),
+        ],
+        selected: <int>{selected},
+        onSelectionChanged: (selected) => onChanged(selected.first),
+      ),
     );
   }
 
@@ -1764,6 +1923,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: '이동수단',
               subtitle: '위치 기반 이동시간 계산과 스마트 준비 알람에 우선 적용할 방식을 정합니다.',
               child: SegmentedButton<String>(
+                key: const ValueKey('settings-travel-mode-selector'),
                 segments: const <ButtonSegment<String>>[
                   ButtonSegment<String>(
                     value: 'car',
@@ -1790,6 +1950,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: '음성 입력 방식',
               subtitle: '홈이나 위젯의 마이크 버튼을 눌렀을 때 바로 듣기 시작할지 정합니다.',
               child: SwitchListTile.adaptive(
+                key: const ValueKey('settings-voice-auto-start-selector'),
                 contentPadding: EdgeInsets.zero,
                 value: _voiceAutoStart,
                 activeThumbColor: PlanFlowColors.primary,
@@ -1806,6 +1967,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ),
+            const SizedBox(height: 16),
+            _buildSmartAlarmSettings(),
             const SizedBox(height: 16),
             _SectionCard(
               title: '캘린더 연동',
@@ -1849,6 +2012,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: FilledButton.icon(
+                          key: const ValueKey(
+                            'settings-google-calendar-sync-button',
+                          ),
                           onPressed: _isLoadingCalendarStatus ||
                                   _isSyncingGoogleCalendar ||
                                   _isDisconnectingGoogleCalendar
@@ -1917,6 +2083,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: FilledButton.icon(
+                                  key: const ValueKey(
+                                    'settings-naver-calendar-sync-button',
+                                  ),
                                   onPressed: _isLoadingCalendarStatus ||
                                           _isTestingNaverCalDav ||
                                           _isImportingNaverCalDav ||
@@ -2487,6 +2656,44 @@ class _SectionCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SmartAlarmControl extends StatelessWidget {
+  const _SmartAlarmControl({
+    required this.title,
+    required this.helperText,
+    required this.child,
+  });
+
+  final String title;
+  final String helperText;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: PlanFlowColors.primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          helperText,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: PlanFlowColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        child,
+      ],
     );
   }
 }

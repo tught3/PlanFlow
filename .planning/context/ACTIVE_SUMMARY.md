@@ -434,3 +434,10 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Updated `NaverCalDavService.parseIcal()` to recover that Naver-specific placeholder format by treating the valid `DTEND` as the event start time and importing it as a single-point event instead of dropping it.
 - Added regression coverage for the placeholder DTSTART shape so future parser changes do not re-break existing Naver app schedule imports.
 - Verification: targeted `test/services/naver_caldav_service_test.dart`, `flutter analyze`, full `flutter test` (141 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed on `192.168.0.103:5555`.
+
+## 2026-05-08 Smart prep settings and calendar update checkpoint
+- Implemented the current `PlanFlow_Updates_Today.md` core: user-level smart preparation settings (`prep_time_min`, `prep_pre_alarm_offset`, `depart_pre_alarm_offset`), settings UI controls, model/repository/schema support, and save-time external-event preparation/departure alarm payload generation.
+- Added category/repetition/all-day/multi-day event fields through the model, repository, schema, GPT prompt, confirmation screen, and edit preservation path.
+- Improved the calendar month view with search, category-colored text labels up to three events per day, basic recurrence expansion, basic multi-day expansion across affected dates, and a date-tap agenda panel with direct add and voice add actions.
+- Added/updated regression tests for settings persistence, event serialization, smart preparation payloads, manual event side effects, and Naver CalDAV diagnostics.
+- Verification before build: `flutter analyze` passed and full `flutter test` passed with 146 tests.

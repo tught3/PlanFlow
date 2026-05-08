@@ -10,6 +10,39 @@ class SmartPreparationAlarmService {
 
   static const String label = '스마트 준비 알람';
   static const int maxScheduledAlarmsPerEvent = 20;
+  static const int defaultPrepTimeMin = 30;
+  static const int defaultPrepPreAlarmOffset = 30;
+  static const int defaultDepartPreAlarmOffset = 30;
+  static const int defaultTravelBufferMin = 30;
+  static const int externalScheduleSlackMin = 30;
+
+  static const List<String> internalKeywords = <String>[
+    '집',
+    '재택',
+    '자택',
+    '집에서',
+    '집앞',
+    '온라인',
+    '화상',
+    '줌',
+    'zoom',
+    'zep',
+    'webex',
+    '구글밋',
+    'google meet',
+    'teams',
+    'ms teams',
+    '전화',
+    '통화',
+    '콜',
+    '전화회의',
+    '컨퍼런스콜',
+    '내부',
+    '사내',
+    '팀내',
+    '오피스',
+    '자체',
+  ];
 
   final NotificationService? _notificationService;
 
@@ -149,6 +182,115 @@ class SmartPreparationAlarmService {
         })
         .whereType<Map<String, dynamic>>()
         .toList(growable: true);
+  }
+
+  bool isExternalEvent({
+    required String title,
+    String? location,
+  }) {
+    final normalizedLocation = (location ?? '').trim().toLowerCase();
+    if (normalizedLocation.isEmpty) {
+      return false;
+    }
+    final normalizedTitle = title.trim().toLowerCase();
+    for (final keyword in internalKeywords) {
+      final normalizedKeyword = keyword.toLowerCase();
+      if (normalizedLocation.contains(normalizedKeyword) ||
+          normalizedTitle.contains(normalizedKeyword)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  List<Map<String, dynamic>> buildExternalEventPayloads({
+    required String eventId,
+    required String userId,
+    required String title,
+    required DateTime eventStartAt,
+    required String? location,
+    int prepTimeMin = defaultPrepTimeMin,
+    int prepPreAlarmOffset = defaultPrepPreAlarmOffset,
+    int departPreAlarmOffset = defaultDepartPreAlarmOffset,
+    int travelMinutes = defaultTravelBufferMin,
+    bool isFirstExternalEventOfDay = true,
+    DateTime? now,
+  }) {
+    if (!isExternalEvent(title: title, location: location)) {
+      return const <Map<String, dynamic>>[];
+    }
+
+    final safeNow = now ?? DateTime.now();
+    final safePrepMin = prepTimeMin.clamp(5, 240).toInt();
+    final safeTravelMin = travelMinutes.clamp(0, 360).toInt();
+    final departureAt = eventStartAt.subtract(
+      Duration(minutes: safeTravelMin + externalScheduleSlackMin),
+    );
+    final specs = <_ExternalAlarmSpec>[];
+
+    if (isFirstExternalEventOfDay) {
+      final prepStartAt = departureAt.subtract(Duration(minutes: safePrepMin));
+      if (prepPreAlarmOffset > 0) {
+        specs.add(
+          _ExternalAlarmSpec(
+            title: '$prepPreAlarmOffset분 뒤부터 준비 시작하세요 🔔',
+            notifyAt:
+                prepStartAt.subtract(Duration(minutes: prepPreAlarmOffset)),
+          ),
+        );
+      }
+      specs.add(
+        _ExternalAlarmSpec(
+          title: '지금 준비 시작하세요 🚿',
+          notifyAt: prepStartAt,
+        ),
+      );
+    }
+
+    if (departPreAlarmOffset > 0) {
+      specs.add(
+        _ExternalAlarmSpec(
+          title: '$departPreAlarmOffset분 뒤 출발해야 해요 🔔',
+          notifyAt:
+              departureAt.subtract(Duration(minutes: departPreAlarmOffset)),
+        ),
+      );
+    }
+    specs.add(
+      _ExternalAlarmSpec(
+        title: '지금 출발하세요 🚗 (이동 약 $safeTravelMin분)',
+        notifyAt: departureAt,
+      ),
+    );
+
+    final merged = <_ExternalAlarmSpec>[];
+    for (final spec in specs
+      ..sort((a, b) => a.notifyAt.compareTo(b.notifyAt))) {
+      if (!spec.notifyAt.isAfter(safeNow)) {
+        continue;
+      }
+      if (merged.isNotEmpty &&
+          spec.notifyAt.difference(merged.last.notifyAt).inMinutes.abs() < 5) {
+        merged[merged.length - 1] = _ExternalAlarmSpec(
+          title: '${merged.last.title} / ${spec.title}',
+          notifyAt: merged.last.notifyAt,
+        );
+        continue;
+      }
+      merged.add(spec);
+    }
+
+    return merged
+        .map(
+          (spec) => <String, dynamic>{
+            'event_id': eventId,
+            'user_id': userId,
+            'title': spec.title,
+            'notify_at': spec.notifyAt.toIso8601String(),
+            'is_done': false,
+          },
+        )
+        .toList(growable: false);
   }
 
   Future<void> schedulePayloads({
@@ -418,6 +560,16 @@ class SmartPreparationAlarmService {
     }
     return DateTime.tryParse(text);
   }
+}
+
+class _ExternalAlarmSpec {
+  const _ExternalAlarmSpec({
+    required this.title,
+    required this.notifyAt,
+  });
+
+  final String title;
+  final DateTime notifyAt;
 }
 
 class SmartPreparationAlarmCandidate {

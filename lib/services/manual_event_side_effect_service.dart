@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/models/event_model.dart';
 import 'notification_service.dart';
+import 'smart_preparation_alarm_service.dart';
 
 abstract class ManualEventSideEffectGateway {
   const ManualEventSideEffectGateway();
@@ -17,6 +18,8 @@ abstract class ManualEventSideEffectGateway {
   });
 
   Future<void> insertReminders(List<Map<String, dynamic>> payloads);
+
+  Future<void> insertPreActions(List<Map<String, dynamic>> payloads);
 }
 
 class SupabaseManualEventSideEffectGateway
@@ -59,6 +62,14 @@ class SupabaseManualEventSideEffectGateway
     }
     await _resolvedClient.from('reminders').insert(payloads);
   }
+
+  @override
+  Future<void> insertPreActions(List<Map<String, dynamic>> payloads) async {
+    if (payloads.isEmpty) {
+      return;
+    }
+    await _resolvedClient.from('pre_actions').insert(payloads);
+  }
 }
 
 class ManualEventSideEffectService {
@@ -82,6 +93,13 @@ class ManualEventSideEffectService {
     bool clearPreActions = true,
     Duration? reminderOffset = defaultReminderOffset,
     Duration? criticalAlarmOffset,
+    int prepTimeMin = SmartPreparationAlarmService.defaultPrepTimeMin,
+    int prepPreAlarmOffset =
+        SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+    int departPreAlarmOffset =
+        SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+    int travelMinutes = SmartPreparationAlarmService.defaultTravelBufferMin,
+    bool isFirstExternalEventOfDay = true,
   }) async {
     final startAt = event.startAt;
     if (startAt == null) {
@@ -107,6 +125,20 @@ class ManualEventSideEffectService {
         );
         preActionsCleared = true;
       }
+      final externalPreparationPayloads =
+          const SmartPreparationAlarmService().buildExternalEventPayloads(
+        eventId: event.id,
+        userId: userId,
+        title: event.title,
+        eventStartAt: startAt,
+        location: event.location,
+        prepTimeMin: prepTimeMin,
+        prepPreAlarmOffset: prepPreAlarmOffset,
+        departPreAlarmOffset: departPreAlarmOffset,
+        travelMinutes: travelMinutes,
+        isFirstExternalEventOfDay: isFirstExternalEventOfDay,
+      );
+      await gateway.insertPreActions(externalPreparationPayloads);
       await gateway.insertReminders(
         buildReminderPayloads(
           event: event,
@@ -125,6 +157,22 @@ class ManualEventSideEffectService {
         event,
         reminderOffset: reminderOffset,
         criticalAlarmOffset: criticalAlarmOffset ?? reminderOffset,
+      );
+      await const SmartPreparationAlarmService().schedulePayloads(
+        eventId: event.id,
+        eventTitle: event.title,
+        payloads: SmartPreparationAlarmService().buildExternalEventPayloads(
+          eventId: event.id,
+          userId: userId,
+          title: event.title,
+          eventStartAt: startAt,
+          location: event.location,
+          prepTimeMin: prepTimeMin,
+          prepPreAlarmOffset: prepPreAlarmOffset,
+          departPreAlarmOffset: departPreAlarmOffset,
+          travelMinutes: travelMinutes,
+          isFirstExternalEventOfDay: isFirstExternalEventOfDay,
+        ),
       );
       notificationsSynced = true;
     } catch (_) {

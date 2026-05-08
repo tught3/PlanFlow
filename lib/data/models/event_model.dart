@@ -12,6 +12,11 @@ class EventModel {
     this.supplies = const <String>[],
     this.suppliesChecked = const <String>[],
     this.isCritical = false,
+    this.recurrenceRule,
+    this.isAllDay = false,
+    this.isMultiDay = false,
+    this.parentEventId,
+    this.category = '기타',
     this.source = 'manual',
     this.externalId,
     this.externalCalendarId,
@@ -36,6 +41,11 @@ class EventModel {
       supplies: _stringListValue(json['supplies']),
       suppliesChecked: _stringListValue(json['supplies_checked']),
       isCritical: _boolValue(json['is_critical']),
+      recurrenceRule: _optionalStringValue(json['recurrence_rule']),
+      isAllDay: _boolValue(json['is_all_day']),
+      isMultiDay: _boolValue(json['is_multi_day']),
+      parentEventId: _optionalStringValue(json['parent_event_id']),
+      category: _categoryValue(json['category']),
       source: _sourceValue(json['source']),
       externalId: _optionalStringValue(json['external_id']),
       externalCalendarId: _optionalStringValue(json['external_calendar_id']),
@@ -59,6 +69,11 @@ class EventModel {
   final List<String> supplies;
   final List<String> suppliesChecked;
   final bool isCritical;
+  final String? recurrenceRule;
+  final bool isAllDay;
+  final bool isMultiDay;
+  final String? parentEventId;
+  final String category;
   final String source;
   final String? externalId;
   final String? externalCalendarId;
@@ -82,6 +97,11 @@ class EventModel {
       'supplies': supplies,
       'supplies_checked': suppliesChecked,
       'is_critical': isCritical,
+      'recurrence_rule': _optionalStringValue(recurrenceRule),
+      'is_all_day': isAllDay,
+      'is_multi_day': isMultiDay,
+      'parent_event_id': _optionalStringValue(parentEventId),
+      'category': _categoryValue(category),
       'source': _sourceValue(source),
       'external_id': _optionalStringValue(externalId),
       'external_calendar_id': _optionalStringValue(externalCalendarId),
@@ -105,6 +125,11 @@ class EventModel {
       'supplies': supplies,
       'supplies_checked': suppliesChecked,
       'is_critical': isCritical,
+      'recurrence_rule': _optionalStringValue(recurrenceRule),
+      'is_all_day': isAllDay,
+      'is_multi_day': isMultiDay,
+      'parent_event_id': _optionalStringValue(parentEventId),
+      'category': _categoryValue(category),
       'source': _sourceValue(source),
       'external_id': _optionalStringValue(externalId),
       'external_calendar_id': _optionalStringValue(externalCalendarId),
@@ -133,6 +158,12 @@ class EventModel {
   static String _sourceValue(Object? value) {
     final text = _stringValue(value);
     return text.isEmpty ? 'manual' : text;
+  }
+
+  static String _categoryValue(Object? value) {
+    final text = _stringValue(value).trim();
+    const allowed = <String>{'업무', '개인', '가족', '기타'};
+    return allowed.contains(text) ? text : '기타';
   }
 
   static String? _optionalStringValue(Object? value) {

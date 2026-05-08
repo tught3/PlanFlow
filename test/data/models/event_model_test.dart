@@ -14,7 +14,13 @@ void main() {
       locationLng: 126.978,
       memo: 'Weekly meeting',
       supplies: const <String>['laptop', 'notes'],
+      suppliesChecked: const <String>['notes'],
       isCritical: true,
+      recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
+      isAllDay: true,
+      isMultiDay: true,
+      parentEventId: 'parent-1',
+      category: '업무',
       source: 'google',
       externalId: 'calendar-event-1',
       externalCalendarId: 'google:primary',
@@ -38,7 +44,13 @@ void main() {
     expect(restored.locationLng, 126.978);
     expect(restored.memo, model.memo);
     expect(restored.supplies, model.supplies);
+    expect(restored.suppliesChecked, model.suppliesChecked);
     expect(restored.isCritical, isTrue);
+    expect(restored.recurrenceRule, 'FREQ=WEEKLY;BYDAY=TU');
+    expect(restored.isAllDay, isTrue);
+    expect(restored.isMultiDay, isTrue);
+    expect(restored.parentEventId, 'parent-1');
+    expect(restored.category, '업무');
     expect(restored.source, 'google');
     expect(restored.externalId, 'calendar-event-1');
     expect(restored.externalCalendarId, 'google:primary');
@@ -50,6 +62,11 @@ void main() {
     expect(json['location_lat'], 37.5665);
     expect(json['location_lng'], 126.978);
     expect(json['external_etag'], '"etag-1"');
+    expect(json['recurrence_rule'], 'FREQ=WEEKLY;BYDAY=TU');
+    expect(json['is_all_day'], isTrue);
+    expect(json['is_multi_day'], isTrue);
+    expect(json['parent_event_id'], 'parent-1');
+    expect(json['category'], '업무');
   });
 
   test('EventModel can omit id for inserts', () {
@@ -65,6 +82,7 @@ void main() {
     expect(json['user_id'], 'user-1');
     expect(json['title'], 'Draft event');
     expect(json['source'], 'manual');
+    expect(json['category'], '기타');
     expect(json['external_id'], isNull);
   });
 
@@ -75,6 +93,7 @@ void main() {
       title: 'Updated event',
       startAt: DateTime.parse('2026-05-01T09:00:00Z'),
       externalEtag: '"etag-2"',
+      category: '가족',
       lastSyncedAt: DateTime.parse('2026-05-01T09:01:00Z'),
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
     );
@@ -86,6 +105,7 @@ void main() {
     expect(json.containsKey('created_at'), isFalse);
     expect(json['title'], 'Updated event');
     expect(json['source'], 'manual');
+    expect(json['category'], '가족');
     expect(json['external_etag'], '"etag-2"');
     expect(json['last_synced_at'], '2026-05-01T09:01:00.000Z');
   });
@@ -99,6 +119,7 @@ void main() {
     });
 
     expect(restored.source, 'manual');
+    expect(restored.category, '기타');
     expect(restored.externalId, isNull);
   });
 }

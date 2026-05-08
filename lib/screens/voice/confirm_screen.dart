@@ -10,6 +10,7 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/departure_alarm_service.dart';
@@ -157,6 +158,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   late final TextEditingController _locationController;
   late final TextEditingController _memoController;
   late final TextEditingController _newSupplyController;
+  late final TextEditingController _recurrenceRuleController;
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
   );
@@ -169,6 +171,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   DateTime? _endAt;
   double? _locationLat;
   double? _locationLng;
+  String? _recurrenceRule;
+  bool _isAllDay = false;
+  bool _isMultiDay = false;
+  String _category = '기타';
   late bool _isCritical;
   bool _isSaving = false;
   bool _isLoadingPastSupplies = false;
@@ -197,6 +203,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           _stringValue(widget.parsedSchedule['raw_text']),
     );
     _newSupplyController = TextEditingController();
+    _recurrenceRuleController = TextEditingController(
+      text: _stringValue(widget.parsedSchedule['recurrence_rule']) ?? '',
+    );
     _supplies = _stringListValue(
       widget.parsedSchedule['supplies'],
     ).map(_SupplyDraft.new).toList(growable: true);
@@ -205,6 +214,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
     _locationLat = _doubleValue(widget.parsedSchedule['location_lat']);
     _locationLng = _doubleValue(widget.parsedSchedule['location_lng']);
+    _recurrenceRule = _stringValue(widget.parsedSchedule['recurrence_rule']);
+    _isAllDay = widget.parsedSchedule['is_all_day'] == true;
+    _isMultiDay = widget.parsedSchedule['is_multi_day'] == true;
+    _category = _categoryValue(widget.parsedSchedule['category']);
     _isCritical = widget.parsedSchedule['is_critical'] == true;
     _locationController.addListener(_schedulePastSupplyLookup);
 
@@ -222,6 +235,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _locationController.dispose();
     _memoController.dispose();
     _newSupplyController.dispose();
+    _recurrenceRuleController.dispose();
     _scrollController.dispose();
     _newSupplyFocusNode.dispose();
     for (final draft in _supplies) {
@@ -480,6 +494,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                 .where((item) => item.isNotEmpty),
           ),
           isCritical: _isCritical,
+          recurrenceRule: _recurrenceRule,
+          isAllDay: _isAllDay,
+          isMultiDay: _isMultiDay,
+          category: _category,
         ),
       );
 
@@ -524,6 +542,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       userId: userId,
       eventId: event.id,
       eventStartAt: eventStartAt,
+    );
+    preActionPayloads.addAll(
+      await _buildDefaultExternalPreActionPayloads(
+        userId: userId,
+        eventId: event.id,
+        eventStartAt: eventStartAt,
+      ),
     );
     final travelPreAction = await _buildTravelPreActionPayload(
       userId: userId,
@@ -684,6 +709,34 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         })
         .whereType<Map<String, dynamic>>()
         .toList(growable: true);
+  }
+
+  Future<List<Map<String, dynamic>>> _buildDefaultExternalPreActionPayloads({
+    required String userId,
+    required String eventId,
+    required DateTime eventStartAt,
+  }) async {
+    try {
+      final settings =
+          await SettingsRepository.supabase().fetchSettings(userId);
+      return widget.smartPreparationAlarmService.buildExternalEventPayloads(
+        eventId: eventId,
+        userId: userId,
+        title: _titleController.text.trim(),
+        eventStartAt: eventStartAt,
+        location: _emptyToNull(_locationController.text),
+        prepTimeMin: settings?.prepTimeMin ??
+            SmartPreparationAlarmService.defaultPrepTimeMin,
+        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+        departPreAlarmOffset: settings?.departPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Default external smart prep build failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return const <Map<String, dynamic>>[];
+    }
   }
 
   Future<Map<String, dynamic>?> _buildTravelPreActionPayload({
@@ -1342,6 +1395,95 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                       ),
                     ),
                     const SizedBox(height: AppConstants.sectionSpacing),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: PlanFlowColors.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: PlanFlowColors.primaryFaint),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '일정 유형',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: PlanFlowColors.primary,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          SegmentedButton<String>(
+                            showSelectedIcon: false,
+                            segments: const <ButtonSegment<String>>[
+                              ButtonSegment<String>(
+                                value: 'single',
+                                label: Text('단일'),
+                              ),
+                              ButtonSegment<String>(
+                                value: 'all_day',
+                                label: Text('종일'),
+                              ),
+                              ButtonSegment<String>(
+                                value: 'multi_day',
+                                label: Text('다일'),
+                              ),
+                            ],
+                            selected: <String>{
+                              _isMultiDay
+                                  ? 'multi_day'
+                                  : _isAllDay
+                                      ? 'all_day'
+                                      : 'single',
+                            },
+                            onSelectionChanged: (selected) {
+                              final value = selected.first;
+                              setState(() {
+                                _isAllDay = value == 'all_day';
+                                _isMultiDay = value == 'multi_day';
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: const <String>[
+                              '업무',
+                              '개인',
+                              '가족',
+                              '기타',
+                            ].map((category) {
+                              return ChoiceChip(
+                                label: Text(category),
+                                selected: _category == category,
+                                onSelected: (_) {
+                                  setState(() {
+                                    _category = category;
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _recurrenceRuleController,
+                            decoration: const InputDecoration(
+                              labelText: '반복 규칙',
+                              hintText: '예: FREQ=WEEKLY;BYDAY=TU',
+                            ),
+                            onChanged: (value) {
+                              _recurrenceRule = _emptyToNull(value);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppConstants.sectionSpacing),
                     _DateTimeTile(
                       label: '시작 시간',
                       value: _startAt,
@@ -1470,6 +1612,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   String? _emptyToNull(String value) {
     final text = value.trim();
     return text.isEmpty ? null : text;
+  }
+
+  String _categoryValue(Object? value) {
+    final text = value?.toString().trim() ?? '';
+    const allowed = <String>{'업무', '개인', '가족', '기타'};
+    return allowed.contains(text) ? text : '기타';
   }
 
   List<String> _stringListValue(Object? value) {

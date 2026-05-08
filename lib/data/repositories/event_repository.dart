@@ -98,6 +98,7 @@ class SupabaseEventRepository extends EventRepository {
   static const String _selectColumns =
       'id, user_id, title, start_at, end_at, location, location_lat, '
       'location_lng, memo, supplies, supplies_checked, is_critical, source, '
+      'recurrence_rule, is_all_day, is_multi_day, parent_event_id, category, '
       'external_id, external_calendar_id, external_etag, external_updated_at, '
       'last_synced_at, created_at, updated_at';
   static const String _legacySelectColumns =
@@ -214,6 +215,11 @@ class SupabaseEventRepository extends EventRepository {
       supplies: event.supplies,
       suppliesChecked: event.suppliesChecked,
       isCritical: event.isCritical,
+      recurrenceRule: event.recurrenceRule,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
+      parentEventId: event.parentEventId,
+      category: event.category,
       source: normalizedSource,
       externalId: normalizedExternalId,
       externalCalendarId: event.externalCalendarId,
@@ -488,6 +494,11 @@ class SupabaseEventRepository extends EventRepository {
       ..remove('external_etag')
       ..remove('external_updated_at')
       ..remove('last_synced_at')
+      ..remove('recurrence_rule')
+      ..remove('is_all_day')
+      ..remove('is_multi_day')
+      ..remove('parent_event_id')
+      ..remove('category')
       ..remove('updated_at');
   }
 
@@ -498,6 +509,11 @@ class SupabaseEventRepository extends EventRepository {
         text.contains('external_etag') ||
         text.contains('external_updated_at') ||
         text.contains('last_synced_at') ||
+        text.contains('recurrence_rule') ||
+        text.contains('is_all_day') ||
+        text.contains('is_multi_day') ||
+        text.contains('parent_event_id') ||
+        text.contains('category') ||
         text.contains('updated_at') ||
         text.contains('pgrst204') ||
         text.contains('42703');

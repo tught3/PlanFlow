@@ -118,6 +118,45 @@ void main() {
       contains('스마트 준비 알람: 이동시간과 출발 시간 확인'),
     );
   });
+
+  test('buildExternalEventPayloads creates four-stage prep and departure flow',
+      () {
+    final service = SmartPreparationAlarmService();
+    final payloads = service.buildExternalEventPayloads(
+      eventId: 'event-2',
+      userId: 'user-1',
+      title: '원주 미팅',
+      location: '원주시청',
+      eventStartAt: DateTime(2026, 5, 8, 12),
+      travelMinutes: 90,
+      prepTimeMin: 60,
+      prepPreAlarmOffset: 30,
+      departPreAlarmOffset: 30,
+      now: DateTime(2026, 5, 8, 7),
+    );
+
+    expect(payloads.map((row) => row['title']), <String>[
+      '30분 뒤부터 준비 시작하세요 🔔',
+      '지금 준비 시작하세요 🚿',
+      '30분 뒤 출발해야 해요 🔔',
+      '지금 출발하세요 🚗 (이동 약 90분)',
+    ]);
+    expect(payloads.map((row) => row['notify_at']), <String>[
+      DateTime(2026, 5, 8, 8, 30).toIso8601String(),
+      DateTime(2026, 5, 8, 9).toIso8601String(),
+      DateTime(2026, 5, 8, 9, 30).toIso8601String(),
+      DateTime(2026, 5, 8, 10).toIso8601String(),
+    ]);
+  });
+
+  test('isExternalEvent ignores home, online, and call schedules', () {
+    final service = SmartPreparationAlarmService();
+
+    expect(service.isExternalEvent(title: '대면 미팅', location: '원주시청'), true);
+    expect(service.isExternalEvent(title: '재택 회의', location: '집'), false);
+    expect(service.isExternalEvent(title: '줌 미팅', location: '온라인'), false);
+    expect(service.isExternalEvent(title: '거래처 전화', location: '사무실 전화'), false);
+  });
 }
 
 class _FakeNotificationService extends NotificationService {

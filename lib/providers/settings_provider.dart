@@ -34,7 +34,7 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _settings = await _repository.upsertSettings(settings);
+      _settings = await _repository.saveSettings(settings);
       return _settings!;
     } finally {
       _isSaving = false;

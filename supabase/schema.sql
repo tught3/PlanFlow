@@ -55,6 +55,11 @@ create table if not exists public.events (
   supplies text[] not null default '{}',
   supplies_checked text[] not null default '{}',
   is_critical boolean not null default false,
+  recurrence_rule text,
+  is_all_day boolean not null default false,
+  is_multi_day boolean not null default false,
+  parent_event_id uuid references public.events (id) on delete set null,
+  category text not null default '기타',
   source text not null default 'manual',
   external_id text,
   external_calendar_id text,
@@ -69,6 +74,11 @@ alter table public.events
   add column if not exists location_lat double precision,
   add column if not exists location_lng double precision,
   add column if not exists supplies_checked text[] not null default '{}',
+  add column if not exists recurrence_rule text,
+  add column if not exists is_all_day boolean not null default false,
+  add column if not exists is_multi_day boolean not null default false,
+  add column if not exists parent_event_id uuid references public.events (id) on delete set null,
+  add column if not exists category text not null default '기타',
   add column if not exists external_calendar_id text,
   add column if not exists external_etag text,
   add column if not exists external_updated_at timestamptz,
@@ -144,6 +154,9 @@ create table if not exists public.user_settings (
   morning_briefing_at time not null default '07:30',
   evening_briefing_at time not null default '21:00',
   default_reminder_min integer not null default 60,
+  prep_time_min integer not null default 30,
+  prep_pre_alarm_offset integer not null default 30,
+  depart_pre_alarm_offset integer not null default 30,
   travel_mode text not null default 'car',
   voice_auto_start boolean not null default false,
   google_calendar_token text,
@@ -156,6 +169,15 @@ create table if not exists public.user_settings (
 
   alter table public.user_settings
   add column if not exists voice_auto_start boolean not null default false;
+
+  alter table public.user_settings
+  add column if not exists prep_time_min integer not null default 30;
+
+  alter table public.user_settings
+  add column if not exists prep_pre_alarm_offset integer not null default 30;
+
+  alter table public.user_settings
+  add column if not exists depart_pre_alarm_offset integer not null default 30;
 
   alter table public.user_settings
   add column if not exists naver_calendar_token text;
@@ -556,6 +578,7 @@ begin
     insert into public.events (
       id, user_id, title, start_at, end_at, location, location_lat,
       location_lng, memo, supplies, supplies_checked, is_critical, source,
+      recurrence_rule, is_all_day, is_multi_day, parent_event_id, category,
       external_id, external_calendar_id, external_etag, external_updated_at, last_synced_at,
       created_at, updated_at
     )
@@ -573,6 +596,11 @@ begin
       coalesce(supplies_checked_value, '{}'::text[]),
       coalesce(nullif(item ->> 'is_critical', '')::boolean, false),
       coalesce(nullif(item ->> 'source', ''), 'manual'),
+      nullif(item ->> 'recurrence_rule', ''),
+      coalesce(nullif(item ->> 'is_all_day', '')::boolean, false),
+      coalesce(nullif(item ->> 'is_multi_day', '')::boolean, false),
+      nullif(item ->> 'parent_event_id', '')::uuid,
+      coalesce(nullif(item ->> 'category', ''), '기타'),
       nullif(item ->> 'external_id', ''),
       nullif(item ->> 'external_calendar_id', ''),
       nullif(item ->> 'external_etag', ''),
@@ -593,6 +621,11 @@ begin
           supplies_checked = excluded.supplies_checked,
           is_critical = excluded.is_critical,
           source = excluded.source,
+          recurrence_rule = excluded.recurrence_rule,
+          is_all_day = excluded.is_all_day,
+          is_multi_day = excluded.is_multi_day,
+          parent_event_id = excluded.parent_event_id,
+          category = excluded.category,
           external_id = excluded.external_id,
           external_calendar_id = excluded.external_calendar_id,
           external_etag = excluded.external_etag,
@@ -607,7 +640,8 @@ begin
   loop
     insert into public.user_settings (
       id, user_id, morning_briefing_at, evening_briefing_at,
-      default_reminder_min, travel_mode, created_at
+      default_reminder_min, prep_time_min, prep_pre_alarm_offset,
+      depart_pre_alarm_offset, travel_mode, created_at
     )
     values (
       coalesce(nullif(item ->> 'id', '')::uuid, gen_random_uuid()),
@@ -615,6 +649,9 @@ begin
       coalesce(nullif(item ->> 'morning_briefing_at', '')::time, '07:30'::time),
       coalesce(nullif(item ->> 'evening_briefing_at', '')::time, '21:00'::time),
       coalesce(nullif(item ->> 'default_reminder_min', '')::integer, 60),
+      coalesce(nullif(item ->> 'prep_time_min', '')::integer, 30),
+      coalesce(nullif(item ->> 'prep_pre_alarm_offset', '')::integer, 30),
+      coalesce(nullif(item ->> 'depart_pre_alarm_offset', '')::integer, 30),
       case
         when lower(coalesce(item ->> 'travel_mode', '')) = 'transit'
           then 'transit'
@@ -626,6 +663,9 @@ begin
       set morning_briefing_at = excluded.morning_briefing_at,
           evening_briefing_at = excluded.evening_briefing_at,
           default_reminder_min = excluded.default_reminder_min,
+          prep_time_min = excluded.prep_time_min,
+          prep_pre_alarm_offset = excluded.prep_pre_alarm_offset,
+          depart_pre_alarm_offset = excluded.depart_pre_alarm_offset,
           travel_mode = excluded.travel_mode;
   end loop;
 

@@ -11,6 +11,9 @@ void main() {
         'morning_briefing_at': '06:45:00',
         'evening_briefing_at': '20:15:00',
         'default_reminder_min': 45,
+        'prep_time_min': 60,
+        'prep_pre_alarm_offset': 10,
+        'depart_pre_alarm_offset': 0,
         'travel_mode': 'transit',
         'voice_auto_start': false,
         'google_calendar_token': 'google-token',
@@ -28,6 +31,9 @@ void main() {
     expect(settings.morningBriefingAt, '06:45');
     expect(settings.eveningBriefingAt, '20:15');
     expect(settings.defaultReminderMin, 45);
+    expect(settings.prepTimeMin, 60);
+    expect(settings.prepPreAlarmOffset, 10);
+    expect(settings.departPreAlarmOffset, 0);
     expect(settings.travelMode, 'transit');
     expect(settings.voiceAutoStart, isFalse);
     expect(settings.googleCalendarToken, 'google-token');
@@ -45,6 +51,9 @@ void main() {
         'morning_briefing_at': '07:10:00',
         'evening_briefing_at': '21:20:00',
         'default_reminder_min': 60,
+        'prep_time_min': 45,
+        'prep_pre_alarm_offset': 10,
+        'depart_pre_alarm_offset': 30,
         'travel_mode': 'transit',
         'voice_auto_start': false,
         'created_at': '2026-05-02T01:00:00Z',
@@ -59,6 +68,9 @@ void main() {
         morningBriefingAt: '07:10',
         eveningBriefingAt: '21:20',
         defaultReminderMin: 60,
+        prepTimeMin: 45,
+        prepPreAlarmOffset: 10,
+        departPreAlarmOffset: 30,
         travelMode: 'transit',
         voiceAutoStart: false,
       ),
@@ -71,10 +83,16 @@ void main() {
     expect(gateway.upsertPayloads.single['morning_briefing_at'], '07:10');
     expect(gateway.upsertPayloads.single['evening_briefing_at'], '21:20');
     expect(gateway.upsertPayloads.single['default_reminder_min'], 60);
+    expect(gateway.upsertPayloads.single['prep_time_min'], 45);
+    expect(gateway.upsertPayloads.single['prep_pre_alarm_offset'], 10);
+    expect(gateway.upsertPayloads.single['depart_pre_alarm_offset'], 30);
     expect(gateway.upsertPayloads.single['travel_mode'], 'transit');
     expect(gateway.upsertPayloads.single['voice_auto_start'], isFalse);
     expect(saved.travelMode, 'transit');
     expect(saved.voiceAutoStart, isFalse);
+    expect(saved.prepTimeMin, 45);
+    expect(saved.prepPreAlarmOffset, 10);
+    expect(saved.departPreAlarmOffset, 30);
   });
 }
 

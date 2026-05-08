@@ -602,11 +602,14 @@ class NaverCalDavService {
     );
     debugPrint(
         'Naver CalDAV 범위 REPORT: $calendarPath / ${rangedEvents.length}개');
-    if (rangedEvents.isNotEmpty) {
-      return rangedEvents;
+    final filteredRangedEvents =
+        _filterEventsByRange(rangedEvents, startAt, endAt);
+    if (filteredRangedEvents.isNotEmpty &&
+        filteredRangedEvents.length == rangedEvents.length) {
+      return filteredRangedEvents;
     }
     if (!allowFullFallback) {
-      return const <NaverCalDavEvent>[];
+      return filteredRangedEvents;
     }
 
     final fallbackEvents = await _queryEvents(
@@ -622,8 +625,12 @@ class NaverCalDavService {
       'Naver CalDAV 전체 REPORT: $calendarPath / '
       '${fallbackEvents.length}개, 범위 내 ${filteredFallbackEvents.length}개',
     );
-    if (filteredFallbackEvents.isNotEmpty) {
-      return filteredFallbackEvents;
+    final mergedFallbackEvents = _mergeEventsByIdentity(
+      filteredRangedEvents,
+      filteredFallbackEvents,
+    );
+    if (mergedFallbackEvents.isNotEmpty) {
+      return mergedFallbackEvents;
     }
     if (!allowResourceFallback) {
       return const <NaverCalDavEvent>[];
@@ -641,7 +648,7 @@ class NaverCalDavService {
       'Naver CalDAV 리소스 GET: $calendarPath / '
       '${resourceEvents.length}개, 범위 내 ${filteredResourceEvents.length}개',
     );
-    return filteredResourceEvents;
+    return _mergeEventsByIdentity(filteredRangedEvents, filteredResourceEvents);
   }
 
   Future<List<NaverCalDavEvent>> _queryEvents({
@@ -717,6 +724,39 @@ class NaverCalDavService {
       }
       return eventEnd.isAfter(startAt) && eventStart.isBefore(endAt);
     }).toList(growable: false);
+  }
+
+  List<NaverCalDavEvent> _mergeEventsByIdentity(
+    List<NaverCalDavEvent> first,
+    List<NaverCalDavEvent> second,
+  ) {
+    if (first.isEmpty) {
+      return second;
+    }
+    if (second.isEmpty) {
+      return first;
+    }
+    final seen = <String>{};
+    final merged = <NaverCalDavEvent>[];
+    for (final event in <NaverCalDavEvent>[...first, ...second]) {
+      final key = '${event.href}::${event.uid}';
+      if (seen.add(key)) {
+        merged.add(event);
+      }
+    }
+    return merged;
+  }
+
+  bool _isEventInsideOptionalRange(
+    NaverCalDavEvent event,
+    DateTime? startAt,
+    DateTime? endAt,
+  ) {
+    if (startAt == null || endAt == null) {
+      return true;
+    }
+    return _filterEventsByRange(<NaverCalDavEvent>[event], startAt, endAt)
+        .isNotEmpty;
   }
 
   Future<List<NaverCalDavEvent>> _loadEventsFromResources({
@@ -954,6 +994,16 @@ class NaverCalDavService {
         eventCount += events.length;
         for (var eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
           final event = events[eventIndex];
+          if (!_isEventInsideOptionalRange(event, range.from, range.to)) {
+            skippedCount += 1;
+            diagnostics.addSkipReason('동기화 범위 밖');
+            debugPrint(
+              'Naver CalDAV out-of-range skipped: '
+              'calendar="${calendar.displayName}", uid="${event.uid}", '
+              'startAt=${event.startAt}, endAt=${event.endAt}',
+            );
+            continue;
+          }
           final eventModel = event.toEventModel(
             userId: resolvedUserId,
             calendarPath: calendar.path,
@@ -1199,6 +1249,17 @@ class NaverCalDavService {
     }
     final incomingEtag = event.externalEtag?.trim();
     final existingEtag = existing.externalEtag?.trim();
+    if (existing.startAt == null &&
+        incomingEtag != null &&
+        incomingEtag.isNotEmpty &&
+        existingEtag != null &&
+        existingEtag.isNotEmpty &&
+        incomingEtag == existingEtag) {
+      return 'external_etag 일치';
+    }
+    if (_hasMeaningfulEventDifference(event, existing)) {
+      return null;
+    }
     if (incomingEtag != null &&
         incomingEtag.isNotEmpty &&
         existingEtag != null &&
@@ -1208,9 +1269,6 @@ class NaverCalDavService {
     final incomingUpdatedAt = event.externalUpdatedAt;
     final existingUpdatedAt = existing.externalUpdatedAt;
     if (incomingUpdatedAt == null || existingUpdatedAt == null) {
-      return null;
-    }
-    if (_hasMeaningfulEventDifference(event, existing)) {
       return null;
     }
     return !incomingUpdatedAt.toUtc().isAfter(existingUpdatedAt.toUtc())

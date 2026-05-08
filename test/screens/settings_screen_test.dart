@@ -109,10 +109,15 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final transitOption = find.text('대중교통');
-    await tester.scrollUntilVisible(transitOption, 200);
-    await tester.ensureVisible(transitOption);
-    await tester.tap(transitOption);
+    final travelModeSelector =
+        find.byKey(const ValueKey('settings-travel-mode-selector'));
+    await _scrollUntilHitTestable(tester, travelModeSelector);
+    await tester.tap(
+      find.descendant(
+        of: travelModeSelector,
+        matching: find.text('대중교통'),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(settingsRepository.savedSettings, isNotNull);
@@ -123,6 +128,65 @@ void main() {
     expect(scheduler.lastMorningTime, '07:10');
     expect(scheduler.lastEveningTime, '21:20');
     expect(scheduler.callCount, 2);
+  });
+
+  testWidgets('SettingsScreen saves smart prep alarm settings', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final settingsRepository = _FakeSettingsRepository(
+      fetched: const UserSettingsModel(
+        id: 'settings-1',
+        userId: 'user-1',
+        prepTimeMin: 30,
+        prepPreAlarmOffset: 30,
+        departPreAlarmOffset: 30,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: settingsRepository,
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.signedOut(
+                CalendarProvider.naver,
+              ),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final section = find.text('스마트 준비 알람 설정');
+    await _scrollUntilHitTestable(tester, section);
+    expect(section, findsOneWidget);
+    expect(find.text('하루 평균 준비 시간'), findsOneWidget);
+    expect(find.text('준비 시작 사전 알림'), findsOneWidget);
+    expect(find.text('출발 사전 알림'), findsOneWidget);
+
+    final prepTimeSelector =
+        find.byKey(const ValueKey('settings-prep-time-selector'));
+    await _scrollUntilHitTestable(tester, prepTimeSelector);
+    await tester.tap(
+      find.descendant(
+        of: prepTimeSelector,
+        matching: find.text('45분'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(settingsRepository.savedSettings, isNotNull);
+    expect(settingsRepository.savedSettings!.prepTimeMin, 45);
+    expect(settingsRepository.savedSettings!.prepPreAlarmOffset, 30);
+    expect(settingsRepository.savedSettings!.departPreAlarmOffset, 30);
   });
 
   testWidgets('SettingsScreen saves voice auto-start toggle', (tester) async {
@@ -158,9 +222,10 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final toggle = find.text('화면 열면 바로 시작');
-    await tester.scrollUntilVisible(toggle, 200);
-    await tester.tap(toggle);
+    final voiceAutoStartSelector =
+        find.byKey(const ValueKey('settings-voice-auto-start-selector'));
+    await _scrollUntilHitTestable(tester, voiceAutoStartSelector);
+    await tester.tap(voiceAutoStartSelector.hitTestable().first);
     await tester.pumpAndSettle();
 
     expect(settingsRepository.savedSettings, isNotNull);
@@ -199,10 +264,9 @@ void main() {
 
     await tester.pumpAndSettle();
     final syncButton =
-        find.widgetWithText(FilledButton, 'Google Calendar 다시 동기화');
-    await tester.scrollUntilVisible(syncButton, 200);
-    await tester.ensureVisible(syncButton);
-    await tester.tap(syncButton);
+        find.byKey(const ValueKey('settings-google-calendar-sync-button'));
+    await _scrollUntilHitTestable(tester, syncButton);
+    await tester.tap(syncButton.hitTestable().first);
     await tester.pumpAndSettle();
 
     expect(calendarSyncService.googleSyncCallCount, 1);
@@ -248,10 +312,10 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final syncButton = find.widgetWithText(FilledButton, '네이버 일정 동기화');
-    await tester.scrollUntilVisible(syncButton, 200);
-    await tester.ensureVisible(syncButton);
-    await tester.tap(syncButton);
+    final syncButton =
+        find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
+    await _scrollUntilHitTestable(tester, syncButton);
+    await tester.tap(syncButton.hitTestable().first);
     await tester.pumpAndSettle();
 
     expect(calendarSyncService.naverSyncCallCount, 0);
@@ -298,9 +362,8 @@ void main() {
     final importButton = find.byKey(
       const ValueKey('settings-device-calendar-import-button'),
     );
-    await tester.scrollUntilVisible(importButton, 200);
-    await tester.ensureVisible(importButton);
-    await tester.tap(importButton);
+    await _scrollUntilHitTestable(tester, importButton);
+    await tester.tap(importButton.hitTestable().first);
     await tester.pumpAndSettle();
 
     expect(deviceCalendarService.importCallCount, 1);
@@ -339,6 +402,21 @@ void main() {
     expect(find.text('알림 권한'), findsNothing);
     expect(find.text('알림 권한 요청/재확인'), findsNothing);
   });
+}
+
+Future<void> _scrollUntilHitTestable(
+  WidgetTester tester,
+  Finder finder, {
+  int maxScrolls = 12,
+}) async {
+  for (var i = 0; i < maxScrolls; i += 1) {
+    if (finder.hitTestable().evaluate().isNotEmpty) {
+      return;
+    }
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -320));
+    await tester.pumpAndSettle();
+  }
+  expect(finder.hitTestable(), findsWidgets);
 }
 
 class _FakeSettingsRepository extends SettingsRepository {

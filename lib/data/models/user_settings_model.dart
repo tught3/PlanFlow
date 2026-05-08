@@ -5,6 +5,9 @@ class UserSettingsModel {
     this.morningBriefingAt = '07:30',
     this.eveningBriefingAt = '21:00',
     this.defaultReminderMin = 60,
+    this.prepTimeMin = 30,
+    this.prepPreAlarmOffset = 30,
+    this.departPreAlarmOffset = 30,
     this.travelMode = 'car',
     this.voiceAutoStart = false,
     this.googleCalendarToken,
@@ -23,6 +26,9 @@ class UserSettingsModel {
       morningBriefingAt: '07:30',
       eveningBriefingAt: '21:00',
       defaultReminderMin: 60,
+      prepTimeMin: 30,
+      prepPreAlarmOffset: 30,
+      departPreAlarmOffset: 30,
       voiceAutoStart: false,
       createdAt: createdAt,
     );
@@ -35,6 +41,9 @@ class UserSettingsModel {
       morningBriefingAt: _timeValue(json['morning_briefing_at']),
       eveningBriefingAt: _timeValue(json['evening_briefing_at']),
       defaultReminderMin: _intValue(json['default_reminder_min'], 60),
+      prepTimeMin: _intValue(json['prep_time_min'], 30),
+      prepPreAlarmOffset: _intValue(json['prep_pre_alarm_offset'], 30),
+      departPreAlarmOffset: _intValue(json['depart_pre_alarm_offset'], 30),
       travelMode: _travelModeValue(json['travel_mode']),
       voiceAutoStart: _boolValue(json['voice_auto_start'], false),
       googleCalendarToken: json['google_calendar_token'] as String?,
@@ -48,6 +57,9 @@ class UserSettingsModel {
   final String morningBriefingAt;
   final String eveningBriefingAt;
   final int defaultReminderMin;
+  final int prepTimeMin;
+  final int prepPreAlarmOffset;
+  final int departPreAlarmOffset;
   final String travelMode;
   final bool voiceAutoStart;
   final String? googleCalendarToken;
@@ -60,6 +72,9 @@ class UserSettingsModel {
     String? morningBriefingAt,
     String? eveningBriefingAt,
     int? defaultReminderMin,
+    int? prepTimeMin,
+    int? prepPreAlarmOffset,
+    int? departPreAlarmOffset,
     String? travelMode,
     bool? voiceAutoStart,
     String? googleCalendarToken,
@@ -75,6 +90,9 @@ class UserSettingsModel {
       morningBriefingAt: morningBriefingAt ?? this.morningBriefingAt,
       eveningBriefingAt: eveningBriefingAt ?? this.eveningBriefingAt,
       defaultReminderMin: defaultReminderMin ?? this.defaultReminderMin,
+      prepTimeMin: prepTimeMin ?? this.prepTimeMin,
+      prepPreAlarmOffset: prepPreAlarmOffset ?? this.prepPreAlarmOffset,
+      departPreAlarmOffset: departPreAlarmOffset ?? this.departPreAlarmOffset,
       travelMode: travelMode ?? this.travelMode,
       voiceAutoStart: voiceAutoStart ?? this.voiceAutoStart,
       googleCalendarToken: clearGoogleCalendarToken
@@ -94,6 +112,9 @@ class UserSettingsModel {
       'morning_briefing_at': morningBriefingAt,
       'evening_briefing_at': eveningBriefingAt,
       'default_reminder_min': defaultReminderMin,
+      'prep_time_min': prepTimeMin,
+      'prep_pre_alarm_offset': prepPreAlarmOffset,
+      'depart_pre_alarm_offset': departPreAlarmOffset,
       'travel_mode': _travelModeValue(travelMode),
       'voice_auto_start': voiceAutoStart,
       'google_calendar_token': googleCalendarToken,
