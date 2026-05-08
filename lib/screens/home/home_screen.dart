@@ -645,12 +645,11 @@ class _BriefingQuickButton extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       style: FilledButton.styleFrom(
-        backgroundColor: const Color(0xFFE4F0FA),
-        foregroundColor: PlanFlowColors.primary,
-        disabledBackgroundColor: const Color(0xFFF0F6FB),
-        disabledForegroundColor:
-            PlanFlowColors.textSecondary.withValues(alpha: 0.82),
-        side: const BorderSide(color: Color(0xFFB9D8EE)),
+        backgroundColor: const Color(0xFF5D61A8),
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: const Color(0xFFB9BDE5),
+        disabledForegroundColor: Colors.white.withValues(alpha: 0.88),
+        side: const BorderSide(color: Color(0xFF8D91CF)),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         textStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
               fontWeight: FontWeight.w800,

@@ -133,6 +133,43 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _homeScrollController.jumpTo(0);
   }
 
+  void _goToTab(int index) {
+    if (index == _currentIndex) {
+      return;
+    }
+    setState(() {
+      _currentIndex = index;
+    });
+    switch (index) {
+      case 0:
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _showHomeAtTop();
+          }
+        });
+        context.go(AppRoutes.home);
+        break;
+      case 1:
+        context.go(AppRoutes.calendar);
+        break;
+      case 2:
+        context.go(AppRoutes.settings);
+        break;
+    }
+  }
+
+  void _handleTabSwipe(DragEndDetails details) {
+    final velocityX = details.primaryVelocity ?? 0;
+    if (velocityX.abs() < 250) {
+      return;
+    }
+    if (velocityX < 0) {
+      _goToTab((_currentIndex + 1).clamp(0, 2));
+    } else {
+      _goToTab((_currentIndex - 1).clamp(0, 2));
+    }
+  }
+
   Future<void> _maybeOpenPermissionOnboarding() async {
     if (_checkedPermissionOnboarding || !mounted) {
       return;
@@ -322,40 +359,24 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         SystemNavigator.pop();
       },
       child: Scaffold(
-        body: IndexedStack(
-          index: _currentIndex,
-          children: [
-            HomeScreen(scrollController: _homeScrollController),
-            const CalendarScreen(),
-            SettingsScreen(
-              key: ValueKey<String?>('settings-${authProvider.userId}'),
-              userId: authProvider.userId,
-            ),
-          ],
+        body: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragEnd: _handleTabSwipe,
+          child: IndexedStack(
+            index: _currentIndex,
+            children: [
+              HomeScreen(scrollController: _homeScrollController),
+              const CalendarScreen(),
+              SettingsScreen(
+                key: ValueKey<String?>('settings-${authProvider.userId}'),
+                userId: authProvider.userId,
+              ),
+            ],
+          ),
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _currentIndex,
-          onDestinationSelected: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-            switch (index) {
-              case 0:
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    _showHomeAtTop();
-                  }
-                });
-                context.go(AppRoutes.home);
-                break;
-              case 1:
-                context.go(AppRoutes.calendar);
-                break;
-              case 2:
-                context.go(AppRoutes.settings);
-                break;
-            }
-          },
+          onDestinationSelected: _goToTab,
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.home_outlined),
