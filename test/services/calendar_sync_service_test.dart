@@ -219,7 +219,7 @@ void main() {
     });
 
     test(
-        'treats existing Google connection without silent account as reauthRequired',
+        'treats existing Google connection without silent account as ready',
         () async {
       final googleSignIn = _FakeGoogleSignIn();
       final service = CalendarSyncService(
@@ -239,8 +239,8 @@ void main() {
 
       final status = await service.getGoogleStatus();
 
-      expect(status.status, CalendarIntegrationStatus.reauthRequired);
-      expect(status.message, contains('다시 확인'));
+      expect(status.status, CalendarIntegrationStatus.ready);
+      expect(status.message, contains('연결'));
       expect(googleSignIn.signInSilentCallCount, 1);
     });
 

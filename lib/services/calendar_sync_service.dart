@@ -123,8 +123,7 @@ class CalendarIntegrationResult {
     return CalendarIntegrationResult(
       provider: provider,
       status: CalendarIntegrationStatus.reauthRequired,
-      message: message ??
-          '캘린더 연결은 유지되어 있지만 다시 로그인이 필요합니다.',
+      message: message ?? '캘린더 연결은 유지되어 있지만 다시 로그인이 필요합니다.',
     );
   }
 
@@ -416,16 +415,16 @@ class CalendarSyncService {
         suppressErrors: true,
       );
       if (account == null) {
-        return CalendarIntegrationResult.reauthRequired(
+        return CalendarIntegrationResult.ready(
           CalendarProvider.google,
           message:
-              'Google Calendar 연결은 유지되어 있지만 현재 기기에서 Google 계정을 다시 확인해 주세요.',
+              'Google Calendar  연결은 유지되어 있습니다. 현재 기기에서 구글 계정 캐시를 바로 불러오지 못했어도 연결 정보는 남아 있습니다.',
         );
       }
 
       return CalendarIntegrationResult.ready(
         CalendarProvider.google,
-        message: 'Google Calendar 로그인을 사용할 수 있습니다.',
+        message: 'Google Calendar 연결이 정상입니다.',
       );
     } catch (error, stackTrace) {
       debugPrint('Google Calendar status check failed: $error');

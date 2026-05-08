@@ -2303,6 +2303,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return switch (status) {
       CalendarIntegrationStatus.ready ||
       CalendarIntegrationStatus.synced ||
+      CalendarIntegrationStatus.reauthRequired ||
       CalendarIntegrationStatus.failed =>
         'Google Calendar 다시 동기화',
       _ => 'Google Calendar 연결',
