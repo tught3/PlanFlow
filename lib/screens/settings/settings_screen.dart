@@ -1981,7 +1981,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle:
                   'Google과 Naver 일정을 PlanFlow와 동기화합니다. Naver는 CalDAV로 연결합니다.',
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: PlanFlowColors.primaryFaint.withValues(alpha: 0.42),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: PlanFlowColors.primaryFaint),
+                    ),
+                    child: Text(
+                      '알림은 PlanFlow 기준으로 울립니다. 외부 캘린더 앱의 기본 알림이 켜져 있으면 해당 앱에서도 알림이 울릴 수 있어요.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   _StatusRow(
                     label: 'Google Calendar',
                     value: _calendarStatusLabel(_calendarSyncSummary?.google),

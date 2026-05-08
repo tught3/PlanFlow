@@ -516,6 +516,91 @@ END:VCALENDAR
         'DTSTART;TZID=Asia/Seoul:20260505T100000');
   });
 
+  test('syncAll links same title/start duplicate instead of inserting',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        _eventReportXml,
+      ],
+    );
+    final repository = _FakeEventRepository(
+      seedEvents: <EventModel>[
+        EventModel(
+          id: 'manual-1',
+          userId: 'user-1',
+          title: '한강 피크닉',
+          startAt: DateTime.utc(2026, 5, 5, 1),
+        ),
+      ],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+
+    expect(result.success, isTrue);
+    expect(result.createdOrUpdated, 0);
+    expect(result.skipped, 1);
+    expect(repository.upserted, isEmpty);
+    expect(repository.updated, hasLength(1));
+    expect(repository.updated.single.id, 'manual-1');
+    expect(repository.updated.single.externalId, startsWith('naver-caldav:'));
+    expect(
+      repository.updated.single.externalCalendarId,
+      'naver-caldav:/calendars/tught3/default/',
+    );
+  });
+
+  test('syncAll skips reflected PlanFlow CalDAV event by UID marker', () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        _reflectedPlanFlowEventReportXml,
+      ],
+    );
+    final repository = _FakeEventRepository(
+      seedEvents: <EventModel>[
+        EventModel(
+          id: 'manual-1',
+          userId: 'user-1',
+          title: '원주 출발',
+          startAt: DateTime.utc(2026, 5, 8),
+          externalId: 'google-event-1',
+          externalCalendarId: 'google:primary',
+        ),
+      ],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+
+    expect(result.success, isTrue);
+    expect(result.createdOrUpdated, 0);
+    expect(result.diagnostics.duplicateSkipped, 1);
+    expect(repository.upserted, isEmpty);
+    expect(repository.updated, isEmpty);
+  });
+
   test(
       'syncAll updates existing event when content changed despite older updated timestamp',
       () async {
@@ -726,8 +811,9 @@ END:VCALENDAR
     expect(result.createdOrUpdated, 0);
     expect(result.skipped, 1);
     expect(repository.upserted, isEmpty);
+    expect(repository.updated, hasLength(1));
     expect(result.diagnostics.duplicateSkipped, 1);
-    expect(result.diagnostics.skipReasons['같은 제목+시간 중복'], 1);
+    expect(result.diagnostics.skipReasons['기존 일정에 네이버 연결 정보 반영'], 1);
   });
 
   test('syncAll diagnostics only keeps samples inside selected sync range',
@@ -831,6 +917,49 @@ END:VCALENDAR
     expect(repository.deletedIds, contains('bad-1'));
   });
 
+  test('exportEvent writes metadata and keeps exported ICS VALARM-free',
+      () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 201],
+      bodies: <String>[
+        '',
+        _calendarListXml,
+        '',
+      ],
+    );
+    final repository = _FakeEventRepository();
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+    final event = EventModel(
+      id: 'manual-1',
+      userId: 'user-1',
+      title: '네이버로 보낼 일정',
+      startAt: DateTime.utc(2026, 5, 8, 9),
+      isCritical: true,
+    );
+
+    final result = await service.exportEvent(event);
+
+    expect(result, isTrue);
+    final putRequest = client.requests.last as http.Request;
+    expect(putRequest.method, 'PUT');
+    expect(putRequest.body, isNot(contains('BEGIN:VALARM')));
+    expect(repository.updated, hasLength(1));
+    expect(repository.updated.single.id, 'manual-1');
+    expect(repository.updated.single.externalId, startsWith('naver-caldav:'));
+    expect(
+      repository.updated.single.externalCalendarId,
+      'naver-caldav:/calendars/tught3/default/',
+    );
+  });
+
   test('getCalendars tries home path when calendar root is empty', () async {
     final client = _FakePropfindClient(
       responses: <int>[404, 207, 207],
@@ -870,11 +999,18 @@ class _FakeEventRepository extends EventRepository {
   final EventModel? existingEvent;
   final List<EventModel> events;
   final List<EventModel> upserted = <EventModel>[];
+  final List<EventModel> updated = <EventModel>[];
   final List<String> deletedIds = <String>[];
 
   @override
-  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async =>
-      null;
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    for (final event in events) {
+      if (event.id == eventId && (userId == null || event.userId == userId)) {
+        return event;
+      }
+    }
+    return null;
+  }
 
   @override
   Future<EventModel?> fetchEventBySourceExternalId({
@@ -904,7 +1040,14 @@ class _FakeEventRepository extends EventRepository {
   Future<EventModel> createEvent(EventModel event) async => event;
 
   @override
-  Future<EventModel> updateEvent(EventModel event) async => event;
+  Future<EventModel> updateEvent(EventModel event) async {
+    updated.add(event);
+    final index = events.indexWhere((existing) => existing.id == event.id);
+    if (index >= 0) {
+      events[index] = event;
+    }
+    return event;
+  }
 
   @override
   Future<EventModel> upsertEvent(EventModel event) async {
@@ -1167,6 +1310,31 @@ UID:placeholder-personal
 SUMMARY:Naver placeholder personal
 DTSTART:19700101T000000
 DTEND;TZID=Asia/Seoul:20260508T093000
+LAST-MODIFIED:20260504T120000Z
+END:VEVENT
+END:VCALENDAR
+        ]]></c:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';
+
+const String _reflectedPlanFlowEventReportXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/calendars/tught3/default/planflow-manual-1.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-planflow-manual-1"</d:getetag>
+        <c:calendar-data><![CDATA[
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:planflow-manual-1@planflow
+SUMMARY:원주 출발
+DTSTART;TZID=Asia/Seoul:20260508T090000
+DTEND;TZID=Asia/Seoul:20260508T100000
 LAST-MODIFIED:20260504T120000Z
 END:VEVENT
 END:VCALENDAR

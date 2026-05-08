@@ -50,6 +50,58 @@ abstract class EventRepository {
     return null;
   }
 
+  Future<EventModel?> attachExternalSyncMetadataIfCompatible({
+    required EventModel existing,
+    required EventModel incoming,
+  }) async {
+    final incomingExternalId = incoming.externalId?.trim();
+    final incomingCalendarId = incoming.externalCalendarId?.trim();
+    if (incomingExternalId == null ||
+        incomingExternalId.isEmpty ||
+        incomingCalendarId == null ||
+        incomingCalendarId.isEmpty) {
+      return null;
+    }
+
+    final existingExternalId = existing.externalId?.trim() ?? '';
+    final existingCalendarId = existing.externalCalendarId?.trim() ?? '';
+    if (existingExternalId.isNotEmpty &&
+        existingCalendarId.isNotEmpty &&
+        existingCalendarId != incomingCalendarId) {
+      return null;
+    }
+
+    final linkedEvent = EventModel(
+      id: existing.id,
+      userId: existing.userId,
+      title: existing.title,
+      startAt: existing.startAt,
+      endAt: existing.endAt,
+      location: existing.location,
+      locationLat: existing.locationLat,
+      locationLng: existing.locationLng,
+      memo: existing.memo,
+      supplies: existing.supplies,
+      suppliesChecked: existing.suppliesChecked,
+      isCritical: existing.isCritical,
+      recurrenceRule: existing.recurrenceRule,
+      isAllDay: existing.isAllDay,
+      isMultiDay: existing.isMultiDay,
+      parentEventId: existing.parentEventId,
+      category: existing.category,
+      source: existing.source,
+      externalId: incomingExternalId,
+      externalCalendarId: incomingCalendarId,
+      externalEtag: incoming.externalEtag ?? existing.externalEtag,
+      externalUpdatedAt:
+          incoming.externalUpdatedAt ?? existing.externalUpdatedAt,
+      lastSyncedAt: incoming.lastSyncedAt ?? DateTime.now().toUtc(),
+      createdAt: existing.createdAt,
+      updatedAt: existing.updatedAt,
+    );
+    return updateEvent(linkedEvent);
+  }
+
   Future<EventModel> createEvent(EventModel event);
 
   Future<EventModel> updateEvent(EventModel event);

@@ -461,3 +461,11 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Replaced the inline custom preparation-time dialog with a dedicated numeric dialog that owns its controller/focus lifecycle and validates 5-240 minute input.
 - Removed silent legacy Supabase settings fallback for missing smart-prep columns so schema problems surface as a clear Korean error instead of reverting user choices.
 - Verification: `flutter analyze`, targeted settings/smart-prep tests, full `flutter test` (150 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch/focus check all passed on `192.168.0.103:5555`.
+
+## 2026-05-08 calendar duplicate sync and notification ownership checkpoint
+- Implemented PlanFlow-led calendar notification ownership: Google exports explicitly disable provider default reminders, Naver CalDAV exports remain VALARM-free, and Android device-calendar export writes events only without Reminder rows.
+- Added reflected-event markers for Google (`extendedProperties.private.planflow_event_id`), Naver CalDAV (`UID:planflow-{eventId}@planflow`), and Android device calendar (`UID_2445=planflow:{eventId}`) so PlanFlow-origin events do not return as duplicate rows after external sync.
+- External imported sources are excluded from fan-out export, and same title/start imports attach sync metadata or skip instead of inserting duplicate rows.
+- Settings now explains that PlanFlow owns notification scheduling while external app default notifications may still be controlled by those apps.
+- Regression tests cover Google serialized reminder payload, Naver VALARM-free export/reflected UID skip, Android native event-only export, and device eventKey reflected import.
+- Verification: `flutter analyze`, full `flutter test` (162 passed), `flutter build apk --debug`, and `git diff --check` passed.

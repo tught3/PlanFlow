@@ -470,6 +470,7 @@ class MainActivity : FlutterActivity() {
             CalendarContract.Instances.LAST_DATE,
             CalendarContract.Instances.DTSTART,
             CalendarContract.Instances.DTEND,
+            CalendarContract.Events.UID_2445,
         )
 
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().apply {
@@ -510,6 +511,7 @@ class MainActivity : FlutterActivity() {
                             "lastDateMillis" to cursor.getLongOrNull(8),
                             "dtstartMillis" to cursor.getLongOrNull(9),
                             "dtendMillis" to cursor.getLongOrNull(10),
+                            "eventKey" to cursor.getStringOrNull(11),
                         ),
                     )
                 }

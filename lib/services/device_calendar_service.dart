@@ -95,6 +95,7 @@ class DeviceCalendarEvent {
     required this.calendarId,
     required this.begin,
     this.end,
+    this.eventKey,
     this.title,
     this.description,
     this.location,
@@ -106,6 +107,7 @@ class DeviceCalendarEvent {
     return DeviceCalendarEvent(
       eventId: _stringValue(map['eventId']),
       calendarId: _stringValue(map['calendarId']),
+      eventKey: _nullableString(map['eventKey']),
       title: _nullableString(map['title']),
       description: _nullableString(map['description']),
       location: _nullableString(map['location']),
@@ -121,6 +123,7 @@ class DeviceCalendarEvent {
 
   final String eventId;
   final String calendarId;
+  final String? eventKey;
   final String? title;
   final String? description;
   final String? location;
@@ -388,6 +391,29 @@ class DeviceCalendarService {
           userId: resolvedUserId,
           importedAt: now,
         );
+        final planFlowOriginId = _planFlowEventIdFromDeviceEventKey(
+          event.eventKey,
+        );
+        final planFlowOrigin = planFlowOriginId == null
+            ? null
+            : await _eventRepository.fetchEvent(
+                planFlowOriginId,
+                userId: resolvedUserId,
+              );
+        if (planFlowOrigin != null) {
+          await _eventRepository.attachExternalSyncMetadataIfCompatible(
+            existing: planFlowOrigin,
+            incoming: eventModel,
+          );
+          skipped += 1;
+          debugPrint(
+            'Device calendar reflected PlanFlow event handled: '
+            'incoming="${eventModel.title}" ${eventModel.startAt} '
+            'existing=${planFlowOrigin.id}',
+          );
+          continue;
+        }
+
         final duplicate = await _eventRepository.findEventByTitleAndStart(
           title: eventModel.title,
           startAt: eventModel.startAt!,
@@ -395,11 +421,17 @@ class DeviceCalendarService {
           excludedSources: const <String>{'device_calendar', 'naver_device'},
         );
         if (duplicate != null) {
+          final linked =
+              await _eventRepository.attachExternalSyncMetadataIfCompatible(
+            existing: duplicate,
+            incoming: eventModel,
+          );
           skipped += 1;
           debugPrint(
-            'Device calendar import duplicate skipped by title/start: '
+            'Device calendar import duplicate handled by title/start: '
             'incoming="${eventModel.title}" ${eventModel.startAt} '
-            'existing=${duplicate.id} source=${duplicate.source}',
+            'existing=${duplicate.id} source=${duplicate.source} '
+            'linked=${linked != null}',
           );
           continue;
         }
@@ -455,6 +487,15 @@ class DeviceCalendarService {
     if (errors.isNotEmpty) {
       throw StateError(errors.first);
     }
+  }
+
+  String? _planFlowEventIdFromDeviceEventKey(String? eventKey) {
+    final normalized = eventKey?.trim();
+    if (normalized == null || !normalized.startsWith('planflow:')) {
+      return null;
+    }
+    final id = normalized.substring('planflow:'.length);
+    return id.isEmpty ? null : id;
   }
 }
 

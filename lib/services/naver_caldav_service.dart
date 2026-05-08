@@ -1009,20 +1009,68 @@ class NaverCalDavService {
             calendarPath: calendar.path,
             syncedAt: syncedAt,
           );
+          final planFlowOriginId = _planFlowEventIdFromNaverUid(event.uid);
+          final planFlowOrigin = planFlowOriginId == null
+              ? null
+              : await _eventRepository.fetchEvent(
+                  planFlowOriginId,
+                  userId: resolvedUserId,
+                );
+          if (planFlowOrigin != null) {
+            final linked =
+                await _eventRepository.attachExternalSyncMetadataIfCompatible(
+              existing: planFlowOrigin,
+              incoming: eventModel,
+            );
+            skippedCount += 1;
+            diagnostics.duplicateSkipped += 1;
+            diagnostics.addSkipReason(
+              linked == null ? 'PlanFlow 원본 일정 되가져오기' : '기존 일정에 네이버 연결 정보 반영',
+            );
+            debugPrint(
+              'Naver CalDAV reflected PlanFlow event handled: '
+              'calendar="${calendar.displayName}", uid="${event.uid}", '
+              'existing=${planFlowOrigin.id}, linked=${linked != null}',
+            );
+            emit(NaverCalDavSyncProgress(
+              mode: mode,
+              stage: NaverCalDavSyncStage.saving,
+              message: 'PlanFlow에서 보낸 일정은 중복 저장하지 않는 중입니다.',
+              currentCalendar: calendar.displayName,
+              currentCalendarIndex: calendarNumber,
+              totalCalendars: calendars.length,
+              processedEvents: eventIndex + 1,
+              totalEvents: events.length,
+              savedEvents: savedCount,
+              skippedEvents: skippedCount,
+              failedEvents: failedCount,
+            ));
+            continue;
+          }
+
           final duplicateReason = diagnosticImport
               ? null
               : await _sameTitleStartDuplicateReason(eventModel);
           if (duplicateReason != null) {
+            final duplicate = await _findSameTitleStartDuplicate(eventModel);
+            final linked = duplicate == null
+                ? null
+                : await _eventRepository.attachExternalSyncMetadataIfCompatible(
+                    existing: duplicate,
+                    incoming: eventModel,
+                  );
             skippedCount += 1;
             diagnostics.duplicateSkipped += 1;
-            diagnostics.addSkipReason('같은 제목+시간 중복');
+            diagnostics.addSkipReason(
+              linked == null ? '같은 제목+시간 중복' : '기존 일정에 네이버 연결 정보 반영',
+            );
             debugPrint(
-              'Naver CalDAV duplicate skipped: '
+              'Naver CalDAV duplicate handled: '
               'calendar="${calendar.displayName}", '
               'uid="${event.uid}", '
               'externalId="${eventModel.externalId}", '
               'title="${event.title}", '
-              'reason=$duplicateReason',
+              'reason=$duplicateReason, linked=${linked != null}',
             );
             emit(NaverCalDavSyncProgress(
               mode: mode,
@@ -1205,6 +1253,7 @@ class NaverCalDavService {
       final streamed = await _httpClient.send(request).timeout(_timeout);
       await streamed.stream.drain<void>();
       if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
+        await _markCalDavExportMetadata(event, calendars.first.path);
         return true;
       }
       debugPrint('Naver CalDAV export failed: ${streamed.statusCode}');
@@ -1305,20 +1354,75 @@ class NaverCalDavService {
   }
 
   Future<String?> _sameTitleStartDuplicateReason(EventModel event) async {
+    final duplicate = await _findSameTitleStartDuplicate(event);
+    if (duplicate == null) {
+      return null;
+    }
+    return '같은 시작시간+제목 일정 존재(${duplicate.id}, source=${duplicate.source})';
+  }
+
+  Future<EventModel?> _findSameTitleStartDuplicate(EventModel event) async {
     final startAt = event.startAt;
     if (startAt == null) {
       return null;
     }
-    final duplicate = await _eventRepository.findEventByTitleAndStart(
+    return _eventRepository.findEventByTitleAndStart(
       title: event.title,
       startAt: startAt,
       userId: event.userId,
       excludedSources: const <String>{'naver_caldav'},
     );
-    if (duplicate == null) {
+  }
+
+  Future<void> _markCalDavExportMetadata(
+    EventModel event,
+    String calendarPath,
+  ) async {
+    final uid = 'planflow-${event.id}@planflow';
+    final incoming = EventModel(
+      id: event.id,
+      userId: event.userId,
+      title: event.title,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      location: event.location,
+      locationLat: event.locationLat,
+      locationLng: event.locationLng,
+      memo: event.memo,
+      supplies: event.supplies,
+      suppliesChecked: event.suppliesChecked,
+      isCritical: event.isCritical,
+      recurrenceRule: event.recurrenceRule,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
+      parentEventId: event.parentEventId,
+      category: event.category,
+      source: event.source,
+      externalId: 'naver-caldav:${_stableExternalKey(calendarPath, uid)}',
+      externalCalendarId: 'naver-caldav:$calendarPath',
+      externalUpdatedAt: DateTime.now().toUtc(),
+      lastSyncedAt: DateTime.now().toUtc(),
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    );
+    await _eventRepository.attachExternalSyncMetadataIfCompatible(
+      existing: event,
+      incoming: incoming,
+    );
+  }
+
+  String? _planFlowEventIdFromNaverUid(String uid) {
+    const prefix = 'planflow-';
+    const suffix = '@planflow';
+    final normalized = uid.trim();
+    if (!normalized.startsWith(prefix) || !normalized.endsWith(suffix)) {
       return null;
     }
-    return '같은 시작시간+제목 일정 존재(${duplicate.id}, source=${duplicate.source})';
+    final id = normalized.substring(
+      prefix.length,
+      normalized.length - suffix.length,
+    );
+    return id.isEmpty ? null : id;
   }
 
   // Kept temporarily as a rollback reference while the progressive sync path

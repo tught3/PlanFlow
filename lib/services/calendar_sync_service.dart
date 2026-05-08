@@ -822,7 +822,7 @@ class CalendarSyncService {
     final filtered = events
         .where((event) => event.startAt != null)
         .where((event) => !event.startAt!.isBefore(lowerBound))
-        .where((event) => event.source != 'naver')
+        .where((event) => !_isExternalCalendarSource(event.source))
         .where((event) {
       if (event.externalCalendarId != 'naver:default') {
         return true;
@@ -901,7 +901,7 @@ class CalendarSyncService {
       if (startAt == null || startAt.isBefore(lowerBound)) {
         continue;
       }
-      if (event.source == 'google' || event.source == 'naver') {
+      if (_isExternalCalendarSource(event.source)) {
         continue;
       }
 
@@ -938,7 +938,7 @@ class CalendarSyncService {
     if (startAt == null || startAt.isBefore(lowerBound)) {
       return 0;
     }
-    if (event.source == 'google' || event.source == 'naver') {
+    if (_isExternalCalendarSource(event.source)) {
       return 0;
     }
 
@@ -1042,7 +1042,8 @@ class CalendarSyncService {
     return 'planflow-${event.userId}-${event.title}-$startAt@planflow';
   }
 
-  gcal.Event _eventToGoogleEvent(EventModel event) {
+  @visibleForTesting
+  static gcal.Event buildGoogleExportEventForTest(EventModel event) {
     final startAt = event.startAt!;
     final endAt = event.endAt ?? startAt.add(const Duration(minutes: 30));
     return gcal.Event(
@@ -1051,7 +1052,20 @@ class CalendarSyncService {
       location: event.location,
       start: gcal.EventDateTime(dateTime: startAt.toUtc()),
       end: gcal.EventDateTime(dateTime: endAt.toUtc()),
+      extendedProperties: gcal.EventExtendedProperties(
+        private: <String, String>{
+          'planflow_event_id': event.id,
+        },
+      ),
+      reminders: gcal.EventReminders(
+        useDefault: false,
+        overrides: const <gcal.EventReminder>[],
+      ),
     );
+  }
+
+  gcal.Event _eventToGoogleEvent(EventModel event) {
+    return buildGoogleExportEventForTest(event);
   }
 
   Future<NaverCalendarPermissionResult> _refreshNaverStatus() {
@@ -1214,15 +1228,43 @@ class CalendarSyncService {
           ),
         );
       } else {
+        final planFlowEventId = _planFlowEventIdFromGoogleEvent(googleEvent);
+        final planFlowOrigin = planFlowEventId == null
+            ? null
+            : await _eventRepository.fetchEvent(
+                planFlowEventId,
+                userId: _currentUserId(),
+              );
+        if (planFlowOrigin != null) {
+          final linked =
+              await _eventRepository.attachExternalSyncMetadataIfCompatible(
+            existing: planFlowOrigin,
+            incoming: model,
+          );
+          debugPrint(
+            'Google import reflected PlanFlow event handled: '
+            'incoming="${model.title}" ${model.startAt} '
+            'existing=${planFlowOrigin.id} linked=${linked != null}',
+          );
+          syncedItems += 1;
+          continue;
+        }
+
         final duplicate = await _findSameTitleStartDuplicate(
           model,
           excludedSources: const <String>{'google'},
         );
         if (duplicate != null) {
+          final linked =
+              await _eventRepository.attachExternalSyncMetadataIfCompatible(
+            existing: duplicate,
+            incoming: model,
+          );
           debugPrint(
-            'Google import duplicate skipped by title/start: '
+            'Google import duplicate handled by title/start: '
             'incoming="${model.title}" ${model.startAt} '
-            'existing=${duplicate.id} source=${duplicate.source}',
+            'existing=${duplicate.id} source=${duplicate.source} '
+            'linked=${linked != null}',
           );
           syncedItems += 1;
           continue;
@@ -1346,6 +1388,22 @@ class CalendarSyncService {
 
   String _googleStringValue(Object? value) {
     return value?.toString().trim() ?? '';
+  }
+
+  String? _planFlowEventIdFromGoogleEvent(gcal.Event event) {
+    final id = event.extendedProperties?.private?['planflow_event_id']?.trim();
+    if (id == null || id.isEmpty) {
+      return null;
+    }
+    return id;
+  }
+
+  bool _isExternalCalendarSource(String source) {
+    return source == 'google' ||
+        source == 'naver' ||
+        source == 'naver_caldav' ||
+        source == 'naver_device' ||
+        source == 'device_calendar';
   }
 
   String _currentUserId() {
