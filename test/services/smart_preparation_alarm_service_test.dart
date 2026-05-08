@@ -150,6 +150,29 @@ void main() {
     ]);
   });
 
+  test('buildExternalEventPayloads expands both pre-alert setting', () {
+    final service = SmartPreparationAlarmService();
+    final payloads = service.buildExternalEventPayloads(
+      eventId: 'event-both',
+      userId: 'user-1',
+      title: '대전 미팅',
+      location: '대전역',
+      eventStartAt: DateTime(2026, 5, 8, 12),
+      travelMinutes: 60,
+      prepTimeMin: 30,
+      prepPreAlarmOffset: 31,
+      departPreAlarmOffset: 31,
+      now: DateTime(2026, 5, 8, 7),
+    );
+
+    final titles = payloads.map((row) => row['title'].toString()).toList();
+    expect(titles, contains('30분 뒤부터 준비 시작하세요 🔔'));
+    expect(titles, contains('10분 뒤부터 준비 시작하세요 🔔'));
+    expect(titles.join('\n'), contains('30분 뒤 출발해야 해요 🔔'));
+    expect(titles, contains('10분 뒤 출발해야 해요 🔔'));
+    expect(titles, contains('지금 출발하세요 🚗 (이동 약 60분)'));
+  });
+
   test('isExternalEvent ignores home, online, and call schedules', () {
     final service = SmartPreparationAlarmService();
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
@@ -1387,12 +1388,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) {
         return;
       }
+      final currentUiSettings = saved.copyWith(
+        morningBriefingAt: draft.morningBriefingAt,
+        eveningBriefingAt: draft.eveningBriefingAt,
+        defaultReminderMin: draft.defaultReminderMin,
+        prepTimeMin: draft.prepTimeMin,
+        prepPreAlarmOffset: draft.prepPreAlarmOffset,
+        departPreAlarmOffset: draft.departPreAlarmOffset,
+        travelMode: draft.travelMode,
+        voiceAutoStart: draft.voiceAutoStart,
+      );
       setState(() {
-        _savedSettings = saved;
-        _applySettings(saved);
+        _savedSettings = currentUiSettings;
+        _applySettings(currentUiSettings);
       });
       final scheduleResult = await _scheduleBriefingsFromSettings(
-        saved,
+        currentUiSettings,
         reason: 'settings_saved',
       );
       if (successMessage != null) {
@@ -1724,42 +1735,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _pickCustomPrepTime() async {
-    final controller = TextEditingController(text: _prepTimeMin.toString());
     final value = await showDialog<int>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('준비 시간 직접 입력'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: '분 단위',
-            hintText: '예: 50',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final parsed = int.tryParse(controller.text.trim());
-              Navigator.of(context).pop(parsed);
-            },
-            child: const Text('저장'),
-          ),
-        ],
+      builder: (context) => _PrepTimeInputDialog(
+        initialValue: _prepTimeMin,
       ),
     );
-    controller.dispose();
     if (value == null) {
       return;
     }
-    final normalized = value.clamp(5, 240).toInt();
     setState(() {
-      _prepTimeMin = normalized;
+      _prepTimeMin = value;
     });
     unawaited(_persistSettings());
   }
@@ -1807,13 +1793,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 16),
           _SmartAlarmControl(
             title: '준비 시작 사전 알림',
-            helperText: '“둘 다”는 현재 설정 구조상 30분 대표값으로 저장해요.',
+            helperText: '“둘 다”는 10분 전과 30분 전 알림을 모두 받아요.',
             child: _buildOffsetSelector(
               key: const ValueKey('settings-prep-pre-alarm-selector'),
               value: _prepPreAlarmOffset,
               onChanged: (value) {
                 setState(() {
-                  _prepPreAlarmOffset = value == 31 ? 30 : value;
+                  _prepPreAlarmOffset = value;
                 });
                 unawaited(_persistSettings());
               },
@@ -1828,7 +1814,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               value: _departPreAlarmOffset,
               onChanged: (value) {
                 setState(() {
-                  _departPreAlarmOffset = value == 31 ? 30 : value;
+                  _departPreAlarmOffset = value;
                 });
                 unawaited(_persistSettings());
               },
@@ -1852,7 +1838,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required int value,
     required ValueChanged<int> onChanged,
   }) {
-    final selected = value == 0 || value == 10 || value == 30 ? value : 30;
+    final selected =
+        value == 0 || value == 10 || value == 30 || value == 31 ? value : 30;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SegmentedButton<int>(
@@ -2675,6 +2662,103 @@ class _SectionCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PrepTimeInputDialog extends StatefulWidget {
+  const _PrepTimeInputDialog({required this.initialValue});
+
+  final int initialValue;
+
+  @override
+  State<_PrepTimeInputDialog> createState() => _PrepTimeInputDialogState();
+}
+
+class _PrepTimeInputDialogState extends State<_PrepTimeInputDialog> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue.toString());
+    _focusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final parsed = int.tryParse(_controller.text.trim());
+    if (parsed == null) {
+      setState(() {
+        _errorText = '준비 시간을 숫자로 입력해 주세요.';
+      });
+      return;
+    }
+    if (parsed < 5 || parsed > 240) {
+      setState(() {
+        _errorText = '5분부터 240분 사이로 입력해 주세요.';
+      });
+      return;
+    }
+    Navigator.of(context).pop(parsed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('준비 시간 직접 입력'),
+      content: SingleChildScrollView(
+        child: TextField(
+          controller: _controller,
+          focusNode: _focusNode,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+          ],
+          decoration: InputDecoration(
+            labelText: '분 단위',
+            hintText: '예: 50',
+            errorText: _errorText,
+          ),
+          onChanged: (_) {
+            if (_errorText != null) {
+              setState(() {
+                _errorText = null;
+              });
+            }
+          },
+          onSubmitted: (_) => _submit(),
+        ),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+      actions: [
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.tonal(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('취소'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                onPressed: _submit,
+                child: const Text('저장'),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

@@ -187,6 +187,32 @@ void main() {
     expect(settingsRepository.savedSettings!.prepTimeMin, 45);
     expect(settingsRepository.savedSettings!.prepPreAlarmOffset, 30);
     expect(settingsRepository.savedSettings!.departPreAlarmOffset, 30);
+
+    final prepPreAlarmSelector =
+        find.byKey(const ValueKey('settings-prep-pre-alarm-selector'));
+    await _scrollUntilHitTestable(tester, prepPreAlarmSelector);
+    await tester.tap(
+      find.descendant(
+        of: prepPreAlarmSelector,
+        matching: find.text('둘 다'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(settingsRepository.savedSettings!.prepPreAlarmOffset, 31);
+
+    final departPreAlarmSelector =
+        find.byKey(const ValueKey('settings-depart-pre-alarm-selector'));
+    await _scrollUntilHitTestable(tester, departPreAlarmSelector);
+    await tester.tap(
+      find.descendant(
+        of: departPreAlarmSelector,
+        matching: find.text('둘 다'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(settingsRepository.savedSettings!.departPreAlarmOffset, 31);
   });
 
   testWidgets('SettingsScreen saves voice auto-start toggle', (tester) async {

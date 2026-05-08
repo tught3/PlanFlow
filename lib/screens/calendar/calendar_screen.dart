@@ -1079,24 +1079,15 @@ class _MiniCalendarGrid extends StatelessWidget {
                                   ),
                                 ),
                               const SizedBox(height: 2),
-                              ...dayEvents.take(3).map(
-                                    (event) => _CalendarMiniEventLabel(
-                                      event: event,
-                                      isSelected: isSelected,
-                                      day: dayDate,
-                                    ),
-                                  ),
-                              if (dayEvents.length > 3)
-                                Text(
-                                  '+${dayEvents.length - 3}',
-                                  style: TextStyle(
-                                    fontSize: 8,
-                                    height: 1.1,
-                                    color: isSelected
-                                        ? Colors.white
-                                        : PlanFlowColors.textSecondary,
+                              Expanded(
+                                child: ClipRect(
+                                  child: _CalendarMiniEventList(
+                                    events: dayEvents,
+                                    isSelected: isSelected,
+                                    day: dayDate,
                                   ),
                                 ),
+                              ),
                             ],
                           ),
                         ),
@@ -1109,6 +1100,52 @@ class _MiniCalendarGrid extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CalendarMiniEventList extends StatelessWidget {
+  const _CalendarMiniEventList({
+    required this.events,
+    required this.isSelected,
+    required this.day,
+  });
+
+  final List<EventModel> events;
+  final bool isSelected;
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    if (events.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final visibleEvents = events.take(2).toList(growable: false);
+    final overflowCount = events.length - visibleEvents.length;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final event in visibleEvents)
+          _CalendarMiniEventLabel(
+            event: event,
+            isSelected: isSelected,
+            day: day,
+          ),
+        if (overflowCount > 0)
+          SizedBox(
+            height: 9,
+            child: Text(
+              '+$overflowCount',
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              style: TextStyle(
+                fontSize: 7.5,
+                height: 1,
+                color: isSelected ? Colors.white : PlanFlowColors.textSecondary,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -1135,6 +1172,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
       width: double.infinity,
       margin: const EdgeInsets.only(top: 1),
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+      constraints: const BoxConstraints(maxHeight: 11),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.horizontal(

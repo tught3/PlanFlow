@@ -73,83 +73,56 @@ class SupabaseSettingsGateway implements SettingsGateway {
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
       'prep_time_min, prep_pre_alarm_offset, depart_pre_alarm_offset, '
       'travel_mode, voice_auto_start, google_calendar_token, naver_calendar_token, created_at';
-  static const String _legacySelectColumns =
-      'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
-      'travel_mode, google_calendar_token, naver_calendar_token, created_at';
 
   final SupabaseClient _client;
 
   @override
   Future<Map<String, dynamic>?> fetchSettings(String userId) async {
-    final response = await _selectSettings(userId, selectColumns);
+    try {
+      final response = await _client
+          .from(tableName)
+          .select(selectColumns)
+          .eq('user_id', userId)
+          .maybeSingle();
 
-    if (response == null) {
-      return null;
+      if (response == null) {
+        return null;
+      }
+
+      return Map<String, dynamic>.from(response as Map);
+    } on PostgrestException catch (error) {
+      if (_isMissingSettingsColumnError(error)) {
+        throw StateError(
+          'Supabase user_settings 스키마에 스마트 준비 알람 설정 컬럼이 없습니다. '
+          'supabase/schema.sql을 적용해 주세요.',
+        );
+      }
+      rethrow;
     }
-
-    return Map<String, dynamic>.from(response as Map);
   }
 
   @override
   Future<Map<String, dynamic>> upsertSettings(
     Map<String, dynamic> payload,
   ) async {
-    final response = await _upsertSettings(payload, selectColumns);
-
-    return Map<String, dynamic>.from(response as Map);
-  }
-
-  Future<dynamic> _selectSettings(String userId, String columns) async {
     try {
-      return await _client
-          .from(tableName)
-          .select(columns)
-          .eq('user_id', userId)
-          .maybeSingle();
-    } on PostgrestException catch (error) {
-      if (!_isMissingSettingsColumnError(error) ||
-          columns == _legacySelectColumns) {
-        rethrow;
-      }
-      return _client
-          .from(tableName)
-          .select(_legacySelectColumns)
-          .eq('user_id', userId)
-          .maybeSingle();
-    }
-  }
-
-  Future<dynamic> _upsertSettings(
-    Map<String, dynamic> payload,
-    String columns,
-  ) async {
-    try {
-      return await _client
+      final response = await _client
           .from(tableName)
           .upsert(
             payload,
             onConflict: 'user_id',
           )
-          .select(columns)
+          .select(selectColumns)
           .single();
+      return Map<String, dynamic>.from(response as Map);
     } on PostgrestException catch (error) {
-      if (!_isMissingSettingsColumnError(error) ||
-          columns == _legacySelectColumns) {
-        rethrow;
+      if (_isMissingSettingsColumnError(error)) {
+        throw StateError(
+          'Supabase user_settings 스키마에 스마트 준비 알람 설정 컬럼이 없습니다. '
+          'supabase/schema.sql을 적용해 주세요.',
+        );
       }
-      final legacyPayload = Map<String, dynamic>.from(payload)
-        ..remove('voice_auto_start')
-        ..remove('prep_time_min')
-        ..remove('prep_pre_alarm_offset')
-        ..remove('depart_pre_alarm_offset');
-      return _client
-          .from(tableName)
-          .upsert(
-            legacyPayload,
-            onConflict: 'user_id',
-          )
-          .select(_legacySelectColumns)
-          .single();
+      rethrow;
     }
   }
 

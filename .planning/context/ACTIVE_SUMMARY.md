@@ -454,3 +454,10 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 ## 2026-05-08 user-provided smart alarm note checkpoint
 - Re-read the user's `PlanFlow_SmartAlarm_Fix.md` in UTF-8, confirmed it is a separate reference note about smart-prep timing and alarm policy, and accepted the user's later instruction to include it in version control.
 - The note is being committed alongside the latest v3 reinforcement work so the repo keeps the user's explicit planning artifact instead of leaving it as an ignored scratch file.
+
+## 2026-05-08 calendar overflow and smart prep setting fix checkpoint
+- Fixed the month calendar cell overflow by constraining mini event labels inside a clipped expandable area and limiting visible labels/counts per day.
+- Fixed smart preparation settings so `둘 다` persists as sentinel value `31` instead of being converted back to `30분 전`, and expanded it into both 10-minute and 30-minute preparation/departure pre-alerts.
+- Replaced the inline custom preparation-time dialog with a dedicated numeric dialog that owns its controller/focus lifecycle and validates 5-240 minute input.
+- Removed silent legacy Supabase settings fallback for missing smart-prep columns so schema problems surface as a clear Korean error instead of reverting user choices.
+- Verification: `flutter analyze`, targeted settings/smart-prep tests, full `flutter test` (150 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch/focus check all passed on `192.168.0.103:5555`.

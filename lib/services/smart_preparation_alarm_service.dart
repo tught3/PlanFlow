@@ -266,12 +266,11 @@ class SmartPreparationAlarmService {
 
     if (isFirstExternalEventOfDay) {
       final prepStartAt = departureAt.subtract(Duration(minutes: safePrepMin));
-      if (prepPreAlarmOffset > 0) {
+      for (final offset in _expandedPreAlarmOffsets(prepPreAlarmOffset)) {
         specs.add(
           _ExternalAlarmSpec(
-            title: '$prepPreAlarmOffset분 뒤부터 준비 시작하세요 🔔',
-            notifyAt:
-                prepStartAt.subtract(Duration(minutes: prepPreAlarmOffset)),
+            title: '$offset분 뒤부터 준비 시작하세요 🔔',
+            notifyAt: prepStartAt.subtract(Duration(minutes: offset)),
           ),
         );
       }
@@ -283,12 +282,11 @@ class SmartPreparationAlarmService {
       );
     }
 
-    if (departPreAlarmOffset > 0) {
+    for (final offset in _expandedPreAlarmOffsets(departPreAlarmOffset)) {
       specs.add(
         _ExternalAlarmSpec(
-          title: '$departPreAlarmOffset분 뒤 출발해야 해요 🔔',
-          notifyAt:
-              departureAt.subtract(Duration(minutes: departPreAlarmOffset)),
+          title: '$offset분 뒤 출발해야 해요 🔔',
+          notifyAt: departureAt.subtract(Duration(minutes: offset)),
         ),
       );
     }
@@ -327,6 +325,16 @@ class SmartPreparationAlarmService {
           },
         )
         .toList(growable: false);
+  }
+
+  List<int> _expandedPreAlarmOffsets(int offset) {
+    if (offset == 31) {
+      return const <int>[30, 10];
+    }
+    if (offset <= 0) {
+      return const <int>[];
+    }
+    return <int>[offset];
   }
 
   Future<void> schedulePayloads({
