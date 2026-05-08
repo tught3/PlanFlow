@@ -35,15 +35,30 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
   required DateTime focusedMonth,
 }) {
   final markerColors = <int, Color>{};
+  final monthStart = DateTime(focusedMonth.year, focusedMonth.month);
+  final monthEnd = DateTime(focusedMonth.year, focusedMonth.month + 1);
   for (final event in events) {
     final startAt = event.startAt;
-    if (startAt != null &&
-        startAt.year == focusedMonth.year &&
-        startAt.month == focusedMonth.month) {
-      final currentColor = markerColors[startAt.day];
+    if (startAt == null) {
+      continue;
+    }
+    final eventEnd = event.endAt ?? startAt;
+    if (!startAt.isBefore(monthEnd) || eventEnd.isBefore(monthStart)) {
+      continue;
+    }
+    final firstDay = startAt.isBefore(monthStart)
+        ? monthStart
+        : DateTime(startAt.year, startAt.month, startAt.day);
+    final lastDay = !eventEnd.isBefore(monthEnd)
+        ? monthEnd.subtract(const Duration(days: 1))
+        : DateTime(eventEnd.year, eventEnd.month, eventEnd.day);
+    for (var day = firstDay;
+        !day.isAfter(lastDay);
+        day = day.add(const Duration(days: 1))) {
+      final currentColor = markerColors[day.day];
       if (event.isCritical ||
           currentColor != calendarCriticalEventMarkerColor) {
-        markerColors[startAt.day] = event.isCritical
+        markerColors[day.day] = event.isCritical
             ? calendarCriticalEventMarkerColor
             : PlanFlowColors.active;
       }
@@ -194,10 +209,42 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
       );
     }
-    expanded.sort(
+    final visible = _hideOverriddenRecurringOccurrences(expanded);
+    visible.sort(
       (a, b) => (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)),
     );
-    return expanded;
+    return visible;
+  }
+
+  List<EventModel> _hideOverriddenRecurringOccurrences(
+    List<EventModel> events,
+  ) {
+    final overrides = events
+        .where((event) =>
+            event.parentEventId != null &&
+            event.parentEventId!.trim().isNotEmpty &&
+            event.startAt != null)
+        .toList(growable: false);
+    if (overrides.isEmpty) {
+      return events;
+    }
+    return events.where((event) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        return true;
+      }
+      final isOverridden = overrides.any((override) {
+        if (override.parentEventId != event.id) {
+          return false;
+        }
+        final overrideStart = override.startAt;
+        return overrideStart != null &&
+            overrideStart.year == startAt.year &&
+            overrideStart.month == startAt.month &&
+            overrideStart.day == startAt.day;
+      });
+      return !isOverridden;
+    }).toList(growable: false);
   }
 
   Map<int, List<EventModel>> get _eventsByDay {
@@ -1036,6 +1083,7 @@ class _MiniCalendarGrid extends StatelessWidget {
                                     (event) => _CalendarMiniEventLabel(
                                       event: event,
                                       isSelected: isSelected,
+                                      day: dayDate,
                                     ),
                                   ),
                               if (dayEvents.length > 3)
@@ -1069,10 +1117,12 @@ class _CalendarMiniEventLabel extends StatelessWidget {
   const _CalendarMiniEventLabel({
     required this.event,
     required this.isSelected,
+    required this.day,
   });
 
   final EventModel event;
   final bool isSelected;
+  final DateTime day;
 
   @override
   Widget build(BuildContext context) {
@@ -1080,16 +1130,24 @@ class _CalendarMiniEventLabel extends StatelessWidget {
         ? Colors.white.withValues(alpha: 0.18)
         : _categoryColor(event.category).withValues(alpha: 0.16);
     final fg = isSelected ? Colors.white : _categoryColor(event.category);
+    final segment = _multiDaySegment(event, day);
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: 1),
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.horizontal(
+          left: Radius.circular(segment.$1 ? 3 : 0),
+          right: Radius.circular(segment.$2 ? 3 : 0),
+        ),
       ),
       child: Text(
-        event.isAllDay ? '종일 ${event.title}' : event.title,
+        event.isMultiDay
+            ? '↔ ${event.title}'
+            : event.isAllDay
+                ? '종일 ${event.title}'
+                : event.title,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
@@ -1099,6 +1157,27 @@ class _CalendarMiniEventLabel extends StatelessWidget {
           fontWeight: FontWeight.w700,
         ),
       ),
+    );
+  }
+
+  (bool, bool) _multiDaySegment(EventModel event, DateTime day) {
+    if (!event.isMultiDay || event.startAt == null || event.endAt == null) {
+      return (true, true);
+    }
+    final current = DateTime(day.year, day.month, day.day);
+    final first = DateTime(
+      event.startAt!.year,
+      event.startAt!.month,
+      event.startAt!.day,
+    );
+    final last = DateTime(
+      event.endAt!.year,
+      event.endAt!.month,
+      event.endAt!.day,
+    );
+    return (
+      current == first || current.weekday == DateTime.monday,
+      current == last || current.weekday == DateTime.sunday
     );
   }
 }

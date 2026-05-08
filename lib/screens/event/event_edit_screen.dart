@@ -18,6 +18,7 @@ import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
+import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
 class EventEditScreen extends StatefulWidget {
@@ -53,6 +54,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
   double? _locationLat;
   double? _locationLng;
   late bool _critical;
+  late RecurrenceSelection _recurrenceSelection;
+  bool _isAllDay = false;
+  bool _isMultiDay = false;
+  String _category = '기타';
   Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
   EventModel? _loadedEvent;
   bool _isLoading = false;
@@ -91,6 +96,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _locationLat = event?.locationLat;
     _locationLng = event?.locationLng;
     _critical = event?.isCritical ?? false;
+    _recurrenceSelection = RecurrenceSelection.fromRRule(event?.recurrenceRule);
+    _isAllDay = event?.isAllDay ?? false;
+    _isMultiDay = event?.isMultiDay ?? false;
+    _category = event?.category ?? '기타';
     _loadEventIfNeeded();
     if (event != null) {
       unawaited(_loadReminderOffsetIfNeeded(event));
@@ -128,6 +137,15 @@ class _EventEditScreenState extends State<EventEditScreen> {
         return;
       }
 
+      String? recurrenceScope;
+      if (!_isNewEvent &&
+          _loadedEvent?.recurrenceRule?.trim().isNotEmpty == true) {
+        recurrenceScope = await _chooseRecurrenceEditScopeSafe();
+        if (recurrenceScope == null) {
+          return;
+        }
+      }
+
       final supplies = _suppliesController.text
           .split(',')
           .map((item) => item.trim())
@@ -147,11 +165,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
         supplies: supplies,
         suppliesChecked: _loadedEvent?.suppliesChecked ?? const <String>[],
         isCritical: _critical,
-        recurrenceRule: _loadedEvent?.recurrenceRule,
-        isAllDay: _loadedEvent?.isAllDay ?? false,
-        isMultiDay: _loadedEvent?.isMultiDay ?? false,
+        recurrenceRule: _recurrenceSelection.toRRule(),
+        isAllDay: _isAllDay,
+        isMultiDay: _isMultiDay,
         parentEventId: _loadedEvent?.parentEventId,
-        category: _loadedEvent?.category ?? '기타',
+        category: _category,
         source: _loadedEvent?.source ?? 'manual',
         externalId: _loadedEvent?.externalId,
         externalCalendarId: _loadedEvent?.externalCalendarId,
@@ -165,6 +183,41 @@ class _EventEditScreenState extends State<EventEditScreen> {
       late final EventModel savedEvent;
       if (_isNewEvent) {
         savedEvent = await _repository.createEvent(updatedEvent);
+      } else if (recurrenceScope == 'single' && _loadedEvent != null) {
+        savedEvent = await _repository.createEvent(
+          _detachedRecurringEvent(
+            updatedEvent,
+            parentEventId: _loadedEvent!.id,
+            keepRecurrence: false,
+          ),
+        );
+      } else if (recurrenceScope == 'future' && _loadedEvent != null) {
+        final original = _loadedEvent!;
+        final originalStart = original.startAt;
+        final isFirstOccurrence = originalStart == null ||
+            DateTime(
+                  originalStart.year,
+                  originalStart.month,
+                  originalStart.day,
+                ) ==
+                DateTime(_startAt.year, _startAt.month, _startAt.day);
+        if (isFirstOccurrence) {
+          savedEvent = await _repository.updateEvent(updatedEvent);
+        } else {
+          await _repository.updateEvent(
+            _eventWithRecurrenceRule(
+              original,
+              _truncateRRuleBefore(original.recurrenceRule, _startAt),
+            ),
+          );
+          savedEvent = await _repository.createEvent(
+            _detachedRecurringEvent(
+              updatedEvent,
+              parentEventId: original.id,
+              keepRecurrence: true,
+            ),
+          );
+        }
       } else {
         savedEvent = await _repository.updateEvent(updatedEvent);
       }
@@ -183,6 +236,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
         departPreAlarmOffset: settings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        isFirstExternalEventOfDay: await _isFirstExternalEventOfDay(
+          userId: user.id,
+          event: savedEvent,
+        ),
       );
       unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
       unawaited(EventPreparationService().prepareAfterSave(savedEvent));
@@ -216,6 +273,79 @@ class _EventEditScreenState extends State<EventEditScreen> {
         });
       }
     }
+  }
+
+  EventModel _detachedRecurringEvent(
+    EventModel event, {
+    required String parentEventId,
+    required bool keepRecurrence,
+  }) {
+    return EventModel(
+      id: '',
+      userId: event.userId,
+      title: event.title,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      location: event.location,
+      locationLat: event.locationLat,
+      locationLng: event.locationLng,
+      memo: event.memo,
+      supplies: event.supplies,
+      suppliesChecked: event.suppliesChecked,
+      isCritical: event.isCritical,
+      recurrenceRule: keepRecurrence ? event.recurrenceRule : null,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
+      parentEventId: parentEventId,
+      category: event.category,
+      source: 'manual',
+      externalId: null,
+      externalCalendarId: null,
+      externalEtag: null,
+      externalUpdatedAt: null,
+      lastSyncedAt: null,
+      createdAt: null,
+      updatedAt: null,
+    );
+  }
+
+  EventModel _eventWithRecurrenceRule(EventModel event, String? rule) {
+    return EventModel(
+      id: event.id,
+      userId: event.userId,
+      title: event.title,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      location: event.location,
+      locationLat: event.locationLat,
+      locationLng: event.locationLng,
+      memo: event.memo,
+      supplies: event.supplies,
+      suppliesChecked: event.suppliesChecked,
+      isCritical: event.isCritical,
+      recurrenceRule: rule,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
+      parentEventId: event.parentEventId,
+      category: event.category,
+      source: event.source,
+      externalId: event.externalId,
+      externalCalendarId: event.externalCalendarId,
+      externalEtag: event.externalEtag,
+      externalUpdatedAt: event.externalUpdatedAt,
+      lastSyncedAt: event.lastSyncedAt,
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    );
+  }
+
+  String? _truncateRRuleBefore(String? rule, DateTime boundary) {
+    if (rule == null || rule.trim().isEmpty) {
+      return null;
+    }
+    final until = DateTime(boundary.year, boundary.month, boundary.day)
+        .subtract(const Duration(days: 1));
+    return RecurrenceSelection.fromRRule(rule).copyWith(until: until).toRRule();
   }
 
   Future<void> _loadEventIfNeeded() async {
@@ -254,6 +384,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _startAt = event.startAt ?? _startAt;
         _endAt = event.endAt;
         _critical = event.isCritical;
+        _recurrenceSelection =
+            RecurrenceSelection.fromRRule(event.recurrenceRule);
+        _isAllDay = event.isAllDay;
+        _isMultiDay = event.isMultiDay;
+        _category = event.category;
       });
       unawaited(_loadReminderOffsetIfNeeded(event));
     } catch (_) {
@@ -348,6 +483,100 @@ class _EventEditScreenState extends State<EventEditScreen> {
       debugPrintStack(stackTrace: stackTrace);
       return false;
     }
+  }
+
+  Future<bool> _isFirstExternalEventOfDay({
+    required String userId,
+    required EventModel event,
+  }) async {
+    try {
+      final dayEvents = await _repository.listEvents(userId: userId);
+      return const SmartPreparationAlarmService().isFirstExternalEventOfDay(
+        event: event,
+        dayEvents: dayEvents,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen first external lookup skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return true;
+    }
+  }
+
+  // ignore: unused_element
+  Future<String?> _chooseRecurrenceEditScope() {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('반복 일정 수정'),
+        content: const Text(
+          '반복 일정입니다. 어떤 범위에 수정 내용을 적용할까요?',
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+        actions: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(null),
+                child: const Text('취소'),
+              ),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop('single'),
+                child: const Text('이 일정만'),
+              ),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop('future'),
+                child: const Text('이후 모든 일정'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop('all'),
+                child: const Text('전체 반복 일정'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _chooseRecurrenceEditScopeSafe() {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('반복 일정 수정'),
+        content: const Text(
+          '반복 일정입니다. 어떤 범위에 수정 내용을 적용할까요?',
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+        actions: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(null),
+                child: const Text('취소'),
+              ),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop('single'),
+                child: const Text('이 일정만'),
+              ),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop('future'),
+                child: const Text('이후 모든 일정'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop('all'),
+                child: const Text('전체 반복 일정'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   List<HomeWidgetListEventData> _todayWidgetEvents(
@@ -602,6 +831,29 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 ),
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
+              _EventTypeEditor(
+                isAllDay: _isAllDay,
+                isMultiDay: _isMultiDay,
+                category: _category,
+                recurrence: _recurrenceSelection,
+                onTypeChanged: (value) {
+                  setState(() {
+                    _isAllDay = value == 'all_day';
+                    _isMultiDay = value == 'multi_day';
+                  });
+                },
+                onCategoryChanged: (value) {
+                  setState(() {
+                    _category = value;
+                  });
+                },
+                onRecurrenceChanged: (value) {
+                  setState(() {
+                    _recurrenceSelection = value;
+                  });
+                },
+              ),
+              const SizedBox(height: AppConstants.sectionSpacing),
               ReminderOffsetSelector(
                 value: _reminderOffset,
                 onChanged: (value) {
@@ -667,6 +919,84 @@ class _EventEditScreenState extends State<EventEditScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _EventTypeEditor extends StatelessWidget {
+  const _EventTypeEditor({
+    required this.isAllDay,
+    required this.isMultiDay,
+    required this.category,
+    required this.recurrence,
+    required this.onTypeChanged,
+    required this.onCategoryChanged,
+    required this.onRecurrenceChanged,
+  });
+
+  final bool isAllDay;
+  final bool isMultiDay;
+  final String category;
+  final RecurrenceSelection recurrence;
+  final ValueChanged<String> onTypeChanged;
+  final ValueChanged<String> onCategoryChanged;
+  final ValueChanged<RecurrenceSelection> onRecurrenceChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedType = isMultiDay
+        ? 'multi_day'
+        : isAllDay
+            ? 'all_day'
+            : 'single';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: PlanFlowColors.primaryFaint),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '일정 유형',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: PlanFlowColors.primary,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<String>(
+            showSelectedIcon: false,
+            segments: const <ButtonSegment<String>>[
+              ButtonSegment<String>(value: 'single', label: Text('단일')),
+              ButtonSegment<String>(value: 'all_day', label: Text('종일')),
+              ButtonSegment<String>(value: 'multi_day', label: Text('다일')),
+            ],
+            selected: <String>{selectedType},
+            onSelectionChanged: (selected) => onTypeChanged(selected.first),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: const <String>['업무', '개인', '가족', '기타'].map((item) {
+              return ChoiceChip(
+                label: Text(item),
+                selected: category == item,
+                onSelected: (_) => onCategoryChanged(item),
+              );
+            }).toList(growable: false),
+          ),
+          const SizedBox(height: 12),
+          RecurrenceSelector(
+            value: recurrence,
+            onChanged: onRecurrenceChanged,
+          ),
+        ],
       ),
     );
   }

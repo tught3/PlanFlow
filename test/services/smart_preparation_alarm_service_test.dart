@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:planflow/services/smart_preparation_alarm_service.dart';
 
@@ -156,6 +157,47 @@ void main() {
     expect(service.isExternalEvent(title: '재택 회의', location: '집'), false);
     expect(service.isExternalEvent(title: '줌 미팅', location: '온라인'), false);
     expect(service.isExternalEvent(title: '거래처 전화', location: '사무실 전화'), false);
+  });
+
+  test('isFirstExternalEventOfDay only returns true for first outside event',
+      () {
+    final service = SmartPreparationAlarmService();
+    final first = EventModel(
+      id: 'first',
+      userId: 'user-1',
+      title: '원주 미팅',
+      startAt: DateTime(2026, 5, 8, 9),
+      location: '원주시청',
+    );
+    final second = EventModel(
+      id: 'second',
+      userId: 'user-1',
+      title: '대전 방문',
+      startAt: DateTime(2026, 5, 8, 14),
+      location: '대전역',
+    );
+    final home = EventModel(
+      id: 'home',
+      userId: 'user-1',
+      title: '재택 회의',
+      startAt: DateTime(2026, 5, 8, 8),
+      location: '집',
+    );
+
+    expect(
+      service.isFirstExternalEventOfDay(
+        event: first,
+        dayEvents: <EventModel>[home, second, first],
+      ),
+      true,
+    );
+    expect(
+      service.isFirstExternalEventOfDay(
+        event: second,
+        dayEvents: <EventModel>[home, second, first],
+      ),
+      false,
+    );
   });
 }
 

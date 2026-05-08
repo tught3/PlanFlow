@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../data/models/event_model.dart';
 import '../data/models/pre_action_model.dart';
 import 'notification_service.dart';
 
@@ -201,6 +202,41 @@ class SmartPreparationAlarmService {
       }
     }
     return true;
+  }
+
+  bool isFirstExternalEventOfDay({
+    required EventModel event,
+    required Iterable<EventModel> dayEvents,
+  }) {
+    final eventStartAt = event.startAt;
+    if (eventStartAt == null ||
+        !isExternalEvent(title: event.title, location: event.location)) {
+      return false;
+    }
+    final dayStart =
+        DateTime(eventStartAt.year, eventStartAt.month, eventStartAt.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final externalEvents = dayEvents.where((candidate) {
+      final startAt = candidate.startAt;
+      if (startAt == null ||
+          startAt.isBefore(dayStart) ||
+          !startAt.isBefore(dayEnd)) {
+        return false;
+      }
+      return isExternalEvent(
+        title: candidate.title,
+        location: candidate.location,
+      );
+    }).toList(growable: false)
+      ..sort(
+        (a, b) => (a.startAt ?? DateTime(0)).compareTo(
+          b.startAt ?? DateTime(0),
+        ),
+      );
+    if (externalEvents.isEmpty) {
+      return false;
+    }
+    return externalEvents.first.id == event.id;
   }
 
   List<Map<String, dynamic>> buildExternalEventPayloads({

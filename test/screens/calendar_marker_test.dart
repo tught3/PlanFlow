@@ -42,4 +42,23 @@ void main() {
 
     expect(markerColors[8], PlanFlowColors.active);
   });
+
+  test('calendar marker spans every day of a multi-day event', () {
+    final markerColors = buildCalendarEventMarkerColorsByDay(
+      focusedMonth: DateTime(2026, 5),
+      events: <EventModel>[
+        EventModel(
+          id: 'multi-day',
+          userId: 'user',
+          title: '연속 일정',
+          startAt: DateTime(2026, 4, 30, 9),
+          endAt: DateTime(2026, 5, 2, 18),
+          isMultiDay: true,
+        ),
+      ],
+    );
+
+    expect(markerColors[1], PlanFlowColors.active);
+    expect(markerColors[2], PlanFlowColors.active);
+  });
 }

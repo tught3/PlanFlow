@@ -164,15 +164,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final allEvents = await repository.listEvents(userId: user.id);
       final now = DateTime.now();
       final todayEvents = allEvents.where((event) {
-        final startAt = event.startAt;
-        if (startAt == null) {
-          return false;
-        }
-        return startAt.year == now.year &&
-            startAt.month == now.month &&
-            startAt.day == now.day;
+        return _eventIntersectsDay(event, now);
       }).toList(growable: false)
-        ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+        ..sort((a, b) =>
+            (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)));
       final pastTodayEvents = todayEvents
           .where((event) => _isPastEvent(event, now))
           .toList(growable: false);
@@ -501,6 +496,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return false;
     }
     return (event.endAt ?? startAt).isBefore(now);
+  }
+
+  bool _eventIntersectsDay(EventModel event, DateTime day) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+    final endAt = event.endAt ?? startAt;
+    return startAt.isBefore(dayEnd) && !endAt.isBefore(dayStart);
   }
 }
 
@@ -876,6 +882,7 @@ class _TodayEventCard extends StatelessWidget {
     final timeStr = startAt != null
         ? '${startAt.hour.toString().padLeft(2, '0')}:${startAt.minute.toString().padLeft(2, '0')}'
         : '';
+    final multiDayLabel = _multiDayProgressLabel(event);
 
     final borderColor = event.isCritical && !isPast
         ? const Color(0xFFB42318).withValues(alpha: 0.4)
@@ -952,6 +959,19 @@ class _TodayEventCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                    if (multiDayLabel != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Text(
+                          multiDayLabel,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: isPast
+                                ? PlanFlowColors.textDisabled
+                                : PlanFlowColors.primaryMid,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -988,6 +1008,30 @@ class _TodayEventCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String? _multiDayProgressLabel(EventModel event) {
+    if (!event.isMultiDay || event.startAt == null || event.endAt == null) {
+      return null;
+    }
+    final now = DateTime.now();
+    final first = DateTime(
+      event.startAt!.year,
+      event.startAt!.month,
+      event.startAt!.day,
+    );
+    final last = DateTime(
+      event.endAt!.year,
+      event.endAt!.month,
+      event.endAt!.day,
+    );
+    final today = DateTime(now.year, now.month, now.day);
+    if (today.isBefore(first) || today.isAfter(last)) {
+      return null;
+    }
+    final total = last.difference(first).inDays + 1;
+    final current = today.difference(first).inDays + 1;
+    return '진행중 · $current/$total일차';
   }
 }
 

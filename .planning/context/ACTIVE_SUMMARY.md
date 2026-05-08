@@ -441,3 +441,12 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Improved the calendar month view with search, category-colored text labels up to three events per day, basic recurrence expansion, basic multi-day expansion across affected dates, and a date-tap agenda panel with direct add and voice add actions.
 - Added/updated regression tests for settings persistence, event serialization, smart preparation payloads, manual event side effects, and Naver CalDAV diagnostics.
 - Verification before build: `flutter analyze` passed and full `flutter test` passed with 146 tests.
+
+## 2026-05-08 v3 first-release reinforcement checkpoint
+- Added first-external-event-of-day handling for smart preparation alarms so only the first outside schedule receives the full preparation flow, while later outside schedules keep departure-oriented alerts.
+- Replaced raw recurrence editing with a Korean recurrence selector that supports none/daily/weekly/monthly/yearly plus end date and preserves advanced RRULE parts such as BYDAY/COUNT.
+- Added recurrence edit scope behavior: 전체 반복 일정 updates the series, 이 일정만 creates a detached override, and 이후 모든 일정 truncates the old series then creates a new future series; calendar rendering hides overridden parent occurrences.
+- Added onboarding preparation-time selection and kept smart prep generation safe when settings lookup fails by falling back to default preparation timings.
+- Improved multi-day visibility on home/calendar: today includes spanning events, home cards show 진행중 · N/M일차, and calendar markers/labels span affected days.
+- Improved Naver CalDAV diagnostics dialog with count table and searchable safe samples.
+- Verification: `flutter analyze`, full `flutter test` (149 passed), and `flutter build apk --debug` passed. ADB install/run was skipped because `adb devices` returned no connected devices.

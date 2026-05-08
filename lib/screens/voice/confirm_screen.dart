@@ -23,6 +23,7 @@ import '../../services/location_lookup_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/travel_time_buffer_service.dart';
+import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
 class ConfirmScreen extends StatefulWidget {
@@ -158,7 +159,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   late final TextEditingController _locationController;
   late final TextEditingController _memoController;
   late final TextEditingController _newSupplyController;
-  late final TextEditingController _recurrenceRuleController;
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
   );
@@ -171,7 +171,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   DateTime? _endAt;
   double? _locationLat;
   double? _locationLng;
-  String? _recurrenceRule;
+  late RecurrenceSelection _recurrenceSelection;
   bool _isAllDay = false;
   bool _isMultiDay = false;
   String _category = '기타';
@@ -203,9 +203,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           _stringValue(widget.parsedSchedule['raw_text']),
     );
     _newSupplyController = TextEditingController();
-    _recurrenceRuleController = TextEditingController(
-      text: _stringValue(widget.parsedSchedule['recurrence_rule']) ?? '',
-    );
     _supplies = _stringListValue(
       widget.parsedSchedule['supplies'],
     ).map(_SupplyDraft.new).toList(growable: true);
@@ -214,7 +211,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
     _locationLat = _doubleValue(widget.parsedSchedule['location_lat']);
     _locationLng = _doubleValue(widget.parsedSchedule['location_lng']);
-    _recurrenceRule = _stringValue(widget.parsedSchedule['recurrence_rule']);
+    _recurrenceSelection = RecurrenceSelection.fromRRule(
+      _stringValue(widget.parsedSchedule['recurrence_rule']),
+    );
     _isAllDay = widget.parsedSchedule['is_all_day'] == true;
     _isMultiDay = widget.parsedSchedule['is_multi_day'] == true;
     _category = _categoryValue(widget.parsedSchedule['category']);
@@ -235,7 +234,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _locationController.dispose();
     _memoController.dispose();
     _newSupplyController.dispose();
-    _recurrenceRuleController.dispose();
     _scrollController.dispose();
     _newSupplyFocusNode.dispose();
     for (final draft in _supplies) {
@@ -494,7 +492,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                 .where((item) => item.isNotEmpty),
           ),
           isCritical: _isCritical,
-          recurrenceRule: _recurrenceRule,
+          recurrenceRule: _recurrenceSelection.toRRule(),
           isAllDay: _isAllDay,
           isMultiDay: _isMultiDay,
           category: _category,
@@ -716,26 +714,66 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     required String eventId,
     required DateTime eventStartAt,
   }) async {
+    var prepTimeMin = SmartPreparationAlarmService.defaultPrepTimeMin;
+    var prepPreAlarmOffset =
+        SmartPreparationAlarmService.defaultPrepPreAlarmOffset;
+    var departPreAlarmOffset =
+        SmartPreparationAlarmService.defaultDepartPreAlarmOffset;
     try {
       final settings =
           await SettingsRepository.supabase().fetchSettings(userId);
-      return widget.smartPreparationAlarmService.buildExternalEventPayloads(
-        eventId: eventId,
+      prepTimeMin = settings?.prepTimeMin ?? prepTimeMin;
+      prepPreAlarmOffset = settings?.prepPreAlarmOffset ?? prepPreAlarmOffset;
+      departPreAlarmOffset =
+          settings?.departPreAlarmOffset ?? departPreAlarmOffset;
+    } catch (error, stackTrace) {
+      debugPrint('Smart prep settings fetch failed; using defaults: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+    final isFirstExternalEventOfDay = await _isFirstExternalEventOfDay(
+      userId: userId,
+      eventId: eventId,
+      eventStartAt: eventStartAt,
+    );
+    return widget.smartPreparationAlarmService.buildExternalEventPayloads(
+      eventId: eventId,
+      userId: userId,
+      title: _titleController.text.trim(),
+      eventStartAt: eventStartAt,
+      location: _emptyToNull(_locationController.text),
+      prepTimeMin: prepTimeMin,
+      prepPreAlarmOffset: prepPreAlarmOffset,
+      departPreAlarmOffset: departPreAlarmOffset,
+      isFirstExternalEventOfDay: isFirstExternalEventOfDay,
+    );
+  }
+
+  Future<bool> _isFirstExternalEventOfDay({
+    required String userId,
+    required String eventId,
+    required DateTime eventStartAt,
+  }) async {
+    final repository = _resolveEventRepository();
+    if (repository == null) {
+      return true;
+    }
+    try {
+      final dayEvents = await repository.listEvents(userId: userId);
+      final event = EventModel(
+        id: eventId,
         userId: userId,
         title: _titleController.text.trim(),
-        eventStartAt: eventStartAt,
+        startAt: eventStartAt,
         location: _emptyToNull(_locationController.text),
-        prepTimeMin: settings?.prepTimeMin ??
-            SmartPreparationAlarmService.defaultPrepTimeMin,
-        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
-            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
-        departPreAlarmOffset: settings?.departPreAlarmOffset ??
-            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+      );
+      return widget.smartPreparationAlarmService.isFirstExternalEventOfDay(
+        event: event,
+        dayEvents: dayEvents,
       );
     } catch (error, stackTrace) {
-      debugPrint('Default external smart prep build failed: $error');
+      debugPrint('First external event lookup failed: $error');
       debugPrintStack(stackTrace: stackTrace);
-      return const <Map<String, dynamic>>[];
+      return true;
     }
   }
 
@@ -1469,15 +1507,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                               );
                             }).toList(),
                           ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: _recurrenceRuleController,
-                            decoration: const InputDecoration(
-                              labelText: '반복 규칙',
-                              hintText: '예: FREQ=WEEKLY;BYDAY=TU',
-                            ),
+                          const SizedBox(height: 12),
+                          RecurrenceSelector(
+                            value: _recurrenceSelection,
                             onChanged: (value) {
-                              _recurrenceRule = _emptyToNull(value);
+                              setState(() {
+                                _recurrenceSelection = value;
+                              });
                             },
                           ),
                         ],

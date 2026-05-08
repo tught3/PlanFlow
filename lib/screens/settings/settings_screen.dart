@@ -561,89 +561,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final samples = diagnostics.samples;
     final invalidSamples = diagnostics.invalidSamples;
     final reasonText = _naverCalDavDiagnosticReasonText(diagnostics);
+    var query = '';
     return showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('네이버 동기화 진단 결과'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                diagnostics.toSummaryMessage(),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                reasonText,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '참고: 읽음/파싱 수는 네이버 서버가 반환한 원본 일정 후보입니다. 저장 범위 밖의 오래된 구독/방송 캘린더 일정은 저장하지 않습니다.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
-              ),
-              if (samples.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(
-                  '저장 범위 안 샘플 일정',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                ...samples.map(
-                  (sample) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '${sample.title.isEmpty ? '제목 없음' : sample.title}\n'
-                      '원본 시작: ${sample.rawStart}\n'
-                      '저장 시작: ${_formatDateTime(sample.startAt.toLocal())}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+        content: StatefulBuilder(
+          builder: (context, setDialogState) {
+            bool sampleMatches(Object sample) {
+              if (query.trim().isEmpty) {
+                return true;
+              }
+              final text = switch (sample) {
+                NaverCalDavDebugSample s =>
+                  '${s.title} ${s.rawStart} ${s.rawEnd} ${s.calendarPath}',
+                NaverCalDavInvalidSample s =>
+                  '${s.title ?? ''} ${s.reason} ${s.rawStart ?? ''} ${s.calendarPath}',
+                _ => sample.toString(),
+              }
+                  .toLowerCase();
+              return text.contains(query.trim().toLowerCase());
+            }
+
+            final visibleSamples =
+                samples.where(sampleMatches).toList(growable: false);
+            final visibleInvalidSamples =
+                invalidSamples.where(sampleMatches).toList(growable: false);
+
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    diagnostics.toSummaryMessage(),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
-                ),
-              ],
-              if (invalidSamples.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(
-                  '파싱 실패 샘플',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '아래 항목이 네이버 앱에는 보이지만 PlanFlow에 안 들어온다면, 해당 원본 형식을 추가 지원해야 합니다.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                      ),
-                ),
-                const SizedBox(height: 8),
-                ...invalidSamples.map(
-                  (sample) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '${sample.title?.isNotEmpty == true ? sample.title : '제목 확인 불가'}\n'
-                      '사유: ${sample.reason}\n'
-                      '구성: ${sample.component ?? '확인 불가'}\n'
-                      '원본 시작: ${sample.rawStart ?? '없음'}',
-                      style: Theme.of(context).textTheme.bodySmall,
+                  const SizedBox(height: 12),
+                  Text(reasonText,
+                      style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 10),
+                  TextField(
+                    decoration: const InputDecoration(
+                      labelText: '찾는 일정 제목 검색',
+                      hintText: '예: 태불릿계, 공임나라',
+                      prefixIcon: Icon(Icons.search),
                     ),
+                    onChanged: (value) {
+                      setDialogState(() {
+                        query = value;
+                      });
+                    },
                   ),
-                ),
-              ] else ...[
-                const SizedBox(height: 16),
-                Text(
-                  '저장 범위 안에서 보여줄 샘플 일정이 없습니다. 네이버가 오래된 구독 캘린더나 범위 밖 일정만 반환했을 수 있습니다.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
+                  const SizedBox(height: 12),
+                  _NaverDiagnosticCountTable(diagnostics: diagnostics),
+                  const SizedBox(height: 12),
+                  Text(
+                    '읽음/파싱 수는 네이버 서버가 반환한 원본 후보입니다. 검색한 제목이 샘플에 없으면 CalDAV 응답 자체에 없거나 샘플 5개 밖에 있을 수 있어요.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                        ),
+                  ),
+                  if (visibleSamples.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text('저장 범위 안 샘플 일정',
+                        style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    ...visibleSamples.map(
+                      (sample) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          '${sample.title.isEmpty ? '제목 없음' : sample.title}\n'
+                          '원본 시작: ${sample.rawStart}\n'
+                          '저장 시작: ${_formatDateTime(sample.startAt.toLocal())}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ),
-                ),
-              ],
-            ],
-          ),
+                    ),
+                  ],
+                  if (visibleInvalidSamples.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text('파싱 실패 샘플',
+                        style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    ...visibleInvalidSamples.map(
+                      (sample) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          '${sample.title?.isNotEmpty == true ? sample.title : '제목 확인 불가'}\n'
+                          '사유: ${sample.reason}\n'
+                          '구성: ${sample.component ?? '확인 불가'}\n'
+                          '원본 시작: ${sample.rawStart ?? '없음'}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
         ),
         actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
         actions: [
@@ -2792,6 +2811,62 @@ class _BriefingTestButton extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : const Icon(Icons.play_arrow_outlined),
+    );
+  }
+}
+
+class _NaverDiagnosticCountTable extends StatelessWidget {
+  const _NaverDiagnosticCountTable({required this.diagnostics});
+
+  final NaverCalDavSyncDiagnostics diagnostics;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <(String, int)>[
+      ('읽음', diagnostics.rawEvents),
+      ('파싱 성공', diagnostics.parsedEvents),
+      ('파싱 실패', diagnostics.invalidEvents),
+      ('저장 대상', diagnostics.saveCandidates),
+      ('저장', diagnostics.saved),
+      ('중복 스킵', diagnostics.duplicateSkipped),
+      ('변경 없음', diagnostics.unchangedSkipped),
+      ('실패', diagnostics.failed),
+    ];
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: PlanFlowColors.primaryFaint),
+      ),
+      child: Wrap(
+        children: rows.map((row) {
+          return SizedBox(
+            width: 132,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    row.$1,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                        ),
+                  ),
+                  Text(
+                    '${row.$2}개',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: PlanFlowColors.primary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(growable: false),
+      ),
     );
   }
 }

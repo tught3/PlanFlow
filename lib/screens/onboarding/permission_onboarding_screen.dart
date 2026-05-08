@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme.dart';
+import '../../data/models/user_settings_model.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
 
@@ -31,6 +33,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
   bool _resumeRequestAll = false;
   String? _activeRequestKey;
   String? _message;
+  int _prepTimeMin = 30;
 
   @override
   void initState() {
@@ -285,10 +288,25 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
   Future<void> _complete() async {
     final userId = authProvider.userId;
     if (userId != null && userId.isNotEmpty) {
+      await _savePrepSetting(userId);
       await _permissionService.markOnboardingCompleted(userId);
     }
     if (mounted) {
       context.go(AppRoutes.home);
+    }
+  }
+
+  Future<void> _savePrepSetting(String userId) async {
+    try {
+      final repository = SettingsRepository.supabase();
+      final existing = await repository.fetchSettings(userId);
+      await repository.upsertSettings(
+        (existing ?? UserSettingsModel.defaults(userId: userId)).copyWith(
+          prepTimeMin: _prepTimeMin,
+        ),
+      );
+    } catch (error) {
+      debugPrint('Permission onboarding prep setting save skipped: $error');
     }
   }
 
@@ -333,6 +351,15 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 ),
               )
             else ...[
+              _PrepTimeCard(
+                value: _prepTimeMin,
+                onChanged: (value) {
+                  setState(() {
+                    _prepTimeMin = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 10),
               _PermissionTile(
                 icon: Icons.mic_none,
                 title: '마이크',
@@ -486,6 +513,63 @@ class _IntroCard extends StatelessWidget {
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: PlanFlowColors.textSecondary,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PrepTimeCard extends StatelessWidget {
+  const _PrepTimeCard({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      color: PlanFlowColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '평소 준비 시간',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: PlanFlowColors.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '첫 외부 일정 전에 씻고 챙기는 시간을 어느 정도로 볼지 정해 주세요. 스마트 준비 알람에 사용됩니다.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            SegmentedButton<int>(
+              showSelectedIcon: false,
+              selected: <int>{value},
+              segments: const <ButtonSegment<int>>[
+                ButtonSegment<int>(value: 15, label: Text('15분')),
+                ButtonSegment<int>(value: 30, label: Text('30분')),
+                ButtonSegment<int>(value: 45, label: Text('45분')),
+                ButtonSegment<int>(value: 60, label: Text('60분')),
+              ],
+              onSelectionChanged: (selected) => onChanged(selected.first),
             ),
           ],
         ),
