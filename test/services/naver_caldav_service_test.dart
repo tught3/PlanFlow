@@ -660,6 +660,41 @@ END:VCALENDAR
     expect(result.diagnostics.samples, isEmpty);
   });
 
+  test('syncAll diagnostics records invalid event samples with reasons',
+      () async {
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(
+        responses: <int>[404, 207, 207],
+        bodies: <String>[
+          _emptyEventReportXml,
+          _calendarListXml,
+          _invalidEventReportXml,
+        ],
+      ),
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: _FakeEventRepository(),
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+
+    expect(result.diagnostics.rawEvents, 6);
+    expect(result.diagnostics.parsedEvents, 0);
+    expect(result.diagnostics.invalidEvents, 6);
+    expect(result.diagnostics.invalidSamples, hasLength(5));
+    expect(
+      result.diagnostics.invalidSamples.map((sample) => sample.reason),
+      containsAll(<String>['DTSTART 없음', 'DTSTART 파싱 실패']),
+    );
+    expect(
+      result.diagnostics.invalidSamples.map((sample) => sample.title),
+      containsAll(<String>['시작 없는 네이버 일정', '이상한 날짜 네이버 일정']),
+    );
+  });
+
   test('syncAll deletes suspicious imported events before re-syncing',
       () async {
     final client = _FakePropfindClient(
@@ -980,6 +1015,47 @@ UID:broadcast-2013
 SUMMARY:[방송]학교 2013
 DTSTART;TZID=Asia/Seoul:20130112T220000
 DTEND;TZID=Asia/Seoul:20130112T230000
+END:VEVENT
+END:VCALENDAR
+        ]]></c:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';
+
+const String _invalidEventReportXml = '''
+<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/calendars/tught3/default/no-start.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-no-start"</d:getetag>
+        <c:calendar-data><![CDATA[
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:no-start
+SUMMARY:시작 없는 네이버 일정
+DTEND;TZID=Asia/Seoul:20260505T110000
+END:VEVENT
+END:VCALENDAR
+        ]]></c:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/calendars/tught3/default/bad-date.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-bad-date"</d:getetag>
+        <c:calendar-data><![CDATA[
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:bad-date
+SUMMARY:이상한 날짜 네이버 일정
+DTSTART;TZID=Asia/Seoul:2026-05-05 10:00
+DTEND;TZID=Asia/Seoul:20260505T110000
 END:VEVENT
 END:VCALENDAR
         ]]></c:calendar-data>

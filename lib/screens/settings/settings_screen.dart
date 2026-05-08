@@ -556,6 +556,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ) {
     final diagnostics = result.diagnostics;
     final samples = diagnostics.samples;
+    final invalidSamples = diagnostics.invalidSamples;
     final reasonText = _naverCalDavDiagnosticReasonText(diagnostics);
     return showDialog<void>(
       context: context,
@@ -598,6 +599,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       '${sample.title.isEmpty ? '제목 없음' : sample.title}\n'
                       '원본 시작: ${sample.rawStart}\n'
                       '저장 시작: ${_formatDateTime(sample.startAt.toLocal())}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ),
+              ],
+              if (invalidSamples.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  '파싱 실패 샘플',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '아래 항목이 네이버 앱에는 보이지만 PlanFlow에 안 들어온다면, 해당 원본 형식을 추가 지원해야 합니다.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                ...invalidSamples.map(
+                  (sample) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      '${sample.title?.isNotEmpty == true ? sample.title : '제목 확인 불가'}\n'
+                      '사유: ${sample.reason}\n'
+                      '구성: ${sample.component ?? '확인 불가'}\n'
+                      '원본 시작: ${sample.rawStart ?? '없음'}',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),

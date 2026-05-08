@@ -128,6 +128,34 @@ class NaverCalDavDebugSample {
   }
 }
 
+class NaverCalDavInvalidSample {
+  const NaverCalDavInvalidSample({
+    required this.calendarPath,
+    required this.href,
+    required this.reason,
+    this.title,
+    this.uid,
+    this.rawStart,
+    this.rawEnd,
+    this.component,
+  });
+
+  final String calendarPath;
+  final String href;
+  final String reason;
+  final String? title;
+  final String? uid;
+  final String? rawStart;
+  final String? rawEnd;
+  final String? component;
+
+  String toSafeLogLine() {
+    return 'calendar="$calendarPath", href="$href", component="${component ?? ''}", '
+        'reason="$reason", uid="${uid ?? ''}", title="${title ?? ''}", '
+        'rawStart="${rawStart ?? ''}", rawEnd="${rawEnd ?? ''}"';
+  }
+}
+
 class NaverCalDavSyncDiagnostics {
   const NaverCalDavSyncDiagnostics({
     this.rawEvents = 0,
@@ -140,6 +168,7 @@ class NaverCalDavSyncDiagnostics {
     this.failed = 0,
     this.skipReasons = const <String, int>{},
     this.samples = const <NaverCalDavDebugSample>[],
+    this.invalidSamples = const <NaverCalDavInvalidSample>[],
   });
 
   final int rawEvents;
@@ -152,6 +181,7 @@ class NaverCalDavSyncDiagnostics {
   final int failed;
   final Map<String, int> skipReasons;
   final List<NaverCalDavDebugSample> samples;
+  final List<NaverCalDavInvalidSample> invalidSamples;
 
   String toSummaryMessage() {
     final reasonText = skipReasons.entries
@@ -259,6 +289,8 @@ class _NaverCalDavMutableDiagnostics {
   int failed = 0;
   final Map<String, int> skipReasons = <String, int>{};
   final List<NaverCalDavDebugSample> samples = <NaverCalDavDebugSample>[];
+  final List<NaverCalDavInvalidSample> invalidSamples =
+      <NaverCalDavInvalidSample>[];
 
   void addSkipReason(String reason) {
     skipReasons.update(reason, (count) => count + 1, ifAbsent: () => 1);
@@ -269,6 +301,13 @@ class _NaverCalDavMutableDiagnostics {
       return;
     }
     samples.add(sample);
+  }
+
+  void addInvalidSample(NaverCalDavInvalidSample sample) {
+    if (invalidSamples.length >= 5) {
+      return;
+    }
+    invalidSamples.add(sample);
   }
 
   NaverCalDavSyncDiagnostics freeze() {
@@ -283,6 +322,8 @@ class _NaverCalDavMutableDiagnostics {
       failed: failed,
       skipReasons: Map<String, int>.unmodifiable(skipReasons),
       samples: List<NaverCalDavDebugSample>.unmodifiable(samples),
+      invalidSamples:
+          List<NaverCalDavInvalidSample>.unmodifiable(invalidSamples),
     );
   }
 }
@@ -646,6 +687,18 @@ class NaverCalDavService {
         events.add(parsed);
       } else {
         parseStats?._diagnostics.invalidEvents += 1;
+        final invalidSample = _buildInvalidDebugSample(
+          icsData,
+          href: _firstDescendantText(node, 'href') ?? '',
+          calendarPath: parseStats?.calendarPath ?? endpoint.path,
+        );
+        if (invalidSample != null) {
+          parseStats?._diagnostics.addInvalidSample(invalidSample);
+          debugPrint(
+            'Naver CalDAV parse invalid sample: '
+            '${invalidSample.toSafeLogLine()}',
+          );
+        }
       }
     }
     return events;
@@ -776,7 +829,20 @@ class NaverCalDavService {
       );
       if (parsed == null) {
         parseStats?._diagnostics.invalidEvents += 1;
-        debugPrint('Naver CalDAV 이벤트 파싱 실패: $href');
+        final invalidSample = _buildInvalidDebugSample(
+          icsData,
+          href: href,
+          calendarPath: parseStats?.calendarPath ?? endpoint.path,
+        );
+        if (invalidSample != null) {
+          parseStats?._diagnostics.addInvalidSample(invalidSample);
+          debugPrint(
+            'Naver CalDAV 이벤트 파싱 실패: '
+            '${invalidSample.toSafeLogLine()}',
+          );
+        } else {
+          debugPrint('Naver CalDAV 이벤트 파싱 실패: $href');
+        }
       } else {
         parseStats?._diagnostics.parsedEvents += 1;
         final sample = _buildDebugSample(
@@ -1339,6 +1405,72 @@ class NaverCalDavService {
       endAt: event.endAt,
       etag: event.etag,
     );
+  }
+
+  NaverCalDavInvalidSample? _buildInvalidDebugSample(
+    String icsData, {
+    required String href,
+    required String calendarPath,
+  }) {
+    final fields = _parseIcalFields(icsData);
+    final rawStart = fields['DTSTART']?.firstOrNull;
+    final rawEnd = fields['DTEND']?.firstOrNull;
+    final uid = fields['UID']?.firstOrNull?.trim();
+    final title = _unescapeIcalText(fields['SUMMARY']?.firstOrNull);
+    final component = _detectIcalComponent(icsData);
+    var reason = '알 수 없는 파싱 실패';
+
+    if (component != null && component != 'VEVENT') {
+      reason = '$component 항목이라 일정으로 저장하지 않음';
+    } else if (uid == null || uid.isEmpty) {
+      reason = 'UID 없음';
+    } else if (rawStart == null || rawStart.trim().isEmpty) {
+      reason = 'DTSTART 없음';
+    } else {
+      final parsedStart = _parseIcalDateTime(rawStart);
+      if (parsedStart == null) {
+        reason = 'DTSTART 파싱 실패';
+      } else if (_isSuspiciousImportedDate(parsedStart)) {
+        reason = 'DTSTART 비정상 날짜';
+      } else if (rawEnd != null &&
+          rawEnd.trim().isNotEmpty &&
+          _parseIcalDateTime(rawEnd) == null) {
+        reason = 'DTEND 파싱 실패';
+      } else {
+        final parsedEnd = _parseIcalDateTime(rawEnd);
+        if (parsedEnd != null && parsedEnd.isBefore(parsedStart)) {
+          reason = '종료 시간이 시작 시간보다 빠름';
+        }
+      }
+    }
+
+    return NaverCalDavInvalidSample(
+      calendarPath: calendarPath,
+      href: href,
+      reason: reason,
+      title: title,
+      uid: uid,
+      rawStart: rawStart,
+      rawEnd: rawEnd,
+      component: component,
+    );
+  }
+
+  String? _detectIcalComponent(String icsData) {
+    final upper = icsData.toUpperCase();
+    if (upper.contains('BEGIN:VEVENT')) {
+      return 'VEVENT';
+    }
+    if (upper.contains('BEGIN:VTODO')) {
+      return 'VTODO';
+    }
+    if (upper.contains('BEGIN:VJOURNAL')) {
+      return 'VJOURNAL';
+    }
+    if (upper.contains('BEGIN:VALARM')) {
+      return 'VALARM';
+    }
+    return null;
   }
 
   List<Uri> _candidateEndpoints(String naverId) {
