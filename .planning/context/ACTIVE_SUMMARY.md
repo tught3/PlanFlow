@@ -450,3 +450,7 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Improved multi-day visibility on home/calendar: today includes spanning events, home cards show 진행중 · N/M일차, and calendar markers/labels span affected days.
 - Improved Naver CalDAV diagnostics dialog with count table and searchable safe samples.
 - Verification: `flutter analyze`, full `flutter test` (149 passed), and `flutter build apk --debug` passed. ADB install/run was skipped because `adb devices` returned no connected devices.
+
+## 2026-05-08 user-provided smart alarm note checkpoint
+- Re-read the user's `PlanFlow_SmartAlarm_Fix.md` in UTF-8, confirmed it is a separate reference note about smart-prep timing and alarm policy, and accepted the user's later instruction to include it in version control.
+- The note is being committed alongside the latest v3 reinforcement work so the repo keeps the user's explicit planning artifact instead of leaving it as an ignored scratch file.
