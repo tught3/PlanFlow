@@ -487,3 +487,8 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Updated Settings to treat `reauthRequired` as an active connection so the Google disconnect action stays enabled instead of toggling off unexpectedly after app rebuilds.
 - Added a regression test that covers the silent-sign-in-missing case for an already connected Google account.
 - Verification: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch all passed. The device currently has the launcher focused with the notification shade open on top.
+
+## 2026-05-08 Home briefing button tone checkpoint
+- Changed the Home-tab `모닝 브리핑 듣기` and `이브닝 브리핑 듣기` buttons from the default white-looking fill to a lighter blue tone so they remain visible without looking too heavy.
+- Kept the same loading/disabled behavior and label layout; only the button color treatment changed.
+- Verification: `dart format`, `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch/focus check all passed on the connected Android device.
