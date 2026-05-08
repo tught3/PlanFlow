@@ -531,6 +531,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return result;
   }
 
+  // ignore: unused_element
   Future<void> _runNaverCalDavDiagnosticImport() async {
     if (_isImportingNaverCalDav || _isTestingNaverCalDav) {
       return;
@@ -1986,7 +1987,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: PlanFlowColors.primaryFaint.withValues(alpha: 0.42),
+                      color:
+                          PlanFlowColors.primaryFaint.withValues(alpha: 0.42),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: PlanFlowColors.primaryFaint),
                     ),
@@ -2134,23 +2136,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              key: const ValueKey(
-                                'settings-naver-caldav-diagnostic-button',
-                              ),
-                              onPressed: _isLoadingCalendarStatus ||
-                                      _isTestingNaverCalDav ||
-                                      _isImportingNaverCalDav ||
-                                      _isDisconnectingNaverCalendar
-                                  ? null
-                                  : _runNaverCalDavDiagnosticImport,
-                              icon: const Icon(Icons.bug_report_outlined),
-                              label: const Text('저장 누락 진단'),
-                            ),
                           ),
                           const SizedBox(height: 12),
                           Align(

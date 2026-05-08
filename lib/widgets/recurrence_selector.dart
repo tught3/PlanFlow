@@ -138,7 +138,7 @@ class RecurrenceSelector extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: const <(String, String)>[
-            ('none', '없음'),
+            ('none', '반복 안 함'),
             ('daily', '매일'),
             ('weekly', '매주'),
             ('monthly', '매월'),
@@ -161,6 +161,25 @@ class RecurrenceSelector extends StatelessWidget {
         ),
         if (!value.isNone) ...[
           const SizedBox(height: 10),
+          if (value.frequency == 'weekly') ...[
+            _WeeklyByDaySelector(
+              value: value,
+              onChanged: onChanged,
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (value.frequency == 'monthly') ...[
+            _RecurrenceSummary(
+              text: _monthlySummary(value),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (value.preservedParts.isNotEmpty &&
+              value.frequency != 'weekly' &&
+              value.frequency != 'monthly') ...[
+            _RecurrenceSummary(text: value.preservedParts.join(' · ')),
+            const SizedBox(height: 10),
+          ],
           OutlinedButton.icon(
             onPressed: () async {
               final now = DateTime.now();
@@ -185,4 +204,129 @@ class RecurrenceSelector extends StatelessWidget {
       ],
     );
   }
+}
+
+class _WeeklyByDaySelector extends StatelessWidget {
+  const _WeeklyByDaySelector({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final RecurrenceSelection value;
+  final ValueChanged<RecurrenceSelection> onChanged;
+
+  static const _days = <(String, String)>[
+    ('MO', '월'),
+    ('TU', '화'),
+    ('WE', '수'),
+    ('TH', '목'),
+    ('FR', '금'),
+    ('SA', '토'),
+    ('SU', '일'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = _selectedDays(value);
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: _days.map((day) {
+        final isSelected = selected.contains(day.$1);
+        return FilterChip(
+          label: Text(day.$2),
+          selected: isSelected,
+          onSelected: (_) {
+            final next = Set<String>.from(selected);
+            if (isSelected) {
+              next.remove(day.$1);
+            } else {
+              next.add(day.$1);
+            }
+            onChanged(
+              value.copyWith(
+                preservedParts: _replaceByDay(value.preservedParts, next),
+              ),
+            );
+          },
+        );
+      }).toList(growable: false),
+    );
+  }
+
+  static Set<String> _selectedDays(RecurrenceSelection value) {
+    final byDay =
+        value.preservedParts.map((part) => part.toUpperCase()).firstWhere(
+              (part) => part.startsWith('BYDAY='),
+              orElse: () => '',
+            );
+    if (byDay.isEmpty) {
+      return <String>{};
+    }
+    return byDay
+        .replaceFirst('BYDAY=', '')
+        .split(',')
+        .where((item) => item.isNotEmpty)
+        .toSet();
+  }
+
+  static List<String> _replaceByDay(
+    List<String> parts,
+    Set<String> days,
+  ) {
+    final next = parts
+        .where((part) => !part.toUpperCase().startsWith('BYDAY='))
+        .toList();
+    if (days.isNotEmpty) {
+      const order = <String>['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+      final sorted = order.where(days.contains).join(',');
+      next.add('BYDAY=$sorted');
+    }
+    return next;
+  }
+}
+
+class _RecurrenceSummary extends StatelessWidget {
+  const _RecurrenceSummary({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.primaryFaint.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: PlanFlowColors.textSecondary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+String _monthlySummary(RecurrenceSelection value) {
+  final parts = value.preservedParts.map((part) => part.toUpperCase()).toList();
+  final byMonthDay = parts.firstWhere(
+    (part) => part.startsWith('BYMONTHDAY='),
+    orElse: () => '',
+  );
+  if (byMonthDay.isNotEmpty) {
+    return '날짜 기준: 매월 ${byMonthDay.replaceFirst('BYMONTHDAY=', '')}일';
+  }
+  final byDay = parts.firstWhere(
+    (part) => part.startsWith('BYDAY='),
+    orElse: () => '',
+  );
+  if (byDay.isNotEmpty) {
+    return '요일 기준: ${byDay.replaceFirst('BYDAY=', '')}';
+  }
+  return '매월 반복합니다. 음성으로 “매월 15일” 또는 “매월 첫 번째 월요일”처럼 말하면 더 구체적으로 저장됩니다.';
 }

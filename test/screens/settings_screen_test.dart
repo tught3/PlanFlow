@@ -63,6 +63,7 @@ void main() {
     expect(find.text('네이버 캘린더'), findsOneWidget);
     expect(find.text('연동 해제'), findsWidgets);
     expect(find.text('네이버 일정 동기화'), findsOneWidget);
+    expect(find.text('저장 누락 진단'), findsNothing);
     expect(find.text('Naver CalDAV 직접 연결'), findsNothing);
     expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
     expect(find.text('네이버 CalDAV 일정 가져오기'), findsNothing);

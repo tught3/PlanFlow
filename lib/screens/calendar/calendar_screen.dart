@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
+import '../../core/event_metadata.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
@@ -21,12 +22,7 @@ enum _CalendarLoadState {
 const calendarCriticalEventMarkerColor = Color(0xFFB42318);
 
 Color _categoryColor(String category) {
-  return switch (category) {
-    '업무' => const Color(0xFF1A4FD6),
-    '개인' => const Color(0xFF1D9E75),
-    '가족' => const Color(0xFFE07B30),
-    _ => const Color(0xFF7AB3D4),
-  };
+  return PlanFlowEventCategories.colorOf(category);
 }
 
 @visibleForTesting
@@ -310,6 +306,51 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final duration = event.endAt?.difference(startAt);
     final occurrences = <EventModel>[];
 
+    if (freq == 'WEEKLY') {
+      final byDays = _parseRRuleByDays(rule);
+      if (byDays.isNotEmpty) {
+        var weekStart = DateTime(
+          startAt.year,
+          startAt.month,
+          startAt.day,
+          startAt.hour,
+          startAt.minute,
+          startAt.second,
+        ).subtract(Duration(days: startAt.weekday - DateTime.monday));
+        var safety = 0;
+        while (weekStart.isBefore(hardEnd) && safety < 120) {
+          safety += 1;
+          for (final weekday in byDays) {
+            final day =
+                weekStart.add(Duration(days: weekday - DateTime.monday));
+            final current = DateTime(
+              day.year,
+              day.month,
+              day.day,
+              startAt.hour,
+              startAt.minute,
+              startAt.second,
+            );
+            if (current.isBefore(startAt) || !current.isBefore(hardEnd)) {
+              continue;
+            }
+            final occurrenceEnd =
+                duration == null ? null : current.add(duration);
+            final candidate = _copyEventWithTime(
+              event,
+              startAt: current,
+              endAt: occurrenceEnd,
+            );
+            if (_eventIntersectsRange(candidate, rangeStart, rangeEnd)) {
+              occurrences.add(candidate);
+            }
+          }
+          weekStart = weekStart.add(Duration(days: 7 * interval));
+        }
+        return occurrences.isEmpty ? <EventModel>[event] : occurrences;
+      }
+    }
+
     var current = startAt;
     var safety = 0;
     while (current.isBefore(hardEnd) && safety < 420) {
@@ -376,6 +417,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return null;
     }
     return DateTime(year, month, day).add(const Duration(days: 1));
+  }
+
+  List<int> _parseRRuleByDays(String rule) {
+    final raw = RegExp(r'BYDAY=([A-Z0-9,\-]+)').firstMatch(rule)?.group(1);
+    if (raw == null || raw.isEmpty) {
+      return const <int>[];
+    }
+    return raw
+        .split(',')
+        .map((item) => item.replaceAll(RegExp(r'[-0-9]'), ''))
+        .map((item) => switch (item) {
+              'MO' => DateTime.monday,
+              'TU' => DateTime.tuesday,
+              'WE' => DateTime.wednesday,
+              'TH' => DateTime.thursday,
+              'FR' => DateTime.friday,
+              'SA' => DateTime.saturday,
+              'SU' => DateTime.sunday,
+              _ => null,
+            })
+        .whereType<int>()
+        .toList(growable: false);
   }
 
   EventModel _copyEventWithTime(

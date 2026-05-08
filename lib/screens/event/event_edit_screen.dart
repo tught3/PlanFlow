@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
+import '../../core/event_metadata.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
@@ -972,9 +973,18 @@ class _EventTypeEditor extends StatelessWidget {
           SegmentedButton<String>(
             showSelectedIcon: false,
             segments: const <ButtonSegment<String>>[
-              ButtonSegment<String>(value: 'single', label: Text('단일')),
-              ButtonSegment<String>(value: 'all_day', label: Text('종일')),
-              ButtonSegment<String>(value: 'multi_day', label: Text('다일')),
+              ButtonSegment<String>(
+                value: 'single',
+                label: Text(PlanFlowEventTypeLabels.single),
+              ),
+              ButtonSegment<String>(
+                value: 'all_day',
+                label: Text(PlanFlowEventTypeLabels.allDay),
+              ),
+              ButtonSegment<String>(
+                value: 'multi_day',
+                label: Text(PlanFlowEventTypeLabels.multiDay),
+              ),
             ],
             selected: <String>{selectedType},
             onSelectionChanged: (selected) => onTypeChanged(selected.first),
@@ -983,7 +993,7 @@ class _EventTypeEditor extends StatelessWidget {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: const <String>['업무', '개인', '가족', '기타'].map((item) {
+            children: PlanFlowEventCategories.values.map((item) {
               return ChoiceChip(
                 label: Text(item),
                 selected: category == item,

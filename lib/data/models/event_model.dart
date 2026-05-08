@@ -1,3 +1,5 @@
+import '../../core/event_metadata.dart';
+
 class EventModel {
   const EventModel({
     required this.id,
@@ -161,9 +163,7 @@ class EventModel {
   }
 
   static String _categoryValue(Object? value) {
-    final text = _stringValue(value).trim();
-    const allowed = <String>{'업무', '개인', '가족', '기타'};
-    return allowed.contains(text) ? text : '기타';
+    return PlanFlowEventCategories.normalize(value);
   }
 
   static String? _optionalStringValue(Object? value) {

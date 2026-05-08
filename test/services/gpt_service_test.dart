@@ -170,6 +170,56 @@ void main() {
       );
     });
 
+    test('locally infers all-day, multi-day, category, and recurrence hints',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': 'not valid json',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        apiKey: 'test-key',
+        now: () => DateTime(2026, 5, 1, 9),
+      );
+
+      final allDay = await service.parseSchedule('5월 10일 하루종일 휴가');
+      expect(allDay['is_all_day'], isTrue);
+      expect(allDay['is_multi_day'], isFalse);
+      expect(allDay['category'], '개인');
+
+      final multiDay = await service.parseSchedule('5월 1일부터 3일까지 제주 여행');
+      expect(multiDay['is_multi_day'], isTrue);
+      expect(multiDay['is_all_day'], isFalse);
+
+      final health = await service.parseSchedule('병원 진료');
+      expect(health['category'], '건강');
+
+      final education = await service.parseSchedule('세미나 참석');
+      expect(education['category'], '교육');
+
+      final weekly = await service.parseSchedule('매주 화요일 팀 미팅');
+      expect(weekly['recurrence_rule'], 'FREQ=WEEKLY;BYDAY=TU');
+      expect(weekly['category'], '업무');
+
+      final biWeekly = await service.parseSchedule('격주 금요일 영업 미팅');
+      expect(biWeekly['recurrence_rule'], 'FREQ=WEEKLY;INTERVAL=2;BYDAY=FR');
+
+      final monthly = await service.parseSchedule('매월 첫 번째 월요일 월간 보고');
+      expect(monthly['recurrence_rule'], 'FREQ=MONTHLY;BYDAY=1MO');
+    });
+
     test('explicit Korean time overrides a wrong model-provided current time',
         () async {
       final now = DateTime(2026, 5, 6, 23, 0);

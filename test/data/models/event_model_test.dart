@@ -93,7 +93,7 @@ void main() {
       title: 'Updated event',
       startAt: DateTime.parse('2026-05-01T09:00:00Z'),
       externalEtag: '"etag-2"',
-      category: '가족',
+      category: '건강',
       lastSyncedAt: DateTime.parse('2026-05-01T09:01:00Z'),
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
     );
@@ -105,7 +105,7 @@ void main() {
     expect(json.containsKey('created_at'), isFalse);
     expect(json['title'], 'Updated event');
     expect(json['source'], 'manual');
-    expect(json['category'], '가족');
+    expect(json['category'], '건강');
     expect(json['external_etag'], '"etag-2"');
     expect(json['last_synced_at'], '2026-05-01T09:01:00.000Z');
   });
@@ -121,5 +121,18 @@ void main() {
     expect(restored.source, 'manual');
     expect(restored.category, '기타');
     expect(restored.externalId, isNull);
+  });
+
+  test('EventModel migrates legacy family category to health', () {
+    final restored = EventModel.fromJson(<String, dynamic>{
+      'id': 'event-3',
+      'user_id': 'user-3',
+      'title': 'Family hospital visit',
+      'start_at': '2026-05-01T10:00:00Z',
+      'category': '가족',
+    });
+
+    expect(restored.category, '건강');
+    expect(restored.toJson()['category'], '건강');
   });
 }

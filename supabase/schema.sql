@@ -56,6 +56,8 @@ create table if not exists public.events (
   supplies_checked text[] not null default '{}',
   is_critical boolean not null default false,
   recurrence_rule text,
+  recurrence_end_date date,
+  recurrence_count integer,
   is_all_day boolean not null default false,
   is_multi_day boolean not null default false,
   parent_event_id uuid references public.events (id) on delete set null,
@@ -75,6 +77,8 @@ alter table public.events
   add column if not exists location_lng double precision,
   add column if not exists supplies_checked text[] not null default '{}',
   add column if not exists recurrence_rule text,
+  add column if not exists recurrence_end_date date,
+  add column if not exists recurrence_count integer,
   add column if not exists is_all_day boolean not null default false,
   add column if not exists is_multi_day boolean not null default false,
   add column if not exists parent_event_id uuid references public.events (id) on delete set null,
@@ -84,6 +88,14 @@ alter table public.events
   add column if not exists external_updated_at timestamptz,
   add column if not exists last_synced_at timestamptz,
   add column if not exists updated_at timestamptz not null default now();
+
+update public.events
+set category = '건강'
+where category = '가족';
+
+alter table public.events drop constraint if exists events_category_check;
+alter table public.events add constraint events_category_check
+  check (category in ('업무', '개인', '건강', '교육', '기타'));
 
 create index if not exists events_user_source_external_idx
   on public.events (user_id, source, external_id)
@@ -600,7 +612,15 @@ begin
       coalesce(nullif(item ->> 'is_all_day', '')::boolean, false),
       coalesce(nullif(item ->> 'is_multi_day', '')::boolean, false),
       nullif(item ->> 'parent_event_id', '')::uuid,
-      coalesce(nullif(item ->> 'category', ''), '기타'),
+      case nullif(item ->> 'category', '')
+        when '가족' then '건강'
+        when '업무' then '업무'
+        when '개인' then '개인'
+        when '건강' then '건강'
+        when '교육' then '교육'
+        when '기타' then '기타'
+        else '기타'
+      end,
       nullif(item ->> 'external_id', ''),
       nullif(item ->> 'external_calendar_id', ''),
       nullif(item ->> 'external_etag', ''),

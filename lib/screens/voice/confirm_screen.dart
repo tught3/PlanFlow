@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
+import '../../core/event_metadata.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
@@ -1460,15 +1461,15 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                             segments: const <ButtonSegment<String>>[
                               ButtonSegment<String>(
                                 value: 'single',
-                                label: Text('단일'),
+                                label: Text(PlanFlowEventTypeLabels.single),
                               ),
                               ButtonSegment<String>(
                                 value: 'all_day',
-                                label: Text('종일'),
+                                label: Text(PlanFlowEventTypeLabels.allDay),
                               ),
                               ButtonSegment<String>(
                                 value: 'multi_day',
-                                label: Text('다일'),
+                                label: Text(PlanFlowEventTypeLabels.multiDay),
                               ),
                             ],
                             selected: <String>{
@@ -1490,12 +1491,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
-                            children: const <String>[
-                              '업무',
-                              '개인',
-                              '가족',
-                              '기타',
-                            ].map((category) {
+                            children:
+                                PlanFlowEventCategories.values.map((category) {
                               return ChoiceChip(
                                 label: Text(category),
                                 selected: _category == category,
@@ -1651,9 +1648,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   String _categoryValue(Object? value) {
-    final text = value?.toString().trim() ?? '';
-    const allowed = <String>{'업무', '개인', '가족', '기타'};
-    return allowed.contains(text) ? text : '기타';
+    return PlanFlowEventCategories.normalize(value);
   }
 
   List<String> _stringListValue(Object? value) {

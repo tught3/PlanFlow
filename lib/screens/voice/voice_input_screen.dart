@@ -375,6 +375,10 @@ class _VoiceCommandGuide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const bullets = <String>[
+      '일반 일정: “내일 오전 10시 정장집 방문”처럼 말해보세요.',
+      '종일/연속: “5월 10일 하루종일 휴가”, “5월 1일부터 3일까지 제주 여행”도 알아듣습니다.',
+      '반복 일정: “매주 화요일 팀 미팅”, “격주 금요일 영업 미팅”처럼 말할 수 있어요.',
+      '카테고리: 병원 진료는 건강, 세미나 참석은 교육으로 자동 분류돼요.',
       '“오늘 일정 알려줘”라고 말하면 오늘 일정을 시간순으로 정리해 보여줍니다.',
       '“내일 일정 보여줘”, “이번 주 일정 알려줘”처럼 조회할 수 있어요.',
       '잘못 말했으면 “아니”라고 말한 뒤 새 표현을 말하세요.',
@@ -396,7 +400,7 @@ class _VoiceCommandGuide extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '음성으로 수정하기 안내',
+              '이렇게 말해보세요',
               style: theme.textTheme.titleSmall?.copyWith(
                 color: PlanFlowColors.primary,
                 fontWeight: FontWeight.w800,
@@ -413,6 +417,15 @@ class _VoiceCommandGuide extends StatelessWidget {
                     height: 1.35,
                   ),
                 ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '시간, 장소, 반복 표현을 같이 말하면 더 정확해요. 인식 후 일정 확인 화면에서 날짜, 유형, 카테고리를 수정할 수 있습니다.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.primary,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],

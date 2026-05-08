@@ -474,3 +474,10 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Added Home-tab quick play controls for `모닝 브리핑 듣기` and `이브닝 브리핑 듣기`, reusing the same `BriefingSchedulerService.executeBriefing()` path as the Settings play buttons.
 - The Home buttons show per-briefing loading state, prevent double playback while one briefing is running, and surface success/failure messages through Korean SnackBars.
 - Verification: `flutter analyze`, full `flutter test` (162 passed), `flutter build apk --debug`, and `git diff --check` passed.
+
+## 2026-05-08 UI updates and voice parsing checkpoint
+- Applied `PlanFlow_UI_Updates.md`: event type labels now use `하루/종일/연속`, categories now use `업무/개인/건강/교육/기타`, and legacy `가족` values normalize/migrate to `건강`.
+- Added compact voice-input guidance with practical examples for normal, all-day, multi-day, recurring, and category-inferred schedules.
+- Strengthened GPT/local fallback parsing for all-day, multi-day, category, and recurrence phrases such as `매주 화요일`, `격주 금요일`, and `매월 첫 번째 월요일`.
+- Removed the visible Naver save-missing diagnostic button from Settings while keeping the internal diagnostic path available for future debugging.
+- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, full `flutter test` (165 passed), `flutter build apk --debug`, and `git diff --check` passed.
