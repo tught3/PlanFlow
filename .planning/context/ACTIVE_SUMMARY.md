@@ -1,5 +1,12 @@
-﻿# Active Summary
+# Active Summary
 
+## 2026-05-09 1차 배포 준비 checkpoint
+- `CODEX_DEPLOY_PLAN.md` 기준으로 Android 패키지명을 `com.example.planflow`에서 `com.planflow.app`으로 변경하고 Kotlin 소스 경로를 `android/app/src/main/kotlin/com/planflow/app/`로 이동했다.
+- Release 서명 설정을 `android/app/build.gradle.kts`에 추가했고, 로컬 ignored 파일 `android/key.properties`와 `android/app/planflow-release.jks`를 생성했다. Release SHA1은 `5A:94:6B:45:25:44:8B:89:B9:C0:13:69:E9:21:59:A4:B3:70:16:A7`, SHA256은 `75:AB:45:C8:84:19:D9:72:F4:6F:34:1F:B2:97:60:CE:7C:14:FC:0B:A9:1D:BA:11:93:6C:02:DF:00:75:36:1E`.
+- `pubspec.yaml` 버전을 `1.0.0+1`로 확정하고, 개인정보처리방침 초안을 `docs/privacy-policy.md`에 추가했다.
+- 검증: `C:\Users\Admin\flutter\bin\flutter.bat analyze`, 전체 `flutter test` 166개, `flutter build apk --debug`, `flutter build apk --release --no-pub`, `flutter build appbundle --release --no-pub` 통과. 산출물은 `build/app/outputs/flutter-apk/app-release.apk`와 `build/app/outputs/bundle/release/app-release.aab`.
+- Supabase CLI는 로그인되어 있지만 현재 프로젝트가 link되어 있지 않고 CLI v2.72.7에는 `db query`가 없어 `supabase/calendar_sync_patch.sql` 원격 자동 적용은 불가했다. Supabase SQL Editor에서 수동 적용 필요.
+- ADB에는 Android 기기가 연결되어 있지 않아 release APK 실기기 설치/실행과 P0-6 E2E 검증은 보류 상태다.
 - Updated `pubspec.yaml` to include the checklist 3 dependency set, using scaffold-compatible versions where needed.
 - Switched the app shell to `MaterialApp.router` with a minimal `go_router` configuration.
 - Wrapped app startup in `ProviderScope` and added optional Supabase initialization from `.env`.

@@ -1,4 +1,4 @@
-package com.example.planflow
+package com.planflow.app
 
 import android.appwidget.AppWidgetManager
 import android.content.Context

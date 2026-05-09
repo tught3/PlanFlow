@@ -62,7 +62,7 @@ Application > PlanFlow > API 설정
 제공 정보: 연락처 이메일 주소
 추가 권한: 캘린더 일정담기
 Callback URL: https://xqvvfnvmytjlblcngipn.supabase.co/auth/v1/callback
-Android 패키지 이름: com.example.planflow
+Android 패키지 이름: com.planflow.app
 ```
 
 ## 4. PlanFlow 네이버 캘린더 동기화 범위

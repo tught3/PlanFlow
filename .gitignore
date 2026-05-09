@@ -5,3 +5,5 @@
 build/
 chat.txt
 .env
+android/key.properties
+android/app/planflow-release.jks
