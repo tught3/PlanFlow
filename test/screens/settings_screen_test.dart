@@ -131,6 +131,87 @@ void main() {
     expect(find.text('휴대폰 내부 캘린더 · 확인 전'), findsOneWidget);
   });
 
+  testWidgets('SettingsScreen shows briefing and departure runtime status',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({
+      'briefing:next_morning_at': '2026-05-09T07:30:00.000',
+      'briefing:next_evening_at': '2026-05-09T21:00:00.000',
+      'briefing:morning_scheduled': true,
+      'briefing:evening_scheduled': false,
+      'briefing:last_executed_type': 'morning',
+      'briefing:last_executed_at': '2026-05-09T07:31:00.000',
+      'briefing:last_execution_delivered': true,
+      'briefing:last_execution_message': '모닝 브리핑을 재생했습니다.',
+      'departure_alarm:last_event_id': 'event-1',
+      'departure_alarm:last_event_title': '대전 성심당',
+      'departure_alarm:last_status': 'scheduled',
+      'departure_alarm:last_checked_at': '2026-05-09T08:00:00.000',
+      'departure_alarm:last_notify_at': '2026-05-09T10:00:00.000',
+      'departure_alarm:last_travel_minutes': 90,
+      'departure_alarm:last_monitor_at': '2026-05-09T08:10:00.000',
+      'departure_alarm:next_monitor_at': '2026-05-09T08:40:00.000',
+      'departure_alarm:last_monitor_scheduled': 1,
+      'departure_alarm:last_monitor_skipped': 2,
+      'departure_alarm:monitor_scheduled': true,
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.signedOut(
+                CalendarProvider.naver,
+              ),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final briefingCard =
+        find.byKey(const ValueKey('settings-briefing-runtime-status-card'));
+    await _scrollUntilHitTestable(tester, briefingCard);
+
+    expect(find.text('브리핑 예약 상태'), findsOneWidget);
+    expect(find.text('예약됨 · 2026-05-09 07:30'), findsOneWidget);
+    expect(find.text('예약 실패 · 2026-05-09 21:00'), findsOneWidget);
+    expect(
+      find.text('최근 재생: 모닝 · 2026-05-09 07:31 · 성공'),
+      findsOneWidget,
+    );
+    expect(find.text('모닝 브리핑을 재생했습니다.'), findsOneWidget);
+
+    final departureCard = find.byKey(
+      const ValueKey('settings-departure-alarm-runtime-status-card'),
+    );
+    await _scrollUntilHitTestable(tester, departureCard);
+
+    expect(find.text('출발 알림 상태'), findsOneWidget);
+    expect(find.text('대전 성심당'), findsOneWidget);
+    expect(
+      find.text(
+        '예약됨 · 확인 2026-05-09 08:00 · 알림 2026-05-09 10:00 · 이동 90분',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        '최근 모니터 2026-05-09 08:10 · 예약 1개 · 건너뜀 2개 · 다음 모니터 예약됨 · 2026-05-09 08:40',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
       'SettingsScreen auto-saves setting changes and schedules briefing',
       (tester) async {

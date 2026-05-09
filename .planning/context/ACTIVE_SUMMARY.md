@@ -1,5 +1,11 @@
 # Active Summary
 
+## 2026-05-09 map-fallback-runtime-status-test checkpoint
+- Strengthened the location picker empty-map path so missing in-app map readiness now explains API key, package restriction, and authentication checks, keeps place candidates visible, and points users to Google Maps/Naver Map/TMAP external fallback instead of implying they can tap an unavailable in-app map.
+- Added widget coverage for the map-unavailable location picker state and for the Settings briefing/departure runtime status cards, so the user can verify whether briefing alarms, departure alarms, and monitor jobs were actually scheduled or skipped.
+- Rechecked calendar sync status handling and kept the existing provider-separated `completed`/`attention`/`skipped` model because Google, Naver direct sync, Naver CalDAV, and phone-calendar states are already shown separately in Settings.
+- Verification: project guard passed for `C:\PlanFlow`, `node scripts\gsd-context-hygiene.mjs` ran, focused settings/location-picker tests passed, `flutter analyze` passed, full `flutter test` passed with 183 tests, `git diff --check` passed, `flutter build apk --debug` passed, `flutter build apk --release` passed, release APK installed on `192.168.0.102:5555`, PID `10556` was observed, and window focus output included `com.planflow.app/.MainActivity`.
+
 ## 2026-05-09 calendar-auto-sync-outcomes checkpoint
 - Refined `CalendarAutoSyncService` provider status recording so automatic sync now separates `connected`, `attention`, and `skipped` instead of treating missing Google/Naver/device-calendar setup as a successful sync.
 - Google/Naver signed-out or unconfigured states, missing Naver CalDAV credentials, and missing phone-calendar permission are now stored as skipped with Korean explanatory messages, while reauth/import failures remain attention states.

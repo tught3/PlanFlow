@@ -35,6 +35,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   bool get _canUseNaverMap => AppEnv.isNaverMapReady;
   bool get _canUseGoogleMap => AppEnv.googleMapsApiKey.trim().isNotEmpty;
+  bool get _canUseInAppMap => _canUseNaverMap || _canUseGoogleMap;
 
   NLatLng get _initialTarget {
     final selected = _selected;
@@ -94,8 +95,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       setState(() {
         _results = results;
         _selected = results.isEmpty ? _selected : results.first;
-        _message =
-            results.isEmpty ? '검색 결과가 없어요. 지도에서 직접 위치를 눌러 지정할 수 있습니다.' : null;
+        _message = results.isEmpty
+            ? (_canUseInAppMap
+                ? '검색 결과가 없어요. 지도에서 직접 위치를 눌러 지정할 수 있습니다.'
+                : '검색 결과가 없어요. 장소명을 더 구체적으로 입력하거나 외부 지도에서 먼저 확인해 주세요.')
+            : null;
       });
       final selected = _selected;
       if (selected != null) {
@@ -106,7 +110,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         return;
       }
       setState(() {
-        _message = '장소 검색에 실패했어요. 지도에서 직접 위치를 눌러 지정해 주세요.';
+        _message = _canUseInAppMap
+            ? '장소 검색에 실패했어요. 지도에서 직접 위치를 눌러 지정해 주세요.'
+            : '장소 검색에 실패했어요. API 키와 네트워크를 확인하거나 외부 지도에서 먼저 확인해 주세요.';
       });
     } finally {
       if (mounted) {
@@ -187,7 +193,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     final selected = _selected;
     if (selected == null) {
       setState(() {
-        _message = '먼저 지도에서 위치를 선택해 주세요.';
+        _message = _canUseInAppMap
+            ? '먼저 지도에서 위치를 선택해 주세요.'
+            : '먼저 장소 후보를 선택하거나 외부 지도에서 확인한 뒤 다시 검색해 주세요.';
       });
       return;
     }
@@ -195,7 +203,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   Future<void> _watchMapReadiness() async {
-    if (!_canUseNaverMap && !_canUseGoogleMap) {
+    if (!_canUseInAppMap) {
       return;
     }
     await Future<void>.delayed(const Duration(seconds: 5));
@@ -347,9 +355,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                                   longPressed: true,
                                 ),
                               )
-                            : _MapUnavailablePanel(query: widget.initialQuery),
+                            : _MapUnavailablePanel(
+                                query: _queryController.text,
+                              ),
                   ),
-                  if (_canUseNaverMap || _canUseGoogleMap)
+                  if (_canUseInAppMap)
                     Positioned(
                       left: 16,
                       right: 16,
@@ -660,7 +670,7 @@ class _MapLoadFallbackBanner extends StatelessWidget {
 }
 
 const String _missingMapMessage =
-    '앱 안 지도를 열 수 없습니다.\n지도 API 키, 패키지명 제한, 인증 상태를 확인해 주세요.';
+    '앱 안 지도를 열 수 없습니다.\n지도 API 키, 패키지명 제한, 인증 상태를 확인해 주세요.\n아래 장소 후보를 선택하거나 외부 지도에서 먼저 확인할 수 있어요.';
 
 enum _ExternalMapTarget {
   google('Google 지도'),
