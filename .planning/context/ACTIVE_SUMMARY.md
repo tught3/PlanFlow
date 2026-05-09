@@ -1,5 +1,9 @@
 # Active Summary
 
+## 2026-05-09 Play Console verification-page checklist checkpoint
+- Replaced the overbroad post-verification note with a page-only checklist in `docs/post-verification-next-steps.md` so the document now covers only the current Play Console developer-account verification screen: tap `세부정보 보기`, complete phone verification, and wait for Google review.
+- The broader external-console and app follow-up tasks remain in `docs/release-console-checklist.md`; this new note is intentionally narrow so the user can act on the current page without extra noise.
+
 ## 2026-05-09 privacy policy hosting checkpoint
 - Added `docs/privacy-policy.html` as a Play Console-ready static privacy policy page and `docs/release-console-checklist.md` with the exact Google/Naver/Kakao/OpenAI/Play Console values needed for 1차 배포 setup.
 - Local verification confirmed the HTML contains the Korean `PlanFlow 개인정보처리방침` title and the release console checklist contains the target privacy URL `https://tught3.github.io/PlanFlow/privacy-policy.html`.
