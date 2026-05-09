@@ -1,5 +1,10 @@
 # Active Summary
 
+## 2026-05-09 privacy policy hosting checkpoint
+- Added `docs/privacy-policy.html` as a Play Console-ready static privacy policy page and `docs/release-console-checklist.md` with the exact Google/Naver/Kakao/OpenAI/Play Console values needed for 1차 배포 setup.
+- Local verification confirmed the HTML contains the Korean `PlanFlow 개인정보처리방침` title and the release console checklist contains the target privacy URL `https://tught3.github.io/PlanFlow/privacy-policy.html`.
+- Pushed commit `544b495 Add Play privacy policy page`; public checks for GitHub Pages and raw GitHub both returned 404, so the repository is not publicly serving the file yet. GitHub Pages must be enabled from repo Settings > Pages with branch `main` and folder `/docs`, or the repo must be made public/Pages-capable before Play Console can accept the URL.
+
 ## 2026-05-09 release install verification checkpoint
 - Re-ran the 1차 배포 verification set after pulling remote commit `b62590a` onto `main`: `flutter analyze`, full `flutter test` (169 passed), `flutter build apk --debug`, `flutter build apk --release`, and `flutter build appbundle --release` all passed.
 - Re-verified `app-release.apk` metadata: package `com.planflow.app`, launch activity `com.planflow.app.MainActivity`, version `1.0.0` / code `1`, min SDK 24, target SDK 36, and release signature v2 with SHA1 `5A:94:6B:45:25:44:8B:89:B9:C0:13:69:E9:21:59:A4:B3:70:16:A7`.
