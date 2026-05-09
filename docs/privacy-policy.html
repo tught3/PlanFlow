@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlanFlow 개인정보처리방침</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --paper: #ffffff;
+      --ink: #21324a;
+      --muted: #5e6c81;
+      --line: #d9e2ef;
+      --accent: #386fae;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      line-height: 1.7;
+    }
+
+    main {
+      width: min(880px, calc(100% - 32px));
+      margin: 48px auto;
+      padding: 40px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 16px 40px rgba(39, 63, 96, 0.08);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 2rem;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      font-size: 1.25rem;
+      letter-spacing: 0;
+    }
+
+    p,
+    li {
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    strong {
+      color: var(--ink);
+    }
+
+    .updated {
+      margin-top: 32px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    @media (max-width: 640px) {
+      main {
+        width: calc(100% - 24px);
+        margin: 24px auto;
+        padding: 24px;
+      }
+
+      h1 {
+        font-size: 1.55rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>PlanFlow 개인정보처리방침</h1>
+    <p>PlanFlow는 사용자의 일정을 음성으로 등록하고, 캘린더 연동과 알림을 제공하기 위해 필요한 최소한의 정보만 처리합니다.</p>
+
+    <h2>수집하는 정보</h2>
+    <ul>
+      <li>계정 정보: 이메일 주소, 로그인 제공자 정보</li>
+      <li>일정 정보: 제목, 시간, 장소, 메모, 준비물, 중요 일정 여부</li>
+      <li>음성 입력 텍스트: 기기에서 음성을 텍스트로 변환한 결과</li>
+      <li>위치 정보: 장소 검색, 이동시간 계산, 출발 알림 계산에 필요한 위치 정보</li>
+      <li>캘린더 정보: 사용자가 연동에 동의한 Google, Naver, 휴대폰 내부 캘린더 일정</li>
+      <li>설정 정보: 알림 시간, 브리핑 시간, 이동수단, 캘린더 연결 상태</li>
+      <li>백업 정보: 사용자가 백업한 일정과 설정 스냅샷</li>
+    </ul>
+
+    <h2>음성 데이터 처리</h2>
+    <p>PlanFlow는 음성 파일을 외부 서버로 전송하지 않습니다. 음성 인식은 기기 내 STT 기능을 우선 사용하며, 일정 파싱에는 STT로 변환된 텍스트만 사용합니다.</p>
+
+    <h2>외부 서비스 전송</h2>
+    <ul>
+      <li><strong>Supabase</strong>: 계정, 일정, 설정, 백업, 캘린더 연결 상태 저장</li>
+      <li><strong>OpenAI API</strong>: 일정 파싱과 브리핑 생성을 위한 STT 변환 텍스트 전송</li>
+      <li><strong>Google Calendar API</strong>: 사용자가 Google Calendar 연동에 동의한 경우 일정 읽기/쓰기</li>
+      <li><strong>Naver Calendar/CalDAV 및 지도 API</strong>: 사용자가 연동하거나 장소/이동시간 기능을 사용할 때 필요한 요청</li>
+      <li><strong>TMAP/Google/Naver 지도 API</strong>: 장소 검색, 경로 및 이동시간 계산</li>
+    </ul>
+
+    <h2>위치 정보 사용</h2>
+    <p>위치 정보는 장소 선택, 현재 위치 기반 이동시간 계산, 출발 알림 제공을 위해 사용됩니다. PlanFlow는 사용자의 위치를 불필요하게 장기간 추적하지 않으며, 일정 기능 제공에 필요한 범위에서만 처리합니다.</p>
+
+    <h2>데이터 보관 및 삭제</h2>
+    <p>사용자 일정, 설정, 백업 데이터는 사용자가 앱을 사용하는 동안 보관됩니다. 사용자는 앱 내 삭제 기능 또는 계정 삭제 요청을 통해 관련 데이터 삭제를 요청할 수 있습니다.</p>
+
+    <h2>문의</h2>
+    <p>개인정보 처리와 데이터 삭제 요청은 PlanFlow 운영자에게 문의해 주세요.</p>
+
+    <p class="updated">마지막 업데이트: 2026-05-09</p>
+  </main>
+</body>
+</html>
