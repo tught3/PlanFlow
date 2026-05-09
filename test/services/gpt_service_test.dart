@@ -405,6 +405,11 @@ void main() {
       expect(prompt, contains('Do not infer medical or fasting pre_actions'));
       expect(prompt, contains('"병원", "병원 방문", "병원 미팅", and "병문안"'));
       expect(prompt, contains('Input: "내일 오전 10시 병원" -> pre_actions: []'));
+      expect(prompt, contains('"꽃이나 선물 챙기기"'));
+      expect(
+        prompt,
+        contains('Input: "토요일 병원 병문안" -> include "꽃이나 선물 챙기기"'),
+      );
       expect(prompt, contains('Input: "내일 법원" or "내일 학교"'));
     });
   });

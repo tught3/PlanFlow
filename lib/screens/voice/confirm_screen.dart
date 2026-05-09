@@ -187,6 +187,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   bool _hasFollowUpFailures = false;
   String? _supplyErrorText;
   String? _hydrateMessage;
+  String? _selectedAmbiguousPurpose;
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
 
@@ -1107,6 +1108,99 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     });
   }
 
+  bool _addAutoPreAction(String title, int offsetHours) {
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty ||
+        _preActions.any(
+          (draft) => draft.titleController.text.trim() == normalizedTitle,
+        )) {
+      return false;
+    }
+    _preActions.add(
+      _PreActionDraft.auto(title: normalizedTitle, offsetHours: offsetHours),
+    );
+    return true;
+  }
+
+  bool get _shouldShowPurposeClarification {
+    if (_selectedAmbiguousPurpose != null || _preActions.isNotEmpty) {
+      return false;
+    }
+
+    final text = [
+      _titleController.text,
+      _locationController.text,
+      _memoController.text,
+      _stringValue(widget.parsedSchedule['raw_text']) ?? '',
+    ].join(' ').replaceAll(RegExp(r'\s+'), '');
+
+    if (text.isEmpty) {
+      return false;
+    }
+
+    final hasAmbiguousPlace = _containsAnyText(text, const <String>[
+      '병원',
+      '의원',
+      '치과',
+      '한의원',
+      '검진센터',
+      '법원',
+      '학교',
+    ]);
+    if (!hasAmbiguousPlace) {
+      return false;
+    }
+
+    final hasClearPurpose = _containsAnyText(text, const <String>[
+      '진료',
+      '검사',
+      '검진',
+      '수술',
+      '입원',
+      '시술',
+      '미팅',
+      '영업',
+      '방문',
+      '상담',
+      '계약',
+      '업무',
+      '회의',
+      '재판',
+      '소송',
+      '병문안',
+      '문병',
+      '학부모',
+    ]);
+    return !hasClearPurpose;
+  }
+
+  bool _containsAnyText(String text, List<String> keywords) {
+    return keywords.any(text.contains);
+  }
+
+  void _selectAmbiguousPurpose(String purpose) {
+    bool added = false;
+    setState(() {
+      _selectedAmbiguousPurpose = purpose;
+      if (purpose == 'medical') {
+        _category = '건강';
+        added = _addAutoPreAction('병원 준비사항 확인', 24) || added;
+        added = _addAutoPreAction('금식/복약 안내 확인', 12) || added;
+        added = _addAutoPreAction('신분증과 서류 챙기기', 3) || added;
+      } else if (purpose == 'work') {
+        _category = '업무';
+        added = _addAutoPreAction('이동시간과 출발 시간 확인', 2) || added;
+      } else if (purpose == 'visit') {
+        _category = '개인';
+        added = _addAutoPreAction('꽃이나 선물 챙기기', 3) || added;
+      }
+    });
+
+    if (added) {
+      _scrollToKey(_preActionsKey);
+    }
+  }
+
   void _applyPastSupply(String supply) {
     late final bool wasAdded;
     setState(() {
@@ -1408,6 +1502,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                             onInfo: _showSmartPreparationAlarmInfo,
                           ),
                           const SizedBox(height: 8),
+                          if (_shouldShowPurposeClarification) ...[
+                            _PurposeClarificationCard(
+                              onSelected: _selectAmbiguousPurpose,
+                            ),
+                            const SizedBox(height: 8),
+                          ],
                           if (_preActions.isEmpty)
                             _EmptyInlineHint(
                               message:
@@ -2090,6 +2190,71 @@ class _SuggestionsCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Wrap(spacing: 8, runSpacing: 8, children: chips),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PurposeClarificationCard extends StatelessWidget {
+  const _PurposeClarificationCard({required this.onSelected});
+
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      color: PlanFlowColors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '일정 목적을 선택해 주세요',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: PlanFlowColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '장소만으로 준비 알람을 단정하지 않아요. 목적을 고르면 알맞은 준비 알림만 추가합니다.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ActionChip(
+                  label: const Text('진료/검사'),
+                  onPressed: () => onSelected('medical'),
+                ),
+                ActionChip(
+                  label: const Text('업무/영업'),
+                  onPressed: () => onSelected('work'),
+                ),
+                ActionChip(
+                  label: const Text('병문안'),
+                  onPressed: () => onSelected('visit'),
+                ),
+                ActionChip(
+                  label: const Text('기타'),
+                  onPressed: () => onSelected('other'),
+                ),
+              ],
+            ),
           ],
         ),
       ),

@@ -55,6 +55,19 @@ void main() {
     }
   });
 
+  test('buildCandidates creates visit prep for hospital patient visits', () {
+    final service = SmartPreparationAlarmService();
+    final candidates = service.buildCandidates(
+      rawText: '토요일 병원 병문안',
+      eventStartAt: DateTime(2026, 5, 9, 14),
+    );
+    final titles = candidates.map((candidate) => candidate.title);
+
+    expect(titles, contains('꽃이나 선물 챙기기'));
+    expect(titles, isNot(contains('병원 준비사항 확인')));
+    expect(titles, isNot(contains('금식/복약 안내 확인')));
+  });
+
   test('buildCandidates requires medical action with medical location', () {
     final service = SmartPreparationAlarmService();
     final candidates = service.buildCandidates(

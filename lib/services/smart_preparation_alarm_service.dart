@@ -102,6 +102,7 @@ class SmartPreparationAlarmService {
       purposeText: purposeText,
       locationText: locationText,
     );
+    final hasPatientVisitContext = _hasPatientVisitContext(purposeText);
 
     void add(String title, int offsetHours) {
       candidates.add(
@@ -120,6 +121,10 @@ class SmartPreparationAlarmService {
 
     if (hasFastingContext) {
       add('금식/복약 안내 확인', 12);
+    }
+
+    if (hasPatientVisitContext) {
+      add('꽃이나 선물 챙기기', 3);
     }
 
     if (_containsAny(searchable, const <String>[
@@ -550,6 +555,13 @@ class SmartPreparationAlarmService {
           '금식',
           '마취',
         ]);
+  }
+
+  bool _hasPatientVisitContext(String text) {
+    return _containsAny(text, const <String>[
+      '병문안',
+      '문병',
+    ]);
   }
 
   String _normalizeText(String text) {

@@ -130,6 +130,39 @@ void main() {
     expect(find.textContaining('체크리스트로'), findsNothing);
     expect(find.text('진행 중'), findsNothing);
   });
+  testWidgets('ConfirmScreen asks purpose for ambiguous hospital place only',
+      (tester) async {
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '병원',
+            location: '병원',
+            rawText: '내일 오전 10시 병원',
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('일정 목적을 선택해 주세요'));
+
+    expect(find.text('일정 목적을 선택해 주세요'), findsOneWidget);
+    expect(find.text('진료/검사'), findsOneWidget);
+    expect(find.text('업무/영업'), findsOneWidget);
+    expect(find.text('병문안'), findsOneWidget);
+
+    await tester.tap(find.text('병문안'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('꽃이나 선물 챙기기'), findsOneWidget);
+    expect(find.text('병원 준비사항 확인'), findsNothing);
+    expect(find.text('금식/복약 안내 확인'), findsNothing);
+  });
 }
 
 Widget _testApp(Widget child) {
@@ -162,18 +195,21 @@ Map<String, dynamic> _parsedSchedule({
   bool isCritical = false,
   DateTime? startAt,
   List<String> supplies = const <String>[],
+  String? title,
+  String? location,
+  String? rawText,
 }) {
   return {
-    'title': '성남 출발',
+    'title': title ?? '성남 출발',
     'start_at': (startAt ?? DateTime.now().add(const Duration(hours: 3)))
         .toIso8601String(),
     'end_at': null,
-    'location': '성남',
+    'location': location ?? '성남',
     'memo': '테스트 일정',
     'supplies': supplies,
     'is_critical': isCritical,
     'pre_actions': <Map<String, dynamic>>[],
-    'raw_text': '내일 오전 10시에 성남으로 출발',
+    'raw_text': rawText ?? '내일 오전 10시에 성남으로 출발',
   };
 }
 

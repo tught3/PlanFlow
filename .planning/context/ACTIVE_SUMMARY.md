@@ -1,5 +1,11 @@
 # Active Summary
 
+## 2026-05-09 smart-prep purpose clarification checkpoint
+- Reinforced smart preparation purpose handling so patient visits (`병문안`, `문병`) create the visit-specific `꽃이나 선물 챙기기` pre-action without adding medical or fasting alarms.
+- Updated the GPT parsing prompt/few-shot guidance to treat `병문안` as a visit context and keep medical/fasting preparation limited to explicit medical actions.
+- Added a ConfirmScreen purpose clarification card for ambiguous place-only inputs such as hospital/court/school when no action verb is present; selecting `진료/검사`, `업무/영업`, `병문안`, or `기타` applies the corresponding category/pre-action behavior.
+- Verification: focused confirm/GPT/smart-prep tests passed, `flutter analyze` passed, full `flutter test` passed with 172 tests, `flutter build apk --debug`, `flutter build apk --release`, release APK install, PID check, and focus check all passed on `192.168.0.102:5555`.
+
 ## 2026-05-09 pre-verification P0 guard/home-map checkpoint
 - Locked the PlanFlow project guard for this session: current path `C:\PlanFlow`, remote `https://github.com/tught3/PlanFlow.git`, and Flutter project markers `pubspec.yaml`, `PlanFlow_Codex_Prompt_v3.md`, `AGENTS.md` were verified before code work. `C:\AI-automatic-expense-tracker` is a separate FinFlow project and must not be used for PlanFlow work.
 - Home location labels no longer prefer broad province/metropolitan wording when a city-level label is available. Examples now resolve toward user-facing labels such as `서울시 강남구` and `성남시 분당구`, with no coordinate fallback.
