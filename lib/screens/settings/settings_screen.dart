@@ -3103,8 +3103,11 @@ class _AutoSyncProviderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color =
-        provider.isHealthy ? const Color(0xFF1F8A4C) : const Color(0xFFB75E13);
+    final color = provider.isHealthy
+        ? const Color(0xFF1F8A4C)
+        : provider.isSkipped
+            ? PlanFlowColors.textSecondary
+            : const Color(0xFFB75E13);
     final time = provider.checkedAt == null
         ? '확인 전'
         : formatDateTime(provider.checkedAt!);
@@ -3112,7 +3115,11 @@ class _AutoSyncProviderRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(
-          provider.isHealthy ? Icons.check_circle_outline : Icons.info_outline,
+          provider.isHealthy
+              ? Icons.check_circle_outline
+              : provider.isSkipped
+                  ? Icons.remove_circle_outline
+                  : Icons.info_outline,
           size: 18,
           color: color,
         ),

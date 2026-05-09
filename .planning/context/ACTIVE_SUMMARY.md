@@ -1,5 +1,11 @@
 # Active Summary
 
+## 2026-05-09 calendar-auto-sync-outcomes checkpoint
+- Refined `CalendarAutoSyncService` provider status recording so automatic sync now separates `connected`, `attention`, and `skipped` instead of treating missing Google/Naver/device-calendar setup as a successful sync.
+- Google/Naver signed-out or unconfigured states, missing Naver CalDAV credentials, and missing phone-calendar permission are now stored as skipped with Korean explanatory messages, while reauth/import failures remain attention states.
+- Updated the Settings auto-sync status row icon/color treatment for skipped providers and added focused service tests for skipped vs attention outcomes.
+- Verification: focused calendar auto-sync/settings tests passed, `flutter analyze` passed, full `flutter test` passed with 178 tests, `flutter build apk --debug`, `flutter build apk --release`, release APK install, PID check, and focus check passed on `192.168.0.102:5555`.
+
 ## 2026-05-09 calendar-auto-sync-status checkpoint
 - Added a Settings calendar auto-sync status card that separates Google Calendar, Naver direct sync, Naver CalDAV, and phone internal calendar status instead of hiding them behind a single calendar section.
 - Exposed the last automatic sync reason/time and provider-level messages stored by `CalendarAutoSyncService`, so app-start/app-resume/event-save/daily sync failures can be explained as reauth, CalDAV credential, or device-calendar permission issues.

@@ -53,7 +53,7 @@ class CalendarAutoSyncService {
     if (!_canSync) {
       await _recordProviderStatus(
         'all',
-        success: false,
+        status: 'attention',
         message: '로그인 또는 Supabase 설정이 필요합니다.',
       );
       return CalendarAutoSyncResult.skipped('not_signed_in');
@@ -65,15 +65,19 @@ class CalendarAutoSyncService {
         event,
         interactive: false,
       );
-      return google.status == CalendarIntegrationStatus.synced ||
-          google.status == CalendarIntegrationStatus.ready ||
-          google.status == CalendarIntegrationStatus.signedOut;
+      return _calendarOutcome(google);
     });
     await _runStep(result, 'naver_caldav_export', () {
-      return _naverCalDav.exportEvent(event);
+      return _boolOutcome(
+        _naverCalDav.exportEvent(event),
+        skippedMessage: 'Naver CalDAV가 연결되지 않았거나 내보내기를 건너뛰었습니다.',
+      );
     });
     await _runStep(result, 'device_calendar_export', () {
-      return _deviceCalendar.exportEvent(event);
+      return _boolOutcome(
+        _deviceCalendar.exportEvent(event),
+        skippedMessage: '휴대폰 캘린더 내보내기를 건너뛰었습니다.',
+      );
     });
 
     EventRefreshBus.instance.notifyChanged(
@@ -92,7 +96,7 @@ class CalendarAutoSyncService {
     if (!_canSync || _isSyncing) {
       await _recordProviderStatus(
         'all',
-        success: false,
+        status: 'attention',
         message: '로그인 또는 Supabase 설정이 필요합니다.',
       );
       return CalendarAutoSyncResult.skipped('not_ready');
@@ -114,33 +118,40 @@ class CalendarAutoSyncService {
         final google = await _calendarSync.syncGoogleCalendar(
           interactive: false,
         );
-        return google.status == CalendarIntegrationStatus.synced ||
-            google.status == CalendarIntegrationStatus.ready ||
-            google.status == CalendarIntegrationStatus.signedOut;
+        return _calendarOutcome(google);
       });
       await _runStep(result, 'naver_api_auto_export', () async {
         final naver = await _calendarSync.syncNaverCalendar();
-        return naver.status == CalendarIntegrationStatus.synced ||
-            naver.status == CalendarIntegrationStatus.ready ||
-            naver.status == CalendarIntegrationStatus.signedOut;
+        return _calendarOutcome(naver);
       });
       await _runStep(result, 'naver_caldav_auto_import', () async {
         if (!await _naverCalDav.hasCredentials()) {
-          return true;
+          return CalendarAutoSyncStepOutcome.skipped(
+            'Naver CalDAV가 아직 연결되지 않아 자동 가져오기를 건너뜁니다.',
+          );
         }
         final naver = await _naverCalDav.syncAll(
           mode: NaverCalDavSyncMode.quick,
           skipUnchanged: true,
         );
-        return naver.success;
+        if (naver.success) {
+          return CalendarAutoSyncStepOutcome.completed(naver.message);
+        }
+        return CalendarAutoSyncStepOutcome.attention(naver.message);
       });
       await _runStep(result, 'device_calendar_auto_import', () async {
         final hasPermission = await _deviceCalendar.checkCalendarPermission();
         if (!hasPermission) {
-          return true;
+          return CalendarAutoSyncStepOutcome.skipped(
+            '휴대폰 캘린더 권한이 없어 자동 가져오기를 건너뜁니다.',
+          );
         }
         final imported = await _deviceCalendar.importNaverEvents();
-        return imported.status != DeviceCalendarImportStatus.failed;
+        if (imported.status == DeviceCalendarImportStatus.failed ||
+            imported.status == DeviceCalendarImportStatus.permissionDenied) {
+          return CalendarAutoSyncStepOutcome.attention(imported.message);
+        }
+        return CalendarAutoSyncStepOutcome.completed(imported.message);
       });
       EventRefreshBus.instance.notifyChanged(
         reason: 'calendar_auto_sync:$reason',
@@ -171,30 +182,37 @@ class CalendarAutoSyncService {
   Future<void> _runStep(
     CalendarAutoSyncResult result,
     String name,
-    Future<bool> Function() step,
+    Future<CalendarAutoSyncStepOutcome> Function() step,
   ) async {
     try {
-      final success = await step();
-      if (success) {
+      final outcome = await step();
+      if (outcome.status == CalendarAutoSyncStepStatus.completed) {
         result.completed.add(name);
         await _recordProviderStatus(
           name,
-          success: true,
-          message: '정상 동기화됨',
+          status: 'connected',
+          message: outcome.message,
+        );
+      } else if (outcome.status == CalendarAutoSyncStepStatus.skipped) {
+        result.skipped.add(name);
+        await _recordProviderStatus(
+          name,
+          status: 'skipped',
+          message: outcome.message,
         );
       } else {
         result.failed.add(name);
         await _recordProviderStatus(
           name,
-          success: false,
-          message: _failureMessageFor(name),
+          status: 'attention',
+          message: outcome.message,
         );
       }
     } catch (error, stackTrace) {
       result.failed.add(name);
       await _recordProviderStatus(
         name,
-        success: false,
+        status: 'attention',
         message: '$name 동기화 중 오류가 발생했습니다.',
       );
       debugPrint('Calendar auto sync step failed: $name $error');
@@ -223,37 +241,55 @@ class CalendarAutoSyncService {
       'calendar_sync:last_failed',
       result.failed,
     );
+    await prefs.setStringList(
+      'calendar_sync:last_skipped',
+      result.skipped,
+    );
   }
 
   Future<void> _recordProviderStatus(
     String provider, {
-    required bool success,
+    required String status,
     required String message,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final key = 'calendar_sync:provider:$provider';
-    await prefs.setString('$key:status', success ? 'connected' : 'attention');
+    await prefs.setString('$key:status', status);
     await prefs.setString('$key:message', message);
     await prefs.setString('$key:checked_at', _now().toIso8601String());
-    if (success) {
+    if (status == 'connected') {
       await prefs.setString('$key:last_success_at', _now().toIso8601String());
     }
   }
 
-  String _failureMessageFor(String name) {
-    if (name.contains('google')) {
-      return 'Google 로그인이 끊겼거나 Calendar 권한 동의가 필요합니다.';
+  CalendarAutoSyncStepOutcome _calendarOutcome(
+    CalendarIntegrationResult result,
+  ) {
+    return switch (result.status) {
+      CalendarIntegrationStatus.ready ||
+      CalendarIntegrationStatus.synced =>
+        CalendarAutoSyncStepOutcome.completed(result.message),
+      CalendarIntegrationStatus.signedOut ||
+      CalendarIntegrationStatus.notConfigured ||
+      CalendarIntegrationStatus.unsupported =>
+        CalendarAutoSyncStepOutcome.skipped(result.message),
+      CalendarIntegrationStatus.reauthRequired ||
+      CalendarIntegrationStatus.failed =>
+        CalendarAutoSyncStepOutcome.attention(result.message),
+      CalendarIntegrationStatus.syncing =>
+        CalendarAutoSyncStepOutcome.skipped(result.message),
+    };
+  }
+
+  Future<CalendarAutoSyncStepOutcome> _boolOutcome(
+    Future<bool> future, {
+    required String skippedMessage,
+  }) async {
+    final success = await future;
+    if (success) {
+      return const CalendarAutoSyncStepOutcome.completed('정상 동기화됨');
     }
-    if (name.contains('naver_caldav')) {
-      return 'Naver CalDAV 아이디 또는 앱 비밀번호를 확인해 주세요.';
-    }
-    if (name.contains('device_calendar')) {
-      return '휴대폰 캘린더 권한이 필요하거나 기기 캘린더에 노출된 일정이 없습니다.';
-    }
-    if (name.contains('naver_api')) {
-      return 'Naver 캘린더 직접 연동 상태를 확인해 주세요.';
-    }
-    return '$name 동기화가 완료되지 않았습니다.';
+    return CalendarAutoSyncStepOutcome.skipped(skippedMessage);
   }
 
   Future<CalendarAutoSyncSnapshot> loadSnapshot() async {
@@ -267,6 +303,8 @@ class CalendarAutoSyncService {
           const <String>[],
       failed:
           prefs.getStringList('calendar_sync:last_failed') ?? const <String>[],
+      skipped:
+          prefs.getStringList('calendar_sync:last_skipped') ?? const <String>[],
       providers: _knownProviderLabels.entries.map((entry) {
         final key = 'calendar_sync:provider:${entry.key}';
         return CalendarAutoSyncProviderSnapshot(
@@ -305,9 +343,40 @@ class CalendarAutoSyncResult {
   final String? skippedReason;
   final List<String> completed = <String>[];
   final List<String> failed = <String>[];
+  final List<String> skipped = <String>[];
 
   bool get didRun => skippedReason == null;
   bool get hasFailures => failed.isNotEmpty;
+}
+
+enum CalendarAutoSyncStepStatus { completed, attention, skipped }
+
+class CalendarAutoSyncStepOutcome {
+  const CalendarAutoSyncStepOutcome._({
+    required this.status,
+    required this.message,
+  });
+
+  const CalendarAutoSyncStepOutcome.completed(String message)
+      : this._(
+          status: CalendarAutoSyncStepStatus.completed,
+          message: message,
+        );
+
+  const CalendarAutoSyncStepOutcome.attention(String message)
+      : this._(
+          status: CalendarAutoSyncStepStatus.attention,
+          message: message,
+        );
+
+  const CalendarAutoSyncStepOutcome.skipped(String message)
+      : this._(
+          status: CalendarAutoSyncStepStatus.skipped,
+          message: message,
+        );
+
+  final CalendarAutoSyncStepStatus status;
+  final String message;
 }
 
 class CalendarAutoSyncSnapshot {
@@ -316,6 +385,7 @@ class CalendarAutoSyncSnapshot {
     required this.lastAttemptAt,
     required this.completed,
     required this.failed,
+    required this.skipped,
     required this.providers,
   });
 
@@ -323,6 +393,7 @@ class CalendarAutoSyncSnapshot {
   final DateTime? lastAttemptAt;
   final List<String> completed;
   final List<String> failed;
+  final List<String> skipped;
   final List<CalendarAutoSyncProviderSnapshot> providers;
 
   bool get hasHistory =>
@@ -350,6 +421,7 @@ class CalendarAutoSyncProviderSnapshot {
   final DateTime? lastSuccessAt;
 
   bool get isHealthy => status == 'connected';
+  bool get isSkipped => status == 'skipped';
 }
 
 class DailyCalendarSyncSchedulerService {
