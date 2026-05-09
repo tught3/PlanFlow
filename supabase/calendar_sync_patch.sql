@@ -124,21 +124,6 @@ create policy "calendar_connections_delete_own"
   for delete
   using (auth.uid() = user_id);
 
-revoke all on function public.upsert_naver_caldav_credentials(text, text, text)
-  from public, anon, authenticated, service_role;
-grant execute on function public.upsert_naver_caldav_credentials(text, text, text)
-  to authenticated;
-
-revoke all on function public.fetch_naver_caldav_credentials()
-  from public, anon, authenticated, service_role;
-grant execute on function public.fetch_naver_caldav_credentials()
-  to authenticated;
-
-revoke all on function public.clear_naver_caldav_credentials()
-  from public, anon, authenticated, service_role;
-grant execute on function public.clear_naver_caldav_credentials()
-  to authenticated;
-
 -- Naver CalDAV credentials are stored only as encrypted payloads in calendar_connections.
 -- If you set the optional custom GUC `planflow.naver_caldav_secret`, these RPCs will
 -- use it as the encryption secret; otherwise they fall back to a per-user derived key.
@@ -296,3 +281,18 @@ begin
     and provider = 'naver';
 end;
 $$;
+
+revoke all on function public.upsert_naver_caldav_credentials(text, text, text)
+  from public, anon, authenticated, service_role;
+grant execute on function public.upsert_naver_caldav_credentials(text, text, text)
+  to authenticated;
+
+revoke all on function public.fetch_naver_caldav_credentials()
+  from public, anon, authenticated, service_role;
+grant execute on function public.fetch_naver_caldav_credentials()
+  to authenticated;
+
+revoke all on function public.clear_naver_caldav_credentials()
+  from public, anon, authenticated, service_role;
+grant execute on function public.clear_naver_caldav_credentials()
+  to authenticated;

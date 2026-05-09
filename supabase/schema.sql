@@ -994,21 +994,6 @@ $$;
 revoke all on function public.restore_user_backup(uuid) from public;
 grant execute on function public.restore_user_backup(uuid) to authenticated;
 
-revoke all on function public.upsert_naver_caldav_credentials(text, text, text)
-  from public, anon, authenticated, service_role;
-grant execute on function public.upsert_naver_caldav_credentials(text, text, text)
-  to authenticated;
-
-revoke all on function public.fetch_naver_caldav_credentials()
-  from public, anon, authenticated, service_role;
-grant execute on function public.fetch_naver_caldav_credentials()
-  to authenticated;
-
-revoke all on function public.clear_naver_caldav_credentials()
-  from public, anon, authenticated, service_role;
-grant execute on function public.clear_naver_caldav_credentials()
-  to authenticated;
-
 create or replace function public.submit_early_bird_email(input_email text)
 returns void
 language plpgsql
@@ -1034,3 +1019,18 @@ $$;
 
 revoke all on function public.submit_early_bird_email(text) from public;
 grant execute on function public.submit_early_bird_email(text) to anon, authenticated;
+
+revoke all on function public.upsert_naver_caldav_credentials(text, text, text)
+  from public, anon, authenticated, service_role;
+grant execute on function public.upsert_naver_caldav_credentials(text, text, text)
+  to authenticated;
+
+revoke all on function public.fetch_naver_caldav_credentials()
+  from public, anon, authenticated, service_role;
+grant execute on function public.fetch_naver_caldav_credentials()
+  to authenticated;
+
+revoke all on function public.clear_naver_caldav_credentials()
+  from public, anon, authenticated, service_role;
+grant execute on function public.clear_naver_caldav_credentials()
+  to authenticated;
