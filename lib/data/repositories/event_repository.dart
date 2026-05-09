@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/local_time.dart';
 import '../models/event_model.dart';
 
 abstract class EventRepository {
@@ -151,7 +152,7 @@ String _normalizeDuplicateTitle(String value) {
   return value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 }
 
-DateTime _eventEndForOverlap(EventModel event) {
+DateTime eventOverlapEndFor(EventModel event) {
   final startAt = event.startAt;
   if (startAt == null) {
     return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
@@ -169,7 +170,7 @@ DateTime _eventEndForOverlap(EventModel event) {
   return startAt.add(fallbackDuration);
 }
 
-bool _rangesOverlap({
+bool eventRangesOverlap({
   required DateTime rangeStart,
   required DateTime rangeEnd,
   required DateTime eventStart,
@@ -186,6 +187,218 @@ bool _rangesOverlap({
 
   return normalizedEventStart.isBefore(normalizedRangeEnd) &&
       normalizedRangeStart.isBefore(normalizedEventEnd);
+}
+
+List<EventModel> expandEventOccurrencesForOverlap(
+  EventModel event, {
+  required DateTime rangeStart,
+  required DateTime rangeEnd,
+}) {
+  final rule = event.recurrenceRule?.toUpperCase();
+  final startAt = event.startAt;
+  if (rule == null || rule.isEmpty || startAt == null) {
+    return <EventModel>[event];
+  }
+
+  final freq = RegExp(r'FREQ=([A-Z]+)').firstMatch(rule)?.group(1);
+  if (freq == null) {
+    return <EventModel>[event];
+  }
+
+  final intervalText = RegExp(r'INTERVAL=(\d+)').firstMatch(rule)?.group(1);
+  final interval = int.tryParse(intervalText ?? '1')?.clamp(1, 365) ?? 1;
+  final until = _parseRRuleUntilForOverlap(
+    RegExp(r'UNTIL=([0-9TzZ]+)').firstMatch(rule)?.group(1),
+  );
+  final hardEnd = until?.isBefore(rangeEnd) == true ? until! : rangeEnd;
+  final localStartAt = planflowLocal(startAt);
+  final duration = event.endAt?.difference(startAt) ??
+      ((event.isAllDay || event.isMultiDay)
+          ? const Duration(days: 1)
+          : const Duration(minutes: 30));
+  final occurrences = <EventModel>[];
+
+  if (freq == 'WEEKLY') {
+    final byDays = _parseRRuleByDaysForOverlap(rule);
+    if (byDays.isNotEmpty) {
+      var weekStart = DateTime(
+        localStartAt.year,
+        localStartAt.month,
+        localStartAt.day,
+        localStartAt.hour,
+        localStartAt.minute,
+        localStartAt.second,
+      ).subtract(Duration(days: localStartAt.weekday - DateTime.monday));
+      var safety = 0;
+      while (weekStart.isBefore(hardEnd) && safety < 120) {
+        safety += 1;
+        for (final weekday in byDays) {
+          final day = weekStart.add(Duration(days: weekday - DateTime.monday));
+          final current = DateTime(
+            day.year,
+            day.month,
+            day.day,
+            localStartAt.hour,
+            localStartAt.minute,
+            localStartAt.second,
+          );
+          if (current.isBefore(localStartAt) || !current.isBefore(hardEnd)) {
+            continue;
+          }
+          final candidate = _copyEventWithTime(
+            event,
+            startAt: current,
+            endAt: current.add(duration),
+          );
+          if (_eventIntersectsOverlapRange(candidate, rangeStart, rangeEnd)) {
+            occurrences.add(candidate);
+          }
+        }
+        weekStart = weekStart.add(Duration(days: 7 * interval));
+      }
+      return occurrences.isEmpty ? <EventModel>[event] : occurrences;
+    }
+  }
+
+  var current = localStartAt;
+  var safety = 0;
+  while (current.isBefore(hardEnd) && safety < 420) {
+    safety += 1;
+    final candidate = _copyEventWithTime(
+      event,
+      startAt: current,
+      endAt: current.add(duration),
+    );
+    if (_eventIntersectsOverlapRange(candidate, rangeStart, rangeEnd)) {
+      occurrences.add(candidate);
+    }
+    current = switch (freq) {
+      'DAILY' => current.add(Duration(days: interval)),
+      'WEEKLY' => current.add(Duration(days: 7 * interval)),
+      'MONTHLY' => DateTime(
+          current.year,
+          current.month + interval,
+          current.day,
+          current.hour,
+          current.minute,
+          current.second,
+        ),
+      'YEARLY' => DateTime(
+          current.year + interval,
+          current.month,
+          current.day,
+          current.hour,
+          current.minute,
+          current.second,
+        ),
+      _ => hardEnd,
+    };
+  }
+  return occurrences.isEmpty ? <EventModel>[event] : occurrences;
+}
+
+EventModel _copyEventWithTime(
+  EventModel event, {
+  required DateTime startAt,
+  required DateTime? endAt,
+}) {
+  return EventModel(
+    id: event.id,
+    userId: event.userId,
+    title: event.title,
+    startAt: startAt,
+    endAt: endAt,
+    location: event.location,
+    locationLat: event.locationLat,
+    locationLng: event.locationLng,
+    memo: event.memo,
+    supplies: event.supplies,
+    suppliesChecked: event.suppliesChecked,
+    isCritical: event.isCritical,
+    recurrenceRule: event.recurrenceRule,
+    isAllDay: event.isAllDay,
+    isMultiDay: event.isMultiDay,
+    parentEventId: event.parentEventId,
+    category: event.category,
+    source: event.source,
+    externalId: event.externalId,
+    externalCalendarId: event.externalCalendarId,
+    externalEtag: event.externalEtag,
+    externalUpdatedAt: event.externalUpdatedAt,
+    lastSyncedAt: event.lastSyncedAt,
+    createdAt: event.createdAt,
+    updatedAt: event.updatedAt,
+  );
+}
+
+bool _eventIntersectsOverlapRange(
+  EventModel event,
+  DateTime rangeStart,
+  DateTime rangeEnd,
+) {
+  final startAt = event.startAt;
+  if (startAt == null) {
+    return false;
+  }
+  final eventEnd = eventOverlapEndFor(event);
+  return eventRangesOverlap(
+    rangeStart: rangeStart,
+    rangeEnd: rangeEnd,
+    eventStart: startAt,
+    eventEnd: eventEnd,
+  );
+}
+
+DateTime? _parseRRuleUntilForOverlap(String? value) {
+  if (value == null || value.length < 8) {
+    return null;
+  }
+  final digits = value.replaceAll(RegExp('[^0-9]'), '');
+  if (digits.length < 8) {
+    return null;
+  }
+  final year = int.tryParse(digits.substring(0, 4));
+  final month = int.tryParse(digits.substring(4, 6));
+  final day = int.tryParse(digits.substring(6, 8));
+  if (year == null || month == null || day == null) {
+    return null;
+  }
+  return DateTime(year, month, day, 23, 59, 59);
+}
+
+Set<int> _parseRRuleByDaysForOverlap(String rule) {
+  final raw = RegExp(r'BYDAY=([A-Z,]+)').firstMatch(rule)?.group(1);
+  if (raw == null || raw.isEmpty) {
+    return const <int>{};
+  }
+
+  final days = <int>{};
+  for (final token in raw.split(',')) {
+    switch (token.trim()) {
+      case 'MO':
+        days.add(DateTime.monday);
+        break;
+      case 'TU':
+        days.add(DateTime.tuesday);
+        break;
+      case 'WE':
+        days.add(DateTime.wednesday);
+        break;
+      case 'TH':
+        days.add(DateTime.thursday);
+        break;
+      case 'FR':
+        days.add(DateTime.friday);
+        break;
+      case 'SA':
+        days.add(DateTime.saturday);
+        break;
+      case 'SU':
+        days.add(DateTime.sunday);
+        break;
+    }
+  }
+  return days;
 }
 
 class SupabaseEventRepository extends EventRepository {
@@ -273,18 +486,25 @@ class SupabaseEventRepository extends EventRepository {
         return false;
       }
 
-      final eventStart = event.startAt;
-      if (eventStart == null) {
-        return false;
-      }
-
-      final eventEnd = _eventEndForOverlap(event);
-      return _rangesOverlap(
+      final occurrences = expandEventOccurrencesForOverlap(
+        event,
         rangeStart: rangeStart,
         rangeEnd: rangeEnd,
-        eventStart: eventStart,
-        eventEnd: eventEnd,
       );
+      return occurrences.any((candidate) {
+        final eventStart = candidate.startAt;
+        if (eventStart == null) {
+          return false;
+        }
+
+        final eventEnd = eventOverlapEndFor(candidate);
+        return eventRangesOverlap(
+          rangeStart: rangeStart,
+          rangeEnd: rangeEnd,
+          eventStart: eventStart,
+          eventEnd: eventEnd,
+        );
+      });
     }).toList(growable: false);
   }
 

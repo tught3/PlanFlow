@@ -83,6 +83,50 @@ void main() {
     );
   });
 
+  testWidgets('ConfirmScreen warns before saving overlapping events',
+      (tester) async {
+    final repository = _FakeEventRepository();
+    final existingStart = DateTime.now().add(const Duration(hours: 3));
+    repository.createdEvents.add(
+      EventModel(
+        id: 'existing-1',
+        userId: 'user-1',
+        title: '겹치는 일정',
+        startAt: existingStart,
+        endAt: existingStart.add(const Duration(hours: 1)),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            startAt: existingStart.add(const Duration(minutes: 15)),
+            endAt: existingStart.add(const Duration(minutes: 45)),
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('일정이 겹쳐요'), findsOneWidget);
+    expect(find.text('계속 저장'), findsOneWidget);
+
+    await tester.tap(find.text('중단'));
+    await tester.pumpAndSettle();
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(find.text('일정이 겹쳐요'), findsNothing);
+  });
+
   testWidgets('ConfirmScreen opens external map options when lookup is empty',
       (tester) async {
     await tester.pumpWidget(
@@ -198,6 +242,7 @@ Widget _testApp(Widget child) {
 Map<String, dynamic> _parsedSchedule({
   bool isCritical = false,
   DateTime? startAt,
+  DateTime? endAt,
   List<String> supplies = const <String>[],
   String? title,
   String? location,
@@ -207,7 +252,7 @@ Map<String, dynamic> _parsedSchedule({
     'title': title ?? '성남 출발',
     'start_at': (startAt ?? DateTime.now().add(const Duration(hours: 3)))
         .toIso8601String(),
-    'end_at': null,
+    'end_at': endAt?.toIso8601String(),
     'location': location ?? '성남',
     'memo': '테스트 일정',
     'supplies': supplies,
@@ -252,6 +297,27 @@ class _FakeConfirmBackend extends ConfirmScreenBackend {
 
 class _FakeEventRepository extends EventRepository {
   final createdEvents = <EventModel>[];
+
+  @override
+  Future<List<EventModel>> findOverlappingEvents({
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+    String? userId,
+    String? excludedEventId,
+  }) async {
+    return createdEvents.where((event) {
+      if (excludedEventId != null && event.id == excludedEventId) {
+        return false;
+      }
+      final startAt = event.startAt;
+      if (startAt == null) {
+        return false;
+      }
+      final endAt = event.endAt ?? startAt.add(const Duration(minutes: 30));
+      return startAt.toUtc().isBefore(rangeEnd.toUtc()) &&
+          rangeStart.toUtc().isBefore(endAt.toUtc());
+    }).toList(growable: false);
+  }
 
   @override
   Future<EventModel> createEvent(EventModel event) async {

@@ -621,3 +621,10 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Fixed remaining display/import gaps: briefing fallback summaries, calendar multi-day segments, Naver CalDAV/ICS date-only parsing as Seoul midnight, Naver local export formatting, and exclusive all-day end-date marker handling.
 - Added regression tests for KST conversion, exclusive day intersection, all-day marker boundaries, and Naver CalDAV/ICS all-day date parsing.
 - Verification: project guard and `node scripts/gsd-context-hygiene.mjs` passed in `C:\PlanFlow`; `flutter analyze`, focused timezone/calendar/Naver/briefing tests, full `flutter test` (190 passed), `git diff --check`, `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, launch, pid, and focused-window checks all passed on `192.168.0.102:5555`.
+
+## 2026-05-09 final task batch checkpoint
+- Removed the duplicate `DepartureAlarmService().scheduleNextMonitor()` call from `main.dart`, and hid the Naver social login button from the login screen so Google/Kakao remain the only visible sign-in choices.
+- Added time-overlap warnings to both voice confirmation and manual event edit saves, then hardened the overlap logic to expand recurring events so future repeated occurrences are also detected.
+- Added launcher PNG assets for the Android mipmap buckets and kept the adaptive icons intact with `android:roundIcon` in the manifest.
+- Added regression coverage for overlap utilities, including adjacent-boundary behavior and weekly recurring occurrence expansion, plus a ConfirmScreen save warning case.
+- Verification: `flutter analyze`, full `flutter test` (198 passed), `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` all passed on `192.168.0.102:5555`.
