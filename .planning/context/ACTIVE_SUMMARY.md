@@ -628,3 +628,10 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Added launcher PNG assets for the Android mipmap buckets and kept the adaptive icons intact with `android:roundIcon` in the manifest.
 - Added regression coverage for overlap utilities, including adjacent-boundary behavior and weekly recurring occurrence expansion, plus a ConfirmScreen save warning case.
 - Verification: `flutter analyze`, full `flutter test` (198 passed), `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` all passed on `192.168.0.102:5555`.
+
+## 2026-05-09 OpenAI proxy migration checkpoint
+- Moved `GptService` off the direct OpenAI endpoint and pointed the default request path at `SUPABASE_URL/functions/v1/openai-proxy`, while sending Supabase anon credentials instead of an APK-bundled OpenAI key.
+- Removed `OPENAI_API_KEY` from `lib/core/env.dart` and from the local `.env` file so the app no longer depends on a client-side OpenAI secret.
+- Added `supabase/functions/openai-proxy/index.ts` to forward POST chat-completions payloads to OpenAI from the server side with CORS handling and missing-secret guards.
+- Updated `test/services/gpt_service_test.dart` to load Supabase env values, target the proxy URL, and assert the new request headers instead of `apiKey` constructor usage.
+- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, `flutter test test/services/gpt_service_test.dart`, `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` all passed on `192.168.0.102:5555`.

@@ -6,7 +6,6 @@ class AppEnv {
 
   static String get supabaseUrl => _envValue('SUPABASE_URL');
   static String get supabaseAnonKey => _envValue('SUPABASE_ANON_KEY');
-  static String get openAiApiKey => _envValue('OPENAI_API_KEY');
   static String get googleMapsApiKey => _envValue('GOOGLE_MAPS_API_KEY');
   static String get tmapApiKey => _envValue('TMAP_API_KEY');
   static String get naverMapClientId => _envValue('NAVER_MAP_CLIENT_ID');

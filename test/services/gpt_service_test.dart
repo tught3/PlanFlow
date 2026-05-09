@@ -1,19 +1,29 @@
 import 'dart:convert';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:planflow/services/gpt_service.dart';
 
+const String _proxyEndpoint =
+    'https://xqvvfnvmytjlblcngipn.supabase.co/functions/v1/openai-proxy';
+
 void main() {
+  setUpAll(() async {
+    await dotenv.load(fileName: '.env');
+  });
+
   group('GptService', () {
     test('returns fallback data when schedule JSON parsing fails', () async {
       final client = MockClient((request) async {
+        expect(request.url.toString(), _proxyEndpoint);
         expect(
-          request.url.toString(),
-          'https://api.openai.com/v1/chat/completions',
+          request.headers['authorization'],
+          'Bearer ${dotenv.env['SUPABASE_ANON_KEY'] ?? ''}',
         );
+        expect(request.headers['apikey'], dotenv.env['SUPABASE_ANON_KEY']);
 
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body['model'], 'gpt-4o-mini');
@@ -37,7 +47,7 @@ void main() {
 
       final service = GptService(
         client: client,
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
       );
 
       final result = await service.parseSchedule('meeting tomorrow at 3pm');
@@ -69,7 +79,7 @@ void main() {
 
       final service = GptService(
         client: client,
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
       );
 
       final result = await service.parseSchedule('내일 오전 11시 공임나라');
@@ -108,7 +118,7 @@ void main() {
       final now = DateTime(2026, 5, 6, 23, 0);
       final service = GptService(
         client: client,
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
         now: () => now,
       );
 
@@ -147,7 +157,7 @@ void main() {
       final now = DateTime(2026, 5, 7, 9, 30);
       final service = GptService(
         client: client,
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
         now: () => now,
       );
 
@@ -160,7 +170,7 @@ void main() {
     test('public local inference handles relative hour offsets', () {
       final now = DateTime(2026, 5, 7, 9, 30);
       final service = GptService(
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
         now: () => now,
       );
 
@@ -190,7 +200,7 @@ void main() {
 
       final service = GptService(
         client: client,
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
         now: () => DateTime(2026, 5, 1, 9),
       );
 
@@ -250,7 +260,7 @@ void main() {
 
       final service = GptService(
         client: client,
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
         now: () => now,
       );
 
@@ -284,7 +294,7 @@ void main() {
 
       final service = GptService(
         client: client,
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
       );
 
       final briefing = await service.generateMorningBriefing('today schedule');
@@ -321,7 +331,7 @@ void main() {
 
       final service = GptService(
         client: client,
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
       );
 
       final briefing = await service.generateEveningBriefing('today schedule');
@@ -349,7 +359,7 @@ void main() {
 
       final service = GptService(
         client: client,
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
       );
 
       await expectLater(
@@ -396,7 +406,7 @@ void main() {
 
       final service = GptService(
         client: client,
-        apiKey: 'test-key',
+        endpoint: Uri.parse(_proxyEndpoint),
       );
 
       await service.parseSchedule('내일 오전 10시 병원');

@@ -37,17 +37,14 @@ class GptService {
   GptService({
     http.Client? client,
     Uri? endpoint,
-    String? apiKey,
     DateTime Function()? now,
   })  : _client = client,
-        _endpoint =
-            endpoint ?? Uri.parse('https://api.openai.com/v1/chat/completions'),
-        _apiKey = apiKey ?? AppEnv.openAiApiKey,
+        _endpoint = endpoint ??
+            Uri.parse('${AppEnv.supabaseUrl}/functions/v1/openai-proxy'),
         _now = now ?? DateTime.now;
 
   final http.Client? _client;
   final Uri _endpoint;
-  final String _apiKey;
   final DateTime Function() _now;
 
   static const String _model = 'gpt-4o-mini';
@@ -112,22 +109,13 @@ class GptService {
     Map<String, dynamic>? responseFormat,
     bool throwOnFailure = false,
   }) async {
-    if (_apiKey.isEmpty) {
-      if (throwOnFailure) {
-        throw const GptCompletionException(
-          'missing_api_key',
-          'OpenAI API 키가 설정되지 않았습니다.',
-        );
-      }
-      return null;
-    }
-
     final client = _client ?? http.Client();
     try {
       final response = await client.post(
         _endpoint,
         headers: <String, String>{
-          'Authorization': 'Bearer $_apiKey',
+          'Authorization': 'Bearer ${AppEnv.supabaseAnonKey}',
+          'apikey': AppEnv.supabaseAnonKey,
           'Content-Type': 'application/json',
         },
         body: jsonEncode(<String, dynamic>{
