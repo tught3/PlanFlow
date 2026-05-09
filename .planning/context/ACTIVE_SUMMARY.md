@@ -1,9 +1,9 @@
 # Active Summary
 
 ## 2026-05-09 release install verification checkpoint
-- Re-ran the 1차 배포 verification set after ADB came back online: `flutter analyze`, full `flutter test` (166 passed), `flutter build apk --debug`, `flutter build apk --release`, and `flutter build appbundle --release` all passed.
+- Re-ran the 1차 배포 verification set after pulling remote commit `b62590a` onto `main`: `flutter analyze`, full `flutter test` (169 passed), `flutter build apk --debug`, `flutter build apk --release`, and `flutter build appbundle --release` all passed.
 - Re-verified `app-release.apk` metadata: package `com.planflow.app`, launch activity `com.planflow.app.MainActivity`, version `1.0.0` / code `1`, min SDK 24, target SDK 36, and release signature v2 with SHA1 `5A:94:6B:45:25:44:8B:89:B9:C0:13:69:E9:21:59:A4:B3:70:16:A7`.
-- Removed the old device package `com.example.planflow`, installed `build/app/outputs/flutter-apk/app-release.apk`, and launched `com.planflow.app/.MainActivity` on `192.168.0.102:5555`; PID/focus checks confirmed the release app is running and showing the clean-install permission onboarding screen.
+- Removed the old device package `com.example.planflow`, installed the latest `build/app/outputs/flutter-apk/app-release.apk`, and launched `com.planflow.app/.MainActivity` on `192.168.0.102:5555`; PID/focus checks confirmed the release app is running.
 - Supabase automatic RLS patch remains blocked: CLI is logged in and can see project `xqvvfnvmytjlblcngipn`, but the repo is not linked and CLI v2.72.7 does not provide `db query`; `supabase/calendar_sync_patch.sql` still needs dashboard SQL Editor execution before Google Calendar/event-save E2E can be certified.
 - Full P0-6 E2E remains partially manual because email login, Google/Naver/Kakao console settings, Supabase SQL patch confirmation, and provider account consent must be completed on the device/dashboard before schedule save, calendar sync, backup, and notification receipt can be truthfully marked passed.
 
