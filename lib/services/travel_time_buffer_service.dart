@@ -84,6 +84,7 @@ class TravelTimeBufferService {
   Future<TravelTimeBufferEstimate> estimateWithGoogleMaps({
     required String origin,
     required String destination,
+    MapTravelMode mode = MapTravelMode.car,
     double? latitude,
     double? longitude,
     String? locationText,
@@ -109,7 +110,7 @@ class TravelTimeBufferService {
           <String, String>{
             'origins': normalizedOrigin,
             'destinations': normalizedDestination,
-            'mode': 'driving',
+            'mode': mode == MapTravelMode.transit ? 'transit' : 'driving',
             'units': 'metric',
             'key': _googleMapsApiKey,
           },
@@ -226,6 +227,19 @@ class TravelTimeBufferService {
     MapTravelMode mode = MapTravelMode.car,
     String? locationText,
   }) async {
+    final googleEstimate = await estimateWithGoogleMaps(
+      origin: '$originLat,$originLng',
+      destination: '$destinationLat,$destinationLng',
+      mode: mode,
+      latitude: destinationLat,
+      longitude: destinationLng,
+      locationText: locationText,
+    );
+
+    if (googleEstimate.source == TravelTimeBufferSource.googleMaps) {
+      return googleEstimate;
+    }
+
     final mapEstimate = await (_mapService ?? MapService()).getTravelMinutes(
       originLat: originLat,
       originLng: originLng,
@@ -258,6 +272,7 @@ class TravelTimeBufferService {
   Future<int> estimateMinutesWithGoogleMaps({
     required String origin,
     required String destination,
+    MapTravelMode mode = MapTravelMode.car,
     double? latitude,
     double? longitude,
     String? locationText,
@@ -265,6 +280,7 @@ class TravelTimeBufferService {
     return (await estimateWithGoogleMaps(
       origin: origin,
       destination: destination,
+      mode: mode,
       latitude: latitude,
       longitude: longitude,
       locationText: locationText,
@@ -275,6 +291,7 @@ class TravelTimeBufferService {
   Future<Duration> estimateBufferWithGoogleMaps({
     required String origin,
     required String destination,
+    MapTravelMode mode = MapTravelMode.car,
     double? latitude,
     double? longitude,
     String? locationText,
@@ -282,6 +299,7 @@ class TravelTimeBufferService {
     return (await estimateWithGoogleMaps(
       origin: origin,
       destination: destination,
+      mode: mode,
       latitude: latitude,
       longitude: longitude,
       locationText: locationText,

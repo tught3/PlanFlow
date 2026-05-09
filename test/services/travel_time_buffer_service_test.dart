@@ -61,9 +61,71 @@ void main() {
     expect(estimate.minutes, 32);
   });
 
-  test('TravelTimeBufferService uses map API estimates when coordinates exist',
+  test('TravelTimeBufferService sends transit mode to Google Maps', () async {
+    Uri? capturedUri;
+    final service = TravelTimeBufferService(
+      googleMapsApiKey: 'test-key',
+      httpClientFactory: () => MockClient((request) async {
+        capturedUri = request.url;
+        return http.Response(
+          '{"status":"OK","rows":[{"elements":[{"status":"OK","duration":{"value":1920}}]}]}',
+          200,
+        );
+      }),
+    );
+
+    final estimate = await service.estimateWithGoogleMaps(
+      origin: 'Home',
+      destination: 'Seoul Station',
+      mode: MapTravelMode.transit,
+    );
+
+    expect(capturedUri?.queryParameters['mode'], 'transit');
+    expect(estimate.source, TravelTimeBufferSource.googleMaps);
+    expect(estimate.minutes, 32);
+  });
+
+  test('TravelTimeBufferService prefers Google Maps before map APIs', () async {
+    final service = TravelTimeBufferService(
+      googleMapsApiKey: 'test-key',
+      httpClientFactory: () => MockClient((request) async {
+        return http.Response(
+          '{"status":"OK","rows":[{"elements":[{"status":"OK","duration":{"value":1920}}]}]}',
+          200,
+        );
+      }),
+      mapService: MapService(
+        tmapApiKey: 'tmap-key',
+        httpClientFactory: () => MockClient((request) async {
+          return http.Response(
+            '{"features":[{"properties":{"totalTime":9999}}]}',
+            200,
+          );
+        }),
+      ),
+    );
+
+    final estimate = await service.estimateWithMapApis(
+      originLat: 37.5665,
+      originLng: 126.978,
+      destinationLat: 37.4979,
+      destinationLng: 127.0276,
+    );
+
+    expect(estimate.source, TravelTimeBufferSource.googleMaps);
+    expect(estimate.minutes, 32);
+  });
+
+  test('TravelTimeBufferService falls back to map APIs when Google fails',
       () async {
     final service = TravelTimeBufferService(
+      googleMapsApiKey: 'test-key',
+      httpClientFactory: () => MockClient((request) async {
+        return http.Response(
+          '{"status":"ZERO_RESULTS"}',
+          200,
+        );
+      }),
       mapService: MapService(
         tmapApiKey: 'tmap-key',
         httpClientFactory: () => MockClient((request) async {
@@ -85,4 +147,42 @@ void main() {
     expect(estimate.source, TravelTimeBufferSource.tmap);
     expect(estimate.minutes, 35);
   });
+
+  test(
+      'TravelTimeBufferService falls back to deterministic estimate when Google and map APIs fail',
+      () async {
+    final service = TravelTimeBufferService(
+      googleMapsApiKey: 'test-key',
+      httpClientFactory: () => MockClient((request) async {
+        return http.Response(
+          '{"status":"ZERO_RESULTS"}',
+          200,
+        );
+      }),
+      mapService: _NullMapService(),
+    );
+
+    final estimate = await service.estimateWithMapApis(
+      originLat: 37.5665,
+      originLng: 126.978,
+      destinationLat: 37.4979,
+      destinationLng: 127.0276,
+    );
+
+    expect(estimate.source, TravelTimeBufferSource.coordinates);
+    expect(estimate.minutes, greaterThan(0));
+  });
+}
+
+class _NullMapService extends MapService {
+  @override
+  Future<MapTravelEstimate?> getTravelMinutes({
+    required double originLat,
+    required double originLng,
+    required double destinationLat,
+    required double destinationLng,
+    MapTravelMode mode = MapTravelMode.car,
+  }) async {
+    return null;
+  }
 }

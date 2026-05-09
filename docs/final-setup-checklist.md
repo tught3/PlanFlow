@@ -35,7 +35,7 @@
 - [x] 18. 이브닝/모닝 브리핑 scaffold
 - [x] 19. Google Calendar 연동 scaffold 및 env 연결
 - [x] 20. Naver Calendar 1차 보류 처리
-- [ ] 21. Google Maps 기반 이동시간 버퍼
+- [x] 21. Google Maps 기반 이동시간 버퍼
 - [x] 22. Android Home Widget 네이티브 기본 구성 및 Flutter service scaffold
 - [x] 23. `SettingsScreen`
 - [x] 24. `early_bird_emails` 기반 PRO 얼리버드 이메일 수집

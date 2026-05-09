@@ -510,3 +510,8 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Changed the Home-tab `모닝 브리핑 듣기` and `이브닝 브리핑 듣기` buttons from the lighter blue tone to a purple accent that matches the app's overall style better while keeping the same loading/disabled behavior.
 - Added left/right swipe navigation at the shell level so users can move between Home, Calendar, and Settings by swiping horizontally anywhere in the tab body; the bottom navigation remains in sync with the swipe state.
 - Verification: `dart format lib/screens/home/home_screen.dart lib/screens/shell_screen.dart`, `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER`, and `adb shell dumpsys window | findstr /i "mCurrentFocus mFocusedApp"` all passed.
+
+## 2026-05-09 Google Maps travel-time buffer checkpoint
+- Wired `TravelTimeBufferService.estimateWithMapApis()` to try Google Maps Distance Matrix first when `GOOGLE_MAPS_API_KEY` is present, then fall back to the existing Tmap/Naver route path, and finally keep the deterministic heuristic fallback.
+- Added regression coverage proving Google Maps precedence and fallback to the existing map API path when Google fails.
+- Verification: `dart format lib/services/travel_time_buffer_service.dart test/services/travel_time_buffer_service_test.dart`, `flutter analyze`, `flutter test test/services/travel_time_buffer_service_test.dart`, full `flutter test` (167 passed), and `flutter build apk --debug` all passed.
