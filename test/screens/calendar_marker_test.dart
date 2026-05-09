@@ -61,4 +61,22 @@ void main() {
     expect(markerColors[1], PlanFlowColors.active);
     expect(markerColors[2], PlanFlowColors.active);
   });
+
+  test('calendar marker groups UTC instants by local Korean day', () {
+    final markerColors = buildCalendarEventMarkerColorsByDay(
+      focusedMonth: DateTime(2026, 5),
+      events: <EventModel>[
+        EventModel(
+          id: 'naver-midnight',
+          userId: 'user',
+          title: '네이버 새벽 일정',
+          startAt: DateTime.utc(2026, 5, 4, 15, 30),
+          isCritical: true,
+        ),
+      ],
+    );
+
+    expect(markerColors[5], calendarCriticalEventMarkerColor);
+    expect(markerColors[4], isNull);
+  });
 }

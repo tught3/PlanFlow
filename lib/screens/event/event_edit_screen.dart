@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants.dart';
 import '../../core/event_metadata.dart';
 import '../../core/env.dart';
+import '../../core/local_time.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
@@ -92,8 +93,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _suppliesController = TextEditingController(
       text: event?.supplies.join(', ') ?? '',
     );
-    _startAt = event?.startAt ?? DateTime.now().add(const Duration(hours: 1));
-    _endAt = event?.endAt;
+    _startAt = event?.startAt?.toLocal() ??
+        DateTime.now().add(const Duration(hours: 1));
+    _endAt = event?.endAt?.toLocal();
     _locationLat = event?.locationLat;
     _locationLng = event?.locationLng;
     _critical = event?.isCritical ?? false;
@@ -196,12 +198,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         final original = _loadedEvent!;
         final originalStart = original.startAt;
         final isFirstOccurrence = originalStart == null ||
-            DateTime(
-                  originalStart.year,
-                  originalStart.month,
-                  originalStart.day,
-                ) ==
-                DateTime(_startAt.year, _startAt.month, _startAt.day);
+            planflowIsSameLocalDay(originalStart, _startAt);
         if (isFirstOccurrence) {
           savedEvent = await _repository.updateEvent(updatedEvent);
         } else {
@@ -382,8 +379,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _locationLng = event.locationLng;
         _memoController.text = event.memo ?? '';
         _suppliesController.text = event.supplies.join(', ');
-        _startAt = event.startAt ?? _startAt;
-        _endAt = event.endAt;
+        _startAt = event.startAt?.toLocal() ?? _startAt;
+        _endAt = event.endAt?.toLocal();
         _critical = event.isCritical;
         _recurrenceSelection =
             RecurrenceSelection.fromRRule(event.recurrenceRule);
@@ -587,10 +584,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     return events
         .where((event) {
           final startAt = event.startAt;
-          return startAt != null &&
-              startAt.year == now.year &&
-              startAt.month == now.month &&
-              startAt.day == now.day;
+          return startAt != null && planflowIsSameLocalDay(startAt, now);
         })
         .take(6)
         .map(_homeWidgetListEvent)
@@ -604,12 +598,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
     final counts = <int, int>{};
     for (final event in events) {
       final startAt = event.startAt;
-      if (startAt == null ||
-          startAt.year != now.year ||
-          startAt.month != now.month) {
+      final localStart = startAt?.toLocal();
+      if (localStart == null ||
+          localStart.year != now.year ||
+          localStart.month != now.month) {
         continue;
       }
-      counts[startAt.day] = (counts[startAt.day] ?? 0) + 1;
+      counts[localStart.day] = (counts[localStart.day] ?? 0) + 1;
     }
     return counts.entries
         .map(
@@ -631,10 +626,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       final day = weekStart.add(Duration(days: index));
       final dayEvents = events.where((event) {
         final startAt = event.startAt;
-        return startAt != null &&
-            startAt.year == day.year &&
-            startAt.month == day.month &&
-            startAt.day == day.day;
+        return startAt != null && planflowIsSameLocalDay(startAt, day);
       }).toList(growable: false);
       return HomeWidgetWeekDayData(
         date: day,

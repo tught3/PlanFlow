@@ -44,6 +44,23 @@ void main() {
       expect(invalidEnd, isEmpty);
     });
 
+    test('treats floating ICS times as Asia Seoul wall time', () {
+      final service = NaverIcsImportService(
+        eventRepository: _FakeEventRepository(),
+      );
+
+      final events = service.parseEvents(_sampleIcsWithDate(
+        uid: 'floating-ics',
+        startLine: 'DTSTART:20260505T003000',
+        endLine: 'DTEND:20260505T013000',
+      ));
+
+      expect(events, hasLength(1));
+      expect(events.single.startAt, DateTime.utc(2026, 5, 4, 15, 30));
+      expect(events.single.startAt.toLocal().day, 5);
+      expect(events.single.startAt.toLocal().hour, 0);
+    });
+
     test('imports ICS events and uses UID based stable external id', () async {
       final repository = _FakeEventRepository();
       final service = NaverIcsImportService(

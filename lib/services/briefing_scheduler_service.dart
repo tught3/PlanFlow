@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
+import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/models/user_settings_model.dart';
 import '../data/repositories/event_repository.dart';
@@ -345,9 +346,7 @@ class BriefingSchedulerService {
       if (startAt == null) {
         return false;
       }
-      return startAt.year == targetDate.year &&
-          startAt.month == targetDate.month &&
-          startAt.day == targetDate.day;
+      return planflowIsSameLocalDay(startAt, targetDate);
     }).toList(growable: false)
       ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
   }
@@ -356,7 +355,7 @@ class BriefingSchedulerService {
     return events.map((event) {
       final time = event.startAt == null
           ? '시간 미정'
-          : '${event.startAt!.hour.toString().padLeft(2, '0')}:${event.startAt!.minute.toString().padLeft(2, '0')}';
+          : '${event.startAt!.toLocal().hour.toString().padLeft(2, '0')}:${event.startAt!.toLocal().minute.toString().padLeft(2, '0')}';
       final location = event.location == null ? '' : ' (${event.location})';
       final critical = event.isCritical ? ' 중요' : '';
       final supplies =

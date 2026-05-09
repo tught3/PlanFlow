@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/local_time.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
@@ -238,9 +239,12 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
 
     return events.where((event) {
       final startAt = event.startAt;
-      return startAt != null &&
-          !startAt.isBefore(range.start) &&
-          startAt.isBefore(range.end);
+      if (startAt == null) {
+        return false;
+      }
+      final localStart = startAt.toLocal();
+      return !localStart.isBefore(range.start) &&
+          localStart.isBefore(range.end);
     }).toList(growable: false);
   }
 
@@ -333,7 +337,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         nullStartEvents.add(event);
         continue;
       }
-      final dayKey = DateTime(startAt.year, startAt.month, startAt.day);
+      final dayKey = planflowLocalDay(startAt);
       grouped.putIfAbsent(dayKey, () => <EventModel>[]).add(event);
     }
 
@@ -379,10 +383,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     if (value == null) {
       return '시간 미정';
     }
-    if (value.hour < 12) {
+    final local = value.toLocal();
+    if (local.hour < 12) {
       return '오전';
     }
-    if (value.hour < 18) {
+    if (local.hour < 18) {
       return '오후';
     }
     return '저녁';
@@ -1103,7 +1108,7 @@ class _QueryEventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final startAt = event.startAt;
+    final startAt = event.startAt?.toLocal();
     final timeStr = _formatTimeChip(startAt);
 
     return Card(
@@ -1422,7 +1427,7 @@ class _EventCandidateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final startAt = event.startAt;
+    final startAt = event.startAt?.toLocal();
 
     return Card(
       elevation: 0,

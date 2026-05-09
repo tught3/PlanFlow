@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants.dart';
 import '../../core/event_metadata.dart';
 import '../../core/env.dart';
+import '../../core/local_time.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
@@ -34,20 +35,20 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
   final monthStart = DateTime(focusedMonth.year, focusedMonth.month);
   final monthEnd = DateTime(focusedMonth.year, focusedMonth.month + 1);
   for (final event in events) {
-    final startAt = event.startAt;
-    if (startAt == null) {
+    final rawStartAt = event.startAt;
+    if (rawStartAt == null) {
       continue;
     }
-    final eventEnd = event.endAt ?? startAt;
+    final startAt = rawStartAt.toLocal();
+    final eventEnd = (event.endAt ?? rawStartAt).toLocal();
     if (!startAt.isBefore(monthEnd) || eventEnd.isBefore(monthStart)) {
       continue;
     }
-    final firstDay = startAt.isBefore(monthStart)
-        ? monthStart
-        : DateTime(startAt.year, startAt.month, startAt.day);
+    final firstDay =
+        startAt.isBefore(monthStart) ? monthStart : planflowLocalDay(startAt);
     final lastDay = !eventEnd.isBefore(monthEnd)
         ? monthEnd.subtract(const Duration(days: 1))
-        : DateTime(eventEnd.year, eventEnd.month, eventEnd.day);
+        : planflowLocalDay(eventEnd);
     for (var day = firstDay;
         !day.isAfter(lastDay);
         day = day.add(const Duration(days: 1))) {
@@ -235,9 +236,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         }
         final overrideStart = override.startAt;
         return overrideStart != null &&
-            overrideStart.year == startAt.year &&
-            overrideStart.month == startAt.month &&
-            overrideStart.day == startAt.day;
+            planflowIsSameLocalDay(overrideStart, startAt);
       });
       return !isOverridden;
     }).toList(growable: false);
@@ -251,8 +250,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
         continue;
       }
       final eventEnd = event.endAt ?? startAt;
-      final firstDay = DateTime(startAt.year, startAt.month, startAt.day);
-      final lastDay = DateTime(eventEnd.year, eventEnd.month, eventEnd.day);
+      final firstDay = planflowLocalDay(startAt);
+      final lastDay = planflowLocalDay(eventEnd);
       for (var day = firstDay;
           !day.isAfter(lastDay);
           day = day.add(const Duration(days: 1))) {
@@ -275,10 +274,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (startAt == null) {
       return false;
     }
-    final dayStart = DateTime(day.year, day.month, day.day);
-    final dayEnd = dayStart.add(const Duration(days: 1));
-    final eventEnd = event.endAt ?? startAt;
-    return startAt.isBefore(dayEnd) && !eventEnd.isBefore(dayStart);
+    return planflowEventIntersectsLocalDay(
+      startAt: startAt,
+      endAt: event.endAt,
+      day: day,
+    );
   }
 
   List<EventModel> _expandRecurringEvent(
@@ -303,6 +303,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       RegExp(r'UNTIL=([0-9TzZ]+)').firstMatch(rule)?.group(1),
     );
     final hardEnd = until?.isBefore(rangeEnd) == true ? until! : rangeEnd;
+    final localStartAt = startAt.toLocal();
     final duration = event.endAt?.difference(startAt);
     final occurrences = <EventModel>[];
 
@@ -310,13 +311,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final byDays = _parseRRuleByDays(rule);
       if (byDays.isNotEmpty) {
         var weekStart = DateTime(
-          startAt.year,
-          startAt.month,
-          startAt.day,
-          startAt.hour,
-          startAt.minute,
-          startAt.second,
-        ).subtract(Duration(days: startAt.weekday - DateTime.monday));
+          localStartAt.year,
+          localStartAt.month,
+          localStartAt.day,
+          localStartAt.hour,
+          localStartAt.minute,
+          localStartAt.second,
+        ).subtract(Duration(days: localStartAt.weekday - DateTime.monday));
         var safety = 0;
         while (weekStart.isBefore(hardEnd) && safety < 120) {
           safety += 1;
@@ -327,11 +328,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
               day.year,
               day.month,
               day.day,
-              startAt.hour,
-              startAt.minute,
-              startAt.second,
+              localStartAt.hour,
+              localStartAt.minute,
+              localStartAt.second,
             );
-            if (current.isBefore(startAt) || !current.isBefore(hardEnd)) {
+            if (current.isBefore(localStartAt) || !current.isBefore(hardEnd)) {
               continue;
             }
             final occurrenceEnd =
@@ -351,7 +352,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
     }
 
-    var current = startAt;
+    var current = localStartAt;
     var safety = 0;
     while (current.isBefore(hardEnd) && safety < 420) {
       safety += 1;
@@ -1457,13 +1458,15 @@ class _EventAgendaCard extends StatelessWidget {
     if (start == null) {
       return null;
     }
+    final localStart = start.toLocal();
     final startStr =
-        '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}';
+        '${localStart.hour.toString().padLeft(2, '0')}:${localStart.minute.toString().padLeft(2, '0')}';
     if (end == null) {
       return startStr;
     }
+    final localEnd = end.toLocal();
     final endStr =
-        '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}';
+        '${localEnd.hour.toString().padLeft(2, '0')}:${localEnd.minute.toString().padLeft(2, '0')}';
     return '$startStr - $endStr';
   }
 }

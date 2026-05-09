@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants.dart';
 import '../../core/event_metadata.dart';
 import '../../core/env.dart';
+import '../../core/local_time.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
@@ -949,10 +950,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     return events
         .where((event) {
           final startAt = event.startAt;
-          return startAt != null &&
-              startAt.year == now.year &&
-              startAt.month == now.month &&
-              startAt.day == now.day;
+          return startAt != null && planflowIsSameLocalDay(startAt, now);
         })
         .take(6)
         .map(_homeWidgetListEvent)
@@ -964,12 +962,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     final counts = <int, int>{};
     for (final event in events) {
       final startAt = event.startAt;
-      if (startAt == null ||
-          startAt.year != now.year ||
-          startAt.month != now.month) {
+      final localStart = startAt?.toLocal();
+      if (localStart == null ||
+          localStart.year != now.year ||
+          localStart.month != now.month) {
         continue;
       }
-      counts[startAt.day] = (counts[startAt.day] ?? 0) + 1;
+      counts[localStart.day] = (counts[localStart.day] ?? 0) + 1;
     }
     return counts.entries
         .map(
@@ -989,10 +988,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       final day = weekStart.add(Duration(days: index));
       final dayEvents = events.where((event) {
         final startAt = event.startAt;
-        return startAt != null &&
-            startAt.year == day.year &&
-            startAt.month == day.month &&
-            startAt.day == day.day;
+        return startAt != null && planflowIsSameLocalDay(startAt, day);
       }).toList(growable: false);
       return HomeWidgetWeekDayData(
         date: day,
@@ -1023,10 +1019,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       if (startAt == null) {
         return false;
       }
-      return startAt.year == now.year &&
-          startAt.month == now.month &&
-          startAt.day == now.day &&
-          !startAt.isBefore(now);
+      return planflowIsSameLocalDay(startAt, now) && !startAt.isBefore(now);
     }).toList(growable: false)
       ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
 

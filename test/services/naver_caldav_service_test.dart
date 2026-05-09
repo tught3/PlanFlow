@@ -361,6 +361,33 @@ END:VCALENDAR
     expect(event.endAt, DateTime.utc(2026, 5, 1, 6));
   });
 
+  test('parseIcal treats floating Naver times as Asia Seoul wall time', () {
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(responses: <int>[207]),
+      credentialStore: _FakeCredentialStore(),
+    );
+
+    final event = service.parseIcal(
+      '''
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:floating-1
+SUMMARY:Floating event
+DTSTART:20260505T003000
+DTEND:20260505T013000
+END:VEVENT
+END:VCALENDAR
+''',
+      etag: '"floating-etag"',
+      href: '/calendars/tught3/default/floating-1.ics',
+    );
+
+    expect(event, isNotNull);
+    expect(event!.startAt, DateTime.utc(2026, 5, 4, 15, 30));
+    expect(event.startAt.toLocal().day, 5);
+    expect(event.startAt.toLocal().hour, 0);
+  });
+
   test('parseIcal recovers Naver placeholder DTSTART from DTEND', () {
     final service = NaverCalDavService(
       httpClient: _FakePropfindClient(responses: <int>[207]),

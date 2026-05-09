@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/local_time.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
@@ -186,7 +187,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final startAt = event.startAt;
         return startAt != null &&
             !startAt.isBefore(now) &&
-            !_isSameDate(startAt, now);
+            !planflowIsSameLocalDay(startAt, now);
       }).toList(growable: false)
         ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
       final visibleEventIds = <String>{
@@ -549,12 +550,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  bool _isSameDate(DateTime first, DateTime second) {
-    return first.year == second.year &&
-        first.month == second.month &&
-        first.day == second.day;
-  }
-
   bool _isPastEvent(EventModel event, DateTime now) {
     final startAt = event.startAt;
     if (startAt == null) {
@@ -568,10 +563,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (startAt == null) {
       return false;
     }
-    final dayStart = DateTime(day.year, day.month, day.day);
-    final dayEnd = dayStart.add(const Duration(days: 1));
-    final endAt = event.endAt ?? startAt;
-    return startAt.isBefore(dayEnd) && !endAt.isBefore(dayStart);
+    return planflowEventIntersectsLocalDay(
+      startAt: startAt,
+      endAt: event.endAt,
+      day: day,
+    );
   }
 }
 
@@ -1027,7 +1023,7 @@ class _TodayEventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final startAt = event.startAt;
+    final startAt = event.startAt?.toLocal();
     final timeStr = startAt != null
         ? '${startAt.hour.toString().padLeft(2, '0')}:${startAt.minute.toString().padLeft(2, '0')}'
         : '';
@@ -1164,16 +1160,8 @@ class _TodayEventCard extends StatelessWidget {
       return null;
     }
     final now = DateTime.now();
-    final first = DateTime(
-      event.startAt!.year,
-      event.startAt!.month,
-      event.startAt!.day,
-    );
-    final last = DateTime(
-      event.endAt!.year,
-      event.endAt!.month,
-      event.endAt!.day,
-    );
+    final first = planflowLocalDay(event.startAt!);
+    final last = planflowLocalDay(event.endAt!);
     final today = DateTime(now.year, now.month, now.day);
     if (today.isBefore(first) || today.isAfter(last)) {
       return null;
@@ -1226,7 +1214,7 @@ class _UpcomingEventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final startAt = event.startAt;
+    final startAt = event.startAt?.toLocal();
     final dateLabel = startAt == null ? '시간 미정' : _formatDateTime(startAt);
 
     return Card(

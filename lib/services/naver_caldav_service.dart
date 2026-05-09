@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:xml/xml.dart';
 
+import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 
@@ -2126,15 +2127,9 @@ $timeRange      </c:comp-filter>
       );
       return _isSuspiciousImportedDate(parsed) ? null : parsed;
     }
-    final parsed = params.toUpperCase().contains('TZID=ASIA/SEOUL')
-        ? DateTime.utc(
-            localLike.year,
-            localLike.month,
-            localLike.day,
-            localLike.hour - 9,
-            localLike.minute,
-            localLike.second,
-          )
+    final parsed = params.toUpperCase().contains('TZID=ASIA/SEOUL') ||
+            params.trim().isEmpty
+        ? planflowSeoulDateTimeToUtc(localLike)
         : localLike.toUtc();
     return _isSuspiciousImportedDate(parsed) ? null : parsed;
   }

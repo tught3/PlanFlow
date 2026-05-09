@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'departure_alarm_service.dart';
@@ -108,9 +109,7 @@ class EventPreparationService {
       final candidateStart = candidate.startAt;
       return candidate.id != event.id &&
           candidateStart != null &&
-          candidateStart.year == startAt.year &&
-          candidateStart.month == startAt.month &&
-          candidateStart.day == startAt.day &&
+          planflowIsSameLocalDay(candidateStart, startAt) &&
           candidate.locationLat != null &&
           candidate.locationLng != null;
     }).toList(growable: false)

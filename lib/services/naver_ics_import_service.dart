@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:ical_parser/ical_parser.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 
@@ -425,6 +426,7 @@ DateTime? _parseIcsDateTime(String value, String key) {
   }
   final isUtc = match.group(7) == 'Z';
   final hasAsiaSeoulTz = key.toUpperCase().contains('TZID=ASIA/SEOUL');
+  final hasExplicitTz = key.contains(';');
   final parsed = isUtc
       ? DateTime.utc(
           localLike.year,
@@ -434,15 +436,8 @@ DateTime? _parseIcsDateTime(String value, String key) {
           localLike.minute,
           localLike.second,
         )
-      : hasAsiaSeoulTz
-          ? DateTime.utc(
-              localLike.year,
-              localLike.month,
-              localLike.day,
-              localLike.hour - 9,
-              localLike.minute,
-              localLike.second,
-            )
+      : hasAsiaSeoulTz || !hasExplicitTz
+          ? planflowSeoulDateTimeToUtc(localLike)
           : localLike.toUtc();
   return _isSuspiciousImportedDate(parsed) ? null : parsed;
 }

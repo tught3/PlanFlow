@@ -1,5 +1,11 @@
 # Active Summary
 
+## 2026-05-09 Naver calendar local-time normalization checkpoint
+- Fixed the Naver calendar time mismatch by keeping Supabase/API storage in UTC while converting event times to local time for Home, Calendar markers/agenda grouping, Event detail/edit widget data, voice action candidate timelines, briefing summaries, and event preparation same-day checks.
+- Added `lib/core/local_time.dart` for shared local-day comparison/intersection helpers and Seoul wall-time to UTC conversion, then used it in Naver CalDAV/ICS parsing so floating Naver times without explicit `TZID` are treated as `Asia/Seoul` instead of depending on the device timezone.
+- Added regression coverage for UTC Naver instants appearing on the correct Korean calendar day and for floating CalDAV/ICS times round-tripping as Seoul wall time.
+- Verification: project guard passed for `C:\PlanFlow`, `node scripts\gsd-context-hygiene.mjs` ran, `flutter analyze` passed, focused calendar/Naver CalDAV/ICS tests passed, full `flutter test` passed with 185 tests, `git diff --check` passed, `flutter build apk --debug` passed, `flutter build apk --release` passed, release APK installed on `192.168.0.102:5555`, PID `30009` was observed, and window focus showed `com.planflow.app/.MainActivity`.
+
 ## 2026-05-09 play-console-submission-draft checkpoint
 - Added `docs/play-console-submission.md` with Play Console-ready Korean store listing copy, internal testing release notes, app access notes, permission explanations, and Data safety answers aligned to the current PlanFlow data flows.
 - Linked the new submission draft from `docs/release-console-checklist.md` and marked the Play Console submission copy/Data safety/release note draft as prepared in `docs/final-setup-checklist.md`.
