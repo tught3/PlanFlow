@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
@@ -332,7 +333,37 @@ END:VCALENDAR
     expect(event!.isAllDay, isTrue);
     expect(event.title, '어린이날, 쉬는 날');
     expect(event.description, '메모\n두 번째 줄');
-    expect(event.startAt, DateTime.utc(2026, 5, 5));
+    expect(event.startAt, DateTime.utc(2026, 5, 4, 15));
+    expect(planflowLocal(event.startAt).day, 5);
+  });
+
+  test('parseIcal keeps all-day DTEND as exclusive Seoul midnight', () {
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(responses: <int>[207]),
+      credentialStore: _FakeCredentialStore(),
+    );
+
+    final event = service.parseIcal(
+      '''
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:all-day-exclusive
+SUMMARY:하루 종일
+DTSTART;VALUE=DATE:20260505
+DTEND;VALUE=DATE:20260506
+END:VEVENT
+END:VCALENDAR
+''',
+      etag: '"all-day-etag"',
+      href: '/calendars/tught3/default/all-day-exclusive.ics',
+    );
+
+    expect(event, isNotNull);
+    expect(event!.isAllDay, isTrue);
+    expect(event.startAt, DateTime.utc(2026, 5, 4, 15));
+    expect(event.endAt, DateTime.utc(2026, 5, 5, 15));
+    expect(planflowLocal(event.endAt!).day, 6);
+    expect(planflowLocal(event.endAt!).hour, 0);
   });
 
   test('parseIcal maps DTSTART to startAt and DTEND to endAt', () {
@@ -384,8 +415,8 @@ END:VCALENDAR
 
     expect(event, isNotNull);
     expect(event!.startAt, DateTime.utc(2026, 5, 4, 15, 30));
-    expect(event.startAt.toLocal().day, 5);
-    expect(event.startAt.toLocal().hour, 0);
+    expect(planflowLocal(event.startAt).day, 5);
+    expect(planflowLocal(event.startAt).hour, 0);
   });
 
   test('parseIcal recovers Naver placeholder DTSTART from DTEND', () {

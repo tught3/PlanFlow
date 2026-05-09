@@ -16,6 +16,8 @@ import java.util.Locale
 abstract class BasePlanFlowWidgetProvider(
     private val layoutId: Int,
 ) : HomeWidgetProvider() {
+    private val planFlowZone: ZoneId = ZoneId.of("Asia/Seoul")
+
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
@@ -58,7 +60,7 @@ abstract class BasePlanFlowWidgetProvider(
         }
 
         return try {
-            val dateTime = Instant.parse(raw).atZone(ZoneId.systemDefault())
+            val dateTime = Instant.parse(raw).atZone(planFlowZone)
             DateTimeFormatter.ofPattern("M/d HH:mm", Locale.KOREA).format(dateTime)
         } catch (_: Exception) {
             raw
@@ -71,7 +73,7 @@ abstract class BasePlanFlowWidgetProvider(
         }
 
         return try {
-            val dateTime = Instant.parse(raw).atZone(ZoneId.systemDefault())
+            val dateTime = Instant.parse(raw).atZone(planFlowZone)
             DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA).format(dateTime)
         } catch (_: Exception) {
             ""
@@ -84,7 +86,7 @@ abstract class BasePlanFlowWidgetProvider(
         }
 
         return try {
-            val dateTime = Instant.parse(raw).atZone(ZoneId.systemDefault())
+            val dateTime = Instant.parse(raw).atZone(planFlowZone)
             DateTimeFormatter.ofPattern("E M/d", Locale.KOREA).format(dateTime)
         } catch (_: Exception) {
             fallback

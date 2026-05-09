@@ -592,7 +592,7 @@ class NaverCalDavService {
     debugPrint(
       'Naver CalDAV 일정 조회 시작: path=$calendarPath, url=$endpoint, '
       'utc=${_formatCalDavUtc(startAt)}~${_formatCalDavUtc(endAt)}, '
-      'kst=${startAt.toLocal()}~${endAt.toLocal()}',
+      'kst=${planflowLocal(startAt)}~${planflowLocal(endAt)}',
     );
     final rangedEvents = await _queryEvents(
       endpoint: endpoint,
@@ -1933,7 +1933,7 @@ class NaverCalDavService {
   }
 
   String _formatLocalIcalDateTime(DateTime value) {
-    final local = value.toLocal();
+    final local = planflowLocal(value);
     return '${local.year.toString().padLeft(4, '0')}'
         '${local.month.toString().padLeft(2, '0')}'
         '${local.day.toString().padLeft(2, '0')}T'
@@ -2085,7 +2085,7 @@ $timeRange      </c:comp-filter>
           localLike.day != day) {
         return null;
       }
-      final parsed = DateTime.utc(year, month, day);
+      final parsed = planflowSeoulDateTimeToUtc(DateTime(year, month, day));
       return _isSuspiciousImportedDate(parsed) ? null : parsed;
     }
     final match = RegExp(r'^(\d{8})T(\d{6})(Z?)$').firstMatch(value);

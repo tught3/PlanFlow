@@ -292,7 +292,7 @@ class NaverIcsParsedEvent {
       return 'naver-ics:uid:$normalizedUid';
     }
     final key =
-        '${startAt.toLocal().toIso8601String().split("T").first}:${_normalizeTitle(title)}';
+        '${planflowLocal(startAt).toIso8601String().split("T").first}:${_normalizeTitle(title)}';
     final digest = sha1.convert(utf8.encode(key)).toString();
     return 'naver-ics:date-title:$digest';
   }
@@ -387,7 +387,7 @@ DateTime? _parseIcsDateTime(String value, String key) {
         localLike.day != day) {
       return null;
     }
-    final parsed = DateTime.utc(year, month, day);
+    final parsed = planflowSeoulDateTimeToUtc(DateTime(year, month, day));
     return _isSuspiciousImportedDate(parsed) ? null : parsed;
   }
 
@@ -462,8 +462,8 @@ String _normalizeTitle(String text) {
 }
 
 bool _sameLocalDay(DateTime a, DateTime b) {
-  final localA = a.toLocal();
-  final localB = b.toLocal();
+  final localA = planflowLocal(a);
+  final localB = planflowLocal(b);
   return localA.year == localB.year &&
       localA.month == localB.month &&
       localA.day == localB.day;

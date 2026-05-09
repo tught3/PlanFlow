@@ -1,7 +1,22 @@
-DateTime planflowLocal(DateTime value) => value.toLocal();
+const Duration planflowKstOffset = Duration(hours: 9);
+
+DateTime planflowLocal(DateTime value) {
+  final utc = value.toUtc();
+  final kst = utc.add(planflowKstOffset);
+  return DateTime(
+    kst.year,
+    kst.month,
+    kst.day,
+    kst.hour,
+    kst.minute,
+    kst.second,
+    kst.millisecond,
+    kst.microsecond,
+  );
+}
 
 DateTime planflowLocalDay(DateTime value) {
-  final local = value.toLocal();
+  final local = planflowLocal(value);
   return DateTime(local.year, local.month, local.day);
 }
 
@@ -23,9 +38,12 @@ bool planflowEventIntersectsLocalDay({
   }
   final dayStart = DateTime(day.year, day.month, day.day);
   final dayEnd = dayStart.add(const Duration(days: 1));
-  final localStart = startAt.toLocal();
-  final localEnd = (endAt ?? startAt).toLocal();
-  return localStart.isBefore(dayEnd) && !localEnd.isBefore(dayStart);
+  final localStart = planflowLocal(startAt);
+  final localEnd = planflowLocal(endAt ?? startAt);
+  if (localEnd.isAtSameMomentAs(localStart)) {
+    return !localStart.isBefore(dayStart) && localStart.isBefore(dayEnd);
+  }
+  return localStart.isBefore(dayEnd) && localEnd.isAfter(dayStart);
 }
 
 DateTime planflowSeoulDateTimeToUtc(DateTime seoulTime) {

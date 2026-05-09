@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/naver_ics_import_service.dart';
@@ -17,10 +18,10 @@ void main() {
       expect(events.single.title, '공임나라 방문');
       expect(events.single.location, '대전');
       expect(events.single.description, '엔진오일 교체');
-      expect(events.single.startAt.toLocal().year, 2026);
-      expect(events.single.startAt.toLocal().month, 5);
-      expect(events.single.startAt.toLocal().day, 6);
-      expect(events.single.startAt.toLocal().hour, 11);
+      expect(planflowLocal(events.single.startAt).year, 2026);
+      expect(planflowLocal(events.single.startAt).month, 5);
+      expect(planflowLocal(events.single.startAt).day, 6);
+      expect(planflowLocal(events.single.startAt).hour, 11);
     });
 
     test('skips suspicious or invalid ICS dates before import', () {
@@ -57,8 +58,8 @@ void main() {
 
       expect(events, hasLength(1));
       expect(events.single.startAt, DateTime.utc(2026, 5, 4, 15, 30));
-      expect(events.single.startAt.toLocal().day, 5);
-      expect(events.single.startAt.toLocal().hour, 0);
+      expect(planflowLocal(events.single.startAt).day, 5);
+      expect(planflowLocal(events.single.startAt).hour, 0);
     });
 
     test('imports ICS events and uses UID based stable external id', () async {

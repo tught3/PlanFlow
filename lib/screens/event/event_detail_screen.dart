@@ -339,7 +339,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final counts = <int, int>{};
     for (final event in events) {
       final startAt = event.startAt;
-      final localStart = startAt?.toLocal();
+      final localStart = startAt == null ? null : planflowLocal(startAt);
       if (localStart == null ||
           localStart.year != now.year ||
           localStart.month != now.month) {
@@ -567,7 +567,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     if (start == null) {
       return null;
     }
-    final localStart = start.toLocal();
+    final localStart = planflowLocal(start);
     final dateStr =
         '${localStart.year}-${localStart.month.toString().padLeft(2, '0')}-${localStart.day.toString().padLeft(2, '0')}';
     final startTimeStr =
@@ -575,19 +575,19 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     if (end == null) {
       return '$dateStr $startTimeStr';
     }
-    final localEnd = end.toLocal();
+    final localEnd = planflowLocal(end);
     final endTimeStr =
         '${localEnd.hour.toString().padLeft(2, '0')}:${localEnd.minute.toString().padLeft(2, '0')}';
     return '$dateStr $startTimeStr - $endTimeStr';
   }
 
   String _formatDate(DateTime value) {
-    final local = value.toLocal();
+    final local = planflowLocal(value);
     return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
   }
 
   String _formatDateTime(DateTime value) {
-    final local = value.toLocal();
+    final local = planflowLocal(value);
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
     return '${_formatDate(local)} $hour:$minute';

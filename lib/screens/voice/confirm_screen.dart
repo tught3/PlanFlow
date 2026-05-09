@@ -962,7 +962,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     final counts = <int, int>{};
     for (final event in events) {
       final startAt = event.startAt;
-      final localStart = startAt?.toLocal();
+      final localStart = startAt == null ? null : planflowLocal(startAt);
       if (localStart == null ||
           localStart.year != now.year ||
           localStart.month != now.month) {

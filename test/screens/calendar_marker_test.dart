@@ -79,4 +79,23 @@ void main() {
     expect(markerColors[5], calendarCriticalEventMarkerColor);
     expect(markerColors[4], isNull);
   });
+
+  test('calendar marker does not include exclusive all-day end date', () {
+    final markerColors = buildCalendarEventMarkerColorsByDay(
+      focusedMonth: DateTime(2026, 5),
+      events: <EventModel>[
+        EventModel(
+          id: 'all-day',
+          userId: 'user',
+          title: '어린이날',
+          startAt: DateTime.utc(2026, 5, 4, 15),
+          endAt: DateTime.utc(2026, 5, 5, 15),
+          isAllDay: true,
+        ),
+      ],
+    );
+
+    expect(markerColors[5], PlanFlowColors.active);
+    expect(markerColors[6], isNull);
+  });
 }

@@ -242,7 +242,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       if (startAt == null) {
         return false;
       }
-      final localStart = startAt.toLocal();
+      final localStart = planflowLocal(startAt);
       return !localStart.isBefore(range.start) &&
           localStart.isBefore(range.end);
     }).toList(growable: false);
@@ -383,7 +383,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     if (value == null) {
       return '시간 미정';
     }
-    final local = value.toLocal();
+    final local = planflowLocal(value);
     if (local.hour < 12) {
       return '오전';
     }
@@ -1108,7 +1108,8 @@ class _QueryEventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final startAt = event.startAt?.toLocal();
+    final startAt =
+        event.startAt == null ? null : planflowLocal(event.startAt!);
     final timeStr = _formatTimeChip(startAt);
 
     return Card(
@@ -1427,7 +1428,8 @@ class _EventCandidateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final startAt = event.startAt?.toLocal();
+    final startAt =
+        event.startAt == null ? null : planflowLocal(event.startAt!);
 
     return Card(
       elevation: 0,

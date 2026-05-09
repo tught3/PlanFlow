@@ -93,9 +93,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _suppliesController = TextEditingController(
       text: event?.supplies.join(', ') ?? '',
     );
-    _startAt = event?.startAt?.toLocal() ??
-        DateTime.now().add(const Duration(hours: 1));
-    _endAt = event?.endAt?.toLocal();
+    _startAt = event?.startAt == null
+        ? DateTime.now().add(const Duration(hours: 1))
+        : planflowLocal(event!.startAt!);
+    _endAt = event?.endAt == null ? null : planflowLocal(event!.endAt!);
     _locationLat = event?.locationLat;
     _locationLng = event?.locationLng;
     _critical = event?.isCritical ?? false;
@@ -379,8 +380,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _locationLng = event.locationLng;
         _memoController.text = event.memo ?? '';
         _suppliesController.text = event.supplies.join(', ');
-        _startAt = event.startAt?.toLocal() ?? _startAt;
-        _endAt = event.endAt?.toLocal();
+        _startAt =
+            event.startAt == null ? _startAt : planflowLocal(event.startAt!);
+        _endAt = event.endAt == null ? null : planflowLocal(event.endAt!);
         _critical = event.isCritical;
         _recurrenceSelection =
             RecurrenceSelection.fromRRule(event.recurrenceRule);
@@ -598,7 +600,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     final counts = <int, int>{};
     for (final event in events) {
       final startAt = event.startAt;
-      final localStart = startAt?.toLocal();
+      final localStart = startAt == null ? null : planflowLocal(startAt);
       if (localStart == null ||
           localStart.year != now.year ||
           localStart.month != now.month) {

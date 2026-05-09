@@ -39,8 +39,17 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
     if (rawStartAt == null) {
       continue;
     }
-    final startAt = rawStartAt.toLocal();
-    final eventEnd = (event.endAt ?? rawStartAt).toLocal();
+    final startAt = planflowLocal(rawStartAt);
+    final rawEndAt = event.endAt ?? rawStartAt;
+    var eventEnd = planflowLocal(rawEndAt);
+    if (rawEndAt != rawStartAt &&
+        eventEnd.hour == 0 &&
+        eventEnd.minute == 0 &&
+        eventEnd.second == 0 &&
+        eventEnd.millisecond == 0 &&
+        eventEnd.microsecond == 0) {
+      eventEnd = eventEnd.subtract(const Duration(microseconds: 1));
+    }
     if (!startAt.isBefore(monthEnd) || eventEnd.isBefore(monthStart)) {
       continue;
     }
@@ -303,7 +312,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       RegExp(r'UNTIL=([0-9TzZ]+)').firstMatch(rule)?.group(1),
     );
     final hardEnd = until?.isBefore(rangeEnd) == true ? until! : rangeEnd;
-    final localStartAt = startAt.toLocal();
+    final localStartAt = planflowLocal(startAt);
     final duration = event.endAt?.difference(startAt);
     final occurrences = <EventModel>[];
 
@@ -1287,16 +1296,8 @@ class _CalendarMiniEventLabel extends StatelessWidget {
       return (true, true);
     }
     final current = DateTime(day.year, day.month, day.day);
-    final first = DateTime(
-      event.startAt!.year,
-      event.startAt!.month,
-      event.startAt!.day,
-    );
-    final last = DateTime(
-      event.endAt!.year,
-      event.endAt!.month,
-      event.endAt!.day,
-    );
+    final first = planflowLocalDay(event.startAt!);
+    final last = planflowLocalDay(event.endAt!);
     return (
       current == first || current.weekday == DateTime.monday,
       current == last || current.weekday == DateTime.sunday
@@ -1458,13 +1459,13 @@ class _EventAgendaCard extends StatelessWidget {
     if (start == null) {
       return null;
     }
-    final localStart = start.toLocal();
+    final localStart = planflowLocal(start);
     final startStr =
         '${localStart.hour.toString().padLeft(2, '0')}:${localStart.minute.toString().padLeft(2, '0')}';
     if (end == null) {
       return startStr;
     }
-    final localEnd = end.toLocal();
+    final localEnd = planflowLocal(end);
     final endStr =
         '${localEnd.hour.toString().padLeft(2, '0')}:${localEnd.minute.toString().padLeft(2, '0')}';
     return '$startStr - $endStr';

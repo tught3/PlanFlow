@@ -1023,7 +1023,8 @@ class _TodayEventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final startAt = event.startAt?.toLocal();
+    final startAt =
+        event.startAt == null ? null : planflowLocal(event.startAt!);
     final timeStr = startAt != null
         ? '${startAt.hour.toString().padLeft(2, '0')}:${startAt.minute.toString().padLeft(2, '0')}'
         : '';
@@ -1214,7 +1215,8 @@ class _UpcomingEventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final startAt = event.startAt?.toLocal();
+    final startAt =
+        event.startAt == null ? null : planflowLocal(event.startAt!);
     final dateLabel = startAt == null ? '시간 미정' : _formatDateTime(startAt);
 
     return Card(

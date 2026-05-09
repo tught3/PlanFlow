@@ -603,3 +603,10 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Changed ConfirmScreen important alarm scheduling to use the saved `system_alarm` reminder payload as the single source for local critical alarm scheduling, and avoided Supabase settings lookup when Supabase is not initialized.
 - Added regression tests for briefing status persistence, departure status persistence, and the formerly fragile ConfirmScreen critical-alarm save path.
 - Verification: `flutter analyze`, targeted briefing/departure/confirm tests, full `flutter test` (180 passed), `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` all passed on `192.168.0.102:5555`.
+
+## 2026-05-09 Naver calendar timezone verification follow-up checkpoint
+- Ran a parallel verification pass for the Naver calendar time/date mismatch fix. One subagent inspected the wrong checkout and its findings were discarded; the valid PlanFlow verifier found remaining timezone and all-day boundary risks.
+- Hardened `planflowLocal()` to render fixed Asia/Seoul wall time instead of depending on device runtime timezone, and changed the Android home widget to format with `ZoneId.of("Asia/Seoul")`.
+- Fixed remaining display/import gaps: briefing fallback summaries, calendar multi-day segments, Naver CalDAV/ICS date-only parsing as Seoul midnight, Naver local export formatting, and exclusive all-day end-date marker handling.
+- Added regression tests for KST conversion, exclusive day intersection, all-day marker boundaries, and Naver CalDAV/ICS all-day date parsing.
+- Verification: project guard and `node scripts/gsd-context-hygiene.mjs` passed in `C:\PlanFlow`; `flutter analyze`, focused timezone/calendar/Naver/briefing tests, full `flutter test` (190 passed), `git diff --check`, `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, launch, pid, and focused-window checks all passed on `192.168.0.102:5555`.

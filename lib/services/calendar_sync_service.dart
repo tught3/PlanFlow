@@ -9,6 +9,7 @@ import 'package:googleapis_auth/googleapis_auth.dart' as gauth;
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/local_time.dart';
 import '../data/models/calendar_connection_model.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/calendar_connection_repository.dart';
@@ -1614,7 +1615,7 @@ class CalendarSyncService {
   }
 
   static String _formatNaverLocalDateTime(DateTime value) {
-    final local = value.toLocal();
+    final local = planflowLocal(value);
     return '${local.year.toString().padLeft(4, '0')}'
         '${local.month.toString().padLeft(2, '0')}'
         '${local.day.toString().padLeft(2, '0')}T'

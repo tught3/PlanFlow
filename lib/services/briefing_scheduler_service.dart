@@ -355,7 +355,7 @@ class BriefingSchedulerService {
     return events.map((event) {
       final time = event.startAt == null
           ? '시간 미정'
-          : '${event.startAt!.toLocal().hour.toString().padLeft(2, '0')}:${event.startAt!.toLocal().minute.toString().padLeft(2, '0')}';
+          : '${planflowLocal(event.startAt!).hour.toString().padLeft(2, '0')}:${planflowLocal(event.startAt!).minute.toString().padLeft(2, '0')}';
       final location = event.location == null ? '' : ' (${event.location})';
       final critical = event.isCritical ? ' 중요' : '';
       final supplies =
@@ -374,7 +374,7 @@ class BriefingSchedulerService {
     final highlights = events.take(3).map((event) {
       final time = event.startAt == null
           ? '시간 미정'
-          : '${event.startAt!.hour.toString().padLeft(2, '0')}:${event.startAt!.minute.toString().padLeft(2, '0')}';
+          : '${planflowLocal(event.startAt!).hour.toString().padLeft(2, '0')}:${planflowLocal(event.startAt!).minute.toString().padLeft(2, '0')}';
       final location = event.location == null ? '' : ' ${event.location}';
       final critical = event.isCritical ? ' 중요한 일정입니다' : '';
       return '$time ${event.title}$location$critical';
