@@ -1,5 +1,10 @@
 # Active Summary
 
+## 2026-05-09 launcher PNG icon fill-in checkpoint
+- Generated legacy PNG launcher icons for every Android density bucket under `android/app/src/main/res/mipmap-mdpi` through `mipmap-xxxhdpi`, creating both `ic_launcher.png` and `ic_launcher_round.png` so pre-API 26 launchers have proper bitmap assets again.
+- Kept the adaptive icon resources in `mipmap-anydpi` and `mipmap-anydpi-v26` intact, and added `android:roundIcon="@mipmap/ic_launcher_round"` to the manifest for compatibility.
+- Verification: `git diff --check`, `flutter build apk --debug`, and `adb shell am start -W -n com.planflow.app/.MainActivity` passed. `adb install -r build/app/outputs/flutter-apk/app-debug.apk` failed with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because the connected device already has a differently signed `com.planflow.app` installed.
+
 ## 2026-05-09 Naver calendar local-time normalization checkpoint
 - Fixed the Naver calendar time mismatch by keeping Supabase/API storage in UTC while converting event times to local time for Home, Calendar markers/agenda grouping, Event detail/edit widget data, voice action candidate timelines, briefing summaries, and event preparation same-day checks.
 - Added `lib/core/local_time.dart` for shared local-day comparison/intersection helpers and Seoul wall-time to UTC conversion, then used it in Naver CalDAV/ICS parsing so floating Naver times without explicit `TZID` are treated as `Asia/Seoul` instead of depending on the device timezone.
