@@ -20,6 +20,15 @@ abstract class EventRepository {
     return Future<EventModel?>.value(null);
   }
 
+  Future<List<EventModel>> findOverlappingEvents({
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+    String? userId,
+    String? excludedEventId,
+  }) async {
+    return <EventModel>[];
+  }
+
   Future<EventModel?> findEventByTitleAndStart({
     required String title,
     required DateTime startAt,
@@ -142,6 +151,43 @@ String _normalizeDuplicateTitle(String value) {
   return value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 }
 
+DateTime _eventEndForOverlap(EventModel event) {
+  final startAt = event.startAt;
+  if (startAt == null) {
+    return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  }
+
+  final endAt = event.endAt;
+  if (endAt != null && endAt.isAfter(startAt)) {
+    return endAt;
+  }
+
+  final fallbackDuration =
+      (event.isAllDay || event.isMultiDay)
+          ? const Duration(days: 1)
+          : const Duration(minutes: 30);
+  return startAt.add(fallbackDuration);
+}
+
+bool _rangesOverlap({
+  required DateTime rangeStart,
+  required DateTime rangeEnd,
+  required DateTime eventStart,
+  required DateTime eventEnd,
+}) {
+  final normalizedRangeStart = rangeStart.toUtc();
+  final normalizedRangeEnd = rangeEnd.toUtc();
+  final normalizedEventStart = eventStart.toUtc();
+  final normalizedEventEnd = eventEnd.toUtc();
+
+  if (normalizedRangeStart.isAtSameMomentAs(normalizedEventStart)) {
+    return true;
+  }
+
+  return normalizedEventStart.isBefore(normalizedRangeEnd) &&
+      normalizedRangeStart.isBefore(normalizedEventEnd);
+}
+
 class SupabaseEventRepository extends EventRepository {
   SupabaseEventRepository({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
@@ -204,6 +250,42 @@ class SupabaseEventRepository extends EventRepository {
       return null;
     }
     return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<List<EventModel>> findOverlappingEvents({
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+    String? userId,
+    String? excludedEventId,
+  }) async {
+    if (!rangeEnd.isAfter(rangeStart)) {
+      return <EventModel>[];
+    }
+
+    final resolvedUserId = _resolveUserId(userId);
+    final normalizedExcludedEventId = excludedEventId?.trim();
+    final events = await listEvents(userId: resolvedUserId);
+    return events.where((event) {
+      if (normalizedExcludedEventId != null &&
+          normalizedExcludedEventId.isNotEmpty &&
+          event.id == normalizedExcludedEventId) {
+        return false;
+      }
+
+      final eventStart = event.startAt;
+      if (eventStart == null) {
+        return false;
+      }
+
+      final eventEnd = _eventEndForOverlap(event);
+      return _rangesOverlap(
+        rangeStart: rangeStart,
+        rangeEnd: rangeEnd,
+        eventStart: eventStart,
+        eventEnd: eventEnd,
+      );
+    }).toList(growable: false);
   }
 
   @override

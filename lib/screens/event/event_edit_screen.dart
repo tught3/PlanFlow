@@ -82,6 +82,48 @@ class _EventEditScreenState extends State<EventEditScreen> {
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
 
+  DateTime _eventRangeEnd(DateTime startAt, DateTime? endAt) {
+    if (endAt != null && endAt.isAfter(startAt)) {
+      return endAt;
+    }
+    if (_isAllDay || _isMultiDay) {
+      return startAt.add(const Duration(days: 1));
+    }
+    return startAt.add(const Duration(minutes: 30));
+  }
+
+  Future<bool> _showOverlapWarning(List<EventModel> overlappingEvents) {
+    final count = overlappingEvents.length;
+    final message = count == 1
+        ? '기존 일정 1개와 시간이 겹칩니다.\n계속 저장할까요?'
+        : '기존 일정 $count개와 시간이 겹칩니다.\n계속 저장할까요?';
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('일정이 겹쳐요'),
+        content: Text(message),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+        actions: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('중단'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('계속 저장'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ).then((value) => value ?? false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -183,6 +225,23 @@ class _EventEditScreenState extends State<EventEditScreen> {
         createdAt: _loadedEvent?.createdAt,
         updatedAt: _loadedEvent?.updatedAt,
       );
+
+      final overlapStart = updatedEvent.startAt ?? _startAt;
+      final overlappingEvents = await _repository.findOverlappingEvents(
+        rangeStart: overlapStart,
+        rangeEnd: _eventRangeEnd(overlapStart, updatedEvent.endAt),
+        userId: user.id,
+        excludedEventId: _loadedEvent?.id ?? updatedEvent.id,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (overlappingEvents.isNotEmpty) {
+        final shouldContinue = await _showOverlapWarning(overlappingEvents);
+        if (!shouldContinue || !mounted) {
+          return;
+        }
+      }
 
       late final EventModel savedEvent;
       if (_isNewEvent) {
