@@ -143,4 +143,5 @@
 - [x] Android release APK build 통과
 - [x] Android release APK 실기기 설치/실행 확인
 - [x] 개인정보처리방침 URL HTTP 200 확인
+- [x] Play Console 제출 문구/Data safety/내부 테스트 릴리즈 노트 초안 준비
 - [x] 최신 1차 보강분 GitHub `main` push

@@ -55,3 +55,4 @@
 3. Internal testing 트랙에 `build/app/outputs/bundle/release/app-release.aab`를 업로드합니다.
 4. Data safety에는 이메일, 위치, 캘린더 이벤트 수집을 앱 기능 목적으로 표시합니다.
 5. 오디오 파일은 수집하지 않음으로 표시합니다.
+6. 스토어 설명, 데이터 보안, 릴리즈 노트는 `docs/play-console-submission.md` 초안을 기준으로 입력합니다.

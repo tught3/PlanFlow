@@ -1,5 +1,11 @@
 # Active Summary
 
+## 2026-05-09 play-console-submission-draft checkpoint
+- Added `docs/play-console-submission.md` with Play Console-ready Korean store listing copy, internal testing release notes, app access notes, permission explanations, and Data safety answers aligned to the current PlanFlow data flows.
+- Linked the new submission draft from `docs/release-console-checklist.md` and marked the Play Console submission copy/Data safety/release note draft as prepared in `docs/final-setup-checklist.md`.
+- Recovered network ADB at `192.168.0.102:5555`, installed the latest release APK, launched `com.planflow.app/.MainActivity`, observed PID `12417`, and confirmed `mFocusedApp` is PlanFlow. `mCurrentFocus` showed `NotificationShade`, meaning the notification shade is currently over the app.
+- Verification: project guard passed for `C:\PlanFlow`, `node scripts\gsd-context-hygiene.mjs` ran, `flutter analyze` passed, `git diff --check` passed, release APK install succeeded, and launch/focus checks passed.
+
 ## 2026-05-09 release-checklist-alignment checkpoint
 - Updated release readiness docs to match the current PlanFlow implementation instead of older scaffold-era assumptions: Naver Calendar is now a 1차 feature through CalDAV/direct sync and phone-calendar paths, provider-separated calendar sync status is present, departure alarm/runtime status is present, and the privacy policy URL is publicly reachable.
 - Refreshed the remaining 1차 verification checklist around Play Console account verification, Google/Naver/Kakao/OpenAI console setup, Supabase schema/RLS/RPC checks, release APK E2E, AAB upload, backup, briefing, departure alarm, and calendar sync.
