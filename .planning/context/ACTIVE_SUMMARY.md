@@ -1,5 +1,12 @@
 # Active Summary
 
+## 2026-05-09 release install verification checkpoint
+- Re-ran the 1차 배포 verification set after ADB came back online: `flutter analyze`, full `flutter test` (166 passed), `flutter build apk --debug`, `flutter build apk --release`, and `flutter build appbundle --release` all passed.
+- Re-verified `app-release.apk` metadata: package `com.planflow.app`, launch activity `com.planflow.app.MainActivity`, version `1.0.0` / code `1`, min SDK 24, target SDK 36, and release signature v2 with SHA1 `5A:94:6B:45:25:44:8B:89:B9:C0:13:69:E9:21:59:A4:B3:70:16:A7`.
+- Removed the old device package `com.example.planflow`, installed `build/app/outputs/flutter-apk/app-release.apk`, and launched `com.planflow.app/.MainActivity` on `192.168.0.102:5555`; PID/focus checks confirmed the release app is running and showing the clean-install permission onboarding screen.
+- Supabase automatic RLS patch remains blocked: CLI is logged in and can see project `xqvvfnvmytjlblcngipn`, but the repo is not linked and CLI v2.72.7 does not provide `db query`; `supabase/calendar_sync_patch.sql` still needs dashboard SQL Editor execution before Google Calendar/event-save E2E can be certified.
+- Full P0-6 E2E remains partially manual because email login, Google/Naver/Kakao console settings, Supabase SQL patch confirmation, and provider account consent must be completed on the device/dashboard before schedule save, calendar sync, backup, and notification receipt can be truthfully marked passed.
+
 ## 2026-05-09 1차 배포 준비 checkpoint
 - `CODEX_DEPLOY_PLAN.md` 기준으로 Android 패키지명을 `com.example.planflow`에서 `com.planflow.app`으로 변경하고 Kotlin 소스 경로를 `android/app/src/main/kotlin/com/planflow/app/`로 이동했다.
 - Release 서명 설정을 `android/app/build.gradle.kts`에 추가했고, 로컬 ignored 파일 `android/key.properties`와 `android/app/planflow-release.jks`를 생성했다. Release SHA1은 `5A:94:6B:45:25:44:8B:89:B9:C0:13:69:E9:21:59:A4:B3:70:16:A7`, SHA256은 `75:AB:45:C8:84:19:D9:72:F4:6F:34:1F:B2:97:60:CE:7C:14:FC:0B:A9:1D:BA:11:93:6C:02:DF:00:75:36:1E`.
