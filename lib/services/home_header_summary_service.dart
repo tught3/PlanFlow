@@ -198,7 +198,7 @@ class HomeHeaderSummaryService {
     final admin3 = _textValue(result['admin3']);
     final admin4 = _textValue(result['admin4']);
 
-    final province = _preferredArea(<String>[
+    final province = _normalizeKoreanRegionName(_preferredArea(<String>[
       admin1
     ], suffixes: const <String>[
       '특별시',
@@ -206,18 +206,19 @@ class HomeHeaderSummaryService {
       '특별자치시',
       '특별자치도',
       '도',
-    ]);
-    final municipality = _preferredArea(
+    ]));
+    final municipality = _normalizeKoreanRegionName(_preferredArea(
       <String>[city, admin2, name],
       suffixes: const <String>['시', '군'],
-    );
+    ));
     final district = _preferredArea(
       <String>[admin4, admin3, admin2, name],
       suffixes: const <String>['구'],
     );
 
     final pieces = <String>[];
-    for (final piece in <String?>[province, municipality, district]) {
+    final primaryArea = municipality ?? province;
+    for (final piece in <String?>[primaryArea, district]) {
       if (piece != null && !pieces.contains(piece)) {
         pieces.add(piece);
       }
@@ -238,6 +239,23 @@ class HomeHeaderSummaryService {
       }
     }
     return null;
+  }
+
+  String? _normalizeKoreanRegionName(String? value) {
+    if (value == null || value.isEmpty) {
+      return value;
+    }
+    const metropolitan = <String, String>{
+      '서울특별시': '서울시',
+      '부산광역시': '부산시',
+      '대구광역시': '대구시',
+      '인천광역시': '인천시',
+      '광주광역시': '광주시',
+      '대전광역시': '대전시',
+      '울산광역시': '울산시',
+      '세종특별자치시': '세종시',
+    };
+    return metropolitan[value] ?? value;
   }
 
   double? _numValue(Object? value) {

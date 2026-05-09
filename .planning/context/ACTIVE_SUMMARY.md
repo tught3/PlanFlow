@@ -1,5 +1,12 @@
 # Active Summary
 
+## 2026-05-09 pre-verification P0 guard/home-map checkpoint
+- Locked the PlanFlow project guard for this session: current path `C:\PlanFlow`, remote `https://github.com/tught3/PlanFlow.git`, and Flutter project markers `pubspec.yaml`, `PlanFlow_Codex_Prompt_v3.md`, `AGENTS.md` were verified before code work. `C:\AI-automatic-expense-tracker` is a separate FinFlow project and must not be used for PlanFlow work.
+- Home location labels no longer prefer broad province/metropolitan wording when a city-level label is available. Examples now resolve toward user-facing labels such as `서울시 강남구` and `성남시 분당구`, with no coordinate fallback.
+- The Home `일정보기` button was already absent in the current implementation, so no additional home navigation button removal was needed.
+- Location picker map failure states now show explicit API-key/package/auth guidance and expose `Google 지도`, `네이버 지도`, and `TMAP` external-map buttons in the blank-map fallback path.
+- Verification: targeted `home_header_summary_service_test`, `flutter analyze`, full `flutter test` (170 passed), `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, and `adb shell am start -W -n com.planflow.app/.MainActivity ...` all passed on `192.168.0.102:5555`.
+
 ## 2026-05-09 Play Console verification-page checklist checkpoint
 - Replaced the overbroad post-verification note with a page-only checklist in `docs/post-verification-next-steps.md` so the document now covers only the current Play Console developer-account verification screen: tap `세부정보 보기`, complete phone verification, and wait for Google review.
 - The broader external-console and app follow-up tasks remain in `docs/release-console-checklist.md`; this new note is intentionally narrow so the user can act on the current page without extra noise.

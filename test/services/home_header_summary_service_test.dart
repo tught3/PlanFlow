@@ -50,7 +50,7 @@ void main() {
     );
 
     expect(summary.isReady, isTrue);
-    expect(summary.locationLabel, '서울특별시 강남구');
+    expect(summary.locationLabel, '서울시 강남구');
     expect(summary.weatherLabel, contains('맑음'));
     expect(summary.detailLine, contains('체감'));
   });
@@ -86,6 +86,57 @@ void main() {
     expect(summary.locationLabel, isNot(contains('좌표')));
     expect(summary.locationLabel, isNot(contains('37.')));
     expect(summary.weatherLabel, contains('흐림'));
+  });
+
+  test('HomeHeaderSummaryService prefers city names over coordinates/province',
+      () async {
+    final service = HomeHeaderSummaryService(
+      httpClientFactory: () => MockClient((request) async {
+        if (request.url.host == 'geocoding-api.open-meteo.com') {
+          return http.Response(
+            '''
+            {
+              "results": [
+                {
+                  "name": "분당구",
+                  "city": "성남시",
+                  "admin1": "경기도",
+                  "admin2": "성남시",
+                  "admin3": "분당구",
+                  "country": "대한민국"
+                }
+              ]
+            }
+            ''',
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        return http.Response(
+          '''
+          {
+            "current": {
+              "temperature_2m": 12.0,
+              "apparent_temperature": 11.0,
+              "weather_code": 1,
+              "windspeed_10m": 1.0
+            }
+          }
+          ''',
+          200,
+        );
+      }),
+    );
+
+    final summary = await service.load(
+      location: const GeoPoint(latitude: 37.4, longitude: 127.1),
+    );
+
+    expect(summary.locationLabel, '성남시 분당구');
+    expect(summary.locationLabel, isNot(contains('경기도')));
+    expect(summary.locationLabel, isNot(contains('37.')));
   });
 
   test('HomeHeaderSummaryService falls back without location', () async {

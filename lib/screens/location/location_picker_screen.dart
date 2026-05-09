@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as google_maps;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/env.dart';
 import '../../core/theme.dart';
@@ -544,12 +545,20 @@ class _MapUnavailablePanel extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Text(
-          '네이버 지도 키가 없어 앱 안 지도를 열 수 없습니다.\n검색 후보를 선택하거나 외부 지도로 확인해 주세요.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              _missingMapMessage,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
+            ),
+            const SizedBox(height: 14),
+            _ExternalMapButtons(query: query),
+          ],
         ),
       ),
     );
@@ -641,9 +650,93 @@ class _MapLoadFallbackBanner extends StatelessWidget {
                 ),
               ),
             ],
+            const SizedBox(height: 10),
+            _ExternalMapButtons(query: query),
           ],
         ),
       ),
+    );
+  }
+}
+
+const String _missingMapMessage =
+    '앱 안 지도를 열 수 없습니다.\n지도 API 키, 패키지명 제한, 인증 상태를 확인해 주세요.';
+
+enum _ExternalMapTarget {
+  google('Google 지도'),
+  naver('네이버 지도'),
+  tmap('TMAP');
+
+  const _ExternalMapTarget(this.label);
+
+  final String label;
+
+  Uri uri(String query) {
+    final trimmed = query.trim();
+    final encoded = Uri.encodeComponent(trimmed);
+    return switch (this) {
+      _ExternalMapTarget.google => Uri.https(
+          'www.google.com',
+          '/maps/search/',
+          <String, String>{'api': '1', 'query': trimmed},
+        ),
+      _ExternalMapTarget.naver =>
+        Uri.parse('https://map.naver.com/p/search/$encoded'),
+      _ExternalMapTarget.tmap => Uri.parse('tmap://search?name=$encoded'),
+    };
+  }
+}
+
+class _ExternalMapButtons extends StatelessWidget {
+  const _ExternalMapButtons({required this.query});
+
+  final String query;
+
+  Future<void> _open(BuildContext context, _ExternalMapTarget target) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('외부 지도에서 검색할 장소명을 먼저 입력해 주세요.')),
+      );
+      return;
+    }
+    final opened = await launchUrl(
+      target.uri(trimmed),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('${target.label}를 열지 못했어요.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget button(_ExternalMapTarget target) {
+      return Expanded(
+        child: SizedBox(
+          height: 42,
+          child: FilledButton.tonalIcon(
+            onPressed: () => _open(context, target),
+            icon: const Icon(Icons.open_in_new, size: 16),
+            label: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(target.label),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        button(_ExternalMapTarget.google),
+        const SizedBox(width: 6),
+        button(_ExternalMapTarget.naver),
+        const SizedBox(width: 6),
+        button(_ExternalMapTarget.tmap),
+      ],
     );
   }
 }
