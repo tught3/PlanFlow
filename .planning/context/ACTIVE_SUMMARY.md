@@ -1,5 +1,11 @@
 # Active Summary
 
+## 2026-05-09 briefing-reschedule checkpoint
+- Fixed the scheduled briefing lifecycle so the background briefing alarm now shows the tap-to-play briefing notification and then immediately schedules the next morning/evening briefing, even if the user does not tap the notification right away.
+- Added `BriefingSchedulerService.rescheduleNextBriefing()` and made injected settings repositories usable without requiring global Supabase readiness, improving testability and keeping user-configured briefing times available in controlled flows.
+- Added regression tests for next morning/evening briefing rescheduling.
+- Verification: focused briefing/settings/GPT tests passed, `flutter analyze` passed, full `flutter test` passed with 175 tests, `flutter build apk --debug`, `flutter build apk --release`, release APK install, PID check, and focused-app check passed on `192.168.0.102:5555`.
+
 ## 2026-05-09 departure-critical-alarm checkpoint
 - Strengthened the killer departure reminder path: `DepartureAlarmService` now tries the exact/critical alarm channel first for `지금 출발해야 해요`, then falls back to a normal notification if Android critical-alarm permissions are blocked.
 - Added cancellation coverage for departure notifications by cancelling `$eventId:departure` together with push, critical, and smart-prep notifications.

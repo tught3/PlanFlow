@@ -127,7 +127,15 @@ Future<void> _briefingAlarmCallback(
     }
 
     final scheduler = BriefingSchedulerService();
-    await scheduler.showBriefingStartNotification(isMorning: isMorning);
+    final userId = params['user_id'] as String?;
+    try {
+      await scheduler.showBriefingStartNotification(isMorning: isMorning);
+    } finally {
+      await scheduler.rescheduleNextBriefing(
+        isMorning: isMorning,
+        userId: userId,
+      );
+    }
   } catch (_) {
     // Background isolate must never crash
   }

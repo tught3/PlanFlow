@@ -255,6 +255,13 @@ class BriefingSchedulerService {
     );
   }
 
+  Future<bool> rescheduleNextBriefing({
+    required bool isMorning,
+    String? userId,
+  }) {
+    return _rescheduleForTomorrow(isMorning: isMorning, userId: userId);
+  }
+
   Future<List<EventModel>> _fetchRelevantEvents({
     required String userId,
     required bool isMorning,
@@ -381,7 +388,7 @@ class BriefingSchedulerService {
     }
   }
 
-  Future<void> _rescheduleForTomorrow({
+  Future<bool> _rescheduleForTomorrow({
     required bool isMorning,
     String? userId,
   }) async {
@@ -391,23 +398,26 @@ class BriefingSchedulerService {
         isMorning ? settings.morningBriefingAt : settings.eveningBriefingAt;
 
     if (isMorning) {
-      await _alarmService.scheduleMorningBriefing(
+      return _alarmService.scheduleMorningBriefing(
         id: _morningAlarmId,
         scheduledAt: _nextOccurrence(nextTime),
         userId: resolvedUserId,
       );
-    } else {
-      await _alarmService.scheduleEveningBriefing(
-        id: _eveningAlarmId,
-        scheduledAt: _nextOccurrence(nextTime),
-        userId: resolvedUserId,
-      );
     }
+    return _alarmService.scheduleEveningBriefing(
+      id: _eveningAlarmId,
+      scheduledAt: _nextOccurrence(nextTime),
+      userId: resolvedUserId,
+    );
   }
 
   Future<UserSettingsModel> _loadSettings(String? userId) async {
-    if (userId == null || !AppEnv.isSupabaseReady) {
+    if (userId == null) {
       return UserSettingsModel.defaults(userId: userId ?? '');
+    }
+
+    if (_settingsRepository == null && !AppEnv.isSupabaseReady) {
+      return UserSettingsModel.defaults(userId: userId);
     }
 
     try {
