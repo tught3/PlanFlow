@@ -91,13 +91,29 @@ class DepartureAlarmService {
       );
     }
 
-    await _notifications.scheduleEventReminder(
-      id: _notifications.notificationIdFor('${event.id}:departure'),
-      title: '지금 출발 준비',
-      body: _bodyFor(event, estimate.minutes),
-      notifyAt: notifyAt,
-      payload: 'departure:${event.id}',
+    final notificationId = _notifications.notificationIdFor(
+      '${event.id}:departure',
     );
+    final body = _bodyFor(event, estimate.minutes);
+    final criticalResult = await _notifications.scheduleCriticalAlarmWithResult(
+      id: notificationId,
+      title: '지금 출발해야 해요',
+      body: body,
+      notifyAt: notifyAt,
+    );
+    if (!criticalResult.isScheduled) {
+      debugPrint(
+        'Departure alarm critical channel fallback: '
+        '${criticalResult.status.name} ${criticalResult.message ?? ''}',
+      );
+      await _notifications.scheduleEventReminder(
+        id: notificationId,
+        title: '지금 출발해야 해요',
+        body: body,
+        notifyAt: notifyAt,
+        payload: 'departure:${event.id}',
+      );
+    }
 
     if (rescheduleMonitor) {
       unawaited(scheduleNextMonitor());

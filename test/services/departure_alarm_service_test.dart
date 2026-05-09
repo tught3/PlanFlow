@@ -41,10 +41,10 @@ void main() {
     expect(result.isScheduled, isTrue);
     expect(result.travelMinutes, 90);
     expect(result.notifyAt, DateTime(2026, 5, 8, 10));
-    expect(notifications.titles.single, '지금 출발 준비');
-    expect(notifications.bodies.single, contains('대전 성심당'));
-    expect(notifications.bodies.single, contains('90분'));
-    expect(notifications.payloads.single, 'departure:event-1');
+    expect(notifications.criticalTitles.single, '지금 출발해야 해요');
+    expect(notifications.criticalBodies.single, contains('대전 성심당'));
+    expect(notifications.criticalBodies.single, contains('90분'));
+    expect(notifications.payloads, isEmpty);
   });
 
   test('skips events without geocoded destination', () async {
@@ -69,6 +69,43 @@ void main() {
     expect(result.isScheduled, isFalse);
     expect(result.skippedReason, 'missing_destination');
   });
+
+  test('falls back to normal notification when critical channel is blocked',
+      () async {
+    final now = DateTime(2026, 5, 8, 9);
+    final notifications = _FakeNotificationService(blockCritical: true);
+    final service = DepartureAlarmService(
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127),
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 90),
+          source: TravelTimeBufferSource.tmap,
+          reason: 'test',
+        ),
+      ),
+      notificationService: notifications,
+      now: () => now,
+    );
+
+    final result = await service.scheduleForEvent(
+      EventModel(
+        id: 'event-1',
+        userId: 'user-1',
+        title: '성심당',
+        startAt: DateTime(2026, 5, 8, 12),
+        location: '대전 성심당',
+        locationLat: 36.327,
+        locationLng: 127.427,
+      ),
+      rescheduleMonitor: false,
+    );
+
+    expect(result.isScheduled, isTrue);
+    expect(notifications.criticalTitles.single, '지금 출발해야 해요');
+    expect(notifications.titles.single, '지금 출발해야 해요');
+    expect(notifications.payloads.single, 'departure:event-1');
+  });
 }
 
 class _FakeTravelTimeBufferService extends TravelTimeBufferService {
@@ -90,9 +127,14 @@ class _FakeTravelTimeBufferService extends TravelTimeBufferService {
 }
 
 class _FakeNotificationService extends NotificationService {
+  _FakeNotificationService({this.blockCritical = false});
+
+  final bool blockCritical;
   final titles = <String>[];
   final bodies = <String>[];
   final payloads = <String?>[];
+  final criticalTitles = <String>[];
+  final criticalBodies = <String?>[];
 
   @override
   Future<void> scheduleEventReminder({
@@ -105,5 +147,23 @@ class _FakeNotificationService extends NotificationService {
     titles.add(title);
     bodies.add(body);
     payloads.add(payload);
+  }
+
+  @override
+  Future<NotificationScheduleResult> scheduleCriticalAlarmWithResult({
+    required int id,
+    required String title,
+    required DateTime notifyAt,
+    String? body,
+  }) async {
+    criticalTitles.add(title);
+    criticalBodies.add(body);
+    return NotificationScheduleResult(
+      status: blockCritical
+          ? NotificationScheduleStatus.permissionBlocked
+          : NotificationScheduleStatus.scheduled,
+      notifyAt: notifyAt,
+      message: blockCritical ? 'blocked' : null,
+    );
   }
 }

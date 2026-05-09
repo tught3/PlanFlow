@@ -228,6 +228,7 @@ class NotificationService {
   Future<void> cancelEventNotifications(String eventId) async {
     await cancel(notificationIdFor('$eventId:push'));
     await cancel(notificationIdFor('$eventId:critical'));
+    await cancel(notificationIdFor('$eventId:departure'));
     await cancelSmartPreparationAlarms(eventId);
   }
 

@@ -882,8 +882,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   horizontal: 12,
                   vertical: 4,
                 ),
-                title: const Text('중요 일정'),
-                subtitle: const Text('긴급 알림을 함께 예약합니다.'),
+                title: const Text('강한 알림으로 예약'),
+                subtitle: const Text(
+                  '정확한 알람과 강한 진동/전체 화면 알림을 시도합니다. Android 무음·방해금지 설정은 기기 정책에 따라 직접 해제해야 할 수 있어요.',
+                ),
                 secondary: Icon(
                   _critical
                       ? Icons.priority_high_rounded

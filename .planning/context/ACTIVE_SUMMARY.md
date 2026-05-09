@@ -1,5 +1,11 @@
 # Active Summary
 
+## 2026-05-09 departure-critical-alarm checkpoint
+- Strengthened the killer departure reminder path: `DepartureAlarmService` now tries the exact/critical alarm channel first for `지금 출발해야 해요`, then falls back to a normal notification if Android critical-alarm permissions are blocked.
+- Added cancellation coverage for departure notifications by cancelling `$eventId:departure` together with push, critical, and smart-prep notifications.
+- Clarified the user-facing critical toggle wording on voice confirmation and manual event edit screens: the app attempts exact alarm, strong vibration, and full-screen notification, while Android silent/DND behavior may still require system settings.
+- Verification: focused departure/confirm/manual-side-effect tests passed, `flutter analyze` passed, full `flutter test` passed with 173 tests, `flutter build apk --debug`, `flutter build apk --release`, release APK install, PID check, and focused-app check passed on `192.168.0.102:5555`. `mCurrentFocus` showed another overlay app, but `mFocusedApp` was `com.planflow.app/.MainActivity`.
+
 ## 2026-05-09 smart-prep purpose clarification checkpoint
 - Reinforced smart preparation purpose handling so patient visits (`병문안`, `문병`) create the visit-specific `꽃이나 선물 챙기기` pre-action without adding medical or fasting alarms.
 - Updated the GPT parsing prompt/few-shot guidance to treat `병문안` as a visit context and keep medical/fasting preparation limited to explicit medical actions.
