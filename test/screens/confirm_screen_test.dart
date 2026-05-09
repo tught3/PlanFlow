@@ -61,7 +61,11 @@ void main() {
 
     await tester.ensureVisible(find.text('일정 저장'));
     await tester.tap(find.text('일정 저장'));
-    await tester.pumpAndSettle();
+    for (var i = 0;
+        i < 30 && notifications.criticalAlarmTitles.isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
 
     expect(repository.createdEvents, hasLength(1));
     expect(

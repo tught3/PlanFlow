@@ -582,6 +582,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       () => widget.backend.insertReminders(reminderPayloads),
       label: 'reminders',
     );
+    await _scheduleCriticalAlarmFromReminderPayloads(
+      event: event,
+      reminderPayloads: reminderPayloads,
+    );
     await _tryFollowUp(
       () async {
         final result = await const DepartureAlarmService().scheduleForEvent(
@@ -635,37 +639,47 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         label: 'local_event_reminder',
       );
     }
+  }
 
-    if (_isCritical && reminderOffset != null) {
-      final criticalAlarmNotifyAt = _resolveCriticalNotifyAt(
-        eventStartAt: eventStartAt,
-        offset: reminderOffset,
-      );
-      if (criticalAlarmNotifyAt == null) {
-        _hasFollowUpFailures = true;
-        debugPrint(
-          'ConfirmScreen critical alarm skipped because event is not future.',
-        );
-      } else {
-        await _tryFollowUp(
-          () async {
-            final result = await widget.notificationService
-                .scheduleCriticalAlarmWithResult(
-              id: widget.notificationService.notificationIdFor(
-                '${event.id}:critical',
-              ),
-              title: event.title,
-              notifyAt: criticalAlarmNotifyAt,
-              body: '중요 일정이 곧 시작됩니다.',
-            );
-            if (!result.isScheduled) {
-              throw StateError(result.message ?? '중요 알람 예약 실패');
-            }
-          },
-          label: 'critical_alarm',
-        );
-      }
+  Future<void> _scheduleCriticalAlarmFromReminderPayloads({
+    required EventModel event,
+    required List<Map<String, dynamic>> reminderPayloads,
+  }) async {
+    final payload = reminderPayloads
+        .where((row) => row['type'] == 'system_alarm')
+        .firstOrNull;
+    if (payload == null) {
+      return;
     }
+    final notifyAtValue = payload['notify_at'];
+    final notifyAt = notifyAtValue is DateTime
+        ? notifyAtValue
+        : DateTime.tryParse(notifyAtValue?.toString() ?? '');
+    if (notifyAt == null || !notifyAt.isAfter(DateTime.now())) {
+      _hasFollowUpFailures = true;
+      debugPrint(
+        'ConfirmScreen critical alarm skipped because notify_at is invalid.',
+      );
+      return;
+    }
+
+    await _tryFollowUp(
+      () async {
+        final result =
+            await widget.notificationService.scheduleCriticalAlarmWithResult(
+          id: widget.notificationService.notificationIdFor(
+            '${event.id}:critical',
+          ),
+          title: event.title,
+          notifyAt: notifyAt,
+          body: '중요 일정이 곧 시작됩니다.',
+        );
+        if (!result.isScheduled) {
+          throw StateError(result.message ?? '중요 알람 예약 실패');
+        }
+      },
+      label: 'critical_alarm',
+    );
   }
 
   Future<void> _tryFollowUp(
@@ -721,16 +735,18 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         SmartPreparationAlarmService.defaultPrepPreAlarmOffset;
     var departPreAlarmOffset =
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset;
-    try {
-      final settings =
-          await SettingsRepository.supabase().fetchSettings(userId);
-      prepTimeMin = settings?.prepTimeMin ?? prepTimeMin;
-      prepPreAlarmOffset = settings?.prepPreAlarmOffset ?? prepPreAlarmOffset;
-      departPreAlarmOffset =
-          settings?.departPreAlarmOffset ?? departPreAlarmOffset;
-    } catch (error, stackTrace) {
-      debugPrint('Smart prep settings fetch failed; using defaults: $error');
-      debugPrintStack(stackTrace: stackTrace);
+    if (AppEnv.isSupabaseReady) {
+      try {
+        final settings =
+            await SettingsRepository.supabase().fetchSettings(userId);
+        prepTimeMin = settings?.prepTimeMin ?? prepTimeMin;
+        prepPreAlarmOffset = settings?.prepPreAlarmOffset ?? prepPreAlarmOffset;
+        departPreAlarmOffset =
+            settings?.departPreAlarmOffset ?? departPreAlarmOffset;
+      } catch (error, stackTrace) {
+        debugPrint('Smart prep settings fetch failed; using defaults: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
     }
     final isFirstExternalEventOfDay = await _isFirstExternalEventOfDay(
       userId: userId,

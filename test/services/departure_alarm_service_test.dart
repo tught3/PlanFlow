@@ -5,8 +5,13 @@ import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/map_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:planflow/services/travel_time_buffer_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   test('schedules departure alarm from live route estimate plus safety margin',
       () async {
     final now = DateTime(2026, 5, 8, 9);
@@ -45,6 +50,13 @@ void main() {
     expect(notifications.criticalBodies.single, contains('대전 성심당'));
     expect(notifications.criticalBodies.single, contains('90분'));
     expect(notifications.payloads, isEmpty);
+
+    final status = await service.loadRuntimeStatus();
+    expect(status.lastEventId, 'event-1');
+    expect(status.lastEventTitle, '성심당');
+    expect(status.lastStatus, 'scheduled');
+    expect(status.lastNotifyAt, DateTime(2026, 5, 8, 10));
+    expect(status.lastTravelMinutes, 90);
   });
 
   test('skips events without geocoded destination', () async {
@@ -68,6 +80,12 @@ void main() {
 
     expect(result.isScheduled, isFalse);
     expect(result.skippedReason, 'missing_destination');
+
+    final status = await service.loadRuntimeStatus();
+    expect(status.lastEventId, 'event-1');
+    expect(status.lastStatus, 'skipped');
+    expect(status.lastSkippedReason, 'missing_destination');
+    expect(status.lastNotifyAt, isNull);
   });
 
   test('falls back to normal notification when critical channel is blocked',
@@ -105,6 +123,19 @@ void main() {
     expect(notifications.criticalTitles.single, '지금 출발해야 해요');
     expect(notifications.titles.single, '지금 출발해야 해요');
     expect(notifications.payloads.single, 'departure:event-1');
+  });
+
+  test('refreshUpcoming records signed-out monitor status', () async {
+    final service = DepartureAlarmService(
+      now: () => DateTime(2026, 5, 8, 9),
+    );
+
+    final result = await service.refreshUpcoming();
+
+    expect(result.skippedReason, 'signed_out');
+    final status = await service.loadRuntimeStatus();
+    expect(status.lastMonitorAt, DateTime(2026, 5, 8, 9));
+    expect(status.lastMonitorSkippedReason, 'signed_out');
   });
 }
 

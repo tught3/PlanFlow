@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
@@ -58,6 +59,30 @@ class BriefingExecutionResult {
   final String? failureReason;
 }
 
+class BriefingRuntimeStatus {
+  const BriefingRuntimeStatus({
+    this.nextMorningAt,
+    this.nextEveningAt,
+    this.morningScheduled,
+    this.eveningScheduled,
+    this.lastExecutedType,
+    this.lastExecutedAt,
+    this.lastExecutionDelivered,
+    this.lastExecutionMessage,
+    this.lastExecutionFailureReason,
+  });
+
+  final DateTime? nextMorningAt;
+  final DateTime? nextEveningAt;
+  final bool? morningScheduled;
+  final bool? eveningScheduled;
+  final String? lastExecutedType;
+  final DateTime? lastExecutedAt;
+  final bool? lastExecutionDelivered;
+  final String? lastExecutionMessage;
+  final String? lastExecutionFailureReason;
+}
+
 class BriefingSchedulerService {
   BriefingSchedulerService({
     AlarmService? alarmService,
@@ -79,6 +104,18 @@ class BriefingSchedulerService {
 
   static const String _morningAlarmId = 'briefing:morning';
   static const String _eveningAlarmId = 'briefing:evening';
+  static const String _nextMorningAtKey = 'briefing:next_morning_at';
+  static const String _nextEveningAtKey = 'briefing:next_evening_at';
+  static const String _morningScheduledKey = 'briefing:morning_scheduled';
+  static const String _eveningScheduledKey = 'briefing:evening_scheduled';
+  static const String _lastExecutedTypeKey = 'briefing:last_executed_type';
+  static const String _lastExecutedAtKey = 'briefing:last_executed_at';
+  static const String _lastExecutionDeliveredKey =
+      'briefing:last_execution_delivered';
+  static const String _lastExecutionMessageKey =
+      'briefing:last_execution_message';
+  static const String _lastExecutionFailureReasonKey =
+      'briefing:last_execution_failure_reason';
 
   Future<BriefingDailyScheduleResult> scheduleDaily({
     required String morningTime,
@@ -101,6 +138,13 @@ class BriefingSchedulerService {
       userId: resolvedUserId,
     );
 
+    await _recordScheduleStatus(
+      morningAt: morningAt,
+      morningScheduled: morningScheduled,
+      eveningAt: eveningAt,
+      eveningScheduled: eveningScheduled,
+    );
+
     return BriefingDailyScheduleResult(
       morning: BriefingScheduleEntry(
         scheduledAt: morningAt,
@@ -110,6 +154,22 @@ class BriefingSchedulerService {
         scheduledAt: eveningAt,
         scheduled: eveningScheduled,
       ),
+    );
+  }
+
+  Future<BriefingRuntimeStatus> loadRuntimeStatus() async {
+    final preferences = await SharedPreferences.getInstance();
+    return BriefingRuntimeStatus(
+      nextMorningAt: _parseDateTime(preferences.getString(_nextMorningAtKey)),
+      nextEveningAt: _parseDateTime(preferences.getString(_nextEveningAtKey)),
+      morningScheduled: preferences.getBool(_morningScheduledKey),
+      eveningScheduled: preferences.getBool(_eveningScheduledKey),
+      lastExecutedType: preferences.getString(_lastExecutedTypeKey),
+      lastExecutedAt: _parseDateTime(preferences.getString(_lastExecutedAtKey)),
+      lastExecutionDelivered: preferences.getBool(_lastExecutionDeliveredKey),
+      lastExecutionMessage: preferences.getString(_lastExecutionMessageKey),
+      lastExecutionFailureReason:
+          preferences.getString(_lastExecutionFailureReasonKey),
     );
   }
 
@@ -139,12 +199,14 @@ class BriefingSchedulerService {
           message,
           isMorning: isMorning,
         );
-        return const BriefingExecutionResult(
+        const result = BriefingExecutionResult(
           delivered: true,
           usedFallback: true,
           message: 'Supabase 설정이 없어 로컬 안내를 재생했습니다.',
           failureReason: 'supabase_missing',
         );
+        await _recordExecutionStatus(isMorning: isMorning, result: result);
+        return result;
       }
 
       if (resolvedUserId == null) {
@@ -153,12 +215,14 @@ class BriefingSchedulerService {
           message,
           isMorning: isMorning,
         );
-        return const BriefingExecutionResult(
+        const result = BriefingExecutionResult(
           delivered: true,
           usedFallback: true,
           message: '로그인이 필요하다는 안내를 재생했습니다.',
           failureReason: 'signed_out',
         );
+        await _recordExecutionStatus(isMorning: isMorning, result: result);
+        return result;
       }
 
       final events = await _fetchRelevantEvents(
@@ -174,13 +238,15 @@ class BriefingSchedulerService {
           message,
           isMorning: isMorning,
         );
-        return BriefingExecutionResult(
+        final result = BriefingExecutionResult(
           delivered: true,
           usedFallback: false,
           message: isMorning
               ? '오늘 일정이 없어 모닝 브리핑을 재생했습니다.'
               : '내일 일정이 없어 이브닝 브리핑을 재생했습니다.',
         );
+        await _recordExecutionStatus(isMorning: isMorning, result: result);
+        return result;
       }
 
       final eventSummary = _buildEventSummary(events);
@@ -208,7 +274,7 @@ class BriefingSchedulerService {
         );
       }
       await _deliverBriefing(briefingText, isMorning: isMorning);
-      return BriefingExecutionResult(
+      final result = BriefingExecutionResult(
         delivered: true,
         usedFallback: usedFallback,
         message: usedFallback
@@ -216,16 +282,20 @@ class BriefingSchedulerService {
             : (isMorning ? '모닝 브리핑을 재생했습니다.' : '이브닝 브리핑을 재생했습니다.'),
         failureReason: failureReason,
       );
+      await _recordExecutionStatus(isMorning: isMorning, result: result);
+      return result;
     } catch (error, stackTrace) {
       // Background alarm callbacks must never crash the isolate.
       debugPrint('Briefing execute failed: type=$type error=$error');
       debugPrintStack(stackTrace: stackTrace);
-      return BriefingExecutionResult(
+      const result = BriefingExecutionResult(
         delivered: false,
         usedFallback: false,
         message: '브리핑 실행에 실패했습니다. 로그인 상태와 일정 조회를 확인해 주세요.',
         failureReason: 'execute_failed',
       );
+      await _recordExecutionStatus(isMorning: isMorning, result: result);
+      return result;
     } finally {
       try {
         await _rescheduleForTomorrow(
@@ -397,18 +467,86 @@ class BriefingSchedulerService {
     final nextTime =
         isMorning ? settings.morningBriefingAt : settings.eveningBriefingAt;
 
+    final scheduledAt = _nextOccurrence(nextTime);
     if (isMorning) {
-      return _alarmService.scheduleMorningBriefing(
+      final scheduled = await _alarmService.scheduleMorningBriefing(
         id: _morningAlarmId,
-        scheduledAt: _nextOccurrence(nextTime),
+        scheduledAt: scheduledAt,
         userId: resolvedUserId,
       );
+      await _recordSingleScheduleStatus(
+        isMorning: true,
+        scheduledAt: scheduledAt,
+        scheduled: scheduled,
+      );
+      return scheduled;
     }
-    return _alarmService.scheduleEveningBriefing(
+    final scheduled = await _alarmService.scheduleEveningBriefing(
       id: _eveningAlarmId,
-      scheduledAt: _nextOccurrence(nextTime),
+      scheduledAt: scheduledAt,
       userId: resolvedUserId,
     );
+    await _recordSingleScheduleStatus(
+      isMorning: false,
+      scheduledAt: scheduledAt,
+      scheduled: scheduled,
+    );
+    return scheduled;
+  }
+
+  Future<void> _recordScheduleStatus({
+    required DateTime morningAt,
+    required bool morningScheduled,
+    required DateTime eveningAt,
+    required bool eveningScheduled,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_nextMorningAtKey, morningAt.toIso8601String());
+    await preferences.setBool(_morningScheduledKey, morningScheduled);
+    await preferences.setString(_nextEveningAtKey, eveningAt.toIso8601String());
+    await preferences.setBool(_eveningScheduledKey, eveningScheduled);
+  }
+
+  Future<void> _recordSingleScheduleStatus({
+    required bool isMorning,
+    required DateTime scheduledAt,
+    required bool scheduled,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      isMorning ? _nextMorningAtKey : _nextEveningAtKey,
+      scheduledAt.toIso8601String(),
+    );
+    await preferences.setBool(
+      isMorning ? _morningScheduledKey : _eveningScheduledKey,
+      scheduled,
+    );
+  }
+
+  Future<void> _recordExecutionStatus({
+    required bool isMorning,
+    required BriefingExecutionResult result,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _lastExecutedTypeKey,
+      isMorning ? 'morning' : 'evening',
+    );
+    await preferences.setString(
+      _lastExecutedAtKey,
+      DateTime.now().toIso8601String(),
+    );
+    await preferences.setBool(_lastExecutionDeliveredKey, result.delivered);
+    await preferences.setString(_lastExecutionMessageKey, result.message);
+    final failureReason = result.failureReason;
+    if (failureReason == null || failureReason.isEmpty) {
+      await preferences.remove(_lastExecutionFailureReasonKey);
+    } else {
+      await preferences.setString(
+        _lastExecutionFailureReasonKey,
+        failureReason,
+      );
+    }
   }
 
   Future<UserSettingsModel> _loadSettings(String? userId) async {
@@ -464,5 +602,12 @@ class BriefingSchedulerService {
   DateTime _tomorrow() {
     final now = DateTime.now();
     return DateTime(now.year, now.month, now.day + 1);
+  }
+
+  DateTime? _parseDateTime(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(value);
   }
 }

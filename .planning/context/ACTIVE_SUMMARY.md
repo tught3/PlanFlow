@@ -568,3 +568,10 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Wired `TravelTimeBufferService.estimateWithMapApis()` to try Google Maps Distance Matrix first when `GOOGLE_MAPS_API_KEY` is present, then fall back to the existing Tmap/Naver route path, and finally keep the deterministic heuristic fallback.
 - Added regression coverage proving Google Maps precedence and fallback to the existing map API path when Google fails.
 - Verification: `dart format lib/services/travel_time_buffer_service.dart test/services/travel_time_buffer_service_test.dart`, `flutter analyze`, `flutter test test/services/travel_time_buffer_service_test.dart`, full `flutter test` (167 passed), and `flutter build apk --debug` all passed.
+
+## 2026-05-09 briefing and departure alarm runtime status checkpoint
+- Added persisted runtime status for briefing scheduling/execution so Settings can show whether morning/evening alarms were actually scheduled, their next scheduled times, and the latest play result/failure reason.
+- Added persisted runtime status for departure alarms and the 30-minute monitor so Settings can show the most recent scheduled/skipped event, notify time, travel minutes, skip reason, monitor result, and next monitor registration state.
+- Changed ConfirmScreen important alarm scheduling to use the saved `system_alarm` reminder payload as the single source for local critical alarm scheduling, and avoided Supabase settings lookup when Supabase is not initialized.
+- Added regression tests for briefing status persistence, departure status persistence, and the formerly fragile ConfirmScreen critical-alarm save path.
+- Verification: `flutter analyze`, targeted briefing/departure/confirm tests, full `flutter test` (180 passed), `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` all passed on `192.168.0.102:5555`.

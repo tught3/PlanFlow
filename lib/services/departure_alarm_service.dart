@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
@@ -33,6 +34,25 @@ class DepartureAlarmService {
   static const Duration monitorInterval = Duration(minutes: 30);
   static const Duration monitorLookAhead = Duration(hours: 24);
   static const String _monitorAlarmId = 'departure_alarm:monitor';
+  static const String _lastEventIdKey = 'departure_alarm:last_event_id';
+  static const String _lastEventTitleKey = 'departure_alarm:last_event_title';
+  static const String _lastStatusKey = 'departure_alarm:last_status';
+  static const String _lastSkippedReasonKey =
+      'departure_alarm:last_skipped_reason';
+  static const String _lastCheckedAtKey = 'departure_alarm:last_checked_at';
+  static const String _lastNotifyAtKey = 'departure_alarm:last_notify_at';
+  static const String _lastTravelMinutesKey =
+      'departure_alarm:last_travel_minutes';
+  static const String _lastMonitorAtKey = 'departure_alarm:last_monitor_at';
+  static const String _nextMonitorAtKey = 'departure_alarm:next_monitor_at';
+  static const String _lastMonitorScheduledKey =
+      'departure_alarm:last_monitor_scheduled';
+  static const String _lastMonitorSkippedKey =
+      'departure_alarm:last_monitor_skipped';
+  static const String _lastMonitorSkippedReasonKey =
+      'departure_alarm:last_monitor_skipped_reason';
+  static const String _monitorScheduledKey =
+      'departure_alarm:monitor_scheduled';
 
   final AppPermissionService? _permissionService;
   final Future<GeoPoint?> Function()? _currentLocationProvider;
@@ -62,16 +82,25 @@ class DepartureAlarmService {
     final destinationLat = event.locationLat;
     final destinationLng = event.locationLng;
     if (startAt == null || !startAt.isAfter(_currentTime)) {
-      return const DepartureAlarmScheduleResult.skipped('past_or_no_time');
+      return _recordAndReturnScheduleResult(
+        event,
+        const DepartureAlarmScheduleResult.skipped('past_or_no_time'),
+      );
     }
     if (destinationLat == null || destinationLng == null) {
-      return const DepartureAlarmScheduleResult.skipped('missing_destination');
+      return _recordAndReturnScheduleResult(
+        event,
+        const DepartureAlarmScheduleResult.skipped('missing_destination'),
+      );
     }
 
     final origin = await (_currentLocationProvider?.call() ??
         _permissions.getCurrentLocation());
     if (origin == null) {
-      return const DepartureAlarmScheduleResult.skipped('missing_origin');
+      return _recordAndReturnScheduleResult(
+        event,
+        const DepartureAlarmScheduleResult.skipped('missing_origin'),
+      );
     }
 
     final estimate = await _travelTime.estimateWithMapApis(
@@ -85,9 +114,12 @@ class DepartureAlarmService {
     final departAt = startAt.subtract(estimate.buffer + safetyMargin);
     final notifyAt = _notifyAtFor(departAt);
     if (notifyAt == null) {
-      return DepartureAlarmScheduleResult.skipped(
-        'departure_time_passed',
-        travelMinutes: estimate.minutes,
+      return _recordAndReturnScheduleResult(
+        event,
+        DepartureAlarmScheduleResult.skipped(
+          'departure_time_passed',
+          travelMinutes: estimate.minutes,
+        ),
       );
     }
 
@@ -119,9 +151,12 @@ class DepartureAlarmService {
       unawaited(scheduleNextMonitor());
     }
 
-    return DepartureAlarmScheduleResult.scheduled(
-      notifyAt: notifyAt,
-      travelMinutes: estimate.minutes,
+    return _recordAndReturnScheduleResult(
+      event,
+      DepartureAlarmScheduleResult.scheduled(
+        notifyAt: notifyAt,
+        travelMinutes: estimate.minutes,
+      ),
     );
   }
 
@@ -130,10 +165,14 @@ class DepartureAlarmService {
   }) async {
     final resolvedUserId = userId ?? _currentSupabaseUserId();
     if (resolvedUserId == null || resolvedUserId.isEmpty) {
-      return const DepartureAlarmMonitorResult(skippedReason: 'signed_out');
+      const result = DepartureAlarmMonitorResult(skippedReason: 'signed_out');
+      await _recordMonitorStatus(result);
+      return result;
     }
     if (!AppEnv.isSupabaseReady) {
-      return const DepartureAlarmMonitorResult(skippedReason: 'supabase');
+      const result = DepartureAlarmMonitorResult(skippedReason: 'supabase');
+      await _recordMonitorStatus(result);
+      return result;
     }
 
     final now = _currentTime;
@@ -157,27 +196,54 @@ class DepartureAlarmService {
         skipped += 1;
       }
     }
-    return DepartureAlarmMonitorResult(
+    final result = DepartureAlarmMonitorResult(
       scheduled: scheduled,
       skipped: skipped,
     );
+    await _recordMonitorStatus(result);
+    return result;
   }
 
   Future<bool> scheduleNextMonitor() async {
+    final nextMonitorAt = _currentTime.add(monitorInterval);
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      await _recordNextMonitorStatus(nextMonitorAt, scheduled: false);
       return false;
     }
     final initialized = await AndroidAlarmManager.initialize();
     if (!initialized) {
+      await _recordNextMonitorStatus(nextMonitorAt, scheduled: false);
       return false;
     }
-    return AndroidAlarmManager.oneShotAt(
-      _currentTime.add(monitorInterval),
+    final scheduled = await AndroidAlarmManager.oneShotAt(
+      nextMonitorAt,
       _monitorAlarmId.hashCode & 0x7fffffff,
       _departureAlarmMonitorCallback,
       exact: false,
       allowWhileIdle: false,
       wakeup: false,
+    );
+    await _recordNextMonitorStatus(nextMonitorAt, scheduled: scheduled);
+    return scheduled;
+  }
+
+  Future<DepartureAlarmRuntimeStatus> loadRuntimeStatus() async {
+    final preferences = await SharedPreferences.getInstance();
+    return DepartureAlarmRuntimeStatus(
+      lastEventId: preferences.getString(_lastEventIdKey),
+      lastEventTitle: preferences.getString(_lastEventTitleKey),
+      lastStatus: preferences.getString(_lastStatusKey),
+      lastSkippedReason: preferences.getString(_lastSkippedReasonKey),
+      lastCheckedAt: _parseDateTime(preferences.getString(_lastCheckedAtKey)),
+      lastNotifyAt: _parseDateTime(preferences.getString(_lastNotifyAtKey)),
+      lastTravelMinutes: preferences.getInt(_lastTravelMinutesKey),
+      lastMonitorAt: _parseDateTime(preferences.getString(_lastMonitorAtKey)),
+      nextMonitorAt: _parseDateTime(preferences.getString(_nextMonitorAtKey)),
+      lastMonitorScheduled: preferences.getInt(_lastMonitorScheduledKey),
+      lastMonitorSkipped: preferences.getInt(_lastMonitorSkippedKey),
+      lastMonitorSkippedReason:
+          preferences.getString(_lastMonitorSkippedReasonKey),
+      monitorScheduled: preferences.getBool(_monitorScheduledKey),
     );
   }
 
@@ -221,6 +287,92 @@ class DepartureAlarmService {
       return null;
     }
   }
+
+  Future<DepartureAlarmScheduleResult> _recordAndReturnScheduleResult(
+    EventModel event,
+    DepartureAlarmScheduleResult result,
+  ) async {
+    await _recordScheduleStatus(event: event, result: result);
+    return result;
+  }
+
+  Future<void> _recordScheduleStatus({
+    required EventModel event,
+    required DepartureAlarmScheduleResult result,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_lastEventIdKey, event.id);
+    await preferences.setString(_lastEventTitleKey, event.title);
+    await preferences.setString(
+      _lastStatusKey,
+      result.isScheduled ? 'scheduled' : 'skipped',
+    );
+    await preferences.setString(
+      _lastCheckedAtKey,
+      _currentTime.toIso8601String(),
+    );
+
+    final skippedReason = result.skippedReason;
+    if (skippedReason == null || skippedReason.isEmpty) {
+      await preferences.remove(_lastSkippedReasonKey);
+    } else {
+      await preferences.setString(_lastSkippedReasonKey, skippedReason);
+    }
+
+    final notifyAt = result.notifyAt;
+    if (notifyAt == null) {
+      await preferences.remove(_lastNotifyAtKey);
+    } else {
+      await preferences.setString(_lastNotifyAtKey, notifyAt.toIso8601String());
+    }
+
+    final travelMinutes = result.travelMinutes;
+    if (travelMinutes == null) {
+      await preferences.remove(_lastTravelMinutesKey);
+    } else {
+      await preferences.setInt(_lastTravelMinutesKey, travelMinutes);
+    }
+  }
+
+  Future<void> _recordMonitorStatus(
+    DepartureAlarmMonitorResult result,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _lastMonitorAtKey,
+      _currentTime.toIso8601String(),
+    );
+    await preferences.setInt(_lastMonitorScheduledKey, result.scheduled);
+    await preferences.setInt(_lastMonitorSkippedKey, result.skipped);
+    final skippedReason = result.skippedReason;
+    if (skippedReason == null || skippedReason.isEmpty) {
+      await preferences.remove(_lastMonitorSkippedReasonKey);
+    } else {
+      await preferences.setString(
+        _lastMonitorSkippedReasonKey,
+        skippedReason,
+      );
+    }
+  }
+
+  Future<void> _recordNextMonitorStatus(
+    DateTime nextMonitorAt, {
+    required bool scheduled,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _nextMonitorAtKey,
+      nextMonitorAt.toIso8601String(),
+    );
+    await preferences.setBool(_monitorScheduledKey, scheduled);
+  }
+
+  DateTime? _parseDateTime(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(value);
+  }
 }
 
 class DepartureAlarmScheduleResult {
@@ -251,6 +403,38 @@ class DepartureAlarmMonitorResult {
   final int scheduled;
   final int skipped;
   final String? skippedReason;
+}
+
+class DepartureAlarmRuntimeStatus {
+  const DepartureAlarmRuntimeStatus({
+    this.lastEventId,
+    this.lastEventTitle,
+    this.lastStatus,
+    this.lastSkippedReason,
+    this.lastCheckedAt,
+    this.lastNotifyAt,
+    this.lastTravelMinutes,
+    this.lastMonitorAt,
+    this.nextMonitorAt,
+    this.lastMonitorScheduled,
+    this.lastMonitorSkipped,
+    this.lastMonitorSkippedReason,
+    this.monitorScheduled,
+  });
+
+  final String? lastEventId;
+  final String? lastEventTitle;
+  final String? lastStatus;
+  final String? lastSkippedReason;
+  final DateTime? lastCheckedAt;
+  final DateTime? lastNotifyAt;
+  final int? lastTravelMinutes;
+  final DateTime? lastMonitorAt;
+  final DateTime? nextMonitorAt;
+  final int? lastMonitorScheduled;
+  final int? lastMonitorSkipped;
+  final String? lastMonitorSkippedReason;
+  final bool? monitorScheduled;
 }
 
 @pragma('vm:entry-point')

@@ -3,8 +3,13 @@ import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/services/alarm_service.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   test('rescheduleNextBriefing schedules the next morning alarm', () async {
     final alarm = _FakeAlarmService();
     final service = BriefingSchedulerService(
@@ -28,6 +33,11 @@ void main() {
     expect(alarm.lastUserId, 'user-1');
     expect(alarm.lastScheduledAt?.hour, 6);
     expect(alarm.lastScheduledAt?.minute, 40);
+
+    final status = await service.loadRuntimeStatus();
+    expect(status.morningScheduled, isTrue);
+    expect(status.nextMorningAt?.hour, 6);
+    expect(status.nextMorningAt?.minute, 40);
   });
 
   test('rescheduleNextBriefing schedules the next evening alarm', () async {
@@ -53,6 +63,31 @@ void main() {
     expect(alarm.lastUserId, 'user-1');
     expect(alarm.lastScheduledAt?.hour, 20);
     expect(alarm.lastScheduledAt?.minute, 20);
+
+    final status = await service.loadRuntimeStatus();
+    expect(status.eveningScheduled, isTrue);
+    expect(status.nextEveningAt?.hour, 20);
+    expect(status.nextEveningAt?.minute, 20);
+  });
+
+  test('scheduleDaily records both briefing alarm states', () async {
+    final alarm = _FakeAlarmService();
+    final service = BriefingSchedulerService(alarmService: alarm);
+
+    final result = await service.scheduleDaily(
+      morningTime: '06:10',
+      eveningTime: '22:15',
+      userId: 'user-1',
+    );
+
+    expect(result.allScheduled, isTrue);
+    final status = await service.loadRuntimeStatus();
+    expect(status.morningScheduled, isTrue);
+    expect(status.eveningScheduled, isTrue);
+    expect(status.nextMorningAt?.hour, 6);
+    expect(status.nextMorningAt?.minute, 10);
+    expect(status.nextEveningAt?.hour, 22);
+    expect(status.nextEveningAt?.minute, 15);
   });
 }
 
