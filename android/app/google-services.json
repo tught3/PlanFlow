@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "375219078541",
+    "project_id": "planflow-27fd8",
+    "storage_bucket": "planflow-27fd8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:375219078541:android:ee3bace8a839c8b84729c4",
+        "android_client_info": {
+          "package_name": "com.planflow.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBoy__DA0zyMHEDLhBcqBRhNFX8MSGJPCY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

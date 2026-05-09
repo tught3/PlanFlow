@@ -1,637 +1,98 @@
-# Active Summary
-
-## 2026-05-09 launcher PNG icon fill-in checkpoint
-- Generated legacy PNG launcher icons for every Android density bucket under `android/app/src/main/res/mipmap-mdpi` through `mipmap-xxxhdpi`, creating both `ic_launcher.png` and `ic_launcher_round.png` so pre-API 26 launchers have proper bitmap assets again.
-- Kept the adaptive icon resources in `mipmap-anydpi` and `mipmap-anydpi-v26` intact, and added `android:roundIcon="@mipmap/ic_launcher_round"` to the manifest for compatibility.
-- Verification: `git diff --check`, `flutter build apk --debug`, and `adb shell am start -W -n com.planflow.app/.MainActivity` passed. `adb install -r build/app/outputs/flutter-apk/app-debug.apk` failed with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because the connected device already has a differently signed `com.planflow.app` installed.
-
-## 2026-05-09 Naver calendar local-time normalization checkpoint
-- Fixed the Naver calendar time mismatch by keeping Supabase/API storage in UTC while converting event times to local time for Home, Calendar markers/agenda grouping, Event detail/edit widget data, voice action candidate timelines, briefing summaries, and event preparation same-day checks.
-- Added `lib/core/local_time.dart` for shared local-day comparison/intersection helpers and Seoul wall-time to UTC conversion, then used it in Naver CalDAV/ICS parsing so floating Naver times without explicit `TZID` are treated as `Asia/Seoul` instead of depending on the device timezone.
-- Added regression coverage for UTC Naver instants appearing on the correct Korean calendar day and for floating CalDAV/ICS times round-tripping as Seoul wall time.
-- Verification: project guard passed for `C:\PlanFlow`, `node scripts\gsd-context-hygiene.mjs` ran, `flutter analyze` passed, focused calendar/Naver CalDAV/ICS tests passed, full `flutter test` passed with 185 tests, `git diff --check` passed, `flutter build apk --debug` passed, `flutter build apk --release` passed, release APK installed on `192.168.0.102:5555`, PID `30009` was observed, and window focus showed `com.planflow.app/.MainActivity`.
-
-## 2026-05-09 play-console-submission-draft checkpoint
-- Added `docs/play-console-submission.md` with Play Console-ready Korean store listing copy, internal testing release notes, app access notes, permission explanations, and Data safety answers aligned to the current PlanFlow data flows.
-- Linked the new submission draft from `docs/release-console-checklist.md` and marked the Play Console submission copy/Data safety/release note draft as prepared in `docs/final-setup-checklist.md`.
-- Recovered network ADB at `192.168.0.102:5555`, installed the latest release APK, launched `com.planflow.app/.MainActivity`, observed PID `12417`, and confirmed `mFocusedApp` is PlanFlow. `mCurrentFocus` showed `NotificationShade`, meaning the notification shade is currently over the app.
-- Verification: project guard passed for `C:\PlanFlow`, `node scripts\gsd-context-hygiene.mjs` ran, `flutter analyze` passed, `git diff --check` passed, release APK install succeeded, and launch/focus checks passed.
-
-## 2026-05-09 release-checklist-alignment checkpoint
-- Updated release readiness docs to match the current PlanFlow implementation instead of older scaffold-era assumptions: Naver Calendar is now a 1차 feature through CalDAV/direct sync and phone-calendar paths, provider-separated calendar sync status is present, departure alarm/runtime status is present, and the privacy policy URL is publicly reachable.
-- Refreshed the remaining 1차 verification checklist around Play Console account verification, Google/Naver/Kakao/OpenAI console setup, Supabase schema/RLS/RPC checks, release APK E2E, AAB upload, backup, briefing, departure alarm, and calendar sync.
-- Removed a stale `EventProvider` TODO because event loading is already repository-backed.
-- Verification: project guard passed for `C:\PlanFlow`, `node scripts\gsd-context-hygiene.mjs` ran, privacy policy URL returned HTTP 200, `flutter analyze` passed, focused provider/model/repository tests passed, full `flutter test` passed with 183 tests, `git diff --check` passed, `flutter build appbundle --release` passed, and `flutter build apk --release` passed. ADB install/run could not be completed in this pass because `192.168.0.102:5555` changed to `offline` and reconnect timed out.
-
-## 2026-05-09 launcher-icon-fallback checkpoint
-- Added default `mipmap-anydpi` launcher icon resources so `@mipmap/ic_launcher` and `@mipmap/ic_launcher_round` resolve outside the Android 8+ adaptive-icon resource bucket as well.
-- Verification: `flutter analyze` passed, `git diff --check` passed, `flutter build apk --release` passed, and `flutter build appbundle --release` passed. ADB currently lists no connected devices after the previous network ADB timeout, so install/run verification is pending device reconnect.
-
-## 2026-05-09 map-fallback-runtime-status-test checkpoint
-- Strengthened the location picker empty-map path so missing in-app map readiness now explains API key, package restriction, and authentication checks, keeps place candidates visible, and points users to Google Maps/Naver Map/TMAP external fallback instead of implying they can tap an unavailable in-app map.
-- Added widget coverage for the map-unavailable location picker state and for the Settings briefing/departure runtime status cards, so the user can verify whether briefing alarms, departure alarms, and monitor jobs were actually scheduled or skipped.
-- Rechecked calendar sync status handling and kept the existing provider-separated `completed`/`attention`/`skipped` model because Google, Naver direct sync, Naver CalDAV, and phone-calendar states are already shown separately in Settings.
-- Verification: project guard passed for `C:\PlanFlow`, `node scripts\gsd-context-hygiene.mjs` ran, focused settings/location-picker tests passed, `flutter analyze` passed, full `flutter test` passed with 183 tests, `git diff --check` passed, `flutter build apk --debug` passed, `flutter build apk --release` passed, release APK installed on `192.168.0.102:5555`, PID `10556` was observed, and window focus output included `com.planflow.app/.MainActivity`.
-
-## 2026-05-09 calendar-auto-sync-outcomes checkpoint
-- Refined `CalendarAutoSyncService` provider status recording so automatic sync now separates `connected`, `attention`, and `skipped` instead of treating missing Google/Naver/device-calendar setup as a successful sync.
-- Google/Naver signed-out or unconfigured states, missing Naver CalDAV credentials, and missing phone-calendar permission are now stored as skipped with Korean explanatory messages, while reauth/import failures remain attention states.
-- Updated the Settings auto-sync status row icon/color treatment for skipped providers and added focused service tests for skipped vs attention outcomes.
-- Verification: focused calendar auto-sync/settings tests passed, `flutter analyze` passed, full `flutter test` passed with 178 tests, `flutter build apk --debug`, `flutter build apk --release`, release APK install, PID check, and focus check passed on `192.168.0.102:5555`.
-
-## 2026-05-09 calendar-auto-sync-status checkpoint
-- Added a Settings calendar auto-sync status card that separates Google Calendar, Naver direct sync, Naver CalDAV, and phone internal calendar status instead of hiding them behind a single calendar section.
-- Exposed the last automatic sync reason/time and provider-level messages stored by `CalendarAutoSyncService`, so app-start/app-resume/event-save/daily sync failures can be explained as reauth, CalDAV credential, or device-calendar permission issues.
-- Added regression coverage for the separated calendar auto-sync status UI with mocked persisted provider state.
-- Verification: focused `settings_screen_test` passed, `flutter analyze` passed, full `flutter test` passed with 176 tests, `flutter build apk --debug`, `flutter build apk --release`, release APK install, PID check, and focus check passed on `192.168.0.102:5555`.
-
-## 2026-05-09 briefing-reschedule checkpoint
-- Fixed the scheduled briefing lifecycle so the background briefing alarm now shows the tap-to-play briefing notification and then immediately schedules the next morning/evening briefing, even if the user does not tap the notification right away.
-- Added `BriefingSchedulerService.rescheduleNextBriefing()` and made injected settings repositories usable without requiring global Supabase readiness, improving testability and keeping user-configured briefing times available in controlled flows.
-- Added regression tests for next morning/evening briefing rescheduling.
-- Verification: focused briefing/settings/GPT tests passed, `flutter analyze` passed, full `flutter test` passed with 175 tests, `flutter build apk --debug`, `flutter build apk --release`, release APK install, PID check, and focused-app check passed on `192.168.0.102:5555`.
-
-## 2026-05-09 departure-critical-alarm checkpoint
-- Strengthened the killer departure reminder path: `DepartureAlarmService` now tries the exact/critical alarm channel first for `지금 출발해야 해요`, then falls back to a normal notification if Android critical-alarm permissions are blocked.
-- Added cancellation coverage for departure notifications by cancelling `$eventId:departure` together with push, critical, and smart-prep notifications.
-- Clarified the user-facing critical toggle wording on voice confirmation and manual event edit screens: the app attempts exact alarm, strong vibration, and full-screen notification, while Android silent/DND behavior may still require system settings.
-- Verification: focused departure/confirm/manual-side-effect tests passed, `flutter analyze` passed, full `flutter test` passed with 173 tests, `flutter build apk --debug`, `flutter build apk --release`, release APK install, PID check, and focused-app check passed on `192.168.0.102:5555`. `mCurrentFocus` showed another overlay app, but `mFocusedApp` was `com.planflow.app/.MainActivity`.
-
-## 2026-05-09 smart-prep purpose clarification checkpoint
-- Reinforced smart preparation purpose handling so patient visits (`병문안`, `문병`) create the visit-specific `꽃이나 선물 챙기기` pre-action without adding medical or fasting alarms.
-- Updated the GPT parsing prompt/few-shot guidance to treat `병문안` as a visit context and keep medical/fasting preparation limited to explicit medical actions.
-- Added a ConfirmScreen purpose clarification card for ambiguous place-only inputs such as hospital/court/school when no action verb is present; selecting `진료/검사`, `업무/영업`, `병문안`, or `기타` applies the corresponding category/pre-action behavior.
-- Verification: focused confirm/GPT/smart-prep tests passed, `flutter analyze` passed, full `flutter test` passed with 172 tests, `flutter build apk --debug`, `flutter build apk --release`, release APK install, PID check, and focus check all passed on `192.168.0.102:5555`.
-
-## 2026-05-09 pre-verification P0 guard/home-map checkpoint
-- Locked the PlanFlow project guard for this session: current path `C:\PlanFlow`, remote `https://github.com/tught3/PlanFlow.git`, and Flutter project markers `pubspec.yaml`, `PlanFlow_Codex_Prompt_v3.md`, `AGENTS.md` were verified before code work. `C:\AI-automatic-expense-tracker` is a separate FinFlow project and must not be used for PlanFlow work.
-- Home location labels no longer prefer broad province/metropolitan wording when a city-level label is available. Examples now resolve toward user-facing labels such as `서울시 강남구` and `성남시 분당구`, with no coordinate fallback.
-- The Home `일정보기` button was already absent in the current implementation, so no additional home navigation button removal was needed.
-- Location picker map failure states now show explicit API-key/package/auth guidance and expose `Google 지도`, `네이버 지도`, and `TMAP` external-map buttons in the blank-map fallback path.
-- Verification: targeted `home_header_summary_service_test`, `flutter analyze`, full `flutter test` (170 passed), `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, and `adb shell am start -W -n com.planflow.app/.MainActivity ...` all passed on `192.168.0.102:5555`.
-
-## 2026-05-09 Play Console verification-page checklist checkpoint
-- Replaced the overbroad post-verification note with a page-only checklist in `docs/post-verification-next-steps.md` so the document now covers only the current Play Console developer-account verification screen: tap `세부정보 보기`, complete phone verification, and wait for Google review.
-- The broader external-console and app follow-up tasks remain in `docs/release-console-checklist.md`; this new note is intentionally narrow so the user can act on the current page without extra noise.
-
-## 2026-05-09 privacy policy hosting checkpoint
-- Added `docs/privacy-policy.html` as a Play Console-ready static privacy policy page and `docs/release-console-checklist.md` with the exact Google/Naver/Kakao/OpenAI/Play Console values needed for 1차 배포 setup.
-- Local verification confirmed the HTML contains the Korean `PlanFlow 개인정보처리방침` title and the release console checklist contains the target privacy URL `https://tught3.github.io/PlanFlow/privacy-policy.html`.
-- Pushed commit `544b495 Add Play privacy policy page`; public checks for GitHub Pages and raw GitHub both returned 404, so the repository is not publicly serving the file yet. GitHub Pages must be enabled from repo Settings > Pages with branch `main` and folder `/docs`, or the repo must be made public/Pages-capable before Play Console can accept the URL.
-
-## 2026-05-09 release install verification checkpoint
-- Re-ran the 1차 배포 verification set after pulling remote commit `b62590a` onto `main`: `flutter analyze`, full `flutter test` (169 passed), `flutter build apk --debug`, `flutter build apk --release`, and `flutter build appbundle --release` all passed.
-- Re-verified `app-release.apk` metadata: package `com.planflow.app`, launch activity `com.planflow.app.MainActivity`, version `1.0.0` / code `1`, min SDK 24, target SDK 36, and release signature v2 with SHA1 `5A:94:6B:45:25:44:8B:89:B9:C0:13:69:E9:21:59:A4:B3:70:16:A7`.
-- Removed the old device package `com.example.planflow`, installed the latest `build/app/outputs/flutter-apk/app-release.apk`, and launched `com.planflow.app/.MainActivity` on `192.168.0.102:5555`; PID/focus checks confirmed the release app is running.
-- Supabase automatic RLS patch remains blocked: CLI is logged in and can see project `xqvvfnvmytjlblcngipn`, but the repo is not linked and CLI v2.72.7 does not provide `db query`; `supabase/calendar_sync_patch.sql` still needs dashboard SQL Editor execution before Google Calendar/event-save E2E can be certified.
-- Full P0-6 E2E remains partially manual because email login, Google/Naver/Kakao console settings, Supabase SQL patch confirmation, and provider account consent must be completed on the device/dashboard before schedule save, calendar sync, backup, and notification receipt can be truthfully marked passed.
-
-## 2026-05-09 1차 배포 준비 checkpoint
-- `CODEX_DEPLOY_PLAN.md` 기준으로 Android 패키지명을 `com.example.planflow`에서 `com.planflow.app`으로 변경하고 Kotlin 소스 경로를 `android/app/src/main/kotlin/com/planflow/app/`로 이동했다.
-- Release 서명 설정을 `android/app/build.gradle.kts`에 추가했고, 로컬 ignored 파일 `android/key.properties`와 `android/app/planflow-release.jks`를 생성했다. Release SHA1은 `5A:94:6B:45:25:44:8B:89:B9:C0:13:69:E9:21:59:A4:B3:70:16:A7`, SHA256은 `75:AB:45:C8:84:19:D9:72:F4:6F:34:1F:B2:97:60:CE:7C:14:FC:0B:A9:1D:BA:11:93:6C:02:DF:00:75:36:1E`.
-- `pubspec.yaml` 버전을 `1.0.0+1`로 확정하고, 개인정보처리방침 초안을 `docs/privacy-policy.md`에 추가했다.
-- 검증: `C:\Users\Admin\flutter\bin\flutter.bat analyze`, 전체 `flutter test` 166개, `flutter build apk --debug`, `flutter build apk --release --no-pub`, `flutter build appbundle --release --no-pub` 통과. 산출물은 `build/app/outputs/flutter-apk/app-release.apk`와 `build/app/outputs/bundle/release/app-release.aab`.
-- Supabase CLI는 로그인되어 있지만 현재 프로젝트가 link되어 있지 않고 CLI v2.72.7에는 `db query`가 없어 `supabase/calendar_sync_patch.sql` 원격 자동 적용은 불가했다. Supabase SQL Editor에서 수동 적용 필요.
-- ADB에는 Android 기기가 연결되어 있지 않아 release APK 실기기 설치/실행과 P0-6 E2E 검증은 보류 상태다.
-- Updated `pubspec.yaml` to include the checklist 3 dependency set, using scaffold-compatible versions where needed.
-- Switched the app shell to `MaterialApp.router` with a minimal `go_router` configuration.
-- Wrapped app startup in `ProviderScope` and added optional Supabase initialization from `.env`.
-- Platform scaffold roots now exist for `android/`, `ios/`, `web/`, `windows/`, `macos/`, and `linux/`.
-- Validation: `flutter pub get` and `flutter analyze` both passed after enabling Windows developer mode for plugin symlinks.
-- Checklist 4 scaffold update: added minimal screen folders and placeholder widgets under `lib/screens/**`, while keeping the root compatibility files in place and updating the router for splash/login/home/calendar/voice/event/settings routes.
-- Validation: `C:\src\flutter\bin\flutter.bat analyze` now passes cleanly after updating the banner color token.
-- Checklist 8/9 service work: implemented on-device Korean STT in `lib/services/stt_service.dart`, OpenAI chat completions parsing/briefing generation in `lib/services/gpt_service.dart`, and added focused service tests under `test/services/gpt_service_test.dart`.
-- Validation: `C:\src\flutter\bin\flutter.bat analyze` passes and `C:\src\flutter\bin\flutter.bat test test/services/gpt_service_test.dart` passes.
-- Checklist 10 repository CRUD: implemented Supabase-backed event CRUD in `lib/data/repositories/event_repository.dart`, added typed JSON serialization to event/reminder/settings models, and added round-trip tests under `test/data/models`.
-- Validation: `C:\src\flutter\bin\flutter.bat analyze` passed and `C:\src\flutter\bin\flutter.bat test test/data/models` passed.
-- Checklist 14 calendar screen: replaced the placeholder with a useful Material 3 calendar stub in `lib/screens/calendar/calendar_screen.dart`, including a date header, upcoming agenda list, empty-state path, and voice input action.
-- Validation: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format lib\screens\calendar\calendar_screen.dart` and `C:\src\flutter\bin\flutter.bat analyze` both passed.
-- Checklist 15 event detail/edit screens: replaced placeholders with usable scaffold screens in `lib/screens/event/event_detail_screen.dart` and `lib/screens/event/event_edit_screen.dart`, including detail sections for title/time/location/memo/supplies/critical state plus edit action, and an edit form with a save placeholder that returns safely to detail.
-- Validation: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format lib\screens\event\event_detail_screen.dart lib\screens\event\event_edit_screen.dart` and `C:\src\flutter\bin\flutter.bat analyze` both passed.
-- Checklist 16 notification service: implemented `lib/services/notification_service.dart` with `flutter_local_notifications` initialization, normal event reminder scheduling, critical alarm scheduling, and timezone-safe `zonedSchedule` handling via `TZDateTime` in UTC.
-- Validation: `C:\src\flutter\bin\dart.bat format lib\services\notification_service.dart`, `C:\src\flutter\bin\flutter.bat pub get`, and `C:\src\flutter\bin\flutter.bat analyze` all passed.
-- Checklist 18 TTS + Android alarm briefing scaffold: implemented `lib/services/tts_service.dart` with `flutter_tts` playback and `lib/services/alarm_service.dart` with Android alarm initialization plus morning/evening briefing scheduling scaffolds.
-- Validation: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format lib\services\tts_service.dart lib\services\alarm_service.dart` and `C:\src\flutter\bin\flutter.bat analyze` both passed.
-- OAuth misconfig checkpoint: detected that the current working copy `.env` still contains placeholder Supabase values (`your-project.supabase.co`), which caused Google OAuth to open a dead Supabase host in Chrome. Added placeholder detection to `AppEnv` and made `main.dart` skip Supabase initialization when only scaffold values are present, so the login screen now shows a clear Korean config warning instead of launching a broken OAuth flow.
-- Checklist 17 pre-action notification calculation: added pure `notifyAt` calculation and JSON helpers to `lib/data/models/pre_action_model.dart`, plus focused tests in `test/data/models/pre_action_model_test.dart` covering calculation, explicit override, and round-trip serialization.
-- Validation: `C:\src\flutter\bin\dart.bat format lib\data\models\pre_action_model.dart test\data\models\pre_action_model_test.dart`, `C:\src\flutter\bin\flutter.bat analyze`, and `C:\src\flutter\bin\flutter.bat test test\data\models\pre_action_model_test.dart` all passed.
-- Checklist 21 travel-time buffer scaffold: added deterministic, compile-safe heuristics in `lib/services/travel_time_buffer_service.dart` for latitude/longitude or location text inputs, with focused tests covering coordinate precedence, text fallback, and default behavior.
-- Checklist 22 home widget scaffold: added a platform-aware `home_widget` wrapper in `lib/services/home_widget_service.dart` plus conditional platform adapters, and updated `pubspec.yaml` to `home_widget: ^0.9.1` because the older pinned version failed against the current Flutter SDK. Added tests for widget payload updates and unsupported-platform no-ops.
-- Validation: `C:\src\flutter\bin\dart-sdk\bin\dart.exe format lib\services\travel_time_buffer_service.dart lib\services\home_widget_platform.dart lib\services\home_widget_platform_stub.dart lib\services\home_widget_platform_io.dart lib\services\home_widget_service.dart test\services\travel_time_buffer_service_test.dart test\services\home_widget_service_test.dart`, `C:\src\flutter\bin\flutter.bat analyze`, and `C:\src\flutter\bin\flutter.bat test test\services` all passed. `flutter pub get` initially surfaced the Windows symlink warning, but the final analyzed/tested state is green.
-- Checklist 19/20 calendar sync scaffold: implemented `lib/services/calendar_sync_service.dart` with lazy Google Calendar status/sync scaffolds using `googleapis`, `googleapis_auth`, and `google_sign_in`, plus a Naver placeholder result path that returns `unsupported` instead of throwing.
-- Validation: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format lib\services\calendar_sync_service.dart test\services\calendar_sync_service_test.dart`, `C:\src\flutter\bin\flutter.bat analyze`, and `C:\src\flutter\bin\flutter.bat test test\services\calendar_sync_service_test.dart` all passed.
-- Checklist 23 settings screen: replaced the placeholder in `lib/screens/settings/settings_screen.dart` with a usable local-state settings UI for morning/evening briefing time, default reminder minutes, calendar sync status, and env/config status without exposing secrets.
-- Validation: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format lib\screens\settings\settings_screen.dart` and `C:\src\flutter\bin\flutter.bat analyze` both passed.
-- Checklist 24 PRO early bird email collection: added `public.early_bird_emails` with RPC-only public submission via `submit_early_bird_email`, a testable Supabase-backed early bird email repository/model, and a home-screen signup card with validation.
-- Validation: `C:\src\flutter\bin\flutter.bat analyze` passed and `C:\src\flutter\bin\flutter.bat test test\data\models\early_bird_email_model_test.dart test\data\repositories\early_bird_email_repository_test.dart test\screens\early_bird_signup_card_test.dart` passed.
-- v3 resync checkpoint: latest v3 introduces 2차 monetization/ads plan details; kept those as planning-only and did not implement 2차 code. Restored `supabase/schema.sql` as DB source of truth, refreshed package versions to current build-safe versions, and corrected 2차 privacy wording around optional GPT transmission.
-- 1차 flow checkpoint: strengthened `ConfirmScreen` to edit start/end time and save related Supabase records in v3 order (`events`, `pre_actions`, `reminders`, `location_history`, `voice_logs`) before scheduling local notifications. Updated GPT parser prompt/fallback to include ISO `start_at`/`end_at` and `pre_actions`.
-- Home/widget checkpoint: replaced hardcoded home sample cards with today's Supabase-backed event list and added Android home widget provider/layout/xml/manifest receiver for next-event display plus a voice-entry launch button.
-- Review fix checkpoint: wired real `NotificationService` into `ConfirmScreen`, update Home Widget data after event save, added `planflow://voice` Android intent-filter, and made follow-up record/notification failures non-destructive after the event row is saved.
-- Widget correctness checkpoint: after saving an event, the Home Widget now resolves the nearest remaining event for today instead of blindly showing the last saved event.
-- Style alignment checkpoint: applied `PlanFlow_Design_System.md` through shared `PlanFlowColors`/theme plus home, calendar, settings, voice, placeholder, and event detail/edit screens with steel-blue surfaces, low-elevation cards, 10px radii, faint borders, stateful schedule cards, briefing blocks, and FAB/button accents.
-- Auth checkpoint: replaced placeholder login with Supabase email login, signup, password-reset email flow, password update screen, Google/Kakao/custom Naver OAuth entry points, auth-state route guards, Android auth callback deep link, and public profile upsert handling.
-- Backup checkpoint: added user-scoped Supabase backup snapshots through `public.user_backups`, a transactional `restore_user_backup` RPC, settings-screen backup/restore controls, and a durable Korean setup checklist in `docs/supabase-auth-backup-setup.md`.
-- Korean UI checkpoint: user-facing tab labels, calendar/settings/voice/splash strings, and early-bird signup UX were localized to Korean. The home early-bird area is now a compact CTA card that opens an email modal, and docs clarify that current early-bird signup stores emails but does not send automatic mail yet.
-- STT/device checkpoint: Android home widget implementation is present through `PlanFlowHomeWidgetProvider`, widget XML/layout resources, manifest registration, and the `home_widget` service. Device checks confirmed `RECORD_AUDIO` is granted. Updated `SttService` so Korean speech input no longer forces offline-only recognition, preserves partial results, completes on `done`/`notListening`, handles permanent/no-match errors, and falls back when `ko_KR` is unavailable.
-- Auth UI checkpoint: login now presents email login/signup/password reset first, followed by branded Supabase OAuth buttons for Google, Kakao, and Naver using the expected white/yellow/green visual treatments while keeping the existing OAuth service calls.
-- Auth verification checkpoint: Supabase auth endpoints were tested with current env values. Email signup accepts real-domain test emails, login is blocked until email confirmation as configured, password recovery endpoint works but can hit Supabase email rate limits, and OAuth authorize endpoints redirect to Google/Kakao/Naver provider domains. Mobile builds now support `--dart-define` injection for public Supabase/auth values only, and OAuth launch uses an explicit Supabase authorize URL with a browser view instead of packaging `.env` into the APK.
-- Login banner polish checkpoint: softened the top login banner color, centered `PlanFlow` and `로그인`, and increased the header sizing so the hero area feels less heavy and a bit more prominent.
-- OAuth retry checkpoint: tightened mobile auth launch flow by removing the web-incompatible `dart:io` branch, sending Android OAuth launches through the external browser for Google/Kakao/Naver, and switching the Android activity to `singleTask` so the `planflow://auth-callback` deep link is less likely to be dropped on return. Validation now passes with `flutter analyze`, `flutter test`, and `flutter build apk --debug`.
-- Login recheck checkpoint: the APK was rebuilt with `SUPABASE_URL` and `SUPABASE_ANON_KEY` injected via `--dart-define`, which fixed the login screen’s false "Supabase env missing" state. After clearing app data and relaunching on-device, the full Korean login UI rendered correctly with email login plus Google/Kakao/Naver buttons visible and active. Google button launch was exercised on-device without any new Dart-side exceptions, but the provider account consent flow still needs a full manual completion step to prove final session establishment end-to-end.
-- Home header polish checkpoint: increased the home AppBar `PlanFlow` title size by about 20%, made it bolder, and switched it to a slightly stronger primary-blue tone for better visibility while keeping the existing layout intact. Validation: `C:\src\flutter\bin\flutter.bat analyze` passed.
-- Auth session durability checkpoint: login/profile sync no longer clears a signed-in user if `public.users` upsert fails. `signInWithEmail`, `signUpWithEmail`, and auth-state handling now treat profile sync as best-effort so Google/Kakao/Naver sessions can survive a temporary schema/RLS/network issue instead of bouncing back to the login screen. Validation: `C:\src\flutter\bin\flutter.bat analyze` and `C:\src\flutter\bin\flutter.bat test` both passed.
-- Env packaging checkpoint: added `.env` to Flutter assets so Supabase and social-login env values are bundled into installed builds instead of only existing in the project root. Validation: `C:\src\flutter\bin\flutter.bat analyze` and `C:\src\flutter\bin\flutter.bat test` passed; `C:\src\flutter\bin\flutter.bat build windows` is currently blocked by Windows Developer Mode/symlink support being disabled on this machine.
-- OAuth flow checkpoint: switched social login from manual `getOAuthSignInUrl` + `url_launcher` handling to Supabase's built-in `signInWithOAuth` flow so the SDK owns browser launch and callback handling. Validation: `C:\src\flutter\bin\flutter.bat analyze`, `C:\src\flutter\bin\flutter.bat test`, and `C:\src\flutter\bin\flutter.bat build apk --debug` all passed; the rebuilt APK was reinstalled and relaunched on the connected device.
-
-- OAuth callback diagnostics checkpoint: added an app-level OAuth callback observer that records planflow://auth-callback arrivals, waits for Supabase's built-in handler, manually retries getSessionFromUrl if no session exists, and exposes AuthProvider.syncCurrentSession() so route guards can pick up a recovered session. Validation: C:\src\flutter\bin\flutter.bat analyze, C:\src\flutter\bin\flutter.bat test, and C:\src\flutter\bin\flutter.bat build apk --debug passed.
-
-- Home empty-state checkpoint: rebuilt the Home tab so the logged-in empty state shows a substantial Korean guidance card with voice-add and calendar actions instead of a visually blank center. Also restored Korean labels in the Home briefing, early-bird card/dialog, today-event badges, and bottom navigation labels. Validation: C:\src\flutter\bin\flutter.bat analyze and C:\src\flutter\bin\flutter.bat test passed.
-
-- OAuth immediate-login checkpoint: disabled Supabase Flutter's built-in deep-link session detector so PlanFlow's OAuth callback handler is the single owner of planflow://auth-callback exchange, then routes to Home immediately after getSessionFromUrl succeeds. Added lifecycle resume session sync so returning from browser/app switch refreshes auth state without waiting for manual navigation. Validation: C:\src\flutter\bin\flutter.bat analyze and C:\src\flutter\bin\flutter.bat test passed.
-
-- Home visible-body checkpoint: investigated the blank Home tab report where the AppBar/FAB rendered but the expected briefing/empty-state body did not appear. Reworked the Home body from a plain ListView to a RefreshIndicator-backed CustomScrollView/SliverList so the briefing, early-bird CTA, today schedule header, loading/error/empty states, and refresh path are rendered through one explicit scroll surface. Validation: C:\src\flutter\bin\flutter.bat analyze, C:\src\flutter\bin\flutter.bat test, and C:\src\flutter\bin\flutter.bat build apk --debug passed.
-
-- Home device-debug checkpoint: on the connected Android device, Calendar rendered normally but Home stayed blank when it used scroll/query-heavy content. Verified a direct Padding body renders, then simplified Home to a non-scroll Column with a fixed briefing card, today's empty-state action card, and early-bird CTA so login lands on visible content instead of an empty body. Validation: C:\src\flutter\bin\flutter.bat analyze, C:\src\flutter\bin\flutter.bat test, C:\src\flutter\bin\flutter.bat build apk --debug, adb install -r, and adb launch passed. Later screenshots were blocked by the phone's Windows connection/black-screen overlay rather than an app crash.
-
-- Maintenance/navigation checkpoint: documented PlanFlow's maintainable data layering in docs/maintenance-data-structure.md, hid Naver login from the visible login UI until provider review is ready, changed voice/event drill-down navigation to push-style routes so Android back returns to the previous screen, and made shell-tab back behavior return Calendar/Settings to Home while Home exits the app. Home was rebuilt as visible stacked cards without clipped fixed-height text. Device testing helper applied: adb shell svc power stayon true.
-- Settings/location checkpoint: made Korean region names like 서울/대전/광주/대구/부산 resolve through location lookup before coordinate-based search, and made the Settings Naver calendar sync area easier to trigger from the visible calendar block instead of only the small button surface.
-
-- Home visibility fix checkpoint: moved the Home title/date into a stable AppBar, rebuilt the body as a scrollable dashboard with briefing, quick actions, today empty-state actions, and early-bird CTA, and clamped the dashboard minHeight for small viewports. Validation: flutter analyze, flutter test, flutter build apk --debug, adb install -r, and adb launch passed; ADB screenshots remain black due device capture overlay, not a Dart-side crash.
-
-- Home blank-body root-cause checkpoint: narrowed the issue to Home-specific body composition because AppBar rendered, Calendar's SafeArea/ListView body rendered, and logs showed no Flutter crash. Replaced Home body with the same stable SafeArea + ListView pattern, removed LayoutBuilder/SingleChildScrollView/ConstrainedBox/Expanded from the Home body, made the first child a clear blue briefing card, and reinstalled/launched the APK on device. Validation: flutter analyze, flutter test, flutter build apk --debug, adb install -r, adb launch, and UTF-8 review passed.
-
-- Home render fix follow-up: confirmed diagnostic body rendered on-device, proving Scaffold.body was not the failure point. Replaced the final Home body with directly rendered Container-based cards instead of the previous Home card widgets, then added SingleChildScrollView and Wrap safeguards for small screens. Validation: flutter analyze, flutter test, flutter build apk --debug, adb install -r, adb launch, and reviewer pass with no findings.
-
-- Agent operation rule checkpoint: added AGENTS.md rules to close completed subagents unless a specific reuse plan exists, to ask the user to turn on the phone screen when device screenshots/mirroring are black, and to keep PlanFlow Home UI close to the compact card-based reference with no large empty first-viewport space.
-
-- Calendar sync button checkpoint: wired the Settings screen Google Calendar action button to CalendarSyncService.syncGoogleCalendar(interactive: true), added loading/disabled state, Korean SnackBar result messages, Google-only status updates, and widget tests for rendering/click/loading behavior. Validation: flutter analyze, flutter test, flutter build apk --debug, adb install -r, and adb launch passed. Naver remains unsupported/placeholder.
-- Google Calendar Android OAuth config checkpoint: added Web OAuth Client ID env support, stopped passing Android clientId as GoogleSignIn clientId on Android, require serverClientId for Android Calendar sync with Korean notConfigured messaging, added debugPrint stack logging for failures, and covered Android serverClientId missing/present paths in service tests. Validation: dart format, flutter analyze, targeted calendar/settings tests, and full flutter test passed.
-- Google connection persistence checkpoint: changed Google Calendar status handling so an existing Supabase Google connection stays shown as connected even if the local GoogleSignIn silent cache disappears after rebuild/relaunch. Settings now keep the action label in a connected/resync state instead of looking disconnected, and the corresponding service test now expects `ready` rather than `reauthRequired` for that cache-miss path. Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed.
-- Home top-anchor checkpoint: added a shared Home scroll controller with `keepScrollOffset: false` and reset-to-top behavior when returning to the Home tab so the first dashboard section always starts at the top instead of reopening mid-scroll. Validation: `flutter analyze`, `flutter build apk --debug`, `adb install -r`, `adb launch`, and UI hierarchy checks on the connected device passed.
-- Checklist 5-6 checkpoint: expanded `calendar_sync_service.dart` to fetch Google Calendar primary events through the API and persist them via `source='google'` + `external_id` dedupe support in `event_repository.dart` / `event_model.dart`; added Google Maps-backed travel-time estimation with fallback in `travel_time_buffer_service.dart` and `core/env.dart`; updated service tests plus `event_model_test.dart`. Validation: `flutter analyze` and `flutter test test/services test/data/models/event_model_test.dart` both passed.
-- 1차 completion restart checkpoint: restored the active working clone at `E:\FluxStudio\PlanFlow`, confirmed `scripts/gsd-context-hygiene.mjs` is absent, corrected AGENTS.md to PlanFlow-specific repo rules, added `GOOGLE_MAPS_API_KEY` env plumbing/docs, and clarified that Naver Calendar is deferred for 1차.
-- Checklist 3 CRUD checkpoint: strengthened Home/Calendar event loading states with explicit Korean Supabase/login/error/refresh UI, added id-based event detail/edit routes with Supabase re-fetch fallback, added direct calendar event creation entry, refreshed Android Home Widget after edit/delete without blocking navigation, and kept shell tab index synchronized when routing back to Calendar/Home.
-- Checklist 4 voice fallback checkpoint: changed `SttService.listen()` to return typed Korean failure results while preserving `SpeechListenOptions.onDevice: true`, added a direct/manual input surface on `VoiceInputScreen`, preserved `raw_text`, and ensured both GPT parse failure and blank manual entry can still continue into `ConfirmScreen`.
-- Checklist 7 notification checkpoint: added side-effect-free notification permission status checks to `NotificationService`, exposed 앱 알림/정확한 알람/full-screen 알림 status and request/recheck controls in Settings, localized notification channel names, and covered the Settings permission card with widget tests.
-- Auth/settings checkpoint: email login and session-backed signup now await `authProvider.syncCurrentSession()` before routing home, OAuth callback handling now checks the cold-start initial link once in addition to the live link stream, and Settings hides Naver Calendar UI while Koreanizing the visible Google Calendar/settings copy. Related settings/calendar tests pass; full `flutter analyze` is currently blocked by concurrent event screen changes outside this slice.
-- Manual event side-effect checkpoint: wired manual event create/update to replace default reminder rows, clear stale pre_actions, reschedule local event/critical notifications, and wired delete to cancel local event notifications before refreshing the home widget. Restored natural Korean copy in the event detail/edit notification paths and added focused service tests. Validation: `flutter analyze`, `flutter test test/services/manual_event_side_effect_service_test.dart`, and `flutter test test/services` passed.
-- Briefing/travel/widget checkpoint: briefing alarms now carry a user id into the Android background callback and show a guidance briefing instead of silently returning when Supabase/session context is missing. Event-save/widget paths now resolve a travel buffer with Google Maps when an origin is available and fall back to the existing heuristic, the home early-bird banner no longer marks Supabase-missing saves as success, and the Android home widget stores/displays three upcoming-event text slots. Validation: targeted `dart analyze` for changed Dart files, `flutter analyze`, full `flutter test`, and `flutter build apk --debug` passed.
-- Final 1차 hardening checkpoint: fixed background briefing Supabase initialization in the Android alarm isolate, made one-shot briefing alarms reschedule from `finally` even on no-event/config/login paths, skipped past reminder/alarm times in both voice confirm and notification scheduling, and refreshed Android Home Widget list slots after manual edit/delete. Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, reviewer pass with no P1/P2 findings, `adb install -r`, and `adb launch` passed.
-- Home/calendar refresh checkpoint: added an event refresh bus so confirm/manual edit/delete notify the existing IndexedStack Home and Calendar tabs to reload; Home now also shows a compact upcoming-events section for future dates, and Calendar focuses the saved event date when a refresh signal includes `startAt`. Validation: targeted changed-file analyze and full `flutter analyze` passed.
-
-- STT device timing checkpoint: diagnosed real-device microphone sessions ending after about 2 seconds via adb appops, increased on-device STT silence pause from 2s to 8s while keeping SpeechListenOptions(onDevice: true), and added debug-only STT status/error/locale logging. Validation: flutter analyze, targeted STT test, flutter build apk --debug, adb install -r, adb launch, and adb logcat confirmed ko-KR offline recognizer start plus about 8s microphone duration.
-
-- Manual STT completion checkpoint: changed voice input so STT no longer opens Confirm automatically on engine final/done/no-match. The app now keeps recognized partial text in the manual input field, exposes explicit Complete/Cancel controls, restarts on-device listening when the Android recognizer stops before user completion, and adds bottom navigation to Voice/Confirm screens. Validation: flutter analyze, targeted STT test, flutter build apk --debug, adb install -r; UI hierarchy confirmed Voice screen body, Complete/Cancel controls, and bottom navigation.
-
-- Confirm render fix checkpoint: diagnosed the blank schedule-confirm screen with `flutter run` logs. Root causes were duplicate default FAB Hero tags across Home/Calendar and an infinite-width `FilledButton` inside the Confirm supplies row. Disabled the shared voice FAB hero tag, constrained the supplies add button width, kept Confirm's scroll controller from restoring stale offsets, and restored the visible Naver social-login button. Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed; previous Hero/BoxConstraints exceptions are addressed in code.
-
-- Voice/confirm UX checkpoint: added Korean app localization delegates, forced PlanFlow locale to `ko_KR`, changed Confirm fallback start time to current time when parsed time is absent/past, formatted start/end time in Korean, localized picker labels, added visible STT restart guidance for Android on-device engine beeps, and made supplies/pre-action additions show immediate inline/focus feedback. Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, `adb launch`, and UI hierarchy check passed with Korean tab semantics and no recent Flutter render exceptions.
-- STT accumulation checkpoint: extended on-device listening timing to keep the mic session alive longer, and changed `SttService` so Android restart/beep cycles append to the accumulated transcript instead of replacing prior text. The voice screen now keeps the full draft in the manual field while the user keeps talking and only moves on when `완료` is pressed. Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Android native STT checkpoint: added a PlanFlow-specific Android MethodChannel in `MainActivity.kt` so Android speech recognition receives long silence extras directly (`COMPLETE/POSSIBLY_COMPLETE_SILENCE` 30s, minimum input length 5m) instead of relying only on `speech_to_text`'s Dart-side `pauseFor` timer. `SttService` now prefers this native channel on Android, keeps listening until the user presses `완료`, accumulates partial text across native restarts, and falls back to `speech_to_text` if the native channel is unavailable. Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Android STT append-only checkpoint: fixed the native STT transcript behavior so every spoken segment before `완료` is appended instead of replacing the previous phrase. Android now sends `segmentEnded` at `onEndOfSpeech`, Dart commits that segment, and future partials render as `committedSegments + currentPartial`, so sequences like `내일 오전에` + `대전으로` + `출발` remain intact through completion. Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Voice correction checkpoint: implemented the updated v3 voice correction UX. While listening, users can tap `마지막 말 지우기` or `전체 지우기`; after listening/manual edit, they can clear the transcript before opening Confirm. Local Korean voice commands now run without GPT (`아니/아니야/아니요`, `마지막 거 지워/방금 거 지워`, `다시/처음부터/다시 말할게`, `취소`). Android native STT can reset its current partial so deleted phrases do not immediately reappear. Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Voice command guide checkpoint: added a compact expandable `말로 수정하기` guide to the voice input screen so users can discover the local correction commands without cluttering the primary voice flow. Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- STT overlap dedupe checkpoint: verified on-device text field duplication (`내일 오전 9시에 대전으로 대전으로 출발 대전으로 출발`) through ADB UI hierarchy, then changed native STT accumulation to append only the non-overlapping suffix of Android partial/final results. Example covered by tests: committed `내일 오전 9시에 대전으로` + incoming `대전으로 출발` appends only `출발`. Validation: `flutter analyze`, targeted STT test, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Confirm pre-action checkpoint: fixed the 일정확인 선행행동 add controls by keeping parsed pre-actions growable, scrolling newly added pre-action cards into view, and focusing the new title field after either add button. Added widget tests that reproduce both add buttons and verify the important-alarm save path inserts a `system_alarm` reminder and calls `scheduleCriticalAlarm`. Validation: `flutter analyze`, `flutter test test/screens/confirm_screen_test.dart`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Voice input layout checkpoint: removed the oversized circular mic ornament from `lib/screens/voice/voice_input_screen.dart`, moved `말로 수정하기` above the transcript box, placed the on-device guidance directly under it, reordered the voice action / delete controls / direct-input CTA into a simple top-to-bottom flow, and renamed the primary CTA to `음성으로 일정 입력하기`. Validation: `flutter analyze`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Voice wording polish checkpoint: shortened the voice cleanup label from `마지막 말 삭제` to `마지막 단어 삭제` for clearer user intent. Validation is pending after the latest text-only change.
-- Voice field polish checkpoint: gave the `말로 수정하기` card a slightly more visible accent border and simplified the transcript box placeholder to `입력해주세요` with no extra field label/helper text. Validation is pending after the latest UI-only change.
-- Voice correction normalization checkpoint: added transcript-level normalization so spoken corrections like `아니` can remove the prior fragment before parsing/saving, including the `오전 9시 아니 오전 10시에...` case the user flagged. Validation: `flutter analyze` and `flutter test test/services/stt_service_test.dart` passed.
-- Voice guide polish checkpoint: increased the `말로 수정하기` card contrast by shifting the surface to a faint blue tint and strengthening the border opacity so the helper box reads more clearly on the voice screen. Validation: `flutter analyze` passed after the latest UI tweak.
-- Voice-to-confirm latency checkpoint: changed the voice completion flow so `완료`/`직접 입력으로 확인` now open Confirm immediately with `parse_pending` raw text, and moved GPT parsing hydration into `ConfirmScreen` so the schedule page appears without waiting on the 1-second parse delay. Also renamed the home CTA to `음성으로 일정 추가` and the voice guide title to `음성으로 수정하기`. Validation: `flutter analyze`, `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb shell monkey -p com.example.planflow 1` all passed after fixing the growable pre-action/supply lists.
-
-- v3 map/travel checkpoint: applied the updated v3 지도 요구사항 by adding TMAP/Naver map env plumbing, a Tmap-first/Naver-fallback MapService, travel_mode persistence on user_settings, event coordinate fields, ConfirmScreen coordinate-based travel buffer with Google Maps/text fallback preserved, Korean briefing prompts, and Supabase compatibility alters for events/user_settings. Review agents found and we fixed travel_mode repository round-trip, map fallback ordering, existing DB location_lat/lng migration, and event repository select columns. Validation: flutter analyze, full flutter test (54 passed), flutter build apk --debug all passed; pub advisory decode warnings remain external/non-fatal.
-
-- Generated file cleanup checkpoint: inspected the post-handoff working tree and found only Flutter generated registrant files dirty from line-ending/generated-state churn, with no functional source diff. `scripts/gsd-context-hygiene.mjs` is missing in this repo, so context hygiene continued with `.planning/STATE.md` and `ACTIVE_SUMMARY.md`. Restored those generated files to HEAD while preserving the latest functional commit `f7f43cb`. Validation before final restore: `flutter analyze` passed and full `flutter test` passed (54 tests); Flutter/pub advisory decode warnings remain external/non-fatal.
-
-- Event/voice UX checkpoint: refined event delete visibility, reduced the voice transcript field default height, moved confirm-screen supplies back to compact one-line edit rows, added Google/Naver external map fallback when in-app place lookup fails, made event detail supplies a local one-line checklist, and fixed event edit saves to use an update-only payload with clearer Supabase debug logging. Validation: `flutter analyze`, full `flutter test` (57 passed), `flutter build apk --debug`, `adb install -r`, and `adb launch` passed; Flutter/pub advisory decode warnings remain external/non-fatal.
-
-- Widget/alarm follow-up checkpoint: changed manual edit saves to await Android Home Widget refresh and surface/log widget refresh failures instead of dropping them in an unawaited task. Important alarms now use the same 60-minute lead time as the default event reminder in both manual edit side-effects and voice confirm saves. Device notification state was checked through ADB and `POST_NOTIFICATION` / `SCHEDULE_EXACT_ALARM` were set to allow. PowerShell profile was updated outside the repo so new shells start in `E:\FluxStudio\PlanFlow` and use PSReadLine history predictions. Validation: `flutter analyze`, full `flutter test` (57 passed), `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Voice edit/delete checkpoint: implemented the v3 1차 `음성 수정/삭제` baseline. Voice input now detects Korean edit/delete commands, opens a candidate event screen, routes edit candidates into the existing event edit flow, and deletes confirmed candidates while refreshing local notifications, the event refresh bus, and the Android Home Widget. Added widget tests for voice edit routing and voice delete confirmation. Validation: `flutter analyze`, full `flutter test` (59 passed), `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Current maintenance checkpoint: ignored unrelated untracked `package-lock.json` and `plugins/` as requested, restored only Flutter generated registrant files to HEAD, and kept the real feature changes in `lib/` plus the updated voice-action test. Validation in this turn: `flutter test` passed, `flutter build apk --debug` passed, `adb install -r` passed, and the app was relaunched on the connected device.
-- Codebase map checkpoint: refreshed `.planning/codebase/` for the actual `C:\PlanFlow` Flutter app structure after confirming `scripts/gsd-context-hygiene.mjs` is missing in this repo. The map now covers Flutter stack, Supabase/RLS, routing, data/repository/provider/service layers, tests, and current risks. Validation: codebase map line counts, secret scan, and `git diff --check -- .planning/codebase .planning/context/ACTIVE_SUMMARY.md` passed.
-- Voice/home/settings UX fix checkpoint: wired the voice action chooser buttons so add opens confirm immediately and edit/delete/query reload visible target candidates, balanced delete-dialog cancel/delete buttons, removed Home quick actions while keeping a compact calendar button, clarified Google Calendar OAuth failure messages, and made Android notification permission requests best-effort with status rechecks. Validation in this session: `git diff --check` passed; Flutter/Dart commands could not run because no Flutter/Dart executable is available in the current PATH or expected `C:\src\flutter` location.
-- Rebuild follow-up checkpoint: installed a local Flutter stable SDK at `C:\Users\Admin\flutter`, disabled Windows desktop for Android-only pub resolution, installed Android NDK `27.0.12077973`, fixed the new widget/service tests for current Flutter analyzer behavior, and rebuilt/installed/launched `app-debug.apk` on device `192.168.0.102:5555`. Validation: `flutter analyze` passed, full `flutter test` passed (64 tests), `flutter build apk --debug` produced `build/app/outputs/flutter-apk/app-debug.apk`, and ADB launch returned a running `com.example.planflow` PID.
-- Naver CalDAV/ICS date repair checkpoint: fixed strict DTSTART/DTEND parsing so invalid or suspicious values no longer fall back to Unix 0, corrected ICS group extraction for time components, and added cleanup that deletes imported rows with 1969-era dates before re-sync/import. Validation in this session: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -n com.example.planflow/.MainActivity` all passed; targeted CalDAV/ICS tests now cover the 1969 cleanup and parsing guards.
-- Orientation lock checkpoint: locked PlanFlow itself to portrait mode with `SystemChrome.setPreferredOrientations([portraitUp])` in `lib/main.dart` and `android:screenOrientation="portrait"` on the main Android activity. This does not change the user's phone-wide rotation preference; it only keeps this app in portrait. Validation: `flutter analyze` and `flutter build apk --debug` passed.
-- Settings/reminder/backup checkpoint: restored the active `E:\FluxStudio\PlanFlow` clone to the real PlanFlow Flutter app on `origin/main`, moved the Settings account section to the top, removed the manual Settings save/default-reminder UI, made briefing/travel settings persist immediately, moved reminder timing into per-event selectors on manual edit and voice confirm, added Android notification settings deep-link support, and added daily 03:00 automatic backup scheduling plus foreground catch-up backup. Validation: `flutter analyze`, full `flutter test` (64 passed), `flutter build apk --debug`, `adb install -r`, and `adb launch` passed. Supabase MCP SQL tools were not exposed in this session, so remote DB changes were not applied directly.
-- API/map verification checkpoint: confirmed `.env` contains the new Google/TMAP/Naver public API values, added Android-first in-app Naver Dynamic Map location selection with safe fallback to existing candidate/external-map flows, preserved selected coordinates through voice confirm and event edit, and surfaced Naver Geocoding/Directions 401 auth failures as explicit Korean guidance instead of silent "not found" behavior. Validation: `flutter analyze`, full `flutter test` (66 passed), `flutter build apk --debug`, `adb install -r`, and `adb launch` passed. Direct REST checks showed TMAP routes OK and Google Distance Matrix API responding, while Naver Geocoding/Directions returned 401, so Naver Cloud API authorization/restriction still needs user dashboard correction.
-- Voice permission checkpoint: diagnosed the on-device voice input failure as a missing Android `RECORD_AUDIO` grant on the connected device. Added an Android microphone permission preflight before STT starts so the app can request/verify audio access before calling the native recognizer, then re-granted `RECORD_AUDIO` through ADB and rechecked that the package reports it as `granted=true`. Validation in this turn: `flutter analyze`, full `flutter test` (67 passed), `flutter build apk --debug`, and `adb shell pm grant` / `dumpsys package` verification passed.
-- Permission policy checkpoint: added a dedicated Android permission channel so microphone access is requested at the moment the voice feature starts, matching the app rule that any feature needing a real OS permission should ask for it before continuing. Notification/exact-alarm/full-screen permissions already request through the existing notification flow; Google Calendar and map providers remain OAuth/API-gated rather than Android runtime permissions. Validation in this turn: `flutter analyze`, full `flutter test` (67 passed), and `flutter build apk --debug` passed.
-- Home early-bird polish checkpoint: softened the PRO early-bird signup banner on the Home tab to a much lighter pastel tone so the floating voice CTA remains visually primary. Validation in this turn: `flutter analyze` and `flutter build apk --debug` passed.
-- Home early-bird visibility follow-up: changed the PRO early-bird signup banner from a pale blue tone to a warmer peach pastel with stronger border/shadow/button contrast so it stands apart from the home background instead of blending into it. Validation in this turn: `flutter analyze`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Home early-bird readability follow-up: increased the contrast again by using a stronger warm pastel background and black text for the PRO early-bird banner so it reads clearly on the Home tab. Validation in this turn: `flutter analyze`, `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Home/calendar polish checkpoint: removed the duplicated date from the Home briefing card so the Home header date remains the single source of truth, and enlarged the Calendar tab `오늘` control into a bordered pill button with stronger emphasis. Validation in this turn: `flutter analyze`, `flutter test`, `flutter build apk --debug`, `adb install -r`, `adb shell monkey -p com.example.planflow 1`, and `adb shell pidof com.example.planflow` passed.
-- Permission/onboarding/Naver follow-up checkpoint: added login-time permission onboarding with microphone/notification/exact-alarm/full-screen/location requests, removed Settings notification-permission controls, persisted event supply checklist state through `events.supplies_checked`, improved Android STT session reset/correction handling and voice action buttons, wired current-location travel buffer origin and Google Calendar app-resume auto-sync, and added Naver calendar permission probing after Naver OAuth login with denied/network/unknown status storage plus reconnect dialog. Validation: `flutter analyze`, full `flutter test` (70 passed), `flutter build apk --debug`, `adb install -r`, and `adb launch` passed. `scripts/gsd-context-hygiene.mjs` is still missing in this repo.
-- Naver OAuth/login UI checkpoint: broadened `planflow://auth-callback` handling so query and fragment callback payloads are normalized before Supabase session exchange, surfaces safe Korean OAuth callback failures on the login screen, routes login/root to Home after resume session sync, and moved the large Home-style `PlanFlow` title above the login hero while removing the small in-card title and social-login explanatory copy. Validation: `flutter analyze`, full `flutter test` (70 passed), `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Naver OAuth email diagnostic checkpoint: verified through ADB that Naver now redirects back to `planflow://auth-callback`, but Supabase returns `server_error/unexpected_failure` with `Error getting user email from external provider`. Updated the app-facing OAuth callback message to distinguish this email-missing provider configuration issue from a generic callback failure. Validation: `flutter analyze`, full `flutter test` (70 passed), `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Naver userinfo proxy checkpoint: added `supabase/functions/naver-userinfo-proxy` so Supabase custom OAuth can consume Naver's nested `response.id`/`response.email` as standard `sub`/`email`, kept PlanFlow's no-email login policy by returning 403 when email is missing, and documented the required Supabase/Naver provider settings in `docs/naver-supabase-custom-provider.md`. Updated OAuth callback messaging for `missing_provider_id`. Validation: `deno check` via `npx deno`, `flutter analyze`, full `flutter test` (70 passed), `flutter build apk --debug`, `adb install -r`, and `adb launch` passed. Direct `supabase functions deploy` was attempted but blocked because no Supabase access token/login is available in this shell.
-- Permission onboarding feedback checkpoint: rebuilt the login-time permission onboarding screen with clean Korean copy, per-permission loading indicators, result messages after each request, clearer Android settings guidance for notification/exact-alarm/full-screen cases, and kept microphone/location runtime permission requests through the native channel. Device state showed microphone already granted while notification/location remained denied, so no popup is expected for already-granted permissions. Validation: `flutter analyze`, full `flutter test` (70 passed), `flutter build apk --debug`, `adb install -r`, and `adb launch` passed.
-- Permission onboarding hang fix checkpoint: fixed the login-time permission screen spinning indefinitely by replacing the missing Android notification initialization icon with a dedicated `ic_stat_planflow` drawable and adding timeout/finally recovery around individual/all permission requests. Validation in this turn: `flutter analyze`, full `flutter test` (70 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, and ADB log scan confirmed the previous `invalid_icon` PlatformException no longer appears.
-- Permission onboarding simplification checkpoint: removed the user-facing full-screen notification permission row because it duplicated app notification behavior on Android, kept only microphone/app notification/exact alarm/location as required onboarding permissions, auto-completes onboarding when all required permissions are already granted, and removed the manual `완료하고 시작하기` skip button. This also includes the earlier notification icon fix (`ic_stat_planflow`) and timeout/finally recovery for permission requests so the screen no longer spins forever. Validation: `flutter analyze`, full `flutter test` (70 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-- Naver Calendar modal loop fix checkpoint: removed the login-time automatic Naver Calendar permission probe and reconnect dialog from ShellScreen because Naver Calendar remains deferred for 1차. Naver social login remains available, but the unsupported calendar permission modal no longer repeats after login. Validation: `flutter analyze`, full `flutter test` (70 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-- Naver Calendar connection fix checkpoint: restored the Naver Calendar permission flow as a real connection check instead of removing it, but removed the old saved-denied immediate loop. ShellScreen now probes the current Naver session once per app session, shows the reconnect dialog at most once, clears stale status before re-consent, and guides the user to check “캘린더 일정담기”. NaverCalendarPermissionService now falls back to a stored `user_settings.naver_calendar_token`, persists the fresh provider token after a granted probe, and exposes `clearStatus()` for reconnect. Validation: `flutter analyze`, targeted Naver Calendar permission test, full `flutter test` (70 passed), `flutter build apk --debug`, `adb connect`, `adb install -r`, `adb launch`, and `adb pidof` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-- Naver Calendar token-noise fix checkpoint: changed ShellScreen so Naver Calendar `unknown`/`networkError` probe results no longer show user-facing snackbars on navigation. Missing/expired Naver provider tokens are now logged only, while actual denied Calendar permission can still show the reconnect dialog once. Validation: `flutter analyze`, targeted Naver Calendar permission test, full `flutter test` (70 passed), `flutter build apk --debug`, `adb connect`, `adb install -r`, `adb launch`, and `adb pidof` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-- Naver Calendar connectability follow-up checkpoint: added capture of the Naver OAuth provider token immediately after Supabase auth state/callback sync, guarded it so only Naver sessions can persist `user_settings.naver_calendar_token`, and changed the no-token state to one-time reconnect guidance instead of repeated snackbars. Also fixed voice action candidate tokenization (`\s` regex handling) and candidate filtering so edit/delete candidates remain visible for past events and tests. Validation: `flutter analyze`, targeted Naver Calendar permission test, targeted voice action screen test, full `flutter test` (70 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, and `adb pidof` passed. Existing sessions without a Naver provider token still require one Naver re-consent from the user.
-
-- Calendar OAuth separation checkpoint: changed Naver Calendar reconnect to link the Naver identity to the current PlanFlow session instead of signing the app out, so email/Kakao/Google app logins can request Naver Calendar consent without replacing the active account. OAuth launches now log purpose/provider/host/path to catch provider URL mismatches such as Kakao opening from a Naver action. Validation: flutter analyze, full flutter test (70 passed), flutter build apk --debug, adb install -r, adb launch, and adb pidof passed. scripts/gsd-context-hygiene.mjs remains absent.
-
-- Naver Calendar settings CTA checkpoint: added a visible Settings > Calendar integration button for Naver Calendar permission consent so users have a clear path after the Home snackbar. The button clears stale permission status, keeps the current PlanFlow login session, and launches the Naver calendar-link OAuth flow with guidance to check '캘린더 일정담기'. Validation: flutter analyze, full flutter test (70 passed), flutter build apk --debug, adb install -r, adb launch, and adb pidof passed. scripts/gsd-context-hygiene.mjs remains absent.
-
-- Naver Calendar manual-linking diagnostic checkpoint: ADB logs confirmed Supabase returns AuthApiException code manual_linking_disabled when Settings > Naver Calendar permission consent tries to link Naver to the current PlanFlow account. Updated the Settings error message to tell the user to enable Supabase Manual Linking instead of showing a generic settings failure. Validation: flutter analyze, targeted settings test, full flutter test (70 passed), flutter build apk --debug, adb install -r, adb launch, and adb pidof passed.
-
-- Naver callback error handling checkpoint: updated OAuth callback handling so error/error_code/error_description callback URIs are handled before any existing-session short circuit. This makes Supabase/Naver failures visible instead of instantly routing home when the browser returns with a failed consent result. Validation: flutter analyze, targeted settings test, full flutter test (70 passed), flutter build apk --debug, adb install -r, adb launch, and adb pidof passed.
-
-- Final integration checkpoint: kept `E:\FluxStudio\PlanFlow` as the only working tree, marked `E:\Project\PlanFlow` locally as backup/reference-only, and integrated Naver Calendar as a working 1차 feature instead of an unsupported path. `CalendarSyncService` now checks Naver permission/token state and exports upcoming PlanFlow events to Naver Calendar via `createSchedule`, Settings exposes Google/Naver calendar actions with clean Korean copy, Naver token preservation was hardened so normal settings autosave does not wipe a freshly stored token, and the Naver permission service boundary is now injectable/lazy for tests. Validation: `flutter analyze`, targeted calendar/settings tests, full `flutter test` (72 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, and `adb pidof` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-- Naver sync/disconnect merge checkpoint: simplified the Settings tab so the Naver area now exposes a single `네이버 동기화` button that handles consent-first sync/reconnect and a separate `연동 해제` button that clears the provider link and stored token. Updated the disconnect path to call Supabase unlink plus local token cleanup, then refreshed the settings tests to match the merged flow. Validation: `flutter analyze`, `flutter test test/screens/settings_screen_test.dart`, full `flutter test` (72 passed), `flutter build apk --debug`, `adb install -r`, and `adb pidof` passed.
-
-- Account-switch refresh checkpoint: the Shell screen now listens to auth changes and rebuilds the Settings tab with a user-specific key, so Google/Naver calendar sync state and user settings are reloaded when switching accounts instead of leaking the previous account's "connected" state. Validation: `flutter analyze`, full `flutter test` (72 passed), `flutter build apk --debug`, `adb install -r`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.example.planflow` passed.
-
-- Calendar connection state rework checkpoint: added per-user `calendar_connections` model/repository/schema with RLS, moved Google/Naver status decisions away from device cache and stale local tokens, added provider disconnect policy with optional provider-event deletion, and extended `events` with `external_calendar_id`, `external_updated_at`, `last_synced_at`, and `updated_at` for conflict-aware sync tracking. Google sync now imports Google events, exports PlanFlow manual events, avoids cross-account silent-login leakage, and prevents duplicate re-imports after export. Naver sync now records per-event export linkage to reduce duplicate `createSchedule` writes. Validation: `flutter analyze`, full `flutter test` (72 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. Supabase SQL tools were not exposed in this session, so the remote DB still needs the schema SQL applied from `supabase/schema.sql`.
-
-- Calendar schema rollout safety checkpoint: added `supabase/calendar_sync_patch.sql` as a small 72-line SQL patch for Supabase SQL Editor when the full `schema.sql` is too large to paste. Hardened `EventRepository` so Home/Calendar/Event reads and normal event writes fall back to the legacy events column set if the remote DB has not received the new sync columns yet. This prevents the app from showing "일정 불러오기 실패" just because `external_calendar_id`/`external_updated_at`/`last_synced_at` are not applied yet. Validation: `flutter analyze`, full `flutter test` (72 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, and `adb pidof` passed.
-- Device Naver calendar import checkpoint: added Android `READ_CALENDAR` support, native Calendar Provider MethodChannel methods, login onboarding calendar permission, `DeviceCalendarService`, Settings actions for "휴대폰 네이버 일정 가져오기" and device calendar diagnostics, and tests for Naver calendar detection/import/failure states. Imported phone-calendar Naver events are saved as `source='naver_device'` with stable `android:{calendarId}:{eventId}` external IDs. Validation: `flutter analyze`, full `flutter test` (78 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `dumpsys package` confirmed `READ_CALENDAR` is declared but currently not yet granted on the test device.
-- Naver CalDAV quick-sync test checkpoint: strengthened `test/services/naver_caldav_service_test.dart` so ranged REPORT results assert no full fallback/resource GET path is used, CalDAV etags are parsed, and parsed Naver events carry etag/sync metadata into `EventModel`; extended `test/data/models/event_model_test.dart` to round-trip `external_etag`, external calendar metadata, and sync timestamps. Validation: `C:\src\flutter\bin\flutter.bat test test/services/naver_caldav_service_test.dart test/data/models/event_model_test.dart` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-05 Calendar sync ADB diagnosis checkpoint
-- Confirmed actual work path is E:\FluxStudio\PlanFlow and kept E:\Project\PlanFlow reference-only.
-- ADB verified PlanFlow package com.example.planflow after force-stopping unrelated com.aiexpense.tracker.
-- Google Calendar OAuth reaches API but Supabase events insert fails with PostgREST 42501 row-level security; app now reports this as Supabase RLS/schema issue instead of Google permission issue.
-- Added events RLS policies to supabase/calendar_sync_patch.sql so the short SQL patch can unblock Google Calendar event persistence when applied in Supabase SQL Editor.
-- Device calendar import logs now show detected calendars and Naver candidates; the test device exposes tugh3@naver.com as Samsung Calendar but has 0 event rows, so there is nothing for PlanFlow to import until the phone calendar store receives Naver events.
-- OAuth/Naver and shell user-facing messages were cleaned to Korean UTF-8 and identity_already_exists now explains the account-link conflict.
-- Verification: flutter analyze, flutter test, flutter build apk --debug passed; APK installed and PlanFlow launched on ADB device.
-
-## 2026-05-05 Calendar sync verification finish
-- Confirmed Flutter analyze/test/build all pass after calendar diagnostics fixes.
-- Reinstalled and launched com.example.planflow on the connected Android device.
-- Google Calendar reaches OAuth/API but remote Supabase events insert is blocked by RLS until calendar_sync_patch.sql is applied.
-- Device calendar import sees the Naver account calendar, but Android Calendar Provider currently returns 0 synced event rows.
-
-## 2026-05-05 Google all-calendar sync checkpoint
-- Read PlanFlow_Calendar_Sync_Codex.md with UTF-8 output and separated its Edge Function/Cron architecture from the current client-side PlanFlow sync architecture.
-- Expanded Google Calendar import from primary-only to readable calendarList entries, while keeping PlanFlow exports to Google primary for safety.
-- Normalized primary Google calendars to google:primary even when CalendarList returns the account email as calendar id, preventing duplicate imports.
-- Added tests for non-primary Google calendar import keys and primary key stability.
-- Validation: flutter analyze, full flutter test, flutter build apk --debug, adb install -r, and adb launch passed.
-
-## 2026-05-05 Naver CalDAV connection spike checkpoint
-- Added a minimal `NaverCalDavService.testConnection()` spike that sends direct CalDAV `PROPFIND` requests to `https://caldav.calendar.naver.com/` and `/calendars/{naverId}/` using Basic Auth, classifies 401/403/404/network/server failures, and only saves credentials to Flutter Secure Storage after a successful connection.
-- Added a Settings tab diagnostic action `네이버 CalDAV 연결 테스트` with Korean guidance that this is a direct PlanFlow server-access check, not Android's built-in CalDAV account support.
-- Added focused service tests covering successful credential save, 401 without save, 403 policy/access-denial messaging, and fallback from root 404 to the calendar path.
-- Validation: `flutter analyze`, targeted CalDAV/settings tests, full `flutter test` (84 passed), `flutter build apk --debug`, and `git diff --check` passed. ADB install/launch could not run because no device was connected and the previous wireless ADB address timed out.
-## 2026-05-05 Naver CalDAV import success path checkpoint
-- After the user confirmed the Naver CalDAV connection test succeeds, expanded `NaverCalDavService` from a connection spike into a read/import path.
-- Added CalDAV calendar discovery, `REPORT calendar-query` event loading, UTF-8 XML response decoding, minimal iCalendar parsing for UID/SUMMARY/DTSTART/DTEND/LOCATION/DESCRIPTION/LAST-MODIFIED, and Supabase upsert through `source='naver_caldav'` plus stable `naver-caldav:{uid}` external ids.
-- Added Settings action `네이버 CalDAV 일정 가져오기` so saved CalDAV credentials can import existing Naver events into PlanFlow and refresh Home/Calendar state.
-- Validation: `flutter analyze`, targeted CalDAV service test, targeted Settings screen test, full `flutter test` (87 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-05 Naver CalDAV discovery fallback checkpoint
-- Fixed the follow-up failure where CalDAV authentication succeeded but `네이버 CalDAV 일정 가져오기` showed "CalDAV 경로를 찾지 못했습니다" because the app assumed `/calendars/{id}/` directly.
-- Added CalDAV discovery through `current-user-principal` and `calendar-home-set`, then falls back to the previous `/calendars/{id}/` path if discovery is unavailable.
-- Added a focused test proving the service discovers `/principals/users/{id}/` -> `/calendars/{id}/` before listing calendars.
-- Validation: `flutter analyze`, targeted CalDAV service test, full `flutter test` (88 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-05 Naver CalDAV empty-result fallback checkpoint
-- Added a second `REPORT` fallback in `getEvents()` so if the normal date-range query returns zero events, PlanFlow retries the same calendar with a full query body before telling the user that there are no items.
-- This makes the import path more tolerant of Naver CalDAV calendars that ignore or mishandle `time-range` filters even though the account and home path are correct.
-- Added a focused service test that proves the fallback path retries and still parses the event payload.
-- Validation: `flutter analyze`, targeted CalDAV service test, full `flutter test` (89 passed), `flutter build apk --debug`, `adb install -r`, `adb launch`, `adb pidof`, and `git diff --check` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-05 Naver CalDAV resource GET fallback checkpoint
-- When both range REPORT and full REPORT return empty, `NaverCalDavService` now does a `Depth:1 PROPFIND` over the calendar collection to discover `.ics` event resources and then `GET`s each resource directly before giving up. Added debug logging for calendar home candidates, calendar counts, REPORT counts, resource candidate counts, and sync counts so the next device import attempt can show where the server is empty versus where parsing fails.
-- Added a focused service test that proves the resource-list fallback path discovers one `.ics` resource, fetches it with `GET`, and parses it into an event.
-- Validation: `flutter analyze`, `flutter test`, `flutter build apk --debug`, `adb install -r`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.example.planflow` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-05 Naver CalDAV import speed-up checkpoint
-- Parallelized the fallback `.ics` resource `GET` stage and added a clear `Naver CalDAV 일정 조회 시작` log so long imports no longer wait on a purely sequential resource fetch loop. The service still preserves the safer discovery -> REPORT -> full REPORT -> resource GET order, but the slowest fallback stage now resolves concurrently instead of one file at a time.
-- Validation: `flutter test test/services/naver_caldav_service_test.dart`, `flutter build apk --debug`, `adb install -r`, `adb launch`, and `adb pidof` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## Checkpoint - 2026-05-05 22:33:38 +09:00
-- 네이버 CalDAV 가져오기를 빠른 동기화(과거 3개월+미래 6개월)와 추가 범위 동기화로 분리했다.
-- 진행률/현재 캘린더/10초 이상 지연 안내/추가 범위 선택 모달을 설정 화면에 추가했다.
-- external_etag를 모델, 저장소, schema.sql, calendar_sync_patch.sql에 반영하고 etag/수정시각 기반 skip을 추가했다.
-- 같은 UID가 여러 캘린더에서 충돌하지 않도록 CalDAV external_id를 calendarPath+uid 안정 키로 변경했다.
-- 검증: flutter analyze, flutter test, flutter build apk --debug, adb install/launch 통과. scripts/gsd-context-hygiene.mjs는 없음.
-
-## 2026-05-05 Voice action and Naver CalDAV diagnostics checkpoint
-- Added AGENTS.md rule to re-read broken Korean/mojibake output explicitly as UTF-8 before interpreting or editing.
-- Changed voice input routing so ordinary schedule phrases default to add/confirm flow, while explicit edit/delete/query/manage intents still open the voice action screen.
-- Improved VoiceActionScreen empty/error states so action buttons visibly change state and offer recovery actions: add as new schedule, retry voice, or open calendar.
-- Strengthened Naver CalDAV diagnostics with calendar name/path/ctag logs, REPORT URL/range/status logs, `/home/` candidate paths, full/resource fallback even during quick sync, stable resource href handling, and inclusive zero-duration range filtering.
-- Added tests for ordinary voice add routing, explicit voice edit routing, CalDAV home connection fallback, quick fallback diagnostics, resource href path preservation, and range-start zero-duration events.
-- Verification: flutter analyze, targeted voice/CalDAV tests, full flutter test, flutter build apk --debug, adb install, and adb launch passed. scripts/gsd-context-hygiene.mjs remains absent.
-
-## 2026-05-05 Korean relative time fallback checkpoint
-- Added Korean relative-time fallback parsing to `GptService` so phrases like `내일 오전 11시 공임나라` now infer `start_at` instead of falling back to the current time.
-- The fallback covers both invalid JSON responses and partial parsed payloads that omit `start_at`, while keeping `end_at` untouched unless the model already provided it.
-- Added a focused unit test covering the next-day 11:00 case and reran the full validation stack.
-- Verification: `flutter analyze`, `flutter test`, and `flutter build apk --debug` passed; APK was reinstalled on the connected device. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-- Device-calendar UI checkpoint: renamed the Settings button and related copy from the Naver-specific phrasing to 휴대폰 내부 캘린더 일정 가져오기, aligned the device-calendar import service messages to the same wording, and updated the related widget tests. Validation: C:\src\flutter\bin\flutter.bat analyze and targeted lutter test test/screens/settings_screen_test.dart test/services/device_calendar_service_test.dart both passed.
-
-## 2026-05-06 Settings dialog/button layout checkpoint
-- Reworked the Settings dialog button layout helper so confirm/cancel style dialogs now render as two side-by-side buttons with clearer color contrast instead of the previous awkward wide-confirm/tiny-cancel look.
-- Simplified the Settings backup UX to use a restore button that opens a selectable backup list, and removed the inline backup tiles / developer-diagnostics card from the visible Settings surface.
-- Validation completed for this logical change: `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -n com.example.planflow/.MainActivity` on the connected device all succeeded.
-
-## 2026-05-06 Calendar fan-out and auto-sync checkpoint
-- Added a calendar auto-sync service that runs after PlanFlow event saves and best-effort fans out manual events to connected Google, Naver CalDAV, Naver API export, and writable Android device calendars.
-- Added app-start, app-resume, auth-change, and daily 03:30 sync hooks so connected calendars are rechecked per PlanFlow account instead of relying on stale device/provider cache state.
-- Added Android Calendar Provider write support with READ/WRITE calendar permission handling, stable `planflow:{eventId}` event keys, and writable-calendar selection that prefers local/Samsung calendars before Google where available.
-- Removed app-level orientation forcing from Flutter startup and Android manifest so builds/runs no longer impose portrait or otherwise override the user's phone rotation setting.
-- Validation: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, and `adb shell pidof com.example.planflow` passed. ADB rotation setting was `accelerometer_rotation=1` before and after install/run, confirming this build did not change the system value.
-
-## 2026-05-06 Smart preparation alarm and widget expansion checkpoint
-- Completed the user-facing rename from legacy pre-action wording to `스마트 준비 알람` in confirm/detail/home/settings surfaces while keeping the existing `pre_actions` storage model.
-- Added rule/GPT-assisted smart preparation alarm enrichment for medical/checkup, travel/visit/meeting, and supplies scenarios; added tests proving candidates and local notification scheduling.
-- Confirm screen now shows a `?` help bottom sheet, saves smart preparation alarm rows, and schedules per-alarm local notifications with stable cancellation through event notification cleanup.
-- Event detail now loads and displays saved smart preparation alarms, and Home shows one faded past schedule plus real DB-backed smart-prep badges.
-- Expanded Android home widgets to five providers: next event, monthly calendar, vertical schedule, weekly schedule, and 1x1 mic shortcut; save/update/delete widget refresh now feeds today/month/week data.
-- Verification: flutter analyze, full flutter test (104 passed), flutter build apk --debug, adb install/run, and package receiver dump for all 5 widget providers passed. scripts/gsd-context-hygiene.mjs remains absent.
-
-## 2026-05-06 13:49:02 +09:00 Naver ICS share import checkpoint
-- Implemented the new Naver ICS import flow from the updated v3 direction: PlanFlow opens the Naver Calendar Android package, receives shared .ics files through Android share intents, and also supports direct .ics file selection.
-
-## 2026-05-06 Home location/weather polish checkpoint
-- Tightened the Home location label fallback so it no longer shows a vague "현재 위치" placeholder when data is missing; it now prefers parsed place text and otherwise shows coordinates or "위치 확인 중".
-- Upgraded the Home location/weather popup to a rounded card-based bottom sheet with separate location and weather tiles.
-- Styled the signed-in Settings logout button as a blue filled button to better match the app tone.
-- Verification: `flutter test`, `flutter build apk --debug`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, and `adb shell pidof com.example.planflow` all passed on the connected device.
-- Added NaverIcsImportService with ICS parsing, source='naver_ics', stable UID/date-title external ids, and duplicate skipping by same local date + title.
-- Added NaverIcsImportScreen guide UI, Settings entry point, pending-share storage for login-before-import cases, and app-level receive_sharing_intent handling for warm/cold starts.
-- Added monthly reminder scheduling for “새 일정이 있을 수 있어요. 다시 가져올까요?” and routes notification taps to the import guide.
-- Android manifest now declares Naver Calendar package visibility and ICS share receive filters for 	ext/calendar, 	ext/x-vcalendar, pplication/octet-stream, and SEND_MULTIPLE.
-- Added Flutter dependencies for ndroid_intent_plus,
-eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved Android plugin JVM target mismatches in Gradle so debug APK builds successfully.
-- Removed the wrong BACKUP_DO_NOT_WORK_HERE.md marker from the real Flux working tree; backup markers remain for E:\Project\PlanFlow only.
-- Verification: lutter analyze, full lutter test, lutter build apk --debug, db install -r, db shell am start -n com.example.planflow/.MainActivity, and db shell pidof com.example.planflow all passed. scripts/gsd-context-hygiene.mjs remains absent.
-
-## 2026-05-06 Naver CalDAV settings cleanup checkpoint
-- Re-centered the Settings calendar flow around the existing `Naver Calendar` card: the visible Naver action now uses CalDAV credentials, saves them only after a successful connection test, and immediately runs the quick sync path.
-- Removed the visible `변경 즉시 적용` header, standalone `Naver CalDAV 직접 연결` diagnostics, separate CalDAV test/import buttons, and normal-surface ICS entry point so Settings no longer mixes debug and user flows.
-- Clarified the Naver CalDAV credential dialog with original Naver ID/app-password guidance, kept phone internal calendar import as a generic Samsung/Google/device-calendar fallback, and made disconnect clear CalDAV secure credentials plus PlanFlow Naver connection state.
-- Improved Naver CalDAV progress/result reporting to show pre-save stages, `00/00개 처리 중` style save counters, saved/skipped/failed counts, and explicit failure diagnostics when many events are read but none are saved.
-- Added tests for the cleaned Settings surface and CalDAV-backed Naver sync button behavior.
-- Verification: `flutter analyze`, full `flutter test` (108 passed), `flutter build apk --debug`, `adb install -r`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, focus check on `com.example.planflow/.MainActivity`, and recent log scan passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-06 Naver CalDAV progress copy/layout checkpoint
-- Updated the long-running Naver CalDAV import copy to set a clearer expectation: large imports can take time and usually finish in about 1-2 minutes.
-- Reworked the additional-history range dialog from a tall vertical action stack into compact horizontal/wrapping buttons for `나중에`, `6개월`, `1년`, `2년`, `직접 입력`, and `전체`.
-- Verification: `dart format`, `flutter analyze`, Settings screen test, full `flutter test` (108 passed), `flutter build apk --debug`, `adb install -r`, and explicit ADB launch/focus check on `com.example.planflow/.MainActivity` passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-06 Home weather/location and sync-skip diagnostics checkpoint
-- Added a reusable home header summary service that shows current location plus weather summary in the top blue Home card, with a tap target that opens a detail bottom sheet.
-- Removed the center emoji/briefing-ready chip from the Home hero card and lightened the PRO early-bird card background so the voice entry CTA stands out more cleanly.
-- Added explicit CalDAV/ICS skip-reason logs so `300 read / 0 saved` can now be diagnosed from logcat as `external_etag` matches, stale `external_updated_at`, or duplicate same-date/title skips.
-- Verification: `flutter analyze`, targeted home-header summary test, full `flutter test` (110 passed), `flutter build apk --debug`, `adb install -r`, and ADB launch/pid checks all passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-06 Device calendar UX simplification checkpoint
-- Removed the separate "휴대폰 내부 캘린더 목록" flow from Settings and changed the left-side action to "연동 해제" so the device-calendar section now matches the simpler sync/disconnect pattern the user asked for.
-- Device calendar import now goes straight through the import action and surfaces Korean error messages when permission or device calendar data is missing instead of opening a list dialog.
-
-## 2026-05-06 Map selection, TMAP lookup, critical alarm stability checkpoint
-- Unified confirm/edit location picking through a shared flow that searches TMAP POI, Naver Geocoding, and Google Geocoding, then falls back to internal Google map selection or external Google/Naver/TMAP map links when needed.
-- Added Google Maps Android API-key manifest plumbing from GOOGLE_MAPS_API_KEY and a Google Maps fallback picker for devices where Naver native map auth fails.
-- Added Android one-shot current-location retrieval so Home/weather and travel-time flows do not rely only on stale last-known location.
-- Made critical alarm scheduling return explicit statuses for scheduled, past-skipped, permission-blocked, and error outcomes; future events whose requested alert offset is already past are now adjusted to an immediate near-future alert instead of failing silently.
-- Added/updated tests for TMAP-first location lookup, shared external map options, and critical-alarm result handling.
-- Verification: `flutter analyze`, full `flutter test` (111 passed), and `flutter build apk --debug` passed. ADB install/run could not be completed because no Android device was currently connected; `adb devices` returned an empty list and the previous wireless ADB address refused connection. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-06 Device calendar UX cleanup verification
-- Simplified the Settings device-calendar surface so the left action is now `연동 해제` and the previous `휴대폰 내부 캘린더 목록` chooser no longer appears on the normal UI.
-- Device-calendar import now stays on the main action path and surfaces Korean error messages directly when login, permission, or internal calendar data is missing.
-- Fixed the Settings screen syntax that got temporarily malformed during the edit, updated the Korean label expectations in the Settings widget test, and re-ran the full validation stack.
-- Verification: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -n com.example.planflow/.MainActivity` all passed on the connected device.
-
-## 2026-05-06 CalDAV range dialog layout polish
-- Reworked the CalDAV extra-history range dialog so the buttons render compactly in three columns instead of a tall single-stack layout, matching the user's request for a cleaner and less bulky action grid.
-- Verification: `flutter analyze`, targeted Settings screen test, `flutter build apk --debug`, `adb install -r`, and `adb shell am start -n com.example.planflow/.MainActivity` all passed on the connected device.
-
-## 2026-05-06 Voice timing and Naver sync UX checkpoint
-- Added per-user `voice_auto_start` settings support with Supabase schema/patch updates and repository fallback so the app stays usable before the remote DB column is applied.
-- Added a Settings `음성 입력 방식` toggle so microphone entry can either start listening immediately or wait for the user to press the listen button.
-- Strengthened Korean voice time parsing so phrases such as `3분 뒤`, `2시간 후`, and `내일 오전 10시` override incorrect GPT/current-time fallbacks when creating schedules.
-- Made important-alarm toggles visually distinct in both confirmation and edit screens with warm warning colors and clearer on/off styling.
-- Renamed the Naver button to `네이버 일정 동기화`, improved the first CalDAV progress message, upserted Naver `calendar_connections` as connected after successful CalDAV sync, enabled disconnect when a connected record exists, and made connected status checks green.
-- Verification: `flutter analyze`, full `flutter test` (120 passed), `flutter build apk --debug`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, PID check, and focus check on `com.example.planflow/.MainActivity` all passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-07 Voice relative-time and duplicate transcript fix
-- Fixed voice-add routing so locally inferred start times are passed to the confirm screen immediately; phrases like `1시간뒤 원주로 출발` no longer show/save the current time while waiting for GPT hydration.
-- Exposed the local Korean time inference helper from `GptService` and added coverage for `1시간뒤` hour offsets in both parser normalization and direct local inference.
-- Added final transcript cleanup for repeated expanding STT chunks, so inputs like `요미 허리 약5 요미 허리 약 5분 뒤에 주 요미 허리 약 5분 뒤에 주기` normalize to the final intended phrase.
-- Verification: `flutter analyze`, full `flutter test` (122 passed), `flutter build apk --debug`, `adb connect 192.168.0.102:5555`, `adb install -r`, `adb shell am start -n com.example.planflow/.MainActivity`, PID check, and focus check on `com.example.planflow/.MainActivity` all passed. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-07 Calendar, alarm, map, and departure reliability checkpoint
-- Removed coordinate fallback from Home location display through the pushed home-marker work, kept the Home `일정 보기` CTA removed, and preserved red calendar dots for days with important schedules.
-- Added route-based `DepartureAlarmService` with app start/resume monitoring, save-time scheduling, current-location injection for tests, TMAP car/Naver transit routing, and a 30-minute safety margin for “지금 출발 준비” notifications.
-- Strengthened calendar auto-sync diagnostics by persisting provider-level success/failure status, last attempt, and provider-specific action messages for Google, Naver CalDAV, Naver API, and device calendars.
-- Improved map selection so SDK load stalls show an in-page fallback banner with place candidates instead of leaving a blank map surface.
-- Integrated briefing scheduling/test UI and stronger important-alarm channel messaging from the worker pass, then fixed tests for the new schedule result contract and transit routing behavior.
-- Tightened smart-preparation context so `건강검진센터` or hospital-like place names alone do not generate medical/fasting alarms.
-- Verification: `flutter analyze`, full `flutter test` (131 passed), `flutter build apk --debug`, `adb install`, `adb shell am start -n com.example.planflow/.MainActivity`, PID/focus checks passed on `172.16.141.42:5555`. Initial `adb install -r` failed due signature mismatch, so the old package was removed and the debug APK was installed fresh. `scripts/gsd-context-hygiene.mjs` remains absent.
-
-## 2026-05-07 GSD context hygiene script checkpoint
-- Added `scripts/gsd-context-hygiene.mjs` so the AGENTS-required context hygiene command now exists in this repo.
-- The script is read-only: it finds the repo root, checks `AGENTS.md`, `.planning/STATE.md`, `.planning/context/ACTIVE_SUMMARY.md`, reports optional planning/codebase docs, prints the latest active checkpoint, and warns about a dirty worktree without modifying files.
-- Verification: `node scripts/gsd-context-hygiene.mjs` passed and reported the expected dirty-worktree warning for the newly added script before commit.
-
-## 2026-05-07 Home weather refresh and Naver dialog readability checkpoint
-- Simplified the Home header so the user-facing summary now focuses on weather and schedule chips, while the noisy location chip/detail sheet was removed from the visible Home flow.
-- Reduced weather latency by loading last-known location first on resume, refreshing again with current location when available, and parallelizing weather + reverse-geocoding requests inside `HomeHeaderSummaryService`.
-- Reworked the Naver CalDAV connection dialog into a keyboard-safe, scrollable layout with a boxed and enlarged ID/app-password guidance section and a bold color-emphasized warning that the app password is not the normal Naver password.
-- Verification: `flutter analyze`, full `flutter test` (131 passed), `flutter build apk --debug`, `adb uninstall com.example.planflow`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/com.example.planflow.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER`, and focus checks on `com.example.planflow/.MainActivity` all passed on the connected device. `scripts/gsd-context-hygiene.mjs` was run before the work and remained present.
-
-## 2026-05-07 Email login focus handoff checkpoint
-- Added explicit focus nodes to the email login card so pressing Next on the email field now moves focus to the password field instead of leaving the caret on email and hiding the password row behind the soft keyboard.
-- Extended the same focus chain for sign-up and reset flows so name -> email -> password -> confirm-password navigation behaves consistently and the lower fields get scrolled into view more reliably.
-- Verification: `dart format lib/screens/auth/login_screen.dart`, `flutter analyze`, full `flutter test` (131 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed. `scripts/gsd-context-hygiene.mjs` was run before verification and remained present.
-
-## 2026-05-07 Permission, Naver modal, and calendar duplicate checkpoint
-- Reworked the permission onboarding "필요 권한 모두 요청" flow into a resilient step orchestrator that requests microphone, notification/exact alarm, location, and device-calendar permissions without stopping after the first system-settings detour.
-- Rebuilt the Naver CalDAV credential dialog so it no longer pushes the whole modal above the keyboard, keeps the focused ID/password field visible through internal scrolling, separates and emphasizes "네이버 일반 비밀번호가 아닙니다.", and widens the confirm button so the label stays on one line.
-- Changed save-time calendar fan-out so Google export no longer runs a full import/export sync immediately after a PlanFlow save, and added shared same-title/start duplicate skipping for Google, Naver CalDAV, and device-calendar imports to prevent reflected external events from creating duplicate PlanFlow rows.
-- Verification: `dart format`, `flutter analyze`, full `flutter test` (131 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER`, process check, and focused app check all passed. `scripts/gsd-context-hygiene.mjs` was run before and after the work.
-
-## 2026-05-07 Home weather, Naver guide images, and briefing fallback checkpoint
-- Moved the Home hero weather chip into the right side of the main blue card title row so weather no longer sits below the schedule headline.
-- Added Naver CalDAV app-password guide thumbnails under the credential guidance, registered `assets/naver_app_password/`, and added a full-screen zoom viewer for the guide images.
-- Strengthened briefing execution diagnostics: OpenAI failures now expose typed reasons, `Briefing execute`/`Briefing GPT failed`/`Briefing fallback used`/`Briefing TTS failed` logs are emitted, and GPT failure falls back to a local schedule-based morning/evening briefing instead of only saying the briefing failed.
-- Verification: `dart format`, `flutter analyze`, full `flutter test` (132 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER`, PID/focus checks passed on `192.168.0.103:5555`. The ADB screenshot was black because the device screen was off/locked, so visual inspection needs the user to turn the screen on if needed.
-
-## 2026-05-07 Voice schedule query summary checkpoint
-- Added a Korean voice command guide for schedule lookup phrases such as `오늘 일정 알려줘`, `내일 일정 보여줘`, and `이번 주 일정 알려줘`.
-- Updated voice command routing so lookup phrases open the query flow and show a Korean schedule summary card with the requested date range, event count, times, titles, and locations.
-- Query results now filter explicit ranges like today/tomorrow/this week and show a natural empty-state message when there are no matching events.
-- Verification: `flutter analyze`, targeted voice tests, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch via `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1` all passed on `192.168.0.103:5555`.
-
-## 2026-05-07 Voice query card timeline checkpoint
-- Reworked voice lookup results so `오늘/내일/이번 주 일정 알려줘` flows no longer dump a text list; they now show a compact overview card plus date-grouped timeline cards with time buckets.
-- Added a query timeline grouping helper and a card layout that mirrors the home schedule style more closely, while keeping query actions like open detail, edit, and delete intact.
-- Updated voice query tests to assert the card/timeline structure instead of the previous text-heavy summary.
-- Verification: `flutter analyze`, targeted voice tests, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch via `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1` all passed on `192.168.0.103:5555`.
-
-## 2026-05-07 Voice/briefing continuation verification checkpoint
-- Confirmed the current `main` working tree is aligned with `origin/main` and already contains the latest voice input default, briefing launch route, and Naver credential security wording changes.
-- Re-verified the app after continuing from the backup-path warning: `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed.
-- Device verification showed `com.example.planflow/.MainActivity` as the focused app with process id `2694` on `192.168.0.103:5555`.
-- Note: the current Naver guide assets exist in `assets/naver_app_password/`, but replacing them with the exact chat-provided original screenshots still requires the original image files to be available in the workspace.
-
-## 2026-05-08 Naver original guide image replacement checkpoint
-- Replaced the Naver CalDAV app-password guide images with the user-provided originals at `assets/naver_app_password/naver_web_id_entry.png` and `assets/naver_app_password/naver_app_id_entry.png`.
-- Verified both images render from the expected asset paths and that `pubspec.yaml` already includes `assets/naver_app_password/`.
-- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER`, PID check, and focused app check all passed on `192.168.0.103:5555`.
-
-## 2026-05-08 Naver ID hint anonymization checkpoint
-- Replaced the Naver connection dialog ID hint example with an anonymous placeholder (`예: myname123`) so the modal no longer exposes the current account name.
-- The dialog still keeps the same validation and connection flow; only the example text changed.
-- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` (initial start returned an unknown error, but `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1` successfully focused the app), PID/focus checks, and package-wide asset checks all passed on `192.168.0.103:5555`.
-
-## 2026-05-08 modal layout polish checkpoint
-- Reworked the Naver CalDAV range picker into a two-row modal dialog with dark navy buttons and no label wrapping, matching the user's requested button order.
-- Converted the external map selector and the Home weather detail view from bottom sheets to modal dialogs, and widened the three map buttons so they fill the available row more evenly with larger labels.
-- Verification: `dart format`, `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and focus checks all passed on `192.168.0.103:5555`.
-
-## 2026-05-08 map long-press location adjustment checkpoint
-- Added direct map location adjustment to the in-app location picker: users can tap or long-press on Naver/Google maps to move the selected place before confirming.
-- Added an in-map hint chip so users know they can long-press another point to change the location, while preserving search candidate selection and manual coordinate storage.
-- Verification: `dart format`, `flutter analyze`, full `flutter test` (135 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and focus checks all passed.
-
-## 2026-05-08 Naver CalDAV import diagnostics verification checkpoint
-- Verified the latest Naver CalDAV diagnostic implementation in `E:\FluxStudio\PlanFlow`: sync results now separate read, parse, save candidate, broad duplicate skip, unchanged skip, save success, and save failure counts.
-- Confirmed the diagnostic import path bypasses only the broad same-title/start duplicate rule while still preserving `external_id`/etag unchanged protection, so it can prove whether “read many, save zero” is caused by overly broad duplicate detection.
-- Settings now exposes a `저장 누락 진단` action in the Naver calendar section and displays a Korean diagnostic result dialog with summary counts and safe VEVENT samples (`UID`, title, raw DTSTART/DTEND-derived values, and parsed start time only).
-- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, targeted `test/services/naver_caldav_service_test.dart`, full `flutter test` (137 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.example.planflow -c android.intent.category.LAUNCHER 1`, and focus checks all passed on `192.168.0.103:5555`.
-
-## 2026-05-08 Naver CalDAV diagnostic sample clarity checkpoint
-- Clarified the Naver CalDAV save-missing diagnostic dialog so raw read/parse counts are explained separately from actual save candidates.
-- Filtered diagnostic sample events to the selected sync range, preventing old out-of-range broadcast/subscription schedules from appearing as misleading samples in quick-sync diagnostics.
-- Added result-specific Korean guidance for saved, failed, duplicate-skipped, unchanged-skipped, invalid-date, and out-of-range cases.
-- Verification: `node scripts/gsd-context-hygiene.mjs`, targeted `test/services/naver_caldav_service_test.dart`, full `flutter test` (138 passed), `flutter analyze`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed on `192.168.0.103:5555`.
-
-## 2026-05-08 Naver CalDAV unchanged-skip correction checkpoint
-- Interpreted the updated save-missing diagnostic: Naver returned in-range events, but they were skipped as `external_updated_at` not newer than existing rows.
-- Fixed the unchanged-skip logic so an existing `external_id` is not skipped solely by `external_updated_at` when the incoming title, start/end time, location, or memo differs from the stored row.
-- Added a regression test proving a Naver event with older external update time still updates the PlanFlow row when the actual event content changed.
-- Verification: `dart format`, targeted `test/services/naver_caldav_service_test.dart`, `flutter analyze`, full `flutter test` (139 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed on `192.168.0.103:5555`.
-
-## 2026-05-08 Naver CalDAV parse-failure diagnostic checkpoint
-- Added detailed parse-failure diagnostics for Naver CalDAV imports so the app now separates raw read count, parsed event count, invalid event count, save candidates, unchanged skips, duplicate skips, saves, and failures.
-- Captured up to five safe invalid samples with calendar path, href, component type, UID, title, raw DTSTART/DTEND, and a Korean reason such as `DTSTART 없음`, `DTSTART 파싱 실패`, or non-VEVENT component.
-- Updated the Settings diagnostic result dialog to show `파싱 실패 샘플`, making it possible to prove whether missing Naver app events are returned in an unsupported shape or not returned by CalDAV at all.
-- Verification: `node scripts/gsd-context-hygiene.mjs`, targeted `test/services/naver_caldav_service_test.dart`, full `flutter test` (140 passed), `flutter analyze`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed on `192.168.0.103:5555`.
-
-## 2026-05-08 Naver CalDAV placeholder DTSTART recovery checkpoint
-- Used the new diagnostics on-device and confirmed that many real Naver app events are returned by CalDAV as `DTSTART:19700101T000000` with the actual schedule timestamp in `DTEND`.
-- Updated `NaverCalDavService.parseIcal()` to recover that Naver-specific placeholder format by treating the valid `DTEND` as the event start time and importing it as a single-point event instead of dropping it.
-- Added regression coverage for the placeholder DTSTART shape so future parser changes do not re-break existing Naver app schedule imports.
-- Verification: targeted `test/services/naver_caldav_service_test.dart`, `flutter analyze`, full `flutter test` (141 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed on `192.168.0.103:5555`.
-
-## 2026-05-08 Smart prep settings and calendar update checkpoint
-- Implemented the current `PlanFlow_Updates_Today.md` core: user-level smart preparation settings (`prep_time_min`, `prep_pre_alarm_offset`, `depart_pre_alarm_offset`), settings UI controls, model/repository/schema support, and save-time external-event preparation/departure alarm payload generation.
-- Added category/repetition/all-day/multi-day event fields through the model, repository, schema, GPT prompt, confirmation screen, and edit preservation path.
-- Improved the calendar month view with search, category-colored text labels up to three events per day, basic recurrence expansion, basic multi-day expansion across affected dates, and a date-tap agenda panel with direct add and voice add actions.
-- Added/updated regression tests for settings persistence, event serialization, smart preparation payloads, manual event side effects, and Naver CalDAV diagnostics.
-- Verification before build: `flutter analyze` passed and full `flutter test` passed with 146 tests.
-
-## 2026-05-08 v3 first-release reinforcement checkpoint
-- Added first-external-event-of-day handling for smart preparation alarms so only the first outside schedule receives the full preparation flow, while later outside schedules keep departure-oriented alerts.
-- Replaced raw recurrence editing with a Korean recurrence selector that supports none/daily/weekly/monthly/yearly plus end date and preserves advanced RRULE parts such as BYDAY/COUNT.
-- Added recurrence edit scope behavior: 전체 반복 일정 updates the series, 이 일정만 creates a detached override, and 이후 모든 일정 truncates the old series then creates a new future series; calendar rendering hides overridden parent occurrences.
-- Added onboarding preparation-time selection and kept smart prep generation safe when settings lookup fails by falling back to default preparation timings.
-- Improved multi-day visibility on home/calendar: today includes spanning events, home cards show 진행중 · N/M일차, and calendar markers/labels span affected days.
-- Improved Naver CalDAV diagnostics dialog with count table and searchable safe samples.
-- Verification: `flutter analyze`, full `flutter test` (149 passed), and `flutter build apk --debug` passed. ADB install/run was skipped because `adb devices` returned no connected devices.
-
-## 2026-05-08 user-provided smart alarm note checkpoint
-- Re-read the user's `PlanFlow_SmartAlarm_Fix.md` in UTF-8, confirmed it is a separate reference note about smart-prep timing and alarm policy, and accepted the user's later instruction to include it in version control.
-- The note is being committed alongside the latest v3 reinforcement work so the repo keeps the user's explicit planning artifact instead of leaving it as an ignored scratch file.
-
-## 2026-05-08 calendar overflow and smart prep setting fix checkpoint
-- Fixed the month calendar cell overflow by constraining mini event labels inside a clipped expandable area and limiting visible labels/counts per day.
-- Fixed smart preparation settings so `둘 다` persists as sentinel value `31` instead of being converted back to `30분 전`, and expanded it into both 10-minute and 30-minute preparation/departure pre-alerts.
-- Replaced the inline custom preparation-time dialog with a dedicated numeric dialog that owns its controller/focus lifecycle and validates 5-240 minute input.
-- Removed silent legacy Supabase settings fallback for missing smart-prep columns so schema problems surface as a clear Korean error instead of reverting user choices.
-- Verification: `flutter analyze`, targeted settings/smart-prep tests, full `flutter test` (150 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch/focus check all passed on `192.168.0.103:5555`.
-
-## 2026-05-09 Naver CalDAV credential persistence checkpoint
-- Changed the Naver CalDAV credential store to prefer Supabase remote storage first, then fall back to local secure storage, and migrate local-only credentials back to Supabase on read.
-- Added a dedicated persistence test for the remote-first/migrate/save/clear flow and updated the Settings logout regression test to run under a real GoRouter shell with auth auto-refresh disabled in the fake Supabase client.
-- Kept the user-facing Settings copy aligned with the new behavior: successful connections are saved to the PlanFlow account and restored automatically after reinstall/relogin.
-- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, targeted Naver credential/service tests, focused logout widget test, full `flutter test` (195 passed), `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`, and `adb shell dumpsys window | findstr /C:"mCurrentFocus"` all passed on `192.168.0.102:5555`.
-
-## 2026-05-08 calendar duplicate sync and notification ownership checkpoint
-- Implemented PlanFlow-led calendar notification ownership: Google exports explicitly disable provider default reminders, Naver CalDAV exports remain VALARM-free, and Android device-calendar export writes events only without Reminder rows.
-- Added reflected-event markers for Google (`extendedProperties.private.planflow_event_id`), Naver CalDAV (`UID:planflow-{eventId}@planflow`), and Android device calendar (`UID_2445=planflow:{eventId}`) so PlanFlow-origin events do not return as duplicate rows after external sync.
-- External imported sources are excluded from fan-out export, and same title/start imports attach sync metadata or skip instead of inserting duplicate rows.
-- Settings now explains that PlanFlow owns notification scheduling while external app default notifications may still be controlled by those apps.
-- Regression tests cover Google serialized reminder payload, Naver VALARM-free export/reflected UID skip, Android native event-only export, and device eventKey reflected import.
-- Verification: `flutter analyze`, full `flutter test` (162 passed), `flutter build apk --debug`, and `git diff --check` passed.
-
-## 2026-05-08 home briefing quick play checkpoint
-- Added Home-tab quick play controls for `모닝 브리핑 듣기` and `이브닝 브리핑 듣기`, reusing the same `BriefingSchedulerService.executeBriefing()` path as the Settings play buttons.
-- The Home buttons show per-briefing loading state, prevent double playback while one briefing is running, and surface success/failure messages through Korean SnackBars.
-- Verification: `flutter analyze`, full `flutter test` (162 passed), `flutter build apk --debug`, and `git diff --check` passed.
-
-## 2026-05-08 UI updates and voice parsing checkpoint
-- Applied `PlanFlow_UI_Updates.md`: event type labels now use `하루/종일/연속`, categories now use `업무/개인/건강/교육/기타`, and legacy `가족` values normalize/migrate to `건강`.
-- Added compact voice-input guidance with practical examples for normal, all-day, multi-day, recurring, and category-inferred schedules.
-- Strengthened GPT/local fallback parsing for all-day, multi-day, category, and recurrence phrases such as `매주 화요일`, `격주 금요일`, and `매월 첫 번째 월요일`.
-- Removed the visible Naver save-missing diagnostic button from Settings while keeping the internal diagnostic path available for future debugging.
-- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, full `flutter test` (165 passed), `flutter build apk --debug`, and `git diff --check` passed.
-
-## 2026-05-08 Google calendar reauth visibility checkpoint
-- Changed Google Calendar status handling so a missing silent account no longer looks like a lost connection after rebuild/relaunch; it now surfaces as `reauthRequired` while keeping the existing connection record intact.
-- Updated Settings to treat `reauthRequired` as an active connection so the Google disconnect action stays enabled instead of toggling off unexpectedly after app rebuilds.
-- Added a regression test that covers the silent-sign-in-missing case for an already connected Google account.
-- Verification: `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch all passed. The device currently has the launcher focused with the notification shade open on top.
-
-## 2026-05-08 Home briefing button tone checkpoint
-- Changed the Home-tab `모닝 브리핑 듣기` and `이브닝 브리핑 듣기` buttons from the default white-looking fill to a lighter blue tone so they remain visible without looking too heavy.
-- Kept the same loading/disabled behavior and label layout; only the button color treatment changed.
-- Verification: `dart format`, `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch/focus check all passed on the connected Android device.
-
-## 2026-05-08 calendar month swipe checkpoint
-- Added horizontal swipe navigation to the 일정 tab month calendar so dragging the month header/grid area from left-to-right moves to the previous month and right-to-left moves to the next month.
-- Reused the existing month change helper so arrow buttons, today reset, and swipe gestures all stay in sync without changing the date tap behavior.
-- Verification: `dart format lib/screens/calendar/calendar_screen.dart`, `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER` all passed.
-
-## 2026-05-08 home briefing purple + tab swipe checkpoint
-- Changed the Home-tab `모닝 브리핑 듣기` and `이브닝 브리핑 듣기` buttons from the lighter blue tone to a purple accent that matches the app's overall style better while keeping the same loading/disabled behavior.
-- Added left/right swipe navigation at the shell level so users can move between Home, Calendar, and Settings by swiping horizontally anywhere in the tab body; the bottom navigation remains in sync with the swipe state.
-- Verification: `dart format lib/screens/home/home_screen.dart lib/screens/shell_screen.dart`, `flutter analyze`, full `flutter test`, `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -W -n com.example.planflow/.MainActivity -a android.intent.action.MAIN -c android.intent.category.LAUNCHER`, and `adb shell dumpsys window | findstr /i "mCurrentFocus mFocusedApp"` all passed.
-
-## 2026-05-09 Google Maps travel-time buffer checkpoint
-- Wired `TravelTimeBufferService.estimateWithMapApis()` to try Google Maps Distance Matrix first when `GOOGLE_MAPS_API_KEY` is present, then fall back to the existing Tmap/Naver route path, and finally keep the deterministic heuristic fallback.
-- Added regression coverage proving Google Maps precedence and fallback to the existing map API path when Google fails.
-- Verification: `dart format lib/services/travel_time_buffer_service.dart test/services/travel_time_buffer_service_test.dart`, `flutter analyze`, `flutter test test/services/travel_time_buffer_service_test.dart`, full `flutter test` (167 passed), and `flutter build apk --debug` all passed.
-
-## 2026-05-09 briefing and departure alarm runtime status checkpoint
-- Added persisted runtime status for briefing scheduling/execution so Settings can show whether morning/evening alarms were actually scheduled, their next scheduled times, and the latest play result/failure reason.
-- Added persisted runtime status for departure alarms and the 30-minute monitor so Settings can show the most recent scheduled/skipped event, notify time, travel minutes, skip reason, monitor result, and next monitor registration state.
-- Changed ConfirmScreen important alarm scheduling to use the saved `system_alarm` reminder payload as the single source for local critical alarm scheduling, and avoided Supabase settings lookup when Supabase is not initialized.
-- Added regression tests for briefing status persistence, departure status persistence, and the formerly fragile ConfirmScreen critical-alarm save path.
-- Verification: `flutter analyze`, targeted briefing/departure/confirm tests, full `flutter test` (180 passed), `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` all passed on `192.168.0.102:5555`.
-
-## 2026-05-09 Naver calendar timezone verification follow-up checkpoint
-- Ran a parallel verification pass for the Naver calendar time/date mismatch fix. One subagent inspected the wrong checkout and its findings were discarded; the valid PlanFlow verifier found remaining timezone and all-day boundary risks.
-- Hardened `planflowLocal()` to render fixed Asia/Seoul wall time instead of depending on device runtime timezone, and changed the Android home widget to format with `ZoneId.of("Asia/Seoul")`.
-- Fixed remaining display/import gaps: briefing fallback summaries, calendar multi-day segments, Naver CalDAV/ICS date-only parsing as Seoul midnight, Naver local export formatting, and exclusive all-day end-date marker handling.
-- Added regression tests for KST conversion, exclusive day intersection, all-day marker boundaries, and Naver CalDAV/ICS all-day date parsing.
-- Verification: project guard and `node scripts/gsd-context-hygiene.mjs` passed in `C:\PlanFlow`; `flutter analyze`, focused timezone/calendar/Naver/briefing tests, full `flutter test` (190 passed), `git diff --check`, `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, launch, pid, and focused-window checks all passed on `192.168.0.102:5555`.
-
-## 2026-05-09 final task batch checkpoint
-- Removed the duplicate `DepartureAlarmService().scheduleNextMonitor()` call from `main.dart`, and hid the Naver social login button from the login screen so Google/Kakao remain the only visible sign-in choices.
-- Added time-overlap warnings to both voice confirmation and manual event edit saves, then hardened the overlap logic to expand recurring events so future repeated occurrences are also detected.
-- Added launcher PNG assets for the Android mipmap buckets and kept the adaptive icons intact with `android:roundIcon` in the manifest.
-- Added regression coverage for overlap utilities, including adjacent-boundary behavior and weekly recurring occurrence expansion, plus a ConfirmScreen save warning case.
-- Verification: `flutter analyze`, full `flutter test` (198 passed), `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` all passed on `192.168.0.102:5555`.
-
-## 2026-05-09 OpenAI proxy migration checkpoint
-- Moved `GptService` off the direct OpenAI endpoint and pointed the default request path at `SUPABASE_URL/functions/v1/openai-proxy`, while sending Supabase anon credentials instead of an APK-bundled OpenAI key.
-- Removed `OPENAI_API_KEY` from `lib/core/env.dart` and from the local `.env` file so the app no longer depends on a client-side OpenAI secret.
-- Added `supabase/functions/openai-proxy/index.ts` to forward POST chat-completions payloads to OpenAI from the server side with CORS handling and missing-secret guards.
-- Updated `test/services/gpt_service_test.dart` to load Supabase env values, target the proxy URL, and assert the new request headers instead of `apiKey` constructor usage.
-- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, `flutter test test/services/gpt_service_test.dart`, `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` all passed on `192.168.0.102:5555`.
+# ACTIVE SUMMARY
+
+- generated_at: 2026-05-09T23:29:51.354Z
+- latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
+- snapshot_keep: 12
+
+## Stable Context
+### Project
+- 거래를 직접 입력하지 않고도 자동으로 가계부를 채울 수 있어야 한다.
+- 카드대금납부, 계좌간이체, 취소거래, 애매한 거래 같은 예외가 안정적으로 처리되어야 한다.
+- 사용자는 거래내역, 계좌/카드, 통계 화면에서 실제 저장 결과를 신뢰할 수 있어야 한다.
+- 디버깅 시 핵심 기능이 어떤 단계로 동작했는지 로그로 빠르게 추적할 수 있어야 한다.
+
+### Engineering Rules
+- 기능/로직 수정 후에는 연결 경로 전수 점검을 먼저 수행한다.
+- 금융 파이프라인 수정 시 `npm run test:financial-regression`을 기준 검증으로 사용한다.
+- 타입 안정성은 `npm run check`로 유지한다.
+- 3개 이상 지시가 함께 오면 먼저 계획을 만든다.
+- 가능한 경우 좁은 범위부터 수정하고 인접 영향만 점진적으로 넓힌다.
+- 장시간 탐색은 피하고, 근거가 나오는 범위만 단계적으로 확장한다.
+
+## Current State
+- GSD 초기화가 없던 저장소에 2026-04-01 기준 기본 `.planning` 문맥을 생성했다.
+- 메인 앱과 `lite-app` 모두 금융 파이프라인 구조 로그를 일부 도입한 상태다.
+- `npm run check`와 `npm run test:financial-regression`은 최근 작업 기준 통과 상태다.
+- 환경 제약 때문에 이 세션에서는 `npm run build`가 `vite/esbuild spawn EPERM`으로 막힐 수 있다.
+- Phase 6으로 GSD 컨텍스트 위생 자동화를 추가해 장기 세션 품질 저하를 줄이는 작업을 시작했다.
+- 사용자가 별도로 중지하지 않는 한 항상 GSD 우선 모드로 작업한다.
+- 새 세션에서는 `.planning/STATE.md` 확인 후 `gsd-progress` 성격으로 현재 상태를 먼저 정리한다.
+- 새 세션 시작 직후와 최종 완료 보고 직전에는 `node scripts/gsd-context-hygiene.mjs`를 자동 실행해 활성 요약을 갱신한다.
+
+
+- 2026-05-09~10: `CODEX_FIREBASE_SETUP.md` 기준으로 Firebase Step 1~5를 순서대로 진행했다. `pubspec.yaml`에 `firebase_core`, `firebase_crashlytics`, `firebase_analytics`를 추가했고, `android/settings.gradle.kts`와 `android/app/build.gradle.kts`에 Google Services/Crashlytics 플러그인을 연결했다. `lib/main.dart`에서 `Firebase.initializeApp()`과 Crashlytics 전역 오류 핸들러를 붙였고, `flutter analyze`, `flutter test`, `flutter build apk --debug`, `flutter build apk --release`, 실기기 설치/실행까지 통과했다. `flutter pub get`은 Windows symlink 지원 경고가 있었지만 이후 검증은 정상 통과했다.
+
+## Roadmap Focus
+- Phase 5: 데이터 정합성 정리
+- Phase 6: GSD 컨텍스트 위생 자동화
+- Phase 7: 통계 제외 + 자동 학습 기능
+
+## Active Phase Detail
+- active_phase: 07-stats-exclusion-learning
+- active_phase_title: stats exclusion learning
+
+### Phase Context
+- 활성 phase CONTEXT.md를 찾지 못했다.
+
+### Phase Plan
+- 활성 phase PLAN.md를 찾지 못했다.
+
+## Recent Issue Notes
+- 2026-04-19-self-transfer-misread-as-salary
+- 2026-04-19-raw-archive-upload-and-corrected-fields-gap
+- 2026-04-19-hana-autopay-liivm-merchant-fix
+- 2026-04-18-naver-membership-card-cancel-bridge
+- 2026-04-18-ibk-bc-card-unification-and-food-category
+
+## Dirty Worktree Surface
+- .planning: 25개
+- server: 3개
+- planning: 1개
+- android: 1개
+- client: 1개
+- "FinFlow_NLS_Migration_Codex (1).md": 1개
+- "FinFlow_: 1개
+- scripts: 1개
+
+## Changed Files Sample
+- M .planning/context/ACTIVE_SUMMARY.md
+-  M .planning/context/MANIFEST.json
+-  D .planning/context/snapshots/2026-05-06T00-54-44Z.md
+-  D .planning/context/snapshots/2026-05-06T00-58-16Z.md
+-  D .planning/context/snapshots/2026-05-06T01-10-01Z.md
+-  D .planning/context/snapshots/2026-05-06T01-23-58Z.md
+-  D .planning/context/snapshots/2026-05-06T01-38-34Z.md
+-  D .planning/context/snapshots/2026-05-06T01-43-35Z.md
+-  D .planning/context/snapshots/2026-05-06T01-48-16Z.md
+-  D .planning/context/snapshots/2026-05-06T03-26-34Z.md
+-  D .planning/context/snapshots/2026-05-06T03-27-44Z.md
+-  D .planning/context/snapshots/2026-05-06T03-37-06Z.md
+-  D .planning/context/snapshots/2026-05-06T03-52-26Z.md
+-  D .planning/context/snapshots/2026-05-06T03-53-43Z.md
+-  M android/app/capacitor.build.gradle
+-  M client/src/pages/login.tsx
+-  M server/routes.ts
+- ?? .planning/context/snapshots/2026-05-09T12-48-28Z.md
+- ?? .planning/context/snapshots/2026-05-09T12-48-29Z.md
+- ?? .planning/context/snapshots/2026-05-09T13-00-43Z.md
+
+## Next Session Start
+- `.planning/STATE.md`를 먼저 읽는다.
+- `.planning/context/ACTIVE_SUMMARY.md`로 안정 문맥을 빠르게 복구한다.
+- 현재 작업이 phase면 해당 `.planning/phases/*` 문서를 읽고 시작한다.
+- 금융거래감지 수정이면 이슈 기록, 전수 점검, 회귀 테스트 순서를 유지한다.
+
+## Safe To Drop From Prompt
+- 오래된 장문 탐색 로그
+- 이미 문서에 승격된 의사결정의 반복 설명
+- 오래된 자동 생성 스냅샷 세부 내용
