@@ -6,6 +6,10 @@
 - Removed a stale `EventProvider` TODO because event loading is already repository-backed.
 - Verification: project guard passed for `C:\PlanFlow`, `node scripts\gsd-context-hygiene.mjs` ran, privacy policy URL returned HTTP 200, `flutter analyze` passed, focused provider/model/repository tests passed, full `flutter test` passed with 183 tests, `git diff --check` passed, `flutter build appbundle --release` passed, and `flutter build apk --release` passed. ADB install/run could not be completed in this pass because `192.168.0.102:5555` changed to `offline` and reconnect timed out.
 
+## 2026-05-09 launcher-icon-fallback checkpoint
+- Added default `mipmap-anydpi` launcher icon resources so `@mipmap/ic_launcher` and `@mipmap/ic_launcher_round` resolve outside the Android 8+ adaptive-icon resource bucket as well.
+- Verification: `flutter analyze` passed, `git diff --check` passed, `flutter build apk --release` passed, and `flutter build appbundle --release` passed. ADB currently lists no connected devices after the previous network ADB timeout, so install/run verification is pending device reconnect.
+
 ## 2026-05-09 map-fallback-runtime-status-test checkpoint
 - Strengthened the location picker empty-map path so missing in-app map readiness now explains API key, package restriction, and authentication checks, keeps place candidates visible, and points users to Google Maps/Naver Map/TMAP external fallback instead of implying they can tap an unavailable in-app map.
 - Added widget coverage for the map-unavailable location picker state and for the Settings briefing/departure runtime status cards, so the user can verify whether briefing alarms, departure alarms, and monitor jobs were actually scheduled or skipped.
