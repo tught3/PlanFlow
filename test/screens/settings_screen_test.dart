@@ -4,7 +4,9 @@ import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/settings_repository.dart';
+import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/settings/settings_screen.dart';
+import 'package:planflow/services/auth_service.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
@@ -12,6 +14,7 @@ import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   setUp(() {
@@ -495,6 +498,51 @@ void main() {
     );
   });
 
+  testWidgets('logout does not clear saved Naver CalDAV credentials',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => authProvider.setUser(null));
+
+    authProvider.setUser('user-1');
+
+    final authService = _FakeAuthService();
+    final naverCalDavService = _FakeNaverCalDavService(
+      initialHasCredentials: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          authService: authService,
+          naverCalDavService: naverCalDavService,
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    await _scrollUntilHitTestable(
+      tester,
+      find.text('로그아웃'),
+      maxScrolls: 16,
+    );
+    await tester.tap(find.text('로그아웃').hitTestable().first);
+    await tester.pumpAndSettle();
+
+    expect(authService.signOutCallCount, 1);
+    expect(naverCalDavService.clearCallCount, 0);
+  });
+
   testWidgets('device Naver calendar import button imports phone calendars',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
@@ -813,4 +861,22 @@ class _FakeNaverCalDavService extends NaverCalDavService {
 
   @override
   Future<void> dispose() async {}
+}
+
+class _FakeAuthService extends AuthService {
+  _FakeAuthService()
+      : super(
+          client: SupabaseClient(
+            'https://example.com',
+            'public-anon-key',
+          ),
+        );
+
+  int signOutCallCount = 0;
+
+  @override
+  Future<void> signOut() async {
+    signOutCallCount += 1;
+    authProvider.setUser(null);
+  }
 }
