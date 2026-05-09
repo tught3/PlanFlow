@@ -1279,7 +1279,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '연결에 성공한 경우에만 이 기기의 보안 저장소에 저장됩니다. 서버에 저장하거나 전송되지 않으니 걱정하지 마세요.',
+                    '연결에 성공하면 PlanFlow 계정에 저장되고 이 기기에는 보조 캐시가 남습니다. '
+                    '같은 계정으로 다시 로그인하면 자동으로 복원됩니다.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: PlanFlowColors.textSecondary,
                     ),

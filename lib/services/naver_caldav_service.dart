@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:xml/xml.dart';
 
+import '../core/env.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
@@ -381,9 +382,9 @@ class NaverCalDavCredentials {
   final String appPassword;
 }
 
-class FlutterSecureNaverCalDavCredentialStore
+class LocalNaverCalDavCredentialStore
     implements NaverCalDavCredentialStore {
-  const FlutterSecureNaverCalDavCredentialStore({
+  const LocalNaverCalDavCredentialStore({
     FlutterSecureStorage storage = const FlutterSecureStorage(),
   }) : _storage = storage;
 
@@ -424,11 +425,161 @@ class FlutterSecureNaverCalDavCredentialStore
   }
 }
 
+class SupabaseNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
+  const SupabaseNaverCalDavCredentialStore({SupabaseClient? client})
+      : _client = client;
+
+  final SupabaseClient? _client;
+
+  SupabaseClient? get _resolvedClient {
+    final client = _client;
+    if (client != null) {
+      return client;
+    }
+    if (!AppEnv.isSupabaseReady) {
+      return null;
+    }
+    return Supabase.instance.client;
+  }
+
+  @override
+  Future<NaverCalDavCredentials?> readCredentials() async {
+    final client = _resolvedClient;
+    if (client == null || client.auth.currentUser == null) {
+      return null;
+    }
+
+    try {
+      final response = await client.rpc('fetch_naver_caldav_credentials');
+      final rows = _asRows(response);
+      if (rows.isEmpty) {
+        return null;
+      }
+      final row = rows.first;
+      final id = row['naver_caldav_id']?.toString().trim() ?? '';
+      final password =
+          row['naver_caldav_app_password']?.toString().trim() ?? '';
+      if (id.isEmpty || password.isEmpty) {
+        return null;
+      }
+      return NaverCalDavCredentials(naverId: id, appPassword: password);
+    } catch (error, stackTrace) {
+      debugPrint('Naver CalDAV remote credential read failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
+    }
+  }
+
+  @override
+  Future<void> saveCredentials({
+    required String naverId,
+    required String appPassword,
+  }) async {
+    final client = _resolvedClient;
+    if (client == null || client.auth.currentUser == null) {
+      return;
+    }
+
+    try {
+      await client.rpc(
+        'upsert_naver_caldav_credentials',
+        params: <String, dynamic>{
+          'naver_caldav_id': naverId,
+          'naver_caldav_app_password': appPassword,
+        },
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Naver CalDAV remote credential save failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  @override
+  Future<void> clearCredentials() async {
+    final client = _resolvedClient;
+    if (client == null || client.auth.currentUser == null) {
+      return;
+    }
+
+    try {
+      await client.rpc('clear_naver_caldav_credentials');
+    } catch (error, stackTrace) {
+      debugPrint('Naver CalDAV remote credential clear failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  List<Map<String, dynamic>> _asRows(Object? value) {
+    if (value is List) {
+      return value
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(growable: false);
+    }
+    if (value is Map) {
+      return <Map<String, dynamic>>[Map<String, dynamic>.from(value)];
+    }
+    return const <Map<String, dynamic>>[];
+  }
+}
+
+class CompositeNaverCalDavCredentialStore
+    implements NaverCalDavCredentialStore {
+  const CompositeNaverCalDavCredentialStore({
+    required this.remoteStore,
+    required this.localStore,
+  });
+
+  final NaverCalDavCredentialStore remoteStore;
+  final NaverCalDavCredentialStore localStore;
+
+  @override
+  Future<NaverCalDavCredentials?> readCredentials() async {
+    final remote = await remoteStore.readCredentials();
+    if (remote != null) {
+      return remote;
+    }
+
+    final local = await localStore.readCredentials();
+    if (local == null) {
+      return null;
+    }
+
+    await remoteStore.saveCredentials(
+      naverId: local.naverId,
+      appPassword: local.appPassword,
+    );
+    return local;
+  }
+
+  @override
+  Future<void> saveCredentials({
+    required String naverId,
+    required String appPassword,
+  }) async {
+    await remoteStore.saveCredentials(
+      naverId: naverId,
+      appPassword: appPassword,
+    );
+    await localStore.saveCredentials(
+      naverId: naverId,
+      appPassword: appPassword,
+    );
+  }
+
+  @override
+  Future<void> clearCredentials() async {
+    await Future.wait(<Future<void>>[
+      remoteStore.clearCredentials(),
+      localStore.clearCredentials(),
+    ]);
+  }
+}
+
 class NaverCalDavService {
   NaverCalDavService({
     http.Client? httpClient,
-    NaverCalDavCredentialStore credentialStore =
-        const FlutterSecureNaverCalDavCredentialStore(),
+    NaverCalDavCredentialStore? credentialStore,
     EventRepository? eventRepository,
     SupabaseClient? client,
     String? currentUserId,
@@ -436,7 +587,8 @@ class NaverCalDavService {
     Uri? baseUri,
   })  : _httpClient = httpClient ?? http.Client(),
         _ownsHttpClient = httpClient == null,
-        _credentialStore = credentialStore,
+        _credentialStore = credentialStore ??
+            _defaultCredentialStore(client),
         _eventRepositoryOverride = eventRepository,
         _client = client,
         _currentUserId = currentUserId,
@@ -458,6 +610,19 @@ class NaverCalDavService {
 
   EventRepository get _eventRepository =>
       _eventRepositoryOverride ?? EventRepository.supabase(client: _client);
+
+  static NaverCalDavCredentialStore _defaultCredentialStore(
+    SupabaseClient? client,
+  ) {
+    final localStore = const LocalNaverCalDavCredentialStore();
+    if (!AppEnv.isSupabaseReady && client == null) {
+      return localStore;
+    }
+    return CompositeNaverCalDavCredentialStore(
+      remoteStore: SupabaseNaverCalDavCredentialStore(client: client),
+      localStore: localStore,
+    );
+  }
 
   Future<void> dispose() async {
     if (_ownsHttpClient) {

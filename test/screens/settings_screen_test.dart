@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
@@ -510,24 +512,39 @@ void main() {
     final naverCalDavService = _FakeNaverCalDavService(
       initialHasCredentials: true,
     );
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: <RouteBase>[
+        GoRoute(
+          path: '/',
+          builder: (context, state) => SettingsScreen(
+            settingsRepository: _FakeSettingsRepository(),
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google:
+                    CalendarIntegrationResult.ready(CalendarProvider.google),
+                naver:
+                    CalendarIntegrationResult.ready(CalendarProvider.naver),
+              ),
+            ),
+            notificationService: _FakeNotificationService(),
+            authService: authService,
+            naverCalDavService: naverCalDavService,
+            userId: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.login,
+          builder: (context, state) => const Scaffold(
+            body: SizedBox.shrink(),
+          ),
+        ),
+      ],
+    );
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsScreen(
-          settingsRepository: _FakeSettingsRepository(),
-          briefingSchedulerService: _FakeBriefingSchedulerService(),
-          calendarSyncService: _FakeCalendarSyncService(
-            summary: CalendarSyncSummary(
-              google: CalendarIntegrationResult.ready(CalendarProvider.google),
-              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
-            ),
-          ),
-          notificationService: _FakeNotificationService(),
-          authService: authService,
-          naverCalDavService: naverCalDavService,
-          userId: 'user-1',
-        ),
-      ),
+      MaterialApp.router(routerConfig: router),
     );
 
     await tester.pumpAndSettle();
@@ -869,6 +886,10 @@ class _FakeAuthService extends AuthService {
           client: SupabaseClient(
             'https://example.com',
             'public-anon-key',
+            authOptions: const FlutterAuthClientOptions(
+              detectSessionInUri: false,
+              autoRefreshToken: false,
+            ),
           ),
         );
 

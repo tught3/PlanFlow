@@ -551,6 +551,12 @@ eceive_sharing_intent, ile_picker, ical_parser, and direct crypto use. Resolved
 - Removed silent legacy Supabase settings fallback for missing smart-prep columns so schema problems surface as a clear Korean error instead of reverting user choices.
 - Verification: `flutter analyze`, targeted settings/smart-prep tests, full `flutter test` (150 passed), `flutter build apk --debug`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and app launch/focus check all passed on `192.168.0.103:5555`.
 
+## 2026-05-09 Naver CalDAV credential persistence checkpoint
+- Changed the Naver CalDAV credential store to prefer Supabase remote storage first, then fall back to local secure storage, and migrate local-only credentials back to Supabase on read.
+- Added a dedicated persistence test for the remote-first/migrate/save/clear flow and updated the Settings logout regression test to run under a real GoRouter shell with auth auto-refresh disabled in the fake Supabase client.
+- Kept the user-facing Settings copy aligned with the new behavior: successful connections are saved to the PlanFlow account and restored automatically after reinstall/relogin.
+- Verification: `node scripts/gsd-context-hygiene.mjs`, `flutter analyze`, targeted Naver credential/service tests, focused logout widget test, full `flutter test` (195 passed), `flutter build apk --debug`, `flutter build apk --release`, `adb install -r build/app/outputs/flutter-apk/app-release.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`, and `adb shell dumpsys window | findstr /C:"mCurrentFocus"` all passed on `192.168.0.102:5555`.
+
 ## 2026-05-08 calendar duplicate sync and notification ownership checkpoint
 - Implemented PlanFlow-led calendar notification ownership: Google exports explicitly disable provider default reminders, Naver CalDAV exports remain VALARM-free, and Android device-calendar export writes events only without Reminder rows.
 - Added reflected-event markers for Google (`extendedProperties.private.planflow_event_id`), Naver CalDAV (`UID:planflow-{eventId}@planflow`), and Android device calendar (`UID_2445=planflow:{eventId}`) so PlanFlow-origin events do not return as duplicate rows after external sync.
