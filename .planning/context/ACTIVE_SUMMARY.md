@@ -1,5 +1,11 @@
 # Active Summary
 
+## 2026-05-09 release-checklist-alignment checkpoint
+- Updated release readiness docs to match the current PlanFlow implementation instead of older scaffold-era assumptions: Naver Calendar is now a 1차 feature through CalDAV/direct sync and phone-calendar paths, provider-separated calendar sync status is present, departure alarm/runtime status is present, and the privacy policy URL is publicly reachable.
+- Refreshed the remaining 1차 verification checklist around Play Console account verification, Google/Naver/Kakao/OpenAI console setup, Supabase schema/RLS/RPC checks, release APK E2E, AAB upload, backup, briefing, departure alarm, and calendar sync.
+- Removed a stale `EventProvider` TODO because event loading is already repository-backed.
+- Verification: project guard passed for `C:\PlanFlow`, `node scripts\gsd-context-hygiene.mjs` ran, privacy policy URL returned HTTP 200, `flutter analyze` passed, focused provider/model/repository tests passed, full `flutter test` passed with 183 tests, `git diff --check` passed, `flutter build appbundle --release` passed, and `flutter build apk --release` passed. ADB install/run could not be completed in this pass because `192.168.0.102:5555` changed to `offline` and reconnect timed out.
+
 ## 2026-05-09 map-fallback-runtime-status-test checkpoint
 - Strengthened the location picker empty-map path so missing in-app map readiness now explains API key, package restriction, and authentication checks, keeps place candidates visible, and points users to Google Maps/Naver Map/TMAP external fallback instead of implying they can tap an unavailable in-app map.
 - Added widget coverage for the map-unavailable location picker state and for the Settings briefing/departure runtime status cards, so the user can verify whether briefing alarms, departure alarms, and monitor jobs were actually scheduled or skipped.

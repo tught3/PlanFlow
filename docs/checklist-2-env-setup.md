@@ -26,4 +26,4 @@ PlanFlow reads local development values from `.env`. The file is ignored by Git.
 - `TMAP_API_KEY` is used first for route duration when origin/destination coordinates exist.
 - `NAVER_MAP_CLIENT_ID` is used by the Android in-app Naver Dynamic Map SDK.
 - Do not ship `NAVER_MAP_CLIENT_SECRET` in a production APK. For release, deploy `supabase/functions/naver-geocode`, store the secret in Supabase, and set `NAVER_MAP_PROXY_URL` to the function URL.
-- Naver Calendar is intentionally deferred for 1차 배포.
+- Naver Calendar is now a 1차 배포 feature through Naver CalDAV/direct sync and phone-calendar import paths. Keep Naver OAuth, CalDAV credentials, and Naver Cloud Maps restrictions visible and testable.

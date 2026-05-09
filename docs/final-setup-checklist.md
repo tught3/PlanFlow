@@ -32,11 +32,11 @@
 - [x] 15. `EventDetailScreen` / `EventEditScreen`
 - [x] 16. `NotificationService` 구현
 - [x] 17. 선행행동 역산 알림 로직
-- [x] 18. 이브닝/모닝 브리핑 scaffold
-- [x] 19. Google Calendar 연동 scaffold 및 env 연결
-- [x] 20. Naver Calendar 1차 보류 처리
-- [x] 21. Google Maps 기반 이동시간 버퍼
-- [x] 22. Android Home Widget 네이티브 기본 구성 및 Flutter service scaffold
+- [x] 18. 이브닝/모닝 브리핑 예약, 테스트 재생, tap-to-play 알림, 다음 브리핑 재예약
+- [x] 19. Google Calendar 연동, 재인증 상태 표시, 자동 동기화 상태 분리
+- [x] 20. Naver Calendar 1차 기능: Naver CalDAV 연결/import/export, 휴대폰 내부 캘린더 import/export, 진단/상태 표시
+- [x] 21. Google Maps/TMAP/Naver 기반 이동시간 버퍼와 보수적 fallback
+- [x] 22. Android Home Widget 네이티브 구성 및 Flutter service
 - [x] 23. `SettingsScreen`
 - [x] 24. `early_bird_emails` 기반 PRO 얼리버드 이메일 수집
 
@@ -64,33 +64,55 @@
 - [x] Home Widget 데이터 갱신 시 오늘 남은 일정 중 가장 가까운 일정 계산
 - [x] 위젯 `planflow://voice` Android intent-filter 추가
 - [x] 후속 저장 실패 시 일정 저장 성공과 후속 동기화 경고 분리
+- [x] 홈 위치 좌표 fallback 제거 및 시/군/구 중심 지역명 표시
+- [x] 음성 일정 관리의 추가/수정/삭제/조회 버튼 동작 연결
+- [x] 일정 삭제 다이얼로그 버튼 균등 배치
+- [x] 스마트 준비 알람 목적 판단 개선: 병원/법원/학교를 장소명만으로 단정하지 않음
+- [x] 달력 중요 일정 빨간 점 표시
+- [x] 출발 알림 예약/모니터링 상태 기록 및 설정 화면 표시
+- [x] 지도 선택 화면 API 키/인증 실패 안내와 외부 지도 fallback 표시
+- [x] Google/Naver/휴대폰 내부 캘린더 자동 동기화 provider별 상태 표시
+- [x] 개인정보처리방침 GitHub Pages URL 공개 확인: `https://tught3.github.io/PlanFlow/privacy-policy.html`
 
 ### 1차에서 아직 실제 검증이 필요한 것
 
-- [ ] Supabase SQL Editor에서 최신 `supabase/schema.sql` 전체 실행
-- [ ] Supabase에서 `early_bird_emails` 포함 8개 테이블 확인
+- [x] Supabase SQL Editor에서 `supabase/calendar_sync_patch.sql` 실행
+- [ ] Supabase SQL Editor에서 최신 `supabase/schema.sql` 전체 실행 또는 현재 DB가 동일 스키마인지 확인
+- [ ] Supabase에서 `users`, `events`, `pre_actions`, `reminders`, `voice_logs`, `location_history`, `user_settings`, `calendar_connections`, `early_bird_emails`, `user_backups` 테이블 확인
 - [ ] Supabase에서 `submit_early_bird_email` RPC 함수 확인
 - [ ] `early_bird_emails`에 공개 insert/select policy가 없는지 확인
-- [ ] Google Calendar API Enable 확인
-- [ ] Google OAuth 테스트 사용자 등록 확인
-- [ ] Google Maps API Key 발급 및 `.env`의 `GOOGLE_MAPS_API_KEY` 입력
-- [ ] Android 실제 기기에서 `flutter run`
+- [ ] Play Console 개발자 계정 인증 완료
+- [ ] Play Console 앱 생성 후 개인정보처리방침 URL 입력
+- [ ] Google Cloud에서 Calendar API, Maps SDK for Android, Directions/Distance Matrix/Geocoding API 활성화 확인
+- [ ] Google OAuth Android client에 `com.planflow.app` + release SHA-1 등록
+- [ ] Google Maps API key 제한에 `com.planflow.app` + release SHA-1 등록
+- [ ] Naver Developers/Naver Cloud에 `com.planflow.app` 및 콜백/지도 제한 등록
+- [ ] Kakao Developers에 `com.planflow.app` 및 release key hash 등록
+- [ ] OpenAI 월 사용량 제한 설정
+- [x] Android release APK 실기기 설치/실행 확인
 - [ ] 앱 알림 권한 허용 확인
 - [ ] 정확한 알람 권한 허용 확인
 - [ ] 중요 일정 full-screen/critical 알림 동작 확인
 - [ ] 한국어 음성 입력 확인
 - [ ] GPT 일정 파싱 확인
 - [ ] 일정 저장 플로우 확인
+- [ ] Google Calendar 연결/저장/재시작 후 연결 유지 확인
+- [ ] Naver CalDAV 연결/import/export 확인
+- [ ] 휴대폰 내부 캘린더 import/export 확인
+- [ ] 출발 알림 실제 수신 확인
 - [ ] PRO 얼리버드 이메일 저장 확인
 - [ ] TTS 브리핑 음성 출력 확인
 - [ ] Android Home Widget 실제 표시 및 마이크 버튼 앱 실행 확인
+- [ ] 백업 생성/복원 확인
+- [ ] Play 내부 테스트용 AAB 업로드
 
 ## 1차에서 주의할 점
 
-- Google Calendar는 Android Client ID와 env 연결까지 되어 있습니다. 실제 로그인/동기화는 Google API Enable, 테스트 사용자 등록, 실기기 실행으로 확인해야 합니다.
-- Naver Calendar는 1차에서 보류합니다. 네이버 심사/권한 준비 후 2차 이후 별도 구현합니다.
-- Google Maps 이동시간 버퍼는 `GOOGLE_MAPS_API_KEY`가 없으면 안전한 로컬 추정값으로 동작해야 합니다.
-- Home Widget은 Android 네이티브 기본 구성까지 추가됐습니다. 실제 런처 배치/표시는 실기기에서 확인해야 합니다.
+- Google Calendar는 앱 코드가 준비되어 있지만 Google Cloud OAuth/Calendar API/Maps API 제한이 release 패키지명과 SHA-1 기준으로 맞아야 실제 성공합니다.
+- Naver Calendar는 1차에서 CalDAV/direct sync 및 휴대폰 내부 캘린더 경로를 지원합니다. 단, Naver Calendar 앱의 내부 비공개 저장소에만 있는 일정은 Android에서 직접 읽을 수 없으므로 CalDAV 또는 Android Calendar Provider에 노출되는 일정만 가져올 수 있습니다.
+- Google Maps/TMAP/Naver 이동시간은 API 실패 시 보수적 fallback을 사용하되, 앱은 이를 정확한 실시간 경로처럼 과장하지 않아야 합니다.
+- Home Widget은 Android 네이티브 구성까지 추가됐습니다. 실제 런처 배치/마이크 버튼은 실기기에서 확인해야 합니다.
+- OpenAI 키가 APK asset에 포함되는 현재 구조는 1차 최소 조치입니다. 공개 배포 전후 P3에서 Supabase Edge Function 프록시로 전환해야 합니다.
 - iOS는 1차 Android 우선 전략상 추후 진행입니다.
 
 ## 2차 개발 범위
@@ -107,16 +129,18 @@
 
 ## 지금 당장 해야 할 일
 
-1. Supabase SQL Editor에서 최신 `supabase/schema.sql` 전체 실행
-2. Supabase Table Editor에서 8개 테이블 확인
-3. Supabase Database Functions에서 `submit_early_bird_email` 확인
-4. Google Cloud에서 Calendar API Enable 및 테스트 사용자 확인
-5. Google Cloud에서 Maps API Key 발급 후 `.env`에 `GOOGLE_MAPS_API_KEY` 입력
-6. Android 기기 연결 후 `flutter run`
+1. Play Console 개발자 계정 인증이 끝나면 앱을 생성하고 개인정보처리방침 URL을 입력
+2. Google/Naver/Kakao/OpenAI 콘솔 값을 `docs/release-console-checklist.md` 기준으로 반영
+3. Supabase Table Editor/Functions에서 최신 schema/RLS/RPC 상태 확인
+4. Release APK로 이메일 로그인, 일정 저장, 알림, Google/Naver/휴대폰 캘린더, 백업을 실기기 E2E 검증
+5. 내부 테스트용 `app-release.aab` 업로드
 
 ## 현재 검증 기준
 
 - [x] `flutter analyze` 통과
 - [x] `flutter test` 통과
 - [x] Android debug APK build 통과
-- [x] 이번 v3 재정리/1차 보강분 GitHub `main` push
+- [x] Android release APK build 통과
+- [x] Android release APK 실기기 설치/실행 확인
+- [x] 개인정보처리방침 URL HTTP 200 확인
+- [x] 최신 1차 보강분 GitHub `main` push

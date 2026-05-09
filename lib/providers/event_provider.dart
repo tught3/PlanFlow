@@ -18,7 +18,6 @@ class EventProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    // TODO: Replace with repository-backed loading when checklist items land.
     _events = await _repository.fetchEvents(userId);
 
     _isLoading = false;
