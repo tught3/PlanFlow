@@ -17,6 +17,7 @@ import '../../providers/settings_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/backup_service.dart';
 import '../../services/briefing_scheduler_service.dart';
+import '../../services/calendar_auto_sync_service.dart';
 import '../../services/calendar_sync_service.dart';
 import '../../services/daily_backup_scheduler_service.dart';
 import '../../services/device_calendar_service.dart';
@@ -30,6 +31,7 @@ class SettingsScreen extends StatefulWidget {
     SettingsRepository? settingsRepository,
     BriefingSchedulerService? briefingSchedulerService,
     CalendarSyncService? calendarSyncService,
+    CalendarAutoSyncService? calendarAutoSyncService,
     Object? notificationService,
     BackupService? backupService,
     AuthService? authService,
@@ -40,6 +42,7 @@ class SettingsScreen extends StatefulWidget {
   })  : _settingsRepository = settingsRepository,
         _briefingSchedulerService = briefingSchedulerService,
         _calendarSyncService = calendarSyncService,
+        _calendarAutoSyncService = calendarAutoSyncService,
         _backupService = backupService,
         _authService = authService,
         _naverCalendarPermissionService = naverCalendarPermissionService,
@@ -50,6 +53,7 @@ class SettingsScreen extends StatefulWidget {
   final SettingsRepository? _settingsRepository;
   final BriefingSchedulerService? _briefingSchedulerService;
   final CalendarSyncService? _calendarSyncService;
+  final CalendarAutoSyncService? _calendarAutoSyncService;
   final BackupService? _backupService;
   final AuthService? _authService;
   final NaverCalendarPermissionService? _naverCalendarPermissionService;
@@ -66,6 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final SettingsProvider _settingsProvider;
   late final BriefingSchedulerService _briefingSchedulerService;
   late final CalendarSyncService _calendarSyncService;
+  late final CalendarAutoSyncService _calendarAutoSyncService;
   late final DailyBackupSchedulerService _dailyBackupSchedulerService;
   late final DeviceCalendarService _deviceCalendarService;
   late final NaverCalDavService _naverCalDavService;
@@ -85,9 +90,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _voiceAutoStart = false;
 
   CalendarSyncSummary? _calendarSyncSummary;
+  CalendarAutoSyncSnapshot? _calendarAutoSyncSnapshot;
   List<BackupSnapshot> _backups = const <BackupSnapshot>[];
 
   bool _isLoadingCalendarStatus = true;
+  bool _isLoadingAutoSyncSnapshot = true;
   bool _isSyncingGoogleCalendar = false;
   bool _isDisconnectingGoogleCalendar = false;
   bool _isDisconnectingNaverCalendar = false;
@@ -127,6 +134,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           googleClientId: _googleCalendarClientId,
           googleServerClientId: _googleCalendarServerClientId,
         );
+    _calendarAutoSyncService =
+        widget._calendarAutoSyncService ?? CalendarAutoSyncService();
     _dailyBackupSchedulerService = const DailyBackupSchedulerService();
     _deviceCalendarService =
         widget._deviceCalendarService ?? DeviceCalendarService();
@@ -140,6 +149,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     unawaited(_loadSettings());
     unawaited(_loadCalendarStatus());
+    unawaited(_loadAutoSyncSnapshot());
     unawaited(_loadNaverCalDavState());
     if (AppEnv.isSupabaseReady) {
       unawaited(_loadBackups());
@@ -193,6 +203,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _calendarSyncSummary = summary;
       _isLoadingCalendarStatus = false;
+    });
+  }
+
+  Future<void> _loadAutoSyncSnapshot() async {
+    setState(() {
+      _isLoadingAutoSyncSnapshot = true;
+    });
+    final snapshot = await _calendarAutoSyncService.loadSnapshot();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _calendarAutoSyncSnapshot = snapshot;
+      _isLoadingAutoSyncSnapshot = false;
     });
   }
 
@@ -2001,6 +2025,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  _CalendarAutoSyncStatusCard(
+                    snapshot: _calendarAutoSyncSnapshot,
+                    isLoading: _isLoadingAutoSyncSnapshot,
+                    formatDateTime: _formatDateTime,
+                    onRefresh: _loadAutoSyncSnapshot,
+                  ),
+                  const SizedBox(height: 16),
                   _StatusRow(
                     label: 'Google Calendar',
                     value: _calendarStatusLabel(_calendarSyncSummary?.google),
@@ -2956,6 +2987,158 @@ class _NaverDiagnosticCountTable extends StatelessWidget {
           );
         }).toList(growable: false),
       ),
+    );
+  }
+}
+
+class _CalendarAutoSyncStatusCard extends StatelessWidget {
+  const _CalendarAutoSyncStatusCard({
+    required this.snapshot,
+    required this.isLoading,
+    required this.formatDateTime,
+    required this.onRefresh,
+  });
+
+  final CalendarAutoSyncSnapshot? snapshot;
+  final bool isLoading;
+  final String Function(DateTime value) formatDateTime;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final current = snapshot;
+    final lastAttempt = current?.lastAttemptAt;
+    final reason = _reasonLabel(current?.lastReason);
+    final providers =
+        current?.providers ?? const <CalendarAutoSyncProviderSnapshot>[];
+
+    return Container(
+      key: const ValueKey('settings-calendar-auto-sync-status-card'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: PlanFlowColors.primaryFaint),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '자동 동기화 상태',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: '상태 새로고침',
+                onPressed: isLoading ? null : onRefresh,
+                icon: isLoading
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          Text(
+            '앱 시작, 앱 복귀, 일정 저장, 하루 1회 예약으로 Google/Naver/휴대폰 캘린더를 확인합니다.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            lastAttempt == null
+                ? '최근 자동 동기화 기록이 아직 없습니다.'
+                : '최근 실행: ${formatDateTime(lastAttempt)} · $reason',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...providers.map((provider) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _AutoSyncProviderRow(
+                provider: provider,
+                formatDateTime: formatDateTime,
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  String _reasonLabel(String? reason) {
+    return switch (reason) {
+      'app_started' => '앱 시작',
+      'app_resumed' => '앱 복귀',
+      'event_save' => '일정 저장',
+      'daily_alarm' => '하루 1회 예약',
+      'auth_changed' => '로그인 변경',
+      null || '' => '기록 없음',
+      _ => reason,
+    };
+  }
+}
+
+class _AutoSyncProviderRow extends StatelessWidget {
+  const _AutoSyncProviderRow({
+    required this.provider,
+    required this.formatDateTime,
+  });
+
+  final CalendarAutoSyncProviderSnapshot provider;
+  final String Function(DateTime value) formatDateTime;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color =
+        provider.isHealthy ? const Color(0xFF1F8A4C) : const Color(0xFFB75E13);
+    final time = provider.checkedAt == null
+        ? '확인 전'
+        : formatDateTime(provider.checkedAt!);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          provider.isHealthy ? Icons.check_circle_outline : Icons.info_outline,
+          size: 18,
+          color: color,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${provider.label} · $time',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                provider.message,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

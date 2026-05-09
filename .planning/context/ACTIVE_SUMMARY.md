@@ -1,5 +1,11 @@
 # Active Summary
 
+## 2026-05-09 calendar-auto-sync-status checkpoint
+- Added a Settings calendar auto-sync status card that separates Google Calendar, Naver direct sync, Naver CalDAV, and phone internal calendar status instead of hiding them behind a single calendar section.
+- Exposed the last automatic sync reason/time and provider-level messages stored by `CalendarAutoSyncService`, so app-start/app-resume/event-save/daily sync failures can be explained as reauth, CalDAV credential, or device-calendar permission issues.
+- Added regression coverage for the separated calendar auto-sync status UI with mocked persisted provider state.
+- Verification: focused `settings_screen_test` passed, `flutter analyze` passed, full `flutter test` passed with 176 tests, `flutter build apk --debug`, `flutter build apk --release`, release APK install, PID check, and focus check passed on `192.168.0.102:5555`.
+
 ## 2026-05-09 briefing-reschedule checkpoint
 - Fixed the scheduled briefing lifecycle so the background briefing alarm now shows the tap-to-play briefing notification and then immediately schedules the next morning/evening briefing, even if the user does not tap the notification right away.
 - Added `BriefingSchedulerService.rescheduleNextBriefing()` and made injected settings repositories usable without requiring global Supabase readiness, improving testability and keeping user-configured briefing times available in controlled flows.

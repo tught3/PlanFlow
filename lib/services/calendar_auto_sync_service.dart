@@ -255,6 +255,46 @@ class CalendarAutoSyncService {
     }
     return '$name 동기화가 완료되지 않았습니다.';
   }
+
+  Future<CalendarAutoSyncSnapshot> loadSnapshot() async {
+    final prefs = await SharedPreferences.getInstance();
+    return CalendarAutoSyncSnapshot(
+      lastReason: prefs.getString('calendar_sync:last_reason'),
+      lastAttemptAt: _parseDateTime(
+        prefs.getString('calendar_sync:last_attempt_at'),
+      ),
+      completed: prefs.getStringList('calendar_sync:last_completed') ??
+          const <String>[],
+      failed:
+          prefs.getStringList('calendar_sync:last_failed') ?? const <String>[],
+      providers: _knownProviderLabels.entries.map((entry) {
+        final key = 'calendar_sync:provider:${entry.key}';
+        return CalendarAutoSyncProviderSnapshot(
+          key: entry.key,
+          label: entry.value,
+          status: prefs.getString('$key:status') ?? 'unknown',
+          message: prefs.getString('$key:message') ?? '아직 자동 동기화 기록이 없습니다.',
+          checkedAt: _parseDateTime(prefs.getString('$key:checked_at')),
+          lastSuccessAt:
+              _parseDateTime(prefs.getString('$key:last_success_at')),
+        );
+      }).toList(growable: false),
+    );
+  }
+
+  DateTime? _parseDateTime(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(value);
+  }
+
+  static const Map<String, String> _knownProviderLabels = <String, String>{
+    'google_auto_sync': 'Google Calendar',
+    'naver_api_auto_export': 'Naver 직접 연동',
+    'naver_caldav_auto_import': 'Naver CalDAV',
+    'device_calendar_auto_import': '휴대폰 내부 캘린더',
+  };
 }
 
 class CalendarAutoSyncResult {
@@ -268,6 +308,48 @@ class CalendarAutoSyncResult {
 
   bool get didRun => skippedReason == null;
   bool get hasFailures => failed.isNotEmpty;
+}
+
+class CalendarAutoSyncSnapshot {
+  const CalendarAutoSyncSnapshot({
+    required this.lastReason,
+    required this.lastAttemptAt,
+    required this.completed,
+    required this.failed,
+    required this.providers,
+  });
+
+  final String? lastReason;
+  final DateTime? lastAttemptAt;
+  final List<String> completed;
+  final List<String> failed;
+  final List<CalendarAutoSyncProviderSnapshot> providers;
+
+  bool get hasHistory =>
+      lastAttemptAt != null ||
+      providers.any((provider) {
+        return provider.checkedAt != null || provider.lastSuccessAt != null;
+      });
+}
+
+class CalendarAutoSyncProviderSnapshot {
+  const CalendarAutoSyncProviderSnapshot({
+    required this.key,
+    required this.label,
+    required this.status,
+    required this.message,
+    required this.checkedAt,
+    required this.lastSuccessAt,
+  });
+
+  final String key;
+  final String label;
+  final String status;
+  final String message;
+  final DateTime? checkedAt;
+  final DateTime? lastSuccessAt;
+
+  bool get isHealthy => status == 'connected';
 }
 
 class DailyCalendarSyncSchedulerService {

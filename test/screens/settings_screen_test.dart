@@ -11,8 +11,13 @@ import 'package:planflow/services/device_calendar_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('SettingsScreen loads settings and shows Naver calendar actions',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
@@ -68,6 +73,62 @@ void main() {
     expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
     expect(find.text('네이버 CalDAV 일정 가져오기'), findsNothing);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
+  });
+
+  testWidgets('SettingsScreen shows separated calendar auto-sync status',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({
+      'calendar_sync:last_reason': 'app_resumed',
+      'calendar_sync:last_attempt_at': '2026-05-09T08:30:00.000',
+      'calendar_sync:last_completed': <String>['google_auto_sync'],
+      'calendar_sync:last_failed': <String>['naver_caldav_auto_import'],
+      'calendar_sync:provider:google_auto_sync:status': 'connected',
+      'calendar_sync:provider:google_auto_sync:message': '정상 동기화됨',
+      'calendar_sync:provider:google_auto_sync:checked_at':
+          '2026-05-09T08:30:00.000',
+      'calendar_sync:provider:naver_caldav_auto_import:status': 'attention',
+      'calendar_sync:provider:naver_caldav_auto_import:message':
+          'Naver CalDAV 아이디 또는 앱 비밀번호를 확인해 주세요.',
+      'calendar_sync:provider:naver_caldav_auto_import:checked_at':
+          '2026-05-09T08:31:00.000',
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.signedOut(
+                CalendarProvider.naver,
+              ),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final statusCard =
+        find.byKey(const ValueKey('settings-calendar-auto-sync-status-card'));
+    await _scrollUntilHitTestable(tester, statusCard);
+
+    expect(find.text('자동 동기화 상태'), findsOneWidget);
+    expect(find.text('최근 실행: 2026-05-09 08:30 · 앱 복귀'), findsOneWidget);
+    expect(find.text('Google Calendar · 2026-05-09 08:30'), findsOneWidget);
+    expect(find.text('Naver CalDAV · 2026-05-09 08:31'), findsOneWidget);
+    expect(
+      find.text('Naver CalDAV 아이디 또는 앱 비밀번호를 확인해 주세요.'),
+      findsOneWidget,
+    );
+    expect(find.text('휴대폰 내부 캘린더 · 확인 전'), findsOneWidget);
   });
 
   testWidgets(
