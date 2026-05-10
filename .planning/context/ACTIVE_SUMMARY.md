@@ -37,6 +37,7 @@
 - 2026-05-10: `CODEX_FIREBASE_ADVANCED.md` Wave 1를 진행해 `pubspec.yaml`에 `firebase_remote_config`와 `firebase_performance`를 추가하고, `lib/main.dart`에서 `RemoteConfigService.initialize()`를 Firebase 초기화 직후 호출하도록 연결했다. `lib/core/analytics_service.dart`와 `lib/services/remote_config_service.dart`를 추가했고, `flutter analyze`, `flutter test`, `flutter build apk --debug`, `flutter build apk --release`, 실기기 설치/실행까지 통과했다.
 - 2026-05-10: `CODEX_FIREBASE_ADVANCED.md` Wave 2를 진행해 `lib/services/gpt_service.dart`의 GPT 모델을 Remote Config 기반으로 바꾸고, 음성 입력/일정 확인/로그인/설정 화면에 Analytics 이벤트와 브리핑 Remote Config 가드를 연결했다. Firebase 미초기화 테스트는 Analytics/Remote Config 헬퍼가 no-app 환경에서 기본값/무동작으로 돌아가도록 보정해서 해결했다. `flutter analyze`, `flutter test`, `flutter build apk --debug`, `flutter build apk --release`, 실기기 설치/실행까지 통과했다.
 - 2026-05-10: `CODEX_FINAL_POLISH.md` Wave 1~2를 반영해 개인정보처리방침 HTML, 인앱 리뷰/업데이트 서비스, ProGuard 릴리즈 난독화, 리뷰/업데이트 연결, 앱 resume 업데이트 체크를 추가했다. Android JVM target 불일치는 `android/build.gradle.kts`에서 `in_app_review`는 11, `in_app_update`는 1.8로 예외 처리해 해소했고, `flutter analyze`, `flutter test`, `flutter build apk --debug`, `flutter build apk --release`, ADB install/launch/pidof까지 다시 통과했다.
+- 2026-05-10: 공식 이메일을 `officialfluxstudio.kr@gmail.com`으로 통일했다. `docs/privacy-policy.html`과 `docs/privacy-policy.md`, 그리고 final polish 기록의 문의/Play Store 안내를 같은 공식 연락처로 갱신했다.
 
 ## Roadmap Focus
 - Phase 5: 데이터 정합성 정리
