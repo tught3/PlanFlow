@@ -218,8 +218,7 @@ void main() {
       expect(status.provider, CalendarProvider.google);
     });
 
-    test(
-        'treats existing Google connection without silent account as ready',
+    test('treats existing Google connection without silent account as ready',
         () async {
       final googleSignIn = _FakeGoogleSignIn();
       final service = CalendarSyncService(
@@ -276,6 +275,34 @@ void main() {
 
       expect(result.status, CalendarIntegrationStatus.signedOut);
       expect(googleSignIn.signInCallCount, 1);
+    });
+
+    test('non-interactive Google sync keeps existing connection on token miss',
+        () async {
+      final connectionRepository = _FakeCalendarConnectionRepository(
+        initial: const CalendarConnectionModel(
+          userId: 'user-1',
+          provider: 'google',
+          status: CalendarConnectionStatus.connected,
+          providerAccountEmail: 'user@example.com',
+        ),
+      );
+      final service = CalendarSyncService(
+        currentUserId: 'user-1',
+        calendarConnectionRepository: connectionRepository,
+        googleServerClientId: 'web-client-id.apps.googleusercontent.com',
+        googlePlatformSupported: true,
+        googleTargetPlatform: TargetPlatform.android,
+        googleAccessTokenProvider: ({required bool interactive}) async => null,
+      );
+
+      final result = await service.syncGoogleCalendar(interactive: false);
+
+      expect(result.status, CalendarIntegrationStatus.reauthRequired);
+      expect(connectionRepository.connection?.status,
+          CalendarConnectionStatus.connected);
+      expect(connectionRepository.connection?.providerAccountEmail,
+          'user@example.com');
     });
 
     test('classifies Google sign-in cancellation with actionable message',
@@ -626,6 +653,7 @@ class _FakeCalendarConnectionRepository extends CalendarConnectionRepository {
       : _connection = initial;
 
   CalendarConnectionModel? _connection;
+  CalendarConnectionModel? get connection => _connection;
 
   @override
   Future<CalendarConnectionModel?> fetchConnection({

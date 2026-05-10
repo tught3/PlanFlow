@@ -480,6 +480,13 @@ class CalendarSyncService {
         interactive: interactive,
       );
       if (accessToken == null || accessToken.isEmpty) {
+        if (!interactive && existingConnection?.isConnected == true) {
+          return CalendarIntegrationResult.reauthRequired(
+            CalendarProvider.google,
+            message:
+                'Google Calendar 연결은 유지되어 있지만 현재 기기에서 자동 로그인 토큰을 바로 확인하지 못해 자동 동기화를 건너뜁니다. 필요하면 다시 동기화를 눌러 주세요.',
+          );
+        }
         await _saveConnection(
           CalendarProvider.google,
           status: CalendarConnectionStatus.reauthRequired,
@@ -609,6 +616,13 @@ class CalendarSyncService {
         interactive: interactive,
       );
       if (accessToken == null || accessToken.isEmpty) {
+        if (!interactive) {
+          return CalendarIntegrationResult.reauthRequired(
+            CalendarProvider.google,
+            message:
+                'Google Calendar 연결은 유지되어 있지만 현재 기기에서 자동 로그인 토큰을 바로 확인하지 못해 내보내기를 건너뜁니다.',
+          );
+        }
         await _saveConnection(
           CalendarProvider.google,
           status: CalendarConnectionStatus.reauthRequired,

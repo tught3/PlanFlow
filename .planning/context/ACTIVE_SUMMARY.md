@@ -203,3 +203,9 @@
 - Replaced the event edit screen's sequential date picker then time picker flow with a single bottom sheet that shows the calendar and time controls together.
 - Added hour/minute dropdowns and quick 10/30 minute adjustment chips so start/end times can be changed without reopening a second dialog.
 - Verified with `flutter analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell pidof com.planflow.app`.
+
+## 2026-05-10 Google Auto Sync Reauth Preservation Checkpoint
+- Fixed Google Calendar automatic sync so a non-interactive silent token miss no longer overwrites an existing connected calendar connection with `reauthRequired`.
+- Kept manual Google Calendar sync behavior strict: when the user taps sync and token/consent is missing, the app can still ask for reauthentication.
+- Added a regression test that proves non-interactive Google sync preserves the connected state when the access token is unavailable.
+- Verified with `flutter analyze --no-pub`, `./scripts/flutter-local.ps1 test --no-pub test/services/calendar_sync_service_test.dart`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell pidof com.planflow.app` plus resumed activity check.
