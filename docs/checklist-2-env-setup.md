@@ -49,3 +49,5 @@ Do not commit `env/local.json`.
 - Naver Calendar is now a 1차 배포 feature through Naver CalDAV/direct sync and phone-calendar import paths. Keep Naver OAuth, CalDAV credentials, and Naver Cloud Maps restrictions visible and testable.
 
 VS Code에서는 `.vscode/launch.json`과 `.vscode/settings.json`이 실행 시 `env/local.json`을 자동으로 붙입니다. Run/Debug를 쓰면 별도 인자 입력 없이 같은 설정으로 시작합니다.
+
+For command-line runs in this repo, use `./scripts/flutter-local.ps1` so the local define file is injected automatically.

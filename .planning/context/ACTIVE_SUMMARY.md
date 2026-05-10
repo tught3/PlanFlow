@@ -134,3 +134,8 @@
 - Added `.vscode/launch.json` and `.vscode/settings.json` so Flutter Run/Debug in VS Code automatically passes `--dart-define-from-file=env/local.json`.
 - Created local `env/local.json` from the existing `.env` values in the workspace; the file stays ignored by git.
 - Updated the env setup doc to explain that Run/Debug now follows the local define file automatically.
+
+## 2026-05-10 Flutter Local Wrapper Checkpoint
+- Added `scripts/flutter-local.ps1` so command-line Flutter run/build/test invocations can automatically inject `--dart-define-from-file=env/local.json`.
+- Verified the wrapper with `./scripts/flutter-local.ps1 test --no-pub test/screens/permission_onboarding_screen_test.dart`.
+- Updated the env setup doc to point command-line runs at the wrapper.
