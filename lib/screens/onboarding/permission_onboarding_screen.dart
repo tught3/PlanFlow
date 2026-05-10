@@ -197,6 +197,14 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       mayOpenSettings: true,
     );
     await _runPermissionStep(
+      key: 'exactAlarm',
+      label: '정확한 알람',
+      failures: failures,
+      isGranted: (snapshot) => snapshot.exactAlarmsGranted,
+      request: _permissionService.requestExactAlarmPermission,
+      mayOpenSettings: true,
+    );
+    await _runPermissionStep(
       key: 'location',
       label: '위치',
       failures: failures,
@@ -411,16 +419,13 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 descriptionMaxLines: 2,
                 granted: snapshot?.exactAlarmsGranted == true,
                 isRequesting: _activeRequestKey == 'exactAlarm',
+                key: const ValueKey('permission-onboarding-exact-alarm-tile'),
                 onRequest: () => _requestOne(
                   key: 'exactAlarm',
                   grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
                   deniedMessage:
                       '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요. 중요 알람의 잠금화면 표시에도 영향을 줍니다.',
-                  request: () async {
-                    final status = await _permissionService
-                        .requestNotificationPermissions();
-                    return status.exactAlarmsEnabled == true;
-                  },
+                  request: _permissionService.requestExactAlarmPermission,
                 ),
               ),
               const SizedBox(height: 9),
@@ -603,6 +608,7 @@ class _PrepTimeCard extends StatelessWidget {
 
 class _PermissionTile extends StatelessWidget {
   const _PermissionTile({
+    super.key,
     required this.icon,
     required this.title,
     required this.description,

@@ -284,6 +284,29 @@ class NotificationService {
     return checkPermissionStatus();
   }
 
+  Future<bool> requestNotificationPermission() async {
+    await initialize();
+    await _runPermissionRequestBestEffort(
+      'notification permission',
+      _requestNotificationPermissionIfNeeded,
+    );
+    return (await checkPermissionStatus()).notificationsEnabled == true;
+  }
+
+  Future<bool> requestExactAlarmPermission() async {
+    await initialize();
+    await _runPermissionRequestBestEffort(
+      'exact alarm permission',
+      _requestExactAlarmPermissionIfNeeded,
+    );
+    return (await checkPermissionStatus()).exactAlarmsEnabled == true;
+  }
+
+  Future<bool?> requestFullScreenIntentPermission() async {
+    await initialize();
+    return _requestFullScreenIntentPermissionBestEffort();
+  }
+
   Future<bool> openAppNotificationSettings() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return false;

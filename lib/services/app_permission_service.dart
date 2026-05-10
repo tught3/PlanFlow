@@ -185,6 +185,14 @@ class AppPermissionService {
     return _notificationService.requestAndCheckPermissions();
   }
 
+  Future<bool> requestNotificationPermission() {
+    return _notificationService.requestNotificationPermission();
+  }
+
+  Future<bool> requestExactAlarmPermission() {
+    return _notificationService.requestExactAlarmPermission();
+  }
+
   Future<bool> openAppSettings() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return false;
