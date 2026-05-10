@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 
 import '../core/env.dart';
 import '../core/event_metadata.dart';
+import '../core/local_time.dart';
+import '../core/region_settings.dart';
 import 'remote_config_service.dart';
 import 'smart_preparation_alarm_service.dart';
 
@@ -42,7 +44,7 @@ class GptService {
   })  : _client = client,
         _endpoint = endpoint ??
             Uri.parse('${AppEnv.supabaseUrl}/functions/v1/openai-proxy'),
-        _now = now ?? DateTime.now;
+        _now = now ?? planflowNow;
 
   final http.Client? _client;
   final Uri _endpoint;
@@ -55,7 +57,7 @@ class GptService {
 
   Future<Map<String, dynamic>> parseSchedule(String rawText) async {
     final content = await _requestCompletion(
-      systemPrompt: _scheduleSystemPrompt,
+      systemPrompt: _scheduleSystemPromptForRegion(),
       userPrompt: rawText,
       responseFormat: _responseFormat,
     );
@@ -435,6 +437,19 @@ class GptService {
     }
 
     return candidate;
+  }
+
+  String _scheduleSystemPromptForRegion() {
+    final region = PlanFlowRegionController.instance.region;
+    final now = _now();
+    return '''
+Current user region: ${region.countryName} (${region.countryCode}).
+Current locale: ${region.localeCode}.
+Current time zone: ${region.timeZoneId}.
+Current local date-time: ${now.toIso8601String()}.
+
+$_scheduleSystemPrompt
+''';
   }
 
   bool _shouldPreferInferredStartAt({

@@ -137,7 +137,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       text: event?.supplies.join(', ') ?? '',
     );
     _startAt = event?.startAt == null
-        ? DateTime.now().add(const Duration(hours: 1))
+        ? planflowNow().add(const Duration(hours: 1))
         : planflowLocal(event!.startAt!);
     _endAt = event?.endAt == null ? null : planflowLocal(event!.endAt!);
     _locationLat = event?.locationLat;
@@ -199,12 +199,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
           .where((item) => item.isNotEmpty)
           .toList(growable: false);
 
+      final normalizedStartAt = planflowLocalDateTimeToUtc(_startAt);
+      final normalizedEndAt =
+          _endAt == null ? null : planflowLocalDateTimeToUtc(_endAt!);
+
       final updatedEvent = EventModel(
         id: _loadedEvent?.id ?? _resolvedEventId ?? '',
         userId: user.id,
         title: _titleController.text.trim(),
-        startAt: _startAt,
-        endAt: _endAt,
+        startAt: normalizedStartAt,
+        endAt: normalizedEndAt,
         location: _emptyToNull(_locationController.text),
         locationLat: _locationLat,
         locationLng: _locationLng,
@@ -259,7 +263,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         final original = _loadedEvent!;
         final originalStart = original.startAt;
         final isFirstOccurrence = originalStart == null ||
-            planflowIsSameLocalDay(originalStart, _startAt);
+            planflowIsSameLocalDay(originalStart, normalizedStartAt);
         if (isFirstOccurrence) {
           savedEvent = await _repository.updateEvent(updatedEvent);
         } else {

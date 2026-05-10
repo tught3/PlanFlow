@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/region_settings.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/calendar_connection_model.dart';
@@ -92,6 +93,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _departPreAlarmOffset = 30;
   String _travelMode = 'car';
   bool _voiceAutoStart = false;
+  String _countryCode = PlanFlowRegions.korea.countryCode;
+  String _localeCode = PlanFlowRegions.korea.localeCode;
+  String _timeZoneId = PlanFlowRegions.korea.timeZoneId;
 
   CalendarSyncSummary? _calendarSyncSummary;
   BriefingRuntimeStatus? _briefingRuntimeStatus;
@@ -1421,6 +1425,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         departPreAlarmOffset: _departPreAlarmOffset,
         travelMode: _travelMode,
         voiceAutoStart: _voiceAutoStart,
+        countryCode: _countryCode,
+        localeCode: _localeCode,
+        timeZoneId: _timeZoneId,
       );
       final saved = await _settingsProvider.save(draft);
       if (!mounted) {
@@ -1435,6 +1442,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         departPreAlarmOffset: draft.departPreAlarmOffset,
         travelMode: draft.travelMode,
         voiceAutoStart: draft.voiceAutoStart,
+        countryCode: draft.countryCode,
+        localeCode: draft.localeCode,
+        timeZoneId: draft.timeZoneId,
       );
       setState(() {
         _savedSettings = currentUiSettings;
@@ -1762,6 +1772,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _departPreAlarmOffset = 30;
       _travelMode = 'car';
       _voiceAutoStart = false;
+      _countryCode = PlanFlowRegions.korea.countryCode;
+      _localeCode = PlanFlowRegions.korea.localeCode;
+      _timeZoneId = PlanFlowRegions.korea.timeZoneId;
+      PlanFlowRegionController.instance.reset();
     });
     unawaited(_persistSettings(successMessage: '설정을 기본값으로 되돌렸습니다.'));
   }
@@ -1775,6 +1789,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _departPreAlarmOffset = settings.departPreAlarmOffset;
     _travelMode = settings.travelMode;
     _voiceAutoStart = settings.voiceAutoStart;
+    final region = PlanFlowRegions.byLocaleAndTimeZone(
+      countryCode: settings.countryCode,
+      localeCode: settings.localeCode,
+      timeZoneId: settings.timeZoneId,
+    );
+    _countryCode = region.countryCode;
+    _localeCode = region.localeCode;
+    _timeZoneId = region.timeZoneId;
+    PlanFlowRegionController.instance.setRegion(region);
   }
 
   void _showSnack(String message) {
@@ -1800,6 +1823,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _prepTimeMin = value;
     });
     unawaited(_persistSettings());
+  }
+
+  Widget _buildRegionSettings() {
+    final selectedRegion = PlanFlowRegions.byCountryCode(_countryCode);
+    return _SectionCard(
+      title: '국가/시간',
+      subtitle: '일정 시간대와 날짜 표시 기준을 정합니다.',
+      child: DropdownButtonFormField<String>(
+        key: const ValueKey('settings-region-country-selector'),
+        initialValue: selectedRegion.countryCode,
+        decoration: const InputDecoration(
+          labelText: '국가',
+          isDense: true,
+          prefixIcon: Icon(Icons.public_outlined),
+        ),
+        items: PlanFlowRegions.supported
+            .map(
+              (region) => DropdownMenuItem<String>(
+                value: region.countryCode,
+                child: Text(
+                  '${region.countryName} · ${region.timeZoneId}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            )
+            .toList(growable: false),
+        onChanged: (value) {
+          if (value == null) {
+            return;
+          }
+          final region = PlanFlowRegions.byCountryCode(value);
+          setState(() {
+            _countryCode = region.countryCode;
+            _localeCode = region.localeCode;
+            _timeZoneId = region.timeZoneId;
+          });
+          PlanFlowRegionController.instance.setRegion(region);
+          unawaited(_persistSettings());
+        },
+      ),
+    );
   }
 
   Widget _buildSmartAlarmSettings() {
@@ -2050,8 +2114,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 16),
               _SectionCard(
                 title: '캘린더 연동',
-                subtitle:
-                    'Google과 Naver 일정을 PlanFlow와 동기화합니다. Naver는 CalDAV로 연결합니다.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -2284,7 +2346,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 16),
               if (authProvider.isSignedIn && _backupService != null) ...[
-                const SizedBox(height: 16),
                 _SectionCard(
                   title: '백업 및 복원',
                   subtitle: '수동 백업과 매일 새벽 3시 자동 백업 기록을 관리합니다.',
@@ -2325,7 +2386,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 16),
               ],
+              _buildRegionSettings(),
             ],
           ),
         ),
@@ -2696,12 +2759,12 @@ Future<void> _showNaverGuideImage(
 class _SectionCard extends StatelessWidget {
   const _SectionCard({
     required this.title,
-    required this.subtitle,
     required this.child,
+    this.subtitle,
   });
 
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final Widget child;
 
   @override
@@ -2727,13 +2790,15 @@ class _SectionCard extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.textSecondary,
+            if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                ),
               ),
-            ),
+            ],
             const SizedBox(height: 16),
             child,
           ],

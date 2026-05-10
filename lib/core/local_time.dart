@@ -1,18 +1,62 @@
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
+
+import 'region_settings.dart';
+
 const Duration planflowKstOffset = Duration(hours: 9);
 
+bool _timeZonesInitialized = false;
+
+void _ensureTimeZonesInitialized() {
+  if (_timeZonesInitialized) {
+    return;
+  }
+  tzdata.initializeTimeZones();
+  _timeZonesInitialized = true;
+}
+
+tz.Location _planflowLocation([String? timeZoneId]) {
+  _ensureTimeZonesInitialized();
+  final id = timeZoneId ?? PlanFlowRegionController.instance.region.timeZoneId;
+  try {
+    return tz.getLocation(id);
+  } catch (_) {
+    return tz.getLocation(PlanFlowRegions.korea.timeZoneId);
+  }
+}
+
 DateTime planflowLocal(DateTime value) {
-  final utc = value.toUtc();
-  final kst = utc.add(planflowKstOffset);
+  final local = tz.TZDateTime.from(value.toUtc(), _planflowLocation());
   return DateTime(
-    kst.year,
-    kst.month,
-    kst.day,
-    kst.hour,
-    kst.minute,
-    kst.second,
-    kst.millisecond,
-    kst.microsecond,
+    local.year,
+    local.month,
+    local.day,
+    local.hour,
+    local.minute,
+    local.second,
+    local.millisecond,
+    local.microsecond,
   );
+}
+
+DateTime planflowLocalDateTimeToUtc(DateTime localValue) {
+  final location = _planflowLocation();
+  final zoned = tz.TZDateTime(
+    location,
+    localValue.year,
+    localValue.month,
+    localValue.day,
+    localValue.hour,
+    localValue.minute,
+    localValue.second,
+    localValue.millisecond,
+    localValue.microsecond,
+  );
+  return zoned.toUtc();
+}
+
+DateTime planflowNow() {
+  return planflowLocal(DateTime.now().toUtc());
 }
 
 DateTime planflowLocalDay(DateTime value) {
@@ -47,14 +91,18 @@ bool planflowEventIntersectsLocalDay({
 }
 
 DateTime planflowSeoulDateTimeToUtc(DateTime seoulTime) {
-  return DateTime.utc(
-    seoulTime.year,
-    seoulTime.month,
-    seoulTime.day,
-    seoulTime.hour - 9,
-    seoulTime.minute,
-    seoulTime.second,
-    seoulTime.millisecond,
-    seoulTime.microsecond,
-  );
+  final location = _planflowLocation(PlanFlowRegions.korea.timeZoneId);
+  return tz
+      .TZDateTime(
+        location,
+        seoulTime.year,
+        seoulTime.month,
+        seoulTime.day,
+        seoulTime.hour,
+        seoulTime.minute,
+        seoulTime.second,
+        seoulTime.millisecond,
+        seoulTime.microsecond,
+      )
+      .toUtc();
 }

@@ -110,6 +110,21 @@ void main() {
     expect(json['last_synced_at'], '2026-05-01T09:01:00.000Z');
   });
 
+  test('EventModel serializes event timestamps as UTC ISO strings', () {
+    final model = EventModel(
+      id: 'event-utc',
+      userId: 'user-1',
+      title: 'Local meeting',
+      startAt: DateTime(2026, 5, 10, 10, 30),
+      endAt: DateTime(2026, 5, 10, 11),
+    );
+
+    final json = model.toJson();
+
+    expect(json['start_at'], endsWith('Z'));
+    expect(json['end_at'], endsWith('Z'));
+  });
+
   test('EventModel defaults source to manual when absent in JSON', () {
     final restored = EventModel.fromJson(<String, dynamic>{
       'id': 'event-2',

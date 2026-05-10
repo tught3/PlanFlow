@@ -55,4 +55,13 @@ void main() {
     expect(restored.departPreAlarmOffset, 30);
     expect(restored.toJson()['travel_mode'], 'car');
   });
+
+  test('UserSettingsModel defaults region settings to Korea', () {
+    final settings = UserSettingsModel.defaults(userId: 'user-1');
+
+    expect(settings.countryCode, 'KR');
+    expect(settings.localeCode, 'ko-KR');
+    expect(settings.timeZoneId, 'Asia/Seoul');
+    expect(settings.toJson()['country_code'], 'KR');
+  });
 }

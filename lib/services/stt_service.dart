@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import '../core/region_settings.dart';
 import 'remote_config_service.dart';
 
 enum SttListenFailure {
@@ -78,6 +79,21 @@ class SttService {
       }
     }
     return null;
+  }
+
+  static String? resolvePreferredLocaleId(Iterable<String> localeIds) {
+    final locales = localeIds.toList(growable: false);
+    final preferred = PlanFlowRegionController.instance.region.languageHint;
+    if (locales.contains(preferred)) {
+      return preferred;
+    }
+    final language = preferred.split('-').first.toLowerCase();
+    for (final localeId in locales) {
+      if (localeId.toLowerCase().startsWith(language)) {
+        return localeId;
+      }
+    }
+    return resolveKoreanLocaleId(locales);
   }
 
   @visibleForTesting
@@ -544,7 +560,7 @@ class SttService {
       }
 
       final locales = await speech.locales();
-      final localeId = resolveKoreanLocaleId(
+      final localeId = resolvePreferredLocaleId(
         locales.map((locale) => locale.localeId),
       );
       if (localeId == null) {

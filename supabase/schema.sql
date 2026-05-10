@@ -171,6 +171,9 @@ create table if not exists public.user_settings (
   depart_pre_alarm_offset integer not null default 30,
   travel_mode text not null default 'car',
   voice_auto_start boolean not null default false,
+  country_code text not null default 'KR',
+  locale_code text not null default 'ko-KR',
+  time_zone_id text not null default 'Asia/Seoul',
   google_calendar_token text,
   naver_calendar_token text,
   created_at timestamptz not null default now()
@@ -181,6 +184,15 @@ create table if not exists public.user_settings (
 
   alter table public.user_settings
   add column if not exists voice_auto_start boolean not null default false;
+
+  alter table public.user_settings
+  add column if not exists country_code text not null default 'KR';
+
+  alter table public.user_settings
+  add column if not exists locale_code text not null default 'ko-KR';
+
+  alter table public.user_settings
+  add column if not exists time_zone_id text not null default 'Asia/Seoul';
 
   alter table public.user_settings
   add column if not exists prep_time_min integer not null default 30;
@@ -825,7 +837,8 @@ begin
     insert into public.user_settings (
       id, user_id, morning_briefing_at, evening_briefing_at,
       default_reminder_min, prep_time_min, prep_pre_alarm_offset,
-      depart_pre_alarm_offset, travel_mode, created_at
+      depart_pre_alarm_offset, travel_mode, country_code, locale_code,
+      time_zone_id, created_at
     )
     values (
       coalesce(nullif(item ->> 'id', '')::uuid, gen_random_uuid()),
@@ -841,6 +854,9 @@ begin
           then 'transit'
         else 'car'
       end,
+      coalesce(nullif(item ->> 'country_code', ''), 'KR'),
+      coalesce(nullif(item ->> 'locale_code', ''), 'ko-KR'),
+      coalesce(nullif(item ->> 'time_zone_id', ''), 'Asia/Seoul'),
       coalesce(nullif(item ->> 'created_at', '')::timestamptz, now())
     )
     on conflict (user_id) do update
@@ -850,7 +866,10 @@ begin
           prep_time_min = excluded.prep_time_min,
           prep_pre_alarm_offset = excluded.prep_pre_alarm_offset,
           depart_pre_alarm_offset = excluded.depart_pre_alarm_offset,
-          travel_mode = excluded.travel_mode;
+          travel_mode = excluded.travel_mode,
+          country_code = excluded.country_code,
+          locale_code = excluded.locale_code,
+          time_zone_id = excluded.time_zone_id;
   end loop;
 
   for item in

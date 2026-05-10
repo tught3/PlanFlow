@@ -72,6 +72,11 @@ class SupabaseSettingsGateway implements SettingsGateway {
   static const String selectColumns =
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
       'prep_time_min, prep_pre_alarm_offset, depart_pre_alarm_offset, '
+      'travel_mode, voice_auto_start, country_code, locale_code, time_zone_id, '
+      'google_calendar_token, naver_calendar_token, created_at';
+  static const String legacySelectColumns =
+      'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
+      'prep_time_min, prep_pre_alarm_offset, depart_pre_alarm_offset, '
       'travel_mode, voice_auto_start, google_calendar_token, naver_calendar_token, created_at';
 
   final SupabaseClient _client;
@@ -91,7 +96,10 @@ class SupabaseSettingsGateway implements SettingsGateway {
 
       return Map<String, dynamic>.from(response as Map);
     } on PostgrestException catch (error) {
-      if (_isMissingSettingsColumnError(error)) {
+      if (_isMissingRegionColumnError(error)) {
+        return _fetchSettingsLegacy(userId);
+      }
+      if (_isMissingSmartSettingsColumnError(error)) {
         throw StateError(
           'Supabase user_settings 스키마에 스마트 준비 알람 설정 컬럼이 없습니다. '
           'supabase/schema.sql을 적용해 주세요.',
@@ -116,7 +124,10 @@ class SupabaseSettingsGateway implements SettingsGateway {
           .single();
       return Map<String, dynamic>.from(response as Map);
     } on PostgrestException catch (error) {
-      if (_isMissingSettingsColumnError(error)) {
+      if (_isMissingRegionColumnError(error)) {
+        return _upsertSettingsLegacy(payload);
+      }
+      if (_isMissingSmartSettingsColumnError(error)) {
         throw StateError(
           'Supabase user_settings 스키마에 스마트 준비 알람 설정 컬럼이 없습니다. '
           'supabase/schema.sql을 적용해 주세요.',
@@ -126,7 +137,50 @@ class SupabaseSettingsGateway implements SettingsGateway {
     }
   }
 
-  bool _isMissingSettingsColumnError(PostgrestException error) {
+  Future<Map<String, dynamic>?> _fetchSettingsLegacy(String userId) async {
+    final response = await _client
+        .from(tableName)
+        .select(legacySelectColumns)
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (response == null) {
+      return null;
+    }
+    return Map<String, dynamic>.from(response as Map);
+  }
+
+  Future<Map<String, dynamic>> _upsertSettingsLegacy(
+    Map<String, dynamic> payload,
+  ) async {
+    final legacyPayload = Map<String, dynamic>.from(payload)
+      ..remove('country_code')
+      ..remove('locale_code')
+      ..remove('time_zone_id');
+    final response = await _client
+        .from(tableName)
+        .upsert(
+          legacyPayload,
+          onConflict: 'user_id',
+        )
+        .select(legacySelectColumns)
+        .single();
+    return <String, dynamic>{
+      ...Map<String, dynamic>.from(response as Map),
+      'country_code': payload['country_code'],
+      'locale_code': payload['locale_code'],
+      'time_zone_id': payload['time_zone_id'],
+    };
+  }
+
+  bool _isMissingRegionColumnError(PostgrestException error) {
+    final text =
+        '${error.code} ${error.message} ${error.details}'.toLowerCase();
+    return text.contains('country_code') ||
+        text.contains('locale_code') ||
+        text.contains('time_zone_id');
+  }
+
+  bool _isMissingSmartSettingsColumnError(PostgrestException error) {
     final text =
         '${error.code} ${error.message} ${error.details}'.toLowerCase();
     return text.contains('voice_auto_start') ||

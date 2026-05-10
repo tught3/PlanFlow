@@ -536,12 +536,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return;
     }
 
+    final normalizedStartAt = planflowLocalDateTimeToUtc(_startAt);
+    final normalizedEndAt =
+        _endAt == null ? null : planflowLocalDateTimeToUtc(_endAt!);
+
     final draftEvent = EventModel(
       id: '',
       userId: userId,
       title: title,
-      startAt: _startAt,
-      endAt: _endAt,
+      startAt: normalizedStartAt,
+      endAt: normalizedEndAt,
       location: _emptyToNull(_locationController.text),
       locationLat: _locationLat,
       locationLng: _locationLng,
@@ -1869,15 +1873,22 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   DateTime? _dateTimeValue(Object? value) {
+    if (value is DateTime) {
+      return value.isUtc ? planflowLocal(value) : value;
+    }
     final text = _stringValue(value);
     if (text == null) {
       return null;
     }
-    return DateTime.tryParse(text);
+    final parsed = DateTime.tryParse(text);
+    if (parsed == null) {
+      return null;
+    }
+    return parsed.isUtc ? planflowLocal(parsed) : parsed;
   }
 
   DateTime _safeStartAt(Object? value) {
-    final now = DateTime.now();
+    final now = planflowNow();
     final parsed = _dateTimeValue(value);
     if (parsed == null) {
       return now;

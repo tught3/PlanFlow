@@ -6,8 +6,11 @@ import 'package:home_widget/home_widget.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'core/constants.dart';
+import 'core/env.dart';
+import 'core/region_settings.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
+import 'data/repositories/settings_repository.dart';
 import 'providers/auth_provider.dart';
 import 'services/google_calendar_auto_sync_service.dart';
 import 'services/naver_ics_share_store.dart';
@@ -56,6 +59,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     if (!signedIn) {
       return;
     }
+    await _syncRegionSettings();
     final currentPath = appRouter.routeInformationProvider.value.uri.path;
     if (currentPath == AppRoutes.login || currentPath == AppRoutes.root) {
       appRouter.go(AppRoutes.home);
@@ -66,6 +70,28 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
     await _googleCalendarAutoSyncService.syncIfAllowed(reason: reason);
+  }
+
+  Future<void> _syncRegionSettings() async {
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty || !AppEnv.isSupabaseReady) {
+      return;
+    }
+    try {
+      final settings = await SettingsRepository.supabase().fetchSettings(userId);
+      if (settings == null) {
+        return;
+      }
+      PlanFlowRegionController.instance.setRegion(
+        PlanFlowRegions.byLocaleAndTimeZone(
+          countryCode: settings.countryCode,
+          localeCode: settings.localeCode,
+          timeZoneId: settings.timeZoneId,
+        ),
+      );
+    } catch (error) {
+      debugPrint('Region settings sync skipped: $error');
+    }
   }
 
   @override
@@ -142,21 +168,31 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      debugShowCheckedModeBanner: false,
-      title: 'PlanFlow',
-      theme: buildPlanFlowTheme(),
-      locale: const Locale('ko', 'KR'),
-      supportedLocales: const [
-        Locale('ko', 'KR'),
-        Locale('en', 'US'),
-      ],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ],
-      routerConfig: appRouter,
+    return AnimatedBuilder(
+      animation: PlanFlowRegionController.instance,
+      builder: (context, _) {
+        return MaterialApp.router(
+          debugShowCheckedModeBanner: false,
+          title: 'PlanFlow',
+          theme: buildPlanFlowTheme(),
+          locale: PlanFlowRegionController.instance.region.locale,
+          supportedLocales: const [
+            Locale('ko', 'KR'),
+            Locale('en', 'US'),
+            Locale('ja', 'JP'),
+            Locale('en', 'GB'),
+            Locale('de', 'DE'),
+            Locale('fr', 'FR'),
+            Locale('en', 'AU'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          routerConfig: appRouter,
+        );
+      },
     );
   }
 }

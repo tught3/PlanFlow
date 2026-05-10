@@ -90,8 +90,8 @@ class EventModel {
       if (includeId) 'id': id,
       'user_id': userId,
       'title': title,
-      'start_at': startAt?.toIso8601String(),
-      'end_at': endAt?.toIso8601String(),
+      'start_at': _utcIsoValue(startAt),
+      'end_at': _utcIsoValue(endAt),
       'location': location,
       'location_lat': locationLat,
       'location_lng': locationLng,
@@ -108,18 +108,18 @@ class EventModel {
       'external_id': _optionalStringValue(externalId),
       'external_calendar_id': _optionalStringValue(externalCalendarId),
       'external_etag': _optionalStringValue(externalEtag),
-      'external_updated_at': externalUpdatedAt?.toIso8601String(),
-      'last_synced_at': lastSyncedAt?.toIso8601String(),
-      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
-      if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
+      'external_updated_at': _utcIsoValue(externalUpdatedAt),
+      'last_synced_at': _utcIsoValue(lastSyncedAt),
+      if (createdAt != null) 'created_at': _utcIsoValue(createdAt),
+      if (updatedAt != null) 'updated_at': _utcIsoValue(updatedAt),
     };
   }
 
   Map<String, dynamic> toUpdateJson() {
     return <String, dynamic>{
       'title': title,
-      'start_at': startAt?.toIso8601String(),
-      'end_at': endAt?.toIso8601String(),
+      'start_at': _utcIsoValue(startAt),
+      'end_at': _utcIsoValue(endAt),
       'location': location,
       'location_lat': locationLat,
       'location_lng': locationLng,
@@ -136,9 +136,13 @@ class EventModel {
       'external_id': _optionalStringValue(externalId),
       'external_calendar_id': _optionalStringValue(externalCalendarId),
       'external_etag': _optionalStringValue(externalEtag),
-      'external_updated_at': externalUpdatedAt?.toIso8601String(),
-      'last_synced_at': lastSyncedAt?.toIso8601String(),
+      'external_updated_at': _utcIsoValue(externalUpdatedAt),
+      'last_synced_at': _utcIsoValue(lastSyncedAt),
     };
+  }
+
+  static String? _utcIsoValue(DateTime? value) {
+    return value?.toUtc().toIso8601String();
   }
 
   static String _stringValue(Object? value) {
