@@ -94,13 +94,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _voiceAutoStart = false;
 
   CalendarSyncSummary? _calendarSyncSummary;
-  CalendarAutoSyncSnapshot? _calendarAutoSyncSnapshot;
   BriefingRuntimeStatus? _briefingRuntimeStatus;
   DepartureAlarmRuntimeStatus? _departureAlarmRuntimeStatus;
   List<BackupSnapshot> _backups = const <BackupSnapshot>[];
 
   bool _isLoadingCalendarStatus = true;
-  bool _isLoadingAutoSyncSnapshot = true;
   bool _isLoadingAlarmRuntimeStatus = true;
   bool _isSyncingGoogleCalendar = false;
   bool _isDisconnectingGoogleCalendar = false;
@@ -215,17 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadAutoSyncSnapshot() async {
-    setState(() {
-      _isLoadingAutoSyncSnapshot = true;
-    });
-    final snapshot = await _calendarAutoSyncService.loadSnapshot();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _calendarAutoSyncSnapshot = snapshot;
-      _isLoadingAutoSyncSnapshot = false;
-    });
+    await _calendarAutoSyncService.loadSnapshot();
   }
 
   Future<void> _loadAlarmRuntimeStatus() async {
@@ -1957,392 +1945,387 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: ListView(
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             children: [
-            _AccountSection(
-              authService: _authService,
-              onSignedOut: () {
-                if (mounted) {
-                  context.go(AppRoutes.login);
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: '브리핑 시간',
-              subtitle: '모닝/이브닝 브리핑이 울릴 시간을 정합니다.',
-              child: Column(
-                children: [
-                  _TimeSettingTile(
-                    title: '모닝 브리핑',
-                    subtitle: '다음 예약 ${_formatDateTime(nextBriefings.morning)}',
-                    value: morningLabel,
-                    icon: Icons.wb_sunny_outlined,
-                    onTap: () => _pickTime(isMorning: true),
-                    trailingAction: _BriefingTestButton(
-                      isLoading: _isTestingMorningBriefing,
-                      tooltip: '모닝 브리핑 테스트 재생',
-                      onPressed: () => _testBriefing(isMorning: true),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  _TimeSettingTile(
-                    title: '이브닝 브리핑',
-                    subtitle: '다음 예약 ${_formatDateTime(nextBriefings.evening)}',
-                    value: eveningLabel,
-                    icon: Icons.nightlight_outlined,
-                    onTap: () => _pickTime(isMorning: false),
-                    trailingAction: _BriefingTestButton(
-                      isLoading: _isTestingEveningBriefing,
-                      tooltip: '이브닝 브리핑 테스트 재생',
-                      onPressed: () => _testBriefing(isMorning: false),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _BriefingRuntimeStatusCard(
-                    isLoading: _isLoadingAlarmRuntimeStatus,
-                    status: _briefingRuntimeStatus,
-                    formatDateTime: _formatDateTime,
-                    onRefresh: _loadAlarmRuntimeStatus,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: '이동수단',
-              subtitle: '위치 기반 이동시간 계산과 스마트 준비 알람에 우선 적용할 방식을 정합니다.',
-              child: SegmentedButton<String>(
-                key: const ValueKey('settings-travel-mode-selector'),
-                segments: const <ButtonSegment<String>>[
-                  ButtonSegment<String>(
-                    value: 'car',
-                    icon: Icon(Icons.directions_car_outlined),
-                    label: Text('자동차'),
-                  ),
-                  ButtonSegment<String>(
-                    value: 'transit',
-                    icon: Icon(Icons.directions_transit_outlined),
-                    label: Text('대중교통'),
-                  ),
-                ],
-                selected: <String>{_travelMode},
-                onSelectionChanged: (selected) {
-                  setState(() {
-                    _travelMode = selected.first;
-                  });
-                  unawaited(_persistSettings());
+              _AccountSection(
+                authService: _authService,
+                onSignedOut: () {
+                  if (mounted) {
+                    context.go(AppRoutes.login);
+                  }
                 },
               ),
-            ),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: '음성 입력 방식',
-              subtitle: '홈이나 위젯의 마이크 버튼을 눌렀을 때 바로 듣기 시작할지 정합니다.',
-              child: SwitchListTile.adaptive(
-                key: const ValueKey('settings-voice-auto-start-selector'),
-                contentPadding: EdgeInsets.zero,
-                value: _voiceAutoStart,
-                activeThumbColor: PlanFlowColors.primary,
-                activeTrackColor: PlanFlowColors.primaryFaint,
-                title: const Text('화면 열면 바로 시작'),
-                subtitle: Text(
-                  _voiceAutoStart ? '화면을 열자마자 듣기 시작' : '버튼 눌러 시작(기본)',
-                ),
-                onChanged: (value) {
-                  setState(() {
-                    _voiceAutoStart = value;
-                  });
-                  unawaited(_persistSettings());
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildSmartAlarmSettings(),
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: '캘린더 연동',
-              subtitle:
-                  'Google과 Naver 일정을 PlanFlow와 동기화합니다. Naver는 CalDAV로 연결합니다.',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color:
-                          PlanFlowColors.primaryFaint.withValues(alpha: 0.42),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: PlanFlowColors.primaryFaint),
-                    ),
-                    child: Text(
-                      '알림은 PlanFlow 기준으로 울립니다. 외부 캘린더 앱의 기본 알림이 켜져 있으면 해당 앱에서도 알림이 울릴 수 있어요.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: PlanFlowColors.textPrimary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _CalendarAutoSyncStatusCard(
-                    snapshot: _calendarAutoSyncSnapshot,
-                    isLoading: _isLoadingAutoSyncSnapshot,
-                    formatDateTime: _formatDateTime,
-                    onRefresh: _loadAutoSyncSnapshot,
-                  ),
-                  const SizedBox(height: 16),
-                  _StatusRow(
-                    label: 'Google Calendar',
-                    value: _calendarStatusLabel(_calendarSyncSummary?.google),
-                    icon: Icons.cloud_sync_outlined,
-                    isConfigured: _isCalendarConfigured(
-                      _calendarSyncSummary?.google,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _isDisconnectingGoogleCalendar ||
-                                  !_canDisconnectCalendar(
-                                    _calendarSyncSummary?.google,
-                                  )
-                              ? null
-                              : _disconnectGoogleCalendar,
-                          icon: _isDisconnectingGoogleCalendar
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.link_off),
-                          label: Text(
-                            _isDisconnectingGoogleCalendar
-                                ? '해제 중...'
-                                : '연동 해제',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: FilledButton.icon(
-                          key: const ValueKey(
-                            'settings-google-calendar-sync-button',
-                          ),
-                          onPressed: _isLoadingCalendarStatus ||
-                                  _isSyncingGoogleCalendar ||
-                                  _isDisconnectingGoogleCalendar
-                              ? null
-                              : _syncGoogleCalendar,
-                          icon: _isSyncingGoogleCalendar
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.sync),
-                          label: Text(_googleCalendarActionLabel()),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(height: 1),
-                  const SizedBox(height: 16),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: _isLoadingCalendarStatus ||
-                            _isTestingNaverCalDav ||
-                            _isImportingNaverCalDav ||
-                            _isDisconnectingNaverCalendar
-                        ? null
-                        : _syncOrReconnectNaverCalendar,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Column(
-                        children: [
-                          _StatusRow(
-                            label: '네이버 캘린더',
-                            value: _naverCalendarStatusLabel(),
-                            icon: Icons.event_available_outlined,
-                            isConfigured: _hasNaverCalDavCredentials,
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: _isDisconnectingNaverCalendar ||
-                                          !(_hasNaverCalDavCredentials ||
-                                              _canDisconnectCalendar(
-                                                _calendarSyncSummary?.naver,
-                                              ))
-                                      ? null
-                                      : _disconnectNaverCalendar,
-                                  icon: _isDisconnectingNaverCalendar
-                                      ? const SizedBox.square(
-                                          dimension: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Icon(Icons.link_off),
-                                  label: Text(
-                                    _isDisconnectingNaverCalendar
-                                        ? '해제 중...'
-                                        : '연동 해제',
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  key: const ValueKey(
-                                    'settings-naver-calendar-sync-button',
-                                  ),
-                                  onPressed: _isLoadingCalendarStatus ||
-                                          _isTestingNaverCalDav ||
-                                          _isImportingNaverCalDav ||
-                                          _isDisconnectingNaverCalendar
-                                      ? null
-                                      : _syncOrReconnectNaverCalendar,
-                                  icon: _isTestingNaverCalDav ||
-                                          _isImportingNaverCalDav
-                                      ? const SizedBox.square(
-                                          dimension: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Icon(Icons.sync),
-                                  label: Text(
-                                    _isImportingNaverCalDav
-                                        ? '동기화 중...'
-                                        : _isTestingNaverCalDav
-                                            ? '연결 확인 중...'
-                                            : '네이버 일정 동기화',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              '보조 기능: 삼성/구글/기타 휴대폰 캘린더 저장소에 이미 동기화된 일정을 가져올 수 있습니다.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: PlanFlowColors.textSecondary,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          key: const ValueKey(
-                            'settings-device-calendar-disconnect-button',
-                          ),
-                          onPressed: _isDisconnectingDeviceCalendar ||
-                                  _isImportingDeviceNaverCalendar
-                              ? null
-                              : _disconnectDeviceCalendarImport,
-                          icon: _isDisconnectingDeviceCalendar
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.link_off),
-                          label: Text(
-                            _isDisconnectingDeviceCalendar
-                                ? '해제 중...'
-                                : '연동 해제',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: FilledButton.icon(
-                          key: const ValueKey(
-                            'settings-device-calendar-import-button',
-                          ),
-                          onPressed: _isImportingDeviceNaverCalendar ||
-                                  _isDisconnectingDeviceCalendar
-                              ? null
-                              : _importDeviceNaverCalendar,
-                          icon: _isImportingDeviceNaverCalendar
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.phone_android_outlined),
-                          label: Text(
-                            _isImportingDeviceNaverCalendar
-                                ? '가져오는 중...'
-                                : '휴대폰 내부 캘린더 일정 가져오기',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (authProvider.isSignedIn && _backupService != null) ...[
               const SizedBox(height: 16),
               _SectionCard(
-                title: '백업 및 복원',
-                subtitle: '수동 백업과 매일 새벽 3시 자동 백업 기록을 관리합니다.',
+                title: '브리핑 시간',
+                subtitle: '모닝/이브닝 브리핑이 울릴 시간을 정합니다.',
+                child: Column(
+                  children: [
+                    _TimeSettingTile(
+                      title: '모닝 브리핑',
+                      subtitle:
+                          '다음 예약 ${_formatDateTime(nextBriefings.morning)}',
+                      value: morningLabel,
+                      icon: Icons.wb_sunny_outlined,
+                      onTap: () => _pickTime(isMorning: true),
+                      trailingAction: _BriefingTestButton(
+                        isLoading: _isTestingMorningBriefing,
+                        tooltip: '모닝 브리핑 테스트 재생',
+                        onPressed: () => _testBriefing(isMorning: true),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    _TimeSettingTile(
+                      title: '이브닝 브리핑',
+                      subtitle:
+                          '다음 예약 ${_formatDateTime(nextBriefings.evening)}',
+                      value: eveningLabel,
+                      icon: Icons.nightlight_outlined,
+                      onTap: () => _pickTime(isMorning: false),
+                      trailingAction: _BriefingTestButton(
+                        isLoading: _isTestingEveningBriefing,
+                        tooltip: '이브닝 브리핑 테스트 재생',
+                        onPressed: () => _testBriefing(isMorning: false),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _BriefingRuntimeStatusCard(
+                      isLoading: _isLoadingAlarmRuntimeStatus,
+                      status: _briefingRuntimeStatus,
+                      formatDateTime: _formatDateTime,
+                      onRefresh: _loadAlarmRuntimeStatus,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: '이동수단',
+                subtitle: '위치 기반 이동시간 계산과 스마트 준비 알람에 우선 적용할 방식을 정합니다.',
+                child: SegmentedButton<String>(
+                  key: const ValueKey('settings-travel-mode-selector'),
+                  segments: const <ButtonSegment<String>>[
+                    ButtonSegment<String>(
+                      value: 'car',
+                      icon: Icon(Icons.directions_car_outlined),
+                      label: Text('자동차'),
+                    ),
+                    ButtonSegment<String>(
+                      value: 'transit',
+                      icon: Icon(Icons.directions_transit_outlined),
+                      label: Text('대중교통'),
+                    ),
+                  ],
+                  selected: <String>{_travelMode},
+                  onSelectionChanged: (selected) {
+                    setState(() {
+                      _travelMode = selected.first;
+                    });
+                    unawaited(_persistSettings());
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: '음성 입력 방식',
+                subtitle: '홈이나 위젯의 마이크 버튼을 눌렀을 때 바로 듣기 시작할지 정합니다.',
+                child: SwitchListTile.adaptive(
+                  key: const ValueKey('settings-voice-auto-start-selector'),
+                  contentPadding: EdgeInsets.zero,
+                  value: _voiceAutoStart,
+                  activeThumbColor: PlanFlowColors.primary,
+                  activeTrackColor: PlanFlowColors.primaryFaint,
+                  title: const Text('화면 열면 바로 시작'),
+                  subtitle: Text(
+                    _voiceAutoStart ? '화면을 열자마자 듣기 시작' : '버튼 눌러 시작(기본)',
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _voiceAutoStart = value;
+                    });
+                    unawaited(_persistSettings());
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildSmartAlarmSettings(),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: '캘린더 연동',
+                subtitle:
+                    'Google과 Naver 일정을 PlanFlow와 동기화합니다. Naver는 CalDAV로 연결합니다.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color:
+                            PlanFlowColors.primaryFaint.withValues(alpha: 0.42),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: PlanFlowColors.primaryFaint),
+                      ),
+                      child: Text(
+                        '알림은 PlanFlow 기준으로 울립니다. 외부 캘린더 앱의 기본 알림이 켜져 있으면 해당 앱에서도 알림이 울릴 수 있어요.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.textPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _StatusRow(
+                      label: 'Google Calendar',
+                      value: _calendarStatusLabel(_calendarSyncSummary?.google),
+                      icon: Icons.cloud_sync_outlined,
+                      isConfigured: _isCalendarConfigured(
+                        _calendarSyncSummary?.google,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isDisconnectingGoogleCalendar ||
+                                    !_canDisconnectCalendar(
+                                      _calendarSyncSummary?.google,
+                                    )
+                                ? null
+                                : _disconnectGoogleCalendar,
+                            icon: _isDisconnectingGoogleCalendar
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.link_off),
+                            label: Text(
+                              _isDisconnectingGoogleCalendar
+                                  ? '해제 중...'
+                                  : '연동 해제',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
                           child: FilledButton.icon(
-                            onPressed:
-                                _isBackupActionRunning ? null : _createBackup,
-                            icon: _isBackupActionRunning
+                            key: const ValueKey(
+                              'settings-google-calendar-sync-button',
+                            ),
+                            onPressed: _isLoadingCalendarStatus ||
+                                    _isSyncingGoogleCalendar ||
+                                    _isDisconnectingGoogleCalendar
+                                ? null
+                                : _syncGoogleCalendar,
+                            icon: _isSyncingGoogleCalendar
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.sync),
+                            label: Text(_googleCalendarActionLabel()),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    const SizedBox(height: 16),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: _isLoadingCalendarStatus ||
+                              _isTestingNaverCalDav ||
+                              _isImportingNaverCalDav ||
+                              _isDisconnectingNaverCalendar
+                          ? null
+                          : _syncOrReconnectNaverCalendar,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Column(
+                          children: [
+                            _StatusRow(
+                              label: '네이버 캘린더',
+                              value: _naverCalendarStatusLabel(),
+                              icon: Icons.event_available_outlined,
+                              isConfigured: _hasNaverCalDavCredentials,
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _isDisconnectingNaverCalendar ||
+                                            !(_hasNaverCalDavCredentials ||
+                                                _canDisconnectCalendar(
+                                                  _calendarSyncSummary?.naver,
+                                                ))
+                                        ? null
+                                        : _disconnectNaverCalendar,
+                                    icon: _isDisconnectingNaverCalendar
+                                        ? const SizedBox.square(
+                                            dimension: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(Icons.link_off),
+                                    label: Text(
+                                      _isDisconnectingNaverCalendar
+                                          ? '해제 중...'
+                                          : '연동 해제',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    key: const ValueKey(
+                                      'settings-naver-calendar-sync-button',
+                                    ),
+                                    onPressed: _isLoadingCalendarStatus ||
+                                            _isTestingNaverCalDav ||
+                                            _isImportingNaverCalDav ||
+                                            _isDisconnectingNaverCalendar
+                                        ? null
+                                        : _syncOrReconnectNaverCalendar,
+                                    icon: _isTestingNaverCalDav ||
+                                            _isImportingNaverCalDav
+                                        ? const SizedBox.square(
+                                            dimension: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(Icons.sync),
+                                    label: Text(
+                                      _isImportingNaverCalDav
+                                          ? '동기화 중...'
+                                          : _isTestingNaverCalDav
+                                              ? '연결 확인 중...'
+                                              : '네이버 일정 동기화',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '보조 기능: 삼성/구글/기타 휴대폰 캘린더 저장소에 이미 동기화된 일정을 가져올 수 있습니다.',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color: PlanFlowColors.textSecondary,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            key: const ValueKey(
+                              'settings-device-calendar-disconnect-button',
+                            ),
+                            onPressed: _isDisconnectingDeviceCalendar ||
+                                    _isImportingDeviceNaverCalendar
+                                ? null
+                                : _disconnectDeviceCalendarImport,
+                            icon: _isDisconnectingDeviceCalendar
                                 ? const SizedBox.square(
                                     dimension: 18,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Icon(Icons.cloud_upload_outlined),
-                            label: const Text('백업 만들기'),
+                                : const Icon(Icons.link_off),
+                            label: Text(
+                              _isDisconnectingDeviceCalendar
+                                  ? '해제 중...'
+                                  : '연동 해제',
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _isBackupActionRunning
+                          child: FilledButton.icon(
+                            key: const ValueKey(
+                              'settings-device-calendar-import-button',
+                            ),
+                            onPressed: _isImportingDeviceNaverCalendar ||
+                                    _isDisconnectingDeviceCalendar
                                 ? null
-                                : _showBackupRestoreDialog,
-                            icon: const Icon(Icons.restore_outlined),
-                            label: const Text('복원'),
+                                : _importDeviceNaverCalendar,
+                            icon: _isImportingDeviceNaverCalendar
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.phone_android_outlined),
+                            label: Text(
+                              _isImportingDeviceNaverCalendar
+                                  ? '가져오는 중...'
+                                  : '휴대폰 내부 캘린더 일정 가져오기',
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    const Text('복원 버튼을 누르면 백업 목록이 열립니다.'),
                   ],
                 ),
               ),
-            ],
+              const SizedBox(height: 16),
+              if (authProvider.isSignedIn && _backupService != null) ...[
+                const SizedBox(height: 16),
+                _SectionCard(
+                  title: '백업 및 복원',
+                  subtitle: '수동 백업과 매일 새벽 3시 자동 백업 기록을 관리합니다.',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed:
+                                  _isBackupActionRunning ? null : _createBackup,
+                              icon: _isBackupActionRunning
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.cloud_upload_outlined),
+                              label: const Text('백업 만들기'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isBackupActionRunning
+                                  ? null
+                                  : _showBackupRestoreDialog,
+                              icon: const Icon(Icons.restore_outlined),
+                              label: const Text('복원'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('복원 버튼을 누르면 백업 목록이 열립니다.'),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -3355,165 +3338,6 @@ class _RuntimeStatusLine extends StatelessWidget {
             style: theme.textTheme.bodySmall?.copyWith(
               color: PlanFlowColors.textSecondary,
             ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CalendarAutoSyncStatusCard extends StatelessWidget {
-  const _CalendarAutoSyncStatusCard({
-    required this.snapshot,
-    required this.isLoading,
-    required this.formatDateTime,
-    required this.onRefresh,
-  });
-
-  final CalendarAutoSyncSnapshot? snapshot;
-  final bool isLoading;
-  final String Function(DateTime value) formatDateTime;
-  final Future<void> Function() onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final current = snapshot;
-    final lastAttempt = current?.lastAttemptAt;
-    final reason = _reasonLabel(current?.lastReason);
-    final providers =
-        current?.providers ?? const <CalendarAutoSyncProviderSnapshot>[];
-
-    return Container(
-      key: const ValueKey('settings-calendar-auto-sync-status-card'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: PlanFlowColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: PlanFlowColors.primaryFaint),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '자동 동기화 상태',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: PlanFlowColors.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: '상태 새로고침',
-                onPressed: isLoading ? null : onRefresh,
-                icon: isLoading
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh),
-              ),
-            ],
-          ),
-          Text(
-            '앱 시작, 앱 복귀, 일정 저장, 하루 1회 예약으로 Google/Naver/휴대폰 캘린더를 확인합니다.',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: PlanFlowColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            lastAttempt == null
-                ? '최근 자동 동기화 기록이 아직 없습니다.'
-                : '최근 실행: ${formatDateTime(lastAttempt)} · $reason',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: PlanFlowColors.textPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          ...providers.map((provider) {
-            return Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: _AutoSyncProviderRow(
-                provider: provider,
-                formatDateTime: formatDateTime,
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  String _reasonLabel(String? reason) {
-    return switch (reason) {
-      'app_started' => '앱 시작',
-      'app_resumed' => '앱 복귀',
-      'event_save' => '일정 저장',
-      'daily_alarm' => '하루 1회 예약',
-      'auth_changed' => '로그인 변경',
-      null || '' => '기록 없음',
-      _ => reason,
-    };
-  }
-}
-
-class _AutoSyncProviderRow extends StatelessWidget {
-  const _AutoSyncProviderRow({
-    required this.provider,
-    required this.formatDateTime,
-  });
-
-  final CalendarAutoSyncProviderSnapshot provider;
-  final String Function(DateTime value) formatDateTime;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = provider.isHealthy
-        ? const Color(0xFF1F8A4C)
-        : provider.isSkipped
-            ? PlanFlowColors.textSecondary
-            : const Color(0xFFB75E13);
-    final time = provider.checkedAt == null
-        ? '확인 전'
-        : formatDateTime(provider.checkedAt!);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          provider.isHealthy
-              ? Icons.check_circle_outline
-              : provider.isSkipped
-                  ? Icons.remove_circle_outline
-                  : Icons.info_outline,
-          size: 18,
-          color: color,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${provider.label} · $time',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: PlanFlowColors.textPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                provider.message,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: PlanFlowColors.textSecondary,
-                ),
-              ),
-            ],
           ),
         ),
       ],

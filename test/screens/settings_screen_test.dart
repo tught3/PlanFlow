@@ -80,7 +80,7 @@ void main() {
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 
-  testWidgets('SettingsScreen shows separated calendar auto-sync status',
+  testWidgets('SettingsScreen hides calendar auto-sync summary card',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -121,19 +121,19 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final statusCard =
-        find.byKey(const ValueKey('settings-calendar-auto-sync-status-card'));
-    await _scrollUntilHitTestable(tester, statusCard);
+    final googleStatus = find.text('Google Calendar');
+    await _scrollUntilHitTestable(tester, googleStatus);
 
-    expect(find.text('자동 동기화 상태'), findsOneWidget);
-    expect(find.text('최근 실행: 2026-05-09 08:30 · 앱 복귀'), findsOneWidget);
-    expect(find.text('Google Calendar · 2026-05-09 08:30'), findsOneWidget);
-    expect(find.text('Naver CalDAV · 2026-05-09 08:31'), findsOneWidget);
     expect(
-      find.text('Naver CalDAV 아이디 또는 앱 비밀번호를 확인해 주세요.'),
-      findsOneWidget,
+      find.byKey(const ValueKey('settings-calendar-auto-sync-status-card')),
+      findsNothing,
     );
-    expect(find.text('휴대폰 내부 캘린더 · 확인 전'), findsOneWidget);
+    expect(find.text('자동 동기화 상태'), findsNothing);
+    expect(find.text('최근 실행: 2026-05-09 08:30 · 앱 복귀'), findsNothing);
+    expect(find.text('Google Calendar · 2026-05-09 08:30'), findsNothing);
+    expect(find.text('Naver CalDAV · 2026-05-09 08:31'), findsNothing);
+    expect(find.text('Google Calendar'), findsOneWidget);
+    expect(find.text('Google Calendar 다시 동기화'), findsOneWidget);
   });
 
   testWidgets('SettingsScreen shows briefing and departure runtime status',
@@ -524,8 +524,7 @@ void main() {
               summary: CalendarSyncSummary(
                 google:
                     CalendarIntegrationResult.ready(CalendarProvider.google),
-                naver:
-                    CalendarIntegrationResult.ready(CalendarProvider.naver),
+                naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
               ),
             ),
             notificationService: _FakeNotificationService(),

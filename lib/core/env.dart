@@ -11,13 +11,17 @@ class AppEnv {
   static String get googleAndroidClientId =>
       _envValue('GOOGLE_ANDROID_CLIENT_ID');
   static String get googleWebClientId {
-    final webClientId = _envValue('GOOGLE_WEB_CLIENT_ID');
+    final webClientId = _nonPlaceholderEnvValue('GOOGLE_WEB_CLIENT_ID');
     return webClientId.isNotEmpty
         ? webClientId
-        : _envValue('GOOGLE_SERVER_CLIENT_ID');
+        : _nonPlaceholderEnvValue('GOOGLE_SERVER_CLIENT_ID');
   }
 
-  static String get googleServerClientId => googleWebClientId;
+  static String get googleServerClientId {
+    final serverClientId = _nonPlaceholderEnvValue('GOOGLE_SERVER_CLIENT_ID');
+    return serverClientId.isNotEmpty ? serverClientId : googleWebClientId;
+  }
+
   static String get naverClientId => _envValue('NAVER_CLIENT_ID');
   static String get authRedirectUrl => 'planflow://auth-callback';
 
@@ -51,6 +55,11 @@ class AppEnv {
 
   static String _envValue(String key) => _compileTimeEnvValue(key);
 
+  static String _nonPlaceholderEnvValue(String key) {
+    final value = _envValue(key).trim();
+    return value.isNotEmpty && !_looksLikePlaceholder(value) ? value : '';
+  }
+
   static String _compileTimeEnvValue(String key) {
     return switch (key) {
       'SUPABASE_URL' => const String.fromEnvironment('SUPABASE_URL'),
@@ -80,6 +89,7 @@ class AppEnv {
         normalized.contains('your-supabase-anon-key') ||
         normalized.contains('your-google-web-client-id') ||
         normalized.contains('your-google-android-client-id') ||
+        normalized.contains('your-google-server-client-id') ||
         normalized.contains('your-google-maps-api-key') ||
         normalized.contains('your-tmap-api-key') ||
         normalized.contains('your-naver-map-client-id') ||
