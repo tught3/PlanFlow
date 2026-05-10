@@ -142,3 +142,7 @@
 
 ## 2026-05-10 AGENTS Auto-Run Checkpoint
 - Updated `AGENTS.md` so Flutter run/build/test commands in this repo should prefer `scripts/flutter-local.ps1` and automatically inject `env/local.json` defines.
+
+## 2026-05-10 Flutter Local Wrapper Fix Checkpoint
+- Fixed `scripts/flutter-local.ps1` so it injects local defines as individual `--dart-define=KEY=VALUE` flags, with `build apk` argument order handled correctly.
+- Verified `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell pidof com.planflow.app`.

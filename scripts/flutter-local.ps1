@@ -4,10 +4,18 @@ param(
 )
 
 $defineFile = Join-Path $PSScriptRoot '..\env\local.json'
-$defineArg = "--dart-define-from-file=$defineFile"
 
 if (-not (Test-Path $defineFile)) {
   throw "Missing local define file: $defineFile"
+}
+
+$localDefines = Get-Content $defineFile -Raw -Encoding utf8 | ConvertFrom-Json
+$defineArgs = @()
+foreach ($property in $localDefines.PSObject.Properties) {
+  $value = [string]$property.Value
+  if (-not [string]::IsNullOrWhiteSpace($value)) {
+    $defineArgs += "--dart-define=$($property.Name)=$value"
+  }
 }
 
 if ($Args.Count -eq 0) {
@@ -18,9 +26,14 @@ if ($Args.Count -eq 0) {
 $command = $Args[0]
 $flutterArgs = @($Args)
 
-$supportsDefines = $command -in @('run', 'build', 'test', 'drive', 'attach', 'install', 'assemble')
-if ($supportsDefines -and ($flutterArgs -notcontains $defineArg)) {
-  $flutterArgs = @($command, $defineArg) + $Args[1..($Args.Count - 1)]
+if ($defineArgs.Count -gt 0) {
+  if ($command -eq 'build' -and $Args.Count -ge 2) {
+    $flutterArgs = @($command, $Args[1]) + $defineArgs + $Args[2..($Args.Count - 1)]
+  } elseif ($Args.Count -gt 1) {
+    $flutterArgs = @($command) + $defineArgs + $Args[1..($Args.Count - 1)]
+  } else {
+    $flutterArgs = @($command) + $defineArgs
+  }
 }
 
 & flutter @flutterArgs
