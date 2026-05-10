@@ -7,6 +7,7 @@ void main() {
   test('MapService uses Tmap first for car travel', () async {
     final service = MapService(
       tmapApiKey: 'tmap-key',
+      naverProxyUrl: '',
       naverClientId: 'naver-id',
       naverClientSecret: 'naver-secret',
       httpClientFactory: () => MockClient((request) async {
@@ -34,6 +35,7 @@ void main() {
     var calls = 0;
     final service = MapService(
       tmapApiKey: 'tmap-key',
+      naverProxyUrl: '',
       naverClientId: 'naver-id',
       naverClientSecret: 'naver-secret',
       httpClientFactory: () => MockClient((request) async {
@@ -95,6 +97,7 @@ void main() {
   test('MapService uses Naver first for transit mode', () async {
     final service = MapService(
       tmapApiKey: 'tmap-key',
+      naverProxyUrl: '',
       naverClientId: 'naver-id',
       naverClientSecret: 'naver-secret',
       httpClientFactory: () => MockClient((request) async {

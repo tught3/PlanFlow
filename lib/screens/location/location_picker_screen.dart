@@ -13,11 +13,13 @@ class LocationPickerScreen extends StatefulWidget {
     required this.initialQuery,
     this.initialResults = const <LocationLookupResult>[],
     LocationLookupService? locationLookupService,
+    this.canUseInAppMapOverride,
   }) : locationLookupService = locationLookupService ?? LocationLookupService();
 
   final String initialQuery;
   final List<LocationLookupResult> initialResults;
   final LocationLookupService locationLookupService;
+  final bool? canUseInAppMapOverride;
 
   @override
   State<LocationPickerScreen> createState() => _LocationPickerScreenState();
@@ -33,9 +35,22 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   String? _message;
   String? _mapLoadMessage;
 
-  bool get _canUseNaverMap => AppEnv.isNaverMapReady;
-  bool get _canUseGoogleMap => AppEnv.googleMapsApiKey.trim().isNotEmpty;
-  bool get _canUseInAppMap => _canUseNaverMap || _canUseGoogleMap;
+  bool get _canUseNaverMap {
+    if (widget.canUseInAppMapOverride == false) {
+      return false;
+    }
+    return AppEnv.isNaverMapReady;
+  }
+
+  bool get _canUseGoogleMap {
+    if (widget.canUseInAppMapOverride == false) {
+      return false;
+    }
+    return AppEnv.googleMapsApiKey.trim().isNotEmpty;
+  }
+
+  bool get _canUseInAppMap =>
+      widget.canUseInAppMapOverride ?? (_canUseNaverMap || _canUseGoogleMap);
 
   NLatLng get _initialTarget {
     final selected = _selected;

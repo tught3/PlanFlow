@@ -162,3 +162,9 @@
 - Added a direct exact-alarm request path in `AppPermissionService` / `NotificationService`, and wired the exact-alarm tile to that dedicated request.
 - Added a regression test that proves request-all flips the exact-alarm tile to the checked state.
 - Verified with `./scripts/flutter-local.ps1 test --no-pub test/screens/permission_onboarding_screen_test.dart`, `flutter analyze --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.
+
+## 2026-05-10 Full Flutter Test Stability Checkpoint
+- Fixed full `flutter test --no-pub` failures caused by local dart-define map/proxy settings leaking into map and location service tests.
+- Added an in-app map availability override to `LocationPickerScreen` for deterministic fallback UI tests.
+- Updated map/location service tests to explicitly disable providers/proxy paths outside the scenario under test.
+- Verified with `flutter analyze --no-pub`, `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.

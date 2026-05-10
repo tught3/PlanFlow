@@ -14,6 +14,7 @@ void main() {
       MaterialApp(
         home: LocationPickerScreen(
           initialQuery: '대전 성심당',
+          canUseInAppMapOverride: false,
           initialResults: const <LocationLookupResult>[
             LocationLookupResult(
               name: '성심당 본점',
@@ -49,6 +50,7 @@ void main() {
       MaterialApp(
         home: LocationPickerScreen(
           initialQuery: '',
+          canUseInAppMapOverride: false,
           locationLookupService: _EmptyLocationLookupService(),
         ),
       ),

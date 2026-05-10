@@ -10,6 +10,9 @@ void main() {
     final service = LocationLookupService(
       clientId: 'client-id',
       clientSecret: 'client-secret',
+      proxyUrl: '',
+      tmapApiKey: '',
+      googleMapsApiKey: '',
       httpClientFactory: () => MockClient((request) async {
         expect(request.url.host, 'naveropenapi.apigw.ntruss.com');
         return http.Response(
@@ -31,6 +34,9 @@ void main() {
     final service = LocationLookupService(
       clientId: 'client-id',
       clientSecret: 'client-secret',
+      proxyUrl: '',
+      tmapApiKey: '',
+      googleMapsApiKey: '',
       httpClientFactory: () => MockClient((request) async {
         return http.Response('unauthorized', 401);
       }),
@@ -54,6 +60,8 @@ void main() {
       clientId: 'client-id',
       clientSecret: 'client-secret',
       proxyUrl: 'https://example.supabase.co/functions/v1/naver-geocode',
+      tmapApiKey: '',
+      googleMapsApiKey: '',
       httpClientFactory: () => MockClient((request) async {
         expect(request.url.host, 'example.supabase.co');
         expect(request.url.queryParameters['query'], 'Seoul Station');
