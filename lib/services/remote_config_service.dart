@@ -22,6 +22,7 @@ class RemoteConfigService {
   static const String _kEarlyBirdBannerVisible = 'early_bird_banner_visible';
   static const String _kEarlyBirdMessage = 'early_bird_message';
   static const String _kMaxVoiceDurationSeconds = 'max_voice_duration_seconds';
+  static const String _kMinRequiredVersion = 'min_required_version';
 
   static Future<void> initialize() async {
     if (_initialized) {
@@ -48,6 +49,7 @@ class RemoteConfigService {
         _kEarlyBirdBannerVisible: true,
         _kEarlyBirdMessage: '지금 등록하면 PRO 기능을 먼저 경험할 수 있어요.',
         _kMaxVoiceDurationSeconds: 60,
+        _kMinRequiredVersion: 0,
       },
     );
 
@@ -73,6 +75,16 @@ class RemoteConfigService {
       _remoteConfig?.getString(_kEarlyBirdMessage) ??
       '지금 등록하면 PRO 기능을 먼저 경험할 수 있어요.';
 
+  static int getInt(String key, {int defaultValue = 0}) {
+    try {
+      return _remoteConfig?.getInt(key) ?? defaultValue;
+    } catch (_) {
+      return defaultValue;
+    }
+  }
+
   static int get maxVoiceDurationSeconds =>
       _remoteConfig?.getInt(_kMaxVoiceDurationSeconds) ?? 60;
+
+  static int get minRequiredVersion => getInt(_kMinRequiredVersion);
 }
