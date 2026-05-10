@@ -198,3 +198,8 @@
 - Hardened Google OAuth env handling so an explicit non-placeholder `GOOGLE_SERVER_CLIENT_ID` can override the web client fallback, and documented the current debug SHA values for Google Cloud OAuth setup.
 - ADB logcat confirmed the current Google Calendar failure is `PlatformException(sign_in_failed, ApiException: 10)`, which points to Google Cloud OAuth package/SHA/client setup rather than a Flutter flow crash.
 - Verified with `flutter analyze --no-pub`, `./scripts/flutter-local.ps1 test --no-pub test/screens/settings_screen_test.dart`, `./scripts/flutter-local.ps1 test --no-pub test/services/calendar_sync_service_test.dart`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell pidof com.planflow.app` plus resumed activity check.
+
+## 2026-05-10 Event Edit Date Time Picker Checkpoint
+- Replaced the event edit screen's sequential date picker then time picker flow with a single bottom sheet that shows the calendar and time controls together.
+- Added hour/minute dropdowns and quick 10/30 minute adjustment chips so start/end times can be changed without reopening a second dialog.
+- Verified with `flutter analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell pidof com.planflow.app`.
