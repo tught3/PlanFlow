@@ -33,6 +33,7 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - Prefer existing code, shared helpers, and existing docs before creating new structures.
 - Create new code only when reuse is clearly worse.
 - Do not delete unused code until implementation and verification are fully complete.
+- ADB package-destructive commands (`adb uninstall`, `pm uninstall`, `pm clear`, broad app cleanup scripts) must target only this repo's package `com.planflow.app`. Never target FinFlow or other app package names from this workspace while working in PlanFlow, and never use wildcard/broad package deletion.
 - For complex work, split into independent subagent tasks and run them in parallel when safe.
 - When code changes are needed, prefer worker agents for implementation and a separate reviewer for verification.
 - Completed worker/reviewer agents must be closed unless there is a specific reuse plan.

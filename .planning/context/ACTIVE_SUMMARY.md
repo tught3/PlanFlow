@@ -174,3 +174,10 @@
 - Shortened the voice input guide above the raw text field and tightened vertical spacing to reduce compact-screen scrolling.
 - Made the lower voice action buttons use compact labels while listening and scale text down to stay on one line when the close button appears.
 - Verified with related screen tests, `flutter analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.
+
+## 2026-05-10 Voice Bottom Controls And ADB Package Safety Checkpoint
+- Moved the voice action row (`전체삭제`, `마지막삭제`, `직접입력`, and the listening close button) out of the scroll body and pinned it above the bottom navigation bar.
+- Restored a little more voice guide content while keeping the compact screen flow stable.
+- Added an AGENTS safety rule that destructive ADB package commands in this repo must target only `com.planflow.app` and must not touch FinFlow or other app packages.
+- ADB event logs showed `com.aiexpense.tracker` and `com.planflow.app` were both fully removed around 2026-05-10 21:05 by shell-driven package operations, confirming the disappearance was external ADB package removal rather than app code.
+- Verified with `flutter analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.

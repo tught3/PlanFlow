@@ -313,7 +313,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('음성 입력')),
-      bottomNavigationBar: _VoiceBottomNavigation(
+      bottomNavigationBar: _VoiceBottomControls(
+        isListening: _isListening,
+        hasText: _rawTextController.text.trim().isNotEmpty,
+        onCancel: _cancelVoiceFlow,
+        onUndo: _undoLastSegment,
+        onClear: _clearTranscript,
+        onManualSubmit: _continueWithRawText,
         onHome: () => context.go(AppRoutes.home),
         onCalendar: () => context.go(AppRoutes.calendar),
         onSettings: () => context.go(AppRoutes.settings),
@@ -350,18 +356,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   onTapStart: _startVoiceFlow,
                   onTapFinish: _finishVoiceFlow,
                 ),
-                const SizedBox(height: 8),
-                _VoiceActionButtons(
-                  isListening: _isListening,
-                  hasText: _rawTextController.text.trim().isNotEmpty,
-                  onCancel: _cancelVoiceFlow,
-                  onUndo: _undoLastSegment,
-                  onClear: _clearTranscript,
-                  onManualSubmit: _continueWithRawText,
-                ),
-                const SizedBox(height: 8),
                 if (_statusMessage != null)
                   _StatusBanner(message: _statusMessage!),
+                const SizedBox(height: 8),
               ],
             ),
           ),
@@ -383,7 +380,9 @@ class _VoiceCommandGuide extends StatelessWidget {
     const bullets = <String>[
       '일정 입력: “내일 오전 10시 정장집 방문”',
       '기간/반복: “5월 10일 하루종일 휴가”, “매주 화요일 팀 미팅”',
-      '조회/수정: “오늘 일정 알려줘”, “마지막 거 지워”',
+      '카테고리: 병원 진료는 건강, 세미나는 교육으로 분류돼요.',
+      '조회: “오늘 일정 알려줘”, “이번 주 일정 보여줘”',
+      '수정: “마지막 거 지워”, “다시”, “취소”',
     ];
 
     return Card(
@@ -661,6 +660,68 @@ class _StatusBanner extends StatelessWidget {
         message,
         style: theme.textTheme.bodyMedium?.copyWith(
           color: PlanFlowColors.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+class _VoiceBottomControls extends StatelessWidget {
+  const _VoiceBottomControls({
+    required this.isListening,
+    required this.hasText,
+    required this.onCancel,
+    required this.onUndo,
+    required this.onClear,
+    required this.onManualSubmit,
+    required this.onHome,
+    required this.onCalendar,
+    required this.onSettings,
+  });
+
+  final bool isListening;
+  final bool hasText;
+  final VoidCallback onCancel;
+  final VoidCallback onUndo;
+  final VoidCallback onClear;
+  final VoidCallback onManualSubmit;
+  final VoidCallback onHome;
+  final VoidCallback onCalendar;
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 3,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                AppConstants.defaultPadding,
+                8,
+                AppConstants.defaultPadding,
+                bottomInset > 0 ? 2 : 8,
+              ),
+              child: _VoiceActionButtons(
+                isListening: isListening,
+                hasText: hasText,
+                onCancel: onCancel,
+                onUndo: onUndo,
+                onClear: onClear,
+                onManualSubmit: onManualSubmit,
+              ),
+            ),
+            _VoiceBottomNavigation(
+              onHome: onHome,
+              onCalendar: onCalendar,
+              onSettings: onSettings,
+            ),
+          ],
         ),
       ),
     );
