@@ -27,7 +27,7 @@ class UpdateService {
 
       final shouldForceUpdate = await _shouldForceUpdate();
 
-      if (shouldForceUpdate) {
+      if (shouldForceUpdate && info.immediateUpdateAllowed) {
         await InAppUpdate.performImmediateUpdate();
         return;
       }
@@ -35,6 +35,11 @@ class UpdateService {
       if (info.flexibleUpdateAllowed) {
         await InAppUpdate.startFlexibleUpdate();
         await InAppUpdate.completeFlexibleUpdate();
+        return;
+      }
+
+      if (shouldForceUpdate) {
+        debugPrint('In-app update requires attention, but no update path is available.');
       }
     } catch (error) {
       debugPrint('In-app update check skipped: $error');
