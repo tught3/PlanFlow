@@ -16,7 +16,7 @@
 ### 1차 코드 구현 상태
 
 - [x] 1. Supabase 프로젝트 생성 및 SQL 스키마 준비
-- [x] 2. `.env` 파일 생성 및 API 키 입력
+- [x] 2. `.env` 런타임 제거 및 `--dart-define` / `env/local.json` 기반 클라이언트 설정 입력
 - [x] 3. Flutter 프로젝트 생성 및 패키지 설치
 - [x] 4. 폴더 구조 생성
 - [x] 5. `main.dart` Supabase 초기화
@@ -112,7 +112,9 @@
 - Naver Calendar는 1차에서 CalDAV/direct sync 및 휴대폰 내부 캘린더 경로를 지원합니다. 단, Naver Calendar 앱의 내부 비공개 저장소에만 있는 일정은 Android에서 직접 읽을 수 없으므로 CalDAV 또는 Android Calendar Provider에 노출되는 일정만 가져올 수 있습니다.
 - Google Maps/TMAP/Naver 이동시간은 API 실패 시 보수적 fallback을 사용하되, 앱은 이를 정확한 실시간 경로처럼 과장하지 않아야 합니다.
 - Home Widget은 Android 네이티브 구성까지 추가됐습니다. 실제 런처 배치/마이크 버튼은 실기기에서 확인해야 합니다.
-- OpenAI 키가 APK asset에 포함되는 현재 구조는 1차 최소 조치입니다. 공개 배포 전후 P3에서 Supabase Edge Function 프록시로 전환해야 합니다.
+- 앱 런타임은 `.env`를 읽지 않습니다. 로컬/릴리즈 설정은 `--dart-define` 또는 `--dart-define-from-file=env/local.json`으로 전달합니다.
+- `SUPABASE_URL`과 `SUPABASE_ANON_KEY`는 클라이언트 공개 설정값이며, 보호는 Supabase RLS 정책으로 강제합니다.
+- `service_role`, OpenAI API key, OAuth client secret 같은 서버 전용 비밀값은 APK asset이나 앱 define에 포함하지 않습니다. GPT 일정 파싱은 Supabase Edge Function 같은 서버 경유 방식으로 운영해야 합니다.
 - iOS는 1차 Android 우선 전략상 추후 진행입니다.
 
 ## 2차 개발 범위

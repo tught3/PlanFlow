@@ -947,7 +947,7 @@ class _CalendarStatusCard extends StatelessWidget {
       _CalendarLoadState.supabaseMissing => (
           Icons.cloud_off_outlined,
           'Supabase 설정이 필요해요',
-          '환경값이 없어서 캘린더 데이터를 가져올 수 없어요.',
+          '빌드 설정값이 없어서 캘린더 데이터를 가져올 수 없어요.',
         ),
       _CalendarLoadState.signedOut => (
           Icons.lock_outline,

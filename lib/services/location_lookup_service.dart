@@ -67,7 +67,7 @@ class LocationLookupService {
     String? googleMapsApiKey,
     http.Client Function()? httpClientFactory,
   })  : _clientId = clientId ?? AppEnv.naverMapClientId,
-        _clientSecret = clientSecret ?? AppEnv.naverMapClientSecret,
+        _clientSecret = clientSecret ?? '',
         _proxyUrl = proxyUrl ?? AppEnv.naverMapProxyUrl,
         _tmapApiKey = tmapApiKey ?? AppEnv.tmapApiKey,
         _googleMapsApiKey = googleMapsApiKey ?? AppEnv.googleMapsApiKey,

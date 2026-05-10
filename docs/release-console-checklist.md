@@ -38,7 +38,7 @@
 3. Android package 입력란이 있으면 `com.planflow.app`을 등록합니다.
 4. Naver Cloud Platform Console > Maps에서 PlanFlow Maps 애플리케이션을 선택합니다.
 5. Android service environment/package 제한에 `com.planflow.app`을 등록합니다.
-6. 앱의 `NAVER_MAP_CLIENT_ID` / `NAVER_MAP_CLIENT_SECRET`이 해당 Maps 애플리케이션 값과 일치하는지 확인합니다.
+6. 앱에는 `NAVER_MAP_CLIENT_SECRET`을 넣지 않습니다. Naver geocode는 Supabase Edge Function proxy에 secret을 보관하고, 앱에는 `NAVER_MAP_CLIENT_ID`와 `NAVER_MAP_PROXY_URL`만 전달합니다.
 
 ## Kakao Developers
 

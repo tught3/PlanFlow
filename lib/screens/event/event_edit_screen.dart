@@ -174,7 +174,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
     try {
       if (!AppEnv.isSupabaseReady) {
-        _showMessage('Supabase 환경값이 설정되지 않았습니다.');
+        _showMessage('Supabase 빌드 설정값이 주입되지 않았습니다.');
         return;
       }
 

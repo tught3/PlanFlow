@@ -28,15 +28,18 @@ class MapTravelEstimate {
 class MapService {
   MapService({
     String? tmapApiKey,
+    String? naverProxyUrl,
     String? naverClientId,
     String? naverClientSecret,
     http.Client Function()? httpClientFactory,
   })  : _tmapApiKey = tmapApiKey ?? AppEnv.tmapApiKey,
+        _naverProxyUrl = naverProxyUrl ?? AppEnv.naverMapProxyUrl,
         _naverClientId = naverClientId ?? AppEnv.naverMapClientId,
-        _naverClientSecret = naverClientSecret ?? AppEnv.naverMapClientSecret,
+        _naverClientSecret = naverClientSecret ?? '',
         _httpClientFactory = httpClientFactory ?? http.Client.new;
 
   final String _tmapApiKey;
+  final String _naverProxyUrl;
   final String _naverClientId;
   final String _naverClientSecret;
   final http.Client Function() _httpClientFactory;
@@ -152,27 +155,39 @@ class MapService {
     required double destinationLat,
     required double destinationLng,
   }) async {
-    if (_naverClientId.trim().isEmpty || _naverClientSecret.trim().isEmpty) {
+    final proxyUri = _naverDirectionProxyUri(
+      originLat: originLat,
+      originLng: originLng,
+      destinationLat: destinationLat,
+      destinationLng: destinationLng,
+    );
+    if (proxyUri == null &&
+        (_naverClientId.trim().isEmpty || _naverClientSecret.trim().isEmpty)) {
       return null;
     }
 
     final client = _httpClientFactory();
     try {
       final response = await client.get(
-        Uri.https(
-          'naveropenapi.apigw.ntruss.com',
-          '/map-direction/v1/driving',
-          <String, String>{
-            'start': '$originLng,$originLat',
-            'goal': '$destinationLng,$destinationLat',
-            'option': 'trafast',
-          },
-        ),
-        headers: <String, String>{
-          'X-NCP-APIGW-API-KEY-ID': _naverClientId,
-          'X-NCP-APIGW-API-KEY': _naverClientSecret,
-          'accept': 'application/json',
-        },
+        proxyUri ??
+            Uri.https(
+              'naveropenapi.apigw.ntruss.com',
+              '/map-direction/v1/driving',
+              <String, String>{
+                'start': '$originLng,$originLat',
+                'goal': '$destinationLng,$destinationLat',
+                'option': 'trafast',
+              },
+            ),
+        headers: proxyUri == null
+            ? <String, String>{
+                'X-NCP-APIGW-API-KEY-ID': _naverClientId,
+                'X-NCP-APIGW-API-KEY': _naverClientSecret,
+                'accept': 'application/json',
+              }
+            : const <String, String>{
+                'accept': 'application/json',
+              },
       ).timeout(const Duration(seconds: 8));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -215,6 +230,30 @@ class MapService {
     } finally {
       client.close();
     }
+  }
+
+  Uri? _naverDirectionProxyUri({
+    required double originLat,
+    required double originLng,
+    required double destinationLat,
+    required double destinationLng,
+  }) {
+    final raw = _naverProxyUrl.trim();
+    if (raw.isEmpty) {
+      return null;
+    }
+    final uri = Uri.tryParse(raw);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      return null;
+    }
+    return uri.replace(
+      queryParameters: <String, String>{
+        ...uri.queryParameters,
+        'start': '$originLng,$originLat',
+        'goal': '$destinationLng,$destinationLat',
+        'option': 'trafast',
+      },
+    );
   }
 
   num? _numValue(Object? value) {

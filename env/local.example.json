@@ -1,0 +1,11 @@
+{
+  "SUPABASE_URL": "https://your-project.supabase.co",
+  "SUPABASE_ANON_KEY": "your-supabase-anon-key",
+  "GOOGLE_WEB_CLIENT_ID": "your-google-web-client-id.apps.googleusercontent.com",
+  "GOOGLE_ANDROID_CLIENT_ID": "your-google-android-client-id.apps.googleusercontent.com",
+  "GOOGLE_SERVER_CLIENT_ID": "your-google-server-client-id.apps.googleusercontent.com",
+  "GOOGLE_MAPS_API_KEY": "your-google-maps-api-key",
+  "TMAP_API_KEY": "your-tmap-api-key",
+  "NAVER_MAP_CLIENT_ID": "your-naver-map-client-id",
+  "NAVER_MAP_PROXY_URL": "https://your-project.supabase.co/functions/v1/naver-geocode"
+}

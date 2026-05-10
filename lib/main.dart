@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -31,11 +30,6 @@ Future<void> main() async {
     return true;
   };
 
-  try {
-    await dotenv.load(fileName: '.env');
-  } catch (_) {
-    // Keep booting when the local env file is absent in scaffolded setups.
-  }
   if (AppEnv.naverMapClientId.trim().isNotEmpty) {
     var naverMapAuthFailed = false;
     try {

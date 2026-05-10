@@ -697,7 +697,7 @@ class _HomeStatusCard extends StatelessWidget {
       _HomeLoadState.supabaseMissing => (
           Icons.cloud_off_outlined,
           'Supabase 설정이 필요해요',
-          '환경값이 없어서 오늘 일정을 불러올 수 없어요.',
+          '빌드 설정값이 없어서 오늘 일정을 불러올 수 없어요.',
         ),
       _HomeLoadState.signedOut => (
           Icons.lock_outline,

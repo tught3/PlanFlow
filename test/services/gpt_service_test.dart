@@ -1,29 +1,25 @@
 import 'dart:convert';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:planflow/core/env.dart';
 import 'package:planflow/services/gpt_service.dart';
 
 const String _proxyEndpoint =
     'https://xqvvfnvmytjlblcngipn.supabase.co/functions/v1/openai-proxy';
 
 void main() {
-  setUpAll(() async {
-    await dotenv.load(fileName: '.env');
-  });
-
   group('GptService', () {
     test('returns fallback data when schedule JSON parsing fails', () async {
       final client = MockClient((request) async {
         expect(request.url.toString(), _proxyEndpoint);
         expect(
           request.headers['authorization'],
-          'Bearer ${dotenv.env['SUPABASE_ANON_KEY'] ?? ''}',
+          'Bearer ${AppEnv.supabaseAnonKey}',
         );
-        expect(request.headers['apikey'], dotenv.env['SUPABASE_ANON_KEY']);
+        expect(request.headers['apikey'], AppEnv.supabaseAnonKey);
 
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body['model'], 'gpt-4o-mini');

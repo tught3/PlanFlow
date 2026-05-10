@@ -46,18 +46,30 @@ planflow://auth-callback
 Supabase 대시보드에 Naver가 기본 provider로 보이지 않으면 커스텀 OAuth/OIDC 설정이 필요합니다.
 앱 코드는 Supabase custom provider ID `naver`를 기준으로 `custom:naver`를 호출하도록 준비되어 있습니다.
 
-## 5. 앱 환경값
+## 5. 앱 런타임 설정값
 
-`.env`에 최소 아래 값을 넣어야 합니다.
+앱은 더 이상 런타임에서 `.env`를 읽지 않습니다. 로컬 실행과 빌드에서는
+`--dart-define` 또는 `--dart-define-from-file=env/local.json`으로 클라이언트 설정값을 전달합니다.
 
-```text
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-supabase-anon-key
-OPENAI_API_KEY=your-openai-api-key
-GOOGLE_WEB_CLIENT_ID=your-web-oauth-client-id.apps.googleusercontent.com
+```json
+{
+  "SUPABASE_URL": "https://your-project.supabase.co",
+  "SUPABASE_ANON_KEY": "your-supabase-anon-key",
+  "GOOGLE_WEB_CLIENT_ID": "your-web-oauth-client-id.apps.googleusercontent.com"
+}
 ```
 
-`OPENAI_API_KEY`가 없어도 로그인과 일정 저장은 가능하지만, GPT 일정 파싱은 동작하지 않습니다.
+실행 예시는 아래와 같습니다.
+
+```powershell
+flutter run --dart-define-from-file=env/local.json
+```
+
+`SUPABASE_URL`과 `SUPABASE_ANON_KEY`는 클라이언트 공개 설정값입니다. 이 값이 앱에 포함되는 것은
+정상이며, 사용자 데이터 보호는 `supabase/schema.sql`의 RLS 정책으로 강제해야 합니다.
+
+`service_role`, OpenAI API key, OAuth client secret 같은 서버 전용 비밀값은 앱에 넣지 않습니다.
+OpenAI 일정 파싱처럼 비밀키가 필요한 기능은 Supabase Edge Function 같은 서버 경유 방식으로 호출해야 합니다.
 
 Google Calendar 연결을 Android에서 사용하려면 Google Cloud Console에서 만든 **Web OAuth Client ID**를
 `GOOGLE_WEB_CLIENT_ID` 또는 `GOOGLE_SERVER_CLIENT_ID`로 설정해야 합니다. Android 앱에

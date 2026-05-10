@@ -1,5 +1,3 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-
 class AppEnv {
   static bool _supabaseInitialized = false;
   static bool _naverMapInitialized = false;
@@ -9,8 +7,6 @@ class AppEnv {
   static String get googleMapsApiKey => _envValue('GOOGLE_MAPS_API_KEY');
   static String get tmapApiKey => _envValue('TMAP_API_KEY');
   static String get naverMapClientId => _envValue('NAVER_MAP_CLIENT_ID');
-  static String get naverMapClientSecret =>
-      _envValue('NAVER_MAP_CLIENT_SECRET');
   static String get naverMapProxyUrl => _envValue('NAVER_MAP_PROXY_URL');
   static String get googleAndroidClientId =>
       _envValue('GOOGLE_ANDROID_CLIENT_ID');
@@ -23,7 +19,6 @@ class AppEnv {
 
   static String get googleServerClientId => googleWebClientId;
   static String get naverClientId => _envValue('NAVER_CLIENT_ID');
-  static String get naverClientSecret => _envValue('NAVER_CLIENT_SECRET');
   static String get authRedirectUrl => 'planflow://auth-callback';
 
   static bool get hasValidSupabaseConfig {
@@ -54,18 +49,7 @@ class AppEnv {
     _naverMapInitialized = true;
   }
 
-  static String _envValue(String key) {
-    final compileTimeValue = _compileTimeEnvValue(key);
-    if (compileTimeValue.isNotEmpty) {
-      return compileTimeValue;
-    }
-
-    try {
-      return dotenv.env[key] ?? '';
-    } catch (_) {
-      return '';
-    }
-  }
+  static String _envValue(String key) => _compileTimeEnvValue(key);
 
   static String _compileTimeEnvValue(String key) {
     return switch (key) {
@@ -78,8 +62,6 @@ class AppEnv {
       'TMAP_API_KEY' => const String.fromEnvironment('TMAP_API_KEY'),
       'NAVER_MAP_CLIENT_ID' =>
         const String.fromEnvironment('NAVER_MAP_CLIENT_ID'),
-      'NAVER_MAP_CLIENT_SECRET' =>
-        const String.fromEnvironment('NAVER_MAP_CLIENT_SECRET'),
       'NAVER_MAP_PROXY_URL' =>
         const String.fromEnvironment('NAVER_MAP_PROXY_URL'),
       'GOOGLE_WEB_CLIENT_ID' =>
@@ -87,8 +69,6 @@ class AppEnv {
       'GOOGLE_SERVER_CLIENT_ID' =>
         const String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID'),
       'NAVER_CLIENT_ID' => const String.fromEnvironment('NAVER_CLIENT_ID'),
-      'NAVER_CLIENT_SECRET' =>
-        const String.fromEnvironment('NAVER_CLIENT_SECRET'),
       _ => '',
     };
   }

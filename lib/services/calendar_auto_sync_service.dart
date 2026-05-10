@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -460,7 +459,6 @@ class DailyCalendarSyncSchedulerService {
 @pragma('vm:entry-point')
 Future<void> _dailyCalendarSyncCallback() async {
   try {
-    await dotenv.load(fileName: '.env');
     if (!AppEnv.isSupabaseReady && AppEnv.hasValidSupabaseConfig) {
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,

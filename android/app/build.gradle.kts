@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -14,18 +15,19 @@ if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
-fun readDotEnvValue(key: String): String {
-    val envFile = rootProject.projectDir.parentFile.resolve(".env")
-    if (!envFile.exists()) return ""
-    return envFile.readLines()
-        .firstOrNull { line ->
-            val trimmed = line.trim()
-            trimmed.startsWith("$key=") && !trimmed.startsWith("#")
+fun readDartDefineValue(key: String): String {
+    val dartDefines = project.findProperty("dart-defines") as String? ?: return ""
+    return dartDefines
+        .split(",")
+        .asSequence()
+        .mapNotNull { encoded ->
+            runCatching {
+                String(Base64.getUrlDecoder().decode(encoded))
+            }.getOrNull()
         }
+        .firstOrNull { decoded -> decoded.startsWith("$key=") }
         ?.substringAfter("=")
         ?.trim()
-        ?.trim('"')
-        ?.trim('\'')
         ?: ""
 }
 
@@ -51,7 +53,8 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         manifestPlaceholders["googleMapsApiKey"] =
-            System.getenv("GOOGLE_MAPS_API_KEY") ?: readDotEnvValue("GOOGLE_MAPS_API_KEY")
+            readDartDefineValue("GOOGLE_MAPS_API_KEY")
+                .ifEmpty { System.getenv("GOOGLE_MAPS_API_KEY") ?: "" }
     }
 
     signingConfigs {

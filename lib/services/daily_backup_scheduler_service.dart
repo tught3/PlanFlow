@@ -1,6 +1,5 @@
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
@@ -48,7 +47,6 @@ class DailyBackupSchedulerService {
 @pragma('vm:entry-point')
 Future<void> _dailyBackupCallback() async {
   try {
-    await dotenv.load(fileName: '.env');
     if (!AppEnv.isSupabaseReady && AppEnv.hasValidSupabaseConfig) {
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,

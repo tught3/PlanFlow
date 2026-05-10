@@ -79,7 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _submit() async {
     final authService = _authService;
     if (!AppEnv.isSupabaseReady || authService == null) {
-      _setMessage('Supabase URL과 anon key를 먼저 설정해야 로그인할 수 있습니다.');
+      _setMessage('Supabase 빌드 설정값을 먼저 주입해야 로그인할 수 있습니다.');
       return;
     }
 
@@ -149,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _socialLogin(PlanFlowOAuthProvider provider) async {
     final authService = _authService;
     if (!AppEnv.isSupabaseReady || authService == null) {
-      _setMessage('Supabase 설정 후 소셜 로그인을 사용할 수 있습니다.');
+      _setMessage('Supabase 빌드 설정값을 주입한 뒤 소셜 로그인을 사용할 수 있습니다.');
       return;
     }
 
@@ -298,7 +298,7 @@ class _LoginScreenState extends State<LoginScreen> {
             if (!AppEnv.isSupabaseReady)
               const _MessageBox(
                 message:
-                    'Supabase 환경값이 없어 실제 로그인은 아직 사용할 수 없습니다. .env에 SUPABASE_URL, SUPABASE_ANON_KEY를 넣어 주세요.',
+                    'Supabase 빌드 설정값이 없어 실제 로그인은 아직 사용할 수 없습니다. SUPABASE_URL, SUPABASE_ANON_KEY를 --dart-define으로 주입해 주세요.',
                 isError: true,
               ),
             if (_message != null) ...[

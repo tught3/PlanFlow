@@ -117,3 +117,10 @@
 - 공용 반응형 helper를 추가하고 shell/home/calendar/event/settings/voice 흐름을 폭 제한 중심으로 적응형화했다.
 - 겉화면/잠금화면 알림 안내 문구를 갱신했다.
 - `dart analyze`, `flutter test`, `flutter build apk --debug`는 통과했고, `flutter build apk --release`는 release signing `storeFile` 누락으로 실패했다.
+
+## 2026-05-10 Dart Define Env Checkpoint
+- 앱 런타임과 백그라운드 isolate의 `.env`/`flutter_dotenv` 의존을 제거하고 `String.fromEnvironment` 기반 `--dart-define` 주입으로 통일했다.
+- Supabase URL/anon key 안내 문구와 문서를 빌드 설정값 기준으로 갱신했고, `env/local.example.json` 예시를 추가했다.
+- `NAVER_MAP_CLIENT_SECRET`, OpenAI 원본 키, provider secret은 앱 define/APK asset에 넣지 않도록 AppEnv와 문서 경로를 정리했다.
+- `dart analyze`, `flutter analyze --no-pub`, `flutter test --no-pub`, `flutter build apk --debug --no-pub`, define 포함 debug build를 통과했다. `flutter build apk --release --no-pub`는 기존 release signing `storeFile` 누락으로 실패했다.
+- ADB 실기기 설치/실행은 변경 중 한 차례 통과했고, 마지막 재설치 시점에는 Wi-Fi ADB가 `device offline`으로 떨어져 추가 설치 확인을 보류했다.

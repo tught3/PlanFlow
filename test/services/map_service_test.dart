@@ -63,6 +63,35 @@ void main() {
     expect(estimate.minutes, 32);
   });
 
+  test('MapService uses Naver proxy without client secret headers', () async {
+    final service = MapService(
+      naverProxyUrl: 'https://example.supabase.co/functions/v1/naver-geocode',
+      httpClientFactory: () => MockClient((request) async {
+        expect(request.url.host, 'example.supabase.co');
+        expect(request.url.queryParameters['start'], '126.978,37.5665');
+        expect(request.url.queryParameters['goal'], '127.0276,37.4979');
+        expect(request.url.queryParameters['option'], 'trafast');
+        expect(request.headers.containsKey('X-NCP-APIGW-API-KEY'), isFalse);
+        return http.Response(
+          '{"route":{"trafast":[{"summary":{"duration":1920000}}]}}',
+          200,
+        );
+      }),
+    );
+
+    final estimate = await service.getTravelMinutes(
+      originLat: 37.5665,
+      originLng: 126.978,
+      destinationLat: 37.4979,
+      destinationLng: 127.0276,
+      mode: MapTravelMode.transit,
+    );
+
+    expect(estimate, isNotNull);
+    expect(estimate!.provider, MapTravelProvider.naver);
+    expect(estimate.minutes, 32);
+  });
+
   test('MapService uses Naver first for transit mode', () async {
     final service = MapService(
       tmapApiKey: 'tmap-key',

@@ -15,7 +15,6 @@ dependencies:
   app_links: ^7.0.0
   cupertino_icons: ^1.0.6
   crypto: ^3.0.6
-  flutter_dotenv: ^5.2.1
   flutter_local_notifications: ^21.0.0
   flutter_riverpod: ^2.4.9
   flutter_tts: ^3.8.5
@@ -56,5 +55,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - .env
     - assets/naver_app_password/
