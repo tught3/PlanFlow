@@ -124,3 +124,8 @@
 - `NAVER_MAP_CLIENT_SECRET`, OpenAI 원본 키, provider secret은 앱 define/APK asset에 넣지 않도록 AppEnv와 문서 경로를 정리했다.
 - `dart analyze`, `flutter analyze --no-pub`, `flutter test --no-pub`, `flutter build apk --debug --no-pub`, define 포함 debug build를 통과했다. `flutter build apk --release --no-pub`는 기존 release signing `storeFile` 누락으로 실패했다.
 - ADB 실기기 설치/실행은 변경 중 한 차례 통과했고, 마지막 재설치 시점에는 Wi-Fi ADB가 `device offline`으로 떨어져 추가 설치 확인을 보류했다.
+
+## 2026-05-10 Onboarding Compact Checkpoint
+- Permission onboarding copy and spacing were tightened so the top explanation is shorter, prep-time chips are shorter, the microphone hint is one line, and the bottom app settings button was removed.
+- The main request-all-permissions action is pinned to the bottom bar and is visible on compact heights without scrolling.
+- Verification passed: `dart analyze`, `flutter analyze --no-pub`, `flutter test --no-pub`, `flutter build apk --debug --no-pub`, APK install, and launcher PID check on `com.planflow.app`.
