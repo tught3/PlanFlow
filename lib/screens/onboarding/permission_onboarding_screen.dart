@@ -346,10 +346,10 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           children: [
             _IntroCard(theme: theme),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             if (_isLoading && snapshot == null)
               const Center(
                 child: Padding(
@@ -366,7 +366,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   });
                 },
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 9),
               _PermissionTile(
                 icon: Icons.mic_none,
                 title: '마이크',
@@ -382,11 +382,12 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   request: _permissionService.requestMicrophonePermission,
                 ),
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 9),
               _PermissionTile(
                 icon: Icons.notifications_active_outlined,
                 title: '앱 알림',
                 description: '일정 시작 전 알림과 브리핑 알림을 표시합니다.',
+                descriptionMaxLines: 2,
                 granted: snapshot?.notificationsGranted == true,
                 isRequesting: _activeRequestKey == 'notification',
                 onRequest: () => _requestOne(
@@ -401,12 +402,13 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   },
                 ),
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 9),
               _PermissionTile(
                 icon: Icons.alarm_on_outlined,
                 title: '정확한 알람',
                 description:
                     '중요 일정 알림을 지정한 시간에 맞춰 울리기 위해 필요합니다. Android에서는 설정 화면으로 이동할 수 있습니다.',
+                descriptionMaxLines: 2,
                 granted: snapshot?.exactAlarmsGranted == true,
                 isRequesting: _activeRequestKey == 'exactAlarm',
                 onRequest: () => _requestOne(
@@ -421,11 +423,12 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   },
                 ),
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 9),
               _PermissionTile(
                 icon: Icons.my_location_outlined,
                 title: '위치',
                 description: '현재 위치를 출발지 후보로 사용해 이동시간과 출발 알림을 더 정확히 계산합니다.',
+                descriptionMaxLines: 2,
                 granted: snapshot?.locationGranted == true,
                 isRequesting: _activeRequestKey == 'location',
                 onRequest: () => _requestOne(
@@ -436,12 +439,13 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   request: _permissionService.requestLocationPermission,
                 ),
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 9),
               _PermissionTile(
                 icon: Icons.calendar_month_outlined,
                 title: '기기 캘린더',
                 description:
                     '네이버/삼성/구글 캘린더 앱이 휴대폰에 동기화한 일정을 PlanFlow에서 불러오기 위해 필요합니다.',
+                descriptionMaxLines: 2,
                 granted: snapshot?.calendarGranted == true,
                 isRequesting: _activeRequestKey == 'calendar',
                 onRequest: () => _requestOne(
@@ -454,7 +458,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
               ),
             ],
             if (_message != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 _message!,
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -484,7 +488,7 @@ class _IntroCard extends StatelessWidget {
         side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -495,7 +499,7 @@ class _IntroCard extends StatelessWidget {
                 fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 7),
             Text(
               'AI가 날짜·시간·장소를 파악해 첫 일정을 빠르게 만들어 줍니다. '
               '아래 권한만 허용하면 바로 시작할 수 있어요.',
@@ -532,7 +536,7 @@ class _PrepTimeCard extends StatelessWidget {
         side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -563,14 +567,14 @@ class _PrepTimeCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Text(
               '첫 외부 일정 전에 씻고 챙기는 시간을 정해 주세요.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: PlanFlowColors.textSecondary,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             SegmentedButton<int>(
               showSelectedIcon: false,
               selected: <int>{value},
@@ -581,11 +585,11 @@ class _PrepTimeCard extends StatelessWidget {
                 ButtonSegment<int>(value: 60, label: Text('60분')),
               ],
               style: ButtonStyle(
-                visualDensity: const VisualDensity(vertical: -3),
+                visualDensity: const VisualDensity(vertical: -2),
                 padding: const WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 ),
-                minimumSize: const WidgetStatePropertyAll(Size.fromHeight(38)),
+                minimumSize: const WidgetStatePropertyAll(Size.fromHeight(40)),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onSelectionChanged: (selected) => onChanged(selected.first),
@@ -633,19 +637,19 @@ class _PermissionTile extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(12),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: color),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -657,7 +661,7 @@ class _PermissionTile extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 1),
+                  const SizedBox(height: 2),
                   Text(
                     description,
                     maxLines: descriptionMaxLines,
@@ -668,8 +672,8 @@ class _PermissionTile extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 6),
+              ),
+            const SizedBox(width: 8),
             if (granted)
               const Icon(Icons.check_circle_outline, color: Color(0xFF2E7D32))
             else if (isRequesting)
