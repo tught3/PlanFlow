@@ -6,6 +6,7 @@ import '../../core/constants.dart';
 import '../../core/event_metadata.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
+import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
@@ -541,7 +542,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final monthLabel = '${_focusedMonth.year}년 ${_focusedMonth.month}월';
     final selectedDateLabel = _koreanDateLabel(_selectedDate);
     final dayEvents = _eventsForSelectedDate;
@@ -582,10 +582,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () => _loadEvents(),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(AppConstants.defaultPadding),
-            children: [
+          child: ResponsiveContent(
+            maxWidth: 1080,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(AppConstants.defaultPadding),
+              children: [
               if (_loadState != _CalendarLoadState.ready) ...[
                 _CalendarStatusCard(
                   state: _loadState,
@@ -649,49 +651,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Selected date events
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      selectedDateLabel,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: PlanFlowColors.primary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: PlanFlowColors.surface,
-                      border: Border.all(color: PlanFlowColors.primaryFaint),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${dayEvents.length}',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: PlanFlowColors.primaryMid,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    onPressed: () => context.push(AppRoutes.eventEdit),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('직접 추가'),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    onPressed: () => context.push(AppRoutes.voice),
-                    icon: const Icon(Icons.mic_none, size: 18),
-                    label: const Text('음성 추가'),
-                  ),
-                ],
+              _CalendarSelectedDateHeader(
+                selectedDateLabel: selectedDateLabel,
+                eventCount: dayEvents.length,
+                onAdd: () => context.push(AppRoutes.eventEdit),
+                onVoice: () => context.push(AppRoutes.voice),
               ),
               const SizedBox(height: 12),
 
@@ -712,7 +676,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -730,6 +695,103 @@ class _CalendarScreenState extends State<CalendarScreen> {
       DateTime.sunday: '일요일',
     };
     return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
+  }
+}
+
+class _CalendarSelectedDateHeader extends StatelessWidget {
+  const _CalendarSelectedDateHeader({
+    required this.selectedDateLabel,
+    required this.eventCount,
+    required this.onAdd,
+    required this.onVoice,
+  });
+
+  final String selectedDateLabel;
+  final int eventCount;
+  final VoidCallback onAdd;
+  final VoidCallback onVoice;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 420;
+        final countBadge = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: PlanFlowColors.surface,
+            border: Border.all(color: PlanFlowColors.primaryFaint),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            '$eventCount',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: PlanFlowColors.primaryMid,
+            ),
+          ),
+        );
+
+        if (isNarrow) {
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: constraints.maxWidth,
+                child: Text(
+                  selectedDateLabel,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              countBadge,
+              TextButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('직접 추가'),
+              ),
+              TextButton.icon(
+                onPressed: onVoice,
+                icon: const Icon(Icons.mic_none, size: 18),
+                label: const Text('음성 추가'),
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(
+              child: Text(
+                selectedDateLabel,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: PlanFlowColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            countBadge,
+            const SizedBox(width: 8),
+            TextButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('직접 추가'),
+            ),
+            const SizedBox(width: 8),
+            TextButton.icon(
+              onPressed: onVoice,
+              icon: const Icon(Icons.mic_none, size: 18),
+              label: const Text('음성 추가'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 

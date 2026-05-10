@@ -8,6 +8,7 @@ import '../../core/constants.dart';
 import '../../core/event_metadata.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
+import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
@@ -788,9 +789,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
       body: SafeArea(
         child: Form(
           key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(AppConstants.defaultPadding),
-            children: [
+          child: ResponsiveContent(
+            maxWidth: 760,
+            child: ListView(
+              padding: const EdgeInsets.all(AppConstants.defaultPadding),
+              children: [
               Text(
                 _isLoading
                     ? '일정 정보를 불러오는 중입니다.'
@@ -937,7 +940,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 ),
                 title: const Text('강한 알림으로 예약'),
                 subtitle: const Text(
-                  '정확한 알람과 강한 진동/전체 화면 알림을 시도합니다. Android 무음·방해금지 설정은 기기 정책에 따라 직접 해제해야 할 수 있어요.',
+                  '정확한 알람과 강한 진동/전체 화면 알림을 시도합니다. Android 무음·방해금지 설정과 폴드/플립 겉화면 표시는 기기 정책에 따라 달라질 수 있어요.',
                 ),
                 secondary: Icon(
                   _critical
@@ -972,7 +975,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 onPressed: () => context.pop(),
                 child: const Text('취소'),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

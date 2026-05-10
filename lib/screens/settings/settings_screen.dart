@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/calendar_connection_model.dart';
 import '../../data/models/user_settings_model.dart';
@@ -1929,6 +1930,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final responsiveSize = context.planflowResponsiveSize;
+    final contentMaxWidth = responsiveSize.isCompact ? 920.0 : 980.0;
     final morningLabel = _formatTime(context, _morningBriefingAt);
     final eveningLabel = _formatTime(context, _eveningBriefingAt);
     final nextBriefings = _briefingSchedulerService.nextDailyTimes(
@@ -1949,9 +1952,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(AppConstants.defaultPadding),
-          children: [
+        child: ResponsiveContent(
+          maxWidth: contentMaxWidth,
+          child: ListView(
+            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            children: [
             _AccountSection(
               authService: _authService,
               onSignedOut: () {
@@ -2338,7 +2343,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ],
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -9,6 +9,7 @@ import '../../core/constants.dart';
 import '../../core/event_metadata.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
+import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
@@ -1454,9 +1455,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
               child: SingleChildScrollView(
                 controller: _scrollController,
                 padding: const EdgeInsets.all(AppConstants.defaultPadding),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+                child: ResponsiveContent(
+                  maxWidth: 760,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
@@ -1787,7 +1790,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                       },
                       title: const Text('강한 알림으로 예약'),
                       subtitle: const Text(
-                        '정확한 알람과 강한 진동/전체 화면 알림을 시도합니다. Android 무음·방해금지 설정은 기기 정책에 따라 직접 해제해야 할 수 있어요.',
+                        '정확한 알람과 강한 진동/전체 화면 알림을 시도합니다. Android 무음·방해금지 설정과 폴드/플립 겉화면 표시는 기기 정책에 따라 달라질 수 있어요.',
                       ),
                       secondary: Icon(
                         _isCritical
@@ -1827,7 +1830,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                           : const Icon(Icons.save),
                       label: Text(_isSaving ? '저장 중' : '일정 저장'),
                     ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

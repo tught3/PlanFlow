@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
+import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
@@ -329,9 +330,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 AppConstants.defaultPadding,
                 96,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+              child: ResponsiveContent(
+                maxWidth: 760,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(18),
@@ -554,7 +557,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   const SizedBox(height: 16),
                   if (RemoteConfigService.earlyBirdBannerVisible)
                     const _EarlyBirdBanner(),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

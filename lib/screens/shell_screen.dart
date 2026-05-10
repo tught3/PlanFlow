@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/constants.dart';
 import '../core/env.dart';
+import '../core/responsive.dart';
 import '../data/models/user_settings_model.dart';
 import '../data/repositories/settings_repository.dart';
 import '../providers/auth_provider.dart';
@@ -18,6 +19,36 @@ import '../services/naver_calendar_permission_service.dart';
 import 'calendar/calendar_screen.dart';
 import 'home_screen.dart';
 import 'settings/settings_screen.dart';
+
+const _shellDestinations = <_ShellDestination>[
+  _ShellDestination(
+    label: '홈',
+    icon: Icons.home_outlined,
+    selectedIcon: Icons.home,
+  ),
+  _ShellDestination(
+    label: '일정',
+    icon: Icons.event_note_outlined,
+    selectedIcon: Icons.event_note,
+  ),
+  _ShellDestination(
+    label: '설정',
+    icon: Icons.settings_outlined,
+    selectedIcon: Icons.settings,
+  ),
+];
+
+class _ShellDestination {
+  const _ShellDestination({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+  });
+
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
+}
 
 class ShellScreen extends StatefulWidget {
   const ShellScreen({super.key, this.initialIndex = 0});
@@ -288,6 +319,73 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     );
   }
 
+  List<NavigationDestination> _buildNavigationBarDestinations() {
+    return _shellDestinations
+        .map(
+          (destination) => NavigationDestination(
+            icon: Icon(destination.icon),
+            selectedIcon: Icon(destination.selectedIcon),
+            label: destination.label,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<NavigationRailDestination> _buildNavigationRailDestinations() {
+    return _shellDestinations
+        .map(
+          (destination) => NavigationRailDestination(
+            icon: Icon(destination.icon),
+            selectedIcon: Icon(destination.selectedIcon),
+            label: Text(destination.label),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Widget _buildShellBody() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: _handleTabSwipe,
+      child: IndexedStack(
+        index: _currentIndex,
+        children: [
+          HomeScreen(scrollController: _homeScrollController),
+          const CalendarScreen(),
+          SettingsScreen(
+            key: ValueKey<String?>('settings-${authProvider.userId}'),
+            userId: authProvider.userId,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigationBar() {
+    return NavigationBar(
+      selectedIndex: _currentIndex,
+      onDestinationSelected: _goToTab,
+      destinations: _buildNavigationBarDestinations(),
+    );
+  }
+
+  Widget _buildNavigationRail(PlanFlowResponsiveSize layoutSize) {
+    final extended = layoutSize == PlanFlowResponsiveSize.expanded;
+
+    return SafeArea(
+      child: NavigationRail(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: _goToTab,
+        labelType:
+            extended ? null : NavigationRailLabelType.selected,
+        extended: extended,
+        minWidth: 72,
+        minExtendedWidth: 208,
+        destinations: _buildNavigationRailDestinations(),
+      ),
+    );
+  }
+
   Future<void> _ensureBriefingsScheduled({required String reason}) async {
     final userId = authProvider.userId;
     if (userId == null || userId.isEmpty) {
@@ -358,43 +456,31 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         }
         SystemNavigator.pop();
       },
-      child: Scaffold(
-        body: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onHorizontalDragEnd: _handleTabSwipe,
-          child: IndexedStack(
-            index: _currentIndex,
-            children: [
-              HomeScreen(scrollController: _homeScrollController),
-              const CalendarScreen(),
-              SettingsScreen(
-                key: ValueKey<String?>('settings-${authProvider.userId}'),
-                userId: authProvider.userId,
-              ),
-            ],
-          ),
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _currentIndex,
-          onDestinationSelected: _goToTab,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: '홈',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.event_note_outlined),
-              selectedIcon: Icon(Icons.event_note),
-              label: '일정',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: '설정',
-            ),
-          ],
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final layoutSize =
+              PlanFlowResponsive.sizeForWidth(constraints.maxWidth);
+          final useRail = layoutSize != PlanFlowResponsiveSize.compact;
+
+          return Scaffold(
+            body: useRail
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildNavigationRail(layoutSize),
+                      VerticalDivider(
+                        width: 1,
+                        thickness: 1,
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                      Expanded(child: _buildShellBody()),
+                    ],
+                  )
+                : _buildShellBody(),
+            bottomNavigationBar:
+                useRail ? null : _buildBottomNavigationBar(),
+          );
+        },
       ),
     );
   }

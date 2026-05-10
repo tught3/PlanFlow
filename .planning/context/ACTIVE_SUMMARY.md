@@ -20,6 +20,7 @@
 - 장시간 탐색은 피하고, 근거가 나오는 범위만 단계적으로 확장한다.
 
 ## Current State
+- 2026-05-10: 반응형 레이아웃 공용 helper를 추가하고 shell/home/calendar/event/settings/voice 흐름을 폭 제한 중심으로 적응형화했다. 겉화면/잠금화면 알림 문구도 갱신했다. `dart analyze`, `flutter test`, `flutter build apk --debug`는 통과했고, `flutter build apk --release`는 release signing `storeFile` 누락으로 실패했다. 연결된 `adb` device는 없다.
 - GSD 초기화가 없던 저장소에 2026-04-01 기준 기본 `.planning` 문맥을 생성했다.
 - 메인 앱과 `lite-app` 모두 금융 파이프라인 구조 로그를 일부 도입한 상태다.
 - `npm run check`와 `npm run test:financial-regression`은 최근 작업 기준 통과 상태다.
@@ -41,6 +42,11 @@
 - 2026-05-10: `CODEX_ONBOARDING_CRO.md`를 반영해 온보딩 AppBar/IntroCard/선택 사항 배지/완료 후 이동 경로를 정리하고, 홈 empty state CTA와 FAB pulse 강조를 추가했다. `flutter analyze`, `flutter test`, `flutter build apk --debug`, `flutter build apk --release`, ADB install/launch/pidof까지 통과했다.
 - 2026-05-10: 스마트 업데이트 로직을 `lib/services/remote_config_service.dart`와 `lib/services/update_service.dart`에 반영했다. `min_required_version` 기본값, `getInt` 헬퍼, `package_info_plus` 기반 versionCode 비교, 디버그 조기 반환, 10초 타임아웃, immediate/flexible 분기, 실패 debugPrint 처리를 추가했고 `flutter analyze`는 통과했다. `flutter build apk --debug`는 이 환경에서 시간 초과로 끝났다.
 - 2026-05-10: `CODEX_SMART_UPDATE_SETUP.md`와 `CODEX_RELEASE.md` 기준으로 릴리스 메타데이터를 정리했다. `pubspec.yaml` 버전을 `1.1.0+2`로 올리고 `docs/whats-new-1.1.0.md`를 추가했으며, `flutter analyze`, `flutter test`, `flutter build apk --debug`, `flutter build apk --release`, ADB install/launch/pidof까지 통과했다.
+
+## 2026-05-10 Responsive Layout Checkpoint
+- 공용 반응형 helper를 추가하고 shell/home/calendar/event/settings/voice 흐름을 폭 제한 중심으로 적응형화했다.
+- 겉화면/잠금화면 알림 안내 문구를 갱신했다.
+- `dart analyze`, `flutter test`, `flutter build apk --debug`는 통과했고, `flutter build apk --release`는 release signing `storeFile` 누락으로 실패했다.
 
 ## Roadmap Focus
 - Phase 5: 데이터 정합성 정리
@@ -106,3 +112,8 @@
 - 오래된 장문 탐색 로그
 - 이미 문서에 승격된 의사결정의 반복 설명
 - 오래된 자동 생성 스냅샷 세부 내용
+
+## 2026-05-10 Responsive Layout Checkpoint
+- 공용 반응형 helper를 추가하고 shell/home/calendar/event/settings/voice 흐름을 폭 제한 중심으로 적응형화했다.
+- 겉화면/잠금화면 알림 안내 문구를 갱신했다.
+- `dart analyze`, `flutter test`, `flutter build apk --debug`는 통과했고, `flutter build apk --release`는 release signing `storeFile` 누락으로 실패했다.

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../core/analytics_service.dart';
@@ -320,9 +321,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
-          child: ListView(
-            controller: _scrollController,
-            children: [
+          child: ResponsiveContent(
+            maxWidth: 760,
+            child: ListView(
+              controller: _scrollController,
+              children: [
               Text(
                 '말한 내용을 먼저 확인하고, 필요하면 직접 고친 뒤 진행할 수 있어요.',
                 style: theme.textTheme.titleMedium?.copyWith(
@@ -367,7 +370,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
               const SizedBox(height: 12),
               if (_statusMessage != null)
                 _StatusBanner(message: _statusMessage!),
-            ],
+              ],
+            ),
           ),
         ),
       ),

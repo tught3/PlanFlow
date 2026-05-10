@@ -45,7 +45,7 @@ class NotificationService {
   static const String _criticalAlarmChannelId = 'critical_alarms';
   static const String _criticalAlarmChannelName = '중요 일정 알람';
   static const String _criticalAlarmChannelDescription =
-      '중요 일정 알람. Android 알림/정확한 알람/전체 화면 알림 권한이 꺼져 있으면 강한 알림이 제한될 수 있습니다.';
+      '중요 일정 알람. Android 알림/정확한 알람/전체 화면 알림 권한이 꺼져 있으면 강한 알림과 잠금화면/겉화면 표시가 제한될 수 있습니다.';
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
   );
@@ -205,7 +205,7 @@ class NotificationService {
         status: NotificationScheduleStatus.scheduled,
         notifyAt: notifyAt,
         message: fullScreenIntentAllowed == false
-            ? '중요 알람은 예약했지만 Android 전체 화면 알림이 꺼져 있어 잠금화면 팝업이 제한될 수 있습니다. 휴대폰 설정에서 PlanFlow 전체 화면 알림을 허용해 주세요.'
+            ? '중요 알람은 예약했지만 Android 전체 화면 알림이 꺼져 있어 잠금화면 팝업이나 폴드/플립 겉화면 노출이 제한될 수 있습니다. 휴대폰 설정에서 PlanFlow 전체 화면 알림을 허용해 주세요.'
             : null,
       );
     } catch (error, stackTrace) {
@@ -547,7 +547,7 @@ class NotificationService {
     final blockerText =
         blockers.isEmpty ? 'Android 알림 설정' : blockers.join(', ');
     return '중요 알람을 강하게 울리려면 $blockerText 권한이 필요합니다. '
-        '휴대폰 설정에서 PlanFlow 알림, 알람 및 리마인더, 전체 화면 알림 허용 상태를 확인해 주세요.';
+        '휴대폰 설정에서 PlanFlow 알림, 알람 및 리마인더, 전체 화면 알림 허용 상태를 확인해 주세요. 폴드/플립 겉화면 노출은 기기 정책에 따라 달라질 수 있습니다.';
   }
 }
 

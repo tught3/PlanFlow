@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
+import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/models/pre_action_model.dart';
@@ -447,9 +448,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(AppConstants.defaultPadding),
-          children: [
+        child: ResponsiveContent(
+          maxWidth: 760,
+          child: ListView(
+            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            children: [
             _HeaderCard(
               title: event.title,
               time: timeLabel ?? '시간 미정',
@@ -557,7 +560,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 foregroundColor: Colors.white,
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

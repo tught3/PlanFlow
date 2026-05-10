@@ -385,7 +385,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   key: 'notification',
                   grantedMessage: '앱 알림 권한 상태를 다시 확인했습니다.',
                   deniedMessage:
-                      '앱 알림이 아직 꺼져 있습니다. Android 알림 설정에서 PlanFlow 알림을 허용해 주세요.',
+                      '앱 알림이 아직 꺼져 있습니다. Android 알림 설정에서 PlanFlow 알림을 허용해 주세요. 잠금화면과 겉화면 노출도 이 설정의 영향을 받습니다.',
                   request: () async {
                     final status = await _permissionService
                         .requestNotificationPermissions();
@@ -405,7 +405,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   key: 'exactAlarm',
                   grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
                   deniedMessage:
-                      '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요.',
+                      '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요. 중요 알람의 잠금화면 표시에도 영향을 줍니다.',
                   request: () async {
                     final status = await _permissionService
                         .requestNotificationPermissions();
