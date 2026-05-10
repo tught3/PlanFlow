@@ -16,7 +16,8 @@ void main() {
     expect(find.textContaining('내일 오전 10시 정장집 방문'), findsOneWidget);
     expect(find.textContaining('5월 10일 하루종일 휴가'), findsOneWidget);
     expect(find.textContaining('매주 화요일 팀 미팅'), findsOneWidget);
-    expect(find.textContaining('병원 진료는 건강'), findsOneWidget);
+    expect(find.textContaining('오늘 일정 알려줘'), findsOneWidget);
+    expect(find.textContaining('병원 진료는 건강'), findsNothing);
   });
 
   testWidgets('일반 음성 문장은 일정 확인 화면으로 바로 이동한다', (tester) async {
@@ -52,7 +53,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.byType(TextField),
       240,
-      scrollable: find.byType(Scrollable),
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.enterText(find.byType(TextField), '5분 뒤 요미 허리 약 주기');
     await tester.pumpAndSettle();
@@ -101,7 +102,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.byType(TextField),
       240,
-      scrollable: find.byType(Scrollable),
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.enterText(find.byType(TextField), '한강 피크닉 수정해줘');
     await tester.pumpAndSettle();
@@ -148,7 +149,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.byType(TextField),
       240,
-      scrollable: find.byType(Scrollable),
+      scrollable: find.byType(Scrollable).first,
     );
     await tester.enterText(find.byType(TextField), '오늘 일정 알려줘');
     await tester.pumpAndSettle();

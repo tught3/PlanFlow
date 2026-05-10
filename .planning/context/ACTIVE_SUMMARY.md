@@ -168,3 +168,9 @@
 - Added an in-app map availability override to `LocationPickerScreen` for deterministic fallback UI tests.
 - Updated map/location service tests to explicitly disable providers/proxy paths outside the scenario under test.
 - Verified with `flutter analyze --no-pub`, `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.
+
+## 2026-05-10 Login And Voice Compact UI Checkpoint
+- Moved the Google/Kakao/Naver social login card below the email login card on the login screen.
+- Shortened the voice input guide above the raw text field and tightened vertical spacing to reduce compact-screen scrolling.
+- Made the lower voice action buttons use compact labels while listening and scale text down to stay on one line when the close button appears.
+- Verified with related screen tests, `flutter analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.

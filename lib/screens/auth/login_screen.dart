@@ -305,15 +305,6 @@ class _LoginScreenState extends State<LoginScreen> {
               _MessageBox(message: _message!, isError: _isError),
               const SizedBox(height: 10),
             ],
-            if (_mode == _AuthMode.login) ...[
-              _SocialLoginCard(
-                isLoading: _isLoading,
-                onGoogle: () => _socialLogin(PlanFlowOAuthProvider.google),
-                onKakao: () => _socialLogin(PlanFlowOAuthProvider.kakao),
-                onNaver: () => _socialLogin(PlanFlowOAuthProvider.naver),
-              ),
-              const SizedBox(height: 12),
-            ],
             _EmailLoginCard(
               mode: _mode,
               isLoading: _isLoading,
@@ -328,7 +319,7 @@ class _LoginScreenState extends State<LoginScreen> {
               onModeChanged: _setMode,
               onSubmit: _submit,
             ),
-            if (_mode != _AuthMode.login) ...[
+            if (_mode != _AuthMode.reset) ...[
               const SizedBox(height: 12),
               _SocialLoginCard(
                 isLoading: _isLoading,
