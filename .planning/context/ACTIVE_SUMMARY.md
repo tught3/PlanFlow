@@ -187,3 +187,8 @@
 - Made only the `이렇게 말해보세요` guide expand to fill remaining space, with scale-down protection for very short test heights.
 - Moved the voice status banner into the bottom controls below the action row and above the navigation bar.
 - Verified with `flutter analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.
+
+## 2026-05-10 Voice Guide Content Fill Checkpoint
+- Filled the expanded `이렇게 말해보세요` voice guide with richer examples again instead of leaving the enlarged guide card visually empty.
+- Kept the fixed non-scroll voice layout, while using a compact two-line guide only on very short heights to prevent overflow.
+- Verified with `flutter analyze --no-pub`, `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_input_screen_test.dart`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.

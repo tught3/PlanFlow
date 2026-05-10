@@ -380,11 +380,17 @@ class _VoiceCommandGuide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const bullets = <String>[
-      '일정 입력: “내일 오전 10시 정장집 방문”',
-      '기간/반복: “5월 10일 하루종일 휴가”, “매주 화요일 팀 미팅”',
-      '카테고리: 병원 진료는 건강, 세미나는 교육으로 분류돼요.',
-      '조회: “오늘 일정 알려줘”, “이번 주 일정 보여줘”',
-      '수정: “마지막 거 지워”, “다시”, “취소”',
+      '일정: “내일 오전 10시 정장집 방문”',
+      '기간: “5월 10일 하루종일 휴가”',
+      '반복: “매주 화요일 팀 미팅”',
+      '장소: “내일 오후 3시 강남역 미팅”',
+      '분류: 병원=건강, 세미나=교육',
+      '조회: “오늘 일정 알려줘”, “이번 주 일정 알려줘”',
+      '수정/삭제: “마지막 거 지워”, “다시”, “취소”라고 말할 수 있어요.',
+    ];
+    const compactBullets = <String>[
+      '일정: “내일 오전 10시 정장집 방문”, “5월 10일 하루종일 휴가”, “매주 화요일 팀 미팅”',
+      '분류/조회: 병원 진료는 건강, “오늘 일정 알려줘”, “마지막 거 지워”',
     ];
 
     return LayoutBuilder(
@@ -396,18 +402,19 @@ class _VoiceCommandGuide extends StatelessWidget {
             borderRadius: BorderRadius.circular(10),
             side: const BorderSide(color: Color(0xFF92BEE8), width: 0.8),
           ),
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.topLeft,
-              child: SizedBox(
-                width: constraints.maxWidth,
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: LayoutBuilder(
+              builder: (context, innerConstraints) {
+                final visibleBullets =
+                    innerConstraints.maxHeight < 112 ? compactBullets : bullets;
+
+                return SizedBox(
+                  width: innerConstraints.maxWidth,
+                  height: innerConstraints.maxHeight,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
                         '이렇게 말해보세요',
@@ -416,32 +423,31 @@ class _VoiceCommandGuide extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      ...bullets.map(
-                        (line) => Padding(
-                          padding: const EdgeInsets.only(bottom: 3),
-                          child: Text(
-                            '• $line',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: PlanFlowColors.textSecondary,
-                              height: 1.35,
-                            ),
+                      ...visibleBullets.map(
+                        (line) => Text(
+                          '• $line',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                            height: 1.22,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 2),
                       Text(
                         '시간, 장소, 반복 표현을 같이 말하면 더 정확해요.',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: PlanFlowColors.primary,
-                          height: 1.25,
+                          height: 1.15,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         );
