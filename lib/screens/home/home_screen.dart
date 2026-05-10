@@ -508,6 +508,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 height: 1.35,
                               ),
                             ),
+                            const SizedBox(height: 14),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: () => context.push(AppRoutes.voice),
+                                icon: const Icon(Icons.mic, size: 18),
+                                label: const Text('첫 일정을 음성으로 만들어보세요'),
+                                style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -548,6 +562,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       floatingActionButton: PlanFlowVoiceFab(
         onPressed: () => context.push(AppRoutes.voice),
+        showPulse: _loadState == _HomeLoadState.ready &&
+            _todayEvents.isEmpty &&
+            _upcomingEvents.isEmpty &&
+            _pastTodayEvent == null,
       ),
     );
   }

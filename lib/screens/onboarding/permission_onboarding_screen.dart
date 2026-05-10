@@ -292,7 +292,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       await _permissionService.markOnboardingCompleted(userId);
     }
     if (mounted) {
-      context.go(AppRoutes.home);
+      context.go(AppRoutes.voice);
     }
   }
 
@@ -334,7 +334,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
       appBar: AppBar(
-        title: const Text('권한 설정'),
+        title: const Text('첫 일정 만들 준비'),
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
@@ -500,7 +500,7 @@ class _IntroCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'PlanFlow를 제대로 쓰기 위한 준비',
+              '"내일 오후 3시 강남역 미팅" — 말 한마디면 끝',
               style: theme.textTheme.titleMedium?.copyWith(
                 color: PlanFlowColors.primary,
                 fontWeight: FontWeight.w800,
@@ -508,7 +508,8 @@ class _IntroCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '음성 입력, 일정 알림, 현재 위치 기반 이동시간 계산에 필요한 권한만 요청합니다. '
+              'AI가 날짜·시간·장소를 자동으로 파악해 일정을 만듭니다. '
+              '아래 권한을 허용하면 바로 첫 일정을 만들 수 있어요. '
               '백그라운드 위치 추적은 하지 않습니다.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: PlanFlowColors.textSecondary,
@@ -545,12 +546,32 @@ class _PrepTimeCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '평소 준비 시간',
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: PlanFlowColors.primary,
-                fontWeight: FontWeight.w800,
-              ),
+            Row(
+              children: [
+                Text(
+                  '평소 준비 시간',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: PlanFlowColors.primaryFaint,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '선택 사항',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: PlanFlowColors.primaryMid,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(
