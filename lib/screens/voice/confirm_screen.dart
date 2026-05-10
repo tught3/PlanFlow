@@ -15,6 +15,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../core/analytics_service.dart';
 import '../location/location_pick_flow.dart';
+import '../../services/review_service.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/event_refresh_bus.dart';
@@ -598,6 +599,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         );
         unawaited(AnalyticsService.logScheduleConfirmed());
         unawaited(AnalyticsService.logEventCreated(source: 'voice'));
+        unawaited(ReviewService.onEventSaved());
         context.go(AppRoutes.home);
       }
     } catch (_) {

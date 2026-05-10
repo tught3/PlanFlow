@@ -13,6 +13,7 @@ import 'services/google_calendar_auto_sync_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
 import 'services/oauth_callback_handler.dart';
+import 'services/update_service.dart';
 
 class PlanFlowApp extends StatefulWidget {
   const PlanFlowApp({super.key});
@@ -36,7 +37,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     super.initState();
     _oauthCallbackHandler.start();
     _lifecycleListener = AppLifecycleListener(
-      onResume: () => unawaited(_syncSessionAndCalendar(reason: 'resume')),
+      onResume: () {
+        unawaited(_syncSessionAndCalendar(reason: 'resume'));
+        unawaited(UpdateService.checkAndPrompt());
+      },
     );
     unawaited(_syncSessionAndCalendar(reason: 'startup'));
     unawaited(_listenForSharedIcsFiles());

@@ -98,7 +98,7 @@
     <h2>외부 서비스 전송</h2>
     <ul>
       <li><strong>Supabase</strong>: 계정, 일정, 설정, 백업, 캘린더 연결 상태 저장</li>
-      <li><strong>OpenAI API</strong>: 일정 파싱과 브리핑 생성을 위한 STT 변환 텍스트 전송</li>
+      <li><strong>OpenAI API (Supabase Edge Function 경유)</strong>: 일정 파싱과 브리핑 생성을 위한 STT 변환 텍스트. OpenAI API 키는 서버에서만 관리되며 앱에 포함되지 않습니다.</li>
       <li><strong>Google Calendar API</strong>: 사용자가 Google Calendar 연동에 동의한 경우 일정 읽기/쓰기</li>
       <li><strong>Naver Calendar/CalDAV 및 지도 API</strong>: 사용자가 연동하거나 장소/이동시간 기능을 사용할 때 필요한 요청</li>
       <li><strong>TMAP/Google/Naver 지도 API</strong>: 장소 검색, 경로 및 이동시간 계산</li>
@@ -111,9 +111,11 @@
     <p>사용자 일정, 설정, 백업 데이터는 사용자가 앱을 사용하는 동안 보관됩니다. 사용자는 앱 내 삭제 기능 또는 계정 삭제 요청을 통해 관련 데이터 삭제를 요청할 수 있습니다.</p>
 
     <h2>문의</h2>
-    <p>개인정보 처리와 데이터 삭제 요청은 PlanFlow 운영자에게 문의해 주세요.</p>
+    <p>개인정보 처리 및 데이터 삭제 요청은 아래 이메일로 문의해 주세요.</p>
+    <p><strong>이메일:</strong> support@planflow.app</p>
+    <p>문의 접수 후 영업일 기준 3일 이내에 답변 드립니다.</p>
 
-    <p class="updated">마지막 업데이트: 2026-05-09</p>
+    <p class="updated">마지막 업데이트: 2026-05-10</p>
   </main>
 </body>
 </html>

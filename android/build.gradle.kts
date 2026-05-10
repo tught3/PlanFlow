@@ -30,11 +30,16 @@ subprojects {
                     "flutter_naver_map",
                     "flutter_tts",
                     "home_widget",
+                    "in_app_update",
+                )
+                val java11KotlinProjects = setOf(
+                    "in_app_review",
+                    "speech_to_text",
                 )
                 val target = when (project.name) {
                     in java8KotlinProjects ->
                         org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
-                    "speech_to_text" ->
+                    in java11KotlinProjects ->
                         org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
                     else ->
                         org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
