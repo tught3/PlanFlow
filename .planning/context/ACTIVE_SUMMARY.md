@@ -181,3 +181,9 @@
 - Added an AGENTS safety rule that destructive ADB package commands in this repo must target only `com.planflow.app` and must not touch FinFlow or other app packages.
 - ADB event logs showed `com.aiexpense.tracker` and `com.planflow.app` were both fully removed around 2026-05-10 21:05 by shell-driven package operations, confirming the disappearance was external ADB package removal rather than app code.
 - Verified with `flutter analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.
+
+## 2026-05-10 Voice Fixed Stack Checkpoint
+- Reordered the voice input screen into a fixed non-scroll stack: command guide, listening guide, transcript input, primary voice button, action row, status banner, and bottom navigation.
+- Made only the `이렇게 말해보세요` guide expand to fill remaining space, with scale-down protection for very short test heights.
+- Moved the voice status banner into the bottom controls below the action row and above the navigation bar.
+- Verified with `flutter analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.

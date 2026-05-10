@@ -316,6 +316,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       bottomNavigationBar: _VoiceBottomControls(
         isListening: _isListening,
         hasText: _rawTextController.text.trim().isNotEmpty,
+        statusMessage: _statusMessage,
         onCancel: _cancelVoiceFlow,
         onUndo: _undoLastSegment,
         onClear: _clearTranscript,
@@ -329,8 +330,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           child: ResponsiveContent(
             maxWidth: 760,
-            child: ListView(
-              controller: _scrollController,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
                   '말하거나 직접 입력한 뒤 바로 확인하세요.',
@@ -340,7 +341,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                _VoiceCommandGuide(theme: theme),
+                Expanded(child: _VoiceCommandGuide(theme: theme)),
                 const SizedBox(height: 8),
                 _ListeningGuide(
                   isListening: _isListening,
@@ -353,12 +354,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   controller: _rawTextController,
                   focusNode: _rawTextFocusNode,
                   onManualSubmit: _continueWithRawText,
+                ),
+                const SizedBox(height: 8),
+                _VoicePrimaryButton(
+                  isListening: _isListening,
                   onTapStart: _startVoiceFlow,
                   onTapFinish: _finishVoiceFlow,
                 ),
-                if (_statusMessage != null)
-                  _StatusBanner(message: _statusMessage!),
-                const SizedBox(height: 8),
               ],
             ),
           ),
@@ -385,50 +387,65 @@ class _VoiceCommandGuide extends StatelessWidget {
       '수정: “마지막 거 지워”, “다시”, “취소”',
     ];
 
-    return Card(
-      elevation: 0,
-      color: const Color(0xFFEAF4FF),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: Color(0xFF92BEE8), width: 0.8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '이렇게 말해보세요',
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: PlanFlowColors.primary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            ...bullets.map(
-              (line) => Padding(
-                padding: const EdgeInsets.only(bottom: 3),
-                child: Text(
-                  '• $line',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: PlanFlowColors.textSecondary,
-                    height: 1.35,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Card(
+          elevation: 0,
+          color: const Color(0xFFEAF4FF),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: Color(0xFF92BEE8), width: 0.8),
+          ),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: constraints.maxWidth,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '이렇게 말해보세요',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: PlanFlowColors.primary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      ...bullets.map(
+                        (line) => Padding(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          child: Text(
+                            '• $line',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.textSecondary,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '시간, 장소, 반복 표현을 같이 말하면 더 정확해요.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.primary,
+                          height: 1.25,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 2),
-            Text(
-              '시간, 장소, 반복 표현을 같이 말하면 더 정확해요.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.primary,
-                height: 1.25,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -476,8 +493,6 @@ class _VoiceTranscriptSection extends StatelessWidget {
     required this.controller,
     required this.focusNode,
     required this.onManualSubmit,
-    required this.onTapStart,
-    required this.onTapFinish,
   });
 
   final bool isListening;
@@ -485,8 +500,6 @@ class _VoiceTranscriptSection extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final VoidCallback onManualSubmit;
-  final VoidCallback onTapStart;
-  final VoidCallback onTapFinish;
 
   @override
   Widget build(BuildContext context) {
@@ -529,17 +542,32 @@ class _VoiceTranscriptSection extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: isListening ? onTapFinish : onTapStart,
-                icon: Icon(isListening ? Icons.check : Icons.mic),
-                label: Text(isListening ? '완료' : '음성으로 일정 입력하기'),
-              ),
-            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _VoicePrimaryButton extends StatelessWidget {
+  const _VoicePrimaryButton({
+    required this.isListening,
+    required this.onTapStart,
+    required this.onTapFinish,
+  });
+
+  final bool isListening;
+  final VoidCallback onTapStart;
+  final VoidCallback onTapFinish;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: isListening ? onTapFinish : onTapStart,
+        icon: Icon(isListening ? Icons.check : Icons.mic),
+        label: Text(isListening ? '완료' : '음성으로 일정 입력하기'),
       ),
     );
   }
@@ -670,6 +698,7 @@ class _VoiceBottomControls extends StatelessWidget {
   const _VoiceBottomControls({
     required this.isListening,
     required this.hasText,
+    required this.statusMessage,
     required this.onCancel,
     required this.onUndo,
     required this.onClear,
@@ -681,6 +710,7 @@ class _VoiceBottomControls extends StatelessWidget {
 
   final bool isListening;
   final bool hasText;
+  final String? statusMessage;
   final VoidCallback onCancel;
   final VoidCallback onUndo;
   final VoidCallback onClear;
@@ -701,11 +731,11 @@ class _VoiceBottomControls extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: EdgeInsets.fromLTRB(
+              padding: const EdgeInsets.fromLTRB(
                 AppConstants.defaultPadding,
                 8,
                 AppConstants.defaultPadding,
-                bottomInset > 0 ? 2 : 8,
+                6,
               ),
               child: _VoiceActionButtons(
                 isListening: isListening,
@@ -716,6 +746,16 @@ class _VoiceBottomControls extends StatelessWidget {
                 onManualSubmit: onManualSubmit,
               ),
             ),
+            if (statusMessage != null)
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  AppConstants.defaultPadding,
+                  0,
+                  AppConstants.defaultPadding,
+                  bottomInset > 0 ? 2 : 8,
+                ),
+                child: _StatusBanner(message: statusMessage!),
+              ),
             _VoiceBottomNavigation(
               onHome: onHome,
               onCalendar: onCalendar,

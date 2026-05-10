@@ -50,16 +50,9 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.scrollUntilVisible(
-      find.byType(TextField),
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
     await tester.enterText(find.byType(TextField), '5분 뒤 요미 허리 약 주기');
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(ListView), const Offset(0, -360));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('직접 입력'));
     await tester.pumpAndSettle();
 
@@ -99,16 +92,9 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.scrollUntilVisible(
-      find.byType(TextField),
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
     await tester.enterText(find.byType(TextField), '한강 피크닉 수정해줘');
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(ListView), const Offset(0, -360));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('직접 입력'));
     await tester.pumpAndSettle();
 
@@ -146,16 +132,9 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.scrollUntilVisible(
-      find.byType(TextField),
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
     await tester.enterText(find.byType(TextField), '오늘 일정 알려줘');
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(ListView), const Offset(0, -360));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('직접 입력'));
     await tester.pumpAndSettle();
 
