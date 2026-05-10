@@ -251,22 +251,22 @@ class _LoginScreenState extends State<LoginScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           children: [
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             const Center(
               child: Text(
                 'PlanFlow',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 38,
+                  fontSize: 34,
                   fontWeight: FontWeight.w900,
                   color: PlanFlowColors.primaryMid,
                   letterSpacing: -1.2,
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 color: PlanFlowColors.primaryMid,
                 borderRadius: BorderRadius.circular(10),
@@ -280,10 +280,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: theme.textTheme.headlineSmall?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
-                      fontSize: 24,
+                      fontSize: 22,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle,
                     textAlign: TextAlign.center,
@@ -294,7 +294,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             if (!AppEnv.isSupabaseReady)
               const _MessageBox(
                 message:
@@ -303,6 +303,15 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             if (_message != null) ...[
               _MessageBox(message: _message!, isError: _isError),
+              const SizedBox(height: 10),
+            ],
+            if (_mode == _AuthMode.login) ...[
+              _SocialLoginCard(
+                isLoading: _isLoading,
+                onGoogle: () => _socialLogin(PlanFlowOAuthProvider.google),
+                onKakao: () => _socialLogin(PlanFlowOAuthProvider.kakao),
+                onNaver: () => _socialLogin(PlanFlowOAuthProvider.naver),
+              ),
               const SizedBox(height: 12),
             ],
             _EmailLoginCard(
@@ -319,12 +328,15 @@ class _LoginScreenState extends State<LoginScreen> {
               onModeChanged: _setMode,
               onSubmit: _submit,
             ),
-            const SizedBox(height: 16),
-            _SocialLoginCard(
-              isLoading: _isLoading,
-              onGoogle: () => _socialLogin(PlanFlowOAuthProvider.google),
-              onKakao: () => _socialLogin(PlanFlowOAuthProvider.kakao),
-            ),
+            if (_mode != _AuthMode.login) ...[
+              const SizedBox(height: 12),
+              _SocialLoginCard(
+                isLoading: _isLoading,
+                onGoogle: () => _socialLogin(PlanFlowOAuthProvider.google),
+                onKakao: () => _socialLogin(PlanFlowOAuthProvider.kakao),
+                onNaver: () => _socialLogin(PlanFlowOAuthProvider.naver),
+              ),
+            ],
           ],
         ),
       ),
@@ -385,7 +397,7 @@ class _EmailLoginCard extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -396,7 +408,7 @@ class _EmailLoginCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             SegmentedButton<_AuthMode>(
               segments: const [
                 ButtonSegment(
@@ -417,7 +429,7 @@ class _EmailLoginCard extends StatelessWidget {
                   ? null
                   : (selected) => onModeChanged(selected.first),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             if (mode == _AuthMode.signUp) ...[
               TextField(
                 controller: nameController,
@@ -431,7 +443,7 @@ class _EmailLoginCard extends StatelessWidget {
                 onSubmitted: (_) =>
                     FocusScope.of(context).requestFocus(emailFocusNode),
               ),
-              const SizedBox(height: AppConstants.sectionSpacing),
+              const SizedBox(height: 10),
             ],
             TextField(
               controller: emailController,
@@ -453,7 +465,7 @@ class _EmailLoginCard extends StatelessWidget {
               },
             ),
             if (mode != _AuthMode.reset) ...[
-              const SizedBox(height: AppConstants.sectionSpacing),
+              const SizedBox(height: 10),
               TextField(
                 controller: passwordController,
                 focusNode: passwordFocusNode,
@@ -478,7 +490,7 @@ class _EmailLoginCard extends StatelessWidget {
               ),
             ],
             if (mode == _AuthMode.signUp) ...[
-              const SizedBox(height: AppConstants.sectionSpacing),
+              const SizedBox(height: 10),
               TextField(
                 controller: confirmPasswordController,
                 focusNode: confirmPasswordFocusNode,
@@ -492,7 +504,7 @@ class _EmailLoginCard extends StatelessWidget {
                 onSubmitted: (_) => onSubmit(),
               ),
             ],
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             FilledButton.icon(
               onPressed: isLoading ? null : onSubmit,
               icon: isLoading
@@ -507,7 +519,7 @@ class _EmailLoginCard extends StatelessWidget {
                     ),
               label: Text(buttonLabel),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
             TextButton(
               onPressed: isLoading
                   ? null
@@ -565,11 +577,13 @@ class _SocialLoginCard extends StatelessWidget {
     required this.isLoading,
     required this.onGoogle,
     required this.onKakao,
+    required this.onNaver,
   });
 
   final bool isLoading;
   final VoidCallback onGoogle;
   final VoidCallback onKakao;
+  final VoidCallback onNaver;
 
   @override
   Widget build(BuildContext context) {
@@ -584,7 +598,7 @@ class _SocialLoginCard extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -612,6 +626,15 @@ class _SocialLoginCard extends StatelessWidget {
               foregroundColor: const Color(0xFF191919),
               borderColor: const Color(0xFFFEE500),
               onPressed: isLoading ? null : onKakao,
+            ),
+            const SizedBox(height: 6),
+            _BrandLoginButton(
+              label: '네이버로 계속하기',
+              mark: 'N',
+              backgroundColor: const Color(0xFF03C75A),
+              foregroundColor: Colors.white,
+              borderColor: const Color(0xFF03C75A),
+              onPressed: isLoading ? null : onNaver,
             ),
           ],
         ),
@@ -641,7 +664,7 @@ class _BrandLoginButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final disabled = onPressed == null;
     return SizedBox(
-      height: 48,
+      height: 44,
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
@@ -658,7 +681,7 @@ class _BrandLoginButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
           textStyle: const TextStyle(
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: FontWeight.w700,
           ),
         ),

@@ -151,3 +151,8 @@
 - Slightly expanded the onboarding spacing again so the bottom request button stays fixed while the cards and permission rows fill more of the available height.
 - Widened the permission descriptions on the longer rows to allow more natural wrapping on compact screens.
 - Verified with `./scripts/flutter-local.ps1 test --no-pub test/screens/permission_onboarding_screen_test.dart`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell pidof com.planflow.app`.
+
+## 2026-05-10 Login Naver Visibility Checkpoint
+- Restored the Naver social login entry on `lib/screens/auth/login_screen.dart` and moved the social login block above the email form in login mode so it appears earlier on compact screens.
+- Kept the Google/Kakao/Naver buttons together and slightly reduced login-screen vertical spacing so the Naver action is easier to reach without scrolling.
+- Verified with `./scripts/flutter-local.ps1 test --no-pub test/screens/login_screen_test.dart`, `flutter analyze --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` plus `adb shell pidof com.planflow.app`.
