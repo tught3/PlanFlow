@@ -47,3 +47,5 @@ Do not commit `env/local.json`.
 - `NAVER_MAP_CLIENT_ID` is used by the Android in-app Naver Dynamic Map SDK.
 - Do not ship `NAVER_MAP_CLIENT_SECRET` in any APK. For release, deploy `supabase/functions/naver-geocode`, store the secret in Supabase, and set `NAVER_MAP_PROXY_URL` to the function URL.
 - Naver Calendar is now a 1차 배포 feature through Naver CalDAV/direct sync and phone-calendar import paths. Keep Naver OAuth, CalDAV credentials, and Naver Cloud Maps restrictions visible and testable.
+
+VS Code에서는 `.vscode/launch.json`과 `.vscode/settings.json`이 실행 시 `env/local.json`을 자동으로 붙입니다. Run/Debug를 쓰면 별도 인자 입력 없이 같은 설정으로 시작합니다.

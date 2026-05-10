@@ -129,3 +129,8 @@
 - Permission onboarding copy and spacing were tightened so the top explanation is shorter, prep-time chips are shorter, the microphone hint is one line, and the bottom app settings button was removed.
 - The main request-all-permissions action is pinned to the bottom bar and is visible on compact heights without scrolling.
 - Verification passed: `dart analyze`, `flutter analyze --no-pub`, `flutter test --no-pub`, `flutter build apk --debug --no-pub`, APK install, and launcher PID check on `com.planflow.app`.
+
+## 2026-05-10 VS Code Define Auto-Run Checkpoint
+- Added `.vscode/launch.json` and `.vscode/settings.json` so Flutter Run/Debug in VS Code automatically passes `--dart-define-from-file=env/local.json`.
+- Created local `env/local.json` from the existing `.env` values in the workspace; the file stays ignored by git.
+- Updated the env setup doc to explain that Run/Debug now follows the local define file automatically.
