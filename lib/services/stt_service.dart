@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import 'remote_config_service.dart';
+
 enum SttListenFailure {
   unsupportedLocale,
   permissionDenied,
@@ -46,7 +48,11 @@ class SttService {
   const SttService();
 
   static const String _koreanLocaleId = 'ko_KR';
-  static const Duration _listenFor = Duration(minutes: 15);
+  static Duration get _listenFor {
+    final seconds = RemoteConfigService.maxVoiceDurationSeconds;
+    return Duration(seconds: seconds <= 0 ? 60 : seconds);
+  }
+
   static const Duration _pauseFor = Duration(seconds: 20);
   static const MethodChannel _nativeSttChannel =
       MethodChannel('planflow/native_stt');

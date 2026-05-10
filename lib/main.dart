@@ -14,6 +14,7 @@ import 'app.dart';
 import 'core/env.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
+import 'services/remote_config_service.dart';
 import 'services/calendar_auto_sync_service.dart';
 
 Future<void> main() async {
@@ -22,6 +23,7 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await RemoteConfigService.initialize();
   FirebaseAnalytics.instance;
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
   PlatformDispatcher.instance.onError = (error, stack) {

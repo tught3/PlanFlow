@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 
 /// Firebase Remote Config 래퍼.
@@ -7,8 +8,12 @@ import 'package:firebase_remote_config/firebase_remote_config.dart';
 class RemoteConfigService {
   RemoteConfigService._();
 
-  static final FirebaseRemoteConfig _remoteConfig =
-      FirebaseRemoteConfig.instance;
+  static FirebaseRemoteConfig? get _remoteConfig {
+    if (Firebase.apps.isEmpty) {
+      return null;
+    }
+    return FirebaseRemoteConfig.instance;
+  }
 
   static bool _initialized = false;
 
@@ -23,14 +28,20 @@ class RemoteConfigService {
       return;
     }
 
-    await _remoteConfig.setConfigSettings(
+    final remoteConfig = _remoteConfig;
+    if (remoteConfig == null) {
+      _initialized = true;
+      return;
+    }
+
+    await remoteConfig.setConfigSettings(
       RemoteConfigSettings(
         fetchTimeout: const Duration(seconds: 10),
         minimumFetchInterval: const Duration(hours: 1),
       ),
     );
 
-    await _remoteConfig.setDefaults(
+    await remoteConfig.setDefaults(
       <String, Object>{
         _kGptModel: 'gpt-4o-mini',
         _kBriefingEnabled: true,
@@ -41,7 +52,7 @@ class RemoteConfigService {
     );
 
     try {
-      await _remoteConfig.fetchAndActivate();
+      await remoteConfig.fetchAndActivate();
     } catch (_) {
       // 네트워크가 없어도 앱은 기본값으로 계속 부팅한다.
     }
@@ -49,16 +60,19 @@ class RemoteConfigService {
     _initialized = true;
   }
 
-  static String get gptModel => _remoteConfig.getString(_kGptModel);
+  static String get gptModel =>
+      _remoteConfig?.getString(_kGptModel) ?? 'gpt-4o-mini';
 
-  static bool get briefingEnabled => _remoteConfig.getBool(_kBriefingEnabled);
+  static bool get briefingEnabled =>
+      _remoteConfig?.getBool(_kBriefingEnabled) ?? true;
 
   static bool get earlyBirdBannerVisible =>
-      _remoteConfig.getBool(_kEarlyBirdBannerVisible);
+      _remoteConfig?.getBool(_kEarlyBirdBannerVisible) ?? true;
 
   static String get earlyBirdMessage =>
-      _remoteConfig.getString(_kEarlyBirdMessage);
+      _remoteConfig?.getString(_kEarlyBirdMessage) ??
+      '지금 등록하면 PRO 기능을 먼저 경험할 수 있어요.';
 
   static int get maxVoiceDurationSeconds =>
-      _remoteConfig.getInt(_kMaxVoiceDurationSeconds);
+      _remoteConfig?.getInt(_kMaxVoiceDurationSeconds) ?? 60;
 }

@@ -13,6 +13,7 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../core/analytics_service.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/departure_alarm_service.dart';
@@ -378,6 +379,21 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         return;
       }
 
+      if (parsed['parse_failed'] == true) {
+        unawaited(
+          AnalyticsService.logScheduleParseFailed(reason: 'fallback'),
+        );
+      }
+
+      if (parsed['parse_failed'] != true) {
+        unawaited(
+          AnalyticsService.logScheduleParsed(
+            hasTime: parsed['start_at'] != null || parsed['end_at'] != null,
+            hasLocation: _stringValue(parsed['location'])?.isNotEmpty == true,
+          ),
+        );
+      }
+
       setState(() {
         final title = _stringValue(parsed['title']);
         if (title != null && title.isNotEmpty) {
@@ -418,6 +434,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       });
     } catch (error) {
       if (mounted) {
+        unawaited(
+          AnalyticsService.logScheduleParseFailed(reason: 'gpt_error'),
+        );
         setState(() {
           _hydrateMessage = '일정을 바로 정리하지 못했어요. 필요한 내용만 직접 수정해 주세요.';
         });
@@ -547,6 +566,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return;
     }
     if (overlappingEvents.isNotEmpty) {
+      unawaited(AnalyticsService.logConflictDetected());
       final shouldContinue = await _showOverlapWarning(overlappingEvents);
       if (!shouldContinue || !mounted) {
         return;
@@ -576,6 +596,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           eventId: savedEvent.id,
           startAt: savedEvent.startAt,
         );
+        unawaited(AnalyticsService.logScheduleConfirmed());
+        unawaited(AnalyticsService.logEventCreated(source: 'voice'));
         context.go(AppRoutes.home);
       }
     } catch (_) {
@@ -1407,7 +1429,17 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     final location = _locationController.text.trim();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('일정 확인')),
+      appBar: AppBar(
+        title: const Text('일정 확인'),
+        leading: IconButton(
+          tooltip: '취소',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            unawaited(AnalyticsService.logScheduleCancelled());
+            context.pop();
+          },
+        ),
+      ),
       bottomNavigationBar: _ConfirmBottomNavigation(
         onHome: () => context.go(AppRoutes.home),
         onCalendar: () => context.go(AppRoutes.calendar),

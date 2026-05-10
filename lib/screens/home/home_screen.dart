@@ -15,6 +15,7 @@ import '../../services/app_permission_service.dart';
 import '../../services/briefing_scheduler_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_header_summary_service.dart';
+import '../../services/remote_config_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../widgets/planflow_voice_fab.dart';
 
@@ -537,7 +538,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  const _EarlyBirdBanner(),
+                  if (RemoteConfigService.earlyBirdBannerVisible)
+                    const _EarlyBirdBanner(),
                 ],
               ),
             ),
@@ -1381,6 +1383,7 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final earlyBirdMessage = RemoteConfigService.earlyBirdMessage;
 
     if (_isSubmitted) {
       return Container(
@@ -1453,7 +1456,7 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
           ),
           const SizedBox(height: 6),
           Text(
-            '무제한 음성 등록, AI 브리핑, 스마트 준비 알람을 먼저 만나보세요.\n출시 시 특별 할인 혜택을 드립니다.',
+            earlyBirdMessage,
             style: theme.textTheme.bodySmall?.copyWith(
               color: Color(0xFF222222),
               height: 1.4,

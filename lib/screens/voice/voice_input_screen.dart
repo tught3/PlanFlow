@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,6 +8,7 @@ import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../core/analytics_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/stt_service.dart';
 
@@ -101,6 +104,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       return;
     }
 
+    unawaited(AnalyticsService.logVoiceInputStarted());
+
     setState(() {
       _isListening = true;
       _recognizedText = null;
@@ -130,10 +135,14 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       }
 
       if (result.isSuccess) {
+        unawaited(AnalyticsService.logVoiceInputCompleted(
+          textLength: (result.text ?? '').trim().length,
+        ));
         await _continueWithRawText();
         return;
       }
 
+      unawaited(AnalyticsService.logVoiceInputFailed(reason: 'stt_no_result'));
       setState(() {
         _statusMessage =
             result.message ?? '음성 인식 결과를 확인하지 못했어요. 직접 입력으로 이어가 주세요.';
@@ -143,6 +152,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       if (!mounted) {
         return;
       }
+      unawaited(AnalyticsService.logVoiceInputFailed(reason: 'stt_exception'));
       setState(() {
         _statusMessage = '음성 인식을 처리하지 못했어요. 직접 입력으로 이어가 주세요.';
       });

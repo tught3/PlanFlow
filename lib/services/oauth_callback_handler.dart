@@ -5,10 +5,17 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/constants.dart';
+import '../core/analytics_service.dart';
 import '../core/env.dart';
 import '../core/router.dart';
 import '../providers/auth_provider.dart';
+import 'auth_service.dart';
 import 'naver_calendar_permission_service.dart';
+
+enum OAuthCallbackPurpose {
+  login,
+  calendarLink,
+}
 
 class OAuthCallbackHandler {
   OAuthCallbackHandler({AppLinks? appLinks})
@@ -16,10 +23,53 @@ class OAuthCallbackHandler {
 
   static final ValueNotifier<String?> latestUserMessage =
       ValueNotifier<String?>(null);
+  static OAuthCallbackPurpose? _pendingPurpose;
+  static String? _pendingMethod;
+  static DateTime? _pendingStartedAt;
 
   final AppLinks _appLinks;
   StreamSubscription<Uri>? _subscription;
   bool _initialLinkHandled = false;
+
+  static void markPendingLogin(PlanFlowOAuthProvider provider) {
+    _pendingPurpose = OAuthCallbackPurpose.login;
+    _pendingMethod = switch (provider) {
+      PlanFlowOAuthProvider.google => 'google',
+      PlanFlowOAuthProvider.kakao => 'kakao',
+      PlanFlowOAuthProvider.naver => 'naver',
+    };
+    _pendingStartedAt = DateTime.now();
+  }
+
+  static void markPendingCalendarLink(PlanFlowOAuthProvider provider) {
+    _pendingPurpose = OAuthCallbackPurpose.calendarLink;
+    _pendingMethod = switch (provider) {
+      PlanFlowOAuthProvider.google => 'google',
+      PlanFlowOAuthProvider.kakao => 'kakao',
+      PlanFlowOAuthProvider.naver => 'naver',
+    };
+    _pendingStartedAt = DateTime.now();
+  }
+
+  static String? consumePendingLoginMethod() {
+    final purpose = _pendingPurpose;
+    final method = _pendingMethod;
+    final startedAt = _pendingStartedAt;
+    clearPendingCallback();
+    if (purpose != OAuthCallbackPurpose.login ||
+        method == null ||
+        startedAt == null ||
+        DateTime.now().difference(startedAt) > const Duration(minutes: 10)) {
+      return null;
+    }
+    return method;
+  }
+
+  static void clearPendingCallback() {
+    _pendingPurpose = null;
+    _pendingMethod = null;
+    _pendingStartedAt = null;
+  }
 
   void start() {
     if (kIsWeb || !AppEnv.isSupabaseReady || _subscription != null) {
@@ -73,6 +123,7 @@ class OAuthCallbackHandler {
         'errorCode=${normalizedUri.queryParameters['error_code']} '
         'description=${normalizedUri.queryParameters['error_description']}',
       );
+      clearPendingCallback();
       latestUserMessage.value = callbackErrorMessage;
       return;
     }
@@ -81,7 +132,12 @@ class OAuthCallbackHandler {
 
     if (client.auth.currentSession != null) {
       debugPrint('OAuth callback already produced a Supabase session.');
-      await _syncAndRouteHome();
+      final signedIn = await _syncAndRouteHome();
+      if (signedIn) {
+        await _logPendingLoginIfNeeded();
+      } else {
+        clearPendingCallback();
+      }
       return;
     }
 
@@ -93,15 +149,22 @@ class OAuthCallbackHandler {
       unawaited(
         NaverCalendarPermissionService().captureCurrentProviderToken(),
       );
-      await _syncAndRouteHome();
+      final signedIn = await _syncAndRouteHome();
+      if (signedIn) {
+        await _logPendingLoginIfNeeded();
+      } else {
+        clearPendingCallback();
+      }
     } on AuthException catch (error) {
       debugPrint(
         'OAuth callback exchange failed: ${error.message} '
         'code=${error.code} status=${error.statusCode}',
       );
+      clearPendingCallback();
       latestUserMessage.value = _messageForAuthException(error);
     } catch (error) {
       debugPrint('OAuth callback exchange failed: $error');
+      clearPendingCallback();
       latestUserMessage.value = '로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
     }
   }
@@ -181,10 +244,18 @@ class OAuthCallbackHandler {
     );
   }
 
-  Future<void> _syncAndRouteHome() async {
+  Future<bool> _syncAndRouteHome() async {
     final signedIn = await authProvider.syncCurrentSession();
     if (signedIn && !authProvider.isPasswordRecovery) {
       appRouter.go(AppRoutes.home);
+    }
+    return signedIn;
+  }
+
+  static Future<void> _logPendingLoginIfNeeded() async {
+    final method = consumePendingLoginMethod();
+    if (method != null) {
+      await AnalyticsService.logLogin(method: method);
     }
   }
 

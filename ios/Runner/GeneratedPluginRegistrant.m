@@ -36,6 +36,18 @@
 @import firebase_crashlytics;
 #endif
 
+#if __has_include(<firebase_performance/FLTFirebasePerformancePlugin.h>)
+#import <firebase_performance/FLTFirebasePerformancePlugin.h>
+#else
+@import firebase_performance;
+#endif
+
+#if __has_include(<firebase_remote_config/FirebaseRemoteConfigPlugin.h>)
+#import <firebase_remote_config/FirebaseRemoteConfigPlugin.h>
+#else
+@import firebase_remote_config;
+#endif
+
 #if __has_include(<flutter_local_notifications/FlutterLocalNotificationsPlugin.h>)
 #import <flutter_local_notifications/FlutterLocalNotificationsPlugin.h>
 #else
@@ -110,6 +122,8 @@
   [FirebaseAnalyticsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FirebaseAnalyticsPlugin"]];
   [FLTFirebaseCorePlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTFirebaseCorePlugin"]];
   [FLTFirebaseCrashlyticsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTFirebaseCrashlyticsPlugin"]];
+  [FLTFirebasePerformancePlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTFirebasePerformancePlugin"]];
+  [FirebaseRemoteConfigPlugin registerWithRegistrar:[registry registrarForPlugin:@"FirebaseRemoteConfigPlugin"]];
   [FlutterLocalNotificationsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterLocalNotificationsPlugin"]];
   [SwiftFlutterNaverMapPlugin registerWithRegistrar:[registry registrarForPlugin:@"SwiftFlutterNaverMapPlugin"]];
   [FlutterSecureStoragePlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterSecureStoragePlugin"]];

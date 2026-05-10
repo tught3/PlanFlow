@@ -14,6 +14,8 @@ import '../../data/repositories/calendar_connection_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../core/analytics_service.dart';
+import '../../services/remote_config_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/backup_service.dart';
 import '../../services/briefing_scheduler_service.dart';
@@ -1510,6 +1512,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _testBriefing({required bool isMorning}) async {
+    if (!RemoteConfigService.briefingEnabled) {
+      _showSnack('브리핑 기능이 현재 비활성화되어 있습니다.');
+      return;
+    }
+
     final userId = _userId;
     if (userId == null || userId.isEmpty) {
       _showSnack('로그인 후 브리핑을 테스트할 수 있습니다.');
@@ -1528,6 +1535,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     try {
+      unawaited(
+        AnalyticsService.logBriefingTestPlayed(isMorning: isMorning),
+      );
       final result = await _briefingSchedulerService.executeBriefing(
         isMorning: isMorning,
         userId: userId,

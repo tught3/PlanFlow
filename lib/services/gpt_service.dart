@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../core/env.dart';
 import '../core/event_metadata.dart';
+import 'remote_config_service.dart';
 import 'smart_preparation_alarm_service.dart';
 
 class GptCompletionException implements Exception {
@@ -47,7 +48,7 @@ class GptService {
   final Uri _endpoint;
   final DateTime Function() _now;
 
-  static const String _model = 'gpt-4o-mini';
+  static String get _model => RemoteConfigService.gptModel;
   static const Map<String, dynamic> _responseFormat = <String, dynamic>{
     'type': 'json_object',
   };

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
+import '../../core/analytics_service.dart';
 import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
@@ -99,6 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         final signedIn = await authProvider.syncCurrentSession();
         if (mounted && signedIn) {
+          unawaited(AnalyticsService.logLogin(method: 'email'));
           context.go(AppRoutes.home);
         } else if (mounted) {
           _setMessage('로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
@@ -118,6 +122,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } else if (mounted) {
           final signedIn = await authProvider.syncCurrentSession();
           if (mounted && signedIn) {
+            unawaited(AnalyticsService.logSignUp(method: 'email'));
             context.go(AppRoutes.home);
           } else if (mounted) {
             _setMessage('회원가입 세션을 확인하지 못했습니다. 로그인으로 다시 시도해 주세요.');
@@ -154,11 +159,14 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      OAuthCallbackHandler.markPendingLogin(provider);
       final launched = await authService.signInWithOAuth(provider);
       if (!launched) {
+        OAuthCallbackHandler.clearPendingCallback();
         _setMessage('로그인 창을 열지 못했습니다. 브라우저 설정을 확인해 주세요.');
       }
     } catch (error) {
+      OAuthCallbackHandler.clearPendingCallback();
       _setMessage(_friendlyAuthMessage(error));
     } finally {
       if (mounted) {

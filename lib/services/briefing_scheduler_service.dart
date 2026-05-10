@@ -11,6 +11,7 @@ import '../data/repositories/settings_repository.dart';
 import 'alarm_service.dart';
 import 'gpt_service.dart';
 import 'notification_service.dart';
+import 'remote_config_service.dart';
 import 'travel_time_buffer_service.dart';
 import 'tts_service.dart';
 
@@ -127,6 +128,23 @@ class BriefingSchedulerService {
     final morningAt = _nextOccurrence(morningTime);
     final eveningAt = _nextOccurrence(eveningTime);
 
+    if (!RemoteConfigService.briefingEnabled) {
+      debugPrint(
+        'Briefing schedule skipped: remote config disabled, '
+        'userId=${resolvedUserId ?? 'none'}',
+      );
+      return BriefingDailyScheduleResult(
+        morning: BriefingScheduleEntry(
+          scheduledAt: morningAt,
+          scheduled: false,
+        ),
+        evening: BriefingScheduleEntry(
+          scheduledAt: eveningAt,
+          scheduled: false,
+        ),
+      );
+    }
+
     final morningScheduled = await _alarmService.scheduleMorningBriefing(
       id: _morningAlarmId,
       scheduledAt: morningAt,
@@ -194,6 +212,17 @@ class BriefingSchedulerService {
         'Briefing execute: type=$type userId=${resolvedUserId ?? 'none'}');
 
     try {
+      if (!RemoteConfigService.briefingEnabled) {
+        const result = BriefingExecutionResult(
+          delivered: false,
+          usedFallback: false,
+          message: '브리핑 기능이 현재 비활성화되어 있습니다.',
+          failureReason: 'briefing_disabled',
+        );
+        await _recordExecutionStatus(isMorning: isMorning, result: result);
+        return result;
+      }
+
       if (!AppEnv.isSupabaseReady) {
         const message = 'PlanFlow 브리핑을 실행하려면 서버 설정이 필요합니다. 앱을 열어 설정을 확인해 주세요.';
         await _deliverBriefing(
