@@ -150,8 +150,8 @@ void main() {
       ),
     );
 
-    await tester.ensureVisible(find.byTooltip('장소 찾기'));
-    await tester.tap(find.byTooltip('장소 찾기'));
+    await tester.ensureVisible(find.byTooltip('지도에서 위치 선택'));
+    await tester.tap(find.byTooltip('지도에서 위치 선택'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 

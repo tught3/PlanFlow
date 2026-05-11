@@ -227,3 +227,11 @@
 - Added regression tests for empty-location map opening, manual text hydration protection, and KST wall-time UTC roundtrip/multi-day calculation.
 - Verification passed: `flutter analyze --no-pub`, full `flutter test --no-pub`, focused post-format screen/widget tests, and `flutter build apk --debug --no-pub`. ADB install/launch could not run because `adb devices` returned no connected device.
 - Follow-up ADB verification passed after the device reconnected at `192.168.0.9:5555`: `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk` timed out at the shell level but the app package was installed, `adb shell am start -n com.planflow.app/.MainActivity` launched the app, and `adb shell pidof com.planflow.app` returned PID `29385`.
+
+## 2026-05-11 Naver-Style Event Editor Checkpoint
+- Added a shared Naver Calendar-style event editor with title/calendar header, all-day toggle, two-column start/end summaries, inline year/month/day/AM-PM/hour/minute wheels, today shortcut, timezone row, category, recurrence, location, description, reminder, and strong-alarm controls.
+- Wired the shared editor into both ConfirmScreen and EventEditScreen so new schedule confirmation and existing event editing use the same inline date/time flow.
+- Removed EventEditScreen's visible single/all-day/multi-day segmented control; multi-day is now derived from start/end local dates on save. EventEdit map picking now opens even when the location field is empty.
+- Kept ConfirmScreen's manual text protection and smart prep/supplies flow while moving them into the new editor frame.
+- Added regression coverage for hidden-by-default inline wheels, start wheel activation, all-day time-column hiding, and EventEditScreen's new editor shape.
+- Verification passed: `flutter analyze --no-pub`, full `flutter test --no-pub` (215 tests), `flutter build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `24308`.

@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
-import '../../core/event_metadata.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
 import '../../core/responsive.dart';
@@ -21,6 +20,7 @@ import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
+import '../../widgets/calendar_style_event_editor.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
@@ -59,7 +59,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late bool _critical;
   late RecurrenceSelection _recurrenceSelection;
   bool _isAllDay = false;
-  bool _isMultiDay = false;
   String _category = '기타';
   Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
   EventModel? _loadedEvent;
@@ -87,7 +86,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     if (endAt != null && endAt.isAfter(startAt)) {
       return endAt;
     }
-    if (_isAllDay || _isMultiDay) {
+    if (_isAllDay || (endAt != null && !DateUtils.isSameDay(startAt, endAt))) {
       return startAt.add(const Duration(days: 1));
     }
     return startAt.add(const Duration(minutes: 30));
@@ -145,7 +144,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _critical = event?.isCritical ?? false;
     _recurrenceSelection = RecurrenceSelection.fromRRule(event?.recurrenceRule);
     _isAllDay = event?.isAllDay ?? false;
-    _isMultiDay = event?.isMultiDay ?? false;
     _category = event?.category ?? '기타';
     _loadEventIfNeeded();
     if (event != null) {
@@ -202,6 +200,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
       final normalizedStartAt = planflowLocalDateTimeToUtc(_startAt);
       final normalizedEndAt =
           _endAt == null ? null : planflowLocalDateTimeToUtc(_endAt!);
+      final isMultiDayByRange =
+          _endAt != null && !DateUtils.isSameDay(_startAt, _endAt);
 
       final updatedEvent = EventModel(
         id: _loadedEvent?.id ?? _resolvedEventId ?? '',
@@ -218,7 +218,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         isCritical: _critical,
         recurrenceRule: _recurrenceSelection.toRRule(),
         isAllDay: _isAllDay,
-        isMultiDay: _isMultiDay,
+        isMultiDay: isMultiDayByRange,
         parentEventId: _loadedEvent?.parentEventId,
         category: _category,
         source: _loadedEvent?.source ?? 'manual',
@@ -451,7 +451,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _recurrenceSelection =
             RecurrenceSelection.fromRRule(event.recurrenceRule);
         _isAllDay = event.isAllDay;
-        _isMultiDay = event.isMultiDay;
         _category = event.category;
       });
       unawaited(_loadReminderOffsetIfNeeded(event));
@@ -564,45 +563,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
       debugPrintStack(stackTrace: stackTrace);
       return true;
     }
-  }
-
-  // ignore: unused_element
-  Future<String?> _chooseRecurrenceEditScope() {
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('반복 일정 수정'),
-        content: const Text(
-          '반복 일정입니다. 어떤 범위에 수정 내용을 적용할까요?',
-        ),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-        actions: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(null),
-                child: const Text('취소'),
-              ),
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).pop('single'),
-                child: const Text('이 일정만'),
-              ),
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).pop('future'),
-                child: const Text('이후 모든 일정'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop('all'),
-                child: const Text('전체 반복 일정'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 
   Future<String?> _chooseRecurrenceEditScopeSafe() {
@@ -721,27 +681,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<DateTime?> _pickDateTime(DateTime initialValue) async {
-    final now = DateTime.now();
-    return showModalBottomSheet<DateTime>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => _DateTimePickerSheet(
-        initialValue: initialValue,
-        firstDate: now.subtract(const Duration(days: 365)),
-        lastDate: now.add(const Duration(days: 365 * 5)),
-      ),
-    );
-  }
-
   Future<void> _pickLocationOnMap() async {
     final query = _locationController.text.trim();
-    if (query.isEmpty) {
-      _showMessage('장소를 먼저 입력해 주세요.');
-      return;
-    }
-
     try {
       debugPrint('PlanFlow operation start: event_edit.pick_location');
       final selected = await pickLocationFromQuery(
@@ -799,94 +740,52 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   const LinearProgressIndicator(),
                 ],
                 const SizedBox(height: AppConstants.sectionSpacing),
-                TextFormField(
-                  controller: _titleController,
-                  decoration: const InputDecoration(labelText: '제목'),
-                  validator: (value) => (value == null || value.trim().isEmpty)
-                      ? '제목을 입력해 주세요.'
-                      : null,
-                ),
-                const SizedBox(height: AppConstants.sectionSpacing),
-                _DateTimeTile(
-                  label: '시작 시간',
-                  value: _startAt,
-                  onTap: () async {
-                    final picked = await _pickDateTime(_startAt);
-                    if (picked != null) {
-                      setState(() {
-                        _startAt = picked;
-                        if (_endAt != null && _endAt!.isBefore(_startAt)) {
-                          _endAt = null;
-                        }
-                      });
-                    }
-                  },
-                ),
-                const SizedBox(height: AppConstants.sectionSpacing),
-                _DateTimeTile(
-                  label: '종료 시간',
-                  value: _endAt,
-                  emptyLabel: '종료 시간 없음',
-                  onTap: () async {
-                    final picked = await _pickDateTime(_endAt ?? _startAt);
-                    if (picked != null) {
-                      setState(() {
-                        _endAt = picked;
-                      });
-                    }
-                  },
-                  trailing: _endAt == null
-                      ? null
-                      : IconButton(
-                          tooltip: '종료 시간 지우기',
-                          onPressed: () {
-                            setState(() {
-                              _endAt = null;
-                            });
-                          },
-                          icon: const Icon(Icons.clear),
-                        ),
-                ),
-                const SizedBox(height: AppConstants.sectionSpacing),
-                TextFormField(
-                  controller: _locationController,
-                  decoration: InputDecoration(
-                    labelText: '장소',
-                    suffixIcon: IconButton(
-                      tooltip: '지도에서 위치 선택',
-                      onPressed: _pickLocationOnMap,
-                      icon: const Icon(Icons.map_outlined),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppConstants.sectionSpacing),
-                TextFormField(
-                  controller: _memoController,
-                  decoration: const InputDecoration(
-                    labelText: '메모',
-                    alignLabelWithHint: true,
-                  ),
-                  minLines: 3,
-                  maxLines: 5,
-                ),
-                const SizedBox(height: AppConstants.sectionSpacing),
-                TextFormField(
-                  controller: _suppliesController,
-                  decoration: const InputDecoration(
-                    labelText: '준비물',
-                    helperText: '쉼표로 구분해서 입력해 주세요.',
-                  ),
-                ),
-                const SizedBox(height: AppConstants.sectionSpacing),
-                _EventTypeEditor(
+                CalendarStyleEventEditor(
+                  titleController: _titleController,
+                  locationController: _locationController,
+                  memoController: _memoController,
+                  startAt: _startAt,
+                  endAt: _endAt,
                   isAllDay: _isAllDay,
-                  isMultiDay: _isMultiDay,
                   category: _category,
                   recurrence: _recurrenceSelection,
-                  onTypeChanged: (value) {
+                  reminderOffset: _reminderOffset,
+                  isCritical: _critical,
+                  memoMaxLines: 5,
+                  titleValidator: (value) =>
+                      (value == null || value.trim().isEmpty)
+                          ? '제목을 입력해 주세요.'
+                          : null,
+                  onStartChanged: (value) {
                     setState(() {
-                      _isAllDay = value == 'all_day';
-                      _isMultiDay = value == 'multi_day';
+                      _startAt = value;
+                      if (_endAt != null && !_endAt!.isAfter(_startAt)) {
+                        _endAt = _startAt.add(const Duration(hours: 1));
+                      }
+                    });
+                  },
+                  onEndChanged: (value) {
+                    setState(() {
+                      _endAt = value;
+                    });
+                  },
+                  onAllDayChanged: (value) {
+                    setState(() {
+                      _isAllDay = value;
+                      if (value) {
+                        _startAt = DateTime(
+                          _startAt.year,
+                          _startAt.month,
+                          _startAt.day,
+                        );
+                        if (_endAt != null) {
+                          _endAt = DateTime(
+                            _endAt!.year,
+                            _endAt!.month,
+                            _endAt!.day,
+                          );
+                        }
+                      }
                     });
                   },
                   onCategoryChanged: (value) {
@@ -899,55 +798,25 @@ class _EventEditScreenState extends State<EventEditScreen> {
                       _recurrenceSelection = value;
                     });
                   },
-                ),
-                const SizedBox(height: AppConstants.sectionSpacing),
-                ReminderOffsetSelector(
-                  value: _reminderOffset,
-                  onChanged: (value) {
+                  onReminderChanged: (value) {
                     setState(() {
                       _reminderOffset = value;
                     });
                   },
-                  subtitle: '기본은 1시간 전입니다. 이 일정만 다르게 바꿀 수 있어요.',
-                ),
-                const SizedBox(height: AppConstants.sectionSpacing),
-                SwitchListTile.adaptive(
-                  tileColor: _critical
-                      ? const Color(0xFFFFE3DD)
-                      : PlanFlowColors.surface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(
-                      color: _critical
-                          ? const Color(0xFFB42318)
-                          : PlanFlowColors.primaryFaint,
-                      width: _critical ? 1.2 : 0.5,
-                    ),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  title: const Text('강한 알림으로 예약'),
-                  subtitle: const Text(
-                    '정확한 알람과 강한 진동/전체 화면 알림을 시도합니다. Android 무음·방해금지 설정과 폴드/플립 겉화면 표시는 기기 정책에 따라 달라질 수 있어요.',
-                  ),
-                  secondary: Icon(
-                    _critical
-                        ? Icons.priority_high_rounded
-                        : Icons.notifications_active_outlined,
-                    color: _critical
-                        ? const Color(0xFFB42318)
-                        : PlanFlowColors.textSecondary,
-                  ),
-                  activeThumbColor: const Color(0xFFB42318),
-                  activeTrackColor: const Color(0xFFFFC9BE),
-                  value: _critical,
-                  onChanged: (value) {
+                  onCriticalChanged: (value) {
                     setState(() {
                       _critical = value;
                     });
                   },
+                  onLocationPick: _pickLocationOnMap,
+                  extraAfterMemo: TextFormField(
+                    controller: _suppliesController,
+                    decoration: const InputDecoration(
+                      labelText: '준비물',
+                      helperText: '쉼표로 구분해서 입력해 주세요.',
+                      prefixIcon: Icon(Icons.checklist_outlined),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 24),
                 FilledButton.icon(
@@ -968,374 +837,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EventTypeEditor extends StatelessWidget {
-  const _EventTypeEditor({
-    required this.isAllDay,
-    required this.isMultiDay,
-    required this.category,
-    required this.recurrence,
-    required this.onTypeChanged,
-    required this.onCategoryChanged,
-    required this.onRecurrenceChanged,
-  });
-
-  final bool isAllDay;
-  final bool isMultiDay;
-  final String category;
-  final RecurrenceSelection recurrence;
-  final ValueChanged<String> onTypeChanged;
-  final ValueChanged<String> onCategoryChanged;
-  final ValueChanged<RecurrenceSelection> onRecurrenceChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedType = isMultiDay
-        ? 'multi_day'
-        : isAllDay
-            ? 'all_day'
-            : 'single';
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: PlanFlowColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: PlanFlowColors.primaryFaint),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '일정 유형',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: PlanFlowColors.primary,
-                  fontWeight: FontWeight.w800,
-                ),
-          ),
-          const SizedBox(height: 12),
-          SegmentedButton<String>(
-            showSelectedIcon: false,
-            segments: const <ButtonSegment<String>>[
-              ButtonSegment<String>(
-                value: 'single',
-                label: Text(PlanFlowEventTypeLabels.single),
-              ),
-              ButtonSegment<String>(
-                value: 'all_day',
-                label: Text(PlanFlowEventTypeLabels.allDay),
-              ),
-              ButtonSegment<String>(
-                value: 'multi_day',
-                label: Text(PlanFlowEventTypeLabels.multiDay),
-              ),
-            ],
-            selected: <String>{selectedType},
-            onSelectionChanged: (selected) => onTypeChanged(selected.first),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: PlanFlowEventCategories.values.map((item) {
-              return ChoiceChip(
-                label: Text(item),
-                selected: category == item,
-                onSelected: (_) => onCategoryChanged(item),
-              );
-            }).toList(growable: false),
-          ),
-          const SizedBox(height: 12),
-          RecurrenceSelector(
-            value: recurrence,
-            onChanged: onRecurrenceChanged,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DateTimeTile extends StatelessWidget {
-  const _DateTimeTile({
-    required this.label,
-    required this.value,
-    required this.onTap,
-    this.emptyLabel,
-    this.trailing,
-  });
-
-  final String label;
-  final DateTime? value;
-  final String? emptyLabel;
-  final VoidCallback onTap;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = value == null
-        ? emptyLabel ?? '설정 안 함'
-        : MaterialLocalizations.of(context).formatFullDate(value!);
-    final time = value == null
-        ? null
-        : MaterialLocalizations.of(
-            context,
-          ).formatTimeOfDay(TimeOfDay.fromDateTime(value!));
-
-    return ListTile(
-      tileColor: PlanFlowColors.surface,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      shape: RoundedRectangleBorder(
-        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      title: Text(label),
-      subtitle: Text(time == null ? text : '$text · $time'),
-      trailing: trailing ??
-          const Icon(Icons.edit_calendar, color: PlanFlowColors.primaryMid),
-      onTap: onTap,
-    );
-  }
-}
-
-class _DateTimePickerSheet extends StatefulWidget {
-  const _DateTimePickerSheet({
-    required this.initialValue,
-    required this.firstDate,
-    required this.lastDate,
-  });
-
-  final DateTime initialValue;
-  final DateTime firstDate;
-  final DateTime lastDate;
-
-  @override
-  State<_DateTimePickerSheet> createState() => _DateTimePickerSheetState();
-}
-
-class _DateTimePickerSheetState extends State<_DateTimePickerSheet> {
-  late DateTime _selectedDate;
-  late int _hour;
-  late int _minute;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedDate = DateTime(
-      widget.initialValue.year,
-      widget.initialValue.month,
-      widget.initialValue.day,
-    );
-    _hour = widget.initialValue.hour;
-    _minute = widget.initialValue.minute;
-  }
-
-  DateTime get _selectedDateTime => DateTime(
-        _selectedDate.year,
-        _selectedDate.month,
-        _selectedDate.day,
-        _hour,
-        _minute,
-      );
-
-  String _timePreview(BuildContext context) {
-    final localizations = MaterialLocalizations.of(context);
-    return '${localizations.formatFullDate(_selectedDate)} · '
-        '${localizations.formatTimeOfDay(TimeOfDay(hour: _hour, minute: _minute))}';
-  }
-
-  void _shiftMinutes(int delta) {
-    final shifted = _selectedDateTime.add(Duration(minutes: delta));
-    if (shifted.isBefore(widget.firstDate) ||
-        shifted.isAfter(widget.lastDate)) {
-      return;
-    }
-    setState(() {
-      _selectedDate = DateTime(shifted.year, shifted.month, shifted.day);
-      _hour = shifted.hour;
-      _minute = shifted.minute;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottomInset),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: PlanFlowColors.primaryFaint,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '날짜와 시간 선택',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: PlanFlowColors.primary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _timePreview(context),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: PlanFlowColors.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: PlanFlowColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: PlanFlowColors.primaryFaint),
-              ),
-              child: CalendarDatePicker(
-                initialDate: _selectedDate,
-                firstDate: widget.firstDate,
-                lastDate: widget.lastDate,
-                onDateChanged: (value) {
-                  setState(() {
-                    _selectedDate = value;
-                  });
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: PlanFlowColors.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: PlanFlowColors.primaryFaint),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      '시간',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: PlanFlowColors.primary,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<int>(
-                            initialValue: _hour,
-                            decoration: const InputDecoration(
-                              labelText: '시',
-                              isDense: true,
-                            ),
-                            items: List<DropdownMenuItem<int>>.generate(
-                              24,
-                              (index) => DropdownMenuItem<int>(
-                                value: index,
-                                child: Text(index.toString().padLeft(2, '0')),
-                              ),
-                            ),
-                            onChanged: (value) {
-                              if (value == null) {
-                                return;
-                              }
-                              setState(() {
-                                _hour = value;
-                              });
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: DropdownButtonFormField<int>(
-                            initialValue: _minute,
-                            decoration: const InputDecoration(
-                              labelText: '분',
-                              isDense: true,
-                            ),
-                            items: List<DropdownMenuItem<int>>.generate(
-                              60,
-                              (index) => DropdownMenuItem<int>(
-                                value: index,
-                                child: Text(index.toString().padLeft(2, '0')),
-                              ),
-                            ),
-                            onChanged: (value) {
-                              if (value == null) {
-                                return;
-                              }
-                              setState(() {
-                                _minute = value;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        ActionChip(
-                          avatar: const Icon(Icons.remove, size: 16),
-                          label: const Text('10분 전'),
-                          onPressed: () => _shiftMinutes(-10),
-                        ),
-                        ActionChip(
-                          avatar: const Icon(Icons.add, size: 16),
-                          label: const Text('10분 후'),
-                          onPressed: () => _shiftMinutes(10),
-                        ),
-                        ActionChip(
-                          avatar: const Icon(Icons.add, size: 16),
-                          label: const Text('30분 후'),
-                          onPressed: () => _shiftMinutes(30),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('취소'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () =>
-                        Navigator.of(context).pop(_selectedDateTime),
-                    child: const Text('적용'),
-                  ),
-                ),
-              ],
-            ),
-          ],
         ),
       ),
     );

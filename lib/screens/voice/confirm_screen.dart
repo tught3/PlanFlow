@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -28,6 +27,7 @@ import '../../services/location_lookup_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/travel_time_buffer_service.dart';
+import '../../widgets/calendar_style_event_editor.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
@@ -1573,274 +1573,158 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                           ),
                         ),
                       const SizedBox(height: AppConstants.sectionSpacing),
-                      TextField(
-                        controller: _titleController,
-                        decoration: const InputDecoration(
-                          labelText: '제목',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      TextField(
-                        controller: _locationController,
-                        decoration: InputDecoration(
-                          labelText: '장소',
-                          helperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
-                          border: const OutlineInputBorder(),
-                          suffixIcon: IconButton(
-                            tooltip: '장소 찾기',
-                            onPressed:
-                                _isLookingUpLocation ? null : _lookupLocation,
-                            icon: _isLookingUpLocation
-                                ? const SizedBox.square(
-                                    dimension: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.map_outlined),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      if (_isLoadingPastSupplies)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: LinearProgressIndicator(),
-                        )
-                      else if (_pastSupplies.isNotEmpty &&
-                          location.isNotEmpty) ...[
-                        _SuggestionsCard(
-                          title: '같은 장소의 준비물',
-                          subtitle: '이전 일정에서 자주 쓰던 준비물을 눌러 바로 추가할 수 있어요.',
-                          chips: _pastSupplies
-                              .map(
-                                (supply) => ActionChip(
-                                  label: Text(supply),
-                                  onPressed: () => _applyPastSupply(supply),
-                                ),
-                              )
-                              .toList(growable: false),
-                        ),
-                        const SizedBox(height: AppConstants.sectionSpacing),
-                      ],
-                      KeyedSubtree(
-                        key: _suppliesKey,
-                        child: _SuppliesEditor(
-                          supplies: _supplies,
-                          newSupplyController: _newSupplyController,
-                          newSupplyFocusNode: _newSupplyFocusNode,
-                          errorText: _supplyErrorText,
-                          onAdd: _addSupplyFromInput,
-                          onRemove: _removeSupply,
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      KeyedSubtree(
-                        key: _preActionsKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _SectionHeader(
-                              title: SmartPreparationAlarmService.label,
-                              actionLabel: '추가',
-                              onAction: _addPreAction,
-                              infoTooltip: '스마트 준비 알람 안내',
-                              onInfo: _showSmartPreparationAlarmInfo,
-                            ),
-                            const SizedBox(height: 8),
-                            if (_shouldShowPurposeClarification) ...[
-                              _PurposeClarificationCard(
-                                onSelected: _selectAmbiguousPurpose,
-                              ),
-                              const SizedBox(height: 8),
-                            ],
-                            if (_preActions.isEmpty)
-                              _EmptyInlineHint(
-                                message:
-                                    '스마트 준비 알람이 없어요. 추가 버튼을 누르면 바로 아래에 입력 카드가 생겨요.',
-                                actionLabel: '스마트 준비 알람 추가',
-                                onAction: _addPreAction,
-                              )
-                            else
-                              ..._preActions.asMap().entries.map(
-                                    (entry) => Padding(
-                                      padding: const EdgeInsets.only(bottom: 8),
-                                      child: KeyedSubtree(
-                                        key: entry.value.key,
-                                        child: _PreActionEditorCard(
-                                          draft: entry.value,
-                                          index: entry.key + 1,
-                                          onDelete: () =>
-                                              _removePreAction(entry.value),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: PlanFlowColors.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border:
-                              Border.all(color: PlanFlowColors.primaryFaint),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '일정 유형',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    color: PlanFlowColors.primary,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '시작/종료 시간으로 하루 일정과 연속 일정을 자동 판단합니다.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: PlanFlowColors.textSecondary,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: PlanFlowEventCategories.values
-                                  .map((category) {
-                                return ChoiceChip(
-                                  label: Text(category),
-                                  selected: _category == category,
-                                  onSelected: (_) {
-                                    setState(() {
-                                      _category = category;
-                                    });
-                                  },
+                      CalendarStyleEventEditor(
+                        titleController: _titleController,
+                        locationController: _locationController,
+                        memoController: _memoController,
+                        startAt: _startAt,
+                        endAt: _endAt,
+                        isAllDay: _isAllDay,
+                        category: _category,
+                        recurrence: _recurrenceSelection,
+                        reminderOffset: _reminderOffset,
+                        isCritical: _isCritical,
+                        isLookingUpLocation: _isLookingUpLocation,
+                        locationHelperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
+                        onStartChanged: (value) {
+                          setState(() {
+                            _startEditedByUser = true;
+                            _startAt = value;
+                            if (_endAt != null && !_endAt!.isAfter(_startAt)) {
+                              _endAt = _startAt.add(const Duration(hours: 1));
+                            }
+                          });
+                        },
+                        onEndChanged: (value) {
+                          setState(() {
+                            _endEditedByUser = true;
+                            _endAt = value;
+                          });
+                        },
+                        onAllDayChanged: (value) {
+                          setState(() {
+                            _isAllDay = value;
+                            if (value) {
+                              _startAt = DateTime(
+                                _startAt.year,
+                                _startAt.month,
+                                _startAt.day,
+                              );
+                              if (_endAt != null) {
+                                _endAt = DateTime(
+                                  _endAt!.year,
+                                  _endAt!.month,
+                                  _endAt!.day,
                                 );
-                              }).toList(),
-                            ),
-                            const SizedBox(height: 12),
-                            RecurrenceSelector(
-                              value: _recurrenceSelection,
-                              onChanged: (value) {
-                                setState(() {
-                                  _recurrenceSelection = value;
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      _DateTimeTile(
-                        label: '시작 시간',
-                        value: _startAt,
-                        onTap: () async {
-                          final picked = await _pickDateTime(_startAt);
-                          if (picked != null) {
-                            setState(() {
-                              _startEditedByUser = true;
-                              _startAt = picked;
-                              if (_endAt != null &&
-                                  _endAt!.isBefore(_startAt)) {
-                                _endAt = null;
                               }
-                            });
-                          }
+                            }
+                          });
                         },
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      _DateTimeTile(
-                        label: '종료 시간',
-                        value: _endAt,
-                        emptyLabel: '종료 시간 없음',
-                        onTap: () async {
-                          final picked =
-                              await _pickDateTime(_endAt ?? _startAt);
-                          if (picked != null) {
-                            setState(() {
-                              _endEditedByUser = true;
-                              _endAt = picked;
-                            });
-                          }
+                        onCategoryChanged: (value) {
+                          setState(() {
+                            _category = value;
+                          });
                         },
-                        trailing: _endAt == null
-                            ? null
-                            : IconButton(
-                                tooltip: '종료 시간 지우기',
-                                onPressed: () {
-                                  setState(() {
-                                    _endEditedByUser = true;
-                                    _endAt = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.clear),
-                              ),
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      TextField(
-                        controller: _memoController,
-                        decoration: const InputDecoration(
-                          labelText: '메모',
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      ReminderOffsetSelector(
-                        value: _reminderOffset,
-                        onChanged: (value) {
+                        onRecurrenceChanged: (value) {
+                          setState(() {
+                            _recurrenceSelection = value;
+                          });
+                        },
+                        onReminderChanged: (value) {
                           setState(() {
                             _reminderOffset = value;
                           });
                         },
-                        subtitle: '기본은 1시간 전입니다. 이 일정만 다르게 바꿀 수 있어요.',
-                      ),
-                      const SizedBox(height: AppConstants.sectionSpacing),
-                      SwitchListTile(
-                        value: _isCritical,
-                        onChanged: (value) {
+                        onCriticalChanged: (value) {
                           setState(() {
                             _isCritical = value;
                           });
                         },
-                        title: const Text('강한 알림으로 예약'),
-                        subtitle: const Text(
-                          '일반 알림보다 정확한 알람, 강한 진동, 전체 화면 알림을 시도합니다. 다만 무음·방해금지 우회는 Android 정책상 보장되지 않아요.',
-                        ),
-                        secondary: Icon(
-                          _isCritical
-                              ? Icons.priority_high_rounded
-                              : Icons.notifications_active_outlined,
-                          color: _isCritical
-                              ? const Color(0xFFB42318)
-                              : PlanFlowColors.textSecondary,
-                        ),
-                        activeThumbColor: const Color(0xFFB42318),
-                        activeTrackColor: const Color(0xFFFFC9BE),
-                        tileColor: _isCritical
-                            ? const Color(0xFFFFE3DD)
-                            : PlanFlowColors.surface,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: BorderSide(
-                            color: _isCritical
-                                ? const Color(0xFFB42318)
-                                : PlanFlowColors.primaryFaint,
-                            width: _isCritical ? 1.2 : 0.5,
-                          ),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
+                        onLocationPick: _lookupLocation,
+                        extraAfterLocation: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (_isLoadingPastSupplies)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 8),
+                                child: LinearProgressIndicator(),
+                              )
+                            else if (_pastSupplies.isNotEmpty &&
+                                location.isNotEmpty)
+                              _SuggestionsCard(
+                                title: '같은 장소의 준비물',
+                                subtitle: '이전 일정에서 자주 쓰던 준비물을 눌러 바로 추가할 수 있어요.',
+                                chips: _pastSupplies
+                                    .map(
+                                      (supply) => ActionChip(
+                                        label: Text(supply),
+                                        onPressed: () =>
+                                            _applyPastSupply(supply),
+                                      ),
+                                    )
+                                    .toList(growable: false),
+                              ),
+                            KeyedSubtree(
+                              key: _suppliesKey,
+                              child: _SuppliesEditor(
+                                supplies: _supplies,
+                                newSupplyController: _newSupplyController,
+                                newSupplyFocusNode: _newSupplyFocusNode,
+                                errorText: _supplyErrorText,
+                                onAdd: _addSupplyFromInput,
+                                onRemove: _removeSupply,
+                              ),
+                            ),
+                            const SizedBox(height: AppConstants.sectionSpacing),
+                            KeyedSubtree(
+                              key: _preActionsKey,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _SectionHeader(
+                                    title: SmartPreparationAlarmService.label,
+                                    actionLabel: '추가',
+                                    onAction: _addPreAction,
+                                    infoTooltip: '스마트 준비 알람 안내',
+                                    onInfo: _showSmartPreparationAlarmInfo,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  if (_shouldShowPurposeClarification) ...[
+                                    _PurposeClarificationCard(
+                                      onSelected: _selectAmbiguousPurpose,
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
+                                  if (_preActions.isEmpty)
+                                    _EmptyInlineHint(
+                                      message:
+                                          '스마트 준비 알람이 없어요. 추가 버튼을 누르면 바로 아래에 입력 카드가 생겨요.',
+                                      actionLabel: '스마트 준비 알람 추가',
+                                      onAction: _addPreAction,
+                                    )
+                                  else
+                                    ..._preActions.asMap().entries.map(
+                                          (entry) => Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 8,
+                                            ),
+                                            child: KeyedSubtree(
+                                              key: entry.value.key,
+                                              child: _PreActionEditorCard(
+                                                draft: entry.value,
+                                                index: entry.key + 1,
+                                                onDelete: () =>
+                                                    _removePreAction(
+                                                  entry.value,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -1952,14 +1836,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return value.toDouble();
     }
     return double.tryParse(value.toString());
-  }
-
-  Future<DateTime?> _pickDateTime(DateTime initialValue) async {
-    return showDialog<DateTime>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => _DateTimePickerDialog(initialValue: initialValue),
-    );
   }
 }
 
@@ -2523,439 +2399,6 @@ class _EmptyInlineHint extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DateTimeTile extends StatelessWidget {
-  const _DateTimeTile({
-    required this.label,
-    required this.value,
-    required this.onTap,
-    this.emptyLabel,
-    this.trailing,
-  });
-
-  final String label;
-  final DateTime? value;
-  final String? emptyLabel;
-  final VoidCallback onTap;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final text =
-        value == null ? emptyLabel ?? '날짜를 선택해 주세요' : _formatKorean(value!);
-
-    return ListTile(
-      tileColor: PlanFlowColors.surface,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      shape: RoundedRectangleBorder(
-        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      title: Text(label),
-      subtitle: Text(text),
-      trailing: trailing ??
-          const Icon(Icons.edit_calendar, color: PlanFlowColors.primaryMid),
-      onTap: onTap,
-    );
-  }
-
-  String _formatKorean(DateTime value) {
-    const weekdays = <int, String>{
-      DateTime.monday: '월요일',
-      DateTime.tuesday: '화요일',
-      DateTime.wednesday: '수요일',
-      DateTime.thursday: '목요일',
-      DateTime.friday: '금요일',
-      DateTime.saturday: '토요일',
-      DateTime.sunday: '일요일',
-    };
-    final period = value.hour < 12 ? '오전' : '오후';
-    final hour12 = value.hour % 12 == 0 ? 12 : value.hour % 12;
-    final minute = value.minute.toString().padLeft(2, '0');
-    final weekday = weekdays[value.weekday] ?? '';
-    return '${value.year}년 ${value.month}월 ${value.day}일 $weekday $period $hour12:$minute';
-  }
-}
-
-enum _DateTimePickerStep { date, time }
-
-class _DateTimePickerDialog extends StatefulWidget {
-  const _DateTimePickerDialog({required this.initialValue});
-
-  final DateTime initialValue;
-
-  @override
-  State<_DateTimePickerDialog> createState() => _DateTimePickerDialogState();
-}
-
-class _DateTimePickerDialogState extends State<_DateTimePickerDialog> {
-  late DateTime _selectedDate;
-  late DateTime _visibleMonth;
-  late final TextEditingController _hourController;
-  late final TextEditingController _minuteController;
-  _DateTimePickerStep _step = _DateTimePickerStep.date;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedDate = DateTime(
-      widget.initialValue.year,
-      widget.initialValue.month,
-      widget.initialValue.day,
-      widget.initialValue.hour,
-      widget.initialValue.minute,
-    );
-    _visibleMonth = DateTime(_selectedDate.year, _selectedDate.month);
-    _hourController = TextEditingController(
-      text: _selectedDate.hour.toString().padLeft(2, '0'),
-    );
-    _minuteController = TextEditingController(
-      text: _selectedDate.minute.toString().padLeft(2, '0'),
-    );
-  }
-
-  @override
-  void dispose() {
-    _hourController.dispose();
-    _minuteController.dispose();
-    super.dispose();
-  }
-
-  void _goToTime() => setState(() => _step = _DateTimePickerStep.time);
-  void _goToDate() => setState(() => _step = _DateTimePickerStep.date);
-
-  void _pickDay(DateTime day) {
-    final sameDay = DateUtils.isSameDay(day, _selectedDate);
-    setState(() {
-      _selectedDate = DateTime(
-        day.year,
-        day.month,
-        day.day,
-        _selectedDate.hour,
-        _selectedDate.minute,
-      );
-      _visibleMonth = DateTime(day.year, day.month);
-    });
-    if (sameDay) {
-      _goToTime();
-    }
-  }
-
-  void _changeMonth(int delta) {
-    setState(() {
-      _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + delta);
-    });
-  }
-
-  int _parsePart(String value, int fallback, int min, int max) {
-    final parsed = int.tryParse(value.trim());
-    if (parsed == null) {
-      return fallback;
-    }
-    return parsed.clamp(min, max).toInt();
-  }
-
-  void _confirm() {
-    final hour = _parsePart(_hourController.text, _selectedDate.hour, 0, 23);
-    final minute = _parsePart(
-      _minuteController.text,
-      _selectedDate.minute,
-      0,
-      59,
-    );
-    Navigator.of(context).pop(
-      DateTime(
-        _selectedDate.year,
-        _selectedDate.month,
-        _selectedDate.day,
-        hour,
-        minute,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 420,
-          maxHeight: MediaQuery.of(context).size.height * 0.82,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: SingleChildScrollView(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: _step == _DateTimePickerStep.date
-                  ? _buildDateStep(context)
-                  : _buildTimeStep(context),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDateStep(BuildContext context) {
-    final theme = Theme.of(context);
-    final firstDay = DateTime(_visibleMonth.year, _visibleMonth.month, 1);
-    final leadingBlanks = (firstDay.weekday + 6) % 7;
-    final daysInMonth = DateUtils.getDaysInMonth(
-      _visibleMonth.year,
-      _visibleMonth.month,
-    );
-    final totalCells = leadingBlanks + daysInMonth;
-    final monthTitle = '${_visibleMonth.year}년 ${_visibleMonth.month}월';
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                '날짜 선택',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            IconButton(
-              onPressed: () => _changeMonth(-1),
-              icon: const Icon(Icons.chevron_left),
-            ),
-            Text(monthTitle),
-            IconButton(
-              onPressed: () => _changeMonth(1),
-              icon: const Icon(Icons.chevron_right),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        const Row(
-          children: [
-            Expanded(child: Center(child: Text('월'))),
-            Expanded(child: Center(child: Text('화'))),
-            Expanded(child: Center(child: Text('수'))),
-            Expanded(child: Center(child: Text('목'))),
-            Expanded(child: Center(child: Text('금'))),
-            Expanded(child: Center(child: Text('토'))),
-            Expanded(child: Center(child: Text('일'))),
-          ],
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 280,
-          child: GridView.builder(
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 6,
-            ),
-            itemCount: totalCells,
-            itemBuilder: (context, index) {
-              if (index < leadingBlanks) {
-                return const SizedBox.shrink();
-              }
-              final day = index - leadingBlanks + 1;
-              final date = DateTime(
-                _visibleMonth.year,
-                _visibleMonth.month,
-                day,
-              );
-              final selected = DateUtils.isSameDay(date, _selectedDate);
-              final today = DateUtils.isSameDay(date, DateTime.now());
-              return _DateCell(
-                day: day,
-                selected: selected,
-                today: today,
-                onTap: () => _pickDay(date),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '같은 날짜를 다시 누르면 시간 설정으로 넘어갑니다.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: PlanFlowColors.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('취소'),
-            ),
-            const Spacer(),
-            OutlinedButton(onPressed: _goToTime, child: const Text('시간 입력')),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTimeStep(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          '시간 입력',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          _formatKorean(_selectedDate),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: PlanFlowColors.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _TimeField(
-                label: '시',
-                controller: _hourController,
-                onTapSelectAll: true,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _TimeField(
-                label: '분',
-                controller: _minuteController,
-                onTapSelectAll: true,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          '시와 분을 눌러 바로 수정할 수 있어요.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: PlanFlowColors.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            TextButton(onPressed: _goToDate, child: const Text('달력으로')),
-            const Spacer(),
-            OutlinedButton(onPressed: _confirm, child: const Text('확인')),
-          ],
-        ),
-      ],
-    );
-  }
-
-  String _formatKorean(DateTime value) {
-    const weekdays = <int, String>{
-      DateTime.monday: '월요일',
-      DateTime.tuesday: '화요일',
-      DateTime.wednesday: '수요일',
-      DateTime.thursday: '목요일',
-      DateTime.friday: '금요일',
-      DateTime.saturday: '토요일',
-      DateTime.sunday: '일요일',
-    };
-    final period = value.hour < 12 ? '오전' : '오후';
-    final hour12 = value.hour % 12 == 0 ? 12 : value.hour % 12;
-    final minute = value.minute.toString().padLeft(2, '0');
-    final weekday = weekdays[value.weekday] ?? '';
-    return '${value.year}년 ${value.month}월 ${value.day}일 $weekday $period $hour12:$minute';
-  }
-}
-
-class _DateCell extends StatelessWidget {
-  const _DateCell({
-    required this.day,
-    required this.selected,
-    required this.today,
-    required this.onTap,
-  });
-
-  final int day;
-  final bool selected;
-  final bool today;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final background = selected ? PlanFlowColors.primary : Colors.transparent;
-    final foreground =
-        selected ? Colors.white : Theme.of(context).colorScheme.onSurface;
-    final borderColor = selected
-        ? PlanFlowColors.primary
-        : today
-            ? PlanFlowColors.primaryMid
-            : PlanFlowColors.primaryFaint;
-
-    return Material(
-      color: background,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: borderColor, width: 0.8),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Center(
-          child: Text(
-            '$day',
-            style: TextStyle(color: foreground, fontWeight: FontWeight.w600),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TimeField extends StatelessWidget {
-  const _TimeField({
-    required this.label,
-    required this.controller,
-    required this.onTapSelectAll,
-  });
-
-  final String label;
-  final TextEditingController controller;
-  final bool onTapSelectAll;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      keyboardType: TextInputType.number,
-      textAlign: TextAlign.center,
-      inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
-        LengthLimitingTextInputFormatter(2),
-      ],
-      onTap: onTapSelectAll
-          ? () {
-              controller.selection = TextSelection(
-                baseOffset: 0,
-                extentOffset: controller.text.length,
-              );
-            }
-          : null,
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
       ),
     );
   }
