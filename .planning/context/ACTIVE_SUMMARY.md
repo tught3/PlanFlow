@@ -226,3 +226,4 @@
 - Shortened the strong alarm explanation to clarify exact alarm/vibration/full-screen attempts while noting Android cannot guarantee DND or silent-mode bypass.
 - Added regression tests for empty-location map opening, manual text hydration protection, and KST wall-time UTC roundtrip/multi-day calculation.
 - Verification passed: `flutter analyze --no-pub`, full `flutter test --no-pub`, focused post-format screen/widget tests, and `flutter build apk --debug --no-pub`. ADB install/launch could not run because `adb devices` returned no connected device.
+- Follow-up ADB verification passed after the device reconnected at `192.168.0.9:5555`: `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk` timed out at the shell level but the app package was installed, `adb shell am start -n com.planflow.app/.MainActivity` launched the app, and `adb shell pidof com.planflow.app` returned PID `29385`.
