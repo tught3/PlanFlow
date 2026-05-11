@@ -152,13 +152,12 @@ void main() {
 
     await tester.ensureVisible(find.byTooltip('지도에서 위치 선택'));
     await tester.tap(find.byTooltip('지도에서 위치 선택'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
 
     expect(find.text('지도에서 장소 선택'), findsOneWidget);
-    expect(find.text('Google 지도'), findsOneWidget);
-    expect(find.text('네이버 지도'), findsOneWidget);
-    expect(find.text('TMAP'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('검색'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('ConfirmScreen does not let hydration overwrite manual text',

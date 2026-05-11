@@ -11,8 +11,10 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
+import '../../services/voice_text_cleanup_service.dart';
 
 enum VoiceScheduleAction { add, edit, delete, query, choose }
 
@@ -22,6 +24,7 @@ class VoiceActionScreen extends StatefulWidget {
     required this.rawText,
     required this.action,
     this.eventRepository,
+    this.gptService,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
     this.userIdOverride,
@@ -32,6 +35,7 @@ class VoiceActionScreen extends StatefulWidget {
   final String rawText;
   final VoiceScheduleAction action;
   final EventRepository? eventRepository;
+  final GptService? gptService;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
   final String? userIdOverride;
@@ -46,6 +50,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   bool _isDeleting = false;
   String? _message;
   bool _hasChosenAction = false;
+  VoiceTextCleanupResult? _cleanupResult;
 
   late VoiceScheduleAction _selectedAction;
 
@@ -58,6 +63,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   bool get _isQuery => _selectedAction == VoiceScheduleAction.query;
   bool get _isChoose => _selectedAction == VoiceScheduleAction.choose;
   String get _normalizedRawText =>
+      _cleanupResult?.cleanedText ??
       _normalizeVoiceManagementText(widget.rawText);
 
   @override
@@ -182,12 +188,32 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       }
 
       final events = await _repository.listEvents(userId: userId);
-      final filteredEvents = _filterEventsForAction(events);
-      final ranked = _rankEvents(filteredEvents, _normalizedRawText);
+      var filteredEvents = _filterEventsForAction(events);
+      var cleanup = VoiceTextCleanupService.cleanLocally(
+        widget.rawText,
+        context: _cleanupContext(),
+        candidates: _cleanupCandidates(filteredEvents),
+      );
+      var rankedItems = _rankEventItems(filteredEvents, cleanup.cleanedText);
+
+      if (_shouldTryAiCleanup(cleanup, rankedItems)) {
+        cleanup = await _cleanupWithAi(
+          cleanup.cleanedText,
+          filteredEvents,
+        );
+        filteredEvents = _filterEventsForAction(events, cleanup.cleanedText);
+        rankedItems = _rankEventItems(filteredEvents, cleanup.cleanedText);
+      }
+
+      final ranked = rankedItems
+          .map((item) => item.event)
+          .take(10)
+          .toList(growable: false);
       if (!mounted) {
         return;
       }
       setState(() {
+        _cleanupResult = cleanup;
         _events
           ..clear()
           ..addAll(ranked);
@@ -229,12 +255,15 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     await _loadCandidates();
   }
 
-  List<EventModel> _filterEventsForAction(List<EventModel> events) {
+  List<EventModel> _filterEventsForAction(
+    List<EventModel> events, [
+    String? rawText,
+  ]) {
     if (!_isQuery) {
       return events;
     }
 
-    final range = _queryDateRange(_normalizedRawText);
+    final range = _queryDateRange(rawText ?? _normalizedRawText);
     if (range == null) {
       return events;
     }
@@ -416,7 +445,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     return Supabase.instance.client.auth.currentUser?.id;
   }
 
-  List<EventModel> _rankEvents(List<EventModel> events, String rawText) {
+  List<_RankedEvent> _rankEventItems(List<EventModel> events, String rawText) {
     final now = DateTime.now();
     final tokens = _tokens(rawText);
     final ranked = events.map((event) {
@@ -459,7 +488,63 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       return aStart.compareTo(bStart);
     });
 
-    return ranked.map((item) => item.event).take(10).toList(growable: false);
+    return ranked;
+  }
+
+  bool _shouldTryAiCleanup(
+    VoiceTextCleanupResult cleanup,
+    List<_RankedEvent> rankedItems,
+  ) {
+    if (!VoiceTextCleanupService.shouldAskAi(cleanup.cleanedText)) {
+      return false;
+    }
+    if (cleanup.method == VoiceTextCleanupMethod.ai) {
+      return false;
+    }
+    return rankedItems.isEmpty || rankedItems.first.matchScore == 0;
+  }
+
+  Future<VoiceTextCleanupResult> _cleanupWithAi(
+    String text,
+    List<EventModel> events,
+  ) async {
+    final local = VoiceTextCleanupService.cleanLocally(
+      text,
+      context: _cleanupContext(),
+      candidates: _cleanupCandidates(events),
+    );
+    try {
+      return await (widget.gptService ?? GptService()).cleanupVoiceText(
+        local.cleanedText,
+        context: _cleanupContext(),
+        candidates: _cleanupCandidates(events),
+      );
+    } catch (error) {
+      debugPrint('VoiceActionScreen text cleanup failed: $error');
+      return local;
+    }
+  }
+
+  VoiceTextCleanupContext _cleanupContext() {
+    return switch (_selectedAction) {
+      VoiceScheduleAction.add => VoiceTextCleanupContext.add,
+      VoiceScheduleAction.edit => VoiceTextCleanupContext.edit,
+      VoiceScheduleAction.delete => VoiceTextCleanupContext.delete,
+      VoiceScheduleAction.query => VoiceTextCleanupContext.query,
+      VoiceScheduleAction.choose => VoiceTextCleanupContext.query,
+    };
+  }
+
+  List<VoiceTextCleanupCandidate> _cleanupCandidates(List<EventModel> events) {
+    return events
+        .map(
+          (event) => VoiceTextCleanupCandidate(
+            title: event.title,
+            location: event.location,
+            startAt: event.startAt,
+          ),
+        )
+        .toList(growable: false);
   }
 
   List<String> _tokens(String text) {
@@ -602,13 +687,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   }
 
   String _normalizeVoiceManagementText(String text) {
-    return text
-        .toLowerCase()
-        .replaceAll(RegExp(r'강릉\s*에서\s*아산\s*에서'), '강릉아산에서')
-        .replaceAll(RegExp(r'강릉\s*에서\s*아산'), '강릉아산')
-        .replaceAll(RegExp(r'강릉\s*아산\s*에서'), '강릉아산에서')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    return VoiceTextCleanupService.normalizeBasic(text).toLowerCase();
   }
 
   Future<void> _openEdit(EventModel event) async {

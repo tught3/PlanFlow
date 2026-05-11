@@ -8,6 +8,7 @@ import '../core/local_time.dart';
 import '../core/region_settings.dart';
 import 'remote_config_service.dart';
 import 'smart_preparation_alarm_service.dart';
+import 'voice_text_cleanup_service.dart';
 
 class GptCompletionException implements Exception {
   const GptCompletionException(
@@ -71,6 +72,63 @@ class GptService {
     }
 
     return _normalizeSchedule(parsed, rawText);
+  }
+
+  Future<VoiceTextCleanupResult> cleanupVoiceText(
+    String rawText, {
+    VoiceTextCleanupContext context = VoiceTextCleanupContext.add,
+    Iterable<VoiceTextCleanupCandidate> candidates = const [],
+  }) async {
+    final local = VoiceTextCleanupService.cleanLocally(
+      rawText,
+      context: context,
+      candidates: candidates,
+    );
+    if (!VoiceTextCleanupService.shouldAskAi(local.cleanedText)) {
+      return local;
+    }
+
+    final candidateLines = candidates.take(12).map((candidate) {
+      final startAt = candidate.startAt?.toIso8601String() ?? '시간 미정';
+      final location = candidate.location?.trim();
+      return '- 제목: ${candidate.title}, 장소: ${location == null || location.isEmpty ? '없음' : location}, 시작: $startAt';
+    }).join('\n');
+
+    final content = await _requestCompletion(
+      systemPrompt: _voiceTextCleanupPrompt,
+      userPrompt: jsonEncode(<String, dynamic>{
+        'context': context.name,
+        'text': local.cleanedText,
+        if (candidateLines.isNotEmpty) 'candidate_events': candidateLines,
+      }),
+      responseFormat: _responseFormat,
+    );
+    final decoded = _decodeJsonMap(content);
+    if (decoded == null) {
+      return local;
+    }
+
+    final cleanedText = VoiceTextCleanupService.normalizeBasic(
+        decoded['cleaned_text']?.toString() ?? '');
+    final changed = decoded['changed'] == true;
+    final confidence = _doubleValue(decoded['confidence']) ?? 0;
+    if (!changed ||
+        confidence < 0.65 ||
+        cleanedText.isEmpty ||
+        cleanedText == local.cleanedText) {
+      return local;
+    }
+
+    return VoiceTextCleanupResult(
+      originalText: rawText.trim(),
+      cleanedText: cleanedText,
+      changed: true,
+      method: VoiceTextCleanupMethod.ai,
+      reason: decoded['reason']?.toString().trim().isEmpty == false
+          ? decoded['reason'].toString().trim()
+          : 'ai_cleanup',
+      confidence: confidence,
+    );
   }
 
   DateTime? inferStartAtFromRawText(String rawText) {
@@ -239,6 +297,13 @@ class GptService {
       return normalized;
     }
     return '${normalized.substring(0, 300)}...';
+  }
+
+  double? _doubleValue(Object? value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    return double.tryParse(value?.toString() ?? '');
   }
 
   Map<String, dynamic>? _decodeJsonMap(String? content) {
@@ -868,13 +933,7 @@ $_scheduleSystemPrompt
   }
 
   String _normalizeKoreanText(String text) {
-    return text
-        .replaceAll(RegExp(r'강릉\s*에서\s*아산\s*에서'), '강릉아산에서')
-        .replaceAll(RegExp(r'강릉\s*에서\s*아산'), '강릉아산')
-        .replaceAll(RegExp(r'강릉\s*아산\s*에서'), '강릉아산에서')
-        .replaceAll(RegExp(r'[,\.\!\?\(\)\[\]\{\}]+'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    return VoiceTextCleanupService.normalizeBasic(text);
   }
 }
 
@@ -921,6 +980,25 @@ Few-shot guidance:
 travel_mode must be "car", "transit", or null.
 Only include latitude/longitude values when they are explicitly known from the input or prior context.
 If a field is not known, use null or an empty array.
+''';
+
+const String _voiceTextCleanupPrompt = '''
+You are a Korean STT cleanup assistant for a schedule app.
+Return only a valid JSON object with these keys:
+cleaned_text, changed, reason, confidence.
+
+Task:
+- Make the recognized Korean schedule command natural and readable.
+- Correct likely STT segmentation, repeated particles, repeated words, and awkward Korean when context makes the correction obvious.
+- Use candidate_events only as context for edit/delete/query target wording.
+- Do not add new schedule facts.
+- Do not change dates, times, recurrence, action intent, or locations unless the original text clearly contains a recognition/spacing error.
+- If unsure, return the original text with changed false and confidence below 0.65.
+
+Examples:
+- "내일 열두시반 병원" -> keep as is.
+- "서울에서 출발해서 아산에서 도착" -> keep as is.
+- If a candidate event title/location clearly joins words that STT split with particles, repair the phrase.
 ''';
 
 const String _morningBriefingPrompt = '''

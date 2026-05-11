@@ -6,12 +6,97 @@ import 'package:http/testing.dart';
 
 import 'package:planflow/core/env.dart';
 import 'package:planflow/services/gpt_service.dart';
+import 'package:planflow/services/voice_text_cleanup_service.dart';
 
 const String _proxyEndpoint =
     'https://xqvvfnvmytjlblcngipn.supabase.co/functions/v1/openai-proxy';
 
 void main() {
   group('GptService', () {
+    test('cleans suspicious STT text with AI JSON when confidence is high',
+        () async {
+      final client = MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        final messages = body['messages'] as List<dynamic>;
+        expect(
+          (messages.first as Map<String, dynamic>)['content'].toString(),
+          contains('Korean STT cleanup assistant'),
+        );
+
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'cleaned_text': '내일 서울성남에서 아이스크림 전달일정 변경',
+                    'changed': true,
+                    'reason': '후보 일정과 맞는 장소명 조사 오류 보정',
+                    'confidence': 0.91,
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+      );
+
+      final result = await service.cleanupVoiceText(
+        '내일 서울에서 성남에서 아이스크림 전달일정 변경',
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(result.method, VoiceTextCleanupMethod.ai);
+      expect(result.cleanedText, '내일 서울성남에서 아이스크림 전달일정 변경');
+    });
+
+    test('keeps local cleanup when AI confidence is low', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'cleaned_text': '내일 완전히 다른 일정',
+                    'changed': true,
+                    'reason': 'uncertain',
+                    'confidence': 0.4,
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+      );
+
+      final result = await service.cleanupVoiceText(
+        '내일 서울에서 성남에서 미팅 변경',
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(result.method, VoiceTextCleanupMethod.none);
+      expect(result.cleanedText, '내일 서울에서 성남에서 미팅 변경');
+    });
+
     test('returns fallback data when schedule JSON parsing fails', () async {
       final client = MockClient((request) async {
         expect(request.url.toString(), _proxyEndpoint);

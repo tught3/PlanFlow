@@ -12,16 +12,19 @@ import '../../data/repositories/settings_repository.dart';
 import '../../core/analytics_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/stt_service.dart';
+import '../../services/voice_text_cleanup_service.dart';
 
 class VoiceInputScreen extends StatefulWidget {
   const VoiceInputScreen({
     super.key,
     this.sttService = const SttService(),
+    this.gptService,
     this.autoStartOverride,
     this.settingsRepository,
   });
 
   final SttService sttService;
+  final GptService? gptService;
   final bool? autoStartOverride;
   final SettingsRepository? settingsRepository;
 
@@ -222,8 +225,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   }
 
   Future<void> _continueWithRawText() async {
-    final rawText =
+    final normalizedText =
         SttService.normalizeVoiceTranscript(_rawTextController.text.trim());
+    final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
+    if (!mounted) {
+      return;
+    }
+    final rawText = cleanup.cleanedText;
     if (rawText.isEmpty) {
       context.push(AppRoutes.confirm, extra: const <String, dynamic>{});
       return;
@@ -238,6 +246,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         extra: <String, dynamic>{
           if (_didEditTranscriptManually) 'title': rawText,
           'raw_text': rawText,
+          if (cleanup.changed) 'original_raw_text': cleanup.originalText,
+          if (cleanup.changed) 'voice_cleanup_method': cleanup.method.name,
+          if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
           'memo': rawText,
           if (inferredStartAt != null)
             'start_at': inferredStartAt.toIso8601String(),
@@ -251,9 +262,31 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       AppRoutes.voiceAction,
       extra: <String, dynamic>{
         'raw_text': rawText,
+        if (cleanup.changed) 'original_raw_text': cleanup.originalText,
+        if (cleanup.changed) 'voice_cleanup_method': cleanup.method.name,
+        if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
         'action': commandAction.name,
       },
     );
+  }
+
+  Future<VoiceTextCleanupResult> _cleanupVoiceTextForRouting(
+    String normalizedText,
+  ) async {
+    final local = VoiceTextCleanupService.cleanLocally(normalizedText);
+    if (_didEditTranscriptManually ||
+        !VoiceTextCleanupService.shouldAskAi(local.cleanedText)) {
+      return local;
+    }
+    try {
+      return await (widget.gptService ?? GptService()).cleanupVoiceText(
+        local.cleanedText,
+        context: VoiceTextCleanupContext.add,
+      );
+    } catch (error) {
+      debugPrint('VoiceInputScreen text cleanup failed: $error');
+      return local;
+    }
   }
 
   _VoiceCommandAction _detectCommandAction(String text) {

@@ -223,8 +223,8 @@ void main() {
       events: [
         _event(
           id: 'event-1',
-          title: '강릉아산 아이스크림 전달',
-          location: '강릉아산',
+          title: '서울성남 아이스크림 전달',
+          location: '서울성남',
         ),
         _event(id: 'event-2', title: '목요일 오전 회의'),
       ],
@@ -236,7 +236,7 @@ void main() {
         GoRoute(
           path: AppRoutes.voiceAction,
           builder: (context, state) => VoiceActionScreen(
-            rawText: '내일 강릉에서 아산에서 아이스크림 전달일정 이번주 목요일 오전9시로 변경',
+            rawText: '내일 서울에서 성남에서 아이스크림 전달일정 이번주 목요일 오전9시로 변경',
             action: VoiceScheduleAction.edit,
             eventRepository: repository,
             userIdOverride: 'user-1',
@@ -248,15 +248,15 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('강릉아산에서 아이스크림 전달일정'), findsOneWidget);
+    expect(find.textContaining('서울성남에서 아이스크림 전달일정'), findsOneWidget);
     expect(find.text('대상 일정'), findsOneWidget);
-    expect(find.text('강릉아산 아이스크림 전달'), findsOneWidget);
+    expect(find.text('서울성남 아이스크림 전달'), findsOneWidget);
     expect(find.text('목요일 오전 회의'), findsOneWidget);
     final firstTitle = tester.widgetList<Text>(find.byType(Text)).firstWhere(
           (widget) =>
-              widget.data == '강릉아산 아이스크림 전달' || widget.data == '목요일 오전 회의',
+              widget.data == '서울성남 아이스크림 전달' || widget.data == '목요일 오전 회의',
         );
-    expect(firstTitle.data, '강릉아산 아이스크림 전달');
+    expect(firstTitle.data, '서울성남 아이스크림 전달');
   });
 
   testWidgets('음성 삭제 명령은 확인 후 일정을 삭제하고 일정 탭으로 이동한다', (tester) async {

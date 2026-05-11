@@ -255,3 +255,10 @@
 - Voice management now shows and logs the normalized command text, so the user reviews the corrected wording before opening candidates or sending an add confirmation.
 - Added regression coverage for the user's example phrase finding `강릉아산 아이스크림 전달` ahead of unrelated date/time matches.
 - Verification passed: `flutter analyze --no-pub`, focused `flutter test --no-pub test/screens/voice_action_screen_test.dart`, focused `flutter test --no-pub test/services/stt_service_test.dart test/services/gpt_service_test.dart`, full `flutter test --no-pub` (220 tests), `flutter build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `17882`.
+
+## 2026-05-11 Voice Text AI Cleanup Generalization Checkpoint
+- Removed the previous one-off Korean STT phrase replacement and added a shared `VoiceTextCleanupService` for basic cleanup, candidate-aware particle repair, and AI escalation detection.
+- Added `GptService.cleanupVoiceText()` so suspicious recognized schedule commands can be cleaned through the OpenAI proxy with conservative JSON output, confidence gating, and candidate event context for edit/delete/query flows.
+- Wired voice input and voice schedule management to use the cleaned command text for routing, schedule confirmation, and target event ranking while preserving manually edited transcript text.
+- Updated regression tests to prove local cleanup is generic, natural route expressions stay unchanged, high-confidence AI cleanup is accepted, low-confidence cleanup is ignored, and voice edit candidates rank correctly without hardcoded place names.
+- Verification passed: `flutter analyze --no-pub`, focused voice/GPT/STT cleanup tests, full `./scripts/flutter-local.ps1 test --no-pub` (225 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `16345`.

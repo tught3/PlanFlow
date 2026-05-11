@@ -6,6 +6,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 
 import '../core/region_settings.dart';
 import 'remote_config_service.dart';
+import 'voice_text_cleanup_service.dart';
 
 enum SttListenFailure {
   unsupportedLocale,
@@ -163,12 +164,7 @@ class SttService {
   }
 
   static String _normalizeCommonKoreanSttPhrases(String text) {
-    return text
-        .replaceAll(RegExp(r'강릉\s*에서\s*아산\s*에서'), '강릉아산에서')
-        .replaceAll(RegExp(r'강릉\s*에서\s*아산'), '강릉아산')
-        .replaceAll(RegExp(r'강릉\s*아산\s*에서'), '강릉아산에서')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
+    return VoiceTextCleanupService.normalizeBasic(text);
   }
 
   static List<String> _collapseRepeatedSpeech(List<String> tokens) {
