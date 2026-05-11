@@ -1,4 +1,9 @@
 class AppEnv {
+  static const _defaultSupabaseUrl = 'https://xqvvfnvmytjlblcngipn.supabase.co';
+  static const _defaultSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.'
+      'eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxdnZmbnZteXRqbGJsY25naXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2MjAyNTQsImV4cCI6MjA5MzE5NjI1NH0.'
+      '_YMZvcyy5W5-YUI--1kNrAzCAC9H8BfW2ku0DUpXIpM';
+
   static bool _supabaseInitialized = false;
   static bool _naverMapInitialized = false;
 
@@ -53,7 +58,17 @@ class AppEnv {
     _naverMapInitialized = true;
   }
 
-  static String _envValue(String key) => _compileTimeEnvValue(key);
+  static String _envValue(String key) {
+    final compileTimeValue = _compileTimeEnvValue(key);
+    if (compileTimeValue.trim().isNotEmpty) {
+      return compileTimeValue;
+    }
+    return switch (key) {
+      'SUPABASE_URL' => _defaultSupabaseUrl,
+      'SUPABASE_ANON_KEY' => _defaultSupabaseAnonKey,
+      _ => '',
+    };
+  }
 
   static String _nonPlaceholderEnvValue(String key) {
     final value = _envValue(key).trim();

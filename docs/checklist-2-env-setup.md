@@ -1,15 +1,19 @@
 # Checklist 2 - Environment Setup
 
-PlanFlow 앱 런타임은 더 이상 `.env`를 읽지 않습니다. 로컬 실행/빌드 값은
-`--dart-define` 또는 `--dart-define-from-file=env/local.json`으로 전달합니다.
+PlanFlow 앱 런타임은 더 이상 `.env`를 읽지 않습니다. Supabase 공개 클라이언트 설정값은
+앱 기본값으로 포함되어 있어 raw Flutter 빌드에서도 로그인/DB 연결이 풀리지 않습니다.
+그 외 지도/OAuth 연동 값은 `--dart-define` 또는 `--dart-define-from-file=env/local.json`으로 전달합니다.
 
 `SUPABASE_URL`과 `SUPABASE_ANON_KEY`는 클라이언트 앱에 들어가는 공개 설정값입니다.
 데이터 보호는 anon key 자체가 아니라 Supabase RLS 정책으로 보장해야 합니다.
 
-## Required client defines
+## Built-in client values
 
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
+
+## Required client defines for external integrations
+
 - `GOOGLE_WEB_CLIENT_ID`
 - `GOOGLE_MAPS_API_KEY`
 - `TMAP_API_KEY`
@@ -29,7 +33,7 @@ Copy `env/local.example.json` to `env/local.json`, fill local values, and run:
 flutter run --dart-define-from-file=env/local.json
 ```
 
-One-off values can also be passed directly:
+Supabase 기본값을 다른 프로젝트로 덮어써야 하는 경우만 one-off values를 직접 전달합니다:
 
 ```powershell
 flutter run --dart-define=SUPABASE_URL=https://your-project.supabase.co --dart-define=SUPABASE_ANON_KEY=your-supabase-anon-key

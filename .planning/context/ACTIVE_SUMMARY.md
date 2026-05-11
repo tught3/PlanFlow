@@ -235,3 +235,9 @@
 - Kept ConfirmScreen's manual text protection and smart prep/supplies flow while moving them into the new editor frame.
 - Added regression coverage for hidden-by-default inline wheels, start wheel activation, all-day time-column hiding, and EventEditScreen's new editor shape.
 - Verification passed: `flutter analyze --no-pub`, full `flutter test --no-pub` (215 tests), `flutter build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `24308`.
+
+## 2026-05-11 Built-In Supabase Client Config Checkpoint
+- Moved the PlanFlow Supabase public client URL and anon key into `AppEnv` fallback defaults so raw Flutter builds no longer lose login/DB setup when `env/local.json` or dart-defines are omitted.
+- Kept compile-time `--dart-define` values as explicit overrides for one-off environments, while documenting that Supabase public config is built in and external provider values still use dart-defines.
+- Added a regression test proving `AppEnv.hasValidSupabaseConfig` remains true without local defines.
+- Verification passed: `flutter analyze --no-pub lib/core/env.dart test/core/app_env_test.dart`, `flutter test --no-pub test/core/app_env_test.dart`, full `flutter analyze --no-pub`, full `flutter test --no-pub` (216 tests), raw `flutter build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `30348`.
