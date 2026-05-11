@@ -12,12 +12,14 @@ class LocationPickerScreen extends StatefulWidget {
     super.key,
     required this.initialQuery,
     this.initialResults = const <LocationLookupResult>[],
+    this.initialMessage,
     LocationLookupService? locationLookupService,
     this.canUseInAppMapOverride,
   }) : locationLookupService = locationLookupService ?? LocationLookupService();
 
   final String initialQuery;
   final List<LocationLookupResult> initialResults;
+  final String? initialMessage;
   final LocationLookupService locationLookupService;
   final bool? canUseInAppMapOverride;
 
@@ -73,6 +75,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     super.initState();
     _queryController = TextEditingController(text: widget.initialQuery);
     _results = List<LocationLookupResult>.of(widget.initialResults);
+    _message = widget.initialMessage;
     if (_results.isNotEmpty) {
       _selected = _results.first;
     }

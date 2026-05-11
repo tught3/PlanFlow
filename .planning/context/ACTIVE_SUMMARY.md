@@ -216,3 +216,13 @@
 - Centralized event wall-time conversion so event edit and voice-confirm saves write UTC instants, while display/pickers use the selected app region; `EventModel` now serializes event timestamps as UTC.
 - Added Supabase schema fields for region settings and a legacy settings fallback so existing remote schemas keep working until the new columns are applied.
 - Verified with `dart analyze`, `flutter analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub`, and `./scripts/flutter-local.ps1 build apk --debug --no-pub`. `flutter build apk --release --no-pub` still fails on the known missing release signing `storeFile`. ADB install was blocked because the Wi-Fi device went offline/timeouts after the build.
+
+## 2026-05-11 Voice Confirm Map Timezone Cleanup Checkpoint
+- Fixed voice add flow so manually edited transcript text enters ConfirmScreen as confirmed user text and no longer triggers GPT re-parse overwrite.
+- Added ConfirmScreen dirty-field guards so GPT hydration cannot replace user-edited title, location, memo, start time, or end time.
+- Changed location lookup so the map picker opens even with an empty location, and search/auth/timeout failures now land on the picker with fallback guidance instead of leaving an empty body.
+- Removed the visible single/all-day/multi-day segmented control from ConfirmScreen; multi-day is now derived from Korean local start/end dates at save time while internal all-day compatibility remains.
+- Changed recurrence and reminder UI to one current-value button each, with bottom-sheet choices for repeat frequency and notification timing.
+- Shortened the strong alarm explanation to clarify exact alarm/vibration/full-screen attempts while noting Android cannot guarantee DND or silent-mode bypass.
+- Added regression tests for empty-location map opening, manual text hydration protection, and KST wall-time UTC roundtrip/multi-day calculation.
+- Verification passed: `flutter analyze --no-pub`, full `flutter test --no-pub`, focused post-format screen/widget tests, and `flutter build apk --debug --no-pub`. ADB install/launch could not run because `adb devices` returned no connected device.

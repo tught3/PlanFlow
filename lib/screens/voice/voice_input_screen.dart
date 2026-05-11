@@ -39,6 +39,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   String? _statusMessage;
   int _sttRestartCount = 0;
   bool _didResolveAutoStart = false;
+  bool _isApplyingTranscriptProgrammatically = false;
+  bool _didEditTranscriptManually = false;
 
   @override
   void initState() {
@@ -59,6 +61,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   }
 
   void _handleRawTextChanged() {
+    if (!_isApplyingTranscriptProgrammatically &&
+        _rawTextFocusNode.hasFocus &&
+        _rawTextController.text.trim().isNotEmpty) {
+      _didEditTranscriptManually = true;
+    }
     if (mounted) {
       setState(() {});
     }
@@ -225,14 +232,17 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     final commandAction = _detectCommandAction(rawText);
     if (commandAction == _VoiceCommandAction.add) {
       final inferredStartAt = GptService().inferStartAtFromRawText(rawText);
+      final shouldParseWithAi = !_didEditTranscriptManually;
       context.push(
         AppRoutes.confirm,
         extra: <String, dynamic>{
+          if (_didEditTranscriptManually) 'title': rawText,
           'raw_text': rawText,
           'memo': rawText,
           if (inferredStartAt != null)
             'start_at': inferredStartAt.toIso8601String(),
-          'parse_pending': true,
+          if (shouldParseWithAi) 'parse_pending': true,
+          if (_didEditTranscriptManually) 'manual_text_confirmed': true,
         },
       );
       return;
@@ -272,6 +282,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       return;
     }
     final nextText = text.trim();
+    _isApplyingTranscriptProgrammatically = true;
     setState(() {
       _recognizedText = nextText.isEmpty ? null : nextText;
       _rawTextController.value = TextEditingValue(
@@ -279,6 +290,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         selection: TextSelection.collapsed(offset: nextText.length),
       );
     });
+    _isApplyingTranscriptProgrammatically = false;
   }
 
   String _removeLastWord(String text) {

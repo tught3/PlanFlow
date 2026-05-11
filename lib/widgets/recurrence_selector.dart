@@ -123,87 +123,176 @@ class RecurrenceSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '반복',
-          style: theme.textTheme.titleSmall?.copyWith(
-            color: PlanFlowColors.primary,
-            fontWeight: FontWeight.w800,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: PlanFlowColors.primaryFaint, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '반복',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: PlanFlowColors.primary,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: const <(String, String)>[
-            ('none', '반복 안 함'),
-            ('daily', '매일'),
-            ('weekly', '매주'),
-            ('monthly', '매월'),
-            ('yearly', '매년'),
-          ].map((item) {
-            final selected = value.frequency == item.$1;
-            return ChoiceChip(
-              label: Text(item.$2),
-              selected: selected,
-              onSelected: (_) {
-                onChanged(
-                  value.copyWith(
-                    frequency: item.$1,
-                    clearUntil: item.$1 == 'none',
-                  ),
-                );
-              },
-            );
-          }).toList(growable: false),
-        ),
-        if (!value.isNone) ...[
-          const SizedBox(height: 10),
-          if (value.frequency == 'weekly') ...[
-            _WeeklyByDaySelector(
-              value: value,
-              onChanged: onChanged,
+          const SizedBox(height: 4),
+          Text(
+            _recurrenceSubtitle(value),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.textSecondary,
             ),
-            const SizedBox(height: 10),
-          ],
-          if (value.frequency == 'monthly') ...[
-            _RecurrenceSummary(
-              text: _monthlySummary(value),
-            ),
-            const SizedBox(height: 10),
-          ],
-          if (value.preservedParts.isNotEmpty &&
-              value.frequency != 'weekly' &&
-              value.frequency != 'monthly') ...[
-            _RecurrenceSummary(text: value.preservedParts.join(' · ')),
-            const SizedBox(height: 10),
-          ],
-          OutlinedButton.icon(
-            onPressed: () async {
-              final now = DateTime.now();
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: value.until ?? now.add(const Duration(days: 30)),
-                firstDate: now.subtract(const Duration(days: 1)),
-                lastDate: now.add(const Duration(days: 365 * 5)),
-              );
-              if (picked != null) {
-                onChanged(value.copyWith(until: picked));
-              }
-            },
-            icon: const Icon(Icons.event_repeat_outlined),
-            label: Text(
-              value.until == null
-                  ? '종료일 선택'
-                  : '종료일 ${MaterialLocalizations.of(context).formatShortDate(value.until!)}',
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _openRecurrenceSheet(context),
+              icon: const Icon(Icons.event_repeat_outlined),
+              label: Text(_frequencyLabel(value.frequency)),
             ),
           ),
         ],
-      ],
+      ),
     );
   }
+
+  Future<void> _openRecurrenceSheet(BuildContext context) {
+    var draft = value;
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          void update(RecurrenceSelection next) {
+            setModalState(() => draft = next);
+            onChanged(next);
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '반복 선택',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: PlanFlowColors.primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    for (final item in _frequencyChoices)
+                      ListTile(
+                        leading: Icon(
+                          draft.frequency == item.$1
+                              ? Icons.check_circle
+                              : Icons.circle_outlined,
+                          color: PlanFlowColors.primary,
+                        ),
+                        title: Text(item.$2),
+                        onTap: () {
+                          update(
+                            draft.copyWith(
+                              frequency: item.$1,
+                              clearUntil: item.$1 == 'none',
+                            ),
+                          );
+                        },
+                      ),
+                    if (!draft.isNone) ...[
+                      const SizedBox(height: 8),
+                      if (draft.frequency == 'weekly') ...[
+                        _WeeklyByDaySelector(
+                          value: draft,
+                          onChanged: update,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      if (draft.frequency == 'monthly') ...[
+                        _RecurrenceSummary(text: _monthlySummary(draft)),
+                        const SizedBox(height: 10),
+                      ],
+                      if (draft.preservedParts.isNotEmpty &&
+                          draft.frequency != 'weekly' &&
+                          draft.frequency != 'monthly') ...[
+                        _RecurrenceSummary(
+                            text: draft.preservedParts.join(' · ')),
+                        const SizedBox(height: 10),
+                      ],
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final now = DateTime.now();
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: draft.until ??
+                                now.add(const Duration(days: 30)),
+                            firstDate: now.subtract(const Duration(days: 1)),
+                            lastDate: now.add(const Duration(days: 365 * 5)),
+                          );
+                          if (picked != null) {
+                            update(draft.copyWith(until: picked));
+                          }
+                        },
+                        icon: const Icon(Icons.event_repeat_outlined),
+                        label: Text(
+                          draft.until == null
+                              ? '종료일 선택'
+                              : '종료일 ${MaterialLocalizations.of(context).formatShortDate(draft.until!)}',
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('완료'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+const _frequencyChoices = <(String, String)>[
+  ('none', '반복 안 함'),
+  ('daily', '매일'),
+  ('weekly', '매주'),
+  ('monthly', '매월'),
+  ('yearly', '매년'),
+];
+
+String _frequencyLabel(String frequency) {
+  for (final item in _frequencyChoices) {
+    if (item.$1 == frequency) {
+      return item.$2;
+    }
+  }
+  return '반복 안 함';
+}
+
+String _recurrenceSubtitle(RecurrenceSelection value) {
+  if (value.isNone) {
+    return '반복이 필요한 일정만 선택하세요.';
+  }
+  final until = value.until;
+  if (until == null) {
+    return '${_frequencyLabel(value.frequency)} 반복';
+  }
+  return '${_frequencyLabel(value.frequency)} 반복 · ${until.year}.${until.month}.${until.day}까지';
 }
 
 class _WeeklyByDaySelector extends StatelessWidget {

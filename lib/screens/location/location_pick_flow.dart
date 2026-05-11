@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../services/location_lookup_service.dart';
 import 'location_picker_screen.dart';
@@ -12,12 +11,19 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   LocationLookupService? locationLookupService,
 }) async {
   final trimmed = query.trim();
-  if (trimmed.isEmpty) {
-    await showLocationMessage(context, '장소를 먼저 입력해 주세요.');
-    return null;
-  }
 
   final service = locationLookupService ?? LocationLookupService();
+  if (trimmed.isEmpty) {
+    return Navigator.of(context).push<LocationLookupResult>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialQuery: '',
+          locationLookupService: service,
+        ),
+      ),
+    );
+  }
+
   try {
     final results = await service.search(trimmed).timeout(
           const Duration(seconds: 12),
@@ -27,49 +33,55 @@ Future<LocationLookupResult?> pickLocationFromQuery({
     }
 
     if (results.isEmpty) {
-      await showExternalMapOptions(
-        context,
-        trimmed,
-        message: '앱 안에서 장소 후보를 찾지 못했어요. 외부 지도에서 먼저 확인해 보세요.',
-      );
-      return null;
-    }
-
-    if (AppEnv.isNaverMapReady || AppEnv.googleMapsApiKey.trim().isNotEmpty) {
       return Navigator.of(context).push<LocationLookupResult>(
         MaterialPageRoute(
           builder: (_) => LocationPickerScreen(
             initialQuery: trimmed,
-            initialResults: results,
+            initialResults: const <LocationLookupResult>[],
+            initialMessage: '검색 결과가 없어요. 지도에서 직접 위치를 선택해 주세요.',
             locationLookupService: service,
           ),
         ),
       );
     }
 
-    return showLocationCandidateSheet(context, trimmed, results);
+    return Navigator.of(context).push<LocationLookupResult>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialQuery: trimmed,
+          initialResults: results,
+          locationLookupService: service,
+        ),
+      ),
+    );
   } on LocationLookupException catch (error) {
     if (!context.mounted) {
       return null;
     }
     final provider = error.provider.providerLabel;
-    await showExternalMapOptions(
-      context,
-      trimmed,
-      message: '$provider 장소 검색 인증에 실패했어요. 해당 API 권한과 키 제한을 확인해 주세요.',
+    return Navigator.of(context).push<LocationLookupResult>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialQuery: trimmed,
+          initialMessage: '$provider 장소 검색 인증에 실패했어요. 지도에서 직접 위치를 선택해 주세요.',
+          locationLookupService: service,
+        ),
+      ),
     );
-    return null;
   } catch (error) {
     if (!context.mounted) {
       return null;
     }
     debugPrint('Location pick flow failed: $error');
-    await showExternalMapOptions(
-      context,
-      trimmed,
-      message: '장소 검색이 오래 걸리거나 실패했어요. 외부 지도에서 먼저 확인해 보세요.',
+    return Navigator.of(context).push<LocationLookupResult>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialQuery: trimmed,
+          initialMessage: '장소 검색이 오래 걸리거나 실패했어요. 지도에서 직접 위치를 선택해 주세요.',
+          locationLookupService: service,
+        ),
+      ),
     );
-    return null;
   }
 }
 

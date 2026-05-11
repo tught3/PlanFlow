@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 
+const String _noReminderSheetValue = 'no_reminder';
+
 class ReminderOffsetSelector extends StatelessWidget {
   const ReminderOffsetSelector({
     super.key,
@@ -31,8 +33,7 @@ class ReminderOffsetSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isCustom = value != null &&
-        !standardChoices.any((choice) => choice.offset == value);
+    final selectedLabel = _labelForValue(value);
 
     return Container(
       width: double.infinity,
@@ -61,31 +62,90 @@ class ReminderOffsetSelector extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ...standardChoices.map(
-                (choice) => FilterChip(
-                  label: Text(choice.label),
-                  selected: choice.offset == value,
-                  onSelected: (_) => onChanged(choice.offset),
-                ),
-              ),
-              ActionChip(
-                avatar: const Icon(Icons.tune, size: 18),
-                label: Text(isCustom ? '${value!.inMinutes}분 전' : '직접 선택'),
-                backgroundColor: isCustom ? PlanFlowColors.primaryFaint : null,
-                onPressed: () => _pickCustomMinutes(context),
-              ),
-            ],
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _openChoiceSheet(context),
+              icon: const Icon(Icons.notifications_active_outlined, size: 18),
+              label: Text(selectedLabel),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _pickCustomMinutes(BuildContext context) async {
+  String _labelForValue(Duration? selected) {
+    for (final choice in standardChoices) {
+      if (choice.offset == selected) {
+        return choice.label;
+      }
+    }
+    if (selected == null) {
+      return '알림 없음';
+    }
+    return '${selected.inMinutes}분 전';
+  }
+
+  Future<void> _openChoiceSheet(BuildContext context) async {
+    final picked = await showModalBottomSheet<Object>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '일정 알림 선택',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              for (final choice in standardChoices)
+                ListTile(
+                  leading: Icon(
+                    (choice.offset ?? _noReminderSheetValue) ==
+                            (value ?? _noReminderSheetValue)
+                        ? Icons.check_circle
+                        : Icons.circle_outlined,
+                    color: PlanFlowColors.primary,
+                  ),
+                  title: Text(choice.label),
+                  onTap: () => Navigator.of(context).pop(
+                    choice.offset ?? _noReminderSheetValue,
+                  ),
+                ),
+              ListTile(
+                leading: const Icon(Icons.tune),
+                title: const Text('직접 선택'),
+                subtitle: value == null ? null : Text('${value!.inMinutes}분 전'),
+                onTap: () async {
+                  Navigator.of(context).pop(await _pickCustomMinutes(context));
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null) {
+      return;
+    }
+    if (picked == _noReminderSheetValue) {
+      onChanged(null);
+      return;
+    }
+    if (picked is Duration) {
+      onChanged(picked);
+    }
+  }
+
+  Future<Duration?> _pickCustomMinutes(BuildContext context) async {
     final controller = TextEditingController(
       text: value == null ? '60' : value!.inMinutes.toString(),
     );
@@ -120,10 +180,10 @@ class ReminderOffsetSelector extends StatelessWidget {
     controller.dispose();
 
     if (picked == null) {
-      return;
+      return null;
     }
     final normalized = picked.clamp(0, 24 * 60);
-    onChanged(Duration(minutes: normalized));
+    return Duration(minutes: normalized);
   }
 }
 

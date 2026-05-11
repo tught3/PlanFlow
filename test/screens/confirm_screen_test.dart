@@ -3,14 +3,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/core/local_time.dart';
+import 'package:planflow/core/region_settings.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/voice/confirm_screen.dart';
+import 'package:planflow/services/gpt_service.dart';
 import 'package:planflow/services/home_widget_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/notification_service.dart';
 
 void main() {
+  setUp(() {
+    PlanFlowRegionController.instance.reset();
+  });
+
   testWidgets(
       'ConfirmScreen shows a smart preparation card from both add buttons',
       (tester) async {
@@ -127,13 +134,13 @@ void main() {
     expect(find.text('일정이 겹쳐요'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen opens external map options when lookup is empty',
+  testWidgets('ConfirmScreen opens location picker even when location is empty',
       (tester) async {
     await tester.pumpWidget(
       _testApp(
         ConfirmScreen(
           userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
+          parsedSchedule: _parsedSchedule(location: ''),
           backend: _FakeConfirmBackend(),
           eventRepository: _FakeEventRepository(),
           notificationService: _FakeNotificationService(),
@@ -148,10 +155,68 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('외부 지도에서 확인'), findsOneWidget);
+    expect(find.text('지도에서 장소 선택'), findsOneWidget);
     expect(find.text('Google 지도'), findsOneWidget);
     expect(find.text('네이버 지도'), findsOneWidget);
     expect(find.text('TMAP'), findsOneWidget);
+  });
+
+  testWidgets('ConfirmScreen does not let hydration overwrite manual text',
+      (tester) async {
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '직접 수정한 일정',
+            location: '직접 수정한 장소',
+            rawText: '음성으로 잘못 인식된 일정',
+          )..['manual_text_confirmed'] = true,
+          gptService: _OverwritingGptService(),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('직접 수정한 일정'), findsOneWidget);
+    expect(find.text('AI가 바꾼 일정'), findsNothing);
+  });
+
+  testWidgets('ConfirmScreen stores Korean wall time as UTC once',
+      (tester) async {
+    final repository = _FakeEventRepository();
+    final start = DateTime(2026, 5, 11, 10);
+    final end = DateTime(2026, 5, 12, 9);
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(startAt: start, endAt: end),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final saved = repository.createdEvents.single;
+    expect(saved.startAt, DateTime.utc(2026, 5, 11, 1));
+    expect(planflowLocal(saved.startAt!), start);
+    expect(planflowLocal(saved.endAt!), end);
+    expect(saved.isMultiDay, isTrue);
   });
 
   testWidgets('ConfirmScreen shows supplies as compact editable rows',
@@ -262,6 +327,18 @@ Map<String, dynamic> _parsedSchedule({
   };
 }
 
+class _OverwritingGptService extends GptService {
+  @override
+  Future<Map<String, dynamic>> parseSchedule(String rawText) async {
+    return <String, dynamic>{
+      'title': 'AI가 바꾼 일정',
+      'location': 'AI가 바꾼 장소',
+      'memo': 'AI가 바꾼 메모',
+      'start_at': DateTime(2026, 5, 11, 9).toIso8601String(),
+    };
+  }
+}
+
 class _EmptyLocationLookupService extends LocationLookupService {
   @override
   Future<List<LocationLookupResult>> search(String query) async {
@@ -328,9 +405,15 @@ class _FakeEventRepository extends EventRepository {
       startAt: event.startAt,
       endAt: event.endAt,
       location: event.location,
+      locationLat: event.locationLat,
+      locationLng: event.locationLng,
       memo: event.memo,
       supplies: event.supplies,
       isCritical: event.isCritical,
+      recurrenceRule: event.recurrenceRule,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
+      category: event.category,
     );
     createdEvents.add(saved);
     return saved;
