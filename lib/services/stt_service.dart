@@ -159,7 +159,16 @@ class SttService {
       index += 1;
     }
 
-    return output.join(' ').trim();
+    return _normalizeCommonKoreanSttPhrases(output.join(' ')).trim();
+  }
+
+  static String _normalizeCommonKoreanSttPhrases(String text) {
+    return text
+        .replaceAll(RegExp(r'강릉\s*에서\s*아산\s*에서'), '강릉아산에서')
+        .replaceAll(RegExp(r'강릉\s*에서\s*아산'), '강릉아산')
+        .replaceAll(RegExp(r'강릉\s*아산\s*에서'), '강릉아산에서')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   static List<String> _collapseRepeatedSpeech(List<String> tokens) {

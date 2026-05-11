@@ -91,6 +91,12 @@ void main() {
       SttService.normalizeVoiceTranscript('내일 열두시반 병원 내일 열두시반 병원'),
       '내일 열두시반 병원',
     );
+    expect(
+      SttService.normalizeVoiceTranscript(
+        '내일 강릉에서 아산에서 아이스크림 전달일정 이번주 목요일 오전9시로 변경',
+      ),
+      '내일 강릉아산에서 아이스크림 전달일정 이번주 목요일 오전9시로 변경',
+    );
   });
 
   test('SttService appends only new speech when Android partials overlap', () {

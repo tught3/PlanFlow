@@ -57,6 +57,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   bool get _isAdd => _selectedAction == VoiceScheduleAction.add;
   bool get _isQuery => _selectedAction == VoiceScheduleAction.query;
   bool get _isChoose => _selectedAction == VoiceScheduleAction.choose;
+  String get _normalizedRawText =>
+      _normalizeVoiceManagementText(widget.rawText);
 
   @override
   void initState() {
@@ -124,8 +126,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       return;
     }
     final parsed = <String, dynamic>{
-      'raw_text': widget.rawText,
-      'memo': widget.rawText,
+      'raw_text': _normalizedRawText,
+      'memo': _normalizedRawText,
       'parse_pending': true,
     };
     await context.push(AppRoutes.confirm, extra: parsed);
@@ -181,7 +183,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
 
       final events = await _repository.listEvents(userId: userId);
       final filteredEvents = _filterEventsForAction(events);
-      final ranked = _rankEvents(filteredEvents, widget.rawText);
+      final ranked = _rankEvents(filteredEvents, _normalizedRawText);
       if (!mounted) {
         return;
       }
@@ -232,7 +234,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       return events;
     }
 
-    final range = _queryDateRange(widget.rawText);
+    final range = _queryDateRange(_normalizedRawText);
     if (range == null) {
       return events;
     }
@@ -256,7 +258,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       return '조건에 맞는 일정을 찾지 못했어요. 아래에서 새 일정으로 추가하거나 다시 말해 주세요.';
     }
 
-    final rangeLabel = _queryRangeLabel(widget.rawText);
+    final rangeLabel = _queryRangeLabel(_normalizedRawText);
     return '$rangeLabel 일정은 아직 없어요. 새 일정이 필요하면 “추가”로 바로 등록할 수 있습니다.';
   }
 
@@ -301,7 +303,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   }
 
   String _querySummaryText(List<EventModel> events) {
-    final rangeLabel = _queryRangeLabel(widget.rawText);
+    final rangeLabel = _queryRangeLabel(_normalizedRawText);
     if (events.isEmpty) {
       return '$rangeLabel 일정은 아직 없습니다.';
     }
@@ -418,12 +420,12 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     final now = DateTime.now();
     final tokens = _tokens(rawText);
     final ranked = events.map((event) {
-      final searchable = [
+      final searchable = _normalizeSearchText([
         event.title,
         event.location ?? '',
         event.memo ?? '',
         event.supplies.join(' '),
-      ].join(' ').toLowerCase();
+      ].join(' '));
       var matchScore = 0;
       for (final token in tokens) {
         if (searchable.contains(token)) {
@@ -469,6 +471,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       '변경해',
       '바꿔',
       '고쳐',
+      '고치',
       '삭제',
       '삭제해',
       '추가',
@@ -476,22 +479,136 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       '보여',
       '찾아',
       '조회',
+      '바꾸',
+      '옮겨',
+      '옮기',
+      '미뤄',
+      '미루',
+      '연기',
+      '앞당겨',
+      '당겨',
+      '늦춰',
+      '늦추',
+      '시간',
+      '날짜',
+      '장소',
       '오늘',
       '내일',
       '모레',
+      '글피',
       '이번',
       '이번주',
       '이번 주',
+      '다음주',
+      '다음 주',
+      '월요일',
+      '화요일',
+      '수요일',
+      '목요일',
+      '금요일',
+      '토요일',
+      '일요일',
+      '오전',
+      '오후',
+      '아침',
+      '점심',
+      '저녁',
+      '밤',
       '무엇',
       '뭐',
     };
-    return text
-        .toLowerCase()
+    final seen = <String>{};
+    return _targetSearchText(text)
         .replaceAll(RegExp(r'[^0-9a-z가-힣\s]'), ' ')
         .split(RegExp(r'\s+'))
-        .map((token) => token.trim())
-        .where((token) => token.length >= 2 && !stopWords.contains(token))
+        .expand(_tokenVariants)
+        .where(
+          (token) =>
+              token.length >= 2 &&
+              !stopWords.contains(token) &&
+              seen.add(token),
+        )
         .toList(growable: false);
+  }
+
+  String _targetSearchText(String text) {
+    var normalized = _normalizeVoiceManagementText(text);
+    normalized = normalized
+        .replaceAll(RegExp(r'(이번\s*주|이번주|다음\s*주|다음주).*$'), ' ')
+        .replaceAll(
+            RegExp(
+                r'(오늘|내일|모레|글피)\s*(오전|오후|아침|점심|저녁|밤)?\s*[0-9가-힣]{1,8}\s*시.*$'),
+            ' ')
+        .replaceAll(RegExp(r'(오전|오후|아침|점심|저녁|밤)\s*[0-9가-힣]{1,8}\s*시.*$'), ' ')
+        .replaceAll(RegExp(r'\d{1,2}\s*월\s*\d{1,2}\s*일.*$'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return normalized.isEmpty
+        ? _normalizeVoiceManagementText(text)
+        : normalized;
+  }
+
+  List<String> _tokenVariants(String rawToken) {
+    final token = _stripKoreanParticles(rawToken.trim());
+    if (token.isEmpty) {
+      return const <String>[];
+    }
+    final variants = <String>{token};
+    final withoutSchedule = token.replaceAll(RegExp(r'(일정|스케줄)$'), '');
+    if (withoutSchedule.length >= 2) {
+      variants.add(withoutSchedule);
+    }
+    if (token.endsWith('전달일정')) {
+      variants.add(token.replaceFirst(RegExp(r'일정$'), ''));
+    }
+    return variants.toList(growable: false);
+  }
+
+  String _normalizeSearchText(String text) {
+    return _normalizeVoiceManagementText(text)
+        .replaceAll(RegExp(r'[^0-9a-z가-힣\s]'), ' ')
+        .split(RegExp(r'\s+'))
+        .map(_stripKoreanParticles)
+        .join(' ');
+  }
+
+  String _stripKoreanParticles(String token) {
+    var value = token.toLowerCase().trim();
+    for (final suffix in const <String>[
+      '에서',
+      '으로',
+      '부터',
+      '까지',
+      '에게',
+      '한테',
+      '로',
+      '에',
+      '을',
+      '를',
+      '은',
+      '는',
+      '이',
+      '가',
+      '와',
+      '과',
+      '도',
+    ]) {
+      if (value.length > suffix.length + 1 && value.endsWith(suffix)) {
+        value = value.substring(0, value.length - suffix.length);
+        break;
+      }
+    }
+    return value;
+  }
+
+  String _normalizeVoiceManagementText(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll(RegExp(r'강릉\s*에서\s*아산\s*에서'), '강릉아산에서')
+        .replaceAll(RegExp(r'강릉\s*에서\s*아산'), '강릉아산')
+        .replaceAll(RegExp(r'강릉\s*아산\s*에서'), '강릉아산에서')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   Future<void> _openEdit(EventModel event) async {
@@ -671,7 +788,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
           .insert(<String, dynamic>{
         'user_id': userId,
         'event_id': targetEventId,
-        'raw_text': widget.rawText,
+        'raw_text': _normalizedRawText,
         'parsed_json': <String, dynamic>{
           'action': action,
           'target_event_id': targetEventId,
@@ -702,7 +819,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
             children: [
               _CommandCard(
                 title: title,
-                rawText: widget.rawText,
+                rawText: _normalizedRawText,
                 description: description,
               ),
               const SizedBox(height: AppConstants.sectionSpacing),
@@ -715,7 +832,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
               ],
               if (_isAdd) ...[
                 _AddConfirmCard(
-                  rawText: widget.rawText,
+                  rawText: _normalizedRawText,
                   onContinue: _openAddConfirm,
                 ),
                 const SizedBox(height: 12),
@@ -730,7 +847,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
               else if (_message != null)
                 _EmptyCard(
                   message: _message!,
-                  rawText: widget.rawText,
+                  rawText: _normalizedRawText,
                   showRecoveryActions: !_isAdd,
                   onAdd: _openAddConfirm,
                   onRetryVoice: () => context.go(AppRoutes.voice),
@@ -748,7 +865,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                 if (_isQuery) ...[
                   _QueryOverviewCard(
                     summary: _querySummaryText(_events),
-                    rangeLabel: _queryRangeLabel(widget.rawText),
+                    rangeLabel: _queryRangeLabel(_normalizedRawText),
                   ),
                   const SizedBox(height: 12),
                   ..._buildQueryTimeline(_events).map(

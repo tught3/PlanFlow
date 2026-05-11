@@ -869,6 +869,9 @@ $_scheduleSystemPrompt
 
   String _normalizeKoreanText(String text) {
     return text
+        .replaceAll(RegExp(r'강릉\s*에서\s*아산\s*에서'), '강릉아산에서')
+        .replaceAll(RegExp(r'강릉\s*에서\s*아산'), '강릉아산')
+        .replaceAll(RegExp(r'강릉\s*아산\s*에서'), '강릉아산에서')
         .replaceAll(RegExp(r'[,\.\!\?\(\)\[\]\{\}]+'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();

@@ -248,3 +248,10 @@
 - Broadened voice edit intent routing so schedule-change phrases like `미뤄줘`, `옮겨줘`, `앞당겨줘`, `늦춰줘`, and time/place-change wording go to the voice schedule management/edit flow instead of the add confirmation flow.
 - Clarified current edit architecture during investigation: voice input detects edit intent, `VoiceActionScreen` loads candidate events, and selecting a candidate opens `EventEditScreen`.
 - Verification passed: `flutter analyze --no-pub`, focused `flutter test --no-pub test/services/stt_service_test.dart test/services/gpt_service_test.dart test/screens/voice_input_screen_test.dart`, full `flutter test --no-pub` (219 tests), `flutter build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `11910`.
+
+## 2026-05-11 Voice Edit Candidate Recovery Checkpoint
+- Normalized common Korean STT phrase errors before voice management and GPT fallback parsing, including `강릉에서 아산에서` -> `강릉아산에서`.
+- Hardened voice edit/delete candidate ranking so new target date/time phrases such as `이번주 목요일 오전9시로 변경` are removed from the search text, Korean particles are stripped, and tokens like `전달일정` also match saved titles containing `전달`.
+- Voice management now shows and logs the normalized command text, so the user reviews the corrected wording before opening candidates or sending an add confirmation.
+- Added regression coverage for the user's example phrase finding `강릉아산 아이스크림 전달` ahead of unrelated date/time matches.
+- Verification passed: `flutter analyze --no-pub`, focused `flutter test --no-pub test/screens/voice_action_screen_test.dart`, focused `flutter test --no-pub test/services/stt_service_test.dart test/services/gpt_service_test.dart`, full `flutter test --no-pub` (220 tests), `flutter build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `17882`.
