@@ -623,7 +623,8 @@ $_scheduleSystemPrompt
             .hasMatch(text) ||
         RegExp(r'(오늘|내일|모레|글피)').hasMatch(text) ||
         RegExp(r'(?:(?:\d{4})년\s*)?\d{1,2}월\s*\d{1,2}일').hasMatch(text) ||
-        RegExp(r'(?:(오전|오후)\s*)?\d{1,2}\s*시').hasMatch(text);
+        RegExp(r'(?:(오전|오후)\s*)?\d{1,2}\s*시').hasMatch(text) ||
+        _extractTimeFromText(text) != null;
   }
 
   DateTime? _extractRelativeOffsetFromText(String text, DateTime now) {
@@ -726,30 +727,144 @@ $_scheduleSystemPrompt
   }
 
   _ClockTime? _extractTimeFromText(String text) {
-    final match = RegExp(
-      r'(?:(오전|오후)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?',
+    final numericMatch = RegExp(
+      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?|\s*(반))?',
     ).firstMatch(text);
-    if (match == null) {
+    if (numericMatch != null) {
+      final period = numericMatch.group(1);
+      final hourText = numericMatch.group(2);
+      final minuteText = numericMatch.group(3);
+      final hasHalf = numericMatch.group(4) != null;
+      return _clockTimeFromParts(
+        period: period,
+        hour: int.tryParse(hourText ?? ''),
+        minute:
+            hasHalf ? 30 : (minuteText == null ? 0 : int.tryParse(minuteText)),
+      );
+    }
+
+    final koreanMatch = RegExp(
+      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?([가-힣]{1,8})\s*시(?:\s*([가-힣]{1,8}|\d{1,2})\s*분?|\s*(반))?',
+    ).firstMatch(text);
+    if (koreanMatch == null) {
       return null;
     }
 
-    final period = match.group(1);
-    var hour = int.tryParse(match.group(2) ?? '');
-    final minute = int.tryParse(match.group(3) ?? '') ?? 0;
-    if (hour == null || minute < 0 || minute > 59) {
+    final period = koreanMatch.group(1);
+    final hour = _parseKoreanNumber(koreanMatch.group(2));
+    final minuteText = koreanMatch.group(3);
+    final hasHalf = koreanMatch.group(4) != null || minuteText == '반';
+    final minute = hasHalf
+        ? 30
+        : minuteText == null
+            ? 0
+            : int.tryParse(minuteText) ?? _parseKoreanNumber(minuteText);
+    return _clockTimeFromParts(period: period, hour: hour, minute: minute);
+  }
+
+  _ClockTime? _clockTimeFromParts({
+    required String? period,
+    required int? hour,
+    required int? minute,
+  }) {
+    final normalizedMinute = minute ?? 0;
+    if (hour == null || normalizedMinute < 0 || normalizedMinute > 59) {
       return null;
     }
     if (hour < 0 || hour > 23) {
       return null;
     }
 
-    if (period == '오후' && hour < 12) {
+    if ((period == '오후' || period == '저녁' || period == '밤') && hour < 12) {
       hour += 12;
-    } else if (period == '오전' && hour == 12) {
+    } else if ((period == '오전' || period == '아침' || period == '새벽') &&
+        hour == 12) {
       hour = 0;
     }
 
-    return _ClockTime(hour: hour, minute: minute);
+    return _ClockTime(hour: hour, minute: normalizedMinute);
+  }
+
+  int? _parseKoreanNumber(String? rawText) {
+    if (rawText == null) {
+      return null;
+    }
+    final text = rawText
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceFirst(RegExp(r'분$'), '')
+        .trim();
+    if (text.isEmpty) {
+      return null;
+    }
+    final numeric = int.tryParse(text);
+    if (numeric != null) {
+      return numeric;
+    }
+
+    const nativeNumbers = <String, int>{
+      '영': 0,
+      '공': 0,
+      '한': 1,
+      '하나': 1,
+      '한시': 1,
+      '두': 2,
+      '둘': 2,
+      '세': 3,
+      '셋': 3,
+      '네': 4,
+      '넷': 4,
+      '다섯': 5,
+      '여섯': 6,
+      '일곱': 7,
+      '여덟': 8,
+      '아홉': 9,
+      '열': 10,
+      '열한': 11,
+      '열하나': 11,
+      '열두': 12,
+      '열둘': 12,
+      '스물': 20,
+      '스물한': 21,
+      '스물하나': 21,
+      '스물두': 22,
+      '스물둘': 22,
+      '스물세': 23,
+      '스물셋': 23,
+      '스물네': 24,
+      '스물넷': 24,
+      '반': 30,
+    };
+    final native = nativeNumbers[text];
+    if (native != null) {
+      return native;
+    }
+
+    const sinoDigits = <String, int>{
+      '일': 1,
+      '이': 2,
+      '삼': 3,
+      '사': 4,
+      '오': 5,
+      '육': 6,
+      '륙': 6,
+      '칠': 7,
+      '팔': 8,
+      '구': 9,
+    };
+    if (text == '십') {
+      return 10;
+    }
+    final tenMatch =
+        RegExp(r'^(?:(일|이|삼|사|오|육|륙|칠|팔|구)?십)?(일|이|삼|사|오|육|륙|칠|팔|구)?$')
+            .firstMatch(text);
+    if (tenMatch != null && tenMatch.group(0)!.isNotEmpty) {
+      final tens = tenMatch.group(1);
+      final ones = tenMatch.group(2);
+      var value = text.contains('십') ? (sinoDigits[tens] ?? 1) * 10 : 0;
+      value += sinoDigits[ones] ?? 0;
+      return value == 0 ? null : value;
+    }
+    return null;
   }
 
   String _normalizeKoreanText(String text) {
@@ -776,7 +891,7 @@ Return only a valid JSON object.
 Use these keys:
 title, date, start_at, end_at, location, location_lat, location_lng, travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies, is_critical, recurrence_rule, is_all_day, is_multi_day, category, pre_actions.
 start_at and end_at must be ISO-8601 date-time strings when possible.
-For Korean relative expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", resolve them from the current local date and time.
+For Korean relative and colloquial time expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", "열두시반", "오후 두시 반", and "저녁 일곱시 삼십분", resolve them from the current local date and time.
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.
 For recurring schedules, return recurrence_rule as an iCal RRULE such as "FREQ=WEEKLY;BYDAY=TU". Otherwise return null.
 For all-day schedules, set is_all_day true. For multi-day schedules such as "5월 1일부터 3일까지", set is_multi_day true and return both start_at and end_at.

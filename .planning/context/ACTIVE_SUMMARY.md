@@ -241,3 +241,10 @@
 - Kept compile-time `--dart-define` values as explicit overrides for one-off environments, while documenting that Supabase public config is built in and external provider values still use dart-defines.
 - Added a regression test proving `AppEnv.hasValidSupabaseConfig` remains true without local defines.
 - Verification passed: `flutter analyze --no-pub lib/core/env.dart test/core/app_env_test.dart`, `flutter test --no-pub test/core/app_env_test.dart`, full `flutter analyze --no-pub`, full `flutter test --no-pub` (216 tests), raw `flutter build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `30348`.
+
+## 2026-05-11 Voice Recognition And Edit Intent Checkpoint
+- Hardened STT transcript cleanup so adjacent repeated phrases such as a full sentence recognized twice collapse before routing or saving.
+- Expanded local Korean time inference to understand common spoken time forms such as `열두시반`, `오후 두시 반`, `저녁 일곱시 삼십분`, and numeric `12시 반`; the GPT parsing prompt now names these forms explicitly.
+- Broadened voice edit intent routing so schedule-change phrases like `미뤄줘`, `옮겨줘`, `앞당겨줘`, `늦춰줘`, and time/place-change wording go to the voice schedule management/edit flow instead of the add confirmation flow.
+- Clarified current edit architecture during investigation: voice input detects edit intent, `VoiceActionScreen` loads candidate events, and selecting a candidate opens `EventEditScreen`.
+- Verification passed: `flutter analyze --no-pub`, focused `flutter test --no-pub test/services/stt_service_test.dart test/services/gpt_service_test.dart test/screens/voice_input_screen_test.dart`, full `flutter test --no-pub` (219 tests), `flutter build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `11910`.

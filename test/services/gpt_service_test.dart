@@ -176,6 +176,27 @@ void main() {
       );
     });
 
+    test('public local inference handles natural Korean half-hour words', () {
+      final now = DateTime(2026, 5, 7, 9, 30);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('내일 열두시반 병원'),
+        DateTime(2026, 5, 8, 12, 30),
+      );
+      expect(
+        service.inferStartAtFromRawText('내일 오후 두시 반 미팅'),
+        DateTime(2026, 5, 8, 14, 30),
+      );
+      expect(
+        service.inferStartAtFromRawText('내일 저녁 일곱시 삼십분 약속'),
+        DateTime(2026, 5, 8, 19, 30),
+      );
+    });
+
     test('locally infers all-day, multi-day, category, and recurrence hints',
         () async {
       final client = MockClient((request) async {

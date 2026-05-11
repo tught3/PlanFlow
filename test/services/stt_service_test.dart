@@ -87,6 +87,10 @@ void main() {
       ),
       '요미 허리 약 5분 뒤에 주기',
     );
+    expect(
+      SttService.normalizeVoiceTranscript('내일 열두시반 병원 내일 열두시반 병원'),
+      '내일 열두시반 병원',
+    );
   });
 
   test('SttService appends only new speech when Android partials overlap', () {

@@ -265,7 +265,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (RegExp(r'(삭제|지워|없애)').hasMatch(normalized)) {
       return _VoiceCommandAction.delete;
     }
-    if (RegExp(r'(수정|바꿔|고쳐|변경)').hasMatch(normalized)) {
+    if (RegExp(
+      r'(수정|바꿔|바꾸|고쳐|고치|변경|옮겨|옮기|미뤄|미루|연기|앞당겨|당겨|늦춰|늦추|시간\s*조정|시간\s*변경|장소\s*변경)',
+    ).hasMatch(normalized)) {
       return _VoiceCommandAction.edit;
     }
     if (RegExp(r'(조회|알려|보여|뭐야|몇 시|일정 있어|일정있어)').hasMatch(normalized)) {
