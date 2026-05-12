@@ -53,6 +53,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   final List<EventModel> _events = <EventModel>[];
   bool _isLoading = true;
   bool _isDeleting = false;
+  bool _isSaving = false;
   String? _message;
   bool _hasChosenAction = false;
   VoiceTextCleanupResult? _cleanupResult;
@@ -237,7 +238,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       final ranked = _candidateEventsForDisplay(
         rankedItems,
         filteredEvents,
-      ).map((item) => item.event).take(10).toList(growable: false);
+      ).map((item) => item.event).take(_isQuery ? 10 : 5).toList(growable: false);
       final diagnostics = _CandidateLoadDiagnostics(
         action: _selectedAction.name,
         userIdAvailable: userId.isNotEmpty,
@@ -737,6 +738,67 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       VoiceScheduleAction.query => VoiceCommandRouteIntent.query,
       VoiceScheduleAction.choose => VoiceCommandRouteIntent.query,
     };
+  }
+
+  /// 음성 명령으로 파악한 변경값을 편집화면 없이 바로 저장한다.
+  Future<void> _applyAndSave(EventModel event) async {
+    final editedEvent = _eventWithRequestedVoiceChanges(event);
+    setState(() => _isSaving = true);
+    try {
+      await _repository.updateEvent(editedEvent);
+      await _recordVoiceLog(
+        action: 'edit',
+        targetEventId: event.id,
+        result: 'applied_directly',
+      );
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'voice_direct_apply',
+        eventId: event.id,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('일정이 변경되었어요.')),
+      );
+      context.pop();
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen direct save failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('저장하지 못했어요. 다시 시도해 주세요.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  /// 카드에 표시할 변경 미리보기 문자열을 반환한다.
+  /// 감지된 변경이 없으면 null 반환.
+  String? _buildChangePreviewText(EventModel original) {
+    final edited = _eventWithRequestedVoiceChanges(original);
+    final parts = <String>[];
+
+    if (edited.startAt != original.startAt && edited.startAt != null) {
+      final newStart = planflowLocal(edited.startAt!);
+      const weekdays = ['', '월', '화', '수', '목', '금', '토', '일'];
+      final period = newStart.hour < 12 ? '오전' : '오후';
+      final h = newStart.hour % 12 == 0 ? 12 : newStart.hour % 12;
+      final m = newStart.minute > 0
+          ? ' ${newStart.minute.toString().padLeft(2, '0')}분'
+          : '';
+      parts.add(
+        '${newStart.month}/${newStart.day}'
+        '(${weekdays[newStart.weekday]}) '
+        '$period ${h}시$m',
+      );
+    }
+
+    if (edited.location != original.location &&
+        (edited.location?.trim().isNotEmpty ?? false)) {
+      parts.add(edited.location!.trim());
+    }
+
+    return parts.isEmpty ? null : parts.join(', ');
   }
 
   Future<void> _openEdit(EventModel event) async {
@@ -1240,23 +1302,29 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                     ),
                   ),
                 ] else ...[
-                  ..._events.map(
-                    (event) => Padding(
+                  ..._events.map((event) {
+                    final changePreview =
+                        _isEdit ? _buildChangePreviewText(event) : null;
+                    return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: _EventCandidateCard(
                         event: event,
                         actionLabel: _candidateActionLabel(),
                         actionIcon: _candidateActionIcon(),
                         isDanger: _isDelete,
-                        disabled: _isDeleting,
+                        disabled: _isDeleting || _isSaving,
                         onTap: () => _isDelete
                             ? _confirmDelete(event)
                             : _isEdit
                                 ? _openEdit(event)
                                 : _openQueryResult(event),
+                        changePreviewText: changePreview,
+                        onDirectApply: (_isEdit && changePreview != null)
+                            ? () => _applyAndSave(event)
+                            : null,
                       ),
-                    ),
-                  ),
+                    );
+                  }),
                 ],
               ],
             ],
@@ -1990,6 +2058,8 @@ class _EventCandidateCard extends StatelessWidget {
     required this.isDanger,
     required this.disabled,
     required this.onTap,
+    this.changePreviewText,
+    this.onDirectApply,
   });
 
   final EventModel event;
@@ -1999,67 +2069,133 @@ class _EventCandidateCard extends StatelessWidget {
   final bool disabled;
   final VoidCallback onTap;
 
+  /// 감지된 변경 내용 요약 (예: "1/22(수) 오전 9시"). null이면 표시 안 함.
+  final String? changePreviewText;
+
+  /// 변경사항을 바로 저장하는 콜백. null이면 바로저장 버튼 표시 안 함.
+  final VoidCallback? onDirectApply;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final startAt =
         event.startAt == null ? null : planflowLocal(event.startAt!);
+    final hasDirectApply = onDirectApply != null;
 
     return Card(
       elevation: 0,
       color: PlanFlowColors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+        side: BorderSide(
+          color: hasDirectApply
+              ? PlanFlowColors.primary.withValues(alpha: 0.4)
+              : PlanFlowColors.primaryFaint,
+          width: hasDirectApply ? 1.0 : 0.5,
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: disabled ? null : onTap,
         child: Padding(
           padding: const EdgeInsets.all(14),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      event.title,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: PlanFlowColors.primary,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      startAt == null
-                          ? '시간 미정'
-                          : '${MaterialLocalizations.of(context).formatFullDate(startAt)} · ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(startAt))}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                      ),
-                    ),
-                    if ((event.location ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        event.location!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: PlanFlowColors.textSecondary,
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          event.title,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: PlanFlowColors.primary,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
+                        const SizedBox(height: 4),
+                        Text(
+                          startAt == null
+                              ? '시간 미정'
+                              : '${MaterialLocalizations.of(context).formatFullDate(startAt)} · ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(startAt))}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: changePreviewText != null
+                                ? PlanFlowColors.textSecondary
+                                    .withValues(alpha: 0.6)
+                                : PlanFlowColors.textSecondary,
+                            decoration: changePreviewText != null
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
+                        ),
+                        if (changePreviewText != null) ...[
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.arrow_forward,
+                                size: 13,
+                                color: PlanFlowColors.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                changePreviewText!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: PlanFlowColors.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        if ((event.location ?? '').trim().isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            event.location!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (!hasDirectApply) ...[
+                    const SizedBox(width: 10),
+                    FilledButton.tonalIcon(
+                      onPressed: disabled ? null : onTap,
+                      icon: Icon(actionIcon),
+                      label: Text(actionLabel),
+                      style: FilledButton.styleFrom(
+                        foregroundColor:
+                            isDanger ? const Color(0xFFB42318) : null,
                       ),
-                    ],
+                    ),
+                  ],
+                ],
+              ),
+              // 변경사항이 감지된 경우: 바로저장 + 직접편집 버튼 행
+              if (hasDirectApply) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: disabled ? null : onDirectApply,
+                        icon: const Icon(Icons.check, size: 16),
+                        label: const Text('바로 저장'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton(
+                      onPressed: disabled ? null : onTap,
+                      child: const Text('직접 편집'),
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              FilledButton.tonalIcon(
-                onPressed: disabled ? null : onTap,
-                icon: Icon(actionIcon),
-                label: Text(actionLabel),
-                style: FilledButton.styleFrom(
-                  foregroundColor: isDanger ? const Color(0xFFB42318) : null,
-                ),
-              ),
+              ],
             ],
           ),
         ),
