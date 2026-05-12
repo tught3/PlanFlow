@@ -46,6 +46,45 @@ class _FakeDraftAnalysisService extends VoiceCommandAnalysisService {
   }
 }
 
+class _FakeIntentAnalysisService extends VoiceCommandAnalysisService {
+  _FakeIntentAnalysisService({required this.intent})
+      : super(endpoint: Uri.parse('https://example.com'));
+
+  final VoiceCommandIntent intent;
+
+  @override
+  Future<VoiceCommandAnalysisResult> analyze(
+    String rawText, {
+    VoiceCommandAnalysisStage stage = VoiceCommandAnalysisStage.partial,
+    dynamic context,
+    Iterable<dynamic> candidates = const [],
+    VoiceAnalysisRequestBudget? budget,
+    VoiceCommandAnalysisResult? previousDraft,
+  }) async {
+    return VoiceCommandAnalysisResult(
+      rawText: rawText,
+      cleanedText: rawText,
+      normalizedText: rawText,
+      intent: intent,
+      confidence: 0.91,
+      uncertainFields: const <String>[],
+      scheduleFields: <String, dynamic>{
+        'title': rawText,
+        'supplies': <String>[],
+        'is_critical': false,
+        'pre_actions': <Map<String, dynamic>>[],
+        'voice_intent': intent.name,
+      },
+      targetEventHint: null,
+      requestedChanges: const <String>[],
+      method: VoiceCommandAnalysisMethod.ai,
+      stage: stage,
+      analysisSignature: 'fake-intent',
+      fromCache: false,
+    );
+  }
+}
+
 class _FakeSttService extends SttService {
   Completer<SttListenResult>? _listenCompleter;
   ValueChanged<String>? _onPartialResult;
@@ -105,8 +144,7 @@ class _FakeSttService extends SttService {
 }
 
 void main() {
-  testWidgets('partial 결과로 준비된 draft가 완료 시 우선 전달된다',
-      (tester) async {
+  testWidgets('partial 결과로 준비된 draft가 완료 시 우선 전달된다', (tester) async {
     final fakeStt = _FakeSttService();
     final fakeAnalysis = _FakeDraftAnalysisService(
       parsedSchedule: <String, dynamic>{
@@ -174,8 +212,7 @@ void main() {
     expect(fakeAnalysis.analyzeCalls, 1);
   });
 
-  testWidgets('직접 수정하면 준비된 draft를 덮어쓰지 않는다',
-      (tester) async {
+  testWidgets('직접 수정하면 준비된 draft를 덮어쓰지 않는다', (tester) async {
     final fakeStt = _FakeSttService();
     final fakeAnalysis = _FakeDraftAnalysisService(
       parsedSchedule: <String, dynamic>{
@@ -240,6 +277,60 @@ void main() {
 
     expect(find.textContaining('manual:true|pending:false'), findsOneWidget);
     expect(find.textContaining('내일 오전 11시 정장집 방문'), findsOneWidget);
+  });
+
+  testWidgets('직접 수정 뒤 늦게 들어온 partial STT가 수정값을 덮지 않는다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              'manual:${extra['manual_text_confirmed'] == true}|raw:${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pump();
+
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), '내일 오전 11시 정장집 방문');
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+
+    await tester.tap(find.text('완료'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('manual:true|raw:내일 오전 11시 정장집 방문'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('내일 오전 10시 정장집 방문'), findsNothing);
   });
 
   testWidgets('음성 입력 화면은 짧은 사용 예시를 보여준다', (tester) async {
@@ -462,5 +553,147 @@ void main() {
     expect(find.textContaining('음성 관리: query'), findsOneWidget);
     expect(find.textContaining('오늘 일정 알려줘'), findsOneWidget);
     expect(find.text('일정 확인 화면'), findsNothing);
+  });
+
+  testWidgets('저장된 일정 보여줘는 저장 명령이 아니라 조회로 분류한다', (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) =>
+              const VoiceInputScreen(autoStartOverride: false),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '음성 관리: ${extra['action']} / ${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '저장된 일정 보여줘');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('직접 입력'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('음성 관리: query'), findsOneWidget);
+    expect(find.text('일정 확인 화면'), findsNothing);
+  });
+
+  testWidgets('확인하기로 저장은 조회가 아니라 일정 추가로 분류한다', (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) =>
+              const VoiceInputScreen(autoStartOverride: false),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '일정 확인: ${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '음성 관리: ${extra['action']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(
+      find.byType(TextField),
+      '내일 오전 원주 세브란스 병원 약재과 방문해서 제 2 세덱스 통과됐는지 확인하기로 저장',
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('직접 입력'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('일정 확인:'), findsOneWidget);
+    expect(find.textContaining('확인하기로 저장'), findsOneWidget);
+    expect(find.textContaining('음성 관리:'), findsNothing);
+  });
+
+  testWidgets('사전분석이 조회로 잘못 봐도 저장 의도가 있으면 추가를 우선한다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final fakeAnalysis = _FakeIntentAnalysisService(
+      intent: VoiceCommandIntent.query,
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+            voiceAnalysisService: fakeAnalysis,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '일정 확인: ${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '음성 관리: ${extra['action']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pump();
+
+    fakeStt.emitPartial('내일 세브란스 방문해서 확인하기로 저장');
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('완료'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('일정 확인:'), findsOneWidget);
+    expect(find.textContaining('음성 관리:'), findsNothing);
   });
 }

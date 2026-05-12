@@ -298,6 +298,45 @@ void main() {
     expect(firstTitle.data, '아이스크림 전달');
   });
 
+  testWidgets('음성 수정 후보 검색은 한 음절 STT 오인식도 후보 문맥으로 보정한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '아이스크림 전달',
+          location: '강릉아산',
+        ),
+        _event(id: 'event-2', title: '목요일 오전 회의'),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '오늘 강릉하산에서 아이스크림 전달 일정 이번 주 목요일 오전 9시로 변경',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.text('아이스크림 전달'), findsOneWidget);
+    expect(find.text('목요일 오전 회의'), findsOneWidget);
+    final firstTitle = tester.widgetList<Text>(find.byType(Text)).firstWhere(
+          (widget) => widget.data == '아이스크림 전달' || widget.data == '목요일 오전 회의',
+        );
+    expect(firstTitle.data, '아이스크림 전달');
+  });
+
   testWidgets('수정 명령이 정확히 매칭되지 않아도 대상 후보를 비워두지 않는다', (tester) async {
     final repository = _FakeEventRepository(
       events: [

@@ -520,10 +520,18 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         event.memo ?? '',
         event.supplies.join(' '),
       ].join(' '));
+      final searchableTokens = searchable
+          .split(RegExp(r'\s+'))
+          .where((token) => token.length >= 2)
+          .toList(growable: false);
       var matchScore = 0;
       for (final token in tokens) {
         if (searchable.contains(token)) {
           matchScore += token.length >= 3 ? 2 : 1;
+          continue;
+        }
+        if (_hasFuzzyTokenMatch(token, searchableTokens)) {
+          matchScore += 1;
         }
       }
       var score = matchScore;
@@ -734,6 +742,59 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         .split(RegExp(r'\s+'))
         .map(_stripKoreanParticles)
         .join(' ');
+  }
+
+  bool _hasFuzzyTokenMatch(String token, List<String> searchableTokens) {
+    if (token.length < 3) {
+      return false;
+    }
+    for (final candidate in searchableTokens) {
+      if (candidate.length < 3) {
+        continue;
+      }
+      if ((candidate.length - token.length).abs() > 1) {
+        continue;
+      }
+      if (_editDistanceAtMostOne(token, candidate)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _editDistanceAtMostOne(String left, String right) {
+    if (left == right) {
+      return true;
+    }
+    if ((left.length - right.length).abs() > 1) {
+      return false;
+    }
+    var leftIndex = 0;
+    var rightIndex = 0;
+    var edits = 0;
+    while (leftIndex < left.length && rightIndex < right.length) {
+      if (left.codeUnitAt(leftIndex) == right.codeUnitAt(rightIndex)) {
+        leftIndex += 1;
+        rightIndex += 1;
+        continue;
+      }
+      edits += 1;
+      if (edits > 1) {
+        return false;
+      }
+      if (left.length > right.length) {
+        leftIndex += 1;
+      } else if (right.length > left.length) {
+        rightIndex += 1;
+      } else {
+        leftIndex += 1;
+        rightIndex += 1;
+      }
+    }
+    if (leftIndex < left.length || rightIndex < right.length) {
+      edits += 1;
+    }
+    return edits <= 1;
   }
 
   String _stripKoreanParticles(String token) {

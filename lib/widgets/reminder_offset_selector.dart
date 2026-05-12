@@ -90,48 +90,65 @@ class ReminderOffsetSelector extends StatelessWidget {
   Future<void> _openChoiceSheet(BuildContext context) async {
     final picked = await showModalBottomSheet<Object>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                '일정 알림 선택',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: PlanFlowColors.primary,
-                      fontWeight: FontWeight.w800,
+      builder: (context) {
+        final mediaQuery = MediaQuery.of(context);
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: mediaQuery.size.height * 0.78,
+            ),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                16 + mediaQuery.viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '일정 알림 선택',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: PlanFlowColors.primary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final choice in standardChoices)
+                    ListTile(
+                      leading: Icon(
+                        (choice.offset ?? _noReminderSheetValue) ==
+                                (value ?? _noReminderSheetValue)
+                            ? Icons.check_circle
+                            : Icons.circle_outlined,
+                        color: PlanFlowColors.primary,
+                      ),
+                      title: Text(choice.label),
+                      onTap: () => Navigator.of(context).pop(
+                        choice.offset ?? _noReminderSheetValue,
+                      ),
                     ),
-              ),
-              const SizedBox(height: 8),
-              for (final choice in standardChoices)
-                ListTile(
-                  leading: Icon(
-                    (choice.offset ?? _noReminderSheetValue) ==
-                            (value ?? _noReminderSheetValue)
-                        ? Icons.check_circle
-                        : Icons.circle_outlined,
-                    color: PlanFlowColors.primary,
+                  ListTile(
+                    leading: const Icon(Icons.tune),
+                    title: const Text('직접 선택'),
+                    subtitle:
+                        value == null ? null : Text('${value!.inMinutes}분 전'),
+                    onTap: () async {
+                      Navigator.of(context).pop(
+                        await _pickCustomMinutes(context),
+                      );
+                    },
                   ),
-                  title: Text(choice.label),
-                  onTap: () => Navigator.of(context).pop(
-                    choice.offset ?? _noReminderSheetValue,
-                  ),
-                ),
-              ListTile(
-                leading: const Icon(Icons.tune),
-                title: const Text('직접 선택'),
-                subtitle: value == null ? null : Text('${value!.inMinutes}분 전'),
-                onTap: () async {
-                  Navigator.of(context).pop(await _pickCustomMinutes(context));
-                },
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
     if (picked == null) {
       return;

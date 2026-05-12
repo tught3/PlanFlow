@@ -308,3 +308,10 @@
 - Added regression tests for the reported `오늘 강릉 아산에서 아이스크림 전달이라고 되어 있는 일정 이번 주 목요일로 바꿔 줘 오전 9시로` phrase and for empty-match fallback ordering.
 - Review passed with a separate verifier agent finding no blocking issues.
 - Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, full `./scripts/flutter-local.ps1 test --no-pub` (237 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `32145`.
+
+## 2026-05-12 Voice Intent Manual Input And Reminder Sheet Checkpoint
+- Fixed voice input routing so add/save cues such as `확인하기로 저장` win over query-like content words, while phrases like `저장된 일정 보여줘` still route to query.
+- Preserved direct manual transcript edits against both prepared AI drafts and late partial STT updates, so the visible user-edited text remains the source of truth.
+- Added candidate-aware fuzzy matching for voice edit target search so one-syllable STT misses such as `강릉하산` can still rank the saved `강릉아산` event without hardcoded place replacements.
+- Made the reminder offset bottom sheet scroll-controlled and safe-area constrained so compact screens no longer show the Flutter bottom overflow stripe.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused voice/action/analysis/reminder tests, full `./scripts/flutter-local.ps1 test --no-pub` (244 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `2734`.

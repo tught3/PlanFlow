@@ -726,7 +726,10 @@ class VoiceCommandAnalysisService {
     if (RegExp(r'(수정|변경|바꿔|미뤄|앞당겨|옮겨|고쳐|편집)').hasMatch(normalized)) {
       return VoiceCommandIntent.edit;
     }
-    if (RegExp(r'(찾아|검색|확인|알려|언제|어디|뭐야|조회)').hasMatch(normalized)) {
+    if (_hasAddIntentCue(normalized)) {
+      return VoiceCommandIntent.add;
+    }
+    if (_hasQueryIntentCue(normalized)) {
       return VoiceCommandIntent.query;
     }
     if (RegExp(r'(선택|이걸로|이거|그걸로|골라|첫번째|두번째|셋째)').hasMatch(normalized)) {
@@ -755,7 +758,21 @@ class VoiceCommandAnalysisService {
   bool _hasCommandCue(String text) {
     final normalized = _normalizeText(text, '');
     return RegExp(
-      r'(추가|등록|새로|기록|메모|예약|만들어|해줘|해줄래|바꿔|수정|변경|삭제|지워|찾아|검색|알려|선택|이걸로|이거)',
+      r'(추가|등록|저장(?!된|한|되어|돼)|새로|기록|메모|예약|만들어|해줘|해줄래|바꿔|수정|변경|삭제|지워|찾아|검색|알려|선택|이걸로|이거)',
+    ).hasMatch(normalized);
+  }
+
+  bool _hasAddIntentCue(String text) {
+    final normalized = _normalizeText(text, '');
+    return RegExp(
+      r'(추가|등록|저장(?!된|한|되어|돼)|기록|메모|예약|만들어|일정으로|하기로\s*저장|로\s*저장)',
+    ).hasMatch(normalized);
+  }
+
+  bool _hasQueryIntentCue(String text) {
+    final normalized = _normalizeText(text, '');
+    return RegExp(
+      r'(찾아\s*줘|찾아\s*주세요|검색|알려\s*줘|알려\s*주세요|언제|어디|뭐야|조회|보여\s*줘|보여\s*주세요|일정\s*확인|확인해\s*줘|확인해\s*주세요)',
     ).hasMatch(normalized);
   }
 

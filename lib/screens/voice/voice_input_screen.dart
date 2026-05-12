@@ -77,7 +77,6 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
   void _handleRawTextChanged() {
     if (!_isApplyingTranscriptProgrammatically &&
-        _rawTextFocusNode.hasFocus &&
         _rawTextController.text.trim().isNotEmpty) {
       _didEditTranscriptManually = true;
       _clearPreparedDraft();
@@ -142,7 +141,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
     try {
       final result = await widget.sttService.listen(
-        onPartialResult: _setTranscriptText,
+        onPartialResult: (text) {
+          if (!_didEditTranscriptManually) {
+            _setTranscriptText(text);
+          }
+        },
         onRestart: (count) {
           if (!mounted) {
             return;
@@ -255,7 +258,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
 
     final preparedDraft = _preparedDraftForCurrentText(rawText);
-    final preparedAction = _actionFromPreparedDraft(preparedDraft);
+    final preparedAction = _resolvePreparedActionForText(
+      preparedDraft,
+      rawText,
+    );
     final commandAction =
         preparedAction ?? await _detectCommandActionForSubmit(rawText);
     if (!mounted) {
@@ -345,11 +351,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     ).hasMatch(normalized)) {
       return _VoiceCommandAction.edit;
     }
-    if (RegExp(r'(조회|알려|보여|뭐야|몇 시|일정 있어|일정있어)').hasMatch(normalized)) {
-      return _VoiceCommandAction.query;
-    }
-    if (RegExp(r'(추가|등록|만들|넣어|예약|기록)').hasMatch(normalized)) {
+    if (_hasAddIntentCue(normalized)) {
       return _VoiceCommandAction.add;
+    }
+    if (_hasQueryIntentCue(normalized)) {
+      return _VoiceCommandAction.query;
     }
     return _VoiceCommandAction.add;
   }
@@ -367,7 +373,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         text,
         stage: VoiceCommandAnalysisStage.complete,
       );
-      return _actionFromAnalysisIntent(analysis.intent);
+      final analyzedAction = _actionFromAnalysisIntent(analysis.intent);
+      if (localAction == _VoiceCommandAction.add &&
+          analyzedAction == _VoiceCommandAction.query &&
+          _hasAddIntentCue(text)) {
+        return _VoiceCommandAction.add;
+      }
+      return analyzedAction;
     } catch (error) {
       debugPrint('VoiceInputScreen submit analysis failed: $error');
       return localAction;
@@ -394,6 +406,31 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       'choose' => _VoiceCommandAction.choose,
       _ => null,
     };
+  }
+
+  _VoiceCommandAction? _resolvePreparedActionForText(
+    Map<String, dynamic>? draft,
+    String text,
+  ) {
+    final action = _actionFromPreparedDraft(draft);
+    if (action == _VoiceCommandAction.query && _hasAddIntentCue(text)) {
+      return _VoiceCommandAction.add;
+    }
+    return action;
+  }
+
+  bool _hasAddIntentCue(String text) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
+    return RegExp(
+      r'(추가|등록|저장(?!된|한|되어|돼)|만들|넣어|예약|기록|일정으로|하기로\s*저장|로\s*저장)',
+    ).hasMatch(normalized);
+  }
+
+  bool _hasQueryIntentCue(String text) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
+    return RegExp(
+      r'(조회|알려\s*줘|알려\s*주세요|보여\s*줘|보여\s*주세요|뭐야|몇\s*시|일정\s*있어|일정있어|일정\s*확인|확인해\s*줘|확인해\s*주세요)',
+    ).hasMatch(normalized);
   }
 
   void _setTranscriptText(String text) {

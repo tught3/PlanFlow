@@ -255,5 +255,34 @@ void main() {
         isFalse,
       );
     });
+
+    test('treats 확인하기로 저장 as add but 일정 확인해줘 as query locally', () async {
+      final service = VoiceCommandAnalysisService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 7, 9, 0),
+        maxAiRequests: 0,
+      );
+
+      final saveResult = await service.analyze(
+        '내일 오전 원주 세브란스 병원 약재과 방문해서 제 2 세덱스 통과됐는지 확인하기로 저장',
+        stage: VoiceCommandAnalysisStage.complete,
+      );
+      expect(saveResult.method, VoiceCommandAnalysisMethod.local);
+      expect(saveResult.intent, VoiceCommandIntent.add);
+
+      final queryResult = await service.analyze(
+        '오늘 일정 확인해줘',
+        stage: VoiceCommandAnalysisStage.complete,
+      );
+      expect(queryResult.method, VoiceCommandAnalysisMethod.local);
+      expect(queryResult.intent, VoiceCommandIntent.query);
+
+      final savedQueryResult = await service.analyze(
+        '저장된 일정 보여줘',
+        stage: VoiceCommandAnalysisStage.complete,
+      );
+      expect(savedQueryResult.method, VoiceCommandAnalysisMethod.local);
+      expect(savedQueryResult.intent, VoiceCommandIntent.query);
+    });
   });
 }
