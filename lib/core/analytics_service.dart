@@ -20,16 +20,16 @@ class AnalyticsService {
 
   static Future<void> logVoiceInputCompleted({required int textLength}) =>
       _analytics?.logEvent(
-            name: 'voice_input_completed',
-            parameters: <String, Object>{'text_length': textLength},
-          ) ??
+        name: 'voice_input_completed',
+        parameters: <String, Object>{'text_length': textLength},
+      ) ??
       Future.value();
 
   static Future<void> logVoiceInputFailed({required String reason}) =>
       _analytics?.logEvent(
-            name: 'voice_input_failed',
-            parameters: <String, Object>{'reason': reason},
-          ) ??
+        name: 'voice_input_failed',
+        parameters: <String, Object>{'reason': reason},
+      ) ??
       Future.value();
 
   static Future<void> logScheduleParsed({
@@ -37,19 +37,19 @@ class AnalyticsService {
     required bool hasLocation,
   }) =>
       _analytics?.logEvent(
-            name: 'schedule_parsed',
-            parameters: <String, Object>{
-              'has_time': hasTime,
-              'has_location': hasLocation,
-            },
-          ) ??
+        name: 'schedule_parsed',
+        parameters: <String, Object>{
+          'has_time': hasTime,
+          'has_location': hasLocation,
+        },
+      ) ??
       Future.value();
 
   static Future<void> logScheduleParseFailed({required String reason}) =>
       _analytics?.logEvent(
-            name: 'schedule_parse_failed',
-            parameters: <String, Object>{'reason': reason},
-          ) ??
+        name: 'schedule_parse_failed',
+        parameters: <String, Object>{'reason': reason},
+      ) ??
       Future.value();
 
   static Future<void> logScheduleConfirmed() =>
@@ -61,9 +61,9 @@ class AnalyticsService {
   // ── 일정 관리 ────────────────────────────────────────────────
   static Future<void> logEventCreated({required String source}) =>
       _analytics?.logEvent(
-            name: 'event_created',
-            parameters: <String, Object>{'source': source},
-          ) ??
+        name: 'event_created',
+        parameters: <String, Object>{'source': source},
+      ) ??
       Future.value();
 
   static Future<void> logEventEdited() =>
@@ -81,14 +81,13 @@ class AnalyticsService {
 
   static Future<void> logBriefingTestPlayed({required bool isMorning}) =>
       _analytics?.logEvent(
-            name: 'briefing_test_played',
-            parameters: <String, Object>{'is_morning': isMorning},
-          ) ??
+        name: 'briefing_test_played',
+        parameters: <String, Object>{'is_morning': isMorning},
+      ) ??
       Future.value();
 
   static Future<void> logDepartureAlarmTriggered() =>
-      _analytics?.logEvent(name: 'departure_alarm_triggered') ??
-      Future.value();
+      _analytics?.logEvent(name: 'departure_alarm_triggered') ?? Future.value();
 
   // ── 인증 ─────────────────────────────────────────────────────
   static Future<void> logLogin({required String method}) =>
@@ -107,9 +106,9 @@ class AnalyticsService {
     required int count,
   }) =>
       _analytics?.logEvent(
-            name: 'calendar_sync_completed',
-            parameters: <String, Object>{'type': type, 'count': count},
-          ) ??
+        name: 'calendar_sync_completed',
+        parameters: <String, Object>{'type': type, 'count': count},
+      ) ??
       Future.value();
 
   static Future<void> logCalendarSyncFailed({
@@ -117,12 +116,20 @@ class AnalyticsService {
     required String error,
   }) =>
       _analytics?.logEvent(
-            name: 'calendar_sync_failed',
-            parameters: <String, Object>{'type': type, 'error': error},
-          ) ??
+        name: 'calendar_sync_failed',
+        parameters: <String, Object>{'type': type, 'error': error},
+      ) ??
       Future.value();
 
   // ── 홈 위젯 ─────────────────────────────────────────────────
   static Future<void> logWidgetTapped() =>
       _analytics?.logEvent(name: 'widget_tapped') ?? Future.value();
+
+  // ── 사용자 피드백 ───────────────────────────────────────────
+  static Future<void> logFeedbackSubmitted({required String type}) =>
+      _analytics?.logEvent(
+        name: 'feedback_submitted',
+        parameters: <String, Object>{'type': type},
+      ) ??
+      Future.value();
 }

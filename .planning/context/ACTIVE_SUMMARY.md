@@ -321,3 +321,10 @@
 - EventEditScreen still saves through `updateEvent` for normal existing events, so moving a Tuesday event to Friday updates the original row rather than creating a duplicate.
 - Added delete candidate regression for `오늘 아이스크림 전달 일정 삭제해 줘` and a UI guard so delete/edit screens never leave the target area visually blank when no candidate is available.
 - Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, full `./scripts/flutter-local.ps1 test --no-pub` (247 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `13784`.
+
+## 2026-05-12 User Feedback Loop Checkpoint
+- Added an in-app `문제 신고 / 의견 보내기` section to Settings with a report sheet for bug, voice recognition, calendar sync, notification, map/location, feature request, and other feedback types.
+- Added `FeedbackRepository` and Supabase `feedback_reports` schema/RLS so signed-in users can insert/select their own reports; normal update/delete remains blocked by having no user policies.
+- Feedback submissions include minimal diagnostics only: app version, platform, OS summary, screen route, and recent calendar sync status keys. Voice files, calendar bodies, and location history are not attached automatically.
+- Wired feedback submission to Analytics `feedback_submitted`, Crashlytics nonfatal log/custom keys, and a mailto fallback for `officialfluxstudio.kr@gmail.com`.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused feedback repository/sheet tests, settings screen regression test, full `./scripts/flutter-local.ps1 test --no-pub` (252 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `15315`.

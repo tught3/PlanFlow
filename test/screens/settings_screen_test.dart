@@ -77,6 +77,11 @@ void main() {
     expect(find.text('Naver CalDAV 직접 연결'), findsNothing);
     expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
     expect(find.text('네이버 CalDAV 일정 가져오기'), findsNothing);
+    final feedbackButton =
+        find.byKey(const ValueKey('settings-feedback-report-button'));
+    await _scrollUntilHitTestable(tester, feedbackButton);
+    expect(find.text('문제 신고 / 의견 보내기'), findsOneWidget);
+    expect(feedbackButton, findsOneWidget);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 

@@ -11,8 +11,10 @@ import '../../core/region_settings.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/calendar_connection_model.dart';
+import '../../data/models/feedback_report_model.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/calendar_connection_repository.dart';
+import '../../data/repositories/feedback_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
@@ -29,6 +31,7 @@ import '../../services/device_calendar_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/naver_caldav_service.dart';
 import '../../services/naver_calendar_permission_service.dart';
+import 'feedback_report_sheet.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -2345,6 +2348,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              FeedbackReportSection(onPressed: _openFeedbackReportSheet),
+              const SizedBox(height: 16),
               if (authProvider.isSignedIn && _backupService != null) ...[
                 _SectionCard(
                   title: '백업 및 복원',
@@ -2393,6 +2398,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _openFeedbackReportSheet() async {
+    FeedbackRepository repository;
+    try {
+      repository = FeedbackRepository.supabase();
+    } on FeedbackSubmissionException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+      return;
+    }
+
+    final submitted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => FeedbackReportSheet(
+        repository: repository,
+        routeOrScreen: 'settings',
+      ),
+    );
+    if (!mounted || submitted != true) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('문제 신고를 보냈어요. 확인하고 반영할게요.')),
     );
   }
 
