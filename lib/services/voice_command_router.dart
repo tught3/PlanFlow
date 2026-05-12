@@ -40,6 +40,11 @@ class VoiceCommandRouter {
     if (RegExp(r'(수정|변경|바꿔|미뤄|앞당겨|옮겨|고쳐|편집|연기|늦춰|당겨)').hasMatch(normalized)) {
       return VoiceCommandRouteIntent.edit;
     }
+    if (_hasQueryIntentCue(normalized)) {
+      if (!_hasExplicitAddIntentCue(normalized)) {
+        return VoiceCommandRouteIntent.query;
+      }
+    }
     if (_hasAddIntentCue(normalized)) {
       return VoiceCommandRouteIntent.add;
     }
@@ -345,10 +350,28 @@ class VoiceCommandRouter {
 
   bool _hasAddIntentCue(String text) {
     final normalized = normalizeManagementText(text);
+    return _hasExplicitAddIntentCue(normalized) ||
+        (_looksLikeScheduleContentToConfirm(normalized) &&
+            _hasScheduleCue(normalized));
+  }
+
+  bool _hasExplicitAddIntentCue(String text) {
+    final normalized = normalizeManagementText(text);
     return RegExp(
-          r'(추가|등록|저장(?!된|한|되어|돼)|기록|메모|예약|만들어|일정으로|하기로\s*저장|로\s*저장)',
-        ).hasMatch(normalized) ||
-        (normalized.endsWith('확인하기') && _hasScheduleCue(normalized));
+      r'(추가|등록|저장(?!된|한|되어|돼)|기록|예약|만들어|일정으로|하기로\s*저장|로\s*저장|메모\s*(?:해|해줘|남겨|기록|저장|추가))',
+    ).hasMatch(normalized);
+  }
+
+  bool _looksLikeScheduleContentToConfirm(String text) {
+    final normalized = normalizeManagementText(text);
+    if (!normalized.endsWith('확인하기')) {
+      return false;
+    }
+    if (RegExp(r'^(오늘|내일|모레|글피)?\s*일정\s*확인하기$')
+        .hasMatch(normalized)) {
+      return false;
+    }
+    return true;
   }
 
   bool _hasQueryIntentCue(String text) {

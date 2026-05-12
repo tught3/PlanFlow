@@ -605,6 +605,46 @@ void main() {
     expect(find.text('일정 확인 화면'), findsNothing);
   });
 
+  testWidgets('내일 일정 확인하기는 일정 추가가 아니라 조회로 분류한다', (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) =>
+              const VoiceInputScreen(autoStartOverride: false),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '음성 관리: ${extra['action']} / ${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '내일 일정 확인하기');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('직접 입력'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('음성 관리: query'), findsOneWidget);
+    expect(find.text('일정 확인 화면'), findsNothing);
+  });
+
   testWidgets('저장된 일정 보여줘는 저장 명령이 아니라 조회로 분류한다', (tester) async {
     final router = GoRouter(
       initialLocation: AppRoutes.voice,

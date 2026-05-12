@@ -18,6 +18,15 @@ void main() {
       expect(queryRoute.intent, VoiceCommandRouteIntent.query);
       expect(queryRoute.targetQuery, isNotEmpty);
 
+      final plainConfirmQuery = router.route('내일 일정 확인하기');
+      expect(plainConfirmQuery.intent, VoiceCommandRouteIntent.query);
+
+      final memoQuery = router.route('메모 보여줘');
+      expect(memoQuery.intent, VoiceCommandRouteIntent.query);
+
+      final memoAdd = router.route('내일 병원 준비물 메모해줘');
+      expect(memoAdd.intent, VoiceCommandRouteIntent.add);
+
       final editRoute = router.route(
         '내일 팀장님 동행방문 다음 주 수요일로 연기',
         context: VoiceTextCleanupContext.edit,

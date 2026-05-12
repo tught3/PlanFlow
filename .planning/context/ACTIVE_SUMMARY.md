@@ -335,3 +335,8 @@
 - Feedback submissions include minimal diagnostics only: app version, platform, OS summary, screen route, and recent calendar sync status keys. Voice files, calendar bodies, and location history are not attached automatically.
 - Wired feedback submission to Analytics `feedback_submitted`, Crashlytics nonfatal log/custom keys, and a mailto fallback for `officialfluxstudio.kr@gmail.com`.
 - Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused feedback repository/sheet tests, settings screen regression test, full `./scripts/flutter-local.ps1 test --no-pub` (252 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `15315`.
+
+## 2026-05-12 Voice Router Query Boundary Checkpoint
+- Tightened the shared voice command router after review so explicit query phrases such as `내일 일정 확인하기` and `메모 보여줘` route to query instead of being swallowed by the add flow.
+- Kept schedule-content phrases such as `오늘 오후 3시에서 4시 사이에 팀장님한테 내일 오는 시간 확인하기` and explicit save phrases such as `확인하기로 저장` on the add path.
+- Added router and voice input regressions for these boundary phrases and verified the focused analyze/test commands.
