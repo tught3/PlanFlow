@@ -290,3 +290,7 @@
 - Fixed `scripts/flutter-local.ps1 analyze` so the repo wrapper no longer passes unsupported `--dart-define` flags to Flutter analyze.
 - Review passed with a separate verifier agent finding no issues in the service/UI/test changes.
 - Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused voice analysis/input tests, full `./scripts/flutter-local.ps1 test --no-pub` (234 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `20743`.
+
+## 2026-05-12 Agent Model Routing Checkpoint
+- Updated `AGENTS.md` model routing so planning remains `gpt-5.5`, while execution and review/verification now use `gpt-5.3-codex-spark`.
+- Verification was document-scoped: checked the AGENTS model routing diff and reran `node scripts/gsd-context-hygiene.mjs`.

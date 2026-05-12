@@ -15,8 +15,8 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 
 ## Model routing
 - Planning: `gpt-5.5`
-- Execution: `gpt-5.4-mini`
-- Review / verification: `gpt-5.4-mini`
+- Execution: `gpt-5.3-codex-spark`
+- Review / verification: `gpt-5.3-codex-spark`
 - If a task benefits from GSD, use GSD first and keep the same model split inside that workflow.
 
 ## Workflow rules
