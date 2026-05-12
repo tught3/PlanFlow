@@ -281,3 +281,12 @@
 - Added a 2nd-release `실시간 음성 비서 모드` section that recommends GPT-Realtime-2 only for explicit multi-turn voice assistant sessions, not for every basic microphone input.
 - Documented the cost/UX guardrails: Realtime sessions must be user-started, separately metered, and still require user confirmation before schedule changes are saved.
 - Verification was document-scoped: reviewed the markdown diff and searched the prompt for the new GPT-Realtime direction entries.
+
+## 2026-05-12 Voice Preanalysis Speed Checkpoint
+- Added `VoiceCommandAnalysisService` to pre-analyze partial/complete microphone text with normalized text, intent, confidence, uncertain fields, schedule fields, target hints, and requested changes.
+- Added session-level AI budget, repeated-text cache, and meaningful-change gating so partial speech analysis can improve speed without calling AI on every transcript update.
+- Wired `VoiceInputScreen` to debounce partial STT text, show compact `일정 분석 중` / `준비됨` status, and pass the prepared draft to ConfirmScreen immediately when the user finishes.
+- Preserved manual text edits: once the user edits the transcript, prepared AI drafts are cleared and the manually confirmed text remains the source of truth.
+- Fixed `scripts/flutter-local.ps1 analyze` so the repo wrapper no longer passes unsupported `--dart-define` flags to Flutter analyze.
+- Review passed with a separate verifier agent finding no issues in the service/UI/test changes.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused voice analysis/input tests, full `./scripts/flutter-local.ps1 test --no-pub` (234 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `20743`.

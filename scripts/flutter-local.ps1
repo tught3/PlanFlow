@@ -26,7 +26,7 @@ if ($Args.Count -eq 0) {
 $command = $Args[0]
 $flutterArgs = @($Args)
 
-if ($defineArgs.Count -gt 0) {
+if ($defineArgs.Count -gt 0 -and $command -ne 'analyze') {
   if ($command -eq 'build' -and $Args.Count -ge 2) {
     $flutterArgs = @($command, $Args[1]) + $defineArgs + $Args[2..($Args.Count - 1)]
   } elseif ($Args.Count -gt 1) {

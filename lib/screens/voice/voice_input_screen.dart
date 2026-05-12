@@ -12,6 +12,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../core/analytics_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/stt_service.dart';
+import '../../services/voice_command_analysis_service.dart';
 import '../../services/voice_text_cleanup_service.dart';
 
 class VoiceInputScreen extends StatefulWidget {
@@ -19,12 +20,14 @@ class VoiceInputScreen extends StatefulWidget {
     super.key,
     this.sttService = const SttService(),
     this.gptService,
+    this.voiceAnalysisService,
     this.autoStartOverride,
     this.settingsRepository,
   });
 
   final SttService sttService;
   final GptService? gptService;
+  final VoiceCommandAnalysisService? voiceAnalysisService;
   final bool? autoStartOverride;
   final SettingsRepository? settingsRepository;
 
@@ -36,18 +39,26 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   final TextEditingController _rawTextController = TextEditingController();
   final FocusNode _rawTextFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
+  Timer? _draftPreparationDebounce;
+  late final VoiceCommandAnalysisService _voiceAnalysisService;
 
   bool _isListening = false;
   String? _recognizedText;
   String? _statusMessage;
+  String? _analysisStatusMessage;
   int _sttRestartCount = 0;
   bool _didResolveAutoStart = false;
   bool _isApplyingTranscriptProgrammatically = false;
   bool _didEditTranscriptManually = false;
+  int _draftPreparationToken = 0;
+  Map<String, dynamic>? _preparedDraft;
+  String? _preparedDraftSourceText;
 
   @override
   void initState() {
     super.initState();
+    _voiceAnalysisService =
+        widget.voiceAnalysisService ?? VoiceCommandAnalysisService();
     _rawTextController.addListener(_handleRawTextChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeAutoStartVoiceInput();
@@ -56,6 +67,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
   @override
   void dispose() {
+    _draftPreparationDebounce?.cancel();
     _rawTextController.removeListener(_handleRawTextChanged);
     _rawTextController.dispose();
     _rawTextFocusNode.dispose();
@@ -68,6 +80,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         _rawTextFocusNode.hasFocus &&
         _rawTextController.text.trim().isNotEmpty) {
       _didEditTranscriptManually = true;
+      _clearPreparedDraft();
     }
     if (mounted) {
       setState(() {});
@@ -116,12 +129,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
 
     unawaited(AnalyticsService.logVoiceInputStarted());
+    _clearPreparedDraft();
+    _voiceAnalysisService.resetSession();
 
     setState(() {
       _isListening = true;
       _recognizedText = null;
       _sttRestartCount = 0;
       _statusMessage = null;
+      _analysisStatusMessage = null;
     });
 
     try {
@@ -141,7 +157,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         return;
       }
 
-      if (result.hasText) {
+      if (result.hasText && !_didEditTranscriptManually) {
         _setTranscriptText(result.text ?? '');
       }
 
@@ -215,6 +231,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (_isListening) {
       await widget.sttService.clearActiveTranscript();
     }
+    _clearPreparedDraft();
     _setTranscriptText('');
     if (!mounted) {
       return;
@@ -227,35 +244,60 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   Future<void> _continueWithRawText() async {
     final normalizedText =
         SttService.normalizeVoiceTranscript(_rawTextController.text.trim());
-    final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
     if (!mounted) {
       return;
     }
-    final rawText = cleanup.cleanedText;
+    final rawText =
+        VoiceTextCleanupService.cleanLocally(normalizedText).cleanedText;
     if (rawText.isEmpty) {
       context.push(AppRoutes.confirm, extra: const <String, dynamic>{});
       return;
     }
 
-    final commandAction = _detectCommandAction(rawText);
+    final preparedDraft = _preparedDraftForCurrentText(rawText);
+    final preparedAction = _actionFromPreparedDraft(preparedDraft);
+    final commandAction =
+        preparedAction ?? await _detectCommandActionForSubmit(rawText);
+    if (!mounted) {
+      return;
+    }
     if (commandAction == _VoiceCommandAction.add) {
-      final inferredStartAt = GptService().inferStartAtFromRawText(rawText);
+      if (preparedDraft != null) {
+        context.push(AppRoutes.confirm, extra: preparedDraft);
+        return;
+      }
+
+      final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
+      if (!mounted) {
+        return;
+      }
+      final cleanedText = cleanup.cleanedText;
+      if (cleanedText.isEmpty) {
+        context.push(AppRoutes.confirm, extra: const <String, dynamic>{});
+        return;
+      }
+
+      final inferredStartAt = GptService().inferStartAtFromRawText(cleanedText);
       final shouldParseWithAi = !_didEditTranscriptManually;
       context.push(
         AppRoutes.confirm,
         extra: <String, dynamic>{
-          if (_didEditTranscriptManually) 'title': rawText,
-          'raw_text': rawText,
+          if (_didEditTranscriptManually) 'title': cleanedText,
+          'raw_text': cleanedText,
           if (cleanup.changed) 'original_raw_text': cleanup.originalText,
           if (cleanup.changed) 'voice_cleanup_method': cleanup.method.name,
           if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
-          'memo': rawText,
+          'memo': cleanedText,
           if (inferredStartAt != null)
             'start_at': inferredStartAt.toIso8601String(),
           if (shouldParseWithAi) 'parse_pending': true,
           if (_didEditTranscriptManually) 'manual_text_confirmed': true,
         },
       );
+      return;
+    }
+    final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
+    if (!mounted) {
       return;
     }
     context.push(
@@ -312,6 +354,48 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     return _VoiceCommandAction.add;
   }
 
+  Future<_VoiceCommandAction> _detectCommandActionForSubmit(
+    String text,
+  ) async {
+    final localAction = _detectCommandAction(text);
+    if (_didEditTranscriptManually || localAction != _VoiceCommandAction.add) {
+      return localAction;
+    }
+
+    try {
+      final analysis = await _voiceAnalysisService.analyze(
+        text,
+        stage: VoiceCommandAnalysisStage.complete,
+      );
+      return _actionFromAnalysisIntent(analysis.intent);
+    } catch (error) {
+      debugPrint('VoiceInputScreen submit analysis failed: $error');
+      return localAction;
+    }
+  }
+
+  _VoiceCommandAction _actionFromAnalysisIntent(VoiceCommandIntent intent) {
+    return switch (intent) {
+      VoiceCommandIntent.add => _VoiceCommandAction.add,
+      VoiceCommandIntent.edit => _VoiceCommandAction.edit,
+      VoiceCommandIntent.delete => _VoiceCommandAction.delete,
+      VoiceCommandIntent.query => _VoiceCommandAction.query,
+      VoiceCommandIntent.choose => _VoiceCommandAction.choose,
+    };
+  }
+
+  _VoiceCommandAction? _actionFromPreparedDraft(Map<String, dynamic>? draft) {
+    final intent = draft?['voice_intent']?.toString().trim();
+    return switch (intent) {
+      'add' => _VoiceCommandAction.add,
+      'edit' => _VoiceCommandAction.edit,
+      'delete' => _VoiceCommandAction.delete,
+      'query' => _VoiceCommandAction.query,
+      'choose' => _VoiceCommandAction.choose,
+      _ => null,
+    };
+  }
+
   void _setTranscriptText(String text) {
     if (!mounted) {
       return;
@@ -326,6 +410,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       );
     });
     _isApplyingTranscriptProgrammatically = false;
+    _scheduleDraftPreparation(nextText);
   }
 
   String _removeLastWord(String text) {
@@ -354,6 +439,100 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     });
   }
 
+  void _scheduleDraftPreparation(String text) {
+    final normalizedText = VoiceTextCleanupService.cleanLocally(
+      SttService.normalizeVoiceTranscript(text),
+    ).cleanedText;
+
+    if (!_isListening ||
+        _didEditTranscriptManually ||
+        normalizedText.isEmpty ||
+        _detectCommandAction(normalizedText) != _VoiceCommandAction.add) {
+      _clearPreparedDraft();
+      return;
+    }
+
+    if (_preparedDraft != null && _preparedDraftSourceText == normalizedText) {
+      return;
+    }
+
+    _draftPreparationDebounce?.cancel();
+    final token = ++_draftPreparationToken;
+
+    if (mounted) {
+      setState(() {
+        _analysisStatusMessage = '일정 분석 중';
+      });
+    }
+
+    _draftPreparationDebounce = Timer(
+      const Duration(milliseconds: 500),
+      () {
+        unawaited(_prepareDraft(normalizedText, token));
+      },
+    );
+  }
+
+  Future<void> _prepareDraft(String text, int token) async {
+    if (!mounted || token != _draftPreparationToken) {
+      return;
+    }
+
+    try {
+      final analysis = await _voiceAnalysisService.analyze(
+        text,
+        stage: VoiceCommandAnalysisStage.partial,
+      );
+      if (!mounted || token != _draftPreparationToken) {
+        return;
+      }
+      final draft = analysis.toParsedScheduleMap();
+      setState(() {
+        _preparedDraft = <String, dynamic>{
+          ...draft,
+          'raw_text': draft['raw_text'] ?? text,
+          if (analysis.confidence < 0.7) 'parse_pending': true,
+        };
+        _preparedDraftSourceText = text;
+        _analysisStatusMessage = '준비됨';
+      });
+    } catch (error) {
+      debugPrint('VoiceInputScreen draft preparation failed: $error');
+      if (!mounted || token != _draftPreparationToken) {
+        return;
+      }
+      setState(() {
+        _preparedDraft = null;
+        _preparedDraftSourceText = null;
+        _analysisStatusMessage = null;
+      });
+    }
+  }
+
+  Map<String, dynamic>? _preparedDraftForCurrentText(String currentText) {
+    if (_didEditTranscriptManually) {
+      return null;
+    }
+    if (_preparedDraft == null || _preparedDraftSourceText != currentText) {
+      return null;
+    }
+    return Map<String, dynamic>.from(_preparedDraft!);
+  }
+
+  void _clearPreparedDraft() {
+    _draftPreparationDebounce?.cancel();
+    _draftPreparationDebounce = null;
+    _draftPreparationToken += 1;
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _preparedDraft = null;
+      _preparedDraftSourceText = null;
+      _analysisStatusMessage = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -363,7 +542,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       bottomNavigationBar: _VoiceBottomControls(
         isListening: _isListening,
         hasText: _rawTextController.text.trim().isNotEmpty,
-        statusMessage: _statusMessage,
+        statusMessage: _statusMessage ?? _analysisStatusMessage,
         onCancel: _cancelVoiceFlow,
         onUndo: _undoLastSegment,
         onClear: _clearTranscript,
@@ -456,42 +635,49 @@ class _VoiceCommandGuide extends StatelessWidget {
                 final visibleBullets =
                     innerConstraints.maxHeight < 112 ? compactBullets : bullets;
 
-                return SizedBox(
-                  width: innerConstraints.maxWidth,
-                  height: innerConstraints.maxHeight,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '이렇게 말해보세요',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: PlanFlowColors.primary,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      ...visibleBullets.map(
-                        (line) => Text(
-                          '• $line',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: PlanFlowColors.textSecondary,
-                            height: 1.22,
+                return SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: innerConstraints.maxHeight,
+                    ),
+                    child: SizedBox(
+                      width: innerConstraints.maxWidth,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '이렇게 말해보세요',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: PlanFlowColors.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
-                        ),
+                          ...visibleBullets.map(
+                            (line) => Text(
+                              '• $line',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: PlanFlowColors.textSecondary,
+                                height: 1.22,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '시간, 장소, 반복 표현을 같이 말하면 더 정확해요.',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.primary,
+                              height: 1.15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        '시간, 장소, 반복 표현을 같이 말하면 더 정확해요.',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: PlanFlowColors.primary,
-                          height: 1.15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 );
               },
