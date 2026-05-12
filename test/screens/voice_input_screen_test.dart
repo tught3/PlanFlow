@@ -333,6 +333,73 @@ void main() {
     expect(find.textContaining('내일 오전 10시 정장집 방문'), findsNothing);
   });
 
+  testWidgets('현재 내용으로 입력 버튼은 수정한 텍스트를 그대로 확인 화면으로 보낸다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              'manual:${extra['manual_text_confirmed'] == true}|pending:${extra['parse_pending'] == true}|raw:${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '내일 오전 11시 정장집 방문');
+    await tester.pump();
+
+    await tester.tap(
+      find.byKey(const ValueKey('voice-input-confirm-current-text-button')),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('manual:true|pending:false|raw:내일 오전 11시 정장집 방문'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('현재 내용으로 입력 버튼은 텍스트가 비었을 때 비활성이다', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: VoiceInputScreen(autoStartOverride: false),
+      ),
+    );
+
+    final button = tester.widgetList(
+      find.byKey(const ValueKey('voice-input-confirm-current-text-button')),
+    );
+    final confirmButton = button.first as FilledButton;
+    expect(confirmButton.onPressed, isNull);
+
+    expect(
+      find.text('현재 내용으로 입력하려면 텍스트를 먼저 입력해 주세요.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('음성 입력 화면은 짧은 사용 예시를 보여준다', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -381,7 +448,8 @@ void main() {
     await tester.enterText(find.byType(TextField), '5분 뒤 요미 허리 약 주기');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('직접 입력'));
+    expect(find.text('현재 내용으로 입력'), findsOneWidget);
+    await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('일정 확인:'), findsOneWidget);
@@ -390,8 +458,7 @@ void main() {
     expect(find.text('음성 관리 화면'), findsNothing);
   });
 
-  testWidgets('이동 표현은 후보 선택이 아니라 수정 화면으로 간다',
-      (tester) async {
+  testWidgets('이동 표현은 후보 선택이 아니라 수정 화면으로 간다', (tester) async {
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
       routes: [
@@ -424,7 +491,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '내일 팀장님 동행방문 다음 주 수요일로 이동');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('직접 입력'));
+    await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('action:edit'), findsOneWidget);
@@ -469,7 +536,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('직접 입력'));
+      await tester.tap(find.text('현재 내용으로 입력'));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('일정 확인:'), findsOneWidget);
@@ -514,7 +581,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '한강 피크닉 수정해줘');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('직접 입력'));
+    await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
     expect(find.text('음성 관리: edit'), findsOneWidget);
@@ -554,7 +621,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '한강 피크닉 내일 열두시반으로 미뤄줘');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('직접 입력'));
+    await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('음성 관리: edit'), findsOneWidget);
@@ -598,7 +665,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('직접 입력'));
+    await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
     expect(find.text('일정 확인: 내일 열두시반 병원'), findsOneWidget);
@@ -638,7 +705,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '내일 일정 확인해줘');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('직접 입력'));
+    await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('음성 관리: query'), findsOneWidget);
@@ -679,7 +746,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '내일 일정 확인하기');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('직접 입력'));
+    await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('음성 관리: query'), findsOneWidget);
@@ -719,7 +786,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '저장된 일정 보여줘');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('직접 입력'));
+    await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('음성 관리: query'), findsOneWidget);
@@ -765,7 +832,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('직접 입력'));
+    await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('일정 확인:'), findsOneWidget);

@@ -458,6 +458,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     });
   }
 
+  Future<void> _confirmManualText() async {
+    await _continueWithRawText();
+  }
+
   void _scheduleDraftPreparation(String text) {
     final normalizedText = VoiceTextCleanupService.cleanLocally(
       SttService.normalizeVoiceTranscript(text),
@@ -565,7 +569,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         onCancel: _cancelVoiceFlow,
         onUndo: _undoLastSegment,
         onClear: _clearTranscript,
-        onManualSubmit: _continueWithRawText,
+        onManualSubmit: _confirmManualText,
         onHome: () => context.go(AppRoutes.home),
         onCalendar: () => context.go(AppRoutes.calendar),
         onSettings: () => context.go(AppRoutes.settings),
@@ -603,9 +607,21 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                 const SizedBox(height: 8),
                 _VoicePrimaryButton(
                   isListening: _isListening,
+                  hasText: _rawTextController.text.trim().isNotEmpty,
                   onTapStart: _startVoiceFlow,
                   onTapFinish: _finishVoiceFlow,
+                  onManualSubmit: _confirmManualText,
                 ),
+                if (_rawTextController.text.trim().isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '현재 내용으로 입력하려면 텍스트를 먼저 입력해 주세요.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -810,23 +826,49 @@ class _VoiceTranscriptSection extends StatelessWidget {
 class _VoicePrimaryButton extends StatelessWidget {
   const _VoicePrimaryButton({
     required this.isListening,
+    required this.hasText,
     required this.onTapStart,
     required this.onTapFinish,
+    required this.onManualSubmit,
   });
 
   final bool isListening;
+  final bool hasText;
   final VoidCallback onTapStart;
   final VoidCallback onTapFinish;
+  final VoidCallback onManualSubmit;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        onPressed: isListening ? onTapFinish : onTapStart,
-        icon: Icon(isListening ? Icons.check : Icons.mic),
-        label: Text(isListening ? '완료' : '음성으로 일정 입력하기'),
+    final voiceButton = FilledButton.icon(
+      onPressed: isListening ? onTapFinish : onTapStart,
+      icon: Icon(isListening ? Icons.check : Icons.mic),
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(isListening ? '완료' : '음성으로 일정 입력하기'),
       ),
+    );
+
+    if (isListening) {
+      return SizedBox(width: double.infinity, child: voiceButton);
+    }
+
+    return Row(
+      children: [
+        Expanded(child: voiceButton),
+        const SizedBox(width: 8),
+        Expanded(
+          child: FilledButton.tonalIcon(
+            key: const ValueKey('voice-input-confirm-current-text-button'),
+            onPressed: hasText ? onManualSubmit : null,
+            icon: const Icon(Icons.check_circle_outline),
+            label: const FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text('현재 내용으로 입력'),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

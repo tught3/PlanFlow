@@ -357,3 +357,11 @@
 - Added an extra router regression test covering `첫번째`, `이걸로`, `선택`, `이거`, `그걸로`, and `골라` so screen candidate selection remains card-tap based instead of voice-routed.
 - Reviewer agents reported no blocking issues; the second review suggested adding `골라`, which was added before final verification.
 - Verification passed: focused voice/location tests, full `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (270 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `25012`.
+
+## 2026-05-12 Voice Manual Resubmit Button Checkpoint
+- Added a visible `현재 내용으로 입력` button next to the idle voice input button, so users can correct the transcript text field and route the currently visible text without starting voice recognition again.
+- The button is disabled when the text field is empty and uses the existing `_continueWithRawText` path, preserving manual edit protection and `manual_text_confirmed` behavior.
+- Kept the listening state simple: while recording, the primary control remains the single `완료` button; the resubmit button appears only when not listening.
+- Added widget tests for corrected text submission and empty-text disabled state, and updated existing voice input tests to use the clearer `현재 내용으로 입력` action.
+- Review passed with a separate verifier agent finding no blocking issues.
+- Verification passed: focused voice input analyze/test, full `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (272 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `17100`.
