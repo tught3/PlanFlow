@@ -75,5 +75,25 @@ void main() {
       expect(tokens, contains('전달'));
       expect(tokens, isNot(contains('삭제')));
     });
+
+    test('화면 후보 선택 표현은 전역 음성 choose intent로 라우팅하지 않는다', () {
+      const router = VoiceCommandRouter();
+
+      for (final phrase in const [
+        '첫번째',
+        '이걸로',
+        '선택',
+        '이거',
+        '그걸로',
+        '골라',
+      ]) {
+        final route = router.route(
+          phrase,
+          context: VoiceTextCleanupContext.edit,
+        );
+
+        expect(route.intent, isNot(VoiceCommandRouteIntent.choose));
+      }
+    });
   });
 }

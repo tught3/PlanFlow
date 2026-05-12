@@ -1,4 +1,4 @@
-# AGENTS.md for `E:\FluxStudio\PlanFlow`
+# AGENTS.md for `C:\PlanFlow`
 
 This file is the top-priority working rule for this repo.
 Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
@@ -22,6 +22,9 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - If a task benefits from GSD, use GSD first and keep the same model split inside that workflow.
 
 ## Workflow rules
+- Mandatory enforcement: for multi-issue or high-risk work, do not report completion unless context hygiene, role/model routing, worker delegation, reviewer verification, fix-after-review loop, tests/build, checkpoint, commit, push, and device run check have all been attempted and explicitly reported.
+- Model routing is not advisory. Use `gpt-5.5` for planning, `gpt-5.3-codex-spark` for normal execution/review, and escalate execution/review to `gpt-5.4-mini` for the high-risk areas listed below.
+- When the user says "AGENTS.md대로" or asks for subagents/reviewer, treat worker and reviewer agents as required. If a tool/runtime limit blocks spawning, close completed agents and retry; if still blocked, report the blocker and continue with the closest safe fallback.
 - Every task must begin with context hygiene: check `.planning/STATE.md`, check `.planning/context/ACTIVE_SUMMARY.md`, and run `node scripts/gsd-context-hygiene.mjs` when it exists. If the script is missing, explicitly record that it is missing and continue.
 - Every completed task/logical change must end with verification, a planning-context checkpoint, a Git commit, and a push to the remote repository.
 - Every completed task/logical change must also end with a fresh build and, when the target device is available, a real run/launch check before reporting completion.
@@ -47,7 +50,7 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - Keep the scope tight; do not add unrelated changes, and report known gaps instead.
 
 ## Repo-specific rules
-- Work from `E:\FluxStudio\PlanFlow` unless the user explicitly changes the working path.
+- Work from `C:\PlanFlow` unless the user explicitly changes the working path.
 - `E:\Project\PlanFlow` is a read-only reference source for files that previously worked, especially login and app flow.
 - `G:\AI-automatic-expense-tracker` is reference-only and must not be modified.
 - `lite-app/` is read-only for this work; do not modify it.
