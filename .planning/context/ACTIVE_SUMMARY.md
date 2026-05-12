@@ -294,3 +294,8 @@
 ## 2026-05-12 Agent Model Routing Checkpoint
 - Updated `AGENTS.md` model routing so planning remains `gpt-5.5`, while execution and review/verification now use `gpt-5.3-codex-spark`.
 - Verification was document-scoped: checked the AGENTS model routing diff and reran `node scripts/gsd-context-hygiene.mjs`.
+
+## 2026-05-12 Cost-Aware Agent Routing Checkpoint
+- Refined `AGENTS.md` model routing so `gpt-5.3-codex-spark` remains the default execution/review model for cost-effective narrow work.
+- Added an explicit escalation rule to use `gpt-5.4-mini` for high-risk work such as calendar sync, auth, timezone/date math, notifications, voice parsing/routing, Supabase schema/RLS, release signing, and broad refactors.
+- Verification was document-scoped: checked the AGENTS model routing diff and reran `node scripts/gsd-context-hygiene.mjs`.

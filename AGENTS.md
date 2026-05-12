@@ -17,6 +17,8 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - Planning: `gpt-5.5`
 - Execution: `gpt-5.3-codex-spark`
 - Review / verification: `gpt-5.3-codex-spark`
+- Escalate execution and/or review to `gpt-5.4-mini` for high-risk work: calendar sync, auth, timezone/date math, notification scheduling, voice parsing/routing, Supabase schema/RLS, release signing, or broad refactors.
+- Keep `gpt-5.3-codex-spark` as the default for narrow UI changes, focused bug fixes, tests, docs, and low-risk plumbing.
 - If a task benefits from GSD, use GSD first and keep the same model split inside that workflow.
 
 ## Workflow rules
