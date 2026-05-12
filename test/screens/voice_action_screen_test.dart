@@ -506,6 +506,62 @@ void main() {
     );
   });
 
+  testWidgets('후보 조회 로그는 필요한 카운트와 대상 검색어를 남긴다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '한강 피크닉',
+          startAt: DateTime.now().add(const Duration(days: 1)),
+        ),
+        _event(
+          id: 'event-2',
+          title: '치과 방문',
+          startAt: DateTime.now().add(const Duration(days: 2)),
+        ),
+      ],
+    );
+    final logs = <String>[];
+    final previousDebugPrint = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) {
+      if (message != null) {
+        logs.add(message);
+      }
+    };
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 일정 수정해줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    debugPrint = previousDebugPrint;
+
+    expect(
+      logs.any(
+        (line) =>
+            line.contains('VoiceActionScreen candidate load: action=edit') &&
+            line.contains('userIdExists=true') &&
+            line.contains('totalEventCount=2') &&
+            line.contains('filteredCount=2') &&
+            line.contains('displayedCount=2') &&
+            line.contains('targetQuery='),
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('음성 삭제 명령은 확인 후 일정을 삭제하고 일정 탭으로 이동한다', (tester) async {
     final repository = _FakeEventRepository(
       events: [
@@ -585,7 +641,7 @@ void main() {
     expect(find.text('삭제하기'), findsOneWidget);
   });
 
-  testWidgets('삭제 후보가 비어도 대상 일정 영역을 빈 화면으로 두지 않는다', (tester) async {
+  testWidgets('저장된 일정이 앱 DB에서 0건이면 복구 카드를 보여준다', (tester) async {
     final router = GoRouter(
       initialLocation: AppRoutes.voiceAction,
       routes: [
@@ -605,7 +661,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('대상 일정'), findsNothing);
-    expect(find.textContaining('조건에 맞는 일정을 찾지 못했어요'), findsOneWidget);
+    expect(find.text('저장된 일정이 앱 DB에서 보이지 않아요'), findsOneWidget);
+    expect(find.textContaining('동기화 후 다시 찾아보거나'), findsOneWidget);
+    expect(find.textContaining('동기화 후 다시 찾기'), findsOneWidget);
+    expect(find.text('새 일정으로 추가'), findsOneWidget);
+    expect(find.text('다시 말하기'), findsOneWidget);
+    expect(find.text('일정 탭 보기'), findsOneWidget);
   });
 }
 

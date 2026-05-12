@@ -11,6 +11,7 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/calendar_auto_sync_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
@@ -224,6 +225,15 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         rankedItems,
         filteredEvents,
       ).map((item) => item.event).take(10).toList(growable: false);
+      debugPrint(
+        'VoiceActionScreen candidate load: '
+        'action=${_selectedAction.name} '
+        'userIdExists=${userId.isNotEmpty} '
+        'totalEventCount=${events.length} '
+        'filteredCount=${filteredEvents.length} '
+        'displayedCount=${ranked.length} '
+        'targetQuery=${routeResult.targetQuery}',
+      );
       if (!mounted) {
         return;
       }
@@ -233,7 +243,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         _events
           ..clear()
           ..addAll(ranked);
-        _message = _emptyMessageForAction(ranked);
+        _message = _emptyMessageForAction(
+          ranked: ranked,
+          totalEvents: events,
+          filteredEvents: filteredEvents,
+        );
         _isLoading = false;
       });
     } catch (error, stackTrace) {
@@ -278,6 +292,19 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       );
     });
     return fallback;
+  }
+
+  Future<void> _syncAndReloadCandidates() async {
+    try {
+      await CalendarAutoSyncService().syncConnectedCalendars(
+        reason: 'voice_action_manual_retry',
+        force: true,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen manual sync failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+    await _loadCandidates();
   }
 
   int _fallbackCandidateScore(DateTime? startAt, DateTime now) {
@@ -360,12 +387,22 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     }).toList(growable: false);
   }
 
-  String? _emptyMessageForAction(List<EventModel> ranked) {
+  String? _emptyMessageForAction({
+    required List<EventModel> ranked,
+    required List<EventModel> totalEvents,
+    required List<EventModel> filteredEvents,
+  }) {
     if (ranked.isNotEmpty) {
       return null;
     }
+    if (totalEvents.isEmpty) {
+      return '동기화 후 다시 찾아보거나 새 일정으로 추가해 주세요.';
+    }
+    if (!_isQuery && filteredEvents.isEmpty) {
+      return '동기화 후 다시 찾아보거나 새 일정으로 추가해 주세요.';
+    }
     if (!_isQuery) {
-      return '조건에 맞는 일정을 찾지 못했어요. 아래에서 새 일정으로 추가하거나 다시 말해 주세요.';
+      return '조건에 맞는 일정을 찾지 못했어요. 최근 또는 다가오는 일정 후보를 다시 보여드릴게요.';
     }
 
     final rangeLabel = _queryRangeLabel(_normalizedRawText);
@@ -651,7 +688,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       VoiceScheduleAction.edit => VoiceCommandRouteIntent.edit,
       VoiceScheduleAction.delete => VoiceCommandRouteIntent.delete,
       VoiceScheduleAction.query => VoiceCommandRouteIntent.query,
-      VoiceScheduleAction.choose => VoiceCommandRouteIntent.choose,
+      VoiceScheduleAction.choose => VoiceCommandRouteIntent.query,
     };
   }
 
@@ -1111,6 +1148,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                   onAdd: _openAddConfirm,
                   onRetryVoice: () => context.go(AppRoutes.voice),
                   onOpenCalendar: () => context.go(AppRoutes.calendar),
+                  onRetrySync: _syncAndReloadCandidates,
                 )
               else ...[
                 Text(
@@ -1725,6 +1763,7 @@ class _EmptyCard extends StatelessWidget {
     this.onAdd,
     this.onRetryVoice,
     this.onOpenCalendar,
+    this.onRetrySync,
   });
 
   final String message;
@@ -1733,6 +1772,7 @@ class _EmptyCard extends StatelessWidget {
   final VoidCallback? onAdd;
   final VoidCallback? onRetryVoice;
   final VoidCallback? onOpenCalendar;
+  final Future<void> Function()? onRetrySync;
 
   @override
   Widget build(BuildContext context) {
@@ -1746,6 +1786,36 @@ class _EmptyCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (showRecoveryActions) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: PlanFlowColors.primaryFaint,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.cloud_off_outlined,
+                      color: PlanFlowColors.primaryMid,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '저장된 일정이 앱 DB에서 보이지 않아요',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
             Text(
               message,
               style: theme.textTheme.bodyMedium?.copyWith(
@@ -1780,6 +1850,15 @@ class _EmptyCard extends StatelessWidget {
                     onPressed: onOpenCalendar,
                     icon: const Icon(Icons.calendar_month_outlined),
                     label: const Text('일정 탭 보기'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: onRetrySync == null
+                        ? null
+                        : () {
+                            unawaited(onRetrySync!());
+                          },
+                    icon: const Icon(Icons.sync_outlined),
+                    label: const Text('동기화 후 다시 찾기'),
                   ),
                 ],
               ),
