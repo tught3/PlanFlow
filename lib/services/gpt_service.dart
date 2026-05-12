@@ -359,6 +359,7 @@ class GptService {
       rawText,
       normalized['category'],
     );
+    _normalizeTitleMemoAndLocation(normalized, rawText);
     normalized['recurrence_rule'] =
         _normalizeRecurrenceFromRawText(rawText, normalized['recurrence_rule']);
     _normalizeEventTypeFromRawText(rawText, normalized);
@@ -418,8 +419,153 @@ class GptService {
         rawText: rawText,
       ),
     };
+    _normalizeTitleMemoAndLocation(fallback, rawText);
     _normalizeEventTypeFromRawText(rawText, fallback);
     return fallback;
+  }
+
+  void _normalizeTitleMemoAndLocation(
+    Map<String, dynamic> schedule,
+    String rawText,
+  ) {
+    final rawTitle = schedule['title']?.toString();
+    final normalizedTitle = _normalizeScheduleTitle(rawTitle, rawText);
+    schedule['title'] = normalizedTitle;
+
+    final normalizedLocation = _normalizeScheduleLocation(
+      schedule['location']?.toString(),
+      rawText,
+      normalizedTitle,
+    );
+    schedule['location'] = normalizedLocation;
+    if (normalizedLocation != null && normalizedTitle.isNotEmpty) {
+      final compactLocation = normalizedLocation.replaceAll(RegExp(r'\s+'), '');
+      if (normalizedTitle == '출발' || normalizedTitle == '도착') {
+        schedule['title'] = '$normalizedLocation ${normalizedTitle.trim()}';
+      } else if (normalizedTitle == compactLocation) {
+        schedule['title'] = '$normalizedLocation 출발';
+      }
+    }
+
+    final memo = schedule['memo']?.toString();
+    schedule['memo'] = _normalizeScheduleMemo(memo);
+  }
+
+  String _normalizeScheduleTitle(String? title, String rawText) {
+    final source = _normalizeKoreanText(
+      (title != null && title.trim().isNotEmpty) ? title : rawText,
+    );
+    final cleaned = _stripScheduleNoise(source);
+    if (cleaned.isNotEmpty) {
+      return _normalizeSpacingForSchedule(cleaned);
+    }
+
+    final fallback = _stripScheduleNoise(_normalizeKoreanText(rawText));
+    if (fallback.isNotEmpty) {
+      return _normalizeSpacingForSchedule(fallback);
+    }
+
+    return '일정';
+  }
+
+  String? _normalizeScheduleLocation(
+    String? location,
+    String rawText,
+    String title,
+  ) {
+    final trimmed = location?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) {
+      return _normalizeSpacingForSchedule(trimmed);
+    }
+
+    final source = _normalizeKoreanText(rawText);
+    final inferredFromDeparture = RegExp(
+      r'([가-힣A-Za-z0-9·.]{2,})\s*(?:에서\s*)?출발',
+    ).firstMatch(source);
+    if (inferredFromDeparture != null) {
+      final inferred = inferredFromDeparture.group(1)?.trim();
+      if (inferred != null && inferred.isNotEmpty) {
+        return _normalizeSpacingForSchedule(inferred);
+      }
+    }
+
+    final inferredFromTitle = RegExp(
+      r'([가-힣A-Za-z0-9·.]{2,})\s*(?:출발|도착)$',
+    ).firstMatch(title);
+    if (inferredFromTitle != null) {
+      final inferred = inferredFromTitle.group(1)?.trim();
+      if (inferred != null && inferred.isNotEmpty) {
+        return _normalizeSpacingForSchedule(inferred);
+      }
+    }
+
+    return null;
+  }
+
+  String? _normalizeScheduleMemo(String? memo) {
+    final source = memo?.trim();
+    if (source == null || source.isEmpty) {
+      return null;
+    }
+    final cleaned = _stripScheduleNoise(_normalizeKoreanText(source));
+    if (cleaned.isEmpty) {
+      return null;
+    }
+    if (_looksLikeOnlyScheduleMetadata(cleaned)) {
+      return null;
+    }
+    return _normalizeSpacingForSchedule(cleaned);
+  }
+
+  String _stripScheduleNoise(String text) {
+    var cleaned = text.replaceAll(RegExp(r'[\(\)\[\]{}]'), ' ');
+    final patterns = <RegExp>[
+      RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
+      RegExp(r'(?:오늘|내일|모레|글피)'),
+      RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
+      RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
+      RegExp(r'\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따)'),
+      RegExp(r'(?:매주|매월|매년|격주|매일)'),
+      RegExp(r'(?:반복|알림|리마인더|알람|reminder)'),
+      RegExp(r'(?:부터|까지|동안|정각|정도|쯤|경|예정|예약)'),
+      RegExp(r'(?:열두시반|열한시반|열시반|한시반|두시반|세시반|네시반)'),
+    ];
+    for (final pattern in patterns) {
+      cleaned = cleaned.replaceAll(pattern, ' ');
+    }
+    cleaned = cleaned
+        .replaceAll(RegExp(r'^\s*(?:에|로|으로)\s+'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return _normalizeSpacingForSchedule(cleaned);
+  }
+
+  bool _looksLikeOnlyScheduleMetadata(String text) {
+    return RegExp(
+      r'^(?:오늘|내일|모레|글피|오전|오후|아침|점심|저녁|밤|새벽|매주|매월|매년|격주|반복|알림|리마인더|알람|\d{1,2}\s*시|\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따))*$',
+    ).hasMatch(text.replaceAll(RegExp(r'\s+'), ''));
+  }
+
+  String _normalizeSpacingForSchedule(String text) {
+    final compact = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.isEmpty) {
+      return compact;
+    }
+
+    final spaced = compact.replaceAllMapped(
+      RegExp(
+        r'([가-힣A-Za-z0-9·.]{2,}?)(출발|도착|미팅|회의|방문|진료|검진|약속|모임|식사|수업|강의|운동|여행|병문안|상담|출근|퇴근|발표|면접|예약)$',
+      ),
+      (match) {
+        final head = match.group(1);
+        final tail = match.group(2);
+        if (head == null || tail == null) {
+          return match.group(0) ?? '';
+        }
+        return '$head $tail';
+      },
+    );
+    return spaced.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   List<String> _normalizeSupplies(Object? supplies) {
@@ -953,12 +1099,16 @@ Return only a valid JSON object.
 Use these keys:
 title, date, start_at, end_at, location, location_lat, location_lng, travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies, is_critical, recurrence_rule, is_all_day, is_multi_day, category, pre_actions.
 start_at and end_at must be ISO-8601 date-time strings when possible.
+Keep date, time, recurrence, and reminder expressions out of title and memo; put them only into the structured fields.
 For Korean relative and colloquial time expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", "열두시반", "오후 두시 반", and "저녁 일곱시 삼십분", resolve them from the current local date and time.
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.
 For recurring schedules, return recurrence_rule as an iCal RRULE such as "FREQ=WEEKLY;BYDAY=TU". Otherwise return null.
 For all-day schedules, set is_all_day true. For multi-day schedules such as "5월 1일부터 3일까지", set is_multi_day true and return both start_at and end_at.
 category must be one of "업무", "개인", "건강", "교육", "기타"; infer conservatively and default to "기타".
 Category examples: "병원 진료" and "헬스장" -> "건강"; "세미나 참석" and "강의" -> "교육"; "JW제약 미팅" -> "업무"; "친구 약속" -> "개인".
+Keep date, time, recurrence, and reminder phrases out of title and memo once they are represented as structured fields.
+Memo is only for an explicit note/description the user wants to keep. Do not copy the full raw utterance into memo.
+Example: "내일 오전 9시에 대전출발" -> title "대전 출발", location "대전", start_at tomorrow 09:00 local, memo null.
 supplies must be an array of strings.
 is_critical must be a boolean.
 pre_actions must be an array of objects with title and offset_hours.

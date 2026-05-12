@@ -552,7 +552,7 @@ void main() {
       logs.any(
         (line) =>
             line.contains('VoiceActionScreen candidate load: action=edit') &&
-            line.contains('userIdExists=true') &&
+            line.contains('userId=있음') &&
             line.contains('totalEventCount=2') &&
             line.contains('filteredCount=2') &&
             line.contains('displayedCount=2') &&
@@ -642,6 +642,8 @@ void main() {
   });
 
   testWidgets('저장된 일정이 앱 DB에서 0건이면 복구 카드를 보여준다', (tester) async {
+    var syncCalls = 0;
+    final repository = _FakeEventRepository(events: const []);
     final router = GoRouter(
       initialLocation: AppRoutes.voiceAction,
       routes: [
@@ -650,7 +652,10 @@ void main() {
           builder: (context, state) => VoiceActionScreen(
             rawText: '오늘 아이스크림 전달 일정 삭제해 줘',
             action: VoiceScheduleAction.delete,
-            eventRepository: _FakeEventRepository(events: const []),
+            eventRepository: repository,
+            forceSyncCalendars: ({required String reason, required bool force}) async {
+              syncCalls += 1;
+            },
             userIdOverride: 'user-1',
           ),
         ),
@@ -661,12 +666,59 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('대상 일정'), findsNothing);
+    expect(syncCalls, 1);
+    expect(repository.listEventsCallCount, 2);
+    expect(find.text('앱 DB에서 일정을 못 불러왔어요'), findsOneWidget);
     expect(find.text('저장된 일정이 앱 DB에서 보이지 않아요'), findsOneWidget);
-    expect(find.textContaining('동기화 후 다시 찾아보거나'), findsOneWidget);
-    expect(find.textContaining('동기화 후 다시 찾기'), findsOneWidget);
+    expect(find.textContaining('action=delete'), findsOneWidget);
+    expect(find.textContaining('userId=있음'), findsOneWidget);
+    expect(find.textContaining('totalEventCount=0'), findsOneWidget);
+    expect(find.textContaining('filteredCount=0'), findsOneWidget);
+    expect(find.textContaining('displayedCount=0'), findsOneWidget);
+    expect(find.textContaining('targetQuery='), findsOneWidget);
     expect(find.text('새 일정으로 추가'), findsOneWidget);
     expect(find.text('다시 말하기'), findsOneWidget);
     expect(find.text('일정 탭 보기'), findsOneWidget);
+    expect(find.text('동기화 후 다시 찾기'), findsOneWidget);
+  });
+
+  testWidgets('0건으로 시작해도 강제 동기화 후 후보가 생기면 바로 다시 보여준다', (tester) async {
+    var syncCalls = 0;
+    final repository = _FakeEventRepository(events: const []);
+    final restoredEvent = _event(
+      id: 'event-restored',
+      title: '아이스크림 전달',
+      startAt: DateTime(2026, 5, 13, 11),
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '오늘 아이스크림 전달 일정 삭제해 줘',
+            action: VoiceScheduleAction.delete,
+            eventRepository: repository,
+            forceSyncCalendars: ({required String reason, required bool force}) async {
+              syncCalls += 1;
+              repository._events.add(restoredEvent);
+            },
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(syncCalls, 1);
+    expect(repository.listEventsCallCount, 2);
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.text('아이스크림 전달'), findsOneWidget);
+    expect(find.text('앱 DB에서 일정을 못 불러왔어요'), findsNothing);
+    expect(find.text('저장된 일정이 앱 DB에서 보이지 않아요'), findsNothing);
   });
 }
 
@@ -686,10 +738,12 @@ EventModel _event({
 }
 
 class _FakeEventRepository extends EventRepository {
-  _FakeEventRepository({required List<EventModel> events}) : _events = events;
+  _FakeEventRepository({required List<EventModel> events})
+      : _events = List<EventModel>.of(events);
 
   final List<EventModel> _events;
   final List<String> deletedEventIds = <String>[];
+  int listEventsCallCount = 0;
 
   @override
   Future<EventModel> createEvent(EventModel event) async => event;
@@ -712,6 +766,7 @@ class _FakeEventRepository extends EventRepository {
 
   @override
   Future<List<EventModel>> listEvents({String? userId}) async {
+    listEventsCallCount += 1;
     return List<EventModel>.of(_events);
   }
 

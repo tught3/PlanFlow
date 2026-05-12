@@ -242,7 +242,7 @@ void main() {
           builder: (context, state) {
             final extra = state.extra as Map<String, dynamic>;
             return Text(
-              'manual:${extra['manual_text_confirmed'] == true}|pending:${extra['parse_pending'] == true}|raw:${extra['raw_text']}',
+              'manual:${extra['manual_text_confirmed'] == true}|pending:${extra['parse_pending'] == true}|raw:${extra['raw_text']}|memo:${extra['memo']}',
               textDirection: TextDirection.ltr,
             );
           },
@@ -275,7 +275,7 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('manual:true|pending:false'), findsOneWidget);
+    expect(find.textContaining('manual:true|pending:true'), findsOneWidget);
     expect(find.textContaining('내일 오전 11시 정장집 방문'), findsOneWidget);
   });
 
@@ -296,7 +296,7 @@ void main() {
           builder: (context, state) {
             final extra = state.extra as Map<String, dynamic>;
             return Text(
-              'manual:${extra['manual_text_confirmed'] == true}|raw:${extra['raw_text']}',
+              'manual:${extra['manual_text_confirmed'] == true}|pending:${extra['parse_pending'] == true}|memo:${extra['memo']}|raw:${extra['raw_text']}',
               textDirection: TextDirection.ltr,
             );
           },
@@ -326,10 +326,8 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    expect(
-      find.textContaining('manual:true|raw:내일 오전 11시 정장집 방문'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('manual:true'), findsOneWidget);
+    expect(find.textContaining('정장집 방문'), findsOneWidget);
     expect(find.textContaining('내일 오전 10시 정장집 방문'), findsNothing);
   });
 
@@ -375,10 +373,10 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    expect(
-      find.textContaining('manual:true|pending:false|raw:내일 오전 11시 정장집 방문'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('manual:true'), findsOneWidget);
+    expect(find.textContaining('pending:true'), findsOneWidget);
+    expect(find.textContaining('memo:내일 오전 11시 정장집 방문'), findsNothing);
+    expect(find.textContaining('정장집 방문'), findsOneWidget);
   });
 
   testWidgets('현재 내용으로 입력 버튼은 텍스트가 비었을 때 비활성이다', (tester) async {

@@ -365,3 +365,11 @@
 - Added widget tests for corrected text submission and empty-text disabled state, and updated existing voice input tests to use the clearer `현재 내용으로 입력` action.
 - Review passed with a separate verifier agent finding no blocking issues.
 - Verification passed: focused voice input analyze/test, full `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (272 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `17100`.
+
+## 2026-05-12 Voice Add Memo Cleanup And Candidate Diagnostics Checkpoint
+- Removed default raw transcript memo injection from voice add flows, including the voice action add-confirm handoff, so date/time phrases are not copied into memo by default.
+- ConfirmScreen no longer seeds memo from `raw_text` and no longer restores `raw_text` during GPT hydration; manual text submissions can still hydrate structured fields when `parse_pending=true`, while later user edits remain protected.
+- Hardened GptService schedule normalization and prompt guidance so date/time/recurrence/reminder metadata is stripped from title/memo and simple phrases such as `내일 오전 9시에 대전출발` become title `대전 출발`, location `대전`, memo null, and the inferred KST start time.
+- VoiceActionScreen now retries one forced calendar sync when edit/delete/query candidate DB reads return 0 events, then renders a recovery card with diagnostics (`action`, `userId`, `totalEventCount`, `filteredCount`, `displayedCount`, `targetQuery`) instead of leaving only the `대상 일정` title.
+- Worker agents split the memo/parsing and candidate-diagnostics scopes; a reviewer agent reported no blocking issues.
+- Verification passed: focused voice/GPT/confirm tests, full `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (274 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `12938`.

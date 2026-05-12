@@ -212,8 +212,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       text: _stringValue(widget.parsedSchedule['location']) ?? '',
     );
     _memoController = TextEditingController(
-      text: _stringValue(widget.parsedSchedule['memo']) ??
-          _stringValue(widget.parsedSchedule['raw_text']),
+      text: _stringValue(widget.parsedSchedule['memo']) ?? '',
     );
     _newSupplyController = TextEditingController();
     _supplies = _stringListValue(
@@ -379,7 +378,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   void _maybeHydrateParsedSchedule() {
-    if (widget.parsedSchedule['manual_text_confirmed'] == true) {
+    if (widget.parsedSchedule['manual_text_confirmed'] == true &&
+        widget.parsedSchedule['parse_pending'] != true) {
       return;
     }
     final rawText = _stringValue(widget.parsedSchedule['raw_text']);
@@ -444,8 +444,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         final memo = _stringValue(parsed['memo']);
         if (!_memoEditedByUser && memo != null && memo.isNotEmpty) {
           _memoController.text = memo;
-        } else if (!_memoEditedByUser && _memoController.text.trim().isEmpty) {
-          _memoController.text = rawText;
         }
 
         final supplies = _stringListValue(parsed['supplies']);

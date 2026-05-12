@@ -287,19 +287,16 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       }
 
       final inferredStartAt = GptService().inferStartAtFromRawText(cleanedText);
-      final shouldParseWithAi = !_didEditTranscriptManually;
       context.push(
         AppRoutes.confirm,
         extra: <String, dynamic>{
-          if (_didEditTranscriptManually) 'title': cleanedText,
           'raw_text': cleanedText,
           if (cleanup.changed) 'original_raw_text': cleanup.originalText,
           if (cleanup.changed) 'voice_cleanup_method': cleanup.method.name,
           if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
-          'memo': cleanedText,
           if (inferredStartAt != null)
             'start_at': inferredStartAt.toIso8601String(),
-          if (shouldParseWithAi) 'parse_pending': true,
+          'parse_pending': true,
           if (_didEditTranscriptManually) 'manual_text_confirmed': true,
         },
       );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -160,18 +162,23 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
-  testWidgets('ConfirmScreen does not let hydration overwrite manual text',
+  testWidgets(
+      'ConfirmScreen keeps user-edited fields while hydrating and does not seed memo from raw text',
       (tester) async {
+    final parseCompleter = Completer<Map<String, dynamic>>();
     await tester.pumpWidget(
       _testApp(
         ConfirmScreen(
           userId: 'user-1',
           parsedSchedule: _parsedSchedule(
-            title: '직접 수정한 일정',
-            location: '직접 수정한 장소',
-            rawText: '음성으로 잘못 인식된 일정',
-          )..['manual_text_confirmed'] = true,
-          gptService: _OverwritingGptService(),
+            title: '초기 제목',
+            location: '',
+            memo: null,
+            rawText: '내일 오전 9시에 대전출발',
+          )
+            ..['parse_pending'] = true
+            ..['manual_text_confirmed'] = true,
+          gptService: _DeferredGptService(parseCompleter.future),
           backend: _FakeConfirmBackend(),
           eventRepository: _FakeEventRepository(),
           notificationService: _FakeNotificationService(),
@@ -180,10 +187,39 @@ void main() {
       ),
     );
 
+    await tester.pump();
+
+    final titleField = find.widgetWithText(TextFormField, '제목');
+    final locationField = find.widgetWithText(TextFormField, '장소');
+    final memoField = find.widgetWithText(TextFormField, '설명');
+
+    expect(tester.widget<TextFormField>(memoField).controller?.text, isEmpty);
+
+    await tester.enterText(titleField, '사용자 제목');
+    await tester.enterText(memoField, '사용자 메모');
+    await tester.pump();
+
+    parseCompleter.complete(
+      <String, dynamic>{
+        'title': 'AI 제목',
+        'location': 'AI 장소',
+        'memo': 'AI 메모',
+        'start_at': DateTime(2026, 5, 11, 9).toIso8601String(),
+        'end_at': null,
+        'supplies': <String>[],
+        'is_critical': false,
+        'pre_actions': <Map<String, dynamic>>[],
+        'parse_failed': false,
+      },
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('직접 수정한 일정'), findsOneWidget);
-    expect(find.text('AI가 바꾼 일정'), findsNothing);
+    expect(tester.widget<TextFormField>(titleField).controller?.text, '사용자 제목');
+    expect(
+        tester.widget<TextFormField>(locationField).controller?.text, 'AI 장소');
+    expect(tester.widget<TextFormField>(memoField).controller?.text, '사용자 메모');
+    expect(find.text('AI 제목'), findsNothing);
+    expect(find.text('AI 메모'), findsNothing);
   });
 
   testWidgets('ConfirmScreen stores Korean wall time as UTC once',
@@ -311,6 +347,7 @@ Map<String, dynamic> _parsedSchedule({
   String? title,
   String? location,
   String? rawText,
+  String? memo = '테스트 일정',
 }) {
   return {
     'title': title ?? '성남 출발',
@@ -318,7 +355,7 @@ Map<String, dynamic> _parsedSchedule({
         .toIso8601String(),
     'end_at': endAt?.toIso8601String(),
     'location': location ?? '성남',
-    'memo': '테스트 일정',
+    'memo': memo,
     'supplies': supplies,
     'is_critical': isCritical,
     'pre_actions': <Map<String, dynamic>>[],
@@ -326,15 +363,14 @@ Map<String, dynamic> _parsedSchedule({
   };
 }
 
-class _OverwritingGptService extends GptService {
+class _DeferredGptService extends GptService {
+  _DeferredGptService(this._resultFuture);
+
+  final Future<Map<String, dynamic>> _resultFuture;
+
   @override
   Future<Map<String, dynamic>> parseSchedule(String rawText) async {
-    return <String, dynamic>{
-      'title': 'AI가 바꾼 일정',
-      'location': 'AI가 바꾼 장소',
-      'memo': 'AI가 바꾼 메모',
-      'start_at': DateTime(2026, 5, 11, 9).toIso8601String(),
-    };
+    return _resultFuture;
   }
 }
 

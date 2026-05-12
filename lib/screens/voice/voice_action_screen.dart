@@ -29,6 +29,7 @@ class VoiceActionScreen extends StatefulWidget {
     this.gptService,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
+    this.forceSyncCalendars,
     this.userIdOverride,
   })  : sideEffectService =
             sideEffectService ?? const ManualEventSideEffectService(),
@@ -40,6 +41,8 @@ class VoiceActionScreen extends StatefulWidget {
   final GptService? gptService;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
+  final Future<void> Function({required String reason, required bool force})?
+      forceSyncCalendars;
   final String? userIdOverride;
 
   @override
@@ -54,6 +57,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   bool _hasChosenAction = false;
   VoiceTextCleanupResult? _cleanupResult;
   VoiceCommandRouteResult? _routeResult;
+  _CandidateLoadDiagnostics? _candidateLoadDiagnostics;
 
   late VoiceScheduleAction _selectedAction;
   late final VoiceCommandRouter _voiceCommandRouter;
@@ -140,7 +144,6 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     }
     final parsed = <String, dynamic>{
       'raw_text': _normalizedRawText,
-      'memo': _normalizedRawText,
       'parse_pending': true,
     };
     await context.push(AppRoutes.confirm, extra: parsed);
@@ -161,11 +164,12 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     );
   }
 
-  Future<void> _loadCandidates() async {
+  Future<void> _loadCandidates({bool allowAutoSyncRetry = true}) async {
     if (_isAdd) {
       setState(() {
         _events.clear();
         _message = null;
+        _candidateLoadDiagnostics = null;
         _isLoading = false;
       });
       return;
@@ -181,6 +185,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       if (userId == null) {
         setState(() {
           _message = '로그인 후 음성으로 일정을 관리할 수 있어요.';
+          _candidateLoadDiagnostics = null;
           _isLoading = false;
         });
         return;
@@ -189,12 +194,19 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       if (!AppEnv.isSupabaseReady && widget.eventRepository == null) {
         setState(() {
           _message = 'Supabase 설정이 없어 저장된 일정을 불러올 수 없어요.';
+          _candidateLoadDiagnostics = null;
           _isLoading = false;
         });
         return;
       }
 
       final events = await _repository.listEvents(userId: userId);
+      if (events.isEmpty &&
+          allowAutoSyncRetry &&
+          _canAutoRetryEmptyLoad) {
+        await _syncAndReloadCandidates();
+        return;
+      }
       var filteredEvents = _filterEventsForAction(events);
       var cleanup = VoiceTextCleanupService.cleanLocally(
         widget.rawText,
@@ -225,14 +237,16 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         rankedItems,
         filteredEvents,
       ).map((item) => item.event).take(10).toList(growable: false);
+      final diagnostics = _CandidateLoadDiagnostics(
+        action: _selectedAction.name,
+        userIdAvailable: userId.isNotEmpty,
+        totalEventCount: events.length,
+        filteredCount: filteredEvents.length,
+        displayedCount: ranked.length,
+        targetQuery: routeResult.targetQuery,
+      );
       debugPrint(
-        'VoiceActionScreen candidate load: '
-        'action=${_selectedAction.name} '
-        'userIdExists=${userId.isNotEmpty} '
-        'totalEventCount=${events.length} '
-        'filteredCount=${filteredEvents.length} '
-        'displayedCount=${ranked.length} '
-        'targetQuery=${routeResult.targetQuery}',
+        'VoiceActionScreen candidate load: ${diagnostics.toLogLine()}',
       );
       if (!mounted) {
         return;
@@ -240,14 +254,19 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       setState(() {
         _cleanupResult = cleanup;
         _routeResult = routeResult;
+        _candidateLoadDiagnostics = diagnostics;
         _events
           ..clear()
           ..addAll(ranked);
-        _message = _emptyMessageForAction(
-          ranked: ranked,
-          totalEvents: events,
-          filteredEvents: filteredEvents,
-        );
+        _message = events.isEmpty &&
+                !allowAutoSyncRetry &&
+                _canAutoRetryEmptyLoad
+            ? '앱 DB에서 일정을 못 불러왔어요'
+            : _emptyMessageForAction(
+                ranked: ranked,
+                totalEvents: events,
+                filteredEvents: filteredEvents,
+              );
         _isLoading = false;
       });
     } catch (error, stackTrace) {
@@ -258,6 +277,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       }
       setState(() {
         _message = '저장된 일정을 불러오지 못했어요. 로그인 상태와 스토리지를 확인해 주세요.';
+        _candidateLoadDiagnostics = null;
         _isLoading = false;
       });
     }
@@ -296,7 +316,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
 
   Future<void> _syncAndReloadCandidates() async {
     try {
-      await CalendarAutoSyncService().syncConnectedCalendars(
+      await _invokeForceSyncCalendars(
         reason: 'voice_action_manual_retry',
         force: true,
       );
@@ -304,7 +324,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       debugPrint('VoiceActionScreen manual sync failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
-    await _loadCandidates();
+    await _loadCandidates(allowAutoSyncRetry: false);
   }
 
   int _fallbackCandidateScore(DateTime? startAt, DateTime now) {
@@ -347,6 +367,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       _hasChosenAction = true;
       _events.clear();
       _message = action == VoiceScheduleAction.add ? '일정 확인 화면으로 이동합니다.' : null;
+      _candidateLoadDiagnostics = null;
       _isLoading = action != VoiceScheduleAction.add;
     });
 
@@ -407,6 +428,24 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
 
     final rangeLabel = _queryRangeLabel(_normalizedRawText);
     return '$rangeLabel 일정은 아직 없어요. 새 일정이 필요하면 “추가”로 바로 등록할 수 있습니다.';
+  }
+
+  bool get _canAutoRetryEmptyLoad =>
+      widget.eventRepository == null || widget.forceSyncCalendars != null;
+
+  Future<void> _invokeForceSyncCalendars({
+    required String reason,
+    required bool force,
+  }) async {
+    final override = widget.forceSyncCalendars;
+    if (override != null) {
+      await override(reason: reason, force: force);
+      return;
+    }
+    await CalendarAutoSyncService().syncConnectedCalendars(
+      reason: reason,
+      force: force,
+    );
   }
 
   _DateRange? _queryDateRange(String rawText) {
@@ -1107,7 +1146,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       appBar: AppBar(title: Text(title)),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadCandidates,
+          onRefresh: () => _loadCandidates(),
           child: ListView(
             cacheExtent: 1200,
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
@@ -1139,12 +1178,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                     child: CircularProgressIndicator(),
                   ),
                 )
-              else if (_message != null || (!_isAdd && _events.isEmpty))
+              else if (!_isAdd && _events.isEmpty)
                 _EmptyCard(
                   message: _message ??
                       '대상 일정을 찾지 못했어요. 캘린더 동기화 상태를 확인하거나 다시 말해 주세요.',
                   rawText: _normalizedRawText,
                   showRecoveryActions: !_isAdd,
+                  diagnosticsText: _candidateLoadDiagnostics?.toDisplayText(),
                   onAdd: _openAddConfirm,
                   onRetryVoice: () => context.go(AppRoutes.voice),
                   onOpenCalendar: () => context.go(AppRoutes.calendar),
@@ -1760,6 +1800,7 @@ class _EmptyCard extends StatelessWidget {
     required this.message,
     this.rawText,
     this.showRecoveryActions = false,
+    this.diagnosticsText,
     this.onAdd,
     this.onRetryVoice,
     this.onOpenCalendar,
@@ -1769,6 +1810,7 @@ class _EmptyCard extends StatelessWidget {
   final String message;
   final String? rawText;
   final bool showRecoveryActions;
+  final String? diagnosticsText;
   final VoidCallback? onAdd;
   final VoidCallback? onRetryVoice;
   final VoidCallback? onOpenCalendar;
@@ -1822,6 +1864,24 @@ class _EmptyCard extends StatelessWidget {
                 color: PlanFlowColors.textSecondary,
               ),
             ),
+            if (diagnosticsText != null && diagnosticsText!.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                '후보 조회 결과',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: PlanFlowColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                diagnosticsText!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ],
             if (showRecoveryActions) ...[
               const SizedBox(height: 12),
               if (rawText != null && rawText!.trim().isNotEmpty)
@@ -1868,6 +1928,37 @@ class _EmptyCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CandidateLoadDiagnostics {
+  const _CandidateLoadDiagnostics({
+    required this.action,
+    required this.userIdAvailable,
+    required this.totalEventCount,
+    required this.filteredCount,
+    required this.displayedCount,
+    required this.targetQuery,
+  });
+
+  final String action;
+  final bool userIdAvailable;
+  final int totalEventCount;
+  final int filteredCount;
+  final int displayedCount;
+  final String targetQuery;
+
+  String toDisplayText() {
+    return [
+      'action=$action',
+      'userId=${userIdAvailable ? '있음' : '없음'}',
+      'totalEventCount=$totalEventCount',
+      'filteredCount=$filteredCount',
+      'displayedCount=$displayedCount',
+      'targetQuery=${targetQuery.isEmpty ? '(비어 있음)' : targetQuery}',
+    ].join('\n');
+  }
+
+  String toLogLine() => toDisplayText().replaceAll('\n', ' ');
 }
 
 class _EventCandidateCard extends StatelessWidget {

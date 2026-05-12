@@ -138,6 +138,42 @@ void main() {
       expect(result['title'], 'meeting tomorrow at 3pm');
     });
 
+    test(
+        'fallback parsing strips date time and reminder noise from title and memo',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': 'not valid json',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 10, 12),
+      );
+
+      final result = await service.parseSchedule('내일 오전 9시에 대전출발');
+
+      expect(result['parse_failed'], isTrue);
+      expect(result['start_at'], '2026-05-11T09:00:00.000');
+      expect(result['title'], '대전 출발');
+      expect(result['location'], '대전');
+      expect(result['memo'], isNull);
+    });
+
     test('infers a Korean relative start time when JSON omits start_at',
         () async {
       final client = MockClient((request) async {
