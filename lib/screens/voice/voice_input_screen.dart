@@ -12,6 +12,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../core/analytics_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/stt_service.dart';
+import '../../services/voice_command_router.dart';
 import '../../services/voice_command_analysis_service.dart';
 import '../../services/voice_text_cleanup_service.dart';
 
@@ -41,6 +42,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   final ScrollController _scrollController = ScrollController();
   Timer? _draftPreparationDebounce;
   late final VoiceCommandAnalysisService _voiceAnalysisService;
+  late final VoiceCommandRouter _voiceCommandRouter;
 
   bool _isListening = false;
   String? _recognizedText;
@@ -59,6 +61,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     super.initState();
     _voiceAnalysisService =
         widget.voiceAnalysisService ?? VoiceCommandAnalysisService();
+    _voiceCommandRouter = const VoiceCommandRouter();
     _rawTextController.addListener(_handleRawTextChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeAutoStartVoiceInput();
@@ -338,26 +341,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   }
 
   _VoiceCommandAction _detectCommandAction(String text) {
-    final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
-    if (RegExp(r'(일정\s*관리|관리해|무엇을\s*할|뭘\s*할|어떻게\s*할|선택)')
-        .hasMatch(normalized)) {
-      return _VoiceCommandAction.choose;
-    }
-    if (RegExp(r'(삭제|지워|없애)').hasMatch(normalized)) {
-      return _VoiceCommandAction.delete;
-    }
-    if (RegExp(
-      r'(수정|바꿔|바꾸|고쳐|고치|변경|옮겨|옮기|미뤄|미루|연기|앞당겨|당겨|늦춰|늦추|시간\s*조정|시간\s*변경|장소\s*변경)',
-    ).hasMatch(normalized)) {
-      return _VoiceCommandAction.edit;
-    }
-    if (_hasAddIntentCue(normalized)) {
-      return _VoiceCommandAction.add;
-    }
-    if (_hasQueryIntentCue(normalized)) {
-      return _VoiceCommandAction.query;
-    }
-    return _VoiceCommandAction.add;
+    return _actionFromRouteIntent(_voiceCommandRouter.resolveIntent(text));
   }
 
   Future<_VoiceCommandAction> _detectCommandActionForSubmit(
@@ -376,7 +360,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       final analyzedAction = _actionFromAnalysisIntent(analysis.intent);
       if (localAction == _VoiceCommandAction.add &&
           analyzedAction == _VoiceCommandAction.query &&
-          _hasAddIntentCue(text)) {
+          _voiceCommandRouter.resolveIntent(text) ==
+              VoiceCommandRouteIntent.add) {
         return _VoiceCommandAction.add;
       }
       return analyzedAction;
@@ -393,6 +378,16 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       VoiceCommandIntent.delete => _VoiceCommandAction.delete,
       VoiceCommandIntent.query => _VoiceCommandAction.query,
       VoiceCommandIntent.choose => _VoiceCommandAction.choose,
+    };
+  }
+
+  _VoiceCommandAction _actionFromRouteIntent(VoiceCommandRouteIntent intent) {
+    return switch (intent) {
+      VoiceCommandRouteIntent.add => _VoiceCommandAction.add,
+      VoiceCommandRouteIntent.edit => _VoiceCommandAction.edit,
+      VoiceCommandRouteIntent.delete => _VoiceCommandAction.delete,
+      VoiceCommandRouteIntent.query => _VoiceCommandAction.query,
+      VoiceCommandRouteIntent.choose => _VoiceCommandAction.choose,
     };
   }
 
@@ -413,24 +408,12 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     String text,
   ) {
     final action = _actionFromPreparedDraft(draft);
-    if (action == _VoiceCommandAction.query && _hasAddIntentCue(text)) {
+    if (action == _VoiceCommandAction.query &&
+        _voiceCommandRouter.resolveIntent(text) ==
+            VoiceCommandRouteIntent.add) {
       return _VoiceCommandAction.add;
     }
     return action;
-  }
-
-  bool _hasAddIntentCue(String text) {
-    final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
-    return RegExp(
-      r'(추가|등록|저장(?!된|한|되어|돼)|만들|넣어|예약|기록|일정으로|하기로\s*저장|로\s*저장)',
-    ).hasMatch(normalized);
-  }
-
-  bool _hasQueryIntentCue(String text) {
-    final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
-    return RegExp(
-      r'(조회|알려\s*줘|알려\s*주세요|보여\s*줘|보여\s*주세요|뭐야|몇\s*시|일정\s*있어|일정있어|일정\s*확인|확인해\s*줘|확인해\s*주세요)',
-    ).hasMatch(normalized);
   }
 
   void _setTranscriptText(String text) {

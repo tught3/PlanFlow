@@ -14,6 +14,7 @@ import '../../services/event_refresh_bus.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
+import '../../services/voice_command_router.dart';
 import '../../services/voice_text_cleanup_service.dart';
 
 enum VoiceScheduleAction { add, edit, delete, query, choose }
@@ -51,8 +52,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   String? _message;
   bool _hasChosenAction = false;
   VoiceTextCleanupResult? _cleanupResult;
+  VoiceCommandRouteResult? _routeResult;
 
   late VoiceScheduleAction _selectedAction;
+  late final VoiceCommandRouter _voiceCommandRouter;
 
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
@@ -64,11 +67,14 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   bool get _isChoose => _selectedAction == VoiceScheduleAction.choose;
   String get _normalizedRawText =>
       _cleanupResult?.cleanedText ??
-      _normalizeVoiceManagementText(widget.rawText);
+      _voiceCommandRouter.normalizeManagementText(widget.rawText);
+  List<String> get _requestedChanges =>
+      _routeResult?.requestedChanges ?? const <String>[];
 
   @override
   void initState() {
     super.initState();
+    _voiceCommandRouter = const VoiceCommandRouter();
     _selectedAction = widget.action;
     unawaited(_loadCandidates());
   }
@@ -194,7 +200,12 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         context: _cleanupContext(),
         candidates: _cleanupCandidates(filteredEvents),
       );
-      var rankedItems = _rankEventItems(filteredEvents, cleanup.cleanedText);
+      var routeResult = _routeResultForText(
+        cleanup.cleanedText,
+        filteredEvents,
+      );
+      var rankedItems =
+          _rankEventItems(filteredEvents, routeResult.targetQuery);
 
       if (_shouldTryAiCleanup(cleanup, rankedItems)) {
         cleanup = await _cleanupWithAi(
@@ -202,7 +213,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
           filteredEvents,
         );
         filteredEvents = _filterEventsForAction(events, cleanup.cleanedText);
-        rankedItems = _rankEventItems(filteredEvents, cleanup.cleanedText);
+        routeResult = _routeResultForText(
+          cleanup.cleanedText,
+          filteredEvents,
+        );
+        rankedItems = _rankEventItems(filteredEvents, routeResult.targetQuery);
       }
 
       final ranked = _candidateEventsForDisplay(
@@ -214,6 +229,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       }
       setState(() {
         _cleanupResult = cleanup;
+        _routeResult = routeResult;
         _events
           ..clear()
           ..addAll(ranked);
@@ -512,25 +528,22 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
 
   List<_RankedEvent> _rankEventItems(List<EventModel> events, String rawText) {
     final now = DateTime.now();
-    final tokens = _tokens(rawText);
+    final tokens = _voiceCommandRouter.searchTokens(rawText);
     final ranked = events.map((event) {
-      final searchable = _normalizeSearchText([
+      final searchable = _voiceCommandRouter.normalizeManagementText([
         event.title,
         event.location ?? '',
         event.memo ?? '',
         event.supplies.join(' '),
       ].join(' '));
-      final searchableTokens = searchable
-          .split(RegExp(r'\s+'))
-          .where((token) => token.length >= 2)
-          .toList(growable: false);
+      final searchableTokens = _voiceCommandRouter.searchTokens(searchable);
       var matchScore = 0;
       for (final token in tokens) {
         if (searchable.contains(token)) {
           matchScore += token.length >= 3 ? 2 : 1;
           continue;
         }
-        if (_hasFuzzyTokenMatch(token, searchableTokens)) {
+        if (_voiceCommandRouter.hasFuzzyTokenMatch(token, searchableTokens)) {
           matchScore += 1;
         }
       }
@@ -620,218 +633,26 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         .toList(growable: false);
   }
 
-  List<String> _tokens(String text) {
-    const stopWords = {
-      '일정',
-      '수정',
-      '수정해',
-      '변경',
-      '변경해',
-      '바꿔',
-      '고쳐',
-      '고치',
-      '삭제',
-      '삭제해',
-      '추가',
-      '등록',
-      '보여',
-      '찾아',
-      '조회',
-      '바꾸',
-      '옮겨',
-      '옮기',
-      '미뤄',
-      '미루',
-      '연기',
-      '앞당겨',
-      '당겨',
-      '늦춰',
-      '늦추',
-      '시간',
-      '날짜',
-      '장소',
-      '오늘',
-      '내일',
-      '모레',
-      '글피',
-      '이번',
-      '이번주',
-      '이번 주',
-      '다음주',
-      '다음 주',
-      '월요일',
-      '화요일',
-      '수요일',
-      '목요일',
-      '금요일',
-      '토요일',
-      '일요일',
-      '오전',
-      '오후',
-      '아침',
-      '점심',
-      '저녁',
-      '밤',
-      '무엇',
-      '뭐',
-      '되어',
-      '있는',
-      '이라고',
-      '라고',
-      '이름',
-      '제목',
+  VoiceCommandRouteResult _routeResultForText(
+    String text,
+    List<EventModel> events,
+  ) {
+    return _voiceCommandRouter.route(
+      text,
+      intent: _routeIntentFromAction(_selectedAction),
+      context: _cleanupContext(),
+      candidates: _cleanupCandidates(events),
+    );
+  }
+
+  VoiceCommandRouteIntent _routeIntentFromAction(VoiceScheduleAction action) {
+    return switch (action) {
+      VoiceScheduleAction.add => VoiceCommandRouteIntent.add,
+      VoiceScheduleAction.edit => VoiceCommandRouteIntent.edit,
+      VoiceScheduleAction.delete => VoiceCommandRouteIntent.delete,
+      VoiceScheduleAction.query => VoiceCommandRouteIntent.query,
+      VoiceScheduleAction.choose => VoiceCommandRouteIntent.choose,
     };
-    final seen = <String>{};
-    return _targetSearchText(text)
-        .replaceAll(RegExp(r'[^0-9a-z가-힣\s]'), ' ')
-        .split(RegExp(r'\s+'))
-        .expand(_tokenVariants)
-        .where(
-          (token) =>
-              token.length >= 2 &&
-              !stopWords.contains(token) &&
-              seen.add(token),
-        )
-        .toList(growable: false);
-  }
-
-  String _targetSearchText(String text) {
-    var normalized = _normalizeVoiceManagementText(text);
-    normalized = normalized
-        .replaceAll(RegExp(r'(이라고|라고)\s*(되어\s*)?(있는|있던)?\s*일정'), ' ')
-        .replaceAll(RegExp(r'(되어\s*있는|되어\s*있던|되있는|돼있는)\s*일정'), ' ')
-        .replaceAll(RegExp(r'(일정\s*)?(이번\s*주|이번주|다음\s*주|다음주).*$'), ' ')
-        .replaceAll(RegExp(r'(이번\s*주|이번주|다음\s*주|다음주).*$'), ' ')
-        .replaceAll(
-            RegExp(
-                r'(오늘|내일|모레|글피)\s*(오전|오후|아침|점심|저녁|밤)?\s*[0-9가-힣]{1,8}\s*시.*$'),
-            ' ')
-        .replaceAll(RegExp(r'(오전|오후|아침|점심|저녁|밤)\s*[0-9가-힣]{1,8}\s*시.*$'), ' ')
-        .replaceAll(RegExp(r'\d{1,2}\s*월\s*\d{1,2}\s*일.*$'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    return normalized.isEmpty
-        ? _normalizeVoiceManagementText(text)
-        : normalized;
-  }
-
-  List<String> _tokenVariants(String rawToken) {
-    final token = _stripKoreanParticles(rawToken.trim());
-    if (token.isEmpty) {
-      return const <String>[];
-    }
-    final variants = <String>{token};
-    final withoutSchedule = token.replaceAll(RegExp(r'(일정|스케줄)$'), '');
-    if (withoutSchedule.length >= 2) {
-      variants.add(withoutSchedule);
-    }
-    if (token.endsWith('전달일정')) {
-      variants.add(token.replaceFirst(RegExp(r'일정$'), ''));
-    }
-    final withoutQuoteEnding =
-        token.replaceAll(RegExp(r'(이라고|라고|이라는|라는)$'), '');
-    if (withoutQuoteEnding.length >= 2) {
-      variants.add(withoutQuoteEnding);
-    }
-    return variants.toList(growable: false);
-  }
-
-  String _normalizeSearchText(String text) {
-    return _normalizeVoiceManagementText(text)
-        .replaceAll(RegExp(r'[^0-9a-z가-힣\s]'), ' ')
-        .split(RegExp(r'\s+'))
-        .map(_stripKoreanParticles)
-        .join(' ');
-  }
-
-  bool _hasFuzzyTokenMatch(String token, List<String> searchableTokens) {
-    if (token.length < 3) {
-      return false;
-    }
-    for (final candidate in searchableTokens) {
-      if (candidate.length < 3) {
-        continue;
-      }
-      if ((candidate.length - token.length).abs() > 1) {
-        continue;
-      }
-      if (_editDistanceAtMostOne(token, candidate)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  bool _editDistanceAtMostOne(String left, String right) {
-    if (left == right) {
-      return true;
-    }
-    if ((left.length - right.length).abs() > 1) {
-      return false;
-    }
-    var leftIndex = 0;
-    var rightIndex = 0;
-    var edits = 0;
-    while (leftIndex < left.length && rightIndex < right.length) {
-      if (left.codeUnitAt(leftIndex) == right.codeUnitAt(rightIndex)) {
-        leftIndex += 1;
-        rightIndex += 1;
-        continue;
-      }
-      edits += 1;
-      if (edits > 1) {
-        return false;
-      }
-      if (left.length > right.length) {
-        leftIndex += 1;
-      } else if (right.length > left.length) {
-        rightIndex += 1;
-      } else {
-        leftIndex += 1;
-        rightIndex += 1;
-      }
-    }
-    if (leftIndex < left.length || rightIndex < right.length) {
-      edits += 1;
-    }
-    return edits <= 1;
-  }
-
-  String _stripKoreanParticles(String token) {
-    var value = token.toLowerCase().trim();
-    for (final suffix in const <String>[
-      '에서',
-      '으로',
-      '부터',
-      '까지',
-      '에게',
-      '한테',
-      '이라고',
-      '라고',
-      '이라는',
-      '라는',
-      '로',
-      '에',
-      '을',
-      '를',
-      '은',
-      '는',
-      '이',
-      '가',
-      '와',
-      '과',
-      '도',
-    ]) {
-      if (value.length > suffix.length + 1 && value.endsWith(suffix)) {
-        value = value.substring(0, value.length - suffix.length);
-        break;
-      }
-    }
-    return value;
-  }
-
-  String _normalizeVoiceManagementText(String text) {
-    return VoiceTextCleanupService.normalizeBasic(text).toLowerCase();
   }
 
   Future<void> _openEdit(EventModel event) async {
@@ -915,6 +736,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   }
 
   DateTime? _inferRequestedStartLocal(EventModel event) {
+    if (_requestedChanges.isNotEmpty &&
+        !_requestedChanges.contains('start_at')) {
+      return null;
+    }
     final text = _normalizedRawText;
     final originalStartLocal =
         event.startAt == null ? planflowNow() : planflowLocal(event.startAt!);
@@ -1028,6 +853,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   }
 
   String? _inferRequestedLocation() {
+    if (_requestedChanges.isNotEmpty &&
+        !_requestedChanges.contains('location')) {
+      return null;
+    }
     final match = RegExp(r'(?:장소|위치)\s*(?:를|을)?\s*(.+?)(?:로|으로)\s*(?:변경|바꿔|수정)')
         .firstMatch(_normalizedRawText);
     final location = match?.group(1)?.trim();

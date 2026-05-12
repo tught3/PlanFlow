@@ -390,6 +390,56 @@ void main() {
     expect(find.text('음성 관리 화면'), findsNothing);
   });
 
+  testWidgets(
+    '오늘 오후 3시에서 4시 사이에 팀장님한테 내일 오는 시간 확인하기는 추가로 분류된다',
+    (tester) async {
+      final router = GoRouter(
+        initialLocation: AppRoutes.voice,
+        routes: [
+          GoRoute(
+            path: AppRoutes.voice,
+            builder: (context, state) =>
+                const VoiceInputScreen(autoStartOverride: false),
+          ),
+          GoRoute(
+            path: AppRoutes.confirm,
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>;
+              return Text(
+                '일정 확인: ${extra['raw_text']}',
+                textDirection: TextDirection.ltr,
+              );
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.voiceAction,
+            builder: (context, state) => const Text(
+              '음성 관리 화면',
+              textDirection: TextDirection.ltr,
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.enterText(
+        find.byType(TextField),
+        '오늘 오후 3시에서 4시 사이에 팀장님한테 내일 오는 시간 확인하기',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('직접 입력'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('일정 확인:'), findsOneWidget);
+      expect(
+        find.textContaining('오늘 오후 3시에서 4시 사이에 팀장님한테 내일 오는 시간 확인하기'),
+        findsOneWidget,
+      );
+      expect(find.text('음성 관리 화면'), findsNothing);
+    },
+  );
+
   testWidgets('수정 의도가 명확하면 음성 관리 화면으로 이동한다', (tester) async {
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
@@ -514,7 +564,7 @@ void main() {
     expect(find.textContaining('내일 열두시반 병원 내일'), findsNothing);
   });
 
-  testWidgets('오늘 일정 알려줘는 음성 조회 화면으로 이동한다', (tester) async {
+  testWidgets('내일 일정 확인해줘는 음성 조회 화면으로 이동한다', (tester) async {
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
       routes: [
@@ -544,14 +594,14 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.enterText(find.byType(TextField), '오늘 일정 알려줘');
+    await tester.enterText(find.byType(TextField), '내일 일정 확인해줘');
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('직접 입력'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('음성 관리: query'), findsOneWidget);
-    expect(find.textContaining('오늘 일정 알려줘'), findsOneWidget);
+    expect(find.textContaining('내일 일정 확인해줘'), findsOneWidget);
     expect(find.text('일정 확인 화면'), findsNothing);
   });
 

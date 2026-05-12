@@ -383,6 +383,50 @@ void main() {
     expect(firstTitle.data, '아이스크림 전달');
   });
 
+  testWidgets('내일 팀장님 동행방문 다음 주 수요일로 연기는 수정 후보를 표시한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '팀장님 동행방문',
+          location: '본사',
+          startAt: DateTime(2026, 5, 13, 11),
+        ),
+        _event(
+          id: 'event-2',
+          title: '아이스크림 전달',
+          location: '강릉아산',
+        ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '내일 팀장님 동행방문 다음 주 수요일로 연기',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.text('팀장님 동행방문'), findsOneWidget);
+    expect(find.text('아이스크림 전달'), findsOneWidget);
+    final firstTitle = tester.widgetList<Text>(find.byType(Text)).firstWhere(
+          (widget) => widget.data == '팀장님 동행방문' || widget.data == '아이스크림 전달',
+        );
+    expect(firstTitle.data, '팀장님 동행방문');
+  });
+
   testWidgets('수정 명령이 정확히 매칭되지 않아도 대상 후보를 비워두지 않는다', (tester) async {
     final repository = _FakeEventRepository(
       events: [

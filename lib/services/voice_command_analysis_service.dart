@@ -7,6 +7,7 @@ import '../core/event_metadata.dart';
 import '../core/local_time.dart';
 import 'gpt_service.dart';
 import 'remote_config_service.dart';
+import 'voice_command_router.dart';
 import 'voice_text_cleanup_service.dart';
 
 enum VoiceCommandAnalysisStage {
@@ -184,6 +185,7 @@ class VoiceCommandAnalysisService {
   final VoiceAnalysisRequestBudget _sessionBudget;
   final Map<String, VoiceCommandAnalysisResult> _aiCache =
       <String, VoiceCommandAnalysisResult>{};
+  static const VoiceCommandRouter _router = VoiceCommandRouter();
 
   VoiceCommandAnalysisResult? _latestDraft;
 
@@ -608,67 +610,15 @@ class VoiceCommandAnalysisService {
     Iterable<VoiceTextCleanupCandidate> candidates, {
     required VoiceTextCleanupContext context,
   }) {
-    if (context == VoiceTextCleanupContext.add || candidates.isEmpty) {
-      return null;
-    }
-
-    final queryTokens = _analysisTokens(text);
-    if (queryTokens.isEmpty) {
-      return null;
-    }
-
-    VoiceTextCleanupCandidate? bestCandidate;
-    var bestScore = 0;
-    for (final candidate in candidates) {
-      final candidateTokens = _analysisTokens(candidate.searchableText);
-      if (candidateTokens.isEmpty) {
-        continue;
-      }
-      final score =
-          queryTokens.toSet().intersection(candidateTokens.toSet()).length;
-      if (score > bestScore) {
-        bestScore = score;
-        bestCandidate = candidate;
-      }
-    }
-
-    if (bestCandidate == null || bestScore == 0) {
-      return null;
-    }
-
-    return <String, dynamic>{
-      'title': bestCandidate.title,
-      if (bestCandidate.location != null &&
-          bestCandidate.location!.trim().isNotEmpty)
-        'location': bestCandidate.location!.trim(),
-      if (bestCandidate.startAt != null)
-        'start_at': bestCandidate.startAt!.toIso8601String(),
-      'score': bestScore,
-    };
+    return _router.buildTargetEventHint(
+      text,
+      candidates,
+      context: context,
+    );
   }
 
   List<String> _inferRequestedChanges(String text) {
-    final normalized = _normalizeText(text, '');
-    final changes = <String>{};
-    if (RegExp(r'(시간|시각|언제|몇\s*시|오전|오후|아침|점심|저녁|밤)').hasMatch(normalized)) {
-      changes.add('start_at');
-    }
-    if (RegExp(r'(장소|위치|어디|주소|가는\s*길|오시는\s*길)').hasMatch(normalized)) {
-      changes.add('location');
-    }
-    if (RegExp(r'(제목|이름|명칭|무슨\s*일|내용|텍스트)').hasMatch(normalized)) {
-      changes.add('title');
-    }
-    if (RegExp(r'(메모|설명|노트|비고)').hasMatch(normalized)) {
-      changes.add('memo');
-    }
-    if (RegExp(r'(반복|매주|매월|매년|격주)').hasMatch(normalized)) {
-      changes.add('recurrence_rule');
-    }
-    if (RegExp(r'(하루\s*종일|하루종일|종일|온종일)').hasMatch(normalized)) {
-      changes.add('is_all_day');
-    }
-    return changes.toList(growable: false);
+    return _router.extractRequestedChanges(text);
   }
 
   List<String> _localUncertainFields({
@@ -719,27 +669,12 @@ class VoiceCommandAnalysisService {
     String text, {
     required VoiceTextCleanupContext context,
   }) {
-    final normalized = _normalizeText(text, '');
-    if (RegExp(r'(삭제|지워|없애|취소|제거)').hasMatch(normalized)) {
-      return VoiceCommandIntent.delete;
-    }
-    if (RegExp(r'(수정|변경|바꿔|미뤄|앞당겨|옮겨|고쳐|편집)').hasMatch(normalized)) {
-      return VoiceCommandIntent.edit;
-    }
-    if (_hasAddIntentCue(normalized)) {
-      return VoiceCommandIntent.add;
-    }
-    if (_hasQueryIntentCue(normalized)) {
-      return VoiceCommandIntent.query;
-    }
-    if (RegExp(r'(선택|이걸로|이거|그걸로|골라|첫번째|두번째|셋째)').hasMatch(normalized)) {
-      return VoiceCommandIntent.choose;
-    }
-    return switch (context) {
-      VoiceTextCleanupContext.delete => VoiceCommandIntent.delete,
-      VoiceTextCleanupContext.edit => VoiceCommandIntent.edit,
-      VoiceTextCleanupContext.query => VoiceCommandIntent.query,
-      VoiceTextCleanupContext.add => VoiceCommandIntent.add,
+    return switch (_router.resolveIntent(text, context: context)) {
+      VoiceCommandRouteIntent.add => VoiceCommandIntent.add,
+      VoiceCommandRouteIntent.edit => VoiceCommandIntent.edit,
+      VoiceCommandRouteIntent.delete => VoiceCommandIntent.delete,
+      VoiceCommandRouteIntent.query => VoiceCommandIntent.query,
+      VoiceCommandRouteIntent.choose => VoiceCommandIntent.choose,
     };
   }
 
@@ -759,20 +694,6 @@ class VoiceCommandAnalysisService {
     final normalized = _normalizeText(text, '');
     return RegExp(
       r'(추가|등록|저장(?!된|한|되어|돼)|새로|기록|메모|예약|만들어|해줘|해줄래|바꿔|수정|변경|삭제|지워|찾아|검색|알려|선택|이걸로|이거)',
-    ).hasMatch(normalized);
-  }
-
-  bool _hasAddIntentCue(String text) {
-    final normalized = _normalizeText(text, '');
-    return RegExp(
-      r'(추가|등록|저장(?!된|한|되어|돼)|기록|메모|예약|만들어|일정으로|하기로\s*저장|로\s*저장)',
-    ).hasMatch(normalized);
-  }
-
-  bool _hasQueryIntentCue(String text) {
-    final normalized = _normalizeText(text, '');
-    return RegExp(
-      r'(찾아\s*줘|찾아\s*주세요|검색|알려\s*줘|알려\s*주세요|언제|어디|뭐야|조회|보여\s*줘|보여\s*주세요|일정\s*확인|확인해\s*줘|확인해\s*주세요)',
     ).hasMatch(normalized);
   }
 
@@ -829,55 +750,6 @@ class VoiceCommandAnalysisService {
       return PlanFlowEventCategories.personal;
     }
     return PlanFlowEventCategories.etc;
-  }
-
-  List<String> _analysisTokens(String text) {
-    final normalized = _normalizeText(text, '');
-    if (normalized.isEmpty) {
-      return <String>[];
-    }
-    return normalized
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^0-9a-z가-힣\s]'), ' ')
-        .split(RegExp(r'\s+'))
-        .map(_stripKoreanParticles)
-        .where((token) => token.isNotEmpty)
-        .toList(growable: false);
-  }
-
-  String _stripKoreanParticles(String token) {
-    var value = token.trim();
-    const suffixes = <String>[
-      '으로써',
-      '으로서',
-      '에서',
-      '에게',
-      '께',
-      '까지',
-      '부터',
-      '처럼',
-      '보다',
-      '만',
-      '도',
-      '은',
-      '는',
-      '이',
-      '가',
-      '을',
-      '를',
-      '와',
-      '과',
-      '에',
-      '로',
-      '의',
-    ];
-    for (final suffix in suffixes) {
-      if (value.length > suffix.length && value.endsWith(suffix)) {
-        value = value.substring(0, value.length - suffix.length);
-        break;
-      }
-    }
-    return value;
   }
 
   List<Map<String, dynamic>> _normalizePreActions(Object? preActions) {
