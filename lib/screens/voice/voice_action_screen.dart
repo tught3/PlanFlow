@@ -835,6 +835,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   }
 
   Future<void> _openEdit(EventModel event) async {
+    final editedEvent = _eventWithRequestedVoiceChanges(event);
+    final appliedVoiceChange = editedEvent.startAt != event.startAt ||
+        editedEvent.endAt != event.endAt ||
+        editedEvent.location != event.location;
     await _recordVoiceLog(
       action: 'edit',
       targetEventId: event.id,
@@ -844,12 +848,190 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('수정할 일정을 열었어요. 확인 후 저장해 주세요.')),
+      SnackBar(
+        content: Text(
+          appliedVoiceChange
+              ? '말한 변경값을 반영해 열었어요. 확인 후 저장해 주세요.'
+              : '수정할 일정을 열었어요. 확인 후 저장해 주세요.',
+        ),
+      ),
     );
     await context.push(
       '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
-      extra: event,
+      extra: editedEvent,
     );
+  }
+
+  EventModel _eventWithRequestedVoiceChanges(EventModel event) {
+    final requestedStartLocal = _inferRequestedStartLocal(event);
+    final requestedLocation = _inferRequestedLocation();
+    if (requestedStartLocal == null && requestedLocation == null) {
+      return event;
+    }
+
+    final originalStartLocal =
+        event.startAt == null ? null : planflowLocal(event.startAt!);
+    final originalEndLocal =
+        event.endAt == null ? null : planflowLocal(event.endAt!);
+    final duration = originalStartLocal == null || originalEndLocal == null
+        ? null
+        : originalEndLocal.difference(originalStartLocal);
+    final nextStartUtc = requestedStartLocal == null
+        ? event.startAt
+        : planflowLocalDateTimeToUtc(requestedStartLocal);
+    final nextEndUtc = requestedStartLocal == null
+        ? event.endAt
+        : duration == null || duration.isNegative || duration == Duration.zero
+            ? event.endAt
+            : planflowLocalDateTimeToUtc(requestedStartLocal.add(duration));
+
+    return EventModel(
+      id: event.id,
+      userId: event.userId,
+      title: event.title,
+      startAt: nextStartUtc,
+      endAt: nextEndUtc,
+      location: requestedLocation ?? event.location,
+      locationLat: requestedLocation == null ? event.locationLat : null,
+      locationLng: requestedLocation == null ? event.locationLng : null,
+      memo: event.memo,
+      supplies: event.supplies,
+      suppliesChecked: event.suppliesChecked,
+      isCritical: event.isCritical,
+      recurrenceRule: event.recurrenceRule,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
+      parentEventId: event.parentEventId,
+      category: event.category,
+      source: event.source,
+      externalId: event.externalId,
+      externalCalendarId: event.externalCalendarId,
+      externalEtag: event.externalEtag,
+      externalUpdatedAt: event.externalUpdatedAt,
+      lastSyncedAt: event.lastSyncedAt,
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    );
+  }
+
+  DateTime? _inferRequestedStartLocal(EventModel event) {
+    final text = _normalizedRawText;
+    final originalStartLocal =
+        event.startAt == null ? planflowNow() : planflowLocal(event.startAt!);
+    final dateCandidate = _inferLastDateCandidate(text, originalStartLocal);
+    final timeCandidate = _inferLastTimeCandidate(text);
+    if (dateCandidate == null && timeCandidate == null) {
+      return null;
+    }
+
+    final baseDate = dateCandidate ??
+        DateTime(
+          originalStartLocal.year,
+          originalStartLocal.month,
+          originalStartLocal.day,
+        );
+    final hour = timeCandidate?.hour ?? originalStartLocal.hour;
+    final minute = timeCandidate?.minute ?? originalStartLocal.minute;
+    return DateTime(baseDate.year, baseDate.month, baseDate.day, hour, minute);
+  }
+
+  DateTime? _inferLastDateCandidate(String text, DateTime referenceLocal) {
+    final dateMatches = RegExp(
+      r'((?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일',
+    ).allMatches(text).toList(growable: false);
+    if (dateMatches.isEmpty) {
+      return null;
+    }
+    final match = dateMatches.last;
+    final snippet = text.substring(
+      match.start,
+      (match.end + 20).clamp(0, text.length),
+    );
+    return GptService(now: () => referenceLocal).inferStartAtFromRawText(
+      snippet,
+    );
+  }
+
+  _VoiceRequestedTime? _inferLastTimeCandidate(String text) {
+    final matches = RegExp(
+      r'(오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*([0-9]{1,2}|[가-힣]{1,8})\s*시(?:\s*([0-9]{1,2}|[가-힣]{1,8})\s*분?|\s*(반))?',
+    ).allMatches(text).toList(growable: false);
+    if (matches.isEmpty) {
+      return null;
+    }
+    final match = matches.last;
+    final hourValue = _koreanNumber(match.group(2));
+    if (hourValue == null) {
+      return null;
+    }
+    final period = match.group(1) ?? '';
+    var hour = hourValue;
+    if (RegExp(r'(오후|낮|점심|저녁|밤)').hasMatch(period) && hour < 12) {
+      hour += 12;
+    }
+    if (period == '새벽' && hour == 12) {
+      hour = 0;
+    }
+    final minute =
+        match.group(4) != null ? 30 : (_koreanNumber(match.group(3)) ?? 0);
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      return null;
+    }
+    return _VoiceRequestedTime(hour, minute);
+  }
+
+  int? _koreanNumber(String? raw) {
+    final text = raw?.trim();
+    if (text == null || text.isEmpty) {
+      return null;
+    }
+    final numeric = int.tryParse(text);
+    if (numeric != null) {
+      return numeric;
+    }
+    const numbers = <String, int>{
+      '영': 0,
+      '공': 0,
+      '한': 1,
+      '하나': 1,
+      '일': 1,
+      '두': 2,
+      '둘': 2,
+      '이': 2,
+      '세': 3,
+      '셋': 3,
+      '삼': 3,
+      '네': 4,
+      '넷': 4,
+      '사': 4,
+      '다섯': 5,
+      '오': 5,
+      '여섯': 6,
+      '육': 6,
+      '일곱': 7,
+      '칠': 7,
+      '여덟': 8,
+      '팔': 8,
+      '아홉': 9,
+      '구': 9,
+      '열': 10,
+      '십': 10,
+      '열한': 11,
+      '열하나': 11,
+      '십일': 11,
+      '열두': 12,
+      '열둘': 12,
+      '십이': 12,
+      '삼십': 30,
+    };
+    return numbers[text];
+  }
+
+  String? _inferRequestedLocation() {
+    final match = RegExp(r'(?:장소|위치)\s*(?:를|을)?\s*(.+?)(?:로|으로)\s*(?:변경|바꿔|수정)')
+        .firstMatch(_normalizedRawText);
+    final location = match?.group(1)?.trim();
+    return location == null || location.isEmpty ? null : location;
   }
 
   Future<void> _confirmDelete(EventModel event) async {
@@ -1067,9 +1249,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                     child: CircularProgressIndicator(),
                   ),
                 )
-              else if (_message != null)
+              else if (_message != null || (!_isAdd && _events.isEmpty))
                 _EmptyCard(
-                  message: _message!,
+                  message: _message ??
+                      '대상 일정을 찾지 못했어요. 캘린더 동기화 상태를 확인하거나 다시 말해 주세요.',
                   rawText: _normalizedRawText,
                   showRecoveryActions: !_isAdd,
                   onAdd: _openAddConfirm,
@@ -1149,6 +1332,13 @@ class _DateRange {
 
   final DateTime start;
   final DateTime end;
+}
+
+class _VoiceRequestedTime {
+  const _VoiceRequestedTime(this.hour, this.minute);
+
+  final int hour;
+  final int minute;
 }
 
 class _CommandCard extends StatelessWidget {

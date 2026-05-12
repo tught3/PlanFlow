@@ -315,3 +315,9 @@
 - Added candidate-aware fuzzy matching for voice edit target search so one-syllable STT misses such as `강릉하산` can still rank the saved `강릉아산` event without hardcoded place replacements.
 - Made the reminder offset bottom sheet scroll-controlled and safe-area constrained so compact screens no longer show the Flutter bottom overflow stripe.
 - Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused voice/action/analysis/reminder tests, full `./scripts/flutter-local.ps1 test --no-pub` (244 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `2734`.
+
+## 2026-05-12 Voice Edit Prefill And Delete Candidate Checkpoint
+- Voice edit now applies spoken change values before opening EventEditScreen: date/time phrases such as `금요일로 옮겨줘` prefill the existing event with the new local start while preserving its time and duration.
+- EventEditScreen still saves through `updateEvent` for normal existing events, so moving a Tuesday event to Friday updates the original row rather than creating a duplicate.
+- Added delete candidate regression for `오늘 아이스크림 전달 일정 삭제해 줘` and a UI guard so delete/edit screens never leave the target area visually blank when no candidate is available.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, full `./scripts/flutter-local.ps1 test --no-pub` (247 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `13784`.
