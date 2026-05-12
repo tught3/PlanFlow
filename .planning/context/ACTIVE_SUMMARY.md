@@ -275,3 +275,9 @@
 - Added tests for early external schedules pulling the morning briefing forward and for past adjusted times falling back to the configured morning time.
 - Fixed a date-sensitive ConfirmScreen UTC round-trip test by moving its fixed sample event to a future date relative to the current test date.
 - Verification passed: `flutter analyze --no-pub`, focused briefing and ConfirmScreen tests, full `./scripts/flutter-local.ps1 test --no-pub` (228 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `14665`.
+
+## 2026-05-12 GPT-Realtime Product Direction Checkpoint
+- Updated `PlanFlow_Codex_Prompt_v3.md` to keep 1st-release voice input on the current low-cost `on-device STT -> text cleanup -> GPT-4o-mini parsing` architecture.
+- Added a 2nd-release `실시간 음성 비서 모드` section that recommends GPT-Realtime-2 only for explicit multi-turn voice assistant sessions, not for every basic microphone input.
+- Documented the cost/UX guardrails: Realtime sessions must be user-started, separately metered, and still require user confirmation before schedule changes are saved.
+- Verification was document-scoped: reviewed the markdown diff and searched the prompt for the new GPT-Realtime direction entries.
