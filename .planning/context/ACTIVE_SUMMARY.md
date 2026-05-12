@@ -340,3 +340,11 @@
 - Tightened the shared voice command router after review so explicit query phrases such as `내일 일정 확인하기` and `메모 보여줘` route to query instead of being swallowed by the add flow.
 - Kept schedule-content phrases such as `오늘 오후 3시에서 4시 사이에 팀장님한테 내일 오는 시간 확인하기` and explicit save phrases such as `확인하기로 저장` on the add path.
 - Added router and voice input regressions for these boundary phrases and verified the focused analyze/test commands.
+
+## 2026-05-12 Home Remaining Schedule And External Prep Resync Checkpoint
+- Updated the home empty-today card so when all of today’s schedules are already past it says there are no remaining schedules instead of implying this is the first schedule.
+- Changed the calendar day tap sheet to a scroll-controlled draggable bottom sheet that opens much taller, can be pulled up near full screen, and keeps direct/voice add actions visible while long event lists scroll.
+- Reworked external preparation/departure alarms so the first relevant event means the first future event with an actual outside/location context, not the first event of the day. Locationless tasks such as phone calls no longer steal the “first preparation” slot from later travel appointments.
+- Added day-level external preparation resync after event create/update/delete, including old-day resync when an event is moved to another day, so earlier/later location events are promoted and notifications are recalculated.
+- Separated generated external-preparation pre-actions with `source='external_preparation'`, added schema/backfill/trigger SQL, and kept generic user/GPT pre-actions under a separate notification key prefix.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused smart-prep/manual-side-effect/calendar-sheet tests, full `./scripts/flutter-local.ps1 test --no-pub` (266 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `9635`.

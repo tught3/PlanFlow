@@ -83,6 +83,65 @@ void main() {
 
       expect(notifications.cancelledEventIds, ['event-3']);
     });
+
+    test('resyncExternalPreparationForDay promotes earliest place event',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        notificationService: notifications,
+      );
+      final phoneCall = EventModel(
+        id: 'phone',
+        userId: 'user-1',
+        title: '본사 전화하기',
+        startAt: DateTime(2026, 5, 8, 9),
+      );
+      final trip = EventModel(
+        id: 'trip',
+        userId: 'user-1',
+        title: '대전 내려가기',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: '대전역',
+      );
+      final meeting = EventModel(
+        id: 'meeting',
+        userId: 'user-1',
+        title: '광명 미팅',
+        startAt: DateTime(2026, 5, 8, 13),
+        location: '광명역',
+      );
+
+      final result = await service.resyncExternalPreparationForDay(
+        dayEvents: <EventModel>[meeting, phoneCall, trip],
+        userId: 'user-1',
+        dayReference: DateTime(2026, 5, 8, 9),
+        now: DateTime(2026, 5, 8, 6),
+      );
+
+      expect(result, true);
+      expect(gateway.deletedExternalPreActionEventIds, ['trip', 'meeting']);
+      expect(notifications.cancelledSmartPreparationEventIds, [
+        'trip',
+        'meeting',
+      ]);
+      final tripTitles = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'trip')
+          .map((row) => row['title']);
+      final meetingTitles = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'meeting')
+          .map((row) => row['title']);
+      expect(
+        tripTitles.any((title) => title.toString().contains('지금 준비 시작하세요')),
+        true,
+      );
+      expect(
+        meetingTitles.any((title) => title.toString().contains('지금 준비 시작하세요')),
+        false,
+      );
+      expect(meetingTitles, contains('지금 출발하세요 🚗 (이동 약 30분)'));
+    });
   });
 }
 
@@ -109,6 +168,16 @@ class _FakeManualEventGateway extends ManualEventSideEffectGateway {
   }
 
   @override
+  Future<void> deleteExternalPreparationPreActionsForEvent({
+    required String eventId,
+    required String userId,
+  }) async {
+    deletedExternalPreActionEventIds.add(eventId);
+  }
+
+  final deletedExternalPreActionEventIds = <String>[];
+
+  @override
   Future<void> insertReminders(List<Map<String, dynamic>> payloads) async {
     insertedReminders.addAll(payloads);
   }
@@ -124,10 +193,16 @@ class _FakeNotificationService extends NotificationService {
   final scheduledEventReminderIds = <int>[];
   final scheduledCriticalAlarmIds = <int>[];
   final scheduledCriticalNotifyAts = <DateTime>[];
+  final cancelledSmartPreparationEventIds = <String>[];
 
   @override
   Future<void> cancelEventNotifications(String eventId) async {
     cancelledEventIds.add(eventId);
+  }
+
+  @override
+  Future<void> cancelSmartPreparationAlarms(String eventId) async {
+    cancelledSmartPreparationEventIds.add(eventId);
   }
 
   @override

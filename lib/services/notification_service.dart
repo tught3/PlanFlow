@@ -230,6 +230,7 @@ class NotificationService {
     await cancel(notificationIdFor('$eventId:critical'));
     await cancel(notificationIdFor('$eventId:departure'));
     await cancelSmartPreparationAlarms(eventId);
+    await cancelPreActionAlarms(eventId);
   }
 
   Future<void> cancelSmartPreparationAlarms(String eventId) async {
@@ -237,6 +238,14 @@ class NotificationService {
         index < _maxSmartPreparationAlarmsPerEvent;
         index += 1) {
       await cancel(notificationIdFor('$eventId:smart_preparation:$index'));
+    }
+  }
+
+  Future<void> cancelPreActionAlarms(String eventId) async {
+    for (var index = 0;
+        index < _maxSmartPreparationAlarmsPerEvent;
+        index += 1) {
+      await cancel(notificationIdFor('$eventId:pre_action:$index'));
     }
   }
 

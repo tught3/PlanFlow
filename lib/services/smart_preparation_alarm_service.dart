@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/models/pre_action_model.dart';
 import 'notification_service.dart';
@@ -218,14 +219,9 @@ class SmartPreparationAlarmService {
         !isExternalEvent(title: event.title, location: event.location)) {
       return false;
     }
-    final dayStart =
-        DateTime(eventStartAt.year, eventStartAt.month, eventStartAt.day);
-    final dayEnd = dayStart.add(const Duration(days: 1));
     final externalEvents = dayEvents.where((candidate) {
       final startAt = candidate.startAt;
-      if (startAt == null ||
-          startAt.isBefore(dayStart) ||
-          !startAt.isBefore(dayEnd)) {
+      if (startAt == null || !planflowIsSameLocalDay(startAt, eventStartAt)) {
         return false;
       }
       return isExternalEvent(
@@ -327,6 +323,7 @@ class SmartPreparationAlarmService {
             'title': spec.title,
             'notify_at': spec.notifyAt.toIso8601String(),
             'is_done': false,
+            'source': 'external_preparation',
           },
         )
         .toList(growable: false);
@@ -346,6 +343,7 @@ class SmartPreparationAlarmService {
     required String eventId,
     required String eventTitle,
     required List<Map<String, dynamic>> payloads,
+    String notificationKeyPrefix = 'smart_preparation',
   }) async {
     for (var index = 0; index < payloads.length; index += 1) {
       final payload = payloads[index];
@@ -356,7 +354,7 @@ class SmartPreparationAlarmService {
       final title = _stringValue(payload['title']) ?? label;
       await _notifications.scheduleEventReminder(
         id: _notifications.notificationIdFor(
-          '$eventId:smart_preparation:$index',
+          '$eventId:$notificationKeyPrefix:$index',
         ),
         title: label,
         body: '$label: $title\n$eventTitle 일정 전에 필요한 준비를 확인해 주세요.',
@@ -378,6 +376,7 @@ class SmartPreparationAlarmService {
         .select()
         .eq('event_id', eventId)
         .eq('user_id', userId)
+        .eq('source', 'external_preparation')
         .order('notify_at', ascending: true);
 
     return response
@@ -399,6 +398,7 @@ class SmartPreparationAlarmService {
         .from('pre_actions')
         .select('event_id')
         .eq('user_id', userId)
+        .eq('source', 'external_preparation')
         .inFilter('event_id', ids.toList(growable: false));
 
     return response

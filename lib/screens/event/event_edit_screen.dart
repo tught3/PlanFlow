@@ -10,6 +10,7 @@ import '../../core/local_time.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
+import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../location/location_pick_flow.dart';
@@ -248,6 +249,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         }
       }
 
+      final previousStartAt = _loadedEvent?.startAt;
       late final EventModel savedEvent;
       if (_isNewEvent) {
         savedEvent = await _repository.createEvent(updatedEvent);
@@ -304,6 +306,21 @@ class _EventEditScreenState extends State<EventEditScreen> {
           event: savedEvent,
         ),
       );
+      await _resyncExternalPreparationForDay(
+        userId: user.id,
+        event: savedEvent,
+        settings: settings,
+      );
+      if (previousStartAt != null &&
+          savedEvent.startAt != null &&
+          !planflowIsSameLocalDay(previousStartAt, savedEvent.startAt!)) {
+        await _resyncExternalPreparationForDay(
+          userId: user.id,
+          event: savedEvent,
+          settings: settings,
+          dayReference: previousStartAt,
+        );
+      }
       unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
       unawaited(EventPreparationService().prepareAfterSave(savedEvent));
       final widgetRefreshed = await _refreshHomeWidget(_repository, savedEvent);
@@ -562,6 +579,43 @@ class _EventEditScreenState extends State<EventEditScreen> {
       debugPrint('EventEditScreen first external lookup skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
       return true;
+    }
+  }
+
+  Future<void> _resyncExternalPreparationForDay({
+    required String userId,
+    required EventModel event,
+    required UserSettingsModel? settings,
+    DateTime? dayReference,
+  }) async {
+    final startAt = event.startAt;
+    final reference = dayReference ?? startAt;
+    if (reference == null) {
+      return;
+    }
+    try {
+      final events = await _repository.listEvents(userId: userId);
+      final updatedEvents = <EventModel>[
+        for (final candidate in events)
+          if (candidate.id == event.id) event else candidate,
+      ];
+      if (updatedEvents.every((candidate) => candidate.id != event.id)) {
+        updatedEvents.add(event);
+      }
+      await widget.sideEffectService.resyncExternalPreparationForDay(
+        dayEvents: updatedEvents,
+        userId: userId,
+        dayReference: reference,
+        prepTimeMin: settings?.prepTimeMin ??
+            SmartPreparationAlarmService.defaultPrepTimeMin,
+        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+        departPreAlarmOffset: settings?.departPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen external prep resync skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 

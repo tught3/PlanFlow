@@ -921,6 +921,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     try {
       await _repository.deleteEvent(event.id, userId: userId);
       await widget.sideEffectService.cleanupAfterDelete(event.id);
+      await _resyncExternalPreparationAfterDelete(event, userId: userId);
       await _refreshHomeWidget(userId);
       if (!mounted) {
         return;
@@ -992,6 +993,29 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       );
     } catch (error, stackTrace) {
       debugPrint('VoiceActionScreen widget refresh failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _resyncExternalPreparationAfterDelete(
+    EventModel deletedEvent, {
+    required String userId,
+  }) async {
+    final deletedStartAt = deletedEvent.startAt;
+    if (deletedStartAt == null) {
+      return;
+    }
+    try {
+      final events = await _repository.listEvents(userId: userId);
+      await widget.sideEffectService.resyncExternalPreparationForDay(
+        dayEvents: events,
+        userId: userId,
+        dayReference: deletedStartAt,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'VoiceActionScreen external prep delete resync skipped: $error',
+      );
       debugPrintStack(stackTrace: stackTrace);
     }
   }

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import 'notification_service.dart';
 import 'smart_preparation_alarm_service.dart';
@@ -13,6 +14,11 @@ abstract class ManualEventSideEffectGateway {
   });
 
   Future<void> deletePreActionsForEvent({
+    required String eventId,
+    required String userId,
+  });
+
+  Future<void> deleteExternalPreparationPreActionsForEvent({
     required String eventId,
     required String userId,
   });
@@ -53,6 +59,19 @@ class SupabaseManualEventSideEffectGateway
         .delete()
         .eq('event_id', eventId)
         .eq('user_id', userId);
+  }
+
+  @override
+  Future<void> deleteExternalPreparationPreActionsForEvent({
+    required String eventId,
+    required String userId,
+  }) async {
+    await _resolvedClient
+        .from('pre_actions')
+        .delete()
+        .eq('event_id', eventId)
+        .eq('user_id', userId)
+        .eq('source', 'external_preparation');
   }
 
   @override
@@ -188,6 +207,83 @@ class ManualEventSideEffectService {
 
   Future<void> cleanupAfterDelete(String eventId) {
     return _notifications.cancelEventNotifications(eventId);
+  }
+
+  Future<bool> resyncExternalPreparationForDay({
+    required Iterable<EventModel> dayEvents,
+    required String userId,
+    required DateTime dayReference,
+    int prepTimeMin = SmartPreparationAlarmService.defaultPrepTimeMin,
+    int prepPreAlarmOffset =
+        SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+    int departPreAlarmOffset =
+        SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+    int travelMinutes = SmartPreparationAlarmService.defaultTravelBufferMin,
+    DateTime? now,
+  }) async {
+    final smartService = SmartPreparationAlarmService(
+      notificationService: _notifications,
+    );
+    final externalEvents = dayEvents
+        .where(
+          (event) =>
+              event.startAt != null &&
+              planflowIsSameLocalDay(event.startAt!, dayReference) &&
+              smartService.isExternalEvent(
+                title: event.title,
+                location: event.location,
+              ),
+        )
+        .toList(growable: false)
+      ..sort(
+        (a, b) => (a.startAt ?? DateTime(0)).compareTo(
+          b.startAt ?? DateTime(0),
+        ),
+      );
+    if (externalEvents.isEmpty) {
+      return true;
+    }
+
+    final firstExternalEventId = externalEvents.first.id;
+    final payloadsByEvent = <EventModel, List<Map<String, dynamic>>>{};
+    for (final event in externalEvents) {
+      payloadsByEvent[event] = smartService.buildExternalEventPayloads(
+        eventId: event.id,
+        userId: userId,
+        title: event.title,
+        eventStartAt: event.startAt!,
+        location: event.location,
+        prepTimeMin: prepTimeMin,
+        prepPreAlarmOffset: prepPreAlarmOffset,
+        departPreAlarmOffset: departPreAlarmOffset,
+        travelMinutes: travelMinutes,
+        isFirstExternalEventOfDay: event.id == firstExternalEventId,
+        now: now,
+      );
+    }
+
+    try {
+      for (final event in externalEvents) {
+        await gateway.deleteExternalPreparationPreActionsForEvent(
+          eventId: event.id,
+          userId: userId,
+        );
+        await smartService.cancelForEvent(event.id);
+      }
+      await gateway.insertPreActions(
+        payloadsByEvent.values.expand((payloads) => payloads).toList(),
+      );
+      for (final entry in payloadsByEvent.entries) {
+        await smartService.schedulePayloads(
+          eventId: entry.key.id,
+          eventTitle: entry.key.title,
+          payloads: entry.value,
+        );
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   List<Map<String, dynamic>> buildReminderPayloads({

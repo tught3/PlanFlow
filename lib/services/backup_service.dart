@@ -112,7 +112,9 @@ class BackupService {
   String _selectColumnsFor(String table) {
     if (table == 'user_settings') {
       return 'id, user_id, morning_briefing_at, evening_briefing_at, '
-          'default_reminder_min, travel_mode, created_at';
+          'default_reminder_min, prep_time_min, prep_pre_alarm_offset, '
+          'depart_pre_alarm_offset, travel_mode, country_code, locale_code, '
+          'time_zone_id, created_at';
     }
     return '*';
   }

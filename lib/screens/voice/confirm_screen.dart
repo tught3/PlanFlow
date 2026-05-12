@@ -24,6 +24,7 @@ import '../../services/app_permission_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
+import '../../services/manual_event_side_effect_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/travel_time_buffer_service.dart';
@@ -625,6 +626,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       final savedEvent = await repository.createEvent(draftEvent);
 
       await _saveRelatedRecords(userId: userId, event: savedEvent);
+      await _resyncExternalPreparationForDay(
+        userId: userId,
+        event: savedEvent,
+      );
       await _updateHomeWidget(repository, savedEvent);
       unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
       unawaited(EventPreparationService().prepareAfterSave(savedEvent));
@@ -669,13 +674,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       eventId: event.id,
       eventStartAt: eventStartAt,
     );
-    preActionPayloads.addAll(
-      await _buildDefaultExternalPreActionPayloads(
-        userId: userId,
-        eventId: event.id,
-        eventStartAt: eventStartAt,
-      ),
-    );
     final travelPreAction = await _buildTravelPreActionPayload(
       userId: userId,
       eventId: event.id,
@@ -701,6 +699,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         eventId: event.id,
         eventTitle: event.title,
         payloads: preActionPayloads,
+        notificationKeyPrefix: 'pre_action',
       ),
       label: 'smart_preparation_alarm_notifications',
     );
@@ -851,73 +850,42 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         .toList(growable: true);
   }
 
-  Future<List<Map<String, dynamic>>> _buildDefaultExternalPreActionPayloads({
+  Future<void> _resyncExternalPreparationForDay({
     required String userId,
-    required String eventId,
-    required DateTime eventStartAt,
+    required EventModel event,
   }) async {
-    var prepTimeMin = SmartPreparationAlarmService.defaultPrepTimeMin;
-    var prepPreAlarmOffset =
-        SmartPreparationAlarmService.defaultPrepPreAlarmOffset;
-    var departPreAlarmOffset =
-        SmartPreparationAlarmService.defaultDepartPreAlarmOffset;
-    if (AppEnv.isSupabaseReady) {
-      try {
-        final settings =
-            await SettingsRepository.supabase().fetchSettings(userId);
-        prepTimeMin = settings?.prepTimeMin ?? prepTimeMin;
-        prepPreAlarmOffset = settings?.prepPreAlarmOffset ?? prepPreAlarmOffset;
-        departPreAlarmOffset =
-            settings?.departPreAlarmOffset ?? departPreAlarmOffset;
-      } catch (error, stackTrace) {
-        debugPrint('Smart prep settings fetch failed; using defaults: $error');
-        debugPrintStack(stackTrace: stackTrace);
-      }
-    }
-    final isFirstExternalEventOfDay = await _isFirstExternalEventOfDay(
-      userId: userId,
-      eventId: eventId,
-      eventStartAt: eventStartAt,
-    );
-    return widget.smartPreparationAlarmService.buildExternalEventPayloads(
-      eventId: eventId,
-      userId: userId,
-      title: _titleController.text.trim(),
-      eventStartAt: eventStartAt,
-      location: _emptyToNull(_locationController.text),
-      prepTimeMin: prepTimeMin,
-      prepPreAlarmOffset: prepPreAlarmOffset,
-      departPreAlarmOffset: departPreAlarmOffset,
-      isFirstExternalEventOfDay: isFirstExternalEventOfDay,
-    );
-  }
-
-  Future<bool> _isFirstExternalEventOfDay({
-    required String userId,
-    required String eventId,
-    required DateTime eventStartAt,
-  }) async {
+    final eventStartAt = event.startAt;
     final repository = _resolveEventRepository();
-    if (repository == null) {
-      return true;
+    if (eventStartAt == null || repository == null) {
+      return;
     }
     try {
-      final dayEvents = await repository.listEvents(userId: userId);
-      final event = EventModel(
-        id: eventId,
+      final settings =
+          await SettingsRepository.supabase().fetchSettings(userId);
+      final events = await repository.listEvents(userId: userId);
+      final updatedEvents = <EventModel>[
+        for (final candidate in events)
+          if (candidate.id == event.id) event else candidate,
+      ];
+      if (updatedEvents.every((candidate) => candidate.id != event.id)) {
+        updatedEvents.add(event);
+      }
+      await ManualEventSideEffectService(
+        notificationService: widget.notificationService,
+      ).resyncExternalPreparationForDay(
+        dayEvents: updatedEvents,
         userId: userId,
-        title: _titleController.text.trim(),
-        startAt: eventStartAt,
-        location: _emptyToNull(_locationController.text),
-      );
-      return widget.smartPreparationAlarmService.isFirstExternalEventOfDay(
-        event: event,
-        dayEvents: dayEvents,
+        dayReference: eventStartAt,
+        prepTimeMin: settings?.prepTimeMin ??
+            SmartPreparationAlarmService.defaultPrepTimeMin,
+        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+        departPreAlarmOffset: settings?.departPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
       );
     } catch (error, stackTrace) {
-      debugPrint('First external event lookup failed: $error');
+      debugPrint('ConfirmScreen external prep resync skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
-      return true;
     }
   }
 

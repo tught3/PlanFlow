@@ -248,6 +248,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (AppEnv.isSupabaseReady) {
         await _repository.deleteEvent(event.id);
         await widget.sideEffectService.cleanupAfterDelete(event.id);
+        await _resyncExternalPreparationAfterDelete(event);
         unawaited(_refreshHomeWidget(_repository));
       }
 
@@ -316,6 +317,32 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       );
     } catch (_) {
       // Widget refresh should not block event deletion.
+    }
+  }
+
+  Future<void> _resyncExternalPreparationAfterDelete(
+    EventModel deletedEvent,
+  ) async {
+    final deletedStartAt = deletedEvent.startAt;
+    if (deletedStartAt == null) {
+      return;
+    }
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+    try {
+      final events = await _repository.listEvents(userId: user.id);
+      await widget.sideEffectService.resyncExternalPreparationForDay(
+        dayEvents: events,
+        userId: user.id,
+        dayReference: deletedStartAt,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'EventDetailScreen external prep delete resync skipped: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -453,113 +480,115 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           child: ListView(
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             children: [
-            _HeaderCard(
-              title: event.title,
-              time: timeLabel ?? '시간 미정',
-              critical: event.isCritical,
-            ),
-            if (_loadError != null) ...[
-              const SizedBox(height: AppConstants.sectionSpacing),
-              _InfoCard(
-                title: '최신 정보 확인',
-                children: [
-                  Text(
-                    _loadError!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
-                  ),
-                ],
+              _HeaderCard(
+                title: event.title,
+                time: timeLabel ?? '시간 미정',
+                critical: event.isCritical,
               ),
-            ],
-            const SizedBox(height: AppConstants.sectionSpacing),
-            _InfoCard(
-              title: '기본 정보',
-              children: [
-                if (timeLabel != null) _InfoRow(label: '시간', value: timeLabel),
-                if (event.location != null)
-                  _InfoRow(label: '장소', value: event.location!),
-                _InfoRow(
-                  label: '중요 상태',
-                  value: event.isCritical ? '중요 일정' : '일반 일정',
-                  valueColor: event.isCritical ? theme.colorScheme.error : null,
-                ),
-                _InfoRow(
-                  label: '등록일',
-                  value: event.createdAt != null
-                      ? _formatDate(event.createdAt!)
-                      : '정보 없음',
+              if (_loadError != null) ...[
+                const SizedBox(height: AppConstants.sectionSpacing),
+                _InfoCard(
+                  title: '최신 정보 확인',
+                  children: [
+                    Text(
+                      _loadError!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-            if (event.supplies.isNotEmpty) ...[
               const SizedBox(height: AppConstants.sectionSpacing),
               _InfoCard(
-                title: '준비물',
+                title: '기본 정보',
                 children: [
-                  _SupplyChecklist(
-                    supplies: event.supplies,
-                    checkedSupplies: _checkedSupplies,
-                    isSaving: _isSavingSupplies,
-                    onToggle: _toggleSupply,
+                  if (timeLabel != null)
+                    _InfoRow(label: '시간', value: timeLabel),
+                  if (event.location != null)
+                    _InfoRow(label: '장소', value: event.location!),
+                  _InfoRow(
+                    label: '중요 상태',
+                    value: event.isCritical ? '중요 일정' : '일반 일정',
+                    valueColor:
+                        event.isCritical ? theme.colorScheme.error : null,
+                  ),
+                  _InfoRow(
+                    label: '등록일',
+                    value: event.createdAt != null
+                        ? _formatDate(event.createdAt!)
+                        : '정보 없음',
                   ),
                 ],
               ),
-            ],
-            if (_smartPreparationAlarms.isNotEmpty) ...[
-              const SizedBox(height: AppConstants.sectionSpacing),
-              _InfoCard(
-                title: SmartPreparationAlarmService.label,
-                children: [
-                  _SmartPreparationAlarmList(
-                    alarms: _smartPreparationAlarms,
-                    formatDateTime: _formatDateTime,
-                  ),
-                ],
-              ),
-            ],
-            if (event.memo != null && event.memo!.trim().isNotEmpty) ...[
-              const SizedBox(height: AppConstants.sectionSpacing),
-              _InfoCard(
-                title: '메모',
-                children: [
-                  Text(
-                    event.memo!,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
+              if (event.supplies.isNotEmpty) ...[
+                const SizedBox(height: AppConstants.sectionSpacing),
+                _InfoCard(
+                  title: '준비물',
+                  children: [
+                    _SupplyChecklist(
+                      supplies: event.supplies,
+                      checkedSupplies: _checkedSupplies,
+                      isSaving: _isSavingSupplies,
+                      onToggle: _toggleSupply,
                     ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: AppConstants.sectionSpacing),
-            FilledButton.icon(
-              onPressed: () => context.push(
-                '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
-                extra: event,
-              ),
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('일정 편집'),
-            ),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: _isDeleting ? null : _deleteEvent,
-              icon: _isDeleting
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(
-                      Icons.delete_outline,
+                  ],
+                ),
+              ],
+              if (_smartPreparationAlarms.isNotEmpty) ...[
+                const SizedBox(height: AppConstants.sectionSpacing),
+                _InfoCard(
+                  title: SmartPreparationAlarmService.label,
+                  children: [
+                    _SmartPreparationAlarmList(
+                      alarms: _smartPreparationAlarms,
+                      formatDateTime: _formatDateTime,
                     ),
-              label: Text(
-                _isDeleting ? '삭제 중...' : '일정 삭제',
+                  ],
+                ),
+              ],
+              if (event.memo != null && event.memo!.trim().isNotEmpty) ...[
+                const SizedBox(height: AppConstants.sectionSpacing),
+                _InfoCard(
+                  title: '메모',
+                  children: [
+                    Text(
+                      event.memo!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: AppConstants.sectionSpacing),
+              FilledButton.icon(
+                onPressed: () => context.push(
+                  '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
+                  extra: event,
+                ),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('일정 편집'),
               ),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFB42318),
-                foregroundColor: Colors.white,
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: _isDeleting ? null : _deleteEvent,
+                icon: _isDeleting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(
+                        Icons.delete_outline,
+                      ),
+                label: Text(
+                  _isDeleting ? '삭제 중...' : '일정 삭제',
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFB42318),
+                  foregroundColor: Colors.white,
+                ),
               ),
-            ),
             ],
           ),
         ),

@@ -161,6 +161,10 @@ void main() {
       DateTime(2026, 5, 8, 9, 30).toIso8601String(),
       DateTime(2026, 5, 8, 10).toIso8601String(),
     ]);
+    expect(
+      payloads.map((row) => row['source']).toSet(),
+      {'external_preparation'},
+    );
   });
 
   test('buildExternalEventPayloads expands both pre-alert setting', () {
@@ -231,6 +235,65 @@ void main() {
       service.isFirstExternalEventOfDay(
         event: second,
         dayEvents: <EventModel>[home, second, first],
+      ),
+      false,
+    );
+  });
+
+  test('isFirstExternalEventOfDay ignores earlier schedules without places',
+      () {
+    final service = SmartPreparationAlarmService();
+    final call = EventModel(
+      id: 'call',
+      userId: 'user-1',
+      title: '본사 전화하기',
+      startAt: DateTime(2026, 5, 8, 9),
+    );
+    final trip = EventModel(
+      id: 'trip',
+      userId: 'user-1',
+      title: '대전 내려가기',
+      startAt: DateTime(2026, 5, 8, 10),
+      location: '대전역',
+    );
+
+    expect(
+      service.isFirstExternalEventOfDay(
+        event: trip,
+        dayEvents: <EventModel>[call, trip],
+      ),
+      true,
+    );
+  });
+
+  test('isFirstExternalEventOfDay compares events by PlanFlow local day', () {
+    final service = SmartPreparationAlarmService();
+    final lateNightKst = EventModel(
+      id: 'late-night',
+      userId: 'user-1',
+      title: '야간 이동',
+      startAt: DateTime.utc(2026, 5, 7, 15, 30),
+      location: '서울역',
+    );
+    final morningKst = EventModel(
+      id: 'morning',
+      userId: 'user-1',
+      title: '오전 이동',
+      startAt: DateTime.utc(2026, 5, 8, 0),
+      location: '대전역',
+    );
+
+    expect(
+      service.isFirstExternalEventOfDay(
+        event: lateNightKst,
+        dayEvents: <EventModel>[morningKst, lateNightKst],
+      ),
+      true,
+    );
+    expect(
+      service.isFirstExternalEventOfDay(
+        event: morningKst,
+        dayEvents: <EventModel>[morningKst, lateNightKst],
       ),
       false,
     );

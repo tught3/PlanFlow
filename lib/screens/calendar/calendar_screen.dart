@@ -493,28 +493,37 @@ class _CalendarScreenState extends State<CalendarScreen> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       backgroundColor: PlanFlowColors.background,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => _DayEventsSheet(
-        day: day,
-        events: events,
-        onAdd: () {
-          Navigator.of(context).pop();
-          context.push(AppRoutes.eventEdit);
-        },
-        onVoice: () {
-          Navigator.of(context).pop();
-          context.push(AppRoutes.voice);
-        },
-        onEventTap: (event) {
-          Navigator.of(context).pop();
-          context.push(
-            '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-            extra: event,
-          );
-        },
+      builder: (context) => DraggableScrollableSheet(
+        key: const ValueKey('calendar-day-events-draggable-sheet'),
+        expand: false,
+        initialChildSize: 0.84,
+        minChildSize: 0.58,
+        maxChildSize: 0.97,
+        builder: (context, scrollController) => DayEventsSheet(
+          day: day,
+          events: events,
+          scrollController: scrollController,
+          onAdd: () {
+            Navigator.of(context).pop();
+            context.push(AppRoutes.eventEdit);
+          },
+          onVoice: () {
+            Navigator.of(context).pop();
+            context.push(AppRoutes.voice);
+          },
+          onEventTap: (event) {
+            Navigator.of(context).pop();
+            context.push(
+              '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+              extra: event,
+            );
+          },
+        ),
       ),
     );
   }
@@ -588,94 +597,93 @@ class _CalendarScreenState extends State<CalendarScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(AppConstants.defaultPadding),
               children: [
-              if (_loadState != _CalendarLoadState.ready) ...[
-                _CalendarStatusCard(
-                  state: _loadState,
-                  message: _loadMessage,
-                  onRefresh: () => _loadEvents(),
-                ),
-                const SizedBox(height: 12),
-              ],
-              if (_isSearching) ...[
-                TextField(
-                  controller: _searchController,
-                  autofocus: true,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: '제목, 장소, 메모로 검색',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchController.text.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: '검색어 지우기',
-                            onPressed: _searchController.clear,
-                            icon: const Icon(Icons.clear),
-                          ),
+                if (_loadState != _CalendarLoadState.ready) ...[
+                  _CalendarStatusCard(
+                    state: _loadState,
+                    message: _loadMessage,
+                    onRefresh: () => _loadEvents(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (_isSearching) ...[
+                  TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: '제목, 장소, 메모로 검색',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: '검색어 지우기',
+                              onPressed: _searchController.clear,
+                              icon: const Icon(Icons.clear),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragEnd: _handleMonthSwipe,
+                  child: Column(
+                    children: [
+                      // Month header with navigation
+                      _MonthHeader(
+                        monthLabel: monthLabel,
+                        onPrevious: () => _changeMonth(-1),
+                        onNext: () => _changeMonth(1),
+                        onToday: () {
+                          setState(() {
+                            _focusedMonth = DateTime.now();
+                            _selectedDate = DateTime.now();
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Mini calendar grid
+                      _MiniCalendarGrid(
+                        focusedMonth: _focusedMonth,
+                        selectedDate: _selectedDate,
+                        eventMarkerColorsByDay: _eventMarkerColorsByDay,
+                        eventsByDay: _eventsByDay,
+                        onDaySelected: (day) {
+                          setState(() {
+                            _selectedDate = day;
+                          });
+                          _showDayEventsSheet(day);
+                        },
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-              ],
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onHorizontalDragEnd: _handleMonthSwipe,
-                child: Column(
-                  children: [
-                    // Month header with navigation
-                    _MonthHeader(
-                      monthLabel: monthLabel,
-                      onPrevious: () => _changeMonth(-1),
-                      onNext: () => _changeMonth(1),
-                      onToday: () {
-                        setState(() {
-                          _focusedMonth = DateTime.now();
-                          _selectedDate = DateTime.now();
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Mini calendar grid
-                    _MiniCalendarGrid(
-                      focusedMonth: _focusedMonth,
-                      selectedDate: _selectedDate,
-                      eventMarkerColorsByDay: _eventMarkerColorsByDay,
-                      eventsByDay: _eventsByDay,
-                      onDaySelected: (day) {
-                        setState(() {
-                          _selectedDate = day;
-                        });
-                        _showDayEventsSheet(day);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              _CalendarSelectedDateHeader(
-                selectedDateLabel: selectedDateLabel,
-                eventCount: dayEvents.length,
-                onAdd: () => context.push(AppRoutes.eventEdit),
-                onVoice: () => context.push(AppRoutes.voice),
-              ),
-              const SizedBox(height: 12),
-
-              if (dayEvents.isEmpty)
-                _EmptyAgendaCard(
+                const SizedBox(height: 16),
+                _CalendarSelectedDateHeader(
+                  selectedDateLabel: selectedDateLabel,
+                  eventCount: dayEvents.length,
+                  onAdd: () => context.push(AppRoutes.eventEdit),
                   onVoice: () => context.push(AppRoutes.voice),
-                )
-              else
-                ...dayEvents.map(
-                  (event) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _EventAgendaCard(
-                      event: event,
-                      onTap: () => context.push(
-                        '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-                        extra: event,
+                ),
+                const SizedBox(height: 12),
+                if (dayEvents.isEmpty)
+                  _EmptyAgendaCard(
+                    onVoice: () => context.push(AppRoutes.voice),
+                  )
+                else
+                  ...dayEvents.map(
+                    (event) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _EventAgendaCard(
+                        event: event,
+                        onTap: () => context.push(
+                          '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                          extra: event,
+                        ),
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
@@ -795,13 +803,15 @@ class _CalendarSelectedDateHeader extends StatelessWidget {
   }
 }
 
-class _DayEventsSheet extends StatelessWidget {
-  const _DayEventsSheet({
+class DayEventsSheet extends StatelessWidget {
+  const DayEventsSheet({
+    super.key,
     required this.day,
     required this.events,
     required this.onAdd,
     required this.onVoice,
     required this.onEventTap,
+    this.scrollController,
   });
 
   final DateTime day;
@@ -809,86 +819,95 @@ class _DayEventsSheet extends StatelessWidget {
   final VoidCallback onAdd;
   final VoidCallback onVoice;
   final ValueChanged<EventModel> onEventTap;
+  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final title = _koreanDateLabel(day);
     return SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.72,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: PlanFlowColors.primary,
-                        fontWeight: FontWeight.w900,
-                      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: PlanFlowColors.surface,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: PlanFlowColors.primaryFaint),
-                    ),
-                    child: Text('${events.length}개'),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
                   ),
-                ],
+                  decoration: BoxDecoration(
+                    color: PlanFlowColors.surface,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: PlanFlowColors.primaryFaint),
+                  ),
+                  child: Text('${events.length}개'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '위로 끌어올려 더 많은 일정을 볼 수 있어요.',
+              style: TextStyle(
+                color: PlanFlowColors.textSecondary,
+                fontSize: 12,
+                height: 1.3,
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onAdd,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('직접 추가'),
-                    ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onAdd,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('직접 추가'),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: onVoice,
-                      icon: const Icon(Icons.mic_none, size: 18),
-                      label: const Text('음성 추가'),
-                    ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onVoice,
+                    icon: const Icon(Icons.mic_none, size: 18),
+                    label: const Text('음성 추가'),
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: events.isEmpty
-                    ? const _SheetEmptyState()
-                    : ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: events.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final event = events[index];
-                          return _EventAgendaCard(
-                            event: event,
-                            onTap: () => onEventTap(event),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: events.isEmpty
+                  ? ListView(
+                      key: const ValueKey('calendar-day-events-empty-scroll'),
+                      controller: scrollController,
+                      children: const [_SheetEmptyState()],
+                    )
+                  : ListView.separated(
+                      key: const ValueKey('calendar-day-events-list'),
+                      controller: scrollController,
+                      itemCount: events.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final event = events[index];
+                        return _EventAgendaCard(
+                          event: event,
+                          onTap: () => onEventTap(event),
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
       ),
     );

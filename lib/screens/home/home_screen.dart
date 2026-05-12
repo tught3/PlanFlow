@@ -335,129 +335,221 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: PlanFlowColors.primaryMid,
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: PlanFlowColors.primary.withValues(alpha: 0.16),
-                          blurRadius: 18,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _todayEvents.isEmpty
-                                    ? '오늘은 여유로운\n하루예요 😊'
-                                    : '오늘 ${_todayEvents.length}개의\n일정이 있어요',
-                                style: theme.textTheme.headlineSmall?.copyWith(
-                                  color: Colors.white,
-                                  fontSize: 25,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1.18,
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: PlanFlowColors.primaryMid,
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                PlanFlowColors.primary.withValues(alpha: 0.16),
+                            blurRadius: 18,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _todayEvents.isEmpty
+                                      ? '오늘은 여유로운\n하루예요 😊'
+                                      : '오늘 ${_todayEvents.length}개의\n일정이 있어요',
+                                  style:
+                                      theme.textTheme.headlineSmall?.copyWith(
+                                    color: Colors.white,
+                                    fontSize: 25,
+                                    fontWeight: FontWeight.w900,
+                                    height: 1.18,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 132),
-                              child: _HomeInfoChip(
-                                icon: _headerSummary?.weatherIcon ??
-                                    Icons.wb_sunny_outlined,
-                                label: _headerSummaryLoading
-                                    ? '날씨 확인 중'
-                                    : (_headerSummary?.weatherLabel ??
-                                        '날씨 확인 중'),
-                                backgroundColor:
-                                    Colors.white.withValues(alpha: 0.16),
-                                borderColor:
-                                    Colors.white.withValues(alpha: 0.30),
-                                foregroundColor: Colors.white,
-                                onTap: _headerSummaryLoading
-                                    ? null
-                                    : () => _showHeaderSummarySheet(
-                                          context,
-                                          title: '날씨 정보',
-                                          summary: _headerSummary,
-                                        ),
+                              const SizedBox(width: 12),
+                              ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 132),
+                                child: _HomeInfoChip(
+                                  icon: _headerSummary?.weatherIcon ??
+                                      Icons.wb_sunny_outlined,
+                                  label: _headerSummaryLoading
+                                      ? '날씨 확인 중'
+                                      : (_headerSummary?.weatherLabel ??
+                                          '날씨 확인 중'),
+                                  backgroundColor:
+                                      Colors.white.withValues(alpha: 0.16),
+                                  borderColor:
+                                      Colors.white.withValues(alpha: 0.30),
+                                  foregroundColor: Colors.white,
+                                  onTap: _headerSummaryLoading
+                                      ? null
+                                      : () => _showHeaderSummarySheet(
+                                            context,
+                                            title: '날씨 정보',
+                                            summary: _headerSummary,
+                                          ),
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _BriefingQuickActions(
-                    isMorningLoading: _isPlayingMorningBriefing,
-                    isEveningLoading: _isPlayingEveningBriefing,
-                    onMorning: () => _playBriefing(isMorning: true),
-                    onEvening: () => _playBriefing(isMorning: false),
-                  ),
-                  const SizedBox(height: 12),
-                  if (isLoading)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: CircularProgressIndicator(),
+                            ],
+                          ),
+                        ],
                       ),
-                    )
-                  else if (_loadState != _HomeLoadState.ready) ...[
-                    _HomeStatusCard(
-                      state: _loadState,
-                      message: _loadMessage,
-                      onRefresh: _loadTodayEvents,
+                    ),
+                    const SizedBox(height: 10),
+                    _BriefingQuickActions(
+                      isMorningLoading: _isPlayingMorningBriefing,
+                      isEveningLoading: _isPlayingEveningBriefing,
+                      onMorning: () => _playBriefing(isMorning: true),
+                      onEvening: () => _playBriefing(isMorning: false),
                     ),
                     const SizedBox(height: 12),
-                  ] else ...[
-                    if (_pastTodayEvent != null) ...[
+                    if (isLoading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (_loadState != _HomeLoadState.ready) ...[
+                      _HomeStatusCard(
+                        state: _loadState,
+                        message: _loadMessage,
+                        onRefresh: _loadTodayEvents,
+                      ),
+                      const SizedBox(height: 12),
+                    ] else ...[
+                      if (_pastTodayEvent != null) ...[
+                        Text(
+                          '지나간 일정',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _TodayEventCard(
+                          event: _pastTodayEvent!,
+                          isPast: true,
+                          hasSmartPrepAlarm: _smartPreparationEventIds
+                              .contains(_pastTodayEvent!.id),
+                          onTap: () => context.push(
+                            '${AppRoutes.eventDetail}/${Uri.encodeComponent(_pastTodayEvent!.id)}',
+                            extra: _pastTodayEvent,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       Text(
-                        '지나간 일정',
+                        '오늘 일정',
                         style: theme.textTheme.titleMedium?.copyWith(
-                          color: PlanFlowColors.textSecondary,
+                          color: PlanFlowColors.primary,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 8),
-                      _TodayEventCard(
-                        event: _pastTodayEvent!,
-                        isPast: true,
-                        hasSmartPrepAlarm: _smartPreparationEventIds
-                            .contains(_pastTodayEvent!.id),
-                        onTap: () => context.push(
-                          '${AppRoutes.eventDetail}/${Uri.encodeComponent(_pastTodayEvent!.id)}',
-                          extra: _pastTodayEvent,
+                      if (_todayEvents.isNotEmpty) ...[
+                        ..._todayEvents.map(
+                          (event) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _TodayEventCard(
+                              event: event,
+                              hasSmartPrepAlarm:
+                                  _smartPreparationEventIds.contains(event.id),
+                              onTap: () => context.push(
+                                '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                                extra: event,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ] else ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: PlanFlowColors.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: PlanFlowColors.primaryFaint,
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: PlanFlowColors.primaryFaint,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Icon(
+                                  Icons.calendar_month_outlined,
+                                  color: PlanFlowColors.primaryMid,
+                                  size: 26,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                '오늘 일정 안내',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  color: PlanFlowColors.primary,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '오늘 남은 일정이 없어요. 이미 지나간 일정은 위에 정리해 두었고, 이제 잠깐 쉬어가도 괜찮아요.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: PlanFlowColors.textSecondary,
+                                  height: 1.35,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: () =>
+                                      context.push(AppRoutes.voice),
+                                  icon: const Icon(Icons.mic, size: 18),
+                                  label: const Text('새 일정 음성으로 추가하기'),
+                                  style: FilledButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                    if (_loadState == _HomeLoadState.ready &&
+                        _upcomingEvents.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '다가오는 일정',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: PlanFlowColors.primary,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                    ],
-                    Text(
-                      '오늘 일정',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: PlanFlowColors.primary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (_todayEvents.isNotEmpty) ...[
-                      ..._todayEvents.map(
+                      const SizedBox(height: 8),
+                      ..._upcomingEvents.map(
                         (event) => Padding(
                           padding: const EdgeInsets.only(bottom: 8),
-                          child: _TodayEventCard(
+                          child: _UpcomingEventCard(
                             event: event,
-                            hasSmartPrepAlarm:
-                                _smartPreparationEventIds.contains(event.id),
                             onTap: () => context.push(
                               '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
                               extra: event,
@@ -465,98 +557,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                    ] else ...[
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: PlanFlowColors.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: PlanFlowColors.primaryFaint,
-                            width: 0.8,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: PlanFlowColors.primaryFaint,
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: const Icon(
-                                Icons.calendar_month_outlined,
-                                color: PlanFlowColors.primaryMid,
-                                size: 26,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              '오늘 일정 안내',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: PlanFlowColors.primary,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              '현재 남은 오늘 일정이 없어요. 새 일정이 생기면 준비물과 스마트 준비 알람을 함께 정리해 드릴게요.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: PlanFlowColors.textSecondary,
-                                height: 1.35,
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            SizedBox(
-                              width: double.infinity,
-                              child: FilledButton.icon(
-                                onPressed: () => context.push(AppRoutes.voice),
-                                icon: const Icon(Icons.mic, size: 18),
-                                label: const Text('첫 일정을 음성으로 만들어보세요'),
-                                style: FilledButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ],
-                  ],
-                  if (_loadState == _HomeLoadState.ready &&
-                      _upcomingEvents.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      '다가오는 일정',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: PlanFlowColors.primary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    ..._upcomingEvents.map(
-                      (event) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: _UpcomingEventCard(
-                          event: event,
-                          onTap: () => context.push(
-                            '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-                            extra: event,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  if (RemoteConfigService.earlyBirdBannerVisible)
-                    const _EarlyBirdBanner(),
+                    const SizedBox(height: 16),
+                    if (RemoteConfigService.earlyBirdBannerVisible)
+                      const _EarlyBirdBanner(),
                   ],
                 ),
               ),
