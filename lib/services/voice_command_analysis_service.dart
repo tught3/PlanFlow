@@ -674,7 +674,7 @@ class VoiceCommandAnalysisService {
       VoiceCommandRouteIntent.edit => VoiceCommandIntent.edit,
       VoiceCommandRouteIntent.delete => VoiceCommandIntent.delete,
       VoiceCommandRouteIntent.query => VoiceCommandIntent.query,
-      VoiceCommandRouteIntent.choose => VoiceCommandIntent.choose,
+      VoiceCommandRouteIntent.choose => VoiceCommandIntent.query,
     };
   }
 
@@ -685,7 +685,7 @@ class VoiceCommandAnalysisService {
       'edit' => VoiceCommandIntent.edit,
       'delete' => VoiceCommandIntent.delete,
       'query' => VoiceCommandIntent.query,
-      'choose' => VoiceCommandIntent.choose,
+      'choose' => VoiceCommandIntent.query,
       _ => null,
     };
   }
@@ -693,7 +693,7 @@ class VoiceCommandAnalysisService {
   bool _hasCommandCue(String text) {
     final normalized = _normalizeText(text, '');
     return RegExp(
-      r'(추가|등록|저장(?!된|한|되어|돼)|새로|기록|메모|예약|만들어|해줘|해줄래|바꿔|수정|변경|삭제|지워|찾아|검색|알려|선택|이걸로|이거)',
+      r'(추가|등록|저장(?!된|한|되어|돼)|새로|기록|메모|예약|만들어|해줘|해줄래|바꿔|수정|변경|삭제|지워|찾아|검색|알려|이동)',
     ).hasMatch(normalized);
   }
 
@@ -708,10 +708,11 @@ class VoiceCommandAnalysisService {
     title = title
         .replaceAll(
           RegExp(
-            r'(추가|등록|기록|메모|예약|만들어|해줘|해주세요|바꿔|수정|변경|삭제|지워|찾아|검색|알려|선택|이걸로|이거)',
+            r'(추가|등록|기록|메모|예약|만들어|해줘|해주세요|바꿔|수정|변경|삭제|지워|찾아|검색|알려|이동)',
           ),
           ' ',
         )
+        .replaceAll(RegExp(r'(선택|이걸로|이거|그걸로|골라|첫번째|두번째|셋째)'), ' ')
         .replaceAll(
           RegExp(
             r'(?:(?:\d{4})년\s*)?(?:\d{1,2}|[가-힣]{1,8})월\s*(?:\d{1,2}|[가-힣]{1,8})일',
@@ -984,7 +985,7 @@ Return only a valid JSON object.
 
 Required keys:
 - normalized_text: string
-- intent: one of "add", "edit", "delete", "query", "choose"
+- intent: one of "add", "edit", "delete", "query"
 - confidence: number from 0.0 to 1.0
 - uncertain_fields: array of strings
 - schedule_fields: object or null
@@ -998,7 +999,7 @@ Rules:
   title, date, start_at, end_at, location, location_lat, location_lng,
   travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies,
   is_critical, recurrence_rule, is_all_day, is_multi_day, category, pre_actions.
-- For edit, delete, query, and choose intents, use target_event_hint and
+- For edit, delete, and query intents, use target_event_hint and
   requested_changes to identify what should be acted on.
 - Keep uncertain_fields focused on what still needs confirmation.
 ''';

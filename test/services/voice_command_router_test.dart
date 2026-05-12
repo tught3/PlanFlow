@@ -37,6 +37,15 @@ void main() {
       expect(editRoute.targetQuery, isNot(contains('연기')));
       expect(editRoute.requestedChanges, contains('start_at'));
 
+      final moveRoute = router.route(
+        '내일 팀장님 동행방문 다음 주 수요일로 이동',
+        context: VoiceTextCleanupContext.edit,
+      );
+      expect(moveRoute.intent, VoiceCommandRouteIntent.edit);
+      expect(moveRoute.targetQuery, contains('팀장님'));
+      expect(moveRoute.targetQuery, isNot(contains('이동')));
+      expect(moveRoute.requestedChanges, contains('start_at'));
+
       final deleteRoute = router.route(
         '오늘 아이스크림 전달 일정 삭제해 줘',
         context: VoiceTextCleanupContext.delete,

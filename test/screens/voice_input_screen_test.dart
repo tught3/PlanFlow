@@ -390,6 +390,47 @@ void main() {
     expect(find.text('음성 관리 화면'), findsNothing);
   });
 
+  testWidgets('이동 표현은 후보 선택이 아니라 수정 화면으로 간다',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) =>
+              const VoiceInputScreen(autoStartOverride: false),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              'action:${extra['action']}|raw:${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '내일 팀장님 동행방문 다음 주 수요일로 이동');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('직접 입력'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('action:edit'), findsOneWidget);
+    expect(find.textContaining('내일 팀장님 동행방문 다음 주 수요일로 이동'), findsOneWidget);
+  });
+
   testWidgets(
     '오늘 오후 3시에서 4시 사이에 팀장님한테 내일 오는 시간 확인하기는 추가로 분류된다',
     (tester) async {

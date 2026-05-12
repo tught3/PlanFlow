@@ -227,6 +227,26 @@ void main() {
       expect(parsed['target_event_hint'], isNotNull);
     });
 
+    test('treats 이동 as an edit intent and requested change cue locally',
+        () async {
+      final service = VoiceCommandAnalysisService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 7, 9, 0),
+        maxAiRequests: 0,
+      );
+
+      final result = await service.analyze(
+        '내일 팀장님 동행방문 다음 주 수요일로 이동',
+        stage: VoiceCommandAnalysisStage.complete,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(result.method, VoiceCommandAnalysisMethod.local);
+      expect(result.intent, VoiceCommandIntent.edit);
+      expect(result.requestedChanges, contains('start_at'));
+      expect(result.normalizedText, contains('이동'));
+    });
+
     test('detects meaningful text changes without punctuation-only churn', () {
       final service = VoiceCommandAnalysisService(
         endpoint: Uri.parse(_proxyEndpoint),

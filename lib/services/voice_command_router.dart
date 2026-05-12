@@ -37,7 +37,7 @@ class VoiceCommandRouter {
     if (RegExp(r'(삭제|지워|없애|취소|제거)').hasMatch(normalized)) {
       return VoiceCommandRouteIntent.delete;
     }
-    if (RegExp(r'(수정|변경|바꿔|미뤄|앞당겨|옮겨|고쳐|편집|연기|늦춰|당겨)').hasMatch(normalized)) {
+    if (RegExp(r'(수정|변경|바꿔|미뤄|앞당겨|옮겨|이동|고쳐|편집|연기|늦춰|당겨)').hasMatch(normalized)) {
       return VoiceCommandRouteIntent.edit;
     }
     if (_hasQueryIntentCue(normalized)) {
@@ -50,9 +50,6 @@ class VoiceCommandRouter {
     }
     if (_hasQueryIntentCue(normalized)) {
       return VoiceCommandRouteIntent.query;
-    }
-    if (RegExp(r'(선택|이걸로|이거|그걸로|골라|첫번째|두번째|셋째)').hasMatch(normalized)) {
-      return VoiceCommandRouteIntent.choose;
     }
     return switch (context) {
       VoiceTextCleanupContext.delete => VoiceCommandRouteIntent.delete,
@@ -118,7 +115,7 @@ class VoiceCommandRouter {
     final normalized = normalizeManagementText(text);
     final changes = <String>{};
     if (RegExp(
-      r'(시간|시각|언제|몇\s*시|오전|오후|아침|점심|저녁|밤|오늘|내일|모레|글피|이번\s*주|다음\s*주|이번주|다음주|[월화수목금토일]요일|연기|미뤄|옮겨|앞당겨|늦춰|당겨|바꿔|변경|수정)',
+      r'(시간|시각|언제|몇\s*시|오전|오후|아침|점심|저녁|밤|오늘|내일|모레|글피|이번\s*주|다음\s*주|이번주|다음주|[월화수목금토일]요일|연기|미뤄|옮겨|이동|앞당겨|늦춰|당겨|바꿔|변경|수정)',
     ).hasMatch(normalized)) {
       changes.add('start_at');
     }
@@ -417,6 +414,7 @@ class VoiceCommandRouter {
     '조회',
     '바꾸',
     '옮겨',
+    '이동',
     '옮기',
     '미뤄',
     '미루',
@@ -425,6 +423,14 @@ class VoiceCommandRouter {
     '당겨',
     '늦춰',
     '늦추',
+    '선택',
+    '이걸로',
+    '이거',
+    '그걸로',
+    '골라',
+    '첫번째',
+    '두번째',
+    '셋째',
     '시간',
     '날짜',
     '장소',
