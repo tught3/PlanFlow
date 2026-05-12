@@ -382,8 +382,7 @@ class NaverCalDavCredentials {
   final String appPassword;
 }
 
-class LocalNaverCalDavCredentialStore
-    implements NaverCalDavCredentialStore {
+class LocalNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
   const LocalNaverCalDavCredentialStore({
     FlutterSecureStorage storage = const FlutterSecureStorage(),
   }) : _storage = storage;
@@ -537,6 +536,10 @@ class CompositeNaverCalDavCredentialStore
   Future<NaverCalDavCredentials?> readCredentials() async {
     final remote = await remoteStore.readCredentials();
     if (remote != null) {
+      await localStore.saveCredentials(
+        naverId: remote.naverId,
+        appPassword: remote.appPassword,
+      );
       return remote;
     }
 
@@ -587,8 +590,7 @@ class NaverCalDavService {
     Uri? baseUri,
   })  : _httpClient = httpClient ?? http.Client(),
         _ownsHttpClient = httpClient == null,
-        _credentialStore = credentialStore ??
-            _defaultCredentialStore(client),
+        _credentialStore = credentialStore ?? _defaultCredentialStore(client),
         _eventRepositoryOverride = eventRepository,
         _client = client,
         _currentUserId = currentUserId,

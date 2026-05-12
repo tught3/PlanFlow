@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 
 void main() {
-  test('prefers remote credentials without touching local cache', () async {
+  test('prefers remote credentials and refreshes local cache', () async {
     final remote = _FakeCredentialStore(
       readValue: const NaverCalDavCredentials(
         naverId: 'remote-id',
@@ -27,7 +27,9 @@ void main() {
     expect(remote.readCount, 1);
     expect(local.readCount, 0);
     expect(remote.saveCount, 0);
-    expect(local.saveCount, 0);
+    expect(local.saveCount, 1);
+    expect(local.savedValue?.naverId, 'remote-id');
+    expect(local.savedValue?.appPassword, 'remote-password');
   });
 
   test('migrates local credentials back to remote when remote is empty',

@@ -12,7 +12,7 @@ import 'core/router.dart';
 import 'core/theme.dart';
 import 'data/repositories/settings_repository.dart';
 import 'providers/auth_provider.dart';
-import 'services/google_calendar_auto_sync_service.dart';
+import 'services/calendar_auto_sync_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
 import 'services/oauth_callback_handler.dart';
@@ -29,8 +29,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   StreamSubscription<Uri?>? _homeWidgetClickSubscription;
   StreamSubscription<List<SharedMediaFile>>? _sharedIcsSubscription;
   final OAuthCallbackHandler _oauthCallbackHandler = OAuthCallbackHandler();
-  final GoogleCalendarAutoSyncService _googleCalendarAutoSyncService =
-      GoogleCalendarAutoSyncService();
+  final CalendarAutoSyncService _calendarAutoSyncService =
+      CalendarAutoSyncService();
   final NaverIcsShareStore _naverIcsShareStore = const NaverIcsShareStore();
   final NotificationService _notificationService = NotificationService();
   late final AppLifecycleListener _lifecycleListener;
@@ -69,7 +69,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       appRouter.go(AppRoutes.naverIcsImport, extra: pendingIcsPaths);
       return;
     }
-    await _googleCalendarAutoSyncService.syncIfAllowed(reason: reason);
+    await _calendarAutoSyncService.syncConnectedCalendars(reason: reason);
   }
 
   Future<void> _syncRegionSettings() async {
@@ -78,7 +78,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
     try {
-      final settings = await SettingsRepository.supabase().fetchSettings(userId);
+      final settings =
+          await SettingsRepository.supabase().fetchSettings(userId);
       if (settings == null) {
         return;
       }

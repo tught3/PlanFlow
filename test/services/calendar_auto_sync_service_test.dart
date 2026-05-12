@@ -68,6 +68,45 @@ void main() {
     );
   });
 
+  test('syncConnectedCalendars imports Naver CalDAV when credentials exist',
+      () async {
+    final naverCalDav = _FakeNaverCalDavService(
+      hasSavedCredentials: true,
+      syncResult: const NaverCalDavSyncResult(
+        success: true,
+        message: '네이버 CalDAV 자동 가져오기를 완료했습니다.',
+      ),
+    );
+    final service = CalendarAutoSyncService(
+      calendarSyncService: _FakeCalendarSyncService(
+        googleResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.google,
+          message: 'Google Calendar가 연결되어 있지 않아 건너뜁니다.',
+        ),
+        naverResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.naver,
+          message: 'Naver 직접 연동이 연결되어 있지 않아 건너뜁니다.',
+        ),
+      ),
+      naverCalDavService: naverCalDav,
+      deviceCalendarService: _FakeDeviceCalendarService(
+        hasPermission: false,
+      ),
+      throttle: Duration.zero,
+      now: () => DateTime(2026, 5, 9, 9, 30),
+    );
+
+    final result = await service.syncConnectedCalendars(force: true);
+    final snapshot = await service.loadSnapshot();
+
+    expect(naverCalDav.syncAllCallCount, 1);
+    expect(result.completed, contains('naver_caldav_auto_import'));
+    expect(
+      snapshot.provider('naver_caldav_auto_import').message,
+      '네이버 CalDAV 자동 가져오기를 완료했습니다.',
+    );
+  });
+
   test('syncConnectedCalendars records attention for reauth and import errors',
       () async {
     final service = CalendarAutoSyncService(
@@ -164,6 +203,7 @@ class _FakeNaverCalDavService extends NaverCalDavService {
 
   final bool hasSavedCredentials;
   final NaverCalDavSyncResult syncResult;
+  int syncAllCallCount = 0;
 
   @override
   Future<bool> hasCredentials() async => hasSavedCredentials;
@@ -178,6 +218,7 @@ class _FakeNaverCalDavService extends NaverCalDavService {
     bool diagnosticImport = false,
     NaverCalDavProgressCallback? onProgress,
   }) async {
+    syncAllCallCount += 1;
     return syncResult;
   }
 }
