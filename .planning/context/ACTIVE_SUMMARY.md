@@ -20,6 +20,7 @@
 - 장시간 탐색은 피하고, 근거가 나오는 범위만 단계적으로 확장한다.
 
 ## Current State
+- 2026-05-12: 음성 수정 후보 검색을 다듬어 "이라고 되어 있는 일정" 같은 문장 장식과 "이번 주 목요일로 바꿔 줘 오전 9시로" 같은 새 값 표현을 검색어에서 더 확실히 제거하고, edit/delete에서 매칭이 0점이어도 최근/다가오는 후보를 보여주는 fallback 정렬을 추가했다. `test/screens/voice_action_screen_test.dart`에 해당 회귀와 fallback 순서 테스트를 보강했고, `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`를 통과했다.
 - 2026-05-10: 반응형 레이아웃 공용 helper를 추가하고 shell/home/calendar/event/settings/voice 흐름을 폭 제한 중심으로 적응형화했다. 겉화면/잠금화면 알림 문구도 갱신했다. `dart analyze`, `flutter test`, `flutter build apk --debug`는 통과했고, `flutter build apk --release`는 release signing `storeFile` 누락으로 실패했다. 연결된 `adb` device는 없다.
 - GSD 초기화가 없던 저장소에 2026-04-01 기준 기본 `.planning` 문맥을 생성했다.
 - 메인 앱과 `lite-app` 모두 금융 파이프라인 구조 로그를 일부 도입한 상태다.
@@ -299,3 +300,11 @@
 - Refined `AGENTS.md` model routing so `gpt-5.3-codex-spark` remains the default execution/review model for cost-effective narrow work.
 - Added an explicit escalation rule to use `gpt-5.4-mini` for high-risk work such as calendar sync, auth, timezone/date math, notifications, voice parsing/routing, Supabase schema/RLS, release signing, and broad refactors.
 - Verification was document-scoped: checked the AGENTS model routing diff and reran `node scripts/gsd-context-hygiene.mjs`.
+
+## 2026-05-12 Voice Edit Candidate Fallback Checkpoint
+- Fixed voice schedule edit candidate search so phrases like `이라고 되어 있는 일정`, `이번 주 목요일`, and `오전 9시로` are stripped from the target search text before ranking saved events.
+- Added quote-ending token variants such as `전달이라고` -> `전달`, so spoken Korean wrappers no longer hide matching event titles.
+- Added a non-query fallback for edit/delete flows: if no target token matches, the screen still shows upcoming/recent event candidates instead of leaving `대상 일정` empty.
+- Added regression tests for the reported `오늘 강릉 아산에서 아이스크림 전달이라고 되어 있는 일정 이번 주 목요일로 바꿔 줘 오전 9시로` phrase and for empty-match fallback ordering.
+- Review passed with a separate verifier agent finding no blocking issues.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, full `./scripts/flutter-local.ps1 test --no-pub` (237 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `32145`.

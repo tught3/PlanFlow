@@ -259,6 +259,124 @@ void main() {
     expect(firstTitle.data, '서울성남 아이스크림 전달');
   });
 
+  testWidgets('음성 수정 후보 검색은 문장 장식과 새 일정값을 제외하고 대상 일정을 찾는다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '아이스크림 전달',
+          location: '강릉아산',
+        ),
+        _event(id: 'event-2', title: '목요일 오전 회의'),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '오늘 강릉 아산에서 아이스크림 전달이라고 되어 있는 일정 이번 주 목요일로 바꿔 줘 오전 9시로',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.text('아이스크림 전달'), findsOneWidget);
+    expect(find.text('목요일 오전 회의'), findsOneWidget);
+    final firstTitle = tester.widgetList<Text>(find.byType(Text)).firstWhere(
+          (widget) => widget.data == '아이스크림 전달' || widget.data == '목요일 오전 회의',
+        );
+    expect(firstTitle.data, '아이스크림 전달');
+  });
+
+  testWidgets('수정 명령이 정확히 매칭되지 않아도 대상 후보를 비워두지 않는다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '아이스크림 전달',
+          location: '강릉아산',
+          startAt: DateTime.now().add(const Duration(days: 1)),
+        ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '잘못 알아들은 문장 이번 주 목요일 오전 9시로 바꿔 줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.text('아이스크림 전달'), findsOneWidget);
+    expect(find.textContaining('조건에 맞는 일정을 찾지 못했어요'), findsNothing);
+  });
+
+  testWidgets('수정 후보 fallback은 다가오는 일정과 최근 일정을 우선으로 보여준다', (tester) async {
+    final now = DateTime.now();
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-past',
+          title: '지난 회의',
+          startAt: now.subtract(const Duration(days: 2)),
+        ),
+        _event(
+          id: 'event-future',
+          title: '내일 회의',
+          startAt: now.add(const Duration(days: 1)),
+        ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '아무 말이나 했지만 일정을 바꿔 줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('내일 회의'), findsOneWidget);
+    expect(find.text('지난 회의'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('내일 회의')).dy <
+          tester.getTopLeft(find.text('지난 회의')).dy,
+      isTrue,
+    );
+  });
+
   testWidgets('음성 삭제 명령은 확인 후 일정을 삭제하고 일정 탭으로 이동한다', (tester) async {
     final repository = _FakeEventRepository(
       events: [

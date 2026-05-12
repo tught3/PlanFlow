@@ -205,10 +205,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         rankedItems = _rankEventItems(filteredEvents, cleanup.cleanedText);
       }
 
-      final ranked = rankedItems
-          .map((item) => item.event)
-          .take(10)
-          .toList(growable: false);
+      final ranked = _candidateEventsForDisplay(
+        rankedItems,
+        filteredEvents,
+      ).map((item) => item.event).take(10).toList(growable: false);
       if (!mounted) {
         return;
       }
@@ -231,6 +231,71 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  List<_RankedEvent> _candidateEventsForDisplay(
+    List<_RankedEvent> rankedItems,
+    List<EventModel> filteredEvents,
+  ) {
+    if (rankedItems.isNotEmpty &&
+        (_isQuery || rankedItems.any((item) => item.matchScore > 0))) {
+      return rankedItems;
+    }
+    if (_isQuery || filteredEvents.isEmpty) {
+      return rankedItems;
+    }
+
+    final now = DateTime.now();
+    final fallback = filteredEvents.map((event) {
+      return _RankedEvent(
+        event: event,
+        score: _fallbackCandidateScore(event.startAt, now),
+        matchScore: 0,
+      );
+    }).toList(growable: false);
+
+    fallback.sort((a, b) {
+      return _compareRecentAndUpcoming(
+        a.event.startAt,
+        b.event.startAt,
+        now,
+      );
+    });
+    return fallback;
+  }
+
+  int _fallbackCandidateScore(DateTime? startAt, DateTime now) {
+    if (startAt == null) {
+      return 0;
+    }
+    return startAt.isBefore(now) ? 0 : 1;
+  }
+
+  int _compareRecentAndUpcoming(
+    DateTime? aStart,
+    DateTime? bStart,
+    DateTime now,
+  ) {
+    if (aStart == null && bStart == null) {
+      return 0;
+    }
+    if (aStart == null) {
+      return 1;
+    }
+    if (bStart == null) {
+      return -1;
+    }
+
+    final aIsUpcoming = !aStart.isBefore(now);
+    final bIsUpcoming = !bStart.isBefore(now);
+    if (aIsUpcoming != bIsUpcoming) {
+      return aIsUpcoming ? -1 : 1;
+    }
+
+    if (aIsUpcoming) {
+      return aStart.compareTo(bStart);
+    }
+    return bStart.compareTo(aStart);
   }
 
   Future<void> _selectAction(VoiceScheduleAction action) async {
@@ -601,6 +666,12 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       '밤',
       '무엇',
       '뭐',
+      '되어',
+      '있는',
+      '이라고',
+      '라고',
+      '이름',
+      '제목',
     };
     final seen = <String>{};
     return _targetSearchText(text)
@@ -619,6 +690,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   String _targetSearchText(String text) {
     var normalized = _normalizeVoiceManagementText(text);
     normalized = normalized
+        .replaceAll(RegExp(r'(이라고|라고)\s*(되어\s*)?(있는|있던)?\s*일정'), ' ')
+        .replaceAll(RegExp(r'(되어\s*있는|되어\s*있던|되있는|돼있는)\s*일정'), ' ')
+        .replaceAll(RegExp(r'(일정\s*)?(이번\s*주|이번주|다음\s*주|다음주).*$'), ' ')
         .replaceAll(RegExp(r'(이번\s*주|이번주|다음\s*주|다음주).*$'), ' ')
         .replaceAll(
             RegExp(
@@ -646,6 +720,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     if (token.endsWith('전달일정')) {
       variants.add(token.replaceFirst(RegExp(r'일정$'), ''));
     }
+    final withoutQuoteEnding =
+        token.replaceAll(RegExp(r'(이라고|라고|이라는|라는)$'), '');
+    if (withoutQuoteEnding.length >= 2) {
+      variants.add(withoutQuoteEnding);
+    }
     return variants.toList(growable: false);
   }
 
@@ -666,6 +745,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       '까지',
       '에게',
       '한테',
+      '이라고',
+      '라고',
+      '이라는',
+      '라는',
       '로',
       '에',
       '을',
