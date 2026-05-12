@@ -25,6 +25,16 @@
 - `debugForceMapUnavailableTimeout` 플래그로 지도 렌더 타임아웃 폴백 시나리오를 테스트 가능하게 만들고, 해당 케이스를 포함해 테스트 3건을 `test/screens/location_picker_screen_test.dart`에 추가했습니다.
 - 검증: `flutter-local` 기반 `analyze`, `test/screens/location_picker_screen_test.dart`, `build apk --debug`, `adb install`, `adb shell monkey/pidof`까지 통과.
 
+## 2026-05-13: voice_action_screen 후보 미표시 버그 수정 + CLAUDE.md 생성
+- `voice_action_screen.dart` 4가지 수정:
+  (1) `_loadCandidates` 시작 시 `_events.clear()` 추가 — 재로드 시 이전 데이터 잔류 방지
+  (2) `_candidateEventsForDisplay` 로직 단순화 — 키워드 매칭 없으면 모든 일정 다가오는 순 폴백 보장
+  (3) build 조건을 `else if (!_isAdd)`로 변경 — add 모드에서 빈 "대상 일정" 헤더가 나타나는 버그 수정
+  (4) 성공 상태에서 진단 정보(후보 수·검색어) 서브타이틀 표시
+- `CLAUDE.md` 새 파일 생성: claude-opus-4-5/sonnet/haiku 모델 라우팅, 워커 병렬 실행, 리뷰어 루프 규칙
+- `AGENTS.md` 모델명 gpt-5.5 계열 → Claude 모델명으로 업데이트
+- 검증: `flutter build apk --debug` 통과, git push 완료
+
 ## Current State
 - 2026-05-12: `lib/screens/voice/voice_action_screen.dart`에서 음성 수정/삭제 후보가 0점 매칭이어도 최근/다가오는 후보를 계속 보여주도록 유지하고, DB 0건일 때는 "저장된 일정이 앱 DB에서 보이지 않아요" 복구 카드와 `동기화 후 다시 찾기` 액션을 노출하도록 정리했다. 후보 조회 시 `action`, `userIdExists`, `totalEventCount`, `filteredCount`, `displayedCount`, `targetQuery`를 debugPrint로 남기도록 추가했고, `test/screens/voice_action_screen_test.dart`에 로그/복구 카드 회귀를 보강했다. 검증은 `dart analyze lib/screens/voice/voice_action_screen.dart test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`까지 통과했다.
 - 2026-05-12: 음성 라우터/분석/입력에서 수정 intent에 `이동`을 추가하고, `첫번째/이걸로/선택/이거/그걸로/골라` 계열 전역 choose intent는 음성 입력 경로에서 더 이상 생성되지 않도록 정리했다. `VoiceCommandAnalysisService` 프롬프트와 로컬 제목 정리에서도 choose 단어를 노이즈로 제거했고, voice input/router/analysis focused tests를 다시 통과했다. 검증은 `./scripts/flutter-local.ps1 test --no-pub test/services/voice_command_router_test.dart test/services/voice_command_analysis_service_test.dart test/screens/voice_input_screen_test.dart`와 `./scripts/flutter-local.ps1 build apk --debug --no-pub`까지 완료했다.
@@ -373,3 +383,8 @@
 - VoiceActionScreen now retries one forced calendar sync when edit/delete/query candidate DB reads return 0 events, then renders a recovery card with diagnostics (`action`, `userId`, `totalEventCount`, `filteredCount`, `displayedCount`, `targetQuery`) instead of leaving only the `대상 일정` title.
 - Worker agents split the memo/parsing and candidate-diagnostics scopes; a reviewer agent reported no blocking issues.
 - Verification passed: focused voice/GPT/confirm tests, full `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (274 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `12938`.
+
+## 2026-05-13 Voice Input Hint Copy Checkpoint
+- Removed the top helper sentence from the voice input page and added a second example that explicitly teaches schedule edits/changes: `언제 일정을 다음주로 변경해`.
+- Kept the existing guidance card and tests aligned so the new copy is visible and the old intro line no longer appears.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub lib/screens/voice/voice_input_screen.dart test/screens/voice_input_screen_test.dart` and `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_input_screen_test.dart`.

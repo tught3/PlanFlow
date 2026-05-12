@@ -579,14 +579,6 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  '말하거나 직접 입력한 뒤 바로 확인하세요.',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: PlanFlowColors.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 10),
                 Expanded(child: _VoiceCommandGuide(theme: theme)),
                 const SizedBox(height: 8),
                 _ListeningGuide(
@@ -642,13 +634,14 @@ class _VoiceCommandGuide extends StatelessWidget {
       '기간: “5월 10일 하루종일 휴가”',
       '반복: “매주 화요일 팀 미팅”',
       '장소: “내일 오후 3시 강남역 미팅”',
+      '수정: “언제 일정을 다음주로 변경해”',
       '분류: 병원=건강, 세미나=교육',
       '조회: “오늘 일정 알려줘”, “이번 주 일정 알려줘”',
       '수정/삭제: “마지막 거 지워”, “다시”, “취소”라고 말할 수 있어요.',
     ];
     const compactBullets = <String>[
       '일정: “내일 오전 10시 정장집 방문”, “5월 10일 하루종일 휴가”, “매주 화요일 팀 미팅”',
-      '분류/조회: 병원 진료는 건강, “오늘 일정 알려줘”, “마지막 거 지워”',
+      '수정: “언제 일정을 다음주로 변경해”, 분류/조회: 병원 진료는 건강, “오늘 일정 알려줘”, “마지막 거 지워”',
     ];
 
     return LayoutBuilder(
