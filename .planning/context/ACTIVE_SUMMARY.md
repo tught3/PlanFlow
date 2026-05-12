@@ -268,3 +268,10 @@
 - Updated the composite Naver CalDAV credential store to refresh the local secure cache whenever Supabase returns remote credentials, improving update/restart recovery after local cache loss.
 - Added regression coverage proving lifecycle auto sync imports Naver CalDAV when credentials exist and remote CalDAV credentials are copied back into the local cache.
 - Verification passed: raw `flutter analyze --no-pub` (wrapper analyze still passes `--dart-define` incorrectly), focused calendar credential/auto-sync tests, full `./scripts/flutter-local.ps1 test --no-pub` (226 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `21386`.
+
+## 2026-05-12 Smart Morning Briefing Schedule Checkpoint
+- Changed morning briefing scheduling so the configured morning time is pulled earlier when the first external event's calculated preparation start would happen before that time.
+- The adjusted morning briefing is scheduled 30 minutes before the first preparation start, using the same default external-event travel/slack/prep timing model and never scheduling in the past.
+- Added tests for early external schedules pulling the morning briefing forward and for past adjusted times falling back to the configured morning time.
+- Fixed a date-sensitive ConfirmScreen UTC round-trip test by moving its fixed sample event to a future date relative to the current test date.
+- Verification passed: `flutter analyze --no-pub`, focused briefing and ConfirmScreen tests, full `./scripts/flutter-local.ps1 test --no-pub` (228 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `14665`.

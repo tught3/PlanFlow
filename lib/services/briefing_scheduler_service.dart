@@ -12,6 +12,7 @@ import 'alarm_service.dart';
 import 'gpt_service.dart';
 import 'notification_service.dart';
 import 'remote_config_service.dart';
+import 'smart_preparation_alarm_service.dart';
 import 'travel_time_buffer_service.dart';
 import 'tts_service.dart';
 
@@ -92,17 +93,23 @@ class BriefingSchedulerService {
     TtsService? ttsService,
     NotificationService? notificationService,
     SettingsRepository? settingsRepository,
+    EventRepository? eventRepository,
+    DateTime Function()? now,
   })  : _alarmService = alarmService ?? const AlarmService(),
         _gptService = gptService ?? GptService(),
         _ttsService = ttsService ?? const TtsService(),
         _notificationService = notificationService ?? NotificationService(),
-        _settingsRepository = settingsRepository;
+        _settingsRepository = settingsRepository,
+        _eventRepository = eventRepository,
+        _now = now ?? DateTime.now;
 
   final AlarmService _alarmService;
   final GptService _gptService;
   final TtsService _ttsService;
   final NotificationService _notificationService;
   final SettingsRepository? _settingsRepository;
+  final EventRepository? _eventRepository;
+  final DateTime Function() _now;
 
   static const String _morningAlarmId = 'briefing:morning';
   static const String _eveningAlarmId = 'briefing:evening';
@@ -118,6 +125,7 @@ class BriefingSchedulerService {
       'briefing:last_execution_message';
   static const String _lastExecutionFailureReasonKey =
       'briefing:last_execution_failure_reason';
+  static const Duration _briefingLeadBeforePrepStart = Duration(minutes: 30);
 
   Future<BriefingDailyScheduleResult> scheduleDaily({
     required String morningTime,
@@ -125,7 +133,12 @@ class BriefingSchedulerService {
     String? userId,
   }) async {
     final resolvedUserId = _resolveUserId(userId);
-    final morningAt = _nextOccurrence(morningTime);
+    final settings = await _loadSettings(resolvedUserId);
+    final morningAt = await _resolveMorningScheduleTime(
+      baseMorningAt: _nextOccurrence(morningTime),
+      userId: resolvedUserId,
+      settings: settings.copyWith(morningBriefingAt: morningTime),
+    );
     final eveningAt = _nextOccurrence(eveningTime);
 
     if (!RemoteConfigService.briefingEnabled) {
@@ -366,9 +379,9 @@ class BriefingSchedulerService {
     required String userId,
     required bool isMorning,
   }) async {
-    final repository = EventRepository.supabase();
+    final repository = _eventRepository ?? EventRepository.supabase();
     final allEvents = await repository.listEvents(userId: userId);
-    final targetDate = isMorning ? DateTime.now() : _tomorrow();
+    final targetDate = isMorning ? _now() : _tomorrow();
 
     return allEvents.where((event) {
       final startAt = event.startAt;
@@ -495,7 +508,13 @@ class BriefingSchedulerService {
     final nextTime =
         isMorning ? settings.morningBriefingAt : settings.eveningBriefingAt;
 
-    final scheduledAt = _nextOccurrence(nextTime);
+    final scheduledAt = isMorning
+        ? await _resolveMorningScheduleTime(
+            baseMorningAt: _nextOccurrence(nextTime),
+            userId: resolvedUserId,
+            settings: settings,
+          )
+        : _nextOccurrence(nextTime);
     if (isMorning) {
       final scheduled = await _alarmService.scheduleMorningBriefing(
         id: _morningAlarmId,
@@ -595,6 +614,79 @@ class BriefingSchedulerService {
     }
   }
 
+  Future<DateTime> _resolveMorningScheduleTime({
+    required DateTime baseMorningAt,
+    required String? userId,
+    required UserSettingsModel settings,
+  }) async {
+    if (userId == null || userId.isEmpty) {
+      return baseMorningAt;
+    }
+
+    try {
+      final firstExternalEvent = await _firstExternalEventOn(
+        userId: userId,
+        targetDate: baseMorningAt,
+      );
+      if (firstExternalEvent == null || firstExternalEvent.startAt == null) {
+        return baseMorningAt;
+      }
+
+      final prepStartAt = _prepStartAtFor(
+        firstExternalEvent,
+        settings: settings,
+      );
+      final adjusted = prepStartAt.subtract(_briefingLeadBeforePrepStart);
+      if (adjusted.isAfter(_now()) && adjusted.isBefore(baseMorningAt)) {
+        return adjusted;
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Morning briefing smart schedule skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    return baseMorningAt;
+  }
+
+  Future<EventModel?> _firstExternalEventOn({
+    required String userId,
+    required DateTime targetDate,
+  }) async {
+    final repository = _eventRepository ?? EventRepository.supabase();
+    final events = await repository.listEvents(userId: userId);
+    final smartPreparation = const SmartPreparationAlarmService();
+    final externalEvents = events.where((event) {
+      final startAt = event.startAt;
+      if (startAt == null || !planflowIsSameLocalDay(startAt, targetDate)) {
+        return false;
+      }
+      return smartPreparation.isExternalEvent(
+        title: event.title,
+        location: event.location,
+      );
+    }).toList(growable: false)
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+    return externalEvents.isEmpty ? null : externalEvents.first;
+  }
+
+  DateTime _prepStartAtFor(
+    EventModel event, {
+    required UserSettingsModel settings,
+  }) {
+    final startAt = planflowLocal(event.startAt!);
+    final prepMinutes = settings.prepTimeMin.clamp(5, 240).toInt();
+    final travelMinutes = SmartPreparationAlarmService.defaultTravelBufferMin
+        .clamp(0, 360)
+        .toInt();
+    final departureAt = startAt.subtract(
+      Duration(
+        minutes: travelMinutes +
+            SmartPreparationAlarmService.externalScheduleSlackMin,
+      ),
+    );
+    return departureAt.subtract(Duration(minutes: prepMinutes));
+  }
+
   String? _resolveUserId(String? userId) {
     final explicitUserId = userId?.trim();
     if (explicitUserId != null && explicitUserId.isNotEmpty) {
@@ -617,7 +709,7 @@ class BriefingSchedulerService {
     final hour = int.tryParse(parts.firstOrNull ?? '') ?? 7;
     final minute = int.tryParse(parts.elementAtOrNull(1) ?? '') ?? 30;
 
-    final now = DateTime.now();
+    final now = _now();
     var target = DateTime(now.year, now.month, now.day, hour, minute);
 
     if (!target.isAfter(now)) {
@@ -628,7 +720,7 @@ class BriefingSchedulerService {
   }
 
   DateTime _tomorrow() {
-    final now = DateTime.now();
+    final now = _now();
     return DateTime(now.year, now.month, now.day + 1);
   }
 
