@@ -178,6 +178,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     setState(() {
       _isLoading = true;
       _message = null;
+      _events.clear();
     });
 
     try {
@@ -287,12 +288,19 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     List<_RankedEvent> rankedItems,
     List<EventModel> filteredEvents,
   ) {
-    if (rankedItems.isNotEmpty &&
-        (_isQuery || rankedItems.any((item) => item.matchScore > 0))) {
+    // 조회(query) 모드: 날짜 필터 적용된 rankedItems를 그대로 반환
+    if (_isQuery) {
       return rankedItems;
     }
-    if (_isQuery || filteredEvents.isEmpty) {
+
+    // 수정/삭제 모드: 하나라도 키워드 매칭된 항목이 있으면 점수순 목록 반환
+    if (rankedItems.any((item) => item.matchScore > 0)) {
       return rankedItems;
+    }
+
+    // 키워드 매칭 없음 → 폴백: 저장된 일정 전체를 다가오는 순으로 보여줌
+    if (filteredEvents.isEmpty) {
+      return const [];
     }
 
     final now = DateTime.now();
@@ -1190,7 +1198,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                   onOpenCalendar: () => context.go(AppRoutes.calendar),
                   onRetrySync: _syncAndReloadCandidates,
                 )
-              else ...[
+              // add 모드가 아니고 이벤트가 있을 때만 후보 목록 섹션 표시
+              else if (!_isAdd) ...[
                 Text(
                   _isQuery ? '단순 조회 결과' : '대상 일정',
                   style: theme.textTheme.titleMedium?.copyWith(
@@ -1198,6 +1207,18 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                if (_candidateLoadDiagnostics != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    _candidateLoadDiagnostics!.displayedCount > 0 &&
+                            _candidateLoadDiagnostics!.targetQuery.isNotEmpty
+                        ? '${_candidateLoadDiagnostics!.displayedCount}개 후보 · 검색어: ${_candidateLoadDiagnostics!.targetQuery}'
+                        : '${_candidateLoadDiagnostics!.displayedCount}개 후보',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 if (_isQuery) ...[
                   _QueryOverviewCard(

@@ -14,11 +14,12 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 5. Only report completion when nothing is left to change.
 
 ## Model routing
-- Planning: `gpt-5.5`
-- Execution: `gpt-5.3-codex-spark`
-- Review / verification: `gpt-5.3-codex-spark`
-- Escalate execution and/or review to `gpt-5.4-mini` for high-risk work: calendar sync, auth, timezone/date math, notification scheduling, voice parsing/routing, Supabase schema/RLS, release signing, or broad refactors.
-- Keep `gpt-5.3-codex-spark` as the default for narrow UI changes, focused bug fixes, tests, docs, and low-risk plumbing.
+- Planning: `claude-opus-4-5`
+- Execution: `claude-sonnet-4-5`
+- Review / verification: `claude-sonnet-4-5`
+- Escalate execution and/or review to `claude-sonnet-4-5` for high-risk work: calendar sync, auth, timezone/date math, notification scheduling, voice parsing/routing, Supabase schema/RLS, release signing, or broad refactors.
+- Use `claude-haiku-3-5` for narrow, mechanical tasks: renaming, formatting, constant edits, trivial single-file changes.
+- Keep `claude-sonnet-4-5` as the default for UI changes, focused bug fixes, tests, docs, and low-risk plumbing.
 - If a task benefits from GSD, use GSD first and keep the same model split inside that workflow.
 
 ## Workflow rules
