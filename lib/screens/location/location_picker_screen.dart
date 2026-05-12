@@ -15,6 +15,7 @@ class LocationPickerScreen extends StatefulWidget {
     this.initialMessage,
     LocationLookupService? locationLookupService,
     this.canUseInAppMapOverride,
+    this.debugForceMapUnavailableTimeout = false,
   }) : locationLookupService = locationLookupService ?? LocationLookupService();
 
   final String initialQuery;
@@ -22,12 +23,15 @@ class LocationPickerScreen extends StatefulWidget {
   final String? initialMessage;
   final LocationLookupService locationLookupService;
   final bool? canUseInAppMapOverride;
+  final bool debugForceMapUnavailableTimeout;
 
   @override
   State<LocationPickerScreen> createState() => _LocationPickerScreenState();
 }
 
 class _LocationPickerScreenState extends State<LocationPickerScreen> {
+  static const _defaultMapReadinessTimeout = Duration(seconds: 5);
+
   late final TextEditingController _queryController;
   late List<LocationLookupResult> _results;
   LocationLookupResult? _selected;
@@ -36,6 +40,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   bool _isSearching = false;
   String? _message;
   String? _mapLoadMessage;
+  _MapRenderState _mapRenderState = _MapRenderState.unavailable;
 
   bool get _canUseNaverMap {
     if (widget.canUseInAppMapOverride == false) {
@@ -51,8 +56,12 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     return AppEnv.googleMapsApiKey.trim().isNotEmpty;
   }
 
-  bool get _canUseInAppMap =>
-      widget.canUseInAppMapOverride ?? (_canUseNaverMap || _canUseGoogleMap);
+  bool get _canUseInAppMap => widget.canUseInAppMapOverride == false
+      ? false
+      : (_canUseNaverMap || _canUseGoogleMap);
+
+  bool get _canShowInAppMapBody =>
+      _canUseInAppMap && _mapRenderState == _MapRenderState.ready;
 
   NLatLng get _initialTarget {
     final selected = _selected;
@@ -78,6 +87,14 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     _message = widget.initialMessage;
     if (_results.isNotEmpty) {
       _selected = _results.first;
+    }
+    if (widget.debugForceMapUnavailableTimeout) {
+      _mapLoadMessage = _mapUnavailableTimeoutMessage;
+      _mapRenderState = _MapRenderState.unavailable;
+    } else {
+      _mapRenderState = _canUseInAppMap
+          ? _MapRenderState.loading
+          : _MapRenderState.unavailable;
     }
     if (_results.isEmpty && widget.initialQuery.trim().isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _search());
@@ -221,19 +238,23 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   Future<void> _watchMapReadiness() async {
-    if (!_canUseInAppMap) {
+    if (!_canUseInAppMap || widget.debugForceMapUnavailableTimeout) {
       return;
     }
-    await Future<void>.delayed(const Duration(seconds: 5));
+    await Future<void>.delayed(_defaultMapReadinessTimeout);
     if (!mounted) {
       return;
     }
+    if (_mapRenderState != _MapRenderState.loading) {
+      return;
+    }
     final hasController =
-        _canUseNaverMap ? _mapController != null : _googleMapController != null;
+        _mapController != null || _googleMapController != null;
     if (!hasController) {
       setState(() {
         _mapLoadMessage =
             '지도 화면이 아직 열리지 않았어요. API 키 제한을 확인하거나 아래 장소 후보를 선택해 주세요.';
+        _mapRenderState = _MapRenderState.unavailable;
       });
     }
   }
@@ -298,86 +319,94 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: _canUseNaverMap
-                        ? NaverMap(
-                            forceGesture: true,
-                            options: NaverMapViewOptions(
-                              initialCameraPosition: NCameraPosition(
-                                target: _initialTarget,
-                                zoom: 15,
-                              ),
-                              locationButtonEnable: false,
-                              compassEnable: true,
-                              contentPadding:
-                                  const EdgeInsets.only(bottom: 160),
-                            ),
-                            onMapReady: (controller) async {
-                              _mapController = controller;
-                              if (mounted) {
-                                setState(() {
-                                  _mapLoadMessage = null;
-                                });
-                              }
-                              final selected = _selected;
-                              if (selected != null) {
-                                await _moveMapTo(selected);
-                              }
-                            },
-                            onMapTapped: (_, latLng) => _selectMapPoint(latLng),
-                            onMapLongTapped: (_, latLng) => _selectMapPoint(
-                              latLng,
-                              longPressed: true,
-                            ),
-                          )
-                        : _canUseGoogleMap
-                            ? google_maps.GoogleMap(
-                                initialCameraPosition:
-                                    google_maps.CameraPosition(
-                                  target: _googleInitialTarget,
+                    child: switch (_mapRenderState) {
+                      _MapRenderState.loading => const _MapLoadingPanel(),
+                      _MapRenderState.unavailable => _MapUnavailablePanel(
+                          message: _mapLoadMessage ??
+                              (_canUseInAppMap
+                                  ? _mapUnavailableTimeoutMessage
+                                  : _missingMapMessage),
+                          query: _queryController.text,
+                        ),
+                      _MapRenderState.ready => _canUseNaverMap
+                          ? NaverMap(
+                              forceGesture: true,
+                              options: NaverMapViewOptions(
+                                initialCameraPosition: NCameraPosition(
+                                  target: _initialTarget,
                                   zoom: 15,
                                 ),
-                                myLocationButtonEnabled: false,
-                                myLocationEnabled: false,
-                                markers: {
-                                  if (_selected != null)
-                                    google_maps.Marker(
-                                      markerId: const google_maps.MarkerId(
-                                          'selected'),
-                                      position: google_maps.LatLng(
-                                        _selected!.latitude,
-                                        _selected!.longitude,
-                                      ),
-                                      infoWindow: google_maps.InfoWindow(
-                                        title: _selected!.name,
-                                        snippet: _selected!.address,
-                                      ),
-                                    ),
-                                },
-                                onMapCreated: (controller) async {
-                                  _googleMapController = controller;
-                                  if (mounted) {
-                                    setState(() {
-                                      _mapLoadMessage = null;
-                                    });
-                                  }
-                                  final selected = _selected;
-                                  if (selected != null) {
-                                    await _moveGoogleMapTo(selected);
-                                  }
-                                },
-                                onTap: (latLng) => _selectMapPoint(
-                                  NLatLng(latLng.latitude, latLng.longitude),
-                                ),
-                                onLongPress: (latLng) => _selectMapPoint(
-                                  NLatLng(latLng.latitude, latLng.longitude),
-                                  longPressed: true,
-                                ),
-                              )
-                            : _MapUnavailablePanel(
-                                query: _queryController.text,
+                                locationButtonEnable: false,
+                                compassEnable: true,
+                                contentPadding:
+                                    const EdgeInsets.only(bottom: 160),
                               ),
+                              onMapReady: (controller) async {
+                                _mapController = controller;
+                                if (mounted) {
+                                  setState(() {
+                                    _mapLoadMessage = null;
+                                    _mapRenderState = _MapRenderState.ready;
+                                  });
+                                }
+                                final selected = _selected;
+                                if (selected != null) {
+                                  await _moveMapTo(selected);
+                                }
+                              },
+                              onMapTapped: (_, latLng) =>
+                                  _selectMapPoint(latLng),
+                              onMapLongTapped: (_, latLng) => _selectMapPoint(
+                                latLng,
+                                longPressed: true,
+                              ),
+                            )
+                          : google_maps.GoogleMap(
+                              initialCameraPosition: google_maps.CameraPosition(
+                                target: _googleInitialTarget,
+                                zoom: 15,
+                              ),
+                              myLocationButtonEnabled: false,
+                              myLocationEnabled: false,
+                              markers: {
+                                if (_selected != null)
+                                  google_maps.Marker(
+                                    markerId:
+                                        const google_maps.MarkerId('selected'),
+                                    position: google_maps.LatLng(
+                                      _selected!.latitude,
+                                      _selected!.longitude,
+                                    ),
+                                    infoWindow: google_maps.InfoWindow(
+                                      title: _selected!.name,
+                                      snippet: _selected!.address,
+                                    ),
+                                  ),
+                              },
+                              onMapCreated: (controller) async {
+                                _googleMapController = controller;
+                                if (mounted) {
+                                  setState(() {
+                                    _mapLoadMessage = null;
+                                    _mapRenderState = _MapRenderState.ready;
+                                  });
+                                }
+                                final selected = _selected;
+                                if (selected != null) {
+                                  await _moveGoogleMapTo(selected);
+                                }
+                              },
+                              onTap: (latLng) => _selectMapPoint(
+                                NLatLng(latLng.latitude, latLng.longitude),
+                              ),
+                              onLongPress: (latLng) => _selectMapPoint(
+                                NLatLng(latLng.latitude, latLng.longitude),
+                                longPressed: true,
+                              ),
+                            ),
+                    },
                   ),
-                  if (_canUseInAppMap)
+                  if (_canShowInAppMapBody)
                     Positioned(
                       left: 16,
                       right: 16,
@@ -386,7 +415,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                         hasSelectedLocation: _selected != null,
                       ),
                     ),
-                  if (_mapLoadMessage != null)
+                  if (_canShowInAppMapBody && _mapLoadMessage != null)
                     Positioned(
                       left: 16,
                       right: 16,
@@ -551,6 +580,13 @@ class _BottomSelectionPanel extends StatelessWidget {
                 },
               ),
             ),
+          if (results.isEmpty)
+            Text(
+              '현재 검색된 후보가 없어요. 검색어를 바꿔보거나 지도에서 직접 선택해 주세요.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
           const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: selected == null ? null : onConfirm,
@@ -564,8 +600,12 @@ class _BottomSelectionPanel extends StatelessWidget {
 }
 
 class _MapUnavailablePanel extends StatelessWidget {
-  const _MapUnavailablePanel({required this.query});
+  const _MapUnavailablePanel({
+    required this.message,
+    required this.query,
+  });
 
+  final String message;
   final String query;
 
   @override
@@ -578,7 +618,7 @@ class _MapUnavailablePanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              _missingMapMessage,
+              message,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: PlanFlowColors.textSecondary,
@@ -586,6 +626,33 @@ class _MapUnavailablePanel extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             _ExternalMapButtons(query: query),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapLoadingPanel extends StatelessWidget {
+  const _MapLoadingPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 14),
+            Text(
+              '인앱 지도를 불러오는 중이에요. 잠시만 기다려 주세요.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
+            ),
           ],
         ),
       ),
@@ -689,6 +756,15 @@ class _MapLoadFallbackBanner extends StatelessWidget {
 
 const String _missingMapMessage =
     '앱 안 지도를 열 수 없습니다.\n지도 API 키, 패키지명 제한, 인증 상태를 확인해 주세요.\n아래 장소 후보를 선택하거나 외부 지도에서 먼저 확인할 수 있어요.';
+
+const String _mapUnavailableTimeoutMessage =
+    '지도 화면이 아직 열리지 않았어요. SDK/키/권한 설정을 확인하고 아래 버튼으로 계속 진행해 주세요.';
+
+enum _MapRenderState {
+  loading,
+  ready,
+  unavailable,
+}
 
 enum _ExternalMapTarget {
   google('Google 지도'),

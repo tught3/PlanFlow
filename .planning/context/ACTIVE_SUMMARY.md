@@ -19,6 +19,12 @@
 - 가능한 경우 좁은 범위부터 수정하고 인접 영향만 점진적으로 넓힌다.
 - 장시간 탐색은 피하고, 근거가 나오는 범위만 단계적으로 확장한다.
 
+## 2026-05-12: LocationPicker 지도 폴백 상태 기반 구현
+- `lib/screens/location/location_picker_screen.dart`에서 지도 렌더 상태를 `_MapRenderState`로 분리해, 인앱 지도 실패/타임아웃 시 `AppBar`만 남는 공백을 막고 폴백 본문(메시지 + 외부 지도 버튼)을 강제 표시하도록 했습니다.
+- `canUseInAppMapOverride: false` 및 검색 결과 없는 경우에도 검색창/후보/외부 지도 버튼 구성이 유지되도록 하단 패널 안내 문구를 보강했습니다.
+- `debugForceMapUnavailableTimeout` 플래그로 지도 렌더 타임아웃 폴백 시나리오를 테스트 가능하게 만들고, 해당 케이스를 포함해 테스트 3건을 `test/screens/location_picker_screen_test.dart`에 추가했습니다.
+- 검증: `flutter-local` 기반 `analyze`, `test/screens/location_picker_screen_test.dart`, `build apk --debug`, `adb install`, `adb shell monkey/pidof`까지 통과.
+
 ## Current State
 - 2026-05-12: 음성 수정 후보 검색을 다듬어 "이라고 되어 있는 일정" 같은 문장 장식과 "이번 주 목요일로 바꿔 줘 오전 9시로" 같은 새 값 표현을 검색어에서 더 확실히 제거하고, edit/delete에서 매칭이 0점이어도 최근/다가오는 후보를 보여주는 fallback 정렬을 추가했다. `test/screens/voice_action_screen_test.dart`에 해당 회귀와 fallback 순서 테스트를 보강했고, `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 test --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`를 통과했다.
 - 2026-05-10: 반응형 레이아웃 공용 helper를 추가하고 shell/home/calendar/event/settings/voice 흐름을 폭 제한 중심으로 적응형화했다. 겉화면/잠금화면 알림 문구도 갱신했다. `dart analyze`, `flutter test`, `flutter build apk --debug`는 통과했고, `flutter build apk --release`는 release signing `storeFile` 누락으로 실패했다. 연결된 `adb` device는 없다.

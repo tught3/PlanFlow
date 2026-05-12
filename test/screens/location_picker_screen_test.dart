@@ -38,6 +38,8 @@ void main() {
     expect(find.text('네이버 지도'), findsOneWidget);
     expect(find.text('TMAP'), findsWidgets);
     expect(find.text('성심당 본점'), findsWidgets);
+    expect(
+        find.text('현재 검색된 후보가 없어요. 검색어를 바꿔보거나 지도에서 직접 선택해 주세요.'), findsNothing);
     expect(find.text('이 위치 사용'), findsOneWidget);
   });
 
@@ -65,6 +67,48 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('앱 안 지도를 열 수 없습니다.'), findsOneWidget);
+    expect(
+      find.text('현재 검색된 후보가 없어요. 검색어를 바꿔보거나 지도에서 직접 선택해 주세요.'),
+      findsOneWidget,
+    );
+    expect(find.text('Google 지도'), findsOneWidget);
+    expect(find.text('네이버 지도'), findsOneWidget);
+    expect(find.text('TMAP'), findsWidgets);
+  });
+
+  testWidgets(
+      'LocationPickerScreen shows map-unavailable fallback when map readiness is forced to timeout',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(430, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LocationPickerScreen(
+          initialQuery: '서울역',
+          debugForceMapUnavailableTimeout: true,
+          initialResults: const <LocationLookupResult>[
+            LocationLookupResult(
+              name: '서울역',
+              address: '서울특별시 용산구 한강대로 405',
+              latitude: 37.5559,
+              longitude: 126.9723,
+              provider: LocationLookupProvider.tmap,
+            ),
+          ],
+          locationLookupService: _EmptyLocationLookupService(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('지도 화면이 아직 열리지 않았어요.'), findsOneWidget);
+    expect(find.text('이 위치 사용'), findsOneWidget);
+    expect(find.text('서울역'), findsWidgets);
+    expect(find.text('Google 지도'), findsOneWidget);
+    expect(find.text('네이버 지도'), findsOneWidget);
+    expect(find.text('TMAP'), findsWidgets);
   });
 }
 
