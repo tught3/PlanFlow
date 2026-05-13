@@ -6,29 +6,44 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
+import '../core/local_time.dart';
 import '../data/models/event_model.dart';
+import '../data/repositories/event_repository.dart';
 import '../providers/auth_provider.dart';
 import 'calendar_sync_service.dart';
 import 'device_calendar_service.dart';
+import 'departure_alarm_service.dart';
+import 'event_preparation_service.dart';
 import 'event_refresh_bus.dart';
+import 'manual_event_side_effect_service.dart';
 import 'naver_caldav_service.dart';
+import 'smart_preparation_alarm_service.dart';
 
 class CalendarAutoSyncService {
   CalendarAutoSyncService({
     CalendarSyncService? calendarSyncService,
     NaverCalDavService? naverCalDavService,
     DeviceCalendarService? deviceCalendarService,
+    EventRepository? eventRepository,
+    ManualEventSideEffectService? sideEffectService,
+    EventPreparationService? eventPreparationService,
     Duration throttle = const Duration(minutes: 15),
     DateTime Function()? now,
   })  : _calendarSyncService = calendarSyncService,
         _naverCalDavService = naverCalDavService,
         _deviceCalendarService = deviceCalendarService,
+        _eventRepository = eventRepository,
+        _sideEffectService = sideEffectService,
+        _eventPreparationService = eventPreparationService,
         _throttle = throttle,
         _now = now ?? DateTime.now;
 
   final CalendarSyncService? _calendarSyncService;
   final NaverCalDavService? _naverCalDavService;
   final DeviceCalendarService? _deviceCalendarService;
+  final EventRepository? _eventRepository;
+  final ManualEventSideEffectService? _sideEffectService;
+  final EventPreparationService? _eventPreparationService;
   final Duration _throttle;
   final DateTime Function() _now;
 
@@ -47,6 +62,14 @@ class CalendarAutoSyncService {
 
   DeviceCalendarService get _deviceCalendar =>
       _deviceCalendarService ?? DeviceCalendarService();
+
+  EventRepository get _events => _eventRepository ?? EventRepository.supabase();
+
+  ManualEventSideEffectService get _sideEffects =>
+      _sideEffectService ?? const ManualEventSideEffectService();
+
+  EventPreparationService get _eventPreparation =>
+      _eventPreparationService ?? const EventPreparationService();
 
   Future<CalendarAutoSyncResult> syncAfterEventSave(EventModel event) async {
     if (!_canSync) {
@@ -152,6 +175,10 @@ class CalendarAutoSyncService {
         }
         return CalendarAutoSyncStepOutcome.completed(imported.message);
       });
+      await _resyncUpcomingPreparation(
+        userId: _resolvedUserId(),
+        reason: reason,
+      );
       EventRefreshBus.instance.notifyChanged(
         reason: 'calendar_auto_sync:$reason',
       );
@@ -258,6 +285,91 @@ class CalendarAutoSyncService {
     await prefs.setString('$key:checked_at', _now().toIso8601String());
     if (status == 'connected') {
       await prefs.setString('$key:last_success_at', _now().toIso8601String());
+    }
+  }
+
+  String? _resolvedUserId() {
+    final authUserId = authProvider.userId?.trim();
+    if (authUserId != null && authUserId.isNotEmpty) {
+      return authUserId;
+    }
+    return _currentSupabaseUserId();
+  }
+
+  Future<void> _resyncUpcomingPreparation({
+    required String? userId,
+    required String reason,
+  }) async {
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+
+    try {
+      final now = _now();
+      final events = await _events.listEvents(userId: userId);
+      final smartPreparation = const SmartPreparationAlarmService();
+      final upcomingExternalEvents = events.where((event) {
+        final startAt = event.startAt;
+        if (startAt == null ||
+            startAt.isBefore(now) ||
+            startAt.isAfter(now.add(const Duration(days: 7)))) {
+          return false;
+        }
+        return smartPreparation.isExternalEvent(
+          title: event.title,
+          location: event.location,
+        );
+      }).toList(growable: false)
+        ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+
+      if (upcomingExternalEvents.isEmpty) {
+        return;
+      }
+
+      final dayKeys = <String, List<EventModel>>{};
+      for (final event in events) {
+        final startAt = event.startAt;
+        if (startAt == null ||
+            startAt.isBefore(now) ||
+            startAt.isAfter(now.add(const Duration(days: 7)))) {
+          continue;
+        }
+        final localDay = planflowLocal(startAt);
+        final key =
+            '${localDay.year.toString().padLeft(4, '0')}-'
+            '${localDay.month.toString().padLeft(2, '0')}-'
+            '${localDay.day.toString().padLeft(2, '0')}';
+        dayKeys.putIfAbsent(key, () => <EventModel>[]).add(event);
+      }
+
+      for (final dayEvents in dayKeys.values) {
+        final reference = dayEvents
+            .map((event) => event.startAt)
+            .whereType<DateTime>()
+            .reduce((a, b) => a.isBefore(b) ? a : b);
+        await _sideEffects.resyncExternalPreparationForDay(
+          dayEvents: dayEvents,
+          userId: userId,
+          dayReference: reference,
+          now: now,
+        );
+      }
+
+      for (final event in upcomingExternalEvents.where((event) {
+        final startAt = event.startAt;
+        return startAt != null &&
+            startAt.isBefore(now.add(DepartureAlarmService.monitorLookAhead));
+      })) {
+        await _eventPreparation.prepareAfterSave(event);
+      }
+
+      debugPrint(
+        'Calendar auto sync preparation resynced: '
+        'reason=$reason events=${upcomingExternalEvents.length}',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Calendar auto sync preparation resync failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 

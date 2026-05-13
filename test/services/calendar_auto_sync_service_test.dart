@@ -6,6 +6,8 @@ import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/services/calendar_auto_sync_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
+import 'package:planflow/services/event_preparation_service.dart';
+import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,6 +41,7 @@ void main() {
       deviceCalendarService: _FakeDeviceCalendarService(
         hasPermission: false,
       ),
+      eventRepository: _FakeEventRepository(),
       throttle: Duration.zero,
       now: () => DateTime(2026, 5, 9, 9),
     );
@@ -92,6 +95,7 @@ void main() {
       deviceCalendarService: _FakeDeviceCalendarService(
         hasPermission: false,
       ),
+      eventRepository: _FakeEventRepository(),
       throttle: Duration.zero,
       now: () => DateTime(2026, 5, 9, 9, 30),
     );
@@ -135,6 +139,7 @@ void main() {
           message: '기기 캘린더 권한이 필요합니다.',
         ),
       ),
+      eventRepository: _FakeEventRepository(),
       throttle: Duration.zero,
       now: () => DateTime(2026, 5, 9, 10),
     );
@@ -152,6 +157,148 @@ void main() {
         'Naver CalDAV 앱 비밀번호를 확인해 주세요.');
     expect(
         snapshot.provider('device_calendar_auto_import').status, 'attention');
+  });
+
+  test('syncConnectedCalendars resyncs preparation for imported external events',
+      () async {
+    final tomorrowExternalEvent = EventModel(
+      id: 'event-1',
+      userId: 'user-1',
+      title: '아이스크림 전달',
+      startAt: DateTime(2026, 5, 10, 9),
+      location: '강릉아산병원',
+      source: 'naver_device',
+    );
+    final repository = _FakeEventRepository(
+      events: <EventModel>[
+        tomorrowExternalEvent,
+        EventModel(
+          id: 'event-2',
+          userId: 'user-1',
+          title: '전화하기',
+          startAt: DateTime(2026, 5, 10, 8),
+          source: 'manual',
+        ),
+      ],
+    );
+    final sideEffects = _FakeManualEventSideEffectService();
+    final preparation = _FakeEventPreparationService();
+    final service = CalendarAutoSyncService(
+      calendarSyncService: _FakeCalendarSyncService(
+        googleResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.google,
+          message: 'Google Calendar가 연결되어 있지 않아 건너뜁니다.',
+        ),
+        naverResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.naver,
+          message: 'Naver 직접 연동이 연결되어 있지 않아 건너뜁니다.',
+        ),
+      ),
+      naverCalDavService: _FakeNaverCalDavService(
+        hasSavedCredentials: false,
+      ),
+      deviceCalendarService: _FakeDeviceCalendarService(
+        hasPermission: true,
+        importResult: const DeviceCalendarImportResult(
+          status: DeviceCalendarImportStatus.imported,
+          message: '휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.',
+        ),
+      ),
+      eventRepository: repository,
+      sideEffectService: sideEffects,
+      eventPreparationService: preparation,
+      throttle: Duration.zero,
+      now: () => DateTime(2026, 5, 9, 15),
+    );
+
+    await service.syncConnectedCalendars(force: true);
+
+    expect(sideEffects.resyncCallCount, 1);
+    expect(sideEffects.lastDayEvents.map((event) => event.id),
+        containsAll(<String>['event-1', 'event-2']));
+    expect(preparation.preparedEventIds, contains('event-1'));
+    expect(preparation.preparedEventIds, isNot(contains('event-2')));
+    expect(repository.requestedUserIds, everyElement('user-1'));
+    expect(sideEffects.lastUserId, 'user-1');
+  });
+
+  test('syncConnectedCalendars limits preparation resync and departure window',
+      () async {
+    final repository = _FakeEventRepository(
+      events: <EventModel>[
+        EventModel(
+          id: 'within-24h',
+          userId: 'user-1',
+          title: '강릉아산병원 방문',
+          startAt: DateTime(2026, 5, 10, 8),
+          location: '강릉아산병원',
+          source: 'naver_device',
+        ),
+        EventModel(
+          id: 'within-7d-outside-24h',
+          userId: 'user-1',
+          title: '교보생명 시험',
+          startAt: DateTime(2026, 5, 12, 10),
+          location: '교보생명',
+          source: 'naver_caldav',
+        ),
+        EventModel(
+          id: 'past',
+          userId: 'user-1',
+          title: '지난 외부 일정',
+          startAt: DateTime(2026, 5, 9, 8),
+          location: '대전역',
+          source: 'naver_device',
+        ),
+        EventModel(
+          id: 'after-7d',
+          userId: 'user-1',
+          title: '먼 외부 일정',
+          startAt: DateTime(2026, 5, 17, 16, 1),
+          location: '부산역',
+          source: 'naver_device',
+        ),
+      ],
+    );
+    final sideEffects = _FakeManualEventSideEffectService();
+    final preparation = _FakeEventPreparationService();
+    final service = CalendarAutoSyncService(
+      calendarSyncService: _FakeCalendarSyncService(
+        googleResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.google,
+          message: 'Google Calendar가 연결되어 있지 않아 건너뜁니다.',
+        ),
+        naverResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.naver,
+          message: 'Naver 직접 연동이 연결되어 있지 않아 건너뜁니다.',
+        ),
+      ),
+      naverCalDavService: _FakeNaverCalDavService(
+        hasSavedCredentials: false,
+      ),
+      deviceCalendarService: _FakeDeviceCalendarService(
+        hasPermission: true,
+        importResult: const DeviceCalendarImportResult(
+          status: DeviceCalendarImportStatus.imported,
+          message: '휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.',
+        ),
+      ),
+      eventRepository: repository,
+      sideEffectService: sideEffects,
+      eventPreparationService: preparation,
+      throttle: Duration.zero,
+      now: () => DateTime(2026, 5, 10, 7),
+    );
+
+    await service.syncConnectedCalendars(force: true);
+
+    final resyncedEventIds =
+        sideEffects.dayEventIdsByCall.expand((ids) => ids).toSet();
+    expect(resyncedEventIds, contains('within-24h'));
+    expect(resyncedEventIds, contains('within-7d-outside-24h'));
+    expect(resyncedEventIds, isNot(contains('past')));
+    expect(resyncedEventIds, isNot(contains('after-7d')));
+    expect(preparation.preparedEventIds, ['within-24h']);
   });
 }
 
@@ -280,6 +427,11 @@ class _FakeDeviceCalendarGateway implements DeviceCalendarGateway {
 }
 
 class _FakeEventRepository extends EventRepository {
+  _FakeEventRepository({this.events = const <EventModel>[]});
+
+  final List<EventModel> events;
+  final requestedUserIds = <String?>[];
+
   @override
   Future<EventModel> createEvent(EventModel event) async => event;
 
@@ -292,8 +444,53 @@ class _FakeEventRepository extends EventRepository {
   }
 
   @override
-  Future<List<EventModel>> listEvents({String? userId}) async => const [];
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    requestedUserIds.add(userId);
+    return events.where((event) => userId == null || event.userId == userId)
+        .toList(growable: false);
+  }
 
   @override
   Future<EventModel> updateEvent(EventModel event) async => event;
+}
+
+class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
+  int resyncCallCount = 0;
+  List<EventModel> lastDayEvents = const <EventModel>[];
+  String? lastUserId;
+  final List<List<String>> dayEventIdsByCall = <List<String>>[];
+
+  @override
+  Future<bool> resyncExternalPreparationForDay({
+    required Iterable<EventModel> dayEvents,
+    required String userId,
+    required DateTime dayReference,
+    int prepTimeMin = 30,
+    int prepPreAlarmOffset = 30,
+    int departPreAlarmOffset = 30,
+    int travelMinutes = 30,
+    DateTime? now,
+  }) async {
+    resyncCallCount += 1;
+    lastDayEvents = dayEvents.toList(growable: false);
+    lastUserId = userId;
+    dayEventIdsByCall.add(
+      lastDayEvents.map((event) => event.id).toList(growable: false),
+    );
+    return true;
+  }
+}
+
+class _FakeEventPreparationService extends EventPreparationService {
+  final List<String> preparedEventIds = <String>[];
+
+  @override
+  Future<EventPreparationResult> prepareAfterSave(EventModel event) async {
+    preparedEventIds.add(event.id);
+    return EventPreparationResult(
+      event: event,
+      locationResolved: false,
+      travelEstimateCount: 0,
+    );
+  }
 }
