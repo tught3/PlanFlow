@@ -51,6 +51,7 @@ class VoiceActionScreen extends StatefulWidget {
 
 class _VoiceActionScreenState extends State<VoiceActionScreen> {
   final List<EventModel> _events = <EventModel>[];
+  final Set<String> _selectedDeleteEventIds = <String>{};
   bool _isLoading = true;
   bool _isDeleting = false;
   bool _isSaving = false;
@@ -180,6 +181,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       _isLoading = true;
       _message = null;
       _events.clear();
+      _selectedDeleteEventIds.clear();
     });
 
     try {
@@ -269,6 +271,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         _events
           ..clear()
           ..addAll(ranked);
+        _selectedDeleteEventIds.removeWhere(
+          (id) => !ranked.any((event) => event.id == id),
+        );
         _message =
             events.isEmpty && !allowAutoSyncRetry && _canAutoRetryEmptyLoad
                 ? '앱 DB에서 일정을 못 불러왔어요'
@@ -558,6 +563,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       _selectedAction = action;
       _hasChosenAction = true;
       _events.clear();
+      _selectedDeleteEventIds.clear();
       _message = action == VoiceScheduleAction.add ? '일정 확인 화면으로 이동합니다.' : null;
       _candidateLoadDiagnostics = null;
       _isLoading = action != VoiceScheduleAction.add;
@@ -1243,7 +1249,81 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     }
   }
 
+  void _toggleDeleteSelection(EventModel event, bool selected) {
+    if (!_isDelete) {
+      return;
+    }
+    setState(() {
+      if (selected) {
+        _selectedDeleteEventIds.add(event.id);
+      } else {
+        _selectedDeleteEventIds.remove(event.id);
+      }
+    });
+  }
+
+  Future<void> _confirmSelectedDelete() async {
+    final selectedEvents = _events
+        .where((event) => _selectedDeleteEventIds.contains(event.id))
+        .toList(growable: false);
+    if (selectedEvents.isEmpty) {
+      _showMessage('삭제할 일정을 먼저 선택해 주세요.');
+      return;
+    }
+
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+        return AlertDialog(
+          title: const Text('선택한 일정 삭제'),
+          content: Text(
+            '${selectedEvents.length}개 일정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.',
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonal(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      foregroundColor: PlanFlowColors.primary,
+                      backgroundColor: PlanFlowColors.primaryFaint,
+                    ),
+                    child: const Text('취소'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      backgroundColor: colorScheme.error,
+                      foregroundColor: colorScheme.onError,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('선택 삭제'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete == true) {
+      await _deleteEvents(selectedEvents);
+    }
+  }
+
   Future<void> _deleteEvent(EventModel event) async {
+    await _deleteEvents(<EventModel>[event]);
+  }
+
+  Future<void> _deleteEvents(List<EventModel> events) async {
     final userId = _resolveUserId();
     if (userId == null) {
       _showMessage('로그인 후 삭제할 수 있어요.');
@@ -1255,27 +1335,37 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     });
 
     try {
-      await _repository.deleteEvent(event.id, userId: userId);
-      await widget.sideEffectService.cleanupAfterDelete(event.id);
-      await _resyncExternalPreparationAfterDelete(event, userId: userId);
+      for (final event in events) {
+        await _repository.deleteEvent(event.id, userId: userId);
+        await widget.sideEffectService.cleanupAfterDelete(event.id);
+        await _resyncExternalPreparationAfterDelete(event, userId: userId);
+      }
       await _refreshHomeWidget(userId);
       if (!mounted) {
         return;
       }
+      final deletedIds = events.map((event) => event.id).toSet();
       await _recordVoiceLog(
         action: 'delete',
-        targetEventId: event.id,
-        result: 'deleted',
+        targetEventId: events.length == 1 ? events.single.id : null,
+        result: events.length == 1 ? 'deleted' : 'selected_deleted',
       );
-      EventRefreshBus.instance.notifyChanged(
-        reason: 'voice_event_deleted',
-        eventId: event.id,
-        startAt: event.startAt,
-      );
+      for (final event in events) {
+        EventRefreshBus.instance.notifyChanged(
+          reason: 'voice_event_deleted',
+          eventId: event.id,
+          startAt: event.startAt,
+        );
+      }
       if (!mounted) {
         return;
       }
-      _showMessage('일정을 삭제했습니다.');
+      setState(() {
+        _selectedDeleteEventIds.removeAll(deletedIds);
+      });
+      _showMessage(
+        events.length == 1 ? '일정을 삭제했습니다.' : '${events.length}개 일정을 삭제했습니다.',
+      );
       context.go(AppRoutes.calendar);
     } catch (error, stackTrace) {
       debugPrint('VoiceActionScreen delete failed: $error');
@@ -1400,6 +1490,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
     final theme = Theme.of(context);
     final title = _actionTitle();
     final description = _actionDescription();
+    final selectedDeleteCount = _selectedDeleteEventIds.length;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -1471,6 +1562,14 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                     ),
                   ),
                 ],
+                if (_isDelete) ...[
+                  const SizedBox(height: 8),
+                  _DeleteSelectionBar(
+                    selectedCount: selectedDeleteCount,
+                    disabled: _isDeleting,
+                    onDeleteSelected: _confirmSelectedDelete,
+                  ),
+                ],
                 const SizedBox(height: 8),
                 if (_isQuery) ...[
                   _QueryOverviewCard(
@@ -1503,6 +1602,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                         actionIcon: _candidateActionIcon(),
                         isDanger: _isDelete,
                         disabled: _isDeleting || _isSaving,
+                        isSelected: _selectedDeleteEventIds.contains(event.id),
+                        onSelectionChanged: _isDelete
+                            ? (selected) =>
+                                _toggleDeleteSelection(event, selected)
+                            : null,
                         onTap: () => _isDelete
                             ? _confirmDelete(event)
                             : _isEdit
@@ -2255,6 +2359,65 @@ class _CandidateLoadDiagnostics {
   String toLogLine() => toDisplayText().replaceAll('\n', ' ');
 }
 
+class _DeleteSelectionBar extends StatelessWidget {
+  const _DeleteSelectionBar({
+    required this.selectedCount,
+    required this.disabled,
+    required this.onDeleteSelected,
+  });
+
+  final int selectedCount;
+  final bool disabled;
+  final VoidCallback onDeleteSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer.withValues(alpha: 0.38),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: colorScheme.error.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '선택된 일정 $selectedCount개',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: colorScheme.onErrorContainer,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            FilledButton.icon(
+              onPressed:
+                  disabled || selectedCount == 0 ? null : onDeleteSelected,
+              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+              label: const Text('선택 삭제'),
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.error,
+                foregroundColor: colorScheme.onError,
+                disabledBackgroundColor:
+                    colorScheme.error.withValues(alpha: 0.18),
+                disabledForegroundColor:
+                    colorScheme.onErrorContainer.withValues(alpha: 0.55),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _EventCandidateCard extends StatelessWidget {
   const _EventCandidateCard({
     required this.event,
@@ -2263,6 +2426,8 @@ class _EventCandidateCard extends StatelessWidget {
     required this.isDanger,
     required this.disabled,
     required this.onTap,
+    this.isSelected = false,
+    this.onSelectionChanged,
     this.changePreviewText,
     this.onDirectApply,
   });
@@ -2273,6 +2438,8 @@ class _EventCandidateCard extends StatelessWidget {
   final bool isDanger;
   final bool disabled;
   final VoidCallback onTap;
+  final bool isSelected;
+  final ValueChanged<bool>? onSelectionChanged;
 
   /// 감지된 변경 내용 요약 (예: "1/22(수) 오전 9시"). null이면 표시 안 함.
   final String? changePreviewText;
@@ -2287,6 +2454,7 @@ class _EventCandidateCard extends StatelessWidget {
     final startAt =
         event.startAt == null ? null : planflowLocal(event.startAt!);
     final hasDirectApply = onDirectApply != null;
+    final showSelection = onSelectionChanged != null;
 
     return Card(
       elevation: 0,
@@ -2294,10 +2462,12 @@ class _EventCandidateCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color: hasDirectApply
-              ? PlanFlowColors.primary.withValues(alpha: 0.4)
-              : PlanFlowColors.primaryFaint,
-          width: hasDirectApply ? 1.0 : 0.5,
+          color: isSelected
+              ? colorScheme.error
+              : hasDirectApply
+                  ? PlanFlowColors.primary.withValues(alpha: 0.4)
+                  : PlanFlowColors.primaryFaint,
+          width: isSelected || hasDirectApply ? 1.0 : 0.5,
         ),
       ),
       child: InkWell(
@@ -2310,6 +2480,16 @@ class _EventCandidateCard extends StatelessWidget {
             children: [
               Row(
                 children: [
+                  if (showSelection) ...[
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: disabled
+                          ? null
+                          : (value) => onSelectionChanged?.call(value ?? false),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

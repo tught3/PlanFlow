@@ -402,3 +402,11 @@
 - Updated the voice delete confirmation dialog to use `colorScheme.error/onError` for the final destructive button while preserving the equal-width cancel/delete layout.
 - Worker and reviewer subagents were used; the reviewer flagged the original 94 px width risk, which was fixed, and the follow-up reviewer returned PASS.
 - Verification passed: `dart format lib/screens/voice/voice_action_screen.dart`, `./scripts/flutter-local.ps1 analyze --no-pub lib/screens/voice/voice_action_screen.dart`, `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `14351`.
+
+## 2026-05-13 Voice Multi Delete Selection Checkpoint
+- Added multi-select deletion to the voice delete candidate screen: delete candidates now show checkboxes, a selected-count bar, and a `선택 삭제` action that deletes only the selected event rows after confirmation.
+- Preserved existing single-card delete behavior by routing individual card deletion through the same shared delete pipeline, while keeping edit/query modes free of delete-selection UI.
+- Selection state is cleared or pruned when candidates reload, action mode changes, or selected events are deleted, and delete controls are disabled while deletion is in progress.
+- Added a widget regression proving that selecting two of three delete candidates deletes only those two IDs.
+- Worker and reviewer subagents were used; the reviewer returned PASS after checking mode isolation, selected-id deletion, stale selection cleanup, disabled states, and existing single delete behavior.
+- Verification passed: `dart format lib/screens/voice/voice_action_screen.dart test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (285 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `12417`.

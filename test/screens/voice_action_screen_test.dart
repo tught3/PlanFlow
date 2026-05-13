@@ -717,6 +717,61 @@ void main() {
     expect(find.text('일정 탭'), findsOneWidget);
   });
 
+  testWidgets('삭제 후보는 여러 개를 선택해 선택된 일정만 한 번에 삭제한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(id: 'event-1', title: '한강 피크닉'),
+        _event(id: 'event-2', title: '치과 방문'),
+        _event(id: 'event-3', title: '마트 장보기'),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '일정 삭제해줘',
+            action: VoiceScheduleAction.delete,
+            eventRepository: repository,
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('선택된 일정 0개'), findsOneWidget);
+    expect(find.byType(Checkbox), findsNWidgets(3));
+
+    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('선택된 일정 2개'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(FilledButton, '선택 삭제').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '선택 삭제').last);
+    await tester.pumpAndSettle();
+
+    expect(repository.deletedEventIds, ['event-1', 'event-2']);
+    expect(find.text('일정 탭'), findsOneWidget);
+  });
+
   testWidgets('오늘 아이스크림 전달 삭제 명령은 대상 후보를 표시한다', (tester) async {
     final now = DateTime.now();
     final repository = _FakeEventRepository(
