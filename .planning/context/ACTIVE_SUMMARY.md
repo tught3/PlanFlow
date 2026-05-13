@@ -395,3 +395,10 @@
 - Added prefix-aware fuzzy matching for Korean STT misses such as near-prefix title/place words without hardcoding specific places.
 - Worker subagents handled the home prefetch and voice matching scopes in parallel. A reviewer agent found voice regression failures, which were fixed; follow-up reviewer attempts timed out, so final acceptance used full local verification.
 - Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (284 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `19192`.
+
+## 2026-05-13 Voice Delete Button Style Checkpoint
+- Updated voice edit/delete candidate cards so destructive actions use the app theme `errorContainer/onErrorContainer` tonal styling instead of the awkward dark-blue background with red text.
+- Kept non-destructive candidate actions on the existing PlanFlow tonal style, widened the fixed action button from 94 to 104 px, reduced icon size to 18, and tightened horizontal padding so Korean labels such as `삭제하기` and `수정하기` fit more reliably on compact screens.
+- Updated the voice delete confirmation dialog to use `colorScheme.error/onError` for the final destructive button while preserving the equal-width cancel/delete layout.
+- Worker and reviewer subagents were used; the reviewer flagged the original 94 px width risk, which was fixed, and the follow-up reviewer returned PASS.
+- Verification passed: `dart format lib/screens/voice/voice_action_screen.dart`, `./scripts/flutter-local.ps1 analyze --no-pub lib/screens/voice/voice_action_screen.dart`, `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `14351`.

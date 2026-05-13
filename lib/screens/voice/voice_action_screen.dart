@@ -1199,40 +1199,43 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   Future<void> _confirmDelete(EventModel event) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('음성으로 일정 삭제'),
-        content: Text('"${event.title}" 일정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.'),
-        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-        actions: [
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    foregroundColor: PlanFlowColors.primary,
-                    backgroundColor: PlanFlowColors.primaryFaint,
+      builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+        return AlertDialog(
+          title: const Text('음성으로 일정 삭제'),
+          content: Text('"${event.title}" 일정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.'),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonal(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      foregroundColor: PlanFlowColors.primary,
+                      backgroundColor: PlanFlowColors.primaryFaint,
+                    ),
+                    child: const Text('취소'),
                   ),
-                  child: const Text('취소'),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    backgroundColor: const Color(0xFFB42318),
-                    foregroundColor: Colors.white,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      backgroundColor: colorScheme.error,
+                      foregroundColor: colorScheme.onError,
+                    ),
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('삭제'),
                   ),
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('삭제'),
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
+              ],
+            ),
+          ],
+        );
+      },
     );
 
     if (shouldDelete == true) {
@@ -1845,6 +1848,7 @@ class _QueryEventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final startAt =
         event.startAt == null ? null : planflowLocal(event.startAt!);
     final timeStr = _formatTimeChip(startAt);
@@ -1921,13 +1925,23 @@ class _QueryEventCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               SizedBox(
-                width: 94,
+                width: 104,
                 child: FilledButton.tonalIcon(
                   onPressed: disabled ? null : onTap,
-                  icon: Icon(actionIcon),
-                  label: Text(actionLabel),
+                  icon: Icon(actionIcon, size: 18),
+                  label: Text(
+                    actionLabel,
+                    textAlign: TextAlign.center,
+                  ),
                   style: FilledButton.styleFrom(
-                    foregroundColor: isDanger ? const Color(0xFFB42318) : null,
+                    foregroundColor:
+                        isDanger ? colorScheme.onErrorContainer : null,
+                    backgroundColor:
+                        isDanger ? colorScheme.errorContainer : null,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    textStyle: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
@@ -2269,6 +2283,7 @@ class _EventCandidateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final startAt =
         event.startAt == null ? null : planflowLocal(event.startAt!);
     final hasDirectApply = onDirectApply != null;
@@ -2358,14 +2373,23 @@ class _EventCandidateCard extends StatelessWidget {
                   if (!hasDirectApply) ...[
                     const SizedBox(width: 10),
                     SizedBox(
-                      width: 94,
+                      width: 104,
                       child: FilledButton.tonalIcon(
                         onPressed: disabled ? null : onTap,
-                        icon: Icon(actionIcon),
-                        label: Text(actionLabel),
+                        icon: Icon(actionIcon, size: 18),
+                        label: Text(
+                          actionLabel,
+                          textAlign: TextAlign.center,
+                        ),
                         style: FilledButton.styleFrom(
                           foregroundColor:
-                              isDanger ? const Color(0xFFB42318) : null,
+                              isDanger ? colorScheme.onErrorContainer : null,
+                          backgroundColor:
+                              isDanger ? colorScheme.errorContainer : null,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          textStyle: theme.textTheme.labelMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                     ),
