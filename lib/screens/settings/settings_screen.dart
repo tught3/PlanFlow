@@ -117,6 +117,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasNaverCalDavCredentials = false;
   bool _isLoadingBackups = false;
   bool _isSavingSettings = false;
+  bool _settingsSaveQueued = false;
+  String? _queuedSettingsSuccessMessage;
+  int _settingsSaveVersion = 0;
   bool _isTestingMorningBriefing = false;
   bool _isTestingEveningBriefing = false;
   bool _isBackupActionRunning = false;
@@ -1409,7 +1412,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _persistSettings({String? successMessage}) async {
     final userId = _userId;
-    if (userId == null || userId.isEmpty || _isSavingSettings) {
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    final saveVersion = ++_settingsSaveVersion;
+    if (_isSavingSettings) {
+      _settingsSaveQueued = true;
+      _queuedSettingsSuccessMessage =
+          successMessage ?? _queuedSettingsSuccessMessage;
       return;
     }
 
@@ -1449,19 +1459,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
         localeCode: draft.localeCode,
         timeZoneId: draft.timeZoneId,
       );
-      setState(() {
-        _savedSettings = currentUiSettings;
-        _applySettings(currentUiSettings);
-      });
-      final scheduleResult = await _scheduleBriefingsFromSettings(
-        currentUiSettings,
-        reason: 'settings_saved',
-      );
-      if (successMessage != null) {
-        final suffix = scheduleResult?.allScheduled == false
-            ? ' 브리핑 예약은 Android 알람 설정을 확인해 주세요.'
-            : '';
-        _showSnack('$successMessage$suffix');
+      final isLatestSave =
+          !_settingsSaveQueued && saveVersion == _settingsSaveVersion;
+      if (isLatestSave) {
+        setState(() {
+          _savedSettings = currentUiSettings;
+          _applySettings(currentUiSettings);
+        });
+      }
+      if (isLatestSave) {
+        final scheduleResult = await _scheduleBriefingsFromSettings(
+          currentUiSettings,
+          reason: 'settings_saved',
+        );
+        if (successMessage != null) {
+          final suffix = scheduleResult?.allScheduled == false
+              ? ' 브리핑 예약은 Android 알람 설정을 확인해 주세요.'
+              : '';
+          _showSnack('$successMessage$suffix');
+        }
       }
     } catch (error, stackTrace) {
       debugPrint('Settings save failed: $error');
@@ -1472,6 +1488,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() {
           _isSavingSettings = false;
         });
+        if (_settingsSaveQueued) {
+          final queuedMessage = _queuedSettingsSuccessMessage;
+          _settingsSaveQueued = false;
+          _queuedSettingsSuccessMessage = null;
+          unawaited(_persistSettings(successMessage: queuedMessage));
+        }
       }
     }
   }

@@ -152,6 +152,29 @@ String _normalizeDuplicateTitle(String value) {
   return value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 }
 
+bool shouldKeepExistingEventForExternalImport({
+  required EventModel existing,
+  required EventModel incoming,
+}) {
+  final existingUpdatedAt = existing.updatedAt ?? existing.createdAt;
+  final lastSyncedAt = existing.lastSyncedAt ?? existing.externalUpdatedAt;
+  if (existingUpdatedAt == null || lastSyncedAt == null) {
+    return false;
+  }
+  final hasLocalEditAfterSync =
+      existingUpdatedAt.toUtc().isAfter(lastSyncedAt.toUtc());
+  if (!hasLocalEditAfterSync) {
+    return false;
+  }
+
+  final existingEtag = (existing.externalEtag ?? '').trim();
+  final incomingEtag = (incoming.externalEtag ?? '').trim();
+  final externalStateAdvanced = existingEtag.isNotEmpty &&
+      incomingEtag.isNotEmpty &&
+      existingEtag != incomingEtag;
+  return !externalStateAdvanced;
+}
+
 DateTime eventOverlapEndFor(EventModel event) {
   final startAt = event.startAt;
   if (startAt == null) {
@@ -163,10 +186,9 @@ DateTime eventOverlapEndFor(EventModel event) {
     return endAt;
   }
 
-  final fallbackDuration =
-      (event.isAllDay || event.isMultiDay)
-          ? const Duration(days: 1)
-          : const Duration(minutes: 30);
+  final fallbackDuration = (event.isAllDay || event.isMultiDay)
+      ? const Duration(days: 1)
+      : const Duration(minutes: 30);
   return startAt.add(fallbackDuration);
 }
 
@@ -554,6 +576,13 @@ class SupabaseEventRepository extends EventRepository {
 
     if (existing == null) {
       return createEvent(event);
+    }
+
+    if (shouldKeepExistingEventForExternalImport(
+      existing: existing,
+      incoming: event,
+    )) {
+      return existing;
     }
 
     final mergedEvent = EventModel(

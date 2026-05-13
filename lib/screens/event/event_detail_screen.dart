@@ -169,6 +169,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         _event = saved;
         _syncCheckedSupplies();
       });
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'event_supplies_checked_updated',
+        eventId: saved.id,
+        startAt: saved.startAt,
+      );
     } catch (error, stackTrace) {
       debugPrint('Supply checklist save failed: $error');
       debugPrintStack(stackTrace: stackTrace);

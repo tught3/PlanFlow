@@ -10,11 +10,15 @@ import '../../core/local_time.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../data/models/user_settings_model.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/calendar_auto_sync_service.dart';
+import '../../services/event_preparation_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
+import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/voice_command_router.dart';
 import '../../services/voice_text_cleanup_service.dart';
 
@@ -936,17 +940,60 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   /// 음성 명령으로 파악한 변경값을 편집화면 없이 바로 저장한다.
   Future<void> _applyAndSave(EventModel event) async {
     final editedEvent = _eventWithRequestedVoiceChanges(event);
+    final previousStartAt = event.startAt;
     setState(() => _isSaving = true);
     try {
-      await _repository.updateEvent(editedEvent);
+      final savedEvent = await _repository.updateEvent(editedEvent);
+      final userId = _resolveUserId();
+      if (userId != null) {
+        final settings = await SettingsRepository.supabase().fetchSettings(
+          userId,
+        );
+        await widget.sideEffectService.syncAfterSave(
+          event: savedEvent,
+          userId: userId,
+          prepTimeMin: settings?.prepTimeMin ??
+              SmartPreparationAlarmService.defaultPrepTimeMin,
+          prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+              SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+          departPreAlarmOffset: settings?.departPreAlarmOffset ??
+              SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+          isFirstExternalEventOfDay: await _isFirstExternalEventOfDay(
+            userId: userId,
+            event: savedEvent,
+          ),
+        );
+        await _resyncExternalPreparationForDay(
+          userId: userId,
+          event: savedEvent,
+          settings: settings,
+        );
+        if (previousStartAt != null &&
+            savedEvent.startAt != null &&
+            !planflowIsSameLocalDay(previousStartAt, savedEvent.startAt!)) {
+          await _resyncExternalPreparationForDay(
+            userId: userId,
+            event: savedEvent,
+            settings: settings,
+            dayReference: previousStartAt,
+          );
+        }
+        await _refreshHomeWidget(userId);
+      }
+      unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
+      unawaited(
+        EventPreparationService(eventRepository: _repository)
+            .prepareAfterSave(savedEvent),
+      );
       await _recordVoiceLog(
         action: 'edit',
-        targetEventId: event.id,
+        targetEventId: savedEvent.id,
         result: 'applied_directly',
       );
       EventRefreshBus.instance.notifyChanged(
         reason: 'voice_direct_apply',
-        eventId: event.id,
+        eventId: savedEvent.id,
+        startAt: savedEvent.startAt,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1442,6 +1489,59 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       debugPrint(
         'VoiceActionScreen external prep delete resync skipped: $error',
       );
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<bool> _isFirstExternalEventOfDay({
+    required String userId,
+    required EventModel event,
+  }) async {
+    try {
+      final dayEvents = await _repository.listEvents(userId: userId);
+      return const SmartPreparationAlarmService().isFirstExternalEventOfDay(
+        event: event,
+        dayEvents: dayEvents,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen first external lookup skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return true;
+    }
+  }
+
+  Future<void> _resyncExternalPreparationForDay({
+    required String userId,
+    required EventModel event,
+    required UserSettingsModel? settings,
+    DateTime? dayReference,
+  }) async {
+    final reference = dayReference ?? event.startAt;
+    if (reference == null) {
+      return;
+    }
+    try {
+      final events = await _repository.listEvents(userId: userId);
+      final updatedEvents = <EventModel>[
+        for (final candidate in events)
+          if (candidate.id == event.id) event else candidate,
+      ];
+      if (updatedEvents.every((candidate) => candidate.id != event.id)) {
+        updatedEvents.add(event);
+      }
+      await widget.sideEffectService.resyncExternalPreparationForDay(
+        dayEvents: updatedEvents,
+        userId: userId,
+        dayReference: reference,
+        prepTimeMin: settings?.prepTimeMin ??
+            SmartPreparationAlarmService.defaultPrepTimeMin,
+        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+        departPreAlarmOffset: settings?.departPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen external prep resync skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
   }
