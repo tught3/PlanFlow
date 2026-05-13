@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/event_metadata.dart';
-import '../core/region_settings.dart';
 import '../core/theme.dart';
 import 'recurrence_selector.dart';
 import 'reminder_offset_selector.dart';
@@ -112,10 +111,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final categoryColor = PlanFlowEventCategories.colorOf(widget.category);
-    final region = PlanFlowRegionController.instance.region;
-    final timezoneLabel = _timezoneLabel(region);
 
     return Container(
       width: double.infinity,
@@ -128,6 +124,8 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const _SectionTitle(label: '기본 정보'),
+          const SizedBox(height: 10),
           _CalendarHeader(color: categoryColor),
           const SizedBox(height: 10),
           TextFormField(
@@ -140,7 +138,11 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
               suffixIcon: const Icon(Icons.mood_outlined),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
+          const Divider(height: 20, thickness: 0.5),
+          const SizedBox(height: 2),
+          const _SectionTitle(label: '날짜 · 시간'),
+          const SizedBox(height: 8),
           SwitchListTile.adaptive(
             value: widget.isAllDay,
             onChanged: widget.onAllDayChanged,
@@ -172,20 +174,10 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                     ),
                   ),
           ),
-          const SizedBox(height: 12),
-          _ActionRow(
-            icon: Icons.public,
-            label: timezoneLabel,
-            trailing: const Icon(Icons.chevron_right),
-          ),
-          const Divider(height: 20),
-          Text(
-            '일정 유형',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: PlanFlowColors.primary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          const SizedBox(height: 14),
+          const Divider(height: 20, thickness: 0.5),
+          const SizedBox(height: 2),
+          _SectionTitle(label: '분류'),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -199,6 +191,10 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             }).toList(growable: false),
           ),
           const SizedBox(height: 12),
+          const Divider(height: 20, thickness: 0.5),
+          const SizedBox(height: 2),
+          _SectionTitle(label: '반복 / 장소'),
+          const SizedBox(height: 8),
           RecurrenceSelector(
             value: widget.recurrence,
             onChanged: widget.onRecurrenceChanged,
@@ -228,6 +224,10 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             widget.extraAfterLocation!,
           ],
           const SizedBox(height: 12),
+          const Divider(height: 20, thickness: 0.5),
+          const SizedBox(height: 2),
+          _SectionTitle(label: '설명'),
+          const SizedBox(height: 8),
           TextFormField(
             controller: widget.memoController,
             decoration: const InputDecoration(
@@ -243,6 +243,10 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             widget.extraAfterMemo!,
           ],
           const SizedBox(height: 12),
+          const Divider(height: 20, thickness: 0.5),
+          const SizedBox(height: 2),
+          _SectionTitle(label: '알림'),
+          const SizedBox(height: 8),
           ReminderOffsetSelector(
             value: widget.reminderOffset,
             onChanged: widget.onReminderChanged,
@@ -287,12 +291,22 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
       ),
     );
   }
+}
 
-  String _timezoneLabel(PlanFlowRegion region) {
-    if (region.timeZoneId == 'Asia/Seoul') {
-      return '서울 (GMT+9:00)';
-    }
-    return '${region.countryName} (${region.timeZoneId})';
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: PlanFlowColors.primary,
+            fontWeight: FontWeight.w700,
+          ),
+    );
   }
 }
 
@@ -476,8 +490,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
   late int _year;
   late int _month;
   late int _day;
-  late int _period;
-  late int _hour12;
+  late int _hour24;
   late int _minute;
 
   List<int> get _years {
@@ -486,6 +499,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
   }
 
   List<int> get _minutes => List<int>.generate(12, (index) => index * 5);
+  List<int> get _hours12 => List<int>.generate(12, (index) => index + 1);
 
   @override
   void initState() {
@@ -507,8 +521,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
     _year = value.year;
     _month = value.month;
     _day = value.day;
-    _period = value.hour < 12 ? 0 : 1;
-    _hour12 = value.hour % 12 == 0 ? 12 : value.hour % 12;
+    _hour24 = value.hour;
     _minute = _nearestFive(value.minute);
   }
 
@@ -517,7 +530,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
     if (_day > maxDay) {
       _day = maxDay;
     }
-    final hour = widget.isAllDay ? 0 : _toHour24(_period, _hour12);
+    final hour = widget.isAllDay ? 0 : _hour24;
     final minute = widget.isAllDay ? 0 : _minute;
     widget.onChanged(DateTime(_year, _month, _day, hour, minute));
   }
@@ -525,6 +538,68 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
   void _set(void Function() update) {
     setState(update);
     _emit();
+  }
+
+  int _circularDelta(int oldIndex, int newIndex, int length) {
+    final rawDelta = newIndex - oldIndex;
+    final threshold = length ~/ 2;
+    if (rawDelta.abs() <= threshold) {
+      return rawDelta;
+    }
+
+    return rawDelta > 0 ? rawDelta - length : rawDelta + length;
+  }
+
+  void _onYearChanged(int value) => _set(() => _year = value);
+
+  void _onMonthChanged(int value) => _set(() => _month = value);
+
+  void _onDayChanged(int value) => _set(() => _day = value);
+
+  void _onPeriodChanged(int value) {
+    if (value == _period) {
+      return;
+    }
+    final localHour12 = _hour24 % 12;
+    _set(() {
+      _hour24 = value == 0 ? localHour12 : localHour12 + 12;
+    });
+  }
+
+  void _onHourChanged(int value) {
+    if (value == _hour12) {
+      return;
+    }
+    final oldIndex = _hour12 - 1;
+    final newIndex = value - 1;
+    final delta = _circularDelta(oldIndex, newIndex, _hours12.length);
+    _set(() {
+      _hour24 = (_hour24 + delta) % 24;
+      if (_hour24 < 0) {
+        _hour24 += 24;
+      }
+    });
+  }
+
+  void _onMinuteChanged(int value) {
+    if (value == _minute) {
+      return;
+    }
+    final oldIndex = _minutes.indexOf(_minute);
+    final newIndex = _minutes.indexOf(value);
+    final delta = _circularDelta(oldIndex, newIndex, _minutes.length);
+    final deltaMinute = delta * 5;
+    final rawMinute = _minute + deltaMinute;
+    final adjustedMinute = rawMinute % 60;
+    final hourDelta = (rawMinute - adjustedMinute) ~/ 60;
+
+    _set(() {
+      _minute = adjustedMinute;
+      _hour24 = (_hour24 + hourDelta) % 24;
+      if (_hour24 < 0) {
+        _hour24 += 24;
+      }
+    });
   }
 
   @override
@@ -576,59 +651,68 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
                   children: [
                     Expanded(
                       child: _Wheel<int>(
+                        key: ValueKey('${widget.target.name}-year-wheel'),
                         values: _years,
                         selected: _year,
                         labelBuilder: (value) => '$value',
                         itemExtent: _itemExtent,
-                        onChanged: (value) => _set(() => _year = value),
+                        onChanged: _onYearChanged,
                       ),
                     ),
                     Expanded(
                       child: _Wheel<int>(
+                        key: ValueKey('${widget.target.name}-month-wheel'),
                         values: List<int>.generate(12, (index) => index + 1),
                         selected: _month,
                         labelBuilder: (value) => '$value월',
                         itemExtent: _itemExtent,
-                        onChanged: (value) => _set(() => _month = value),
+                        onChanged: _onMonthChanged,
                       ),
                     ),
                     Expanded(
                       child: _Wheel<int>(
+                        key: ValueKey('${widget.target.name}-day-wheel'),
                         values: days,
                         selected: _day.clamp(1, maxDay),
                         labelBuilder: (value) =>
                             '$value일 ${_weekday(DateTime(_year, _month, value))}',
                         itemExtent: _itemExtent,
-                        onChanged: (value) => _set(() => _day = value),
+                        onChanged: _onDayChanged,
                       ),
                     ),
                     if (!widget.isAllDay) ...[
                       Expanded(
                         child: _Wheel<int>(
+                          key: ValueKey('${widget.target.name}-period-wheel'),
                           values: const [0, 1],
                           selected: _period,
                           labelBuilder: (value) => value == 0 ? '오전' : '오후',
                           itemExtent: _itemExtent,
-                          onChanged: (value) => _set(() => _period = value),
+                          looping: true,
+                          onChanged: _onPeriodChanged,
                         ),
                       ),
                       Expanded(
                         child: _Wheel<int>(
+                          key: ValueKey('${widget.target.name}-hour-wheel'),
                           values: List<int>.generate(12, (index) => index + 1),
                           selected: _hour12,
                           labelBuilder: (value) => '$value',
                           itemExtent: _itemExtent,
-                          onChanged: (value) => _set(() => _hour12 = value),
+                          looping: true,
+                          onChanged: _onHourChanged,
                         ),
                       ),
                       Expanded(
                         child: _Wheel<int>(
+                          key: ValueKey('${widget.target.name}-minute-wheel'),
                           values: _minutes,
                           selected: _minute,
                           labelBuilder: (value) =>
                               value.toString().padLeft(2, '0'),
                           itemExtent: _itemExtent,
-                          onChanged: (value) => _set(() => _minute = value),
+                          looping: true,
+                          onChanged: _onMinuteChanged,
                         ),
                       ),
                     ],
@@ -643,7 +727,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
             child: Text(
               widget.isAllDay
                   ? _shortDate(selectedDate)
-                  : '${_shortDate(selectedDate)} ${_timeLabel(DateTime(_year, _month, _day.clamp(1, maxDay), _toHour24(_period, _hour12), _minute))}',
+                  : '${_shortDate(selectedDate)} ${_timeLabel(DateTime(_year, _month, _day.clamp(1, maxDay), _hour24, _minute))}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: PlanFlowColors.textSecondary,
                     fontWeight: FontWeight.w700,
@@ -654,6 +738,15 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
       ),
     );
   }
+
+  int get _period {
+    return _hour24 < 12 ? 0 : 1;
+  }
+
+  int get _hour12 {
+    final normalized = _hour24 % 12;
+    return normalized == 0 ? 12 : normalized;
+  }
 }
 
 class _Wheel<T> extends StatelessWidget {
@@ -663,6 +756,8 @@ class _Wheel<T> extends StatelessWidget {
     required this.labelBuilder,
     required this.itemExtent,
     required this.onChanged,
+    this.looping = false,
+    super.key,
   });
 
   final List<T> values;
@@ -670,6 +765,7 @@ class _Wheel<T> extends StatelessWidget {
   final String Function(T value) labelBuilder;
   final double itemExtent;
   final ValueChanged<T> onChanged;
+  final bool looping;
 
   @override
   Widget build(BuildContext context) {
@@ -681,6 +777,7 @@ class _Wheel<T> extends StatelessWidget {
       squeeze: 1.08,
       useMagnifier: true,
       selectionOverlay: const SizedBox.shrink(),
+      looping: looping,
       onSelectedItemChanged: (index) => onChanged(values[index]),
       children: values
           .map(
@@ -700,38 +797,6 @@ class _Wheel<T> extends StatelessWidget {
             ),
           )
           .toList(growable: false),
-    );
-  }
-}
-
-class _ActionRow extends StatelessWidget {
-  const _ActionRow({
-    required this.icon,
-    required this.label,
-    this.trailing,
-  });
-
-  final IconData icon;
-  final String label;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: PlanFlowColors.textSecondary, size: 20),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: PlanFlowColors.textPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-        ),
-        if (trailing != null) trailing!,
-      ],
     );
   }
 }
@@ -758,11 +823,6 @@ String _timeLabel(DateTime value) {
   final hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
   final minute = value.minute.toString().padLeft(2, '0');
   return '$period $hour:$minute';
-}
-
-int _toHour24(int period, int hour12) {
-  final normalized = hour12 == 12 ? 0 : hour12;
-  return period == 0 ? normalized : normalized + 12;
 }
 
 int _nearestFive(int minute) {

@@ -100,21 +100,7 @@ class SttService {
   @visibleForTesting
   static SttVoiceCommand detectVoiceCommand(String text) {
     final normalized = _normalizeVoiceCommandText(text);
-    if (normalized == '아니' || normalized == '아니야' || normalized == '아니요') {
-      return SttVoiceCommand.undoLastWord;
-    }
-    if (normalized.contains('마지막거지워') || normalized.contains('방금거지워')) {
-      return SttVoiceCommand.undoLastSegment;
-    }
-    if (normalized == '다시' ||
-        normalized.contains('처음부터') ||
-        normalized.contains('다시말할게')) {
-      return SttVoiceCommand.clearAll;
-    }
-    if (normalized == '취소') {
-      return SttVoiceCommand.cancel;
-    }
-    return SttVoiceCommand.none;
+    return _resolveVoiceCommandFromNormalized(normalized);
   }
 
   static String normalizeVoiceTranscript(String text) {
@@ -312,23 +298,80 @@ class SttService {
         length,
         (offset) => _normalizeTranscriptToken(tokens[index + offset]),
       ).join();
-      switch (normalized) {
-        case '아니':
-        case '아니야':
-        case '아니요':
-          return const _VoiceCommandMatch(SttVoiceCommand.undoLastWord, 1);
-        case '마지막거지워':
-        case '방금거지워':
-          return _VoiceCommandMatch(SttVoiceCommand.undoLastSegment, length);
-        case '다시':
-        case '처음부터':
-        case '다시말할게':
-          return _VoiceCommandMatch(SttVoiceCommand.clearAll, length);
-        case '취소':
-          return _VoiceCommandMatch(SttVoiceCommand.cancel, length);
+      final command = _resolveVoiceCommandFromNormalized(normalized);
+      if (command != SttVoiceCommand.none) {
+        return _VoiceCommandMatch(command, length);
       }
     }
     return null;
+  }
+
+  static SttVoiceCommand _resolveVoiceCommandFromNormalized(String normalized) {
+    if (_undoLastWordCommandTokens.contains(normalized)) {
+      return SttVoiceCommand.undoLastWord;
+    }
+    if (_undoLastSegmentCommandTokens.contains(normalized)) {
+      return SttVoiceCommand.undoLastSegment;
+    }
+    if (_clearAllCommandTokens.contains(normalized)) {
+      return SttVoiceCommand.clearAll;
+    }
+    if (_stopCommandTokens.contains(normalized)) {
+      return SttVoiceCommand.cancel;
+    }
+    return SttVoiceCommand.none;
+  }
+
+  static bool _applyVoiceControlCommandForSpeechToText(
+    SttVoiceCommand command,
+    String currentText,
+    ValueChanged<String> onTextUpdated,
+    VoidCallback onCancelRequested,
+  ) {
+    switch (command) {
+      case SttVoiceCommand.undoLastWord:
+        onTextUpdated(_applyTextCommand(_removeLastWordFromText(currentText)));
+        return true;
+      case SttVoiceCommand.undoLastSegment:
+        onTextUpdated(
+            _applyTextCommand(_removeLastSegmentFromText(currentText)));
+        return true;
+      case SttVoiceCommand.clearAll:
+        onTextUpdated('');
+        return true;
+      case SttVoiceCommand.cancel:
+        onCancelRequested();
+        return true;
+      case SttVoiceCommand.none:
+        return false;
+    }
+  }
+
+  static String _applyTextCommand(String text) {
+    if (text.isEmpty) {
+      return '';
+    }
+    return text.trim();
+  }
+
+  static String _removeLastWordFromText(String text) {
+    final output = text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList();
+    _removeLastTranscriptWord(output);
+    return output.join(' ');
+  }
+
+  static String _removeLastSegmentFromText(String text) {
+    final output = text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList();
+    _removeLastTranscriptSegment(output);
+    return output.join(' ');
   }
 
   static String _normalizeTranscriptToken(String token) {
@@ -620,6 +663,25 @@ class SttService {
           if (text.isEmpty) {
             return;
           }
+          final command = detectVoiceCommand(text);
+          if (command != SttVoiceCommand.none) {
+            final didHandle = _applyVoiceControlCommandForSpeechToText(
+              command,
+              latestRecognizedText ?? '',
+              (nextText) {
+                latestRecognizedText = nextText;
+                _activeRecognizedText = nextText;
+                onPartialResult?.call(nextText);
+              },
+              () => _completeActiveFailure(
+                failure: SttListenFailure.silence,
+                message: '음성 입력을 취소했어요.',
+              ),
+            );
+            if (didHandle) {
+              return;
+            }
+          }
           latestRecognizedText = text;
           _activeRecognizedText = text;
           onPartialResult?.call(text);
@@ -756,7 +818,6 @@ class SttService {
     final committedSegments = <String>[];
     String latestRecognizedText = '';
     var restartCount = 0;
-    var pendingReplacement = false;
     _activeNativeListen = true;
     _activeCommittedSegments = committedSegments;
     _activeNativeSessionText = '';
@@ -792,13 +853,59 @@ class SttService {
       return eventSession == _activeNativeSessionId;
     }
 
+    void setCommittedTranscript(String nextText) {
+      final normalized = nextText.trim();
+      committedSegments
+        ..clear()
+        ..addAll([
+          if (normalized.isNotEmpty) normalized,
+        ]);
+      _activeNativeSessionText = '';
+      latestRecognizedText = normalized;
+      _activeRecognizedText = normalized;
+      onPartialResult?.call(normalized);
+    }
+
+    bool handleNativeVoiceControlCommand(String text) {
+      final command = detectVoiceCommand(text);
+      if (command == SttVoiceCommand.none) {
+        return false;
+      }
+      final didHandle = _applyVoiceControlCommandForSpeechToText(
+        command,
+        committedSegments.join(' ').trim(),
+        setCommittedTranscript,
+        () {
+          _activeNativeSessionText = '';
+          latestRecognizedText = committedSegments.join(' ').trim();
+          _activeRecognizedText = latestRecognizedText;
+          _completeActiveFailure(
+            failure: SttListenFailure.silence,
+            message: '음성 입력을 취소했어요.',
+          );
+        },
+      );
+      if (didHandle && command == SttVoiceCommand.clearAll) {
+        unawaited(_resetNativeTranscript().then((id) {
+          _activeNativeSessionId = id;
+        }));
+      }
+      return didHandle;
+    }
+
     void updateRecognizedText(String incomingText) {
       final recognizedWords = incomingText.trim();
       if (recognizedWords.isEmpty) {
         return;
       }
+      if (handleNativeVoiceControlCommand(recognizedWords)) {
+        return;
+      }
       final committedText = committedSegments.join(' ').trim();
       final newSpeech = appendOnlyNewSpeech(committedText, recognizedWords);
+      if (handleNativeVoiceControlCommand(newSpeech)) {
+        return;
+      }
       final mergedText = [
         if (committedText.isNotEmpty) committedText,
         if (newSpeech.isNotEmpty) newSpeech,
@@ -809,71 +916,15 @@ class SttService {
       onPartialResult?.call(mergedText);
     }
 
-    void replaceCommittedTail(String correction) {
-      final correctionWords = correction
-          .trim()
-          .split(RegExp(r'\s+'))
-          .where((word) => word.isNotEmpty)
-          .toList();
-      final baseWords = committedSegments
-          .join(' ')
-          .trim()
-          .split(RegExp(r'\s+'))
-          .where((word) => word.isNotEmpty)
-          .toList();
-      committedSegments
-        ..clear()
-        ..add(_replaceTailWords(baseWords, correctionWords).join(' '));
-    }
-
     void commitActiveSession() {
       final text = _activeNativeSessionText.trim();
       if (text.isEmpty) {
         return;
       }
-      switch (detectVoiceCommand(text)) {
-        case SttVoiceCommand.undoLastWord:
-          pendingReplacement = true;
-          _activeNativeSessionText = '';
-          latestRecognizedText = committedSegments.join(' ').trim();
-          _activeRecognizedText = latestRecognizedText;
-          onPartialResult?.call(latestRecognizedText);
-          return;
-        case SttVoiceCommand.undoLastSegment:
-          if (committedSegments.isNotEmpty) {
-            committedSegments.removeLast();
-          }
-          _activeNativeSessionText = '';
-          latestRecognizedText = committedSegments.join(' ').trim();
-          _activeRecognizedText = latestRecognizedText;
-          onPartialResult?.call(latestRecognizedText);
-          return;
-        case SttVoiceCommand.clearAll:
-          committedSegments.clear();
-          _activeNativeSessionText = '';
-          latestRecognizedText = '';
-          _activeRecognizedText = '';
-          onPartialResult?.call('');
-          unawaited(_resetNativeTranscript().then((id) {
-            _activeNativeSessionId = id;
-          }));
-          return;
-        case SttVoiceCommand.cancel:
-          _activeNativeSessionText = '';
-          latestRecognizedText = committedSegments.join(' ').trim();
-          _activeRecognizedText = latestRecognizedText;
-          _completeActiveFailure(
-            failure: SttListenFailure.silence,
-            message: '음성 입력을 취소했어요.',
-          );
-          return;
-        case SttVoiceCommand.none:
-          break;
+      if (handleNativeVoiceControlCommand(text)) {
+        return;
       }
-      if (pendingReplacement) {
-        replaceCommittedTail(text);
-        pendingReplacement = false;
-      } else if (committedSegments.isEmpty || committedSegments.last != text) {
+      if (committedSegments.isEmpty || committedSegments.last != text) {
         committedSegments.add(text);
       }
       _activeNativeSessionText = '';
@@ -983,6 +1034,43 @@ const Set<String> _timePrefixTokens = <String>{
   '아침',
   '점심',
   '밤',
+};
+
+const Set<String> _undoLastWordCommandTokens = <String>{
+  '아니',
+  '아니야',
+  '아니요',
+};
+const Set<String> _undoLastSegmentCommandTokens = <String>{
+  '마지막거지워',
+  '방금거지워',
+};
+const Set<String> _clearAllCommandTokens = <String>{
+  '다시',
+  '처음부터',
+  '다시말할게',
+};
+const Set<String> _stopCommandTokens = <String>{
+  '취소',
+  '취소해',
+  '취소해줘',
+  '취소해주세요',
+  '그만',
+  '그만해',
+  '그만해줘',
+  '그만해주세요',
+  '중단',
+  '중단해',
+  '중단해줘',
+  '중단해주세요',
+  '중지',
+  '중지해',
+  '중지해줘',
+  '중지해주세요',
+  '정지',
+  '정지해',
+  '정지해줘',
+  '정지해주세요',
 };
 
 class _VoiceCommandMatch {

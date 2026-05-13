@@ -410,9 +410,11 @@ void main() {
     expect(find.textContaining('내일 오전 10시 정장집 방문'), findsOneWidget);
     expect(find.textContaining('5월 10일 하루종일 휴가'), findsOneWidget);
     expect(find.textContaining('매주 화요일 팀 미팅'), findsOneWidget);
-    expect(find.textContaining('언제 일정을 다음주로 변경해'), findsOneWidget);
-    expect(find.textContaining('오늘 일정 알려줘'), findsOneWidget);
-    expect(find.textContaining('병원 진료는 건강'), findsOneWidget);
+    expect(
+      find.textContaining(
+          '제어: 다시/처음부터=전체삭제 · 아니=교정 · 마지막 거 지워=일부삭제 · 취소/중지 등=종료'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('일반 음성 문장은 일정 확인 화면으로 바로 이동한다', (tester) async {

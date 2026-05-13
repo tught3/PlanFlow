@@ -24,7 +24,9 @@ void main() {
 
     expect(find.text('하루'), findsNothing);
     expect(find.text('연속'), findsNothing);
-    expect(find.text('서울 (GMT+9:00)'), findsOneWidget);
+    expect(find.text('서울 (GMT+9:00)'), findsNothing);
+    expect(find.text('기본 정보'), findsOneWidget);
+    expect(find.text('날짜 · 시간'), findsOneWidget);
     expect(find.text('시작 시간 조정'), findsNothing);
 
     await tester.tap(find.text('시작'));

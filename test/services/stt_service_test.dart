@@ -65,6 +65,18 @@ void main() {
       SttVoiceCommand.clearAll,
     );
     expect(SttService.detectVoiceCommand('취소'), SttVoiceCommand.cancel);
+    expect(SttService.detectVoiceCommand('그만'), SttVoiceCommand.cancel);
+    expect(SttService.detectVoiceCommand('중단'), SttVoiceCommand.cancel);
+    expect(SttService.detectVoiceCommand('중지'), SttVoiceCommand.cancel);
+    expect(SttService.detectVoiceCommand('정지'), SttVoiceCommand.cancel);
+    expect(
+      SttService.detectVoiceCommand('중지해 줘'),
+      SttVoiceCommand.cancel,
+    );
+    expect(
+      SttService.detectVoiceCommand('정지해 주세요'),
+      SttVoiceCommand.cancel,
+    );
     expect(SttService.detectVoiceCommand('내일 대전 출발'), SttVoiceCommand.none);
   });
 

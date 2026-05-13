@@ -410,3 +410,12 @@
 - Added a widget regression proving that selecting two of three delete candidates deletes only those two IDs.
 - Worker and reviewer subagents were used; the reviewer returned PASS after checking mode isolation, selected-id deletion, stale selection cleanup, disabled states, and existing single delete behavior.
 - Verification passed: `dart format lib/screens/voice/voice_action_screen.dart test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (285 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `12417`.
+
+## 2026-05-13 Voice Controls And Calendar Editor Polish Checkpoint
+- Consolidated STT voice-control command detection so direct detection, inline transcript cleanup, speech_to_text fallback, and native Android STT all route through the shared command resolver/handler for undo, clear, and cancel controls.
+- Expanded stop/cancel voice controls to cover `취소`, `그만`, `중단`, `중지`, `정지` and common polite verb variants such as `중지해 줘` / `정지해 주세요`.
+- Updated the voice input guide copy to summarize input controls inside the existing guidance card without adding extra UI height.
+- Refined the shared calendar-style event editor with section labels and dividers for basic info, date/time, category, recurrence/place, memo, and alarms, and removed the `서울 (GMT+9:00)` timezone row from edit/confirm flows.
+- Reworked the inline time wheel to keep 12-hour hour/minute columns looping naturally: 12 to 1 changes AM/PM as needed, 55 to 00 increments the hour, and 00 back to 55 decrements it.
+- Worker subagents handled voice-control and editor scopes in parallel. A reviewer initially BLOCKed native STT timing and stale timezone test expectations; both were fixed, and the follow-up reviewer returned PASS.
+- Verification passed: focused analyze/test, full `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (289 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `31222`.
