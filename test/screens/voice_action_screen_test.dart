@@ -210,9 +210,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('한강 피크닉'), findsOneWidget);
-    expect(find.text('치과 방문'), findsOneWidget);
+    expect(find.text('치과 방문'), findsNothing);
 
-    await tester.tap(find.text('수정하기').first);
+    await tester.tap(
+      find
+          .ancestor(
+            of: find.text('한강 피크닉'),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('편집 화면: event-1'), findsOneWidget);
@@ -258,7 +265,14 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('수정하기').first);
+    await tester.tap(
+      find
+          .ancestor(
+            of: find.text('에버랜드'),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
 
     expect(find.textContaining('2026-05-15T01:00:00.000'), findsOneWidget);
@@ -299,8 +313,7 @@ void main() {
     expect(find.text('서울성남 아이스크림 전달'), findsOneWidget);
     expect(find.text('목요일 오전 회의'), findsOneWidget);
     final firstTitle = tester.widgetList<Text>(find.byType(Text)).firstWhere(
-          (widget) =>
-              widget.data == '서울성남 아이스크림 전달' || widget.data == '목요일 오전 회의',
+          (widget) => widget.data == '서울성남 아이스크림 전달',
         );
     expect(firstTitle.data, '서울성남 아이스크림 전달');
   });
@@ -337,7 +350,7 @@ void main() {
 
     expect(find.text('대상 일정'), findsOneWidget);
     expect(find.text('아이스크림 전달'), findsOneWidget);
-    expect(find.text('목요일 오전 회의'), findsOneWidget);
+    expect(find.text('목요일 오전 회의'), findsNothing);
     final firstTitle = tester.widgetList<Text>(find.byType(Text)).firstWhere(
           (widget) => widget.data == '아이스크림 전달' || widget.data == '목요일 오전 회의',
         );
@@ -376,7 +389,7 @@ void main() {
 
     expect(find.text('대상 일정'), findsOneWidget);
     expect(find.text('아이스크림 전달'), findsOneWidget);
-    expect(find.text('목요일 오전 회의'), findsOneWidget);
+    expect(find.text('목요일 오전 회의'), findsNothing);
     final firstTitle = tester.widgetList<Text>(find.byType(Text)).firstWhere(
           (widget) => widget.data == '아이스크림 전달' || widget.data == '목요일 오전 회의',
         );
@@ -420,7 +433,7 @@ void main() {
 
     expect(find.text('대상 일정'), findsOneWidget);
     expect(find.text('팀장님 동행방문'), findsOneWidget);
-    expect(find.text('아이스크림 전달'), findsOneWidget);
+    expect(find.text('아이스크림 전달'), findsNothing);
     final firstTitle = tester.widgetList<Text>(find.byType(Text)).firstWhere(
           (widget) => widget.data == '팀장님 동행방문' || widget.data == '아이스크림 전달',
         );
@@ -460,6 +473,104 @@ void main() {
     expect(find.text('대상 일정'), findsOneWidget);
     expect(find.text('아이스크림 전달'), findsOneWidget);
     expect(find.textContaining('조건에 맞는 일정을 찾지 못했어요'), findsNothing);
+  });
+
+  testWidgets('오늘 삭제 후보는 날짜 힌트 범위 내 항목을 take 제한 없이 보여준다', (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final logs = <String>[];
+    final previousDebugPrint = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) {
+      if (message != null) {
+        logs.add(message);
+      }
+    };
+    final repository = _FakeEventRepository(
+      events: [
+        for (var index = 0; index < 7; index += 1)
+          _event(
+            id: 'today-$index',
+            title: '오늘일정$index',
+            startAt: today.add(Duration(hours: index + 7)),
+          ),
+        for (var index = 0; index < 3; index += 1)
+          _event(
+            id: 'tomorrow-$index',
+            title: '내일일정$index',
+            startAt: today
+                .add(const Duration(days: 1))
+                .add(Duration(hours: index + 7)),
+          ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '오늘 회의 삭제해 줘',
+            action: VoiceScheduleAction.delete,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    debugPrint = previousDebugPrint;
+
+    expect(
+      logs.any((line) => line.contains('displayedCount=7')),
+      isTrue,
+    );
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.text('오늘일정0'), findsOneWidget);
+    expect(find.text('내일일정0'), findsNothing);
+    expect(find.text('내일일정1'), findsNothing);
+  });
+
+  testWidgets('날짜 힌트가 있지만 범위 외 관련 없는 일정은 제한된 수만 표시한다', (tester) async {
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final repository = _FakeEventRepository(
+      events: [
+        for (var index = 0; index < 5; index += 1)
+          _event(
+            id: 'future-$index',
+            title: '다음일정$index',
+            startAt: tomorrow.add(Duration(hours: index + 8)),
+          ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '오늘 삭제해 줘',
+            action: VoiceScheduleAction.delete,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.text('다음일정0'), findsOneWidget);
+    expect(find.text('다음일정1'), findsOneWidget);
+    expect(find.text('다음일정2'), findsOneWidget);
+    expect(find.text('다음일정3'), findsNothing);
+    expect(find.text('다음일정4'), findsNothing);
   });
 
   testWidgets('수정 후보 fallback은 다가오는 일정과 최근 일정을 우선으로 보여준다', (tester) async {
@@ -555,7 +666,7 @@ void main() {
             line.contains('userId=있음') &&
             line.contains('totalEventCount=2') &&
             line.contains('filteredCount=2') &&
-            line.contains('displayedCount=2') &&
+            line.contains('displayedCount=1') &&
             line.contains('targetQuery='),
       ),
       isTrue,
@@ -641,6 +752,85 @@ void main() {
     expect(find.text('삭제하기'), findsOneWidget);
   });
 
+  testWidgets('오늘 삭제 명령은 지난 오늘 일정을 미래 후보보다 우선 표시한다', (tester) async {
+    final now = DateTime.now();
+    final repository = _FakeEventRepository(
+      events: [
+        for (var i = 0; i < 5; i += 1)
+          _event(
+            id: 'future-$i',
+            title: '미래 일정 $i',
+            startAt: DateTime(now.year, now.month, now.day + i + 1, 9),
+          ),
+        _event(
+          id: 'today-past',
+          title: '약재과 방문 프리셋 텍스 문의',
+          startAt: DateTime(now.year, now.month, now.day, 8),
+          location: '원주 세브란스',
+        ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '오늘 약재과 방문하여 프리셋 텍스 문의하기라는 일정 삭제시켜 줘',
+            action: VoiceScheduleAction.delete,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.text('약재과 방문 프리셋 텍스 문의'), findsOneWidget);
+    expect(find.text('미래 일정 4'), findsNothing);
+  });
+
+  testWidgets('날짜 힌트가 없고 매칭도 없으면 폴백 후보는 3개만 보여준다', (tester) async {
+    final now = DateTime.now();
+    final repository = _FakeEventRepository(
+      events: [
+        for (var i = 0; i < 5; i += 1)
+          _event(
+            id: 'event-$i',
+            title: '후보 일정 $i',
+            startAt: DateTime(now.year, now.month, now.day + i + 1, 9),
+          ),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '잘못 들은 일정 삭제해 줘',
+            action: VoiceScheduleAction.delete,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('후보 일정 0'), findsOneWidget);
+    expect(find.text('후보 일정 1'), findsOneWidget);
+    expect(find.text('후보 일정 2'), findsOneWidget);
+    expect(find.text('후보 일정 3'), findsNothing);
+  });
+
   testWidgets('저장된 일정이 앱 DB에서 0건이면 복구 카드를 보여준다', (tester) async {
     var syncCalls = 0;
     final repository = _FakeEventRepository(events: const []);
@@ -653,7 +843,8 @@ void main() {
             rawText: '오늘 아이스크림 전달 일정 삭제해 줘',
             action: VoiceScheduleAction.delete,
             eventRepository: repository,
-            forceSyncCalendars: ({required String reason, required bool force}) async {
+            forceSyncCalendars: (
+                {required String reason, required bool force}) async {
               syncCalls += 1;
             },
             userIdOverride: 'user-1',
@@ -700,7 +891,8 @@ void main() {
             rawText: '오늘 아이스크림 전달 일정 삭제해 줘',
             action: VoiceScheduleAction.delete,
             eventRepository: repository,
-            forceSyncCalendars: ({required String reason, required bool force}) async {
+            forceSyncCalendars: (
+                {required String reason, required bool force}) async {
               syncCalls += 1;
               repository._events.add(restoredEvent);
             },

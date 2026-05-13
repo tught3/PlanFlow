@@ -203,9 +203,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       }
 
       final events = await _repository.listEvents(userId: userId);
-      if (events.isEmpty &&
-          allowAutoSyncRetry &&
-          _canAutoRetryEmptyLoad) {
+      if (events.isEmpty && allowAutoSyncRetry && _canAutoRetryEmptyLoad) {
         await _syncAndReloadCandidates();
         return;
       }
@@ -235,10 +233,21 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         rankedItems = _rankEventItems(filteredEvents, routeResult.targetQuery);
       }
 
-      final ranked = _candidateEventsForDisplay(
+      final candidateDateRange = _candidateDateRangeForAction(
+        routeResult: routeResult,
+      );
+      final rankedCandidates = _candidateEventsForDisplay(
         rankedItems,
         filteredEvents,
-      ).map((item) => item.event).take(_isQuery ? 10 : 5).toList(growable: false);
+        candidateDateRange: candidateDateRange,
+      ).map((item) => item.event).toList(growable: false);
+      final maxCount = _candidateMaxTake(
+        rankedCandidates: rankedCandidates,
+        candidateDateRange: candidateDateRange,
+      );
+      final ranked = maxCount == null
+          ? rankedCandidates
+          : rankedCandidates.take(maxCount).toList(growable: false);
       final diagnostics = _CandidateLoadDiagnostics(
         action: _selectedAction.name,
         userIdAvailable: userId.isNotEmpty,
@@ -260,15 +269,14 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         _events
           ..clear()
           ..addAll(ranked);
-        _message = events.isEmpty &&
-                !allowAutoSyncRetry &&
-                _canAutoRetryEmptyLoad
-            ? '앱 DB에서 일정을 못 불러왔어요'
-            : _emptyMessageForAction(
-                ranked: ranked,
-                totalEvents: events,
-                filteredEvents: filteredEvents,
-              );
+        _message =
+            events.isEmpty && !allowAutoSyncRetry && _canAutoRetryEmptyLoad
+                ? '앱 DB에서 일정을 못 불러왔어요'
+                : _emptyMessageForAction(
+                    ranked: ranked,
+                    totalEvents: events,
+                    filteredEvents: filteredEvents,
+                  );
         _isLoading = false;
       });
     } catch (error, stackTrace) {
@@ -287,19 +295,76 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
 
   List<_RankedEvent> _candidateEventsForDisplay(
     List<_RankedEvent> rankedItems,
-    List<EventModel> filteredEvents,
-  ) {
-    // 조회(query) 모드: 날짜 필터 적용된 rankedItems를 그대로 반환
+    List<EventModel> filteredEvents, {
+    _DateRange? candidateDateRange,
+  }) {
     if (_isQuery) {
       return rankedItems;
     }
 
-    // 수정/삭제 모드: 하나라도 키워드 매칭된 항목이 있으면 점수순 목록 반환
-    if (rankedItems.any((item) => item.matchScore > 0)) {
-      return rankedItems;
+    final scoredItems = rankedItems
+        .where((item) => item.matchScore > 0)
+        .toList(growable: false);
+    if (scoredItems.isNotEmpty) {
+      if (candidateDateRange != null) {
+        final dateMatched = scoredItems
+            .where(
+              (item) => _isEventInCandidateDateRange(
+                item.event,
+                candidateDateRange,
+              ),
+            )
+            .toList(growable: false);
+        if (dateMatched.isNotEmpty) {
+          return dateMatched;
+        }
+      }
+      return scoredItems.take(5).toList(growable: false);
     }
 
-    // 키워드 매칭 없음 → 폴백: 저장된 일정 전체를 다가오는 순으로 보여줌
+    if (candidateDateRange != null) {
+      final inRange = filteredEvents
+          .where(
+            (event) => _isEventInCandidateDateRange(event, candidateDateRange),
+          )
+          .toList(growable: false);
+      if (inRange.isNotEmpty) {
+        final ranked = inRange
+            .map(
+              (event) => _RankedEvent(
+                event: event,
+                score: 0,
+                matchScore: 0,
+              ),
+            )
+            .toList(growable: false);
+        ranked.sort((a, b) {
+          return _compareDateForCandidate(
+            a.event.startAt,
+            b.event.startAt,
+          );
+        });
+        return ranked;
+      }
+
+      final now = DateTime.now();
+      final fallback = filteredEvents.map((event) {
+        return _RankedEvent(
+          event: event,
+          score: _fallbackCandidateScore(event.startAt, now),
+          matchScore: 0,
+        );
+      }).toList(growable: false);
+      fallback.sort((a, b) {
+        return _compareRecentAndUpcoming(
+          a.event.startAt,
+          b.event.startAt,
+          now,
+        );
+      });
+      return fallback;
+    }
+
     if (filteredEvents.isEmpty) {
       return const [];
     }
@@ -320,7 +385,125 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
         now,
       );
     });
-    return fallback;
+    return fallback.take(3).toList(growable: false);
+  }
+
+  int? _candidateMaxTake({
+    required List<EventModel> rankedCandidates,
+    _DateRange? candidateDateRange,
+  }) {
+    if (_isQuery) {
+      return 10;
+    }
+    if ((_isEdit || _isDelete) && candidateDateRange != null) {
+      final hasDateScopedCandidate = rankedCandidates.any(
+        (candidate) =>
+            _isEventInCandidateDateRange(candidate, candidateDateRange),
+      );
+      if (hasDateScopedCandidate) {
+        return null;
+      }
+      return 3;
+    }
+    return 5;
+  }
+
+  _DateRange? _candidateDateRangeForAction({
+    required VoiceCommandRouteResult routeResult,
+  }) {
+    if (!_isEdit && !_isDelete) {
+      return null;
+    }
+
+    final targetRange = _queryDateRange(routeResult.targetQuery);
+    if (targetRange != null) {
+      return targetRange;
+    }
+
+    final normalized = routeResult.cleanedText.replaceAll(RegExp(r'\s+'), ' ');
+    final firstDateRange = _firstDateRangeInText(normalized);
+    if (firstDateRange != null) {
+      return firstDateRange;
+    }
+
+    return _queryDateRange(normalized);
+  }
+
+  _DateRange? _firstDateRangeInText(String text) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final matches = RegExp(
+      r'((?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일',
+    ).allMatches(normalized).toList(growable: false);
+    if (matches.isEmpty) {
+      return null;
+    }
+    final first = matches.first.group(0) ?? '';
+    final inferred =
+        GptService(now: () => planflowNow()).inferStartAtFromRawText(
+      first,
+    );
+    if (inferred != null) {
+      final local = planflowLocal(inferred);
+      final day = DateTime(local.year, local.month, local.day);
+      return _DateRange(day, day.add(const Duration(days: 1)));
+    }
+
+    if (first.contains('오늘')) {
+      return _DateRange(today, today.add(const Duration(days: 1)));
+    }
+    if (first.contains('내일')) {
+      final start = today.add(const Duration(days: 1));
+      return _DateRange(start, start.add(const Duration(days: 1)));
+    }
+    if (first.contains('모레') || first.contains('글피')) {
+      final start = today.add(const Duration(days: 2));
+      return _DateRange(start, start.add(const Duration(days: 1)));
+    }
+    if (RegExp(r'(이번\s*주|이번주)').hasMatch(first)) {
+      final start = today.subtract(Duration(days: today.weekday - 1));
+      return _DateRange(start, start.add(const Duration(days: 7)));
+    }
+    if (RegExp(r'(다음\s*주|다음주)').hasMatch(first)) {
+      final start = today
+          .subtract(Duration(days: today.weekday - 1))
+          .add(const Duration(days: 7));
+      return _DateRange(start, start.add(const Duration(days: 7)));
+    }
+
+    return null;
+  }
+
+  bool _isEventInCandidateDateRange(
+    EventModel event,
+    _DateRange? candidateDateRange,
+  ) {
+    if (candidateDateRange == null) {
+      return false;
+    }
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final local = planflowLocal(startAt);
+    return !local.isBefore(candidateDateRange.start) &&
+        local.isBefore(candidateDateRange.end);
+  }
+
+  int _compareDateForCandidate(DateTime? aStart, DateTime? bStart) {
+    if (aStart == null && bStart == null) {
+      return 0;
+    }
+    if (aStart == null) {
+      return 1;
+    }
+    if (bStart == null) {
+      return -1;
+    }
+    final a = planflowLocal(aStart);
+    final b = planflowLocal(bStart);
+    return a.compareTo(b);
   }
 
   Future<void> _syncAndReloadCandidates() async {
@@ -629,6 +812,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
           continue;
         }
         if (_voiceCommandRouter.hasFuzzyTokenMatch(token, searchableTokens)) {
+          matchScore += 2;
+          continue;
+        }
+        if (_voiceCommandRouter.hasPrefixMatch(token, searchableTokens)) {
           matchScore += 1;
         }
       }
@@ -789,7 +976,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
       parts.add(
         '${newStart.month}/${newStart.day}'
         '(${weekdays[newStart.weekday]}) '
-        '$period ${h}시$m',
+        '$period $h시$m',
       );
     }
 
@@ -1733,12 +1920,15 @@ class _QueryEventCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              FilledButton.tonalIcon(
-                onPressed: disabled ? null : onTap,
-                icon: Icon(actionIcon),
-                label: Text(actionLabel),
-                style: FilledButton.styleFrom(
-                  foregroundColor: isDanger ? const Color(0xFFB42318) : null,
+              SizedBox(
+                width: 94,
+                child: FilledButton.tonalIcon(
+                  onPressed: disabled ? null : onTap,
+                  icon: Icon(actionIcon),
+                  label: Text(actionLabel),
+                  style: FilledButton.styleFrom(
+                    foregroundColor: isDanger ? const Color(0xFFB42318) : null,
+                  ),
                 ),
               ),
             ],
@@ -1953,7 +2143,8 @@ class _EmptyCard extends StatelessWidget {
                 color: PlanFlowColors.textSecondary,
               ),
             ),
-            if (diagnosticsText != null && diagnosticsText!.trim().isNotEmpty) ...[
+            if (diagnosticsText != null &&
+                diagnosticsText!.trim().isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(
                 '후보 조회 결과',
@@ -2110,6 +2301,8 @@ class _EventCandidateCard extends StatelessWidget {
                       children: [
                         Text(
                           event.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall?.copyWith(
                             color: PlanFlowColors.primary,
                             fontWeight: FontWeight.w800,
@@ -2164,13 +2357,16 @@ class _EventCandidateCard extends StatelessWidget {
                   ),
                   if (!hasDirectApply) ...[
                     const SizedBox(width: 10),
-                    FilledButton.tonalIcon(
-                      onPressed: disabled ? null : onTap,
-                      icon: Icon(actionIcon),
-                      label: Text(actionLabel),
-                      style: FilledButton.styleFrom(
-                        foregroundColor:
-                            isDanger ? const Color(0xFFB42318) : null,
+                    SizedBox(
+                      width: 94,
+                      child: FilledButton.tonalIcon(
+                        onPressed: disabled ? null : onTap,
+                        icon: Icon(actionIcon),
+                        label: Text(actionLabel),
+                        style: FilledButton.styleFrom(
+                          foregroundColor:
+                              isDanger ? const Color(0xFFB42318) : null,
+                        ),
                       ),
                     ),
                   ],

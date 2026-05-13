@@ -37,7 +37,8 @@ class VoiceCommandRouter {
     if (RegExp(r'(삭제|지워|없애|취소|제거)').hasMatch(normalized)) {
       return VoiceCommandRouteIntent.delete;
     }
-    if (RegExp(r'(수정|변경|바꿔|미뤄|앞당겨|옮겨|이동|고쳐|편집|연기|늦춰|당겨)').hasMatch(normalized)) {
+    if (RegExp(r'(수정|변경|바꿔|미뤄|앞당겨|옮겨|이동|고쳐|편집|연기|늦춰|당겨)')
+        .hasMatch(normalized)) {
       return VoiceCommandRouteIntent.edit;
     }
     if (_hasQueryIntentCue(normalized)) {
@@ -236,6 +237,22 @@ class VoiceCommandRouter {
     return false;
   }
 
+  bool hasPrefixMatch(String token, List<String> searchableTokens) {
+    if (token.length < 3) {
+      return false;
+    }
+    final prefix = token.substring(0, 2);
+    for (final candidate in searchableTokens) {
+      if (candidate.length < 2) {
+        continue;
+      }
+      if (candidate.startsWith(prefix) || candidate.contains(prefix)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   bool editDistanceAtMostOne(String left, String right) {
     if (left == right) {
       return true;
@@ -364,8 +381,7 @@ class VoiceCommandRouter {
     if (!normalized.endsWith('확인하기')) {
       return false;
     }
-    if (RegExp(r'^(오늘|내일|모레|글피)?\s*일정\s*확인하기$')
-        .hasMatch(normalized)) {
+    if (RegExp(r'^(오늘|내일|모레|글피)?\s*일정\s*확인하기$').hasMatch(normalized)) {
       return false;
     }
     return true;

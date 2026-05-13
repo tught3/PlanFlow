@@ -388,3 +388,10 @@
 - Removed the top helper sentence from the voice input page and added a second example that explicitly teaches schedule edits/changes: `언제 일정을 다음주로 변경해`.
 - Kept the existing guidance card and tests aligned so the new copy is visible and the old intro line no longer appears.
 - Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub lib/screens/voice/voice_input_screen.dart test/screens/voice_input_screen_test.dart` and `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_input_screen_test.dart`.
+
+## 2026-05-13 Voice Home Prefetch And Candidate Matching Checkpoint
+- Added `EventPrefetchService` so authenticated event lists are warmed once at app startup/login, cached per user for a short window, reused by HomeScreen immediately, refreshed in the background, and invalidated when the event refresh bus fires.
+- Improved voice edit/delete candidate matching so target date hints such as `오늘`, `내일`, `다음 주` scope the candidate list separately from the requested change date, today past events can still appear for delete/edit, and low-confidence fallback lists are capped instead of flooding unrelated schedules.
+- Added prefix-aware fuzzy matching for Korean STT misses such as near-prefix title/place words without hardcoding specific places.
+- Worker subagents handled the home prefetch and voice matching scopes in parallel. A reviewer agent found voice regression failures, which were fixed; follow-up reviewer attempts timed out, so final acceptance used full local verification.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (284 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `19192`.

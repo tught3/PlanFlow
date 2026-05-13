@@ -14,6 +14,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/early_bird_email_repository.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/briefing_scheduler_service.dart';
+import '../../services/event_prefetch_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_header_summary_service.dart';
 import '../../services/remote_config_service.dart';
@@ -84,6 +85,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _handleEventRefresh() {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    EventPrefetchService().invalidate(userId: userId);
     _loadTodayEvents();
     unawaited(_loadHomeHeaderSummary());
   }
@@ -137,13 +140,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadTodayEvents() async {
-    if (mounted) {
-      setState(() {
-        _loadState = _HomeLoadState.loading;
-        _loadMessage = null;
-      });
-    }
-
     if (!AppEnv.isSupabaseReady) {
       if (mounted) {
         setState(() {
@@ -170,57 +166,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    try {
-      final repository = EventRepository.supabase();
-      final allEvents = await repository.listEvents(userId: user.id);
-      final now = DateTime.now();
-      final todayEvents = allEvents.where((event) {
-        return _eventIntersectsDay(event, now);
-      }).toList(growable: false)
-        ..sort((a, b) =>
-            (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)));
-      final pastTodayEvents = todayEvents
-          .where((event) => _isPastEvent(event, now))
-          .toList(growable: false);
-      final currentTodayEvents = todayEvents
-          .where((event) => !_isPastEvent(event, now))
-          .toList(growable: false);
-      final upcomingEvents = allEvents.where((event) {
-        final startAt = event.startAt;
-        return startAt != null &&
-            !startAt.isBefore(now) &&
-            !planflowIsSameLocalDay(startAt, now);
-      }).toList(growable: false)
-        ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
-      final visibleEventIds = <String>{
-        if (pastTodayEvents.isNotEmpty) pastTodayEvents.last.id,
-        ...currentTodayEvents.map((event) => event.id),
-        ...upcomingEvents.take(3).map((event) => event.id),
-      };
-      var smartPreparationEventIds = const <String>{};
-      try {
-        smartPreparationEventIds = await const SmartPreparationAlarmService()
-            .listEventIdsWithSmartAlarms(
+    final repository = EventRepository.supabase();
+    final prefetchService = EventPrefetchService();
+    final cachedEvents = prefetchService.getCached(user.id);
+    if (cachedEvents != null) {
+      await _applyHomeEvents(user.id, cachedEvents);
+      unawaited(
+        _refreshHomeEvents(
           userId: user.id,
-          eventIds: visibleEventIds,
-        );
-      } catch (error, stackTrace) {
-        debugPrint('Home smart preparation lookup failed: $error');
-        debugPrintStack(stackTrace: stackTrace);
-      }
+          repository: repository,
+          showLoading: false,
+        ),
+      );
+      return;
+    }
 
-      if (mounted) {
-        setState(() {
-          _pastTodayEvent =
-              pastTodayEvents.isEmpty ? null : pastTodayEvents.last;
-          _todayEvents = currentTodayEvents;
-          _upcomingEvents = upcomingEvents.take(3).toList(growable: false);
-          _smartPreparationEventIds = smartPreparationEventIds;
-          _loadState = _HomeLoadState.ready;
-        });
-      }
+    await _refreshHomeEvents(
+      userId: user.id,
+      repository: repository,
+      showLoading: true,
+    );
+  }
+
+  Future<void> _refreshHomeEvents({
+    required String userId,
+    required EventRepository repository,
+    required bool showLoading,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _loadState = _HomeLoadState.loading;
+        _loadMessage = null;
+      });
+    }
+
+    try {
+      final allEvents = await repository.listEvents(userId: userId);
+      EventPrefetchService().store(userId, allEvents);
+      await _applyHomeEvents(userId, allEvents);
     } catch (error) {
-      if (mounted) {
+      if (mounted && showLoading) {
         setState(() {
           _pastTodayEvent = null;
           _todayEvents = const <EventModel>[];
@@ -233,6 +218,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       debugPrint('HomeScreen load failed: $error');
     } finally {
       // Loading state is replaced by one of the terminal states above.
+    }
+  }
+
+  Future<void> _applyHomeEvents(
+    String userId,
+    List<EventModel> allEvents,
+  ) async {
+    final now = DateTime.now();
+    final todayEvents = allEvents.where((event) {
+      return _eventIntersectsDay(event, now);
+    }).toList(growable: false)
+      ..sort((a, b) =>
+          (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)));
+    final pastTodayEvents = todayEvents
+        .where((event) => _isPastEvent(event, now))
+        .toList(growable: false);
+    final currentTodayEvents = todayEvents
+        .where((event) => !_isPastEvent(event, now))
+        .toList(growable: false);
+    final upcomingEvents = allEvents.where((event) {
+      final startAt = event.startAt;
+      return startAt != null &&
+          !startAt.isBefore(now) &&
+          !planflowIsSameLocalDay(startAt, now);
+    }).toList(growable: false)
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+    final visibleEventIds = <String>{
+      if (pastTodayEvents.isNotEmpty) pastTodayEvents.last.id,
+      ...currentTodayEvents.map((event) => event.id),
+      ...upcomingEvents.take(3).map((event) => event.id),
+    };
+    var smartPreparationEventIds = const <String>{};
+    try {
+      smartPreparationEventIds = await const SmartPreparationAlarmService()
+          .listEventIdsWithSmartAlarms(
+        userId: userId,
+        eventIds: visibleEventIds,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Home smart preparation lookup failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    if (mounted) {
+      setState(() {
+        _pastTodayEvent = pastTodayEvents.isEmpty ? null : pastTodayEvents.last;
+        _todayEvents = currentTodayEvents;
+        _upcomingEvents = upcomingEvents.take(3).toList(growable: false);
+        _smartPreparationEventIds = smartPreparationEventIds;
+        _loadState = _HomeLoadState.ready;
+        _loadMessage = null;
+      });
     }
   }
 

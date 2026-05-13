@@ -95,5 +95,22 @@ void main() {
         expect(route.intent, isNot(VoiceCommandRouteIntent.choose));
       }
     });
+
+    test('긴 조사 토큰은 앞부분 일치도 후보 매칭에 사용할 수 있다', () {
+      const router = VoiceCommandRouter();
+
+      expect(
+        router.hasPrefixMatch('방문하여', const ['약재과', '방문', '문의']),
+        isTrue,
+      );
+      expect(
+        router.hasPrefixMatch('삭제해줘', const ['약재과', '방문', '문의']),
+        isFalse,
+      );
+      expect(
+        router.hasPrefixMatch('아', const ['약재과', '방문', '문의']),
+        isFalse,
+      );
+    });
   });
 }

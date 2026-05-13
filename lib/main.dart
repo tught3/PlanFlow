@@ -15,6 +15,7 @@ import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'services/remote_config_service.dart';
 import 'services/calendar_auto_sync_service.dart';
+import 'services/event_prefetch_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +61,23 @@ Future<void> main() async {
       ).timeout(const Duration(seconds: 10));
       AppEnv.markSupabaseInitialized();
       authProvider.start();
+      String? lastPrefetchedUserId;
+      void syncPrefetchForAuthUser() {
+        final userId = authProvider.userId;
+        if (userId == null || userId.isEmpty) {
+          lastPrefetchedUserId = null;
+          EventPrefetchService().invalidate();
+          return;
+        }
+        if (lastPrefetchedUserId == userId) {
+          return;
+        }
+        lastPrefetchedUserId = userId;
+        unawaited(EventPrefetchService().warmUp(userId));
+      }
+
+      syncPrefetchForAuthUser();
+      authProvider.addListener(syncPrefetchForAuthUser);
       unawaited(const DailyCalendarSyncSchedulerService().scheduleDaily());
     } catch (error) {
       debugPrint('Supabase initialization skipped: $error');
