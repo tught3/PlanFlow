@@ -427,3 +427,11 @@
 - Added regression coverage to ensure imported external events trigger day-level preparation resync, locationless earlier events do not steal the first-travel-event slot, past/>7-day events are excluded, and >24-hour events do not trigger departure preparation early.
 - Real device verification confirmed the previously missing event now has smart preparation notifications and a route-based `지금 출발해야 해요` alarm for `강릉아산병원`; the route estimate was about 88 minutes with a 30-minute buffer.
 - Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused and full Flutter tests, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app`.
+
+## 2026-05-13 Location Picker Map Render Fix Checkpoint
+- Applied the `CODEX_MAP_FIX.md` direction to `LocationPickerScreen` after re-checking it against the current PlanFlow route structure.
+- The in-app map widget now mounts even while `_MapRenderState.loading`, so Naver/Google map readiness callbacks can actually fire; the loading panel is now an overlay instead of replacing the map widget.
+- The existing 5-second readiness timeout, unavailable fallback, external map fallback buttons, gesture hint, and load fallback banner behavior were preserved.
+- Wrapped the location picker route in `PopScope(canPop: true)` so AppBar/system back can pop the MaterialPageRoute used by the picker without being swallowed by the shell route.
+- Worker and reviewer subagents were used; the reviewer returned PASS for map mounting, fallback preservation, timeout retention, and back navigation routing.
+- Verification passed: focused location picker test, full `./scripts/flutter-local.ps1 analyze --no-pub`, full `./scripts/flutter-local.ps1 test --no-pub` (291 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `30422`.
