@@ -454,3 +454,12 @@
 - Reviewer flagged critical push/system reminder dedupe and in-flight resync issues; both were fixed and covered with regression tests.
 - Verification passed for the alarm scope: `./scripts/flutter-local.ps1 analyze --no-pub`, focused tests for notification/manual side effects/calendar auto sync, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `7915`.
 - Full `./scripts/flutter-local.ps1 test --no-pub` was also attempted but failed on pre-existing unrelated UI/timezone tests (`location_picker_screen_test` duplicate text expectations and `confirm_screen_test` KST expectation), while the alarm-related tests passed.
+
+## 2026-05-14 Voice Control Command Runtime Fix Checkpoint
+- Fixed voice-control command handling so inline/partial STT phrases like `내일 오전 아니다 다시 전체 취소` no longer remain in the text field as schedule content.
+- Expanded shared STT controls to include `아니다`, `전체 삭제/전체삭제`, `전체 취소/전체취소`, `마지막 삭제`, and `방금 삭제`, with direct detection, transcript normalization, Android native STT, and `speech_to_text` fallback all sharing the same resolver.
+- Added partial-result cleanup on `VoiceInputScreen`: clear-all commands immediately empty the visible field, standalone cancel/stop commands stop listening and remove the command text, and async partial processing is token-guarded so stale partials do not overwrite newer input.
+- Preserved normal schedule phrases containing `취소`, such as `계약 취소 확인 전화`, by treating cancel as a stop command only when it is a standalone command or an explicit native-session command.
+- Updated the voice-input guide copy to mention the new commands within the existing guide card.
+- Worker/reviewer agents were used; the first reviewer found blocking gaps for inline `아니다` and stale clear-all partials, both were fixed, and the follow-up reviewer returned no blocking findings.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused `./scripts/flutter-local.ps1 test --no-pub test/services/stt_service_test.dart test/screens/voice_input_screen_test.dart` (27 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `6499`.

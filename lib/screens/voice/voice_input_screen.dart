@@ -52,6 +52,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   bool _didResolveAutoStart = false;
   bool _isApplyingTranscriptProgrammatically = false;
   bool _didEditTranscriptManually = false;
+  int _partialTranscriptToken = 0;
   int _draftPreparationToken = 0;
   Map<String, dynamic>? _preparedDraft;
   String? _preparedDraftSourceText;
@@ -146,7 +147,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       final result = await widget.sttService.listen(
         onPartialResult: (text) {
           if (!_didEditTranscriptManually) {
-            _setTranscriptText(text);
+            final token = ++_partialTranscriptToken;
+            unawaited(_applyNormalizedPartialTranscript(text, token));
           }
         },
         onRestart: (count) {
@@ -163,7 +165,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         return;
       }
 
-      if (result.hasText && !_didEditTranscriptManually) {
+      if (result.failure == null &&
+          result.hasText &&
+          !_didEditTranscriptManually) {
         _setTranscriptText(result.text ?? '');
       }
 
@@ -243,8 +247,56 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       return;
     }
     setState(() {
-      _statusMessage = '전체 입력을 지웠어요. 다시 말하거나 직접 입력해 주세요.';
+      _statusMessage = '전체 입력을 지웠어요.';
     });
+  }
+
+  Future<void> _applyNormalizedPartialTranscript(String text, int token) async {
+    if (!_isListening || token != _partialTranscriptToken) {
+      return;
+    }
+
+    var shouldClearAll = false;
+    var shouldCancel = false;
+
+    final normalizedText = SttService.normalizeVoiceTranscript(
+      text,
+      onCommand: (command) {
+        if (command == SttVoiceCommand.clearAll) {
+          shouldClearAll = true;
+        } else if (command == SttVoiceCommand.cancel) {
+          shouldCancel = true;
+        }
+      },
+      includeCancelCommands: true,
+    );
+
+    if (!mounted || token != _partialTranscriptToken) {
+      return;
+    }
+
+    if (shouldCancel) {
+      await _cancelVoiceFlow();
+      if (!mounted || token != _partialTranscriptToken) {
+        return;
+      }
+      _clearPreparedDraft();
+      _setTranscriptText('');
+      return;
+    }
+
+    if (shouldClearAll) {
+      await _clearTranscript();
+      if (!mounted || token != _partialTranscriptToken) {
+        return;
+      }
+      return;
+    }
+
+    if (!_isListening || token != _partialTranscriptToken) {
+      return;
+    }
+    _setTranscriptText(normalizedText);
   }
 
   Future<void> _continueWithRawText() async {
@@ -637,11 +689,11 @@ class _VoiceCommandGuide extends StatelessWidget {
       '수정: “언제 일정을 다음주로 변경해”',
       '분류: 병원=건강, 세미나=교육',
       '조회: “오늘 일정 알려줘”, “이번 주 일정 알려줘”',
-      '제어: 다시/처음부터=전체삭제 · 아니=교정 · 마지막 거 지워=일부삭제 · 취소/중지 등=종료',
+      '제어: 다시/처음부터/전체삭제/전체취소=전체삭제 · 아니/아니다=교정 · 마지막 삭제/방금 삭제=일부삭제 · 취소/중지 등=종료',
     ];
     const compactBullets = <String>[
       '일정/수정/조회: “내일 오전 10시 정장집 방문”, “5월 10일 하루종일 휴가”, “매주 화요일 팀 미팅”, “오늘 일정 알려줘”',
-      '제어: 다시/처음부터=전체삭제 · 아니=교정 · 마지막 거 지워=일부삭제 · 취소/중지 등=종료',
+      '제어: 다시/처음부터/전체삭제/전체취소=전체삭제 · 아니/아니다=교정 · 마지막 삭제/방금 삭제=일부삭제 · 취소/중지 등=종료',
     ];
 
     return LayoutBuilder(

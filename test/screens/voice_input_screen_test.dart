@@ -412,9 +412,96 @@ void main() {
     expect(find.textContaining('매주 화요일 팀 미팅'), findsOneWidget);
     expect(
       find.textContaining(
-          '제어: 다시/처음부터=전체삭제 · 아니=교정 · 마지막 거 지워=일부삭제 · 취소/중지 등=종료'),
+          '제어: 다시/처음부터/전체삭제/전체취소=전체삭제 · 아니/아니다=교정 · 마지막 삭제/방금 삭제=일부삭제 · 취소/중지 등=종료'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('부분 인식에서 전체삭제가 오면 현재 입력을 즉시 비운다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pump();
+
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문 전체 삭제');
+    await tester.pump();
+
+    final textField = tester.widget<TextField>(find.byType(TextField));
+    expect(textField.controller?.text, '');
+    expect(find.text('전체 입력을 지웠어요.'), findsOneWidget);
+  });
+
+  testWidgets('부분 인식에서 취소가 오면 듣기가 중단되고 명령어가 사라진다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pump();
+
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+    fakeStt.emitPartial('취소');
+    await tester.pump();
+
+    final textField = tester.widget<TextField>(find.byType(TextField));
+    expect(textField.controller?.text, '');
+    expect(find.text('음성 입력을 취소했어요. 다시 시작할 수 있습니다.'), findsOneWidget);
+    expect(find.text('완료'), findsNothing);
   });
 
   testWidgets('일반 음성 문장은 일정 확인 화면으로 바로 이동한다', (tester) async {
@@ -672,6 +759,100 @@ void main() {
 
     expect(find.text('일정 확인: 내일 열두시반 병원'), findsOneWidget);
     expect(find.textContaining('내일 열두시반 병원 내일'), findsNothing);
+  });
+
+  testWidgets(
+    '부분/직접 입력 문장도 inline 제어어로 정규화된 텍스트를 제출한다',
+    (tester) async {
+      final router = GoRouter(
+        initialLocation: AppRoutes.voice,
+        routes: [
+          GoRoute(
+            path: AppRoutes.voice,
+            builder: (context, state) => const VoiceInputScreen(
+              autoStartOverride: false,
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.confirm,
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>;
+              return Text(
+                '일정 확인: ${extra['raw_text']}',
+                textDirection: TextDirection.ltr,
+              );
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.voiceAction,
+            builder: (context, state) => const Text(
+              '음성 관리 화면',
+              textDirection: TextDirection.ltr,
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.enterText(find.byType(TextField), '내일 오전 9시 아니 오후 2시 회의');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('현재 내용으로 입력'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('일정 확인:'), findsOneWidget);
+      expect(find.textContaining('일정 확인: 내일 오후 2시 회의'), findsOneWidget);
+      expect(find.text('음성 관리 화면'), findsNothing);
+    },
+  );
+
+  testWidgets('partial 문장 속 취소는 일반 일정 내용이면 입력을 유지한다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '일정 확인: ${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pump();
+
+    fakeStt.emitPartial('계약');
+    await tester.pump();
+    fakeStt.emitPartial('계약 취소');
+    await tester.pump();
+    fakeStt.emitPartial('계약 취소 확인 전화');
+    await tester.pump();
+
+    final textField = tester.widget<TextField>(find.byType(TextField));
+    expect(textField.controller?.text, '계약 취소 확인 전화');
+    expect(find.textContaining('음성 입력을 취소했어요'), findsNothing);
+    expect(find.text('완료'), findsOneWidget);
   });
 
   testWidgets('내일 일정 확인해줘는 음성 조회 화면으로 이동한다', (tester) async {

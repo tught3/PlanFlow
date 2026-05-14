@@ -51,6 +51,8 @@ void main() {
     expect(SttService.detectVoiceCommand('아니'), SttVoiceCommand.undoLastWord);
     expect(SttService.detectVoiceCommand('아니,'), SttVoiceCommand.undoLastWord);
     expect(SttService.detectVoiceCommand('아니.'), SttVoiceCommand.undoLastWord);
+    expect(SttService.detectVoiceCommand('아니다'), SttVoiceCommand.undoLastWord);
+    expect(SttService.detectVoiceCommand('아니다.'), SttVoiceCommand.undoLastWord);
     expect(
       SttService.detectVoiceCommand('마지막 거 지워'),
       SttVoiceCommand.undoLastSegment,
@@ -59,9 +61,25 @@ void main() {
       SttService.detectVoiceCommand('마지막 거 지워.'),
       SttVoiceCommand.undoLastSegment,
     );
+    expect(
+      SttService.detectVoiceCommand('마지막 삭제'),
+      SttVoiceCommand.undoLastSegment,
+    );
+    expect(
+      SttService.detectVoiceCommand('방금 삭제'),
+      SttVoiceCommand.undoLastSegment,
+    );
     expect(SttService.detectVoiceCommand('처음부터'), SttVoiceCommand.clearAll);
     expect(
       SttService.detectVoiceCommand('다시 말할게!'),
+      SttVoiceCommand.clearAll,
+    );
+    expect(
+      SttService.detectVoiceCommand('전체 삭제'),
+      SttVoiceCommand.clearAll,
+    );
+    expect(
+      SttService.detectVoiceCommand('전체취소'),
       SttVoiceCommand.clearAll,
     );
     expect(SttService.detectVoiceCommand('취소'), SttVoiceCommand.cancel);
@@ -78,6 +96,14 @@ void main() {
       SttVoiceCommand.cancel,
     );
     expect(SttService.detectVoiceCommand('내일 대전 출발'), SttVoiceCommand.none);
+    expect(
+      SttService.detectVoiceCommand('취소', includeCancel: false),
+      SttVoiceCommand.none,
+    );
+    expect(
+      SttService.detectVoiceCommand('계약 취소 확인 전화'),
+      SttVoiceCommand.none,
+    );
   });
 
   test('SttService normalizes voice correction phrases in transcripts', () {
@@ -108,6 +134,29 @@ void main() {
         '내일 서울에서 성남에서 아이스크림 전달일정 이번주 목요일 오전9시로 변경',
       ),
       '내일 서울에서 성남에서 아이스크림 전달일정 이번주 목요일 오전9시로 변경',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('내일 오전 아니다 다시 전체 취소'),
+      '',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('내일 오전 9시 아니 오후 2시 회의'),
+      '내일 오후 2시 회의',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('내일 오전 9시 아니다 오후 2시 회의'),
+      '내일 오후 2시 회의',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('계약 취소 확인 전화'),
+      '계약 취소 확인 전화',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript(
+        '계약 취소 확인 전화',
+        includeCancelCommands: true,
+      ),
+      '계약 취소 확인 전화',
     );
   });
 

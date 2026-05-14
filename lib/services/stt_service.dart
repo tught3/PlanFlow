@@ -98,12 +98,22 @@ class SttService {
   }
 
   @visibleForTesting
-  static SttVoiceCommand detectVoiceCommand(String text) {
+  static SttVoiceCommand detectVoiceCommand(
+    String text, {
+    bool includeCancel = true,
+  }) {
     final normalized = _normalizeVoiceCommandText(text);
-    return _resolveVoiceCommandFromNormalized(normalized);
+    return _resolveVoiceCommandFromNormalized(
+      normalized,
+      includeCancel: includeCancel,
+    );
   }
 
-  static String normalizeVoiceTranscript(String text) {
+  static String normalizeVoiceTranscript(
+    String text, {
+    ValueChanged<SttVoiceCommand>? onCommand,
+    bool includeCancelCommands = false,
+  }) {
     var tokens = text
         .trim()
         .split(RegExp(r'\s+'))
@@ -119,8 +129,21 @@ class SttService {
 
     var index = 0;
     while (index < tokens.length) {
-      final command = _matchVoiceCommand(tokens, index);
+      final command = _matchVoiceCommand(
+        tokens,
+        index,
+        includeCancel: includeCancelCommands,
+      );
       if (command != null) {
+        final isWholeTranscriptCommand =
+            index == 0 && command.consumedTokens == tokens.length;
+        if (command.command == SttVoiceCommand.cancel &&
+            !isWholeTranscriptCommand) {
+          output.add(tokens[index]);
+          index += 1;
+          continue;
+        }
+        onCommand?.call(command.command);
         switch (command.command) {
           case SttVoiceCommand.undoLastWord:
             _removeLastTranscriptWord(output);
@@ -132,6 +155,7 @@ class SttService {
             output.clear();
             break;
           case SttVoiceCommand.cancel:
+            break;
           case SttVoiceCommand.none:
             break;
         }
@@ -228,7 +252,10 @@ class SttService {
     var index = 0;
     while (index < result.length) {
       final normalized = _normalizeTranscriptToken(result[index]);
-      if ((normalized == '아니' || normalized == '아니야' || normalized == '아니요') &&
+      if ((normalized == '아니' ||
+              normalized == '아니야' ||
+              normalized == '아니요' ||
+              normalized == '아니다') &&
           index > 0 &&
           index < result.length - 1) {
         final before = result.sublist(0, index);
@@ -260,6 +287,16 @@ class SttService {
     if (correction.isEmpty) {
       return base;
     }
+    if (_timePrefixTokens.contains(correction.first)) {
+      for (var index = base.length - 1; index >= 0; index -= 1) {
+        if (_timePrefixTokens.contains(base[index])) {
+          return <String>[
+            ...base.take(index),
+            ...correction,
+          ];
+        }
+      }
+    }
     for (var index = base.length - 1; index >= 0; index -= 1) {
       if (base[index] == correction.first ||
           correction.first.startsWith(base[index]) ||
@@ -287,8 +324,9 @@ class SttService {
 
   static _VoiceCommandMatch? _matchVoiceCommand(
     List<String> tokens,
-    int index,
-  ) {
+    int index, {
+    bool includeCancel = false,
+  }) {
     const maxCommandTokens = 3;
     final maxLength = index + maxCommandTokens <= tokens.length
         ? maxCommandTokens
@@ -298,7 +336,10 @@ class SttService {
         length,
         (offset) => _normalizeTranscriptToken(tokens[index + offset]),
       ).join();
-      final command = _resolveVoiceCommandFromNormalized(normalized);
+      final command = _resolveVoiceCommandFromNormalized(
+        normalized,
+        includeCancel: includeCancel,
+      );
       if (command != SttVoiceCommand.none) {
         return _VoiceCommandMatch(command, length);
       }
@@ -306,7 +347,10 @@ class SttService {
     return null;
   }
 
-  static SttVoiceCommand _resolveVoiceCommandFromNormalized(String normalized) {
+  static SttVoiceCommand _resolveVoiceCommandFromNormalized(
+    String normalized, {
+    bool includeCancel = false,
+  }) {
     if (_undoLastWordCommandTokens.contains(normalized)) {
       return SttVoiceCommand.undoLastWord;
     }
@@ -316,7 +360,7 @@ class SttService {
     if (_clearAllCommandTokens.contains(normalized)) {
       return SttVoiceCommand.clearAll;
     }
-    if (_stopCommandTokens.contains(normalized)) {
+    if (includeCancel && _stopCommandTokens.contains(normalized)) {
       return SttVoiceCommand.cancel;
     }
     return SttVoiceCommand.none;
@@ -866,8 +910,11 @@ class SttService {
       onPartialResult?.call(normalized);
     }
 
-    bool handleNativeVoiceControlCommand(String text) {
-      final command = detectVoiceCommand(text);
+    bool handleNativeVoiceControlCommand(
+      String text, {
+      bool includeCancel = true,
+    }) {
+      final command = detectVoiceCommand(text, includeCancel: includeCancel);
       if (command == SttVoiceCommand.none) {
         return false;
       }
@@ -903,7 +950,10 @@ class SttService {
       }
       final committedText = committedSegments.join(' ').trim();
       final newSpeech = appendOnlyNewSpeech(committedText, recognizedWords);
-      if (handleNativeVoiceControlCommand(newSpeech)) {
+      if (handleNativeVoiceControlCommand(
+        newSpeech,
+        includeCancel: recognizedWords == newSpeech,
+      )) {
         return;
       }
       final mergedText = [
@@ -1040,15 +1090,20 @@ const Set<String> _undoLastWordCommandTokens = <String>{
   '아니',
   '아니야',
   '아니요',
+  '아니다',
 };
 const Set<String> _undoLastSegmentCommandTokens = <String>{
   '마지막거지워',
   '방금거지워',
+  '마지막삭제',
+  '방금삭제',
 };
 const Set<String> _clearAllCommandTokens = <String>{
   '다시',
   '처음부터',
   '다시말할게',
+  '전체삭제',
+  '전체취소',
 };
 const Set<String> _stopCommandTokens = <String>{
   '취소',
