@@ -60,9 +60,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       ? false
       : (_canUseNaverMap || _canUseGoogleMap);
 
-  bool get _canShowInAppMapBody =>
-      _canUseInAppMap && _mapRenderState == _MapRenderState.ready;
-
   NLatLng get _initialTarget {
     final selected = _selected;
     if (selected != null) {
@@ -261,267 +258,166 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
+    // TLHC 네이티브 뷰는 body 영역을 덮지만 AppBar/bottomNavigationBar는 보임.
+    // AppBar 없이 body만 있으면 엣지-투-엣지로 bottomNav까지 덮힘.
+    // → AppBar를 유지해 Scaffold body 범위를 고정하고,
+    //   실제 UI(검색·뒤로가기)는 bottomNavigationBar에 배치.
     return PopScope(
       canPop: true,
       child: Scaffold(
         backgroundColor: PlanFlowColors.background,
         appBar: AppBar(
           title: const Text('지도에서 장소 선택'),
-        ),
-        body: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _queryController,
-                            textInputAction: TextInputAction.search,
-                            onSubmitted: (_) => _search(),
-                            decoration: const InputDecoration(
-                              hintText: '장소명을 입력해 주세요',
-                              prefixIcon: Icon(Icons.search),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton(
-                          onPressed: _isSearching ? null : _search,
-                          child: _isSearching
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('검색'),
-                        ),
-                      ],
-                    ),
-                    if (_message != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        _message!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: PlanFlowColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Stack(
-                  children: [
-                    if (_canUseInAppMap)
-                      Positioned.fill(
-                        child: _canUseNaverMap
-                            ? NaverMap(
-                                forceGesture: true,
-                                options: NaverMapViewOptions(
-                                  initialCameraPosition: NCameraPosition(
-                                    target: _initialTarget,
-                                    zoom: 15,
-                                  ),
-                                  locationButtonEnable: false,
-                                  compassEnable: true,
-                                  contentPadding:
-                                      const EdgeInsets.only(bottom: 160),
-                                ),
-                                onMapReady: (controller) async {
-                                  _mapController = controller;
-                                  if (mounted) {
-                                    setState(() {
-                                      _mapLoadMessage = null;
-                                      _mapRenderState = _MapRenderState.ready;
-                                    });
-                                  }
-                                  final selected = _selected;
-                                  if (selected != null) {
-                                    await _moveMapTo(selected);
-                                  }
-                                },
-                                onMapTapped: (_, latLng) =>
-                                    _selectMapPoint(latLng),
-                                onMapLongTapped: (_, latLng) => _selectMapPoint(
-                                  latLng,
-                                  longPressed: true,
-                                ),
-                              )
-                            : google_maps.GoogleMap(
-                                initialCameraPosition:
-                                    google_maps.CameraPosition(
-                                  target: _googleInitialTarget,
-                                  zoom: 15,
-                                ),
-                                myLocationButtonEnabled: false,
-                                myLocationEnabled: false,
-                                markers: {
-                                  if (_selected != null)
-                                    google_maps.Marker(
-                                      markerId: const google_maps.MarkerId(
-                                          'selected'),
-                                      position: google_maps.LatLng(
-                                        _selected!.latitude,
-                                        _selected!.longitude,
-                                      ),
-                                      infoWindow: google_maps.InfoWindow(
-                                        title: _selected!.name,
-                                        snippet: _selected!.address,
-                                      ),
-                                    ),
-                                },
-                                onMapCreated: (controller) async {
-                                  _googleMapController = controller;
-                                  if (mounted) {
-                                    setState(() {
-                                      _mapLoadMessage = null;
-                                      _mapRenderState = _MapRenderState.ready;
-                                    });
-                                  }
-                                  final selected = _selected;
-                                  if (selected != null) {
-                                    await _moveGoogleMapTo(selected);
-                                  }
-                                },
-                                onTap: (latLng) => _selectMapPoint(
-                                  NLatLng(latLng.latitude, latLng.longitude),
-                                ),
-                                onLongPress: (latLng) => _selectMapPoint(
-                                  NLatLng(latLng.latitude, latLng.longitude),
-                                  longPressed: true,
-                                ),
-                              ),
-                      ),
-                    if (!_canUseInAppMap ||
-                        _mapRenderState == _MapRenderState.unavailable)
-                      Positioned.fill(
-                        child: _MapUnavailablePanel(
-                          message: _mapLoadMessage ??
-                              (_canUseInAppMap
-                                  ? _mapUnavailableTimeoutMessage
-                                  : _missingMapMessage),
-                          query: _queryController.text,
-                        ),
-                      ),
-                    if (_mapRenderState == _MapRenderState.loading)
-                      const Positioned.fill(child: _MapLoadingPanel()),
-                    if (_canShowInAppMapBody)
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 16,
-                        child: _MapGestureHint(
-                          hasSelectedLocation: _selected != null,
-                        ),
-                      ),
-                    if (_canShowInAppMapBody && _mapLoadMessage != null)
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        top: 16,
-                        child: _MapLoadFallbackBanner(
-                          message: _mapLoadMessage!,
-                          query: _queryController.text,
-                          results: _results,
-                          onSelect: _selectResult,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              _BottomSelectionPanel(
-                results: _results,
-                selected: _selected,
-                onSelect: _selectResult,
-                onConfirm: _confirm,
-              ),
-            ],
+          backgroundColor: PlanFlowColors.background,
+          bottom: const PreferredSize(
+            preferredSize: Size.fromHeight(60),
+            child: SizedBox.shrink(),
           ),
+        ),
+        body: _buildBody(),
+        bottomNavigationBar: _MapControlSheet(
+          queryController: _queryController,
+          isSearching: _isSearching,
+          isMapLoading:
+              _mapRenderState == _MapRenderState.loading && _canUseInAppMap,
+          message: _mapLoadMessage ?? _message,
+          results: _results,
+          selected: _selected,
+          onBack: () => Navigator.of(context).pop(),
+          onSearch: _search,
+          onSelect: _selectResult,
+          onConfirm: _confirm,
         ),
       ),
     );
   }
-}
 
-class _MapGestureHint extends StatelessWidget {
-  const _MapGestureHint({required this.hasSelectedLocation});
+  Widget _buildBody() {
+    // 지도 사용 불가 상태: 순수 Flutter 패널 (PlatformView 없음)
+    if (!_canUseInAppMap || _mapRenderState == _MapRenderState.unavailable) {
+      return _MapUnavailablePanel(
+        message: _mapLoadMessage ??
+            (_canUseInAppMap
+                ? _mapUnavailableTimeoutMessage
+                : _missingMapMessage),
+        query: _queryController.text,
+      );
+    }
 
-  final bool hasSelectedLocation;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Align(
-      alignment: Alignment.center,
-      child: Material(
-        elevation: 5,
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            color: PlanFlowColors.surface.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: PlanFlowColors.primaryFaint),
+    // 네이버 지도 (loading → ready 모두 NaverMap 위젯 유지)
+    if (_canUseNaverMap) {
+      return NaverMap(
+        forceGesture: true,
+        // ignore: invalid_use_of_visible_for_testing_member
+        forceHybridComposition: true,
+        options: NaverMapViewOptions(
+          initialCameraPosition: NCameraPosition(
+            target: _initialTarget,
+            zoom: 15,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.touch_app_outlined,
-                size: 18,
-                color: PlanFlowColors.primary,
-              ),
-              const SizedBox(width: 7),
-              Flexible(
-                child: Text(
-                  hasSelectedLocation
-                      ? '다른 곳을 길게 누르면 위치를 바꿀 수 있어요'
-                      : '지도에서 원하는 곳을 길게 눌러 위치를 지정하세요',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: PlanFlowColors.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          locationButtonEnable: false,
+          compassEnable: true,
+          contentPadding: EdgeInsets.zero,
         ),
+        onMapReady: (controller) async {
+          _mapController = controller;
+          if (mounted) {
+            setState(() {
+              _mapLoadMessage = null;
+              _mapRenderState = _MapRenderState.ready;
+            });
+          }
+          final selected = _selected;
+          if (selected != null) {
+            await _moveMapTo(selected);
+          }
+        },
+        onMapTapped: (_, latLng) => _selectMapPoint(latLng),
+        onMapLongTapped: (_, latLng) =>
+            _selectMapPoint(latLng, longPressed: true),
+      );
+    }
+
+    // 구글 지도 (loading → ready 모두 GoogleMap 위젯 유지)
+    return google_maps.GoogleMap(
+      initialCameraPosition: google_maps.CameraPosition(
+        target: _googleInitialTarget,
+        zoom: 15,
       ),
+      myLocationButtonEnabled: false,
+      myLocationEnabled: false,
+      markers: {
+        if (_selected != null)
+          google_maps.Marker(
+            markerId: const google_maps.MarkerId('selected'),
+            position: google_maps.LatLng(
+              _selected!.latitude,
+              _selected!.longitude,
+            ),
+            infoWindow: google_maps.InfoWindow(
+              title: _selected!.name,
+              snippet: _selected!.address,
+            ),
+          ),
+      },
+      onMapCreated: (controller) async {
+        _googleMapController = controller;
+        if (mounted) {
+          setState(() {
+            _mapLoadMessage = null;
+            _mapRenderState = _MapRenderState.ready;
+          });
+        }
+        final selected = _selected;
+        if (selected != null) {
+          await _moveGoogleMapTo(selected);
+        }
+      },
+      onTap: (latLng) =>
+          _selectMapPoint(NLatLng(latLng.latitude, latLng.longitude)),
+      onLongPress: (latLng) => _selectMapPoint(
+          NLatLng(latLng.latitude, latLng.longitude),
+          longPressed: true),
     );
   }
 }
 
-class _BottomSelectionPanel extends StatelessWidget {
-  const _BottomSelectionPanel({
+/// 지도 화면 하단 컨트롤 시트.
+/// TLHC PlatformView가 AppBar까지 덮는 문제로 인해
+/// 뒤로가기·제목·검색바·후보 목록·확인 버튼을 모두 여기에 통합.
+/// bottomNavigationBar는 body 밖이라 항상 표시됨.
+class _MapControlSheet extends StatelessWidget {
+  const _MapControlSheet({
+    required this.queryController,
+    required this.isSearching,
+    required this.isMapLoading,
+    required this.message,
     required this.results,
     required this.selected,
+    required this.onBack,
+    required this.onSearch,
     required this.onSelect,
     required this.onConfirm,
   });
 
+  final TextEditingController queryController;
+  final bool isSearching;
+  final bool isMapLoading;
+  final String? message;
   final List<LocationLookupResult> results;
   final LocationLookupResult? selected;
+  final VoidCallback onBack;
+  final VoidCallback onSearch;
   final ValueChanged<LocationLookupResult> onSelect;
   final VoidCallback onConfirm;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding + 12),
       decoration: const BoxDecoration(
         color: PlanFlowColors.surface,
         border: Border(top: BorderSide(color: PlanFlowColors.primaryFaint)),
@@ -530,6 +426,78 @@ class _BottomSelectionPanel extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 제목 + 뒤로가기 + 로딩 표시
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: onBack,
+                color: PlanFlowColors.primary,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints:
+                    const BoxConstraints(minWidth: 36, minHeight: 36),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  '지도에서 장소 선택',
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (isMapLoading)
+                const SizedBox.square(
+                  dimension: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: PlanFlowColors.primaryLight,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // 검색바
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: queryController,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => onSearch(),
+                  decoration: const InputDecoration(
+                    hintText: '장소명을 입력해 주세요',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // minimumSize를 명시해 Row 안에서 Expanded(TextField) 공간 확보
+              // (테마의 Size.fromHeight(48) = Size(∞,48) 는 Row 안에서 전체 너비를 차지해 버림)
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(64, 48),
+                ),
+                onPressed: isSearching ? null : onSearch,
+                child: isSearching
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('검색'),
+              ),
+            ],
+          ),
+          if (message != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              message!,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: PlanFlowColors.textSecondary),
+            ),
+          ],
+          const SizedBox(height: 8),
+          // 선택된 장소 정보
           if (selected != null) ...[
             Text(
               selected!.name,
@@ -547,26 +515,27 @@ class _BottomSelectionPanel extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall,
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
           ],
-          if (results.isNotEmpty)
+          // 후보 목록 칩
+          if (results.isNotEmpty) ...[
             SizedBox(
-              height: 44,
+              height: 36,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: results.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final result = results[index];
-                  final isSelected = result == selected;
+                itemBuilder: (_, i) {
+                  final r = results[i];
+                  final isSel = r == selected;
                   return ChoiceChip(
                     label: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          result.providerLabel,
+                          r.providerLabel,
                           style: theme.textTheme.labelSmall?.copyWith(
-                            color: isSelected
+                            color: isSel
                                 ? PlanFlowColors.surface
                                 : PlanFlowColors.textSecondary,
                             fontWeight: FontWeight.w700,
@@ -575,27 +544,30 @@ class _BottomSelectionPanel extends StatelessWidget {
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
-                            result.name,
+                            r.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
-                    selected: isSelected,
-                    onSelected: (_) => onSelect(result),
+                    selected: isSel,
+                    onSelected: (_) => onSelect(r),
                   );
                 },
               ),
             ),
-          if (results.isEmpty)
+            const SizedBox(height: 8),
+          ],
+          if (results.isEmpty) ...[
             Text(
               '현재 검색된 후보가 없어요. 검색어를 바꿔보거나 지도에서 직접 선택해 주세요.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: PlanFlowColors.textSecondary),
             ),
-          const SizedBox(height: 10),
+            const SizedBox(height: 8),
+          ],
+          // 확인 버튼
           FilledButton.icon(
             onPressed: selected == null ? null : onConfirm,
             icon: const Icon(Icons.check),
@@ -633,127 +605,6 @@ class _MapUnavailablePanel extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 14),
-            _ExternalMapButtons(query: query),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MapLoadingPanel extends StatelessWidget {
-  const _MapLoadingPanel();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 14),
-            Text(
-              '인앱 지도를 불러오는 중이에요. 잠시만 기다려 주세요.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: PlanFlowColors.textSecondary,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MapLoadFallbackBanner extends StatelessWidget {
-  const _MapLoadFallbackBanner({
-    required this.message,
-    required this.query,
-    required this.results,
-    required this.onSelect,
-  });
-
-  final String message;
-  final String query;
-  final List<LocationLookupResult> results;
-  final ValueChanged<LocationLookupResult> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final visibleResults = results.take(3).toList(growable: false);
-    return Material(
-      elevation: 6,
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: PlanFlowColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: PlanFlowColors.primaryFaint),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.map_outlined,
-                  color: PlanFlowColors.primaryMid,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '지도 표시 확인 필요',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: PlanFlowColors.primary,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.textSecondary,
-                height: 1.35,
-              ),
-            ),
-            if (visibleResults.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final result in visibleResults)
-                    ActionChip(
-                      label: Text(
-                        result.name,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      onPressed: () => onSelect(result),
-                    ),
-                ],
-              ),
-            ],
-            if (query.trim().isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                '"${query.trim()}" 검색 결과를 아래 후보에서 확정할 수 있어요.',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: PlanFlowColors.textSecondary,
-                ),
-              ),
-            ],
-            const SizedBox(height: 10),
             _ExternalMapButtons(query: query),
           ],
         ),
