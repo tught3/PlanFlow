@@ -84,6 +84,110 @@ void main() {
       expect(notifications.cancelledEventIds, ['event-3']);
     });
 
+    test('resyncRemindersForEvents replaces DB rows and local alarms',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        notificationService: notifications,
+      );
+      final event = EventModel(
+        id: 'external-1',
+        userId: 'user-1',
+        title: '아이스크림 전달',
+        startAt: DateTime.now().add(const Duration(hours: 3)),
+        location: '강릉아산병원',
+        source: 'naver_device',
+      );
+
+      final result = await service.resyncRemindersForEvents(
+        events: <EventModel>[event],
+        userId: 'user-1',
+      );
+
+      expect(result, true);
+      expect(gateway.deletedReminderEventIds, ['external-1']);
+      expect(gateway.insertedReminders, hasLength(1));
+      expect(gateway.insertedReminders.single['event_id'], 'external-1');
+      expect(gateway.insertedReminders.single['type'], 'push');
+      expect(
+          notifications.cancelledNotificationIds,
+          containsAll(<int>[
+            notifications.notificationIdFor('external-1:push'),
+            notifications.notificationIdFor('external-1:critical'),
+          ]));
+      expect(notifications.scheduledEventReminderIds, hasLength(1));
+    });
+
+    test('resyncRemindersForEvents keeps push and critical rows separate',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        notificationService: notifications,
+      );
+      final event = EventModel(
+        id: 'critical-external',
+        userId: 'user-1',
+        title: '중요 외부 일정',
+        startAt: DateTime.now().add(const Duration(hours: 3)),
+        location: '강릉아산병원',
+        source: 'naver_device',
+        isCritical: true,
+      );
+
+      final result = await service.resyncRemindersForEvents(
+        events: <EventModel>[event],
+        userId: 'user-1',
+      );
+
+      expect(result, true);
+      expect(gateway.insertedReminders, hasLength(2));
+      expect(
+        gateway.insertedReminders.map((row) => row['type']),
+        containsAll(<String>['push', 'system_alarm']),
+      );
+      expect(notifications.scheduledEventReminderIds, hasLength(1));
+      expect(notifications.scheduledCriticalAlarmIds, hasLength(1));
+    });
+
+    test('resyncExternalPreparationForDay reuses an in-flight resync',
+        () async {
+      final gateway = _SlowManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        notificationService: notifications,
+      );
+      final event = EventModel(
+        id: 'trip',
+        userId: 'user-1',
+        title: '대전 내려가기',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: '대전역',
+      );
+
+      final first = service.resyncExternalPreparationForDay(
+        dayEvents: <EventModel>[event],
+        userId: 'user-1',
+        dayReference: DateTime(2026, 5, 8),
+        now: DateTime(2026, 5, 8, 6),
+      );
+      final second = service.resyncExternalPreparationForDay(
+        dayEvents: <EventModel>[event],
+        userId: 'user-1',
+        dayReference: DateTime(2026, 5, 8),
+        now: DateTime(2026, 5, 8, 6),
+      );
+
+      expect(
+          await Future.wait(<Future<bool>>[first, second]), <bool>[true, true]);
+      expect(gateway.insertPreActionsCallCount, 1);
+      expect(notifications.cancelledSmartPreparationEventIds, ['trip']);
+    });
+
     test('resyncExternalPreparationForDay promotes earliest place event',
         () async {
       final gateway = _FakeManualEventGateway();
@@ -188,12 +292,29 @@ class _FakeManualEventGateway extends ManualEventSideEffectGateway {
   }
 }
 
+class _SlowManualEventGateway extends _FakeManualEventGateway {
+  int insertPreActionsCallCount = 0;
+
+  @override
+  Future<void> insertPreActions(List<Map<String, dynamic>> payloads) async {
+    insertPreActionsCallCount += 1;
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await super.insertPreActions(payloads);
+  }
+}
+
 class _FakeNotificationService extends NotificationService {
   final cancelledEventIds = <String>[];
+  final cancelledNotificationIds = <int>[];
   final scheduledEventReminderIds = <int>[];
   final scheduledCriticalAlarmIds = <int>[];
   final scheduledCriticalNotifyAts = <DateTime>[];
   final cancelledSmartPreparationEventIds = <String>[];
+
+  @override
+  Future<void> cancel(int id) async {
+    cancelledNotificationIds.add(id);
+  }
 
   @override
   Future<void> cancelEventNotifications(String eventId) async {

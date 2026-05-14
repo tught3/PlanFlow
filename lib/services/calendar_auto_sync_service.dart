@@ -308,13 +308,27 @@ class CalendarAutoSyncService {
       final now = _now();
       final events = await _events.listEvents(userId: userId);
       final smartPreparation = const SmartPreparationAlarmService();
-      final upcomingExternalEvents = events.where((event) {
+      final upcomingEvents = events.where((event) {
         final startAt = event.startAt;
         if (startAt == null ||
             startAt.isBefore(now) ||
             startAt.isAfter(now.add(const Duration(days: 7)))) {
           return false;
         }
+        return true;
+      }).toList(growable: false)
+        ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+
+      if (upcomingEvents.isEmpty) {
+        return;
+      }
+
+      await _sideEffects.resyncRemindersForEvents(
+        events: upcomingEvents,
+        userId: userId,
+      );
+
+      final upcomingExternalEvents = upcomingEvents.where((event) {
         return smartPreparation.isExternalEvent(
           title: event.title,
           location: event.location,
@@ -327,16 +341,13 @@ class CalendarAutoSyncService {
       }
 
       final dayKeys = <String, List<EventModel>>{};
-      for (final event in events) {
+      for (final event in upcomingEvents) {
         final startAt = event.startAt;
-        if (startAt == null ||
-            startAt.isBefore(now) ||
-            startAt.isAfter(now.add(const Duration(days: 7)))) {
+        if (startAt == null) {
           continue;
         }
         final localDay = planflowLocal(startAt);
-        final key =
-            '${localDay.year.toString().padLeft(4, '0')}-'
+        final key = '${localDay.year.toString().padLeft(4, '0')}-'
             '${localDay.month.toString().padLeft(2, '0')}-'
             '${localDay.day.toString().padLeft(2, '0')}';
         dayKeys.putIfAbsent(key, () => <EventModel>[]).add(event);

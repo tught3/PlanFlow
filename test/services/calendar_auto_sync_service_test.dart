@@ -159,7 +159,8 @@ void main() {
         snapshot.provider('device_calendar_auto_import').status, 'attention');
   });
 
-  test('syncConnectedCalendars resyncs preparation for imported external events',
+  test(
+      'syncConnectedCalendars resyncs preparation for imported external events',
       () async {
     final tomorrowExternalEvent = EventModel(
       id: 'event-1',
@@ -213,6 +214,11 @@ void main() {
 
     await service.syncConnectedCalendars(force: true);
 
+    expect(sideEffects.reminderResyncCallCount, 1);
+    expect(sideEffects.lastReminderEvents.map((event) => event.id), [
+      'event-2',
+      'event-1',
+    ]);
     expect(sideEffects.resyncCallCount, 1);
     expect(sideEffects.lastDayEvents.map((event) => event.id),
         containsAll(<String>['event-1', 'event-2']));
@@ -446,7 +452,8 @@ class _FakeEventRepository extends EventRepository {
   @override
   Future<List<EventModel>> listEvents({String? userId}) async {
     requestedUserIds.add(userId);
-    return events.where((event) => userId == null || event.userId == userId)
+    return events
+        .where((event) => userId == null || event.userId == userId)
         .toList(growable: false);
   }
 
@@ -456,9 +463,26 @@ class _FakeEventRepository extends EventRepository {
 
 class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
   int resyncCallCount = 0;
+  int reminderResyncCallCount = 0;
   List<EventModel> lastDayEvents = const <EventModel>[];
+  List<EventModel> lastReminderEvents = const <EventModel>[];
   String? lastUserId;
   final List<List<String>> dayEventIdsByCall = <List<String>>[];
+
+  @override
+  Future<bool> resyncRemindersForEvents({
+    required Iterable<EventModel> events,
+    required String userId,
+    Duration? reminderOffset =
+        ManualEventSideEffectService.defaultReminderOffset,
+    Duration? criticalAlarmOffset =
+        ManualEventSideEffectService.criticalAlarmOffset,
+  }) async {
+    reminderResyncCallCount += 1;
+    lastReminderEvents = events.toList(growable: false);
+    lastUserId = userId;
+    return true;
+  }
 
   @override
   Future<bool> resyncExternalPreparationForDay({

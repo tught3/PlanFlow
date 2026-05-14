@@ -84,10 +84,31 @@ class SupabaseManualEventSideEffectGateway
 
   @override
   Future<void> insertPreActions(List<Map<String, dynamic>> payloads) async {
-    if (payloads.isEmpty) {
+    final dedupedPayloads = _deduplicatePreActionPayloads(payloads);
+    if (dedupedPayloads.isEmpty) {
       return;
     }
-    await _resolvedClient.from('pre_actions').insert(payloads);
+    await _resolvedClient.from('pre_actions').insert(dedupedPayloads);
+  }
+
+  List<Map<String, dynamic>> _deduplicatePreActionPayloads(
+    List<Map<String, dynamic>> payloads,
+  ) {
+    final seen = <String>{};
+    final result = <Map<String, dynamic>>[];
+    for (final payload in payloads) {
+      final key = <Object?>[
+        payload['event_id'],
+        payload['user_id'],
+        payload['source'],
+        payload['notify_at'],
+        payload['title'],
+      ].join('|');
+      if (seen.add(key)) {
+        result.add(payload);
+      }
+    }
+    return result;
   }
 }
 
@@ -99,6 +120,8 @@ class ManualEventSideEffectService {
 
   static const Duration defaultReminderOffset = Duration(minutes: 60);
   static const Duration criticalAlarmOffset = Duration(minutes: 60);
+  static final Map<String, Future<bool>> _externalPreparationResyncs =
+      <String, Future<bool>>{};
 
   final ManualEventSideEffectGateway gateway;
   final NotificationService? _notificationService;
@@ -209,6 +232,64 @@ class ManualEventSideEffectService {
     return _notifications.cancelEventNotifications(eventId);
   }
 
+  Future<bool> resyncRemindersForEvents({
+    required Iterable<EventModel> events,
+    required String userId,
+    Duration? reminderOffset = defaultReminderOffset,
+    Duration? criticalAlarmOffset =
+        ManualEventSideEffectService.criticalAlarmOffset,
+  }) async {
+    final futureEvents = events
+        .where(
+          (event) =>
+              event.startAt != null && event.startAt!.isAfter(DateTime.now()),
+        )
+        .toList(growable: false);
+    if (futureEvents.isEmpty) {
+      return true;
+    }
+
+    try {
+      for (final event in futureEvents) {
+        await gateway.deleteRemindersForEvent(
+          eventId: event.id,
+          userId: userId,
+        );
+        await _notifications.cancel(
+          _notifications.notificationIdFor('${event.id}:push'),
+        );
+        await _notifications.cancel(
+          _notifications.notificationIdFor('${event.id}:critical'),
+        );
+      }
+
+      await gateway.insertReminders(
+        _deduplicatePayloads(
+          futureEvents.expand(
+            (event) => buildReminderPayloads(
+              event: event,
+              userId: userId,
+              reminderOffset: reminderOffset,
+              criticalAlarmOffset: criticalAlarmOffset ?? reminderOffset,
+            ),
+          ),
+        ),
+      );
+
+      for (final event in futureEvents) {
+        await scheduleLocalNotifications(
+          event,
+          reminderOffset: reminderOffset,
+          criticalAlarmOffset: criticalAlarmOffset ?? reminderOffset,
+        );
+      }
+
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> resyncExternalPreparationForDay({
     required Iterable<EventModel> dayEvents,
     required String userId,
@@ -219,6 +300,43 @@ class ManualEventSideEffectService {
     int departPreAlarmOffset =
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
     int travelMinutes = SmartPreparationAlarmService.defaultTravelBufferMin,
+    DateTime? now,
+  }) async {
+    final resyncKey = _externalPreparationResyncKey(userId, dayReference);
+    final existing = _externalPreparationResyncs[resyncKey];
+    if (existing != null) {
+      return existing;
+    }
+
+    late final Future<bool> resyncFuture;
+    resyncFuture = _resyncExternalPreparationForDayUnlocked(
+      dayEvents: dayEvents,
+      userId: userId,
+      dayReference: dayReference,
+      prepTimeMin: prepTimeMin,
+      prepPreAlarmOffset: prepPreAlarmOffset,
+      departPreAlarmOffset: departPreAlarmOffset,
+      travelMinutes: travelMinutes,
+      now: now,
+    );
+    _externalPreparationResyncs[resyncKey] = resyncFuture;
+    try {
+      return await resyncFuture;
+    } finally {
+      if (identical(_externalPreparationResyncs[resyncKey], resyncFuture)) {
+        _externalPreparationResyncs.remove(resyncKey);
+      }
+    }
+  }
+
+  Future<bool> _resyncExternalPreparationForDayUnlocked({
+    required Iterable<EventModel> dayEvents,
+    required String userId,
+    required DateTime dayReference,
+    required int prepTimeMin,
+    required int prepPreAlarmOffset,
+    required int departPreAlarmOffset,
+    required int travelMinutes,
     DateTime? now,
   }) async {
     final smartService = SmartPreparationAlarmService(
@@ -271,7 +389,9 @@ class ManualEventSideEffectService {
         await smartService.cancelForEvent(event.id);
       }
       await gateway.insertPreActions(
-        payloadsByEvent.values.expand((payloads) => payloads).toList(),
+        _deduplicatePayloads(
+          payloadsByEvent.values.expand((payloads) => payloads),
+        ),
       );
       for (final entry in payloadsByEvent.entries) {
         await smartService.schedulePayloads(
@@ -284,6 +404,35 @@ class ManualEventSideEffectService {
     } catch (_) {
       return false;
     }
+  }
+
+  String _externalPreparationResyncKey(String userId, DateTime dayReference) {
+    final localDay = planflowLocal(dayReference);
+    final yyyy = localDay.year.toString().padLeft(4, '0');
+    final mm = localDay.month.toString().padLeft(2, '0');
+    final dd = localDay.day.toString().padLeft(2, '0');
+    return '$userId:$yyyy-$mm-$dd';
+  }
+
+  List<Map<String, dynamic>> _deduplicatePayloads(
+    Iterable<Map<String, dynamic>> payloads,
+  ) {
+    final seen = <String>{};
+    final result = <Map<String, dynamic>>[];
+    for (final payload in payloads) {
+      final key = <Object?>[
+        payload['event_id'],
+        payload['user_id'],
+        payload['source'],
+        payload['type'],
+        payload['notify_at'],
+        payload['title'],
+      ].join('|');
+      if (seen.add(key)) {
+        result.add(payload);
+      }
+    }
+    return result;
   }
 
   List<Map<String, dynamic>> buildReminderPayloads({

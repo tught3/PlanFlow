@@ -106,18 +106,30 @@ class NotificationService {
 
     try {
       await initialize();
+      final status = await checkPermissionStatus();
+      if (status.notificationsEnabled == false) {
+        debugPrint('Event reminder permission blocked: notifications=false');
+        return NotificationScheduleResult(
+          status: NotificationScheduleStatus.permissionBlocked,
+          notifyAt: notifyAt,
+          message: '앱 알림 권한이 꺼져 있어 알림을 예약하지 못했습니다.',
+        );
+      }
       await _scheduleNotification(
         id: id,
         title: title,
         body: body,
         notifyAt: notifyAt,
         details: _eventReminderDetails,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: reminderScheduleModeForStatus(status),
         payload: payload,
       );
       return NotificationScheduleResult(
         status: NotificationScheduleStatus.scheduled,
         notifyAt: notifyAt,
+        message: status.exactAlarmsEnabled == false
+            ? '정확한 알람 권한이 꺼져 있어 Android가 알림을 조금 늦출 수 있습니다.'
+            : null,
       );
     } catch (error, stackTrace) {
       debugPrint('Event reminder scheduling failed: $error');
@@ -314,6 +326,16 @@ class NotificationService {
   Future<bool?> requestFullScreenIntentPermission() async {
     await initialize();
     return _requestFullScreenIntentPermissionBestEffort();
+  }
+
+  @visibleForTesting
+  static AndroidScheduleMode reminderScheduleModeForStatus(
+    NotificationPermissionStatus status,
+  ) {
+    if (status.exactAlarmsEnabled == false) {
+      return AndroidScheduleMode.inexactAllowWhileIdle;
+    }
+    return AndroidScheduleMode.exactAllowWhileIdle;
   }
 
   Future<bool> openAppNotificationSettings() async {
