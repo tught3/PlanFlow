@@ -401,6 +401,9 @@ alter table public.early_bird_emails enable row level security;
 alter table public.user_backups enable row level security;
 alter table public.feedback_reports enable row level security;
 
+grant usage on schema public to authenticated;
+grant select, insert on table public.feedback_reports to authenticated;
+
 drop policy if exists "users_select_own" on public.users;
 drop policy if exists "users_insert_own" on public.users;
 drop policy if exists "users_update_own" on public.users;

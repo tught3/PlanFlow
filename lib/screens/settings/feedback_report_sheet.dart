@@ -29,6 +29,8 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
   final _expectedController = TextEditingController();
   FeedbackReportType _type = FeedbackReportType.bug;
   bool _isSubmitting = false;
+  String? _statusMessage;
+  bool _isStatusError = false;
 
   @override
   void dispose() {
@@ -78,6 +80,22 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
                         color: PlanFlowColors.textSecondary,
                       ),
                 ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: PlanFlowColors.primaryFaint.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: PlanFlowColors.primaryFaint),
+                  ),
+                  child: Text(
+                    '음성 파일, 캘린더 전체 내용, 위치 이력은 자동 첨부하지 않아요.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.textPrimary,
+                          height: 1.35,
+                        ),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 Wrap(
                   spacing: 8,
@@ -126,6 +144,13 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                if (_statusMessage != null) ...[
+                  const SizedBox(height: 12),
+                  _FeedbackStatusBanner(
+                    message: _statusMessage!,
+                    isError: _isStatusError,
+                  ),
+                ],
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   key: const ValueKey('feedback-submit-button'),
@@ -157,8 +182,11 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
+    FocusScope.of(context).unfocus();
     setState(() {
       _isSubmitting = true;
+      _statusMessage = null;
+      _isStatusError = false;
     });
     try {
       await widget.repository.submitReport(
@@ -168,6 +196,8 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
         routeOrScreen: widget.routeOrScreen,
       );
       if (mounted) {
+        _messageController.clear();
+        _expectedController.clear();
         Navigator.of(context).pop(true);
       }
     } on FeedbackSubmissionException catch (error) {
@@ -203,8 +233,63 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
     if (!mounted) {
       return;
     }
+    setState(() {
+      _statusMessage = message;
+      _isStatusError = true;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+}
+
+class _FeedbackStatusBanner extends StatelessWidget {
+  const _FeedbackStatusBanner({
+    required this.message,
+    required this.isError,
+  });
+
+  final String message;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Container(
+      key: const ValueKey('feedback-status-banner'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isError
+            ? colorScheme.errorContainer
+            : PlanFlowColors.primaryFaint.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isError ? colorScheme.error : PlanFlowColors.primaryFaint,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isError ? Icons.error_outline : Icons.check_circle_outline,
+            size: 18,
+            color: isError ? colorScheme.error : PlanFlowColors.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isError
+                    ? colorScheme.onErrorContainer
+                    : PlanFlowColors.textPrimary,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

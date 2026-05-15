@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -21,8 +22,12 @@ class SupabaseFeedbackReportGateway implements FeedbackReportGateway {
   final SupabaseClient _client;
 
   @override
-  Future<void> insert(Map<String, Object?> payload) {
-    return _client.from('feedback_reports').insert(payload);
+  Future<void> insert(Map<String, Object?> payload) async {
+    await _client
+        .from('feedback_reports')
+        .insert(payload)
+        .select('id')
+        .single();
   }
 }
 
@@ -93,9 +98,41 @@ class FeedbackRepository {
       'status': 'new',
     };
 
-    await _gateway.insert(payload);
+    try {
+      await _gateway.insert(payload).timeout(const Duration(seconds: 12));
+    } on PostgrestException catch (error) {
+      throw FeedbackSubmissionException(_messageForPostgrest(error));
+    } on SocketException {
+      throw const FeedbackSubmissionException(
+        '네트워크 연결을 확인한 뒤 다시 보내 주세요.',
+      );
+    } on TimeoutException {
+      throw const FeedbackSubmissionException(
+        '요청 시간이 초과됐어요. 잠시 후 다시 보내 주세요.',
+      );
+    }
     await _analyticsLogger(type);
     await _crashlyticsLogger(type, userId);
+  }
+
+  static String _messageForPostgrest(PostgrestException error) {
+    final message = error.message.toLowerCase();
+    final code = error.code;
+    if (code == '42P01' ||
+        code == 'PGRST205' ||
+        message.contains('feedback_reports') &&
+            message.contains('does not exist')) {
+      return '문제 신고 저장소가 아직 준비되지 않았어요. Supabase SQL 패치를 적용해 주세요.';
+    }
+    if (code == '42501' ||
+        message.contains('row-level security') ||
+        message.contains('permission denied')) {
+      return '문제 신고 권한 설정을 확인해야 해요. 로그인 상태와 Supabase RLS를 확인해 주세요.';
+    }
+    if (code == '23514') {
+      return '입력값이 저장 규칙과 맞지 않아요. 내용을 확인한 뒤 다시 보내 주세요.';
+    }
+    return '문제 신고를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.';
   }
 
   static Future<FeedbackDiagnostics> _defaultDiagnostics(

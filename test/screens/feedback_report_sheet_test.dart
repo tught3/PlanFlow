@@ -38,6 +38,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('문제 신고 / 의견 보내기'), findsOneWidget);
+    expect(
+      find.text('음성 파일, 캘린더 전체 내용, 위치 이력은 자동 첨부하지 않아요.'),
+      findsOneWidget,
+    );
     expect(find.text('버그'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('feedback-submit-button')));
@@ -87,6 +91,34 @@ void main() {
     expect(openedUri?.scheme, 'mailto');
     expect(openedUri?.path, officialSupportEmail);
   });
+
+  testWidgets('FeedbackReportSheet shows visible error and keeps typed text',
+      (tester) async {
+    final gateway = _FakeFeedbackGateway(
+      error: const FeedbackSubmissionException('문제 신고 저장소를 확인해 주세요.'),
+    );
+    final repository = _testRepository(gateway);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FeedbackReportSheet(repository: repository),
+        ),
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('feedback-message-field')),
+      '문제 신고가 보내지지 않아요',
+    );
+    await tester.tap(find.byKey(const ValueKey('feedback-submit-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+        find.byKey(const ValueKey('feedback-status-banner')), findsOneWidget);
+    expect(find.text('문제 신고 저장소를 확인해 주세요.'), findsWidgets);
+    expect(find.text('문제 신고가 보내지지 않아요'), findsOneWidget);
+  });
 }
 
 FeedbackRepository _testRepository(_FakeFeedbackGateway gateway) {
@@ -105,10 +137,17 @@ FeedbackRepository _testRepository(_FakeFeedbackGateway gateway) {
 }
 
 class _FakeFeedbackGateway implements FeedbackReportGateway {
+  _FakeFeedbackGateway({this.error});
+
+  final Object? error;
   final List<Map<String, Object?>> payloads = <Map<String, Object?>>[];
 
   @override
   Future<void> insert(Map<String, Object?> payload) async {
+    final nextError = error;
+    if (nextError != null) {
+      throw nextError;
+    }
     payloads.add(payload);
   }
 }
