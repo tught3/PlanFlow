@@ -772,6 +772,46 @@ void main() {
     expect(find.text('일정 탭'), findsOneWidget);
   });
 
+  testWidgets('삭제 후보 2개 진단이 보이면 후보 카드와 개별 삭제 버튼도 렌더링된다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(id: 'event-1', title: '한강 피크닉'),
+        _event(id: 'event-2', title: '치과 방문'),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '일정 삭제해줘',
+            action: VoiceScheduleAction.delete,
+            eventRepository: repository,
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.textContaining('2개 후보'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-candidate-event-1')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-candidate-event-2')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-button-event-1')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-button-event-2')),
+        findsOneWidget);
+  });
+
   testWidgets('오늘 아이스크림 전달 삭제 명령은 대상 후보를 표시한다', (tester) async {
     final now = DateTime.now();
     final repository = _FakeEventRepository(

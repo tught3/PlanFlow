@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/env.dart';
 import '../../core/theme.dart';
+import '../../services/app_permission_service.dart';
 import '../../services/location_lookup_service.dart';
 
 class LocationPickerScreen extends StatefulWidget {
@@ -16,6 +17,8 @@ class LocationPickerScreen extends StatefulWidget {
     this.initialResults = const <LocationLookupResult>[],
     this.initialFallbackQueries = const <String>[],
     this.initialMessage,
+    this.initialMapCenter,
+    this.initialMapCenterFuture,
     LocationLookupService? locationLookupService,
     this.preferredInAppMapProvider,
     this.canUseInAppMapOverride,
@@ -26,6 +29,8 @@ class LocationPickerScreen extends StatefulWidget {
   final List<LocationLookupResult> initialResults;
   final List<String> initialFallbackQueries;
   final String? initialMessage;
+  final GeoPoint? initialMapCenter;
+  final Future<GeoPoint?>? initialMapCenterFuture;
   final LocationLookupService locationLookupService;
   final LocationPickerInAppMapProvider? preferredInAppMapProvider;
   final bool? canUseInAppMapOverride;
@@ -48,8 +53,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   NaverMapController? _mapController;
   google_maps.GoogleMapController? _googleMapController;
   bool _isSearching = false;
+  bool _hasUserChosenMapTarget = false;
   String? _message;
   String? _mapLoadMessage;
+  GeoPoint? _resolvedInitialMapCenter;
   _MapRenderState _mapRenderState = _MapRenderState.unavailable;
 
   bool get _canUseNaverMap {
@@ -83,6 +90,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   NLatLng get _initialTarget {
+    final initialMapCenter = _resolvedInitialMapCenter;
+    if (initialMapCenter != null) {
+      return NLatLng(initialMapCenter.latitude, initialMapCenter.longitude);
+    }
     final selected = _selected;
     if (selected != null) {
       return NLatLng(selected.latitude, selected.longitude);
@@ -91,6 +102,13 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   google_maps.LatLng get _googleInitialTarget {
+    final initialMapCenter = _resolvedInitialMapCenter;
+    if (initialMapCenter != null) {
+      return google_maps.LatLng(
+        initialMapCenter.latitude,
+        initialMapCenter.longitude,
+      );
+    }
     final selected = _selected;
     if (selected != null) {
       return google_maps.LatLng(selected.latitude, selected.longitude);
@@ -106,6 +124,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     _results = List<LocationLookupResult>.of(widget.initialResults);
     _fallbackQueries = List<String>.of(widget.initialFallbackQueries);
     _message = widget.initialMessage;
+    _resolvedInitialMapCenter = widget.initialMapCenter;
     if (_results.isNotEmpty) {
       _selected = _results.first;
     }
@@ -124,6 +143,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _search());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _watchMapReadiness());
+    unawaited(_watchInitialMapCenter());
   }
 
   @override
@@ -171,6 +191,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       }
       final selected = _selected;
       if (selected != null) {
+        _hasUserChosenMapTarget = true;
         await _moveMapTo(selected);
       }
     } on LocationLookupException catch (error) {
@@ -199,6 +220,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
   }
 
+  void _submitSearch() {
+    FocusScope.of(context).unfocus();
+    unawaited(_search());
+  }
+
   void _scrollCandidates(int direction) {
     final controller = _candidateScrollController;
     if (!controller.hasClients) {
@@ -217,7 +243,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   void _searchFallbackQuery(String query) {
     _queryController.text = query;
-    unawaited(_search());
+    _submitSearch();
   }
 
   Future<void> _moveMapTo(LocationLookupResult result) async {
@@ -261,6 +287,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     setState(() {
       _selected = result;
       _queryController.text = result.name;
+      _hasUserChosenMapTarget = true;
     });
     await _moveMapTo(result);
   }
@@ -279,6 +306,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     );
     setState(() {
       _selected = result;
+      _hasUserChosenMapTarget = true;
       _message = longPressed
           ? '길게 누른 위치로 바꿨어요. 아래 버튼으로 확정해 주세요.'
           : '지도에서 위치를 선택했어요. 아래 버튼으로 확정해 주세요.';
@@ -321,6 +349,46 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
   }
 
+  Future<void> _watchInitialMapCenter() async {
+    final future = widget.initialMapCenterFuture;
+    if (future == null || widget.initialMapCenter != null) {
+      return;
+    }
+    try {
+      final point = await future;
+      if (!mounted || point == null || _hasUserChosenMapTarget) {
+        return;
+      }
+      setState(() {
+        _resolvedInitialMapCenter = point;
+      });
+      await _moveMapCenterTo(point);
+    } catch (error) {
+      debugPrint('Initial map center update skipped: $error');
+    }
+  }
+
+  Future<void> _moveMapCenterTo(GeoPoint point) async {
+    final naverController = _mapController;
+    if (naverController != null) {
+      await naverController.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(
+          target: NLatLng(point.latitude, point.longitude),
+          zoom: 15,
+        ),
+      );
+    }
+    final googleController = _googleMapController;
+    if (googleController != null) {
+      await googleController.animateCamera(
+        google_maps.CameraUpdate.newLatLngZoom(
+          google_maps.LatLng(point.latitude, point.longitude),
+          15,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // TLHC 네이티브 뷰는 body 영역을 덮지만 AppBar/bottomNavigationBar는 보임.
@@ -339,7 +407,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             isMapLoading:
                 _mapRenderState == _MapRenderState.loading && _canUseInAppMap,
             message: _mapLoadMessage ?? _message,
-            onSearch: _search,
+            onSearch: _submitSearch,
           ),
         ),
         body: _buildBody(),
@@ -395,7 +463,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             });
           }
           final selected = _selected;
-          if (selected != null) {
+          if (selected != null && _resolvedInitialMapCenter == null) {
             await _moveMapTo(selected);
           }
         },
@@ -436,7 +504,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           });
         }
         final selected = _selected;
-        if (selected != null) {
+        if (selected != null && _resolvedInitialMapCenter == null) {
           await _moveGoogleMapTo(selected);
         }
       },

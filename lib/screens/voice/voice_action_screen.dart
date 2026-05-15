@@ -2557,6 +2557,7 @@ class _EventCandidateCard extends StatelessWidget {
     final showSelection = onSelectionChanged != null;
 
     return Card(
+      key: isDanger ? ValueKey('voice-delete-candidate-${event.id}') : null,
       elevation: 0,
       color: PlanFlowColors.surface,
       shape: RoundedRectangleBorder(
@@ -2655,6 +2656,9 @@ class _EventCandidateCard extends StatelessWidget {
                     SizedBox(
                       width: 104,
                       child: FilledButton.tonalIcon(
+                        key: isDanger
+                            ? ValueKey('voice-delete-button-${event.id}')
+                            : null,
                         onPressed: disabled ? null : onTap,
                         icon: Icon(actionIcon, size: 18),
                         label: Text(

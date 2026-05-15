@@ -1,7 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/screens/location/location_pick_flow.dart';
 import 'package:planflow/screens/location/location_picker_screen.dart';
+import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 void main() {
   testWidgets(
@@ -97,6 +103,78 @@ void main() {
     expect(find.text('Google 지도'), findsOneWidget);
     expect(find.text('네이버 지도'), findsOneWidget);
     expect(find.text('TMAP'), findsWidgets);
+  });
+
+  testWidgets('LocationPickerScreen unfocuses keyboard before button search',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(430, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final service = _EmptyLocationLookupService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LocationPickerScreen(
+          initialQuery: '',
+          canUseInAppMapOverride: false,
+          locationLookupService: service,
+        ),
+      ),
+    );
+
+    final searchField = find.byKey(const ValueKey('location-search-field'));
+    await tester.enterText(searchField, '서울역');
+    await tester.showKeyboard(searchField);
+    await tester.pump();
+
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isTrue,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('location-search-button')));
+    await tester.pump();
+
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isFalse,
+    );
+    expect(service.searchCallCount, 1);
+  });
+
+  testWidgets('LocationPickerScreen unfocuses keyboard before enter search',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(430, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final service = _EmptyLocationLookupService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LocationPickerScreen(
+          initialQuery: '',
+          canUseInAppMapOverride: false,
+          locationLookupService: service,
+        ),
+      ),
+    );
+
+    final searchField = find.byKey(const ValueKey('location-search-field'));
+    await tester.enterText(searchField, '서울역');
+    await tester.showKeyboard(searchField);
+    await tester.pump();
+
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isTrue,
+    );
+
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pump();
+
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isFalse,
+    );
+    expect(service.searchCallCount, 1);
   });
 
   testWidgets('LocationPickerScreen preserves initial auth failure guidance',
@@ -254,12 +332,160 @@ void main() {
     await tester.pump();
     expect(find.text(first.name), findsAtLeastNWidgets(1));
   });
+
+  testWidgets(
+      'pickLocationFromQuery starts current location lookup while place search is pending and passes the future to the picker',
+      (tester) async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+    final lookupService = _BlockingLocationLookupService();
+    final permissionService = _TrackingPermissionService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return TextButton(
+              onPressed: () {
+                unawaited(
+                  pickLocationFromQuery(
+                    context: context,
+                    query: '서울역',
+                    locationLookupService: lookupService,
+                    appPermissionService: permissionService,
+                    preferredMapProvider: 'naver',
+                  ),
+                );
+              },
+              child: const Text('open'),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+
+    expect(lookupService.searchStarted.isCompleted, isTrue);
+    await permissionService.currentStarted.future.timeout(
+      const Duration(seconds: 1),
+    );
+    expect(find.byType(LocationPickerScreen), findsNothing);
+
+    lookupService.completeWith(
+      const LocationLookupSearchResult(
+        originalQuery: '서울역',
+        results: <LocationLookupResult>[
+          LocationLookupResult(
+            name: '서울역',
+            address: '서울특별시 용산구 한강대로 405',
+            latitude: 37.5559,
+            longitude: 126.9723,
+            provider: LocationLookupProvider.naver,
+          ),
+        ],
+        searchedQueries: <String>['서울역'],
+        fallbackQueries: <String>[],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final screen = tester.widget<LocationPickerScreen>(
+      find.byType(LocationPickerScreen),
+    );
+    expect(screen.initialMapCenter, isNull);
+    expect(screen.initialMapCenterFuture, isNotNull);
+    expect(screen.initialResults.single.name, '서울역');
+  });
+
+  testWidgets(
+      'pickLocationFromQuery opens picker quickly when current location is slow',
+      (tester) async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+    final lookupService = _BlockingLocationLookupService();
+    final permissionService = _SlowPermissionService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return TextButton(
+              onPressed: () {
+                unawaited(
+                  pickLocationFromQuery(
+                    context: context,
+                    query: '서울역',
+                    locationLookupService: lookupService,
+                    appPermissionService: permissionService,
+                    preferredMapProvider: 'naver',
+                  ),
+                );
+              },
+              child: const Text('open'),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    lookupService.completeWith(
+      const LocationLookupSearchResult(
+        originalQuery: '서울역',
+        results: <LocationLookupResult>[
+          LocationLookupResult(
+            name: '서울역',
+            address: '서울특별시 용산구 한강대로 405',
+            latitude: 37.5559,
+            longitude: 126.9723,
+            provider: LocationLookupProvider.naver,
+          ),
+        ],
+        searchedQueries: <String>['서울역'],
+        fallbackQueries: <String>[],
+      ),
+    );
+
+    await permissionService.currentStarted.future.timeout(
+      const Duration(seconds: 1),
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    final screen = tester.widget<LocationPickerScreen>(
+      find.byType(LocationPickerScreen),
+    );
+    expect(screen.initialMapCenter, isNull);
+    expect(screen.initialResults.single.name, '서울역');
+  });
 }
 
 class _EmptyLocationLookupService extends LocationLookupService {
+  int searchCallCount = 0;
+
   @override
   Future<List<LocationLookupResult>> search(String query) async {
+    searchCallCount += 1;
     return const <LocationLookupResult>[];
+  }
+
+  @override
+  Future<LocationLookupSearchResult> searchWithFallback(String query) async {
+    searchCallCount += 1;
+    return LocationLookupSearchResult(
+      originalQuery: query,
+      results: const <LocationLookupResult>[],
+      searchedQueries:
+          query.trim().isEmpty ? const <String>[] : <String>[query.trim()],
+      fallbackQueries: const <String>[],
+    );
   }
 }
 
@@ -271,5 +497,60 @@ class _ThrowingLocationLookupService extends LocationLookupService {
       message: '네이버 지도 API 인증 또는 서비스 권한을 확인해 주세요.',
       provider: LocationLookupProvider.naver,
     );
+  }
+}
+
+class _BlockingLocationLookupService extends LocationLookupService {
+  final Completer<void> searchStarted = Completer<void>();
+  final Completer<LocationLookupSearchResult> _result =
+      Completer<LocationLookupSearchResult>();
+
+  @override
+  Future<LocationLookupSearchResult> searchWithFallback(String query) {
+    if (!searchStarted.isCompleted) {
+      searchStarted.complete();
+    }
+    return _result.future;
+  }
+
+  void completeWith(LocationLookupSearchResult result) {
+    if (!_result.isCompleted) {
+      _result.complete(result);
+    }
+  }
+}
+
+class _TrackingPermissionService extends AppPermissionService {
+  final Completer<void> currentStarted = Completer<void>();
+
+  @override
+  Future<GeoPoint?> getLastKnownLocation() async {
+    return null;
+  }
+
+  @override
+  Future<GeoPoint?> getCurrentLocation() async {
+    if (!currentStarted.isCompleted) {
+      currentStarted.complete();
+    }
+    return const GeoPoint(latitude: 37.5666, longitude: 126.979);
+  }
+}
+
+class _SlowPermissionService extends AppPermissionService {
+  final Completer<void> currentStarted = Completer<void>();
+  final Completer<GeoPoint?> _currentLocation = Completer<GeoPoint?>();
+
+  @override
+  Future<GeoPoint?> getLastKnownLocation() async {
+    return null;
+  }
+
+  @override
+  Future<GeoPoint?> getCurrentLocation() {
+    if (!currentStarted.isCompleted) {
+      currentStarted.complete();
+    }
+    return _currentLocation.future;
   }
 }

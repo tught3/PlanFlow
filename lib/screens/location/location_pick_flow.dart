@@ -5,6 +5,7 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/app_permission_service.dart';
 import '../../services/location_lookup_service.dart';
 import 'location_picker_screen.dart';
 
@@ -12,6 +13,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   required BuildContext context,
   required String query,
   LocationLookupService? locationLookupService,
+  AppPermissionService? appPermissionService,
   String? preferredMapProvider,
 }) async {
   final trimmed = query.trim();
@@ -24,6 +26,14 @@ Future<LocationLookupResult?> pickLocationFromQuery({
     return null;
   }
   final inAppMapProvider = _inAppMapProviderFor(resolvedMapProvider);
+  final initialMapCenterFuture = _startInitialMapCenterLoad(
+    appPermissionService,
+  );
+  final lookupFuture = trimmed.isEmpty
+      ? null
+      : service.searchWithFallback(trimmed).timeout(
+            const Duration(seconds: 12),
+          );
   if (resolvedMapProvider == 'tmap' && trimmed.isNotEmpty) {
     await _openExternalMapTarget(
       context,
@@ -37,10 +47,14 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   }
 
   if (trimmed.isEmpty) {
+    if (!context.mounted) {
+      return null;
+    }
     return Navigator.of(context).push<LocationLookupResult>(
       MaterialPageRoute(
         builder: (_) => LocationPickerScreen(
           initialQuery: '',
+          initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
         ),
@@ -49,9 +63,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   }
 
   try {
-    final lookup = await service.searchWithFallback(trimmed).timeout(
-          const Duration(seconds: 12),
-        );
+    final lookup = await lookupFuture!;
     final results = lookup.results;
     if (!context.mounted) {
       return null;
@@ -65,6 +77,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
             initialResults: const <LocationLookupResult>[],
             initialFallbackQueries: lookup.fallbackQueries.take(4).toList(),
             initialMessage: '검색 결과가 없어요. 지도에서 직접 위치를 선택해 주세요.',
+            initialMapCenterFuture: initialMapCenterFuture,
             locationLookupService: service,
             preferredInAppMapProvider: inAppMapProvider,
           ),
@@ -77,6 +90,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
         builder: (_) => LocationPickerScreen(
           initialQuery: trimmed,
           initialResults: results,
+          initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
         ),
@@ -92,6 +106,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
         builder: (_) => LocationPickerScreen(
           initialQuery: trimmed,
           initialMessage: '$provider 장소 검색 인증에 실패했어요. 지도에서 직접 위치를 선택해 주세요.',
+          initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
         ),
@@ -107,11 +122,35 @@ Future<LocationLookupResult?> pickLocationFromQuery({
         builder: (_) => LocationPickerScreen(
           initialQuery: trimmed,
           initialMessage: '장소 검색이 오래 걸리거나 실패했어요. 지도에서 직접 위치를 선택해 주세요.',
+          initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
         ),
       ),
     );
+  }
+}
+
+Future<GeoPoint?> _loadInitialMapCenter(
+    AppPermissionService permissions) async {
+  try {
+    return await permissions.getLastKnownLocation() ??
+        await permissions.getCurrentLocation();
+  } catch (error) {
+    debugPrint('Initial map center load skipped: $error');
+    return null;
+  }
+}
+
+Future<GeoPoint?>? _startInitialMapCenterLoad(
+  AppPermissionService? appPermissionService,
+) {
+  try {
+    final permissions = appPermissionService ?? AppPermissionService();
+    return _loadInitialMapCenter(permissions);
+  } catch (error) {
+    debugPrint('Initial map center service unavailable: $error');
+    return null;
   }
 }
 
