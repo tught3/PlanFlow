@@ -472,3 +472,9 @@
 - Wired `pickLocationFromQuery` to load the preferred provider from saved settings. Naver/Google affect in-app map priority; TMAP opens external TMAP first and falls back to the in-app picker if needed.
 - Reviewer agents found and confirmed fixes for three integration risks: preserving auth-failure guidance, backup compatibility before the new DB column is applied, and `voice_auto_start` backup/restore parity.
 - Verification passed: focused `./scripts/flutter-local.ps1 analyze --no-pub`, focused location/settings/model/repository tests (32 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1`, and `adb shell pidof com.planflow.app` returned PID `2889`.
+
+## 2026-05-15 Location Picker Search Header Checkpoint
+- Moved the location picker search field and `검색` button out of the bottom control sheet and into the AppBar bottom area so the keyboard does not cover the search action.
+- Kept the bottom sheet focused on selected place details, candidate chips, fallback search suggestions, empty-state guidance, and `이 위치 사용`.
+- Preserved map rendering/fallback behavior and the existing candidate swipe chevrons.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub lib/screens/location/location_picker_screen.dart test/screens/location_picker_screen_test.dart`, `./scripts/flutter-local.ps1 test --no-pub test/screens/location_picker_screen_test.dart` (6 tests), `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity`; focused app was `com.planflow.app/.MainActivity` with PID `14918`.

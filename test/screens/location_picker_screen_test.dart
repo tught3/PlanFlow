@@ -32,6 +32,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('지도에서 장소 선택'), findsAtLeastNWidgets(1));
+    expect(find.byKey(const ValueKey('location-search-field')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('location-search-button')), findsOneWidget);
     expect(find.textContaining('앱 안 지도를 열 수 없습니다.'), findsOneWidget);
     expect(find.textContaining('아래 장소 후보를 선택하거나 외부 지도'), findsOneWidget);
     expect(find.text('Google 지도'), findsOneWidget);
@@ -68,10 +71,14 @@ void main() {
       ),
     );
 
-    await tester.enterText(find.byType(TextField), '없는장소');
-    await tester.tap(find.widgetWithText(FilledButton, '검색'));
+    final searchField = find.byKey(const ValueKey('location-search-field'));
+    final searchButton = find.byKey(const ValueKey('location-search-button'));
+    await tester.enterText(searchField, '없는장소');
+    await tester.showKeyboard(searchField);
+    await tester.tap(searchButton);
     await tester.pumpAndSettle();
 
+    expect(searchButton, findsOneWidget);
     expect(
       find.text('검색 결과가 없어요. 장소명을 더 구체적으로 입력하거나 외부 지도에서 먼저 확인해 주세요.'),
       findsOneWidget,

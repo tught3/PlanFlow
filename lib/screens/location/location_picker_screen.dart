@@ -325,8 +325,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   Widget build(BuildContext context) {
     // TLHC 네이티브 뷰는 body 영역을 덮지만 AppBar/bottomNavigationBar는 보임.
     // AppBar 없이 body만 있으면 엣지-투-엣지로 bottomNav까지 덮힘.
-    // → AppBar를 유지해 Scaffold body 범위를 고정하고,
-    //   실제 UI(검색·뒤로가기)는 bottomNavigationBar에 배치.
+    // → 검색 UI는 AppBar 하단에 고정하고, bottomNavigationBar는 후보/확정만 담당.
     return PopScope(
       canPop: true,
       child: Scaffold(
@@ -334,18 +333,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         appBar: AppBar(
           title: const Text('지도에서 장소 선택'),
           backgroundColor: PlanFlowColors.background,
-          bottom: const PreferredSize(
-            preferredSize: Size.fromHeight(60),
-            child: SizedBox.shrink(),
+          bottom: _MapSearchHeader(
+            queryController: _queryController,
+            isSearching: _isSearching,
+            isMapLoading:
+                _mapRenderState == _MapRenderState.loading && _canUseInAppMap,
+            message: _mapLoadMessage ?? _message,
+            onSearch: _search,
           ),
         ),
         body: _buildBody(),
         bottomNavigationBar: _MapControlSheet(
-          queryController: _queryController,
-          isSearching: _isSearching,
-          isMapLoading:
-              _mapRenderState == _MapRenderState.loading && _canUseInAppMap,
-          message: _mapLoadMessage ?? _message,
           results: _results,
           fallbackQueries: _fallbackQueries,
           selected: _selected,
@@ -354,8 +352,6 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           onScrollCandidatesLeft: () => _scrollCandidates(-1),
           onScrollCandidatesRight: () => _scrollCandidates(1),
           onSelectFallbackQuery: _searchFallbackQuery,
-          onBack: () => Navigator.of(context).pop(),
-          onSearch: _search,
           onSelect: _selectResult,
           onConfirm: _confirm,
         ),
@@ -455,14 +451,105 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
 /// 지도 화면 하단 컨트롤 시트.
 /// TLHC PlatformView가 AppBar까지 덮는 문제로 인해
-/// 뒤로가기·제목·검색바·후보 목록·확인 버튼을 모두 여기에 통합.
-/// bottomNavigationBar는 body 밖이라 항상 표시됨.
-class _MapControlSheet extends StatelessWidget {
-  const _MapControlSheet({
+/// 검색바는 AppBar 하단에 두고, bottomNavigationBar에는 후보 목록과 확인 버튼만 둔다.
+class _MapSearchHeader extends StatelessWidget implements PreferredSizeWidget {
+  const _MapSearchHeader({
     required this.queryController,
     required this.isSearching,
     required this.isMapLoading,
     required this.message,
+    required this.onSearch,
+  });
+
+  static const double _baseHeight = 76;
+  static const double _messageHeight = 112;
+
+  final TextEditingController queryController;
+  final bool isSearching;
+  final bool isMapLoading;
+  final String? message;
+  final VoidCallback onSearch;
+
+  @override
+  Size get preferredSize =>
+      Size.fromHeight(message == null ? _baseHeight : _messageHeight);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: PlanFlowColors.background,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+        decoration: const BoxDecoration(
+          color: PlanFlowColors.background,
+          border:
+              Border(bottom: BorderSide(color: PlanFlowColors.primaryFaint)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('location-search-field'),
+                    controller: queryController,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => onSearch(),
+                    decoration: const InputDecoration(
+                      hintText: '장소명을 입력해 주세요',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  key: const ValueKey('location-search-button'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(64, 48),
+                  ),
+                  onPressed: isSearching ? null : onSearch,
+                  child: isSearching
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('검색'),
+                ),
+                if (isMapLoading) ...[
+                  const SizedBox(width: 8),
+                  const SizedBox.square(
+                    dimension: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: PlanFlowColors.primaryLight,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (message != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                message!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: PlanFlowColors.textSecondary),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapControlSheet extends StatelessWidget {
+  const _MapControlSheet({
     required this.results,
     required this.fallbackQueries,
     required this.selected,
@@ -471,16 +558,10 @@ class _MapControlSheet extends StatelessWidget {
     required this.onScrollCandidatesLeft,
     required this.onScrollCandidatesRight,
     required this.onSelectFallbackQuery,
-    required this.onBack,
-    required this.onSearch,
     required this.onSelect,
     required this.onConfirm,
   });
 
-  final TextEditingController queryController;
-  final bool isSearching;
-  final bool isMapLoading;
-  final String? message;
   final List<LocationLookupResult> results;
   final List<String> fallbackQueries;
   final LocationLookupResult? selected;
@@ -489,8 +570,6 @@ class _MapControlSheet extends StatelessWidget {
   final VoidCallback onScrollCandidatesLeft;
   final VoidCallback onScrollCandidatesRight;
   final ValueChanged<String> onSelectFallbackQuery;
-  final VoidCallback onBack;
-  final VoidCallback onSearch;
   final ValueChanged<LocationLookupResult> onSelect;
   final VoidCallback onConfirm;
 
@@ -509,76 +588,6 @@ class _MapControlSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 제목 + 뒤로가기 + 로딩 표시
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: onBack,
-                color: PlanFlowColors.primary,
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  '지도에서 장소 선택',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
-              ),
-              if (isMapLoading)
-                const SizedBox.square(
-                  dimension: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: PlanFlowColors.primaryLight,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // 검색바
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: queryController,
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: (_) => onSearch(),
-                  decoration: const InputDecoration(
-                    hintText: '장소명을 입력해 주세요',
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // minimumSize를 명시해 Row 안에서 Expanded(TextField) 공간 확보
-              // (테마의 Size.fromHeight(48) = Size(∞,48) 는 Row 안에서 전체 너비를 차지해 버림)
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(64, 48),
-                ),
-                onPressed: isSearching ? null : onSearch,
-                child: isSearching
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('검색'),
-              ),
-            ],
-          ),
-          if (message != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              message!,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: PlanFlowColors.textSecondary),
-            ),
-          ],
-          const SizedBox(height: 8),
           // 선택된 장소 정보
           if (selected != null) ...[
             Text(
