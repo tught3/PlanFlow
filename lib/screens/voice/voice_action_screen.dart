@@ -1663,14 +1663,6 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                     ),
                   ),
                 ],
-                if (_isDelete) ...[
-                  const SizedBox(height: 8),
-                  _DeleteSelectionBar(
-                    selectedCount: selectedDeleteCount,
-                    disabled: _isDeleting,
-                    onDeleteSelected: _confirmSelectedDelete,
-                  ),
-                ],
                 const SizedBox(height: 8),
                 if (_isQuery) ...[
                   _QueryOverviewCard(
@@ -1692,19 +1684,15 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                     ),
                   ),
                 ] else if (_isDelete) ...[
-                  ..._events.map((event) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _DeleteCandidateRow(
-                        event: event,
-                        disabled: _isDeleting || _isSaving,
-                        isSelected: _selectedDeleteEventIds.contains(event.id),
-                        onSelectionChanged: (selected) =>
-                            _toggleDeleteSelection(event, selected),
-                        onDelete: () => _confirmDelete(event),
-                      ),
-                    );
-                  }),
+                  _DeleteCandidateList(
+                    events: _events,
+                    selectedCount: selectedDeleteCount,
+                    selectedEventIds: _selectedDeleteEventIds,
+                    disabled: _isDeleting || _isSaving,
+                    onDeleteSelected: _confirmSelectedDelete,
+                    onSelectionChanged: _toggleDeleteSelection,
+                    onDelete: _confirmDelete,
+                  ),
                 ] else ...[
                   ..._events.map((event) {
                     final changePreview =
@@ -2528,6 +2516,75 @@ class _DeleteSelectionBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DeleteCandidateList extends StatelessWidget {
+  const _DeleteCandidateList({
+    required this.events,
+    required this.selectedCount,
+    required this.selectedEventIds,
+    required this.disabled,
+    required this.onDeleteSelected,
+    required this.onSelectionChanged,
+    required this.onDelete,
+  });
+
+  final List<EventModel> events;
+  final int selectedCount;
+  final Set<String> selectedEventIds;
+  final bool disabled;
+  final VoidCallback onDeleteSelected;
+  final void Function(EventModel event, bool selected) onSelectionChanged;
+  final void Function(EventModel event) onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      key: const ValueKey('voice-delete-candidate-list'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.error.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '삭제할 일정을 선택하거나, 오른쪽 삭제 버튼을 눌러 주세요.',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: PlanFlowColors.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _DeleteSelectionBar(
+            selectedCount: selectedCount,
+            disabled: disabled,
+            onDeleteSelected: onDeleteSelected,
+          ),
+          const SizedBox(height: 10),
+          for (final event in events)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _DeleteCandidateRow(
+                event: event,
+                disabled: disabled,
+                isSelected: selectedEventIds.contains(event.id),
+                onSelectionChanged: (selected) =>
+                    onSelectionChanged(event, selected),
+                onDelete: () => onDelete(event),
+              ),
+            ),
+        ],
       ),
     );
   }

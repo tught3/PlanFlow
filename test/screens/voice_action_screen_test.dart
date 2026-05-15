@@ -803,6 +803,10 @@ void main() {
 
     expect(find.text('대상 일정'), findsOneWidget);
     expect(find.textContaining('2개 후보'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-candidate-list')),
+        findsOneWidget);
+    expect(find.textContaining('삭제할 일정을 선택'), findsOneWidget);
+    expect(find.text('선택된 일정 0개'), findsOneWidget);
     expect(find.byKey(const ValueKey('voice-delete-candidate-event-1')),
         findsOneWidget);
     expect(find.byKey(const ValueKey('voice-delete-candidate-event-2')),

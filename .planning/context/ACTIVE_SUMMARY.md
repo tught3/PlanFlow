@@ -557,3 +557,9 @@
 ## 2026-05-15 Naver CalDAV App Password Visibility Checkpoint
 - Changed the Naver CalDAV connection dialog so the `앱 비밀번호` field is visible while typing instead of being masked, because this is an app-specific password and visibility reduces input mistakes.
 - Verification passed: focused settings screen analyze, `git diff --check`, debug APK build, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `28597`.
+
+## 2026-05-15 Voice Delete Candidate Visible Section Checkpoint
+- Investigated another screenshot where voice delete showed `2개 후보` diagnostics but the actual delete candidate cards were missing from the visible page.
+- Reworked delete candidate rendering into a dedicated `_DeleteCandidateList` section that always groups the instruction text, selected-count delete bar, and every delete candidate row together when `_events` is non-empty.
+- Strengthened the regression test so `2개 후보` must also render `voice-delete-candidate-list`, the delete instruction, selected-count bar, both candidate rows, and both individual delete buttons.
+- Verification passed: focused analyze for `voice_action_screen.dart` and its test, focused delete-candidate widget test, `git diff --check`, debug APK build, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell pidof com.planflow.app` returned PID `10485`; `am start` returned Android code 10 while the app process was already running.
