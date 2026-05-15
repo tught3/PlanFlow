@@ -18,14 +18,35 @@ void main() {
       expect(queryRoute.intent, VoiceCommandRouteIntent.query);
       expect(queryRoute.targetQuery, isNotEmpty);
 
+      final todayQuery = router.route('오늘 일정 알려줘');
+      expect(todayQuery.intent, VoiceCommandRouteIntent.query);
+
+      final savedSearchQuery = router.route('저장된 일정 찾아줘');
+      expect(savedSearchQuery.intent, VoiceCommandRouteIntent.query);
+
       final plainConfirmQuery = router.route('내일 일정 확인하기');
       expect(plainConfirmQuery.intent, VoiceCommandRouteIntent.query);
 
       final memoQuery = router.route('메모 보여줘');
       expect(memoQuery.intent, VoiceCommandRouteIntent.query);
 
+      final recurringLookupAdd = router.route('매월 월례 조회');
+      expect(recurringLookupAdd.intent, VoiceCommandRouteIntent.add);
+
+      final regularLookupAdd = router.route('정기 조회');
+      expect(regularLookupAdd.intent, VoiceCommandRouteIntent.add);
+
+      final companyLookupAdd = router.route('회사 조회');
+      expect(companyLookupAdd.intent, VoiceCommandRouteIntent.add);
+
       final memoAdd = router.route('내일 병원 준비물 메모해줘');
       expect(memoAdd.intent, VoiceCommandRouteIntent.add);
+
+      final ambiguousQuery = router.route('조회');
+      expect(ambiguousQuery.intent, VoiceCommandRouteIntent.choose);
+
+      final scheduledAmbiguousQuery = router.route('일정 조회');
+      expect(scheduledAmbiguousQuery.intent, VoiceCommandRouteIntent.choose);
 
       final editRoute = router.route(
         '내일 팀장님 동행방문 다음 주 수요일로 연기',

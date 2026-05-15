@@ -426,7 +426,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       VoiceCommandIntent.edit => _VoiceCommandAction.edit,
       VoiceCommandIntent.delete => _VoiceCommandAction.delete,
       VoiceCommandIntent.query => _VoiceCommandAction.query,
-      VoiceCommandIntent.choose => _VoiceCommandAction.query,
+      VoiceCommandIntent.choose => _VoiceCommandAction.choose,
     };
   }
 
@@ -436,7 +436,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       VoiceCommandRouteIntent.edit => _VoiceCommandAction.edit,
       VoiceCommandRouteIntent.delete => _VoiceCommandAction.delete,
       VoiceCommandRouteIntent.query => _VoiceCommandAction.query,
-      VoiceCommandRouteIntent.choose => _VoiceCommandAction.query,
+      VoiceCommandRouteIntent.choose => _VoiceCommandAction.choose,
     };
   }
 
@@ -447,6 +447,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       'edit' => _VoiceCommandAction.edit,
       'delete' => _VoiceCommandAction.delete,
       'query' => _VoiceCommandAction.query,
+      'choose' => _VoiceCommandAction.choose,
       _ => null,
     };
   }
@@ -672,7 +673,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   }
 }
 
-enum _VoiceCommandAction { add, edit, delete, query }
+enum _VoiceCommandAction { add, edit, delete, query, choose }
 
 class _VoiceCommandGuide extends StatelessWidget {
   const _VoiceCommandGuide({required this.theme});

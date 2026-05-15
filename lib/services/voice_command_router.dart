@@ -41,13 +41,11 @@ class VoiceCommandRouter {
         .hasMatch(normalized)) {
       return VoiceCommandRouteIntent.edit;
     }
-    if (_hasQueryIntentCue(normalized)) {
-      if (!_hasExplicitAddIntentCue(normalized)) {
-        return VoiceCommandRouteIntent.query;
-      }
-    }
     if (_hasAddIntentCue(normalized)) {
       return VoiceCommandRouteIntent.add;
+    }
+    if (_hasAmbiguousQueryIntentCue(normalized)) {
+      return VoiceCommandRouteIntent.choose;
     }
     if (_hasQueryIntentCue(normalized)) {
       return VoiceCommandRouteIntent.query;
@@ -365,6 +363,7 @@ class VoiceCommandRouter {
   bool _hasAddIntentCue(String text) {
     final normalized = normalizeManagementText(text);
     return _hasExplicitAddIntentCue(normalized) ||
+        _hasRecurringLookupAddCue(normalized) ||
         (_looksLikeScheduleContentToConfirm(normalized) &&
             _hasScheduleCue(normalized));
   }
@@ -374,6 +373,18 @@ class VoiceCommandRouter {
     return RegExp(
       r'(추가|등록|저장(?!된|한|되어|돼)|기록|예약|만들어|일정으로|하기로\s*저장|로\s*저장|메모\s*(?:해|해줘|남겨|기록|저장|추가))',
     ).hasMatch(normalized);
+  }
+
+  bool _hasRecurringLookupAddCue(String text) {
+    final normalized = normalizeManagementText(text);
+    return RegExp(
+      r'((?:매월\s*)?(?:월례|정기|회사)\s*조회)',
+    ).hasMatch(normalized);
+  }
+
+  bool _hasAmbiguousQueryIntentCue(String text) {
+    final normalized = normalizeManagementText(text);
+    return RegExp(r'^(?:일정\s*)?조회$').hasMatch(normalized);
   }
 
   bool _looksLikeScheduleContentToConfirm(String text) {
@@ -390,7 +401,7 @@ class VoiceCommandRouter {
   bool _hasQueryIntentCue(String text) {
     final normalized = normalizeManagementText(text);
     return RegExp(
-      r'(찾아\s*줘|찾아\s*주세요|검색|알려\s*줘|알려\s*주세요|언제|어디|뭐야|조회|보여\s*줘|보여\s*주세요|일정\s*확인|확인해\s*줘|확인해\s*주세요)',
+      r'(찾아\s*줘|찾아\s*주세요|검색|알려\s*줘|알려\s*주세요|언제|어디|뭐야|보여\s*줘|보여\s*주세요|일정\s*확인|확인해\s*줘|확인해\s*주세요)',
     ).hasMatch(normalized);
   }
 

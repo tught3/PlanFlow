@@ -496,3 +496,11 @@
 - Reviewer guidance confirmed `pickLocationFromQuery()` is the right central point because confirm/edit map buttons already route through it.
 - Verification passed: focused analyze for `location_pick_flow.dart` and `location_picker_screen_test.dart`, focused permission-denied and slow-current-location tests, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell monkey -p com.planflow.app -c android.intent.category.LAUNCHER 1` with PID `1354`.
 - Full `location_picker_screen_test.dart` still timed out when run as one file due a test-runner/pending async interaction, so stale `flutter_tester` processes were cleaned up and the relevant new regression tests were run individually.
+
+## 2026-05-15 Voice Memo Cleanup And Query Routing Checkpoint
+- Tightened voice schedule parsing so date/time/recurrence/reminder phrases are kept in structured fields and no longer copied into memo/title unless the user explicitly says `메모에`, `설명에`, or similar.
+- Preserved schedule titles containing `조회`, such as `월례 조회`, while removing bare `조회` from automatic query routing.
+- Routed ambiguous `조회` / `일정 조회` to the voice action chooser instead of the query result screen, while keeping `보여줘`, `알려줘`, `찾아줘`, and `일정 확인해줘` as query commands.
+- Worker agents handled routing and memo parsing in parallel; reviewer verified that `choose` no longer maps back to query and returned PASS.
+- Verification passed: focused analyze/test for voice router/GPT/analysis/input files, full `./scripts/flutter-local.ps1 analyze --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` with PID `19328`.
+- Full `./scripts/flutter-local.ps1 test --no-pub` was attempted and still failed on existing unrelated `ConfirmScreen stores Korean wall time as UTC once` and `location_picker_screen_test` timeout issues; the voice-focused tests passed.

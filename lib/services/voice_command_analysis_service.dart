@@ -683,7 +683,7 @@ class VoiceCommandAnalysisService {
       VoiceCommandRouteIntent.edit => VoiceCommandIntent.edit,
       VoiceCommandRouteIntent.delete => VoiceCommandIntent.delete,
       VoiceCommandRouteIntent.query => VoiceCommandIntent.query,
-      VoiceCommandRouteIntent.choose => VoiceCommandIntent.query,
+      VoiceCommandRouteIntent.choose => VoiceCommandIntent.choose,
     };
   }
 
@@ -694,7 +694,7 @@ class VoiceCommandAnalysisService {
       'edit' => VoiceCommandIntent.edit,
       'delete' => VoiceCommandIntent.delete,
       'query' => VoiceCommandIntent.query,
-      'choose' => VoiceCommandIntent.query,
+      'choose' => VoiceCommandIntent.choose,
       _ => null,
     };
   }
@@ -1213,7 +1213,7 @@ Return only a valid JSON object.
 
 Required keys:
 - normalized_text: string
-- intent: one of "add", "edit", "delete", "query"
+- intent: one of "add", "edit", "delete", "query", "choose"
 - confidence: number from 0.0 to 1.0
 - uncertain_fields: array of strings
 - schedule_fields: object or null
@@ -1229,5 +1229,7 @@ Rules:
   is_critical, recurrence_rule, is_all_day, is_multi_day, category, pre_actions.
 - For edit, delete, and query intents, use target_event_hint and
   requested_changes to identify what should be acted on.
+- Use choose when the text is too ambiguous to decide between adding a schedule
+  and querying schedules, such as a bare "조회" command.
 - Keep uncertain_fields focused on what still needs confirmation.
 ''';

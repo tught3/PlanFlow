@@ -366,6 +366,13 @@ void main() {
       );
       expect(savedQueryResult.method, VoiceCommandAnalysisMethod.local);
       expect(savedQueryResult.intent, VoiceCommandIntent.query);
+
+      final ambiguousLookupResult = await service.analyze(
+        '일정 조회',
+        stage: VoiceCommandAnalysisStage.complete,
+      );
+      expect(ambiguousLookupResult.method, VoiceCommandAnalysisMethod.local);
+      expect(ambiguousLookupResult.intent, VoiceCommandIntent.choose);
     });
   });
 }
