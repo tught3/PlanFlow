@@ -135,7 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String? get _userId => widget._userId ?? authProvider.userId;
   bool get _isFeedbackAdmin =>
-      authProvider.email?.trim().toLowerCase() == officialSupportEmail;
+      authProvider.email?.trim().toLowerCase() == feedbackAdminEmail;
 
   @override
   void initState() {

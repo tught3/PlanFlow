@@ -6,6 +6,7 @@ import '../../data/models/feedback_report_model.dart';
 import '../../data/repositories/feedback_repository.dart';
 
 const String officialSupportEmail = 'officialfluxstudio.kr@gmail.com';
+const String feedbackAdminEmail = 'tught3@naver.com';
 
 class FeedbackReportSheet extends StatefulWidget {
   const FeedbackReportSheet({

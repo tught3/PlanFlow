@@ -672,7 +672,7 @@ create policy "feedback_reports_select_admin"
   for select
   using (
     lower(coalesce(auth.jwt() ->> 'email', '')) =
-      'officialfluxstudio.kr@gmail.com'
+      'tught3@naver.com'
   );
 create policy "feedback_reports_insert_own"
   on public.feedback_reports
@@ -683,11 +683,11 @@ create policy "feedback_reports_update_status_admin"
   for update
   using (
     lower(coalesce(auth.jwt() ->> 'email', '')) =
-      'officialfluxstudio.kr@gmail.com'
+      'tught3@naver.com'
   )
   with check (
     lower(coalesce(auth.jwt() ->> 'email', '')) =
-      'officialfluxstudio.kr@gmail.com'
+      'tught3@naver.com'
   );
 
 -- Naver CalDAV credentials are stored only as encrypted payloads in calendar_connections.

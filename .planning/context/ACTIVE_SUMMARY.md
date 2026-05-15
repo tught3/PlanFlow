@@ -540,3 +540,10 @@
 - Updated Supabase schema/patch RLS so normal users can still insert/select their own reports, and only the official email JWT can select all reports and update the `status` column.
 - Reviewer found no blocking issues; the visible status-change snackbar wording was polished after review.
 - Verification passed: focused analyze, focused feedback sheet/repository tests, `git diff --check`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `19894`.
+
+## 2026-05-15 Feedback Admin Account Correction Checkpoint
+- Separated the public support email from the private feedback admin login email.
+- Kept `officialSupportEmail = officialfluxstudio.kr@gmail.com` for mailto/user-facing support copy.
+- Added `feedbackAdminEmail = tught3@naver.com` and changed Settings admin-inbox visibility to use that account.
+- Updated Supabase feedback report admin RLS policies in `schema.sql` and `feedback_reports_patch.sql` so only `tught3@naver.com` can select all reports and update report status.
+- Verification passed: focused analyze, feedback sheet widget tests, `git diff --check`, debug APK build, ADB install, app launch, and PID check returned `26626`.
