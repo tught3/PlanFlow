@@ -65,6 +65,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   VoiceTextCleanupResult? _cleanupResult;
   VoiceCommandRouteResult? _routeResult;
   _CandidateLoadDiagnostics? _candidateLoadDiagnostics;
+  _CandidateLoadSnapshot? _candidateLoadSnapshot;
 
   late VoiceScheduleAction _selectedAction;
   late final VoiceCommandRouter _voiceCommandRouter;
@@ -103,6 +104,25 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     if (state != AppLifecycleState.resumed || _isAdd) {
       return;
     }
+    unawaited(_loadCandidates(allowAutoSyncRetry: false));
+  }
+
+  @override
+  void didUpdateWidget(covariant VoiceActionScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final rawTextChanged = oldWidget.rawText != widget.rawText;
+    final actionChanged = oldWidget.action != widget.action;
+    if (!rawTextChanged && !actionChanged) {
+      return;
+    }
+    _selectedAction = widget.action;
+    _hasChosenAction = false;
+    _cleanupResult = null;
+    _routeResult = null;
+    _candidateLoadDiagnostics = null;
+    _candidateLoadSnapshot = null;
+    _events.clear();
+    _selectedDeleteEventIds.clear();
     unawaited(_loadCandidates(allowAutoSyncRetry: false));
   }
 
@@ -192,6 +212,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         _events.clear();
         _message = null;
         _candidateLoadDiagnostics = null;
+        _candidateLoadSnapshot = null;
         _isLoading = false;
       });
       return;
@@ -202,6 +223,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       _message = null;
       _events.clear();
       _selectedDeleteEventIds.clear();
+      _candidateLoadSnapshot = null;
     });
 
     try {
@@ -210,6 +232,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         setState(() {
           _message = '로그인 후 음성으로 일정을 관리할 수 있어요.';
           _candidateLoadDiagnostics = null;
+          _candidateLoadSnapshot = null;
           _isLoading = false;
         });
         return;
@@ -219,6 +242,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         setState(() {
           _message = 'Supabase 설정이 없어 저장된 일정을 불러올 수 없어요.';
           _candidateLoadDiagnostics = null;
+          _candidateLoadSnapshot = null;
           _isLoading = false;
         });
         return;
@@ -288,6 +312,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         _cleanupResult = cleanup;
         _routeResult = routeResult;
         _candidateLoadDiagnostics = diagnostics;
+        _candidateLoadSnapshot = _CandidateLoadSnapshot(
+          diagnostics: diagnostics,
+          events: ranked,
+        );
         _events
           ..clear()
           ..addAll(ranked);
@@ -313,6 +341,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       setState(() {
         _message = '저장된 일정을 불러오지 못했어요. 로그인 상태와 스토리지를 확인해 주세요.';
         _candidateLoadDiagnostics = null;
+        _candidateLoadSnapshot = null;
         _isLoading = false;
       });
     }
@@ -586,6 +615,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       _selectedDeleteEventIds.clear();
       _message = action == VoiceScheduleAction.add ? '일정 확인 화면으로 이동합니다.' : null;
       _candidateLoadDiagnostics = null;
+      _candidateLoadSnapshot = null;
       _isLoading = action != VoiceScheduleAction.add;
     });
 
@@ -1608,6 +1638,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final title = _actionTitle();
     final description = _actionDescription();
     final selectedDeleteCount = _selectedDeleteEventIds.length;
+    final candidateSnapshot = _candidateLoadSnapshot;
+    final visibleEvents =
+        candidateSnapshot?.events ?? List<EventModel>.of(_events);
+    final visibleDiagnostics =
+        candidateSnapshot?.diagnostics ?? _candidateLoadDiagnostics;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -1646,13 +1681,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                     child: CircularProgressIndicator(),
                   ),
                 )
-              else if (!_isAdd && _events.isEmpty)
+              else if (!_isAdd && visibleEvents.isEmpty)
                 _EmptyCard(
                   message: _message ??
                       '대상 일정을 찾지 못했어요. 캘린더 동기화 상태를 확인하거나 다시 말해 주세요.',
                   rawText: _normalizedRawText,
                   showRecoveryActions: !_isAdd,
-                  diagnosticsText: _candidateLoadDiagnostics?.toDisplayText(),
+                  diagnosticsText: visibleDiagnostics?.toDisplayText(),
                   onAdd: _openAddConfirm,
                   onRetryVoice: () => context.go(AppRoutes.voice),
                   onOpenCalendar: () => context.go(AppRoutes.calendar),
@@ -1667,13 +1702,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                if (_candidateLoadDiagnostics != null) ...[
+                if (visibleDiagnostics != null) ...[
                   const SizedBox(height: 2),
                   Text(
-                    _candidateLoadDiagnostics!.displayedCount > 0 &&
-                            _candidateLoadDiagnostics!.targetQuery.isNotEmpty
-                        ? '${_candidateLoadDiagnostics!.displayedCount}개 후보 · 검색어: ${_candidateLoadDiagnostics!.targetQuery}'
-                        : '${_candidateLoadDiagnostics!.displayedCount}개 후보',
+                    visibleDiagnostics.displayedCount > 0 &&
+                            visibleDiagnostics.targetQuery.isNotEmpty
+                        ? '${visibleDiagnostics.displayedCount}개 후보 · 검색어: ${visibleDiagnostics.targetQuery}'
+                        : '${visibleDiagnostics.displayedCount}개 후보',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: PlanFlowColors.textSecondary,
                     ),
@@ -1682,11 +1717,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                 const SizedBox(height: 8),
                 if (_isQuery) ...[
                   _QueryOverviewCard(
-                    summary: _querySummaryText(_events),
+                    summary: _querySummaryText(visibleEvents),
                     rangeLabel: _queryRangeLabel(_normalizedRawText),
                   ),
                   const SizedBox(height: 12),
-                  ..._buildQueryTimeline(_events).map(
+                  ..._buildQueryTimeline(visibleEvents).map(
                     (dayGroup) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _QueryDayGroupCard(
@@ -1701,7 +1736,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                   ),
                 ] else if (_isDelete) ...[
                   _DeleteCandidateList(
-                    events: _events,
+                    events: visibleEvents,
                     selectedCount: selectedDeleteCount,
                     selectedEventIds: _selectedDeleteEventIds,
                     disabled: _isDeleting || _isSaving,
@@ -1710,7 +1745,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                     onDelete: _confirmDelete,
                   ),
                 ] else ...[
-                  ..._events.map((event) {
+                  ...visibleEvents.map((event) {
                     final changePreview =
                         _isEdit ? _buildChangePreviewText(event) : null;
                     return Padding(
@@ -2476,6 +2511,16 @@ class _CandidateLoadDiagnostics {
   }
 
   String toLogLine() => toDisplayText().replaceAll('\n', ' ');
+}
+
+class _CandidateLoadSnapshot {
+  const _CandidateLoadSnapshot({
+    required this.diagnostics,
+    required this.events,
+  });
+
+  final _CandidateLoadDiagnostics diagnostics;
+  final List<EventModel> events;
 }
 
 class _DeleteSelectionBar extends StatelessWidget {

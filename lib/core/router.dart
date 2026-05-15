@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import '../screens/auth/login_screen.dart';
@@ -113,8 +114,12 @@ final GoRouter appRouter = GoRouter(
           (candidate) => candidate.name == actionText,
           orElse: () => VoiceScheduleAction.choose,
         );
+        final rawText = extra['raw_text']?.toString() ?? '';
         return VoiceActionScreen(
-          rawText: extra['raw_text']?.toString() ?? '',
+          key: ValueKey(
+            'voice-action-${action.name}-${rawText.hashCode}',
+          ),
+          rawText: rawText,
           action: action,
         );
       },

@@ -574,3 +574,10 @@
 - Added `WidgetsBindingObserver` to `VoiceActionScreen` so non-add voice action pages reload candidates whenever the app resumes. This refreshes restored edit/delete/query screens instead of leaving stale diagnostics-only UI.
 - Added regression coverage for the restored delete screen resume path: listEvents is called again on resume and the delete candidate list is visible afterward.
 - Verification passed: focused analyze, focused tests for delete candidates and resume reload, debug APK build, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am force-stop com.planflow.app`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `10366`.
+
+## 2026-05-16 Voice Delete Candidate Stale Route Fix Checkpoint
+- Fixed the persistent voice delete blank-candidate issue by giving `VoiceActionScreen` a route key based on `action + rawText`, preventing stale `/voice/action` route reuse from preserving old diagnostics-only state.
+- Added `didUpdateWidget` handling in `VoiceActionScreen` so if raw text/action changes on the same State instance, candidate state, diagnostics, snapshot, and delete selections are cleared and candidates are reloaded.
+- Added `_CandidateLoadSnapshot` so displayed diagnostics and rendered event cards come from the same immutable candidate load result, preventing `2개 후보` text from diverging from the candidate card list.
+- Added a regression test for same-screen raw text updates and re-ran delete-candidate, restored-screen, and route-state focused tests. Reviewer found no blocking issues.
+- Verification passed: focused analyze, focused voice action tests, reviewer full voice action test pass, `git diff --check`, debug APK build, `adb install -r -t --user 0`, launcher run via monkey, PID/current focus check for `com.planflow.app`.

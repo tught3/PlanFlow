@@ -1052,6 +1052,52 @@ void main() {
     expect(find.text('앱 DB에서 일정을 못 불러왔어요'), findsNothing);
     expect(find.text('저장된 일정이 앱 DB에서 보이지 않아요'), findsNothing);
   });
+
+  testWidgets('같은 음성 액션 화면에서 문장이 바뀌면 상태를 비우고 후보를 다시 불러온다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(id: 'event-1', title: '첫 번째 삭제 후보'),
+      ],
+    );
+    var rawText = '첫 번째 삭제 후보 삭제해줘';
+
+    Widget buildScreen() {
+      return MaterialApp(
+        home: VoiceActionScreen(
+          rawText: rawText,
+          action: VoiceScheduleAction.delete,
+          eventRepository: repository,
+          sideEffectService: const _NoopSideEffectService(),
+          homeWidgetService: _NoopHomeWidgetService(),
+          userIdOverride: 'user-1',
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildScreen());
+    await tester.pumpAndSettle();
+
+    expect(repository.listEventsCallCount, 1);
+    expect(find.byKey(const ValueKey('voice-delete-candidate-0-event-1')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-candidate-list')),
+        findsOneWidget);
+
+    repository._events
+      ..clear()
+      ..add(_event(id: 'event-2', title: '두 번째 삭제 후보'));
+    rawText = '두 번째 삭제 후보 삭제해줘';
+    await tester.pumpWidget(buildScreen());
+    await tester.pumpAndSettle();
+
+    expect(repository.listEventsCallCount, 2);
+    expect(find.byKey(const ValueKey('voice-delete-candidate-0-event-2')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-candidate-0-event-1')),
+        findsNothing);
+    expect(find.byKey(const ValueKey('voice-delete-candidate-list')),
+        findsOneWidget);
+  });
 }
 
 EventModel _event({
