@@ -532,3 +532,11 @@
 - Added a 12-second timeout and visible in-sheet error banner; failures now show the exact reason in the modal instead of only relying on a snackbar that can be hidden behind the bottom sheet. Typed text remains on failure for retry, and clears only on confirmed success.
 - Updated `supabase/schema.sql` and `supabase/feedback_reports_patch.sql` with `grant usage on schema public to authenticated` and `grant select, insert on table public.feedback_reports to authenticated`.
 - Verification passed: focused analyze, `./scripts/flutter-local.ps1 test --no-pub test/screens/feedback_report_sheet_test.dart test/data/repositories/feedback_repository_test.dart`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `24710`.
+
+## 2026-05-15 Feedback Admin Inbox Checkpoint
+- Added an operator feedback inbox for the official account `officialfluxstudio.kr@gmail.com`: when that account is logged in, Settings shows `신고함 열기` under the feedback section.
+- The inbox loads `feedback_reports`, displays type/message/expected behavior/screen/user/time, and lets the operator move reports through `신규`, `확인 중`, `수정됨`, and `종료` states.
+- Added `FeedbackReport` and `FeedbackReportStatus` models plus repository methods for admin fetch/status update, while keeping existing user report submission unchanged.
+- Updated Supabase schema/patch RLS so normal users can still insert/select their own reports, and only the official email JWT can select all reports and update the `status` column.
+- Reviewer found no blocking issues; the visible status-change snackbar wording was polished after review.
+- Verification passed: focused analyze, focused feedback sheet/repository tests, `git diff --check`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `19894`.

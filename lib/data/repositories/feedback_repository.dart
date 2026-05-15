@@ -16,7 +16,19 @@ abstract class FeedbackReportGateway {
   Future<void> insert(Map<String, Object?> payload);
 }
 
-class SupabaseFeedbackReportGateway implements FeedbackReportGateway {
+abstract class FeedbackReportAdminGateway implements FeedbackReportGateway {
+  Future<List<Map<String, Object?>>> fetchAdminReports({
+    FeedbackReportStatus? status,
+    int limit = 100,
+  });
+
+  Future<void> updateReportStatus({
+    required String reportId,
+    required FeedbackReportStatus status,
+  });
+}
+
+class SupabaseFeedbackReportGateway implements FeedbackReportAdminGateway {
   SupabaseFeedbackReportGateway(this._client);
 
   final SupabaseClient _client;
@@ -26,6 +38,36 @@ class SupabaseFeedbackReportGateway implements FeedbackReportGateway {
     await _client
         .from('feedback_reports')
         .insert(payload)
+        .select('id')
+        .single();
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> fetchAdminReports({
+    FeedbackReportStatus? status,
+    int limit = 100,
+  }) async {
+    final query = _client.from('feedback_reports').select();
+    final List<dynamic> response = status == null
+        ? await query.order('created_at', ascending: false).limit(limit)
+        : await query
+            .eq('status', status.value)
+            .order('created_at', ascending: false)
+            .limit(limit);
+    return response
+        .map((row) => Map<String, Object?>.from(row as Map))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<void> updateReportStatus({
+    required String reportId,
+    required FeedbackReportStatus status,
+  }) async {
+    await _client
+        .from('feedback_reports')
+        .update(<String, Object?>{'status': status.value})
+        .eq('id', reportId)
         .select('id')
         .single();
   }
@@ -113,6 +155,67 @@ class FeedbackRepository {
     }
     await _analyticsLogger(type);
     await _crashlyticsLogger(type, userId);
+  }
+
+  Future<List<FeedbackReport>> fetchAdminReports({
+    FeedbackReportStatus? status,
+    int limit = 100,
+  }) async {
+    if (limit < 1 || limit > 500) {
+      throw const FeedbackSubmissionException('조회 개수는 1~500개로 요청해 주세요.');
+    }
+
+    final gateway = _adminGateway();
+    try {
+      final rows = await gateway
+          .fetchAdminReports(status: status, limit: limit)
+          .timeout(const Duration(seconds: 12));
+      return rows.map(FeedbackReport.fromMap).toList(growable: false);
+    } on PostgrestException catch (error) {
+      throw FeedbackSubmissionException(_messageForPostgrest(error));
+    } on SocketException {
+      throw const FeedbackSubmissionException(
+        '네트워크 연결을 확인한 뒤 다시 조회해 주세요.',
+      );
+    } on TimeoutException {
+      throw const FeedbackSubmissionException(
+        '요청 시간이 초과됐어요. 잠시 후 다시 조회해 주세요.',
+      );
+    }
+  }
+
+  Future<void> updateReportStatus({
+    required String reportId,
+    required FeedbackReportStatus status,
+  }) async {
+    if (reportId.trim().isEmpty) {
+      throw const FeedbackSubmissionException('문제 신고 ID가 필요합니다.');
+    }
+
+    final gateway = _adminGateway();
+    try {
+      await gateway
+          .updateReportStatus(reportId: reportId, status: status)
+          .timeout(const Duration(seconds: 12));
+    } on PostgrestException catch (error) {
+      throw FeedbackSubmissionException(_messageForPostgrest(error));
+    } on SocketException {
+      throw const FeedbackSubmissionException(
+        '네트워크 연결을 확인한 뒤 다시 저장해 주세요.',
+      );
+    } on TimeoutException {
+      throw const FeedbackSubmissionException(
+        '요청 시간이 초과됐어요. 잠시 후 다시 저장해 주세요.',
+      );
+    }
+  }
+
+  FeedbackReportAdminGateway _adminGateway() {
+    final gateway = _gateway;
+    if (gateway is FeedbackReportAdminGateway) {
+      return gateway;
+    }
+    throw const FeedbackSubmissionException('관리자 문제 신고 기능을 사용할 수 없어요.');
   }
 
   static String _messageForPostgrest(PostgrestException error) {

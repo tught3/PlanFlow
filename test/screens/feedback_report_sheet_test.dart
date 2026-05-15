@@ -119,6 +119,52 @@ void main() {
     expect(find.text('문제 신고 저장소를 확인해 주세요.'), findsWidgets);
     expect(find.text('문제 신고가 보내지지 않아요'), findsOneWidget);
   });
+
+  testWidgets('FeedbackAdminReportsSheet lists reports and updates status',
+      (tester) async {
+    final gateway = _FakeFeedbackGateway(
+      adminRows: <Map<String, Object?>>[
+        <String, Object?>{
+          'id': 'report-1',
+          'user_id': 'user-1',
+          'type': 'voice',
+          'message': '음성 수정 후보가 안 떠요',
+          'expected_behavior': '후보 일정이 보여야 해요',
+          'app_version': '1.0.0+1',
+          'platform': 'android',
+          'device_summary': 'Android',
+          'route_or_screen': 'settings',
+          'diagnostics': <String, Object?>{'screen': 'settings'},
+          'status': 'new',
+          'created_at': '2026-05-15T01:00:00Z',
+          'updated_at': '2026-05-15T01:00:00Z',
+        },
+      ],
+    );
+    final repository = _testRepository(gateway);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FeedbackAdminReportsSheet(repository: repository),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('문제 신고함'), findsOneWidget);
+    expect(find.text('음성 수정 후보가 안 떠요'), findsOneWidget);
+    expect(find.text('기대한 동작: 후보 일정이 보여야 해요'), findsOneWidget);
+    expect(find.text('음성 인식 오류'), findsOneWidget);
+
+    await tester.tap(find.byKey(
+      const ValueKey('feedback-admin-status-report-1-triaged'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(gateway.statusUpdates, <String, String>{'report-1': 'triaged'});
+    expect(find.text('확인 중 상태로 바꿨어요.'), findsOneWidget);
+  });
 }
 
 FeedbackRepository _testRepository(_FakeFeedbackGateway gateway) {
@@ -136,11 +182,16 @@ FeedbackRepository _testRepository(_FakeFeedbackGateway gateway) {
   );
 }
 
-class _FakeFeedbackGateway implements FeedbackReportGateway {
-  _FakeFeedbackGateway({this.error});
+class _FakeFeedbackGateway implements FeedbackReportAdminGateway {
+  _FakeFeedbackGateway({
+    this.error,
+    this.adminRows = const <Map<String, Object?>>[],
+  });
 
   final Object? error;
+  final List<Map<String, Object?>> adminRows;
   final List<Map<String, Object?>> payloads = <Map<String, Object?>>[];
+  final Map<String, String> statusUpdates = <String, String>{};
 
   @override
   Future<void> insert(Map<String, Object?> payload) async {
@@ -149,5 +200,26 @@ class _FakeFeedbackGateway implements FeedbackReportGateway {
       throw nextError;
     }
     payloads.add(payload);
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> fetchAdminReports({
+    FeedbackReportStatus? status,
+    int limit = 100,
+  }) async {
+    final rows = status == null
+        ? adminRows
+        : adminRows
+            .where((row) => row['status'] == status.value)
+            .toList(growable: false);
+    return rows.take(limit).toList(growable: false);
+  }
+
+  @override
+  Future<void> updateReportStatus({
+    required String reportId,
+    required FeedbackReportStatus status,
+  }) async {
+    statusUpdates[reportId] = status.value;
   }
 }

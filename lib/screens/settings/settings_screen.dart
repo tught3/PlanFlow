@@ -134,6 +134,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isNaverCalDavProgressDialogOpen = false;
 
   String? get _userId => widget._userId ?? authProvider.userId;
+  bool get _isFeedbackAdmin =>
+      authProvider.email?.trim().toLowerCase() == officialSupportEmail;
 
   @override
   void initState() {
@@ -2408,7 +2410,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              FeedbackReportSection(onPressed: _openFeedbackReportSheet),
+              FeedbackReportSection(
+                onPressed: _openFeedbackReportSheet,
+                onOpenAdminInbox:
+                    _isFeedbackAdmin ? _openFeedbackAdminReportsSheet : null,
+              ),
               const SizedBox(height: 16),
               if (authProvider.isSignedIn && _backupService != null) ...[
                 _SectionCard(
@@ -2489,6 +2495,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('문제 신고를 보냈어요. 확인하고 반영할게요.')),
+    );
+  }
+
+  Future<void> _openFeedbackAdminReportsSheet() async {
+    if (!_isFeedbackAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('관리자 계정에서만 신고함을 열 수 있어요.')),
+      );
+      return;
+    }
+
+    FeedbackRepository repository;
+    try {
+      repository = FeedbackRepository.supabase();
+    } on FeedbackSubmissionException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => FeedbackAdminReportsSheet(
+        repository: repository,
+      ),
     );
   }
 

@@ -403,6 +403,7 @@ alter table public.feedback_reports enable row level security;
 
 grant usage on schema public to authenticated;
 grant select, insert on table public.feedback_reports to authenticated;
+grant update (status) on table public.feedback_reports to authenticated;
 
 drop policy if exists "users_select_own" on public.users;
 drop policy if exists "users_insert_own" on public.users;
@@ -660,14 +661,34 @@ drop policy if exists "feedback_reports_select_own" on public.feedback_reports;
 drop policy if exists "feedback_reports_insert_own" on public.feedback_reports;
 drop policy if exists "feedback_reports_update_own" on public.feedback_reports;
 drop policy if exists "feedback_reports_delete_own" on public.feedback_reports;
+drop policy if exists "feedback_reports_select_admin" on public.feedback_reports;
+drop policy if exists "feedback_reports_update_status_admin" on public.feedback_reports;
 create policy "feedback_reports_select_own"
   on public.feedback_reports
   for select
   using (auth.uid() = user_id);
+create policy "feedback_reports_select_admin"
+  on public.feedback_reports
+  for select
+  using (
+    lower(coalesce(auth.jwt() ->> 'email', '')) =
+      'officialfluxstudio.kr@gmail.com'
+  );
 create policy "feedback_reports_insert_own"
   on public.feedback_reports
   for insert
   with check (auth.uid() = user_id);
+create policy "feedback_reports_update_status_admin"
+  on public.feedback_reports
+  for update
+  using (
+    lower(coalesce(auth.jwt() ->> 'email', '')) =
+      'officialfluxstudio.kr@gmail.com'
+  )
+  with check (
+    lower(coalesce(auth.jwt() ->> 'email', '')) =
+      'officialfluxstudio.kr@gmail.com'
+  );
 
 -- Naver CalDAV credentials are stored only as encrypted payloads in calendar_connections.
 -- If you set the optional custom GUC `planflow.naver_caldav_secret`, these RPCs will
