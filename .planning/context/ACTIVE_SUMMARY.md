@@ -563,3 +563,8 @@
 - Reworked delete candidate rendering into a dedicated `_DeleteCandidateList` section that always groups the instruction text, selected-count delete bar, and every delete candidate row together when `_events` is non-empty.
 - Strengthened the regression test so `2개 후보` must also render `voice-delete-candidate-list`, the delete instruction, selected-count bar, both candidate rows, and both individual delete buttons.
 - Verification passed: focused analyze for `voice_action_screen.dart` and its test, focused delete-candidate widget test, `git diff --check`, debug APK build, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell pidof com.planflow.app` returned PID `10485`; `am start` returned Android code 10 while the app process was already running.
+
+## 2026-05-15 Voice Delete Candidate Device Follow-up Checkpoint
+- Pulled a device screenshot and confirmed the real screen still showed `2개 후보` diagnostics without candidate rows, so the issue is below candidate search and around widget rendering/runtime state.
+- Added a device-visible render debug log for `_DeleteCandidateList` and changed delete candidate row/button keys to include list index plus event id, avoiding duplicate-key risk when imported/external events produce duplicated ids or repeated rows.
+- Verification passed: focused analyze, focused delete candidate tests (including multi-select and two-candidate rendering), `git diff --check`, debug APK build, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am force-stop com.planflow.app`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `28229`.

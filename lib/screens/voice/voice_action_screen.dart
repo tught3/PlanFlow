@@ -2543,6 +2543,10 @@ class _DeleteCandidateList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    debugPrint(
+      'VoiceActionScreen render delete candidate list: count=${events.length} '
+      'ids=${events.map((event) => event.id).join(',')}',
+    );
 
     return Container(
       key: const ValueKey('voice-delete-candidate-list'),
@@ -2572,16 +2576,17 @@ class _DeleteCandidateList extends StatelessWidget {
             onDeleteSelected: onDeleteSelected,
           ),
           const SizedBox(height: 10),
-          for (final event in events)
+          for (var index = 0; index < events.length; index += 1)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _DeleteCandidateRow(
-                event: event,
+                event: events[index],
+                index: index,
                 disabled: disabled,
-                isSelected: selectedEventIds.contains(event.id),
+                isSelected: selectedEventIds.contains(events[index].id),
                 onSelectionChanged: (selected) =>
-                    onSelectionChanged(event, selected),
-                onDelete: () => onDelete(event),
+                    onSelectionChanged(events[index], selected),
+                onDelete: () => onDelete(events[index]),
               ),
             ),
         ],
@@ -2593,6 +2598,7 @@ class _DeleteCandidateList extends StatelessWidget {
 class _DeleteCandidateRow extends StatelessWidget {
   const _DeleteCandidateRow({
     required this.event,
+    required this.index,
     required this.disabled,
     required this.isSelected,
     required this.onSelectionChanged,
@@ -2600,6 +2606,7 @@ class _DeleteCandidateRow extends StatelessWidget {
   });
 
   final EventModel event;
+  final int index;
   final bool disabled;
   final bool isSelected;
   final ValueChanged<bool> onSelectionChanged;
@@ -2614,7 +2621,7 @@ class _DeleteCandidateRow extends StatelessWidget {
     final location = event.location?.trim();
 
     return DecoratedBox(
-      key: ValueKey('voice-delete-candidate-${event.id}'),
+      key: ValueKey('voice-delete-candidate-$index-${event.id}'),
       decoration: BoxDecoration(
         color: PlanFlowColors.surface,
         borderRadius: BorderRadius.circular(10),
@@ -2676,7 +2683,7 @@ class _DeleteCandidateRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             FilledButton.icon(
-              key: ValueKey('voice-delete-button-${event.id}'),
+              key: ValueKey('voice-delete-button-$index-${event.id}'),
               onPressed: disabled ? null : onDelete,
               icon: const Icon(Icons.delete_outline, size: 18),
               label: const Text('삭제'),

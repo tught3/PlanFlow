@@ -708,7 +708,8 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const ValueKey('voice-delete-button-event-1')));
+    await tester
+        .tap(find.byKey(const ValueKey('voice-delete-button-0-event-1')));
     await tester.pumpAndSettle();
     await tester
         .tap(find.byKey(const ValueKey('voice-confirm-delete-event-1')));
@@ -807,13 +808,13 @@ void main() {
         findsOneWidget);
     expect(find.textContaining('삭제할 일정을 선택'), findsOneWidget);
     expect(find.text('선택된 일정 0개'), findsOneWidget);
-    expect(find.byKey(const ValueKey('voice-delete-candidate-event-1')),
+    expect(find.byKey(const ValueKey('voice-delete-candidate-0-event-1')),
         findsOneWidget);
-    expect(find.byKey(const ValueKey('voice-delete-candidate-event-2')),
+    expect(find.byKey(const ValueKey('voice-delete-candidate-1-event-2')),
         findsOneWidget);
-    expect(find.byKey(const ValueKey('voice-delete-button-event-1')),
+    expect(find.byKey(const ValueKey('voice-delete-button-0-event-1')),
         findsOneWidget);
-    expect(find.byKey(const ValueKey('voice-delete-button-event-2')),
+    expect(find.byKey(const ValueKey('voice-delete-button-1-event-2')),
         findsOneWidget);
   });
 
