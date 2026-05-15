@@ -456,14 +456,67 @@ void main() {
     await permissionService.currentStarted.future.timeout(
       const Duration(seconds: 1),
     );
-    await tester.pump();
-    await tester.pumpAndSettle();
+    for (var i = 0;
+        i < 10 && find.byType(LocationPickerScreen).evaluate().isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
 
     final screen = tester.widget<LocationPickerScreen>(
       find.byType(LocationPickerScreen),
     );
     expect(screen.initialMapCenter, isNull);
     expect(screen.initialResults.single.name, '서울역');
+    permissionService.completeWith(null);
+    await tester.pump(const Duration(seconds: 5));
+  });
+
+  testWidgets('pickLocationFromQuery requests location permission before map',
+      (tester) async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+    addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+    final permissionService = _DeniedPermissionService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return TextButton(
+              onPressed: () {
+                unawaited(
+                  pickLocationFromQuery(
+                    context: context,
+                    query: '',
+                    locationLookupService: _EmptyLocationLookupService(),
+                    appPermissionService: permissionService,
+                    preferredMapProvider: 'naver',
+                  ),
+                );
+              },
+              child: const Text('open'),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(permissionService.checkCount, greaterThanOrEqualTo(1));
+    expect(permissionService.requestCount, 1);
+    expect(find.text('위치 권한이 필요해요'), findsOneWidget);
+
+    await tester.tap(find.text('계속 선택'));
+    await tester.pumpAndSettle();
+
+    final screen = tester.widget<LocationPickerScreen>(
+      find.byType(LocationPickerScreen),
+    );
+    expect(screen.initialMapCenterFuture, isNull);
+    expect(screen.initialMessage, contains('현재 위치를 보려면 위치 권한이 필요해요'));
   });
 }
 
@@ -542,6 +595,16 @@ class _SlowPermissionService extends AppPermissionService {
   final Completer<GeoPoint?> _currentLocation = Completer<GeoPoint?>();
 
   @override
+  Future<bool> checkLocationPermission() async {
+    return true;
+  }
+
+  @override
+  Future<bool> requestLocationPermission() async {
+    return true;
+  }
+
+  @override
   Future<GeoPoint?> getLastKnownLocation() async {
     return null;
   }
@@ -552,5 +615,35 @@ class _SlowPermissionService extends AppPermissionService {
       currentStarted.complete();
     }
     return _currentLocation.future;
+  }
+
+  void completeWith(GeoPoint? point) {
+    if (!_currentLocation.isCompleted) {
+      _currentLocation.complete(point);
+    }
+  }
+}
+
+class _DeniedPermissionService extends AppPermissionService {
+  int checkCount = 0;
+  int requestCount = 0;
+  int settingsOpenCount = 0;
+
+  @override
+  Future<bool> checkLocationPermission() async {
+    checkCount += 1;
+    return false;
+  }
+
+  @override
+  Future<bool> requestLocationPermission() async {
+    requestCount += 1;
+    return false;
+  }
+
+  @override
+  Future<bool> openAppSettings() async {
+    settingsOpenCount += 1;
+    return true;
   }
 }

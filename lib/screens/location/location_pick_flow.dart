@@ -19,6 +19,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   final trimmed = query.trim();
 
   final service = locationLookupService ?? LocationLookupService();
+  final permissionService = _createPermissionService(appPermissionService);
   final resolvedMapProvider =
       _normalizePreferredMapProvider(preferredMapProvider) ??
           await _loadPreferredMapProvider();
@@ -26,14 +27,21 @@ Future<LocationLookupResult?> pickLocationFromQuery({
     return null;
   }
   final inAppMapProvider = _inAppMapProviderFor(resolvedMapProvider);
-  final initialMapCenterFuture = _startInitialMapCenterLoad(
-    appPermissionService,
-  );
   final lookupFuture = trimmed.isEmpty
       ? null
       : service.searchWithFallback(trimmed).timeout(
             const Duration(seconds: 12),
           );
+  final permissionMessage = await _ensureLocationPermissionForMap(
+    context,
+    permissionService,
+  );
+  if (!context.mounted) {
+    return null;
+  }
+  final initialMapCenterFuture = permissionMessage == null
+      ? _startInitialMapCenterLoad(permissionService)
+      : null;
   if (resolvedMapProvider == 'tmap' && trimmed.isNotEmpty) {
     await _openExternalMapTarget(
       context,
@@ -54,6 +62,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
       MaterialPageRoute(
         builder: (_) => LocationPickerScreen(
           initialQuery: '',
+          initialMessage: permissionMessage,
           initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
@@ -76,7 +85,10 @@ Future<LocationLookupResult?> pickLocationFromQuery({
             initialQuery: trimmed,
             initialResults: const <LocationLookupResult>[],
             initialFallbackQueries: lookup.fallbackQueries.take(4).toList(),
-            initialMessage: '검색 결과가 없어요. 지도에서 직접 위치를 선택해 주세요.',
+            initialMessage: _joinLocationMessages(
+              permissionMessage,
+              '검색 결과가 없어요. 지도에서 직접 위치를 선택해 주세요.',
+            ),
             initialMapCenterFuture: initialMapCenterFuture,
             locationLookupService: service,
             preferredInAppMapProvider: inAppMapProvider,
@@ -90,6 +102,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
         builder: (_) => LocationPickerScreen(
           initialQuery: trimmed,
           initialResults: results,
+          initialMessage: permissionMessage,
           initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
@@ -105,7 +118,10 @@ Future<LocationLookupResult?> pickLocationFromQuery({
       MaterialPageRoute(
         builder: (_) => LocationPickerScreen(
           initialQuery: trimmed,
-          initialMessage: '$provider 장소 검색 인증에 실패했어요. 지도에서 직접 위치를 선택해 주세요.',
+          initialMessage: _joinLocationMessages(
+            permissionMessage,
+            '$provider 장소 검색 인증에 실패했어요. 지도에서 직접 위치를 선택해 주세요.',
+          ),
           initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
@@ -121,7 +137,10 @@ Future<LocationLookupResult?> pickLocationFromQuery({
       MaterialPageRoute(
         builder: (_) => LocationPickerScreen(
           initialQuery: trimmed,
-          initialMessage: '장소 검색이 오래 걸리거나 실패했어요. 지도에서 직접 위치를 선택해 주세요.',
+          initialMessage: _joinLocationMessages(
+            permissionMessage,
+            '장소 검색이 오래 걸리거나 실패했어요. 지도에서 직접 위치를 선택해 주세요.',
+          ),
           initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
@@ -129,6 +148,85 @@ Future<LocationLookupResult?> pickLocationFromQuery({
       ),
     );
   }
+}
+
+AppPermissionService? _createPermissionService(
+  AppPermissionService? appPermissionService,
+) {
+  if (appPermissionService != null) {
+    return appPermissionService;
+  }
+  try {
+    return AppPermissionService();
+  } catch (error) {
+    debugPrint('Location permission service unavailable: $error');
+    return null;
+  }
+}
+
+Future<String?> _ensureLocationPermissionForMap(
+  BuildContext context,
+  AppPermissionService? permissions,
+) async {
+  if (permissions == null) {
+    return '현재 위치 권한을 확인하지 못했어요. 지도에서 직접 위치를 선택해 주세요.';
+  }
+
+  try {
+    if (await permissions.checkLocationPermission()) {
+      return null;
+    }
+    final granted = await permissions.requestLocationPermission();
+    if (granted || await permissions.checkLocationPermission()) {
+      return null;
+    }
+  } catch (error) {
+    debugPrint('Location permission request before map failed: $error');
+  }
+
+  if (context.mounted) {
+    await _showLocationPermissionGuide(context, permissions);
+  }
+  return '현재 위치를 보려면 위치 권한이 필요해요. Android 설정에서 PlanFlow 위치 권한을 켜 주세요.';
+}
+
+Future<void> _showLocationPermissionGuide(
+  BuildContext context,
+  AppPermissionService permissions,
+) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text('위치 권한이 필요해요'),
+        content: const Text(
+          '지도를 현재 위치 기준으로 보여주려면 위치 권한이 필요합니다. 권한을 켜면 주변 장소를 더 빠르게 고를 수 있어요.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('계속 선택'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await permissions.openAppSettings();
+              if (context.mounted) {
+                Navigator.of(context).pop();
+              }
+            },
+            child: const Text('설정 열기'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+String _joinLocationMessages(String? first, String second) {
+  if (first == null || first.trim().isEmpty) {
+    return second;
+  }
+  return '$first\n$second';
 }
 
 Future<GeoPoint?> _loadInitialMapCenter(
@@ -143,15 +241,9 @@ Future<GeoPoint?> _loadInitialMapCenter(
 }
 
 Future<GeoPoint?>? _startInitialMapCenterLoad(
-  AppPermissionService? appPermissionService,
+  AppPermissionService? permissions,
 ) {
-  try {
-    final permissions = appPermissionService ?? AppPermissionService();
-    return _loadInitialMapCenter(permissions);
-  } catch (error) {
-    debugPrint('Initial map center service unavailable: $error');
-    return null;
-  }
+  return permissions == null ? null : _loadInitialMapCenter(permissions);
 }
 
 Future<String> _loadPreferredMapProvider() async {
