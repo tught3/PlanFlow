@@ -708,9 +708,10 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('삭제하기').first);
+    await tester.tap(find.byKey(const ValueKey('voice-delete-button-event-1')));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '삭제'));
+    await tester
+        .tap(find.byKey(const ValueKey('voice-confirm-delete-event-1')));
     await tester.pumpAndSettle();
 
     expect(repository.deletedEventIds, ['event-1']);
@@ -844,7 +845,7 @@ void main() {
 
     expect(find.text('대상 일정'), findsOneWidget);
     expect(find.text('아이스크림 전달'), findsOneWidget);
-    expect(find.text('삭제하기'), findsOneWidget);
+    expect(find.text('삭제'), findsOneWidget);
   });
 
   testWidgets('오늘 삭제 명령은 지난 오늘 일정을 미래 후보보다 우선 표시한다', (tester) async {

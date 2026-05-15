@@ -1275,6 +1275,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton(
+                    key: ValueKey('voice-confirm-delete-${event.id}'),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
                       backgroundColor: colorScheme.error,
@@ -1690,6 +1691,20 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
                       ),
                     ),
                   ),
+                ] else if (_isDelete) ...[
+                  ..._events.map((event) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _DeleteCandidateRow(
+                        event: event,
+                        disabled: _isDeleting || _isSaving,
+                        isSelected: _selectedDeleteEventIds.contains(event.id),
+                        onSelectionChanged: (selected) =>
+                            _toggleDeleteSelection(event, selected),
+                        onDelete: () => _confirmDelete(event),
+                      ),
+                    );
+                  }),
                 ] else ...[
                   ..._events.map((event) {
                     final changePreview =
@@ -2509,6 +2524,112 @@ class _DeleteSelectionBar extends StatelessWidget {
                 disabledForegroundColor:
                     colorScheme.onErrorContainer.withValues(alpha: 0.55),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DeleteCandidateRow extends StatelessWidget {
+  const _DeleteCandidateRow({
+    required this.event,
+    required this.disabled,
+    required this.isSelected,
+    required this.onSelectionChanged,
+    required this.onDelete,
+  });
+
+  final EventModel event;
+  final bool disabled;
+  final bool isSelected;
+  final ValueChanged<bool> onSelectionChanged;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final startAt =
+        event.startAt == null ? null : planflowLocal(event.startAt!);
+    final location = event.location?.trim();
+
+    return DecoratedBox(
+      key: ValueKey('voice-delete-candidate-${event.id}'),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isSelected
+              ? colorScheme.error
+              : colorScheme.error.withValues(alpha: 0.16),
+          width: isSelected ? 1.1 : 0.7,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Checkbox(
+              value: isSelected,
+              onChanged: disabled
+                  ? null
+                  : (value) => onSelectionChanged(value ?? false),
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    event.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    startAt == null
+                        ? '시간 미정'
+                        : '${MaterialLocalizations.of(context).formatFullDate(startAt)} · ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(startAt))}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
+                  ),
+                  if (location != null && location.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      location,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              key: ValueKey('voice-delete-button-${event.id}'),
+              onPressed: disabled ? null : onDelete,
+              icon: const Icon(Icons.delete_outline, size: 18),
+              label: const Text('삭제'),
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.errorContainer,
+                foregroundColor: colorScheme.onErrorContainer,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                textStyle: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
               ),
             ),
           ],

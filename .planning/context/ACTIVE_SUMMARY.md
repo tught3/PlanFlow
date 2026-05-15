@@ -504,3 +504,10 @@
 - Worker agents handled routing and memo parsing in parallel; reviewer verified that `choose` no longer maps back to query and returned PASS.
 - Verification passed: focused analyze/test for voice router/GPT/analysis/input files, full `./scripts/flutter-local.ps1 analyze --no-pub`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, and `adb shell am start -n com.planflow.app/.MainActivity` with PID `19328`.
 - Full `./scripts/flutter-local.ps1 test --no-pub` was attempted and still failed on existing unrelated `ConfirmScreen stores Korean wall time as UTC once` and `location_picker_screen_test` timeout issues; the voice-focused tests passed.
+
+## 2026-05-15 Voice Delete Candidate Rendering Checkpoint
+- Investigated a real device screenshot where voice delete showed `2개 후보` diagnostics but no visible candidate cards.
+- Split delete mode rendering away from the shared candidate card and added a dedicated `_DeleteCandidateRow` with checkbox, title/time/location, and a stable per-row delete button so delete candidates are always visible when `_events` is non-empty.
+- Added a stable key to the final delete confirmation button and updated tests to avoid ambiguous `삭제` label matching.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub lib/screens/voice/voice_action_screen.dart test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, and `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`.
+- ADB install succeeded and `adb shell pidof com.planflow.app` returned PID `13633`; `am start` returned Android error code 10 even though the app process was running.
