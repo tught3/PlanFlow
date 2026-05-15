@@ -225,7 +225,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
           const SizedBox(height: 10),
           _EditorSection(
             icon: Icons.tune_outlined,
-            title: '분류 · 반복',
+            title: '방문 목표 · 반복 설정',
             subtitle: '${widget.category} · ${_recurrenceSummary(widget.recurrence)}',
             collapsible: true,
             expanded: _classificationExpanded,
@@ -256,7 +256,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
           const SizedBox(height: 10),
           _EditorSection(
             icon: Icons.notes_outlined,
-            title: '설명 · 준비',
+            title: '설명 · 준비물',
             subtitle: '메모, 준비물, 스마트 준비 알림은 필요할 때만 열어 수정하세요.',
             collapsible: true,
             expanded: _detailsExpanded,

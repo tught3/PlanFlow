@@ -177,14 +177,14 @@ void main() {
     expect(find.text('일정 알림'), findsNothing);
     expect(find.widgetWithText(TextFormField, '설명'), findsNothing);
 
-    await tester.tap(find.text('분류 · 반복'));
+    await tester.tap(find.text('방문 목표 · 반복 설정'));
     await tester.pumpAndSettle();
     expect(find.text('업무'), findsWidgets);
     expect(find.text('반복'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('설명 · 준비'));
+    await tester.ensureVisible(find.text('설명 · 준비물'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('설명 · 준비'));
+    await tester.tap(find.text('설명 · 준비물'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(TextFormField, '설명'), findsOneWidget);
 

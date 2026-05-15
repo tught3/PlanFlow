@@ -519,3 +519,8 @@
 - Added keyboard dismiss behavior for editor text fields, supplies, smart-prep inputs, and voice direct input; voice direct input still submits after dismissing the keyboard.
 - Worker/reviewer agents were used. The first reviewer caught a direct-input submit regression, it was fixed, and the follow-up reviewer returned PASS.
 - Verification passed: focused analyze, `./scripts/flutter-local.ps1 test --no-pub test/widgets/calendar_style_event_editor_test.dart test/screens/voice_input_screen_test.dart`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `4953`.
+
+## 2026-05-15 Event Editor Label Refinement Checkpoint
+- Renamed the collapsed editor section labels to user-facing wording: `분류 · 반복` became `방문 목표 · 반복 설정`, and `설명 · 준비` became `설명 · 준비물`.
+- Updated the widget regression test to match the new labels.
+- Verification passed: focused analyze, `./scripts/flutter-local.ps1 test --no-pub test/widgets/calendar_style_event_editor_test.dart`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `22715`.
