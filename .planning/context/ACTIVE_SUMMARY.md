@@ -568,3 +568,9 @@
 - Pulled a device screenshot and confirmed the real screen still showed `2개 후보` diagnostics without candidate rows, so the issue is below candidate search and around widget rendering/runtime state.
 - Added a device-visible render debug log for `_DeleteCandidateList` and changed delete candidate row/button keys to include list index plus event id, avoiding duplicate-key risk when imported/external events produce duplicated ids or repeated rows.
 - Verification passed: focused analyze, focused delete candidate tests (including multi-select and two-candidate rendering), `git diff --check`, debug APK build, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am force-stop com.planflow.app`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `28229`.
+
+## 2026-05-15 Voice Delete Candidate Resume Reload Checkpoint
+- Confirmed via device screenshot/logcat that Android could keep showing a restored voice-delete screen with old candidate diagnostics and no candidate rows after an update, without running the new delete-candidate render branch.
+- Added `WidgetsBindingObserver` to `VoiceActionScreen` so non-add voice action pages reload candidates whenever the app resumes. This refreshes restored edit/delete/query screens instead of leaving stale diagnostics-only UI.
+- Added regression coverage for the restored delete screen resume path: listEvents is called again on resume and the delete candidate list is visible afterward.
+- Verification passed: focused analyze, focused tests for delete candidates and resume reload, debug APK build, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am force-stop com.planflow.app`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `10366`.

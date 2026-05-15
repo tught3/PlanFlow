@@ -818,6 +818,45 @@ void main() {
         findsOneWidget);
   });
 
+  testWidgets('복원된 음성 삭제 화면은 앱 재개 시 후보를 다시 불러온다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(id: 'event-1', title: '원주 기도 강원내과회'),
+      ],
+    );
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '내일 오전 10시 원주기도 강원내과회 일정 삭제해 줘',
+            action: VoiceScheduleAction.delete,
+            eventRepository: repository,
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(repository.listEventsCallCount, 1);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(repository.listEventsCallCount, 2);
+    expect(find.byKey(const ValueKey('voice-delete-candidate-list')),
+        findsOneWidget);
+  });
+
   testWidgets('오늘 아이스크림 전달 삭제 명령은 대상 후보를 표시한다', (tester) async {
     final now = DateTime.now();
     final repository = _FakeEventRepository(

@@ -53,7 +53,8 @@ class VoiceActionScreen extends StatefulWidget {
   State<VoiceActionScreen> createState() => _VoiceActionScreenState();
 }
 
-class _VoiceActionScreenState extends State<VoiceActionScreen> {
+class _VoiceActionScreenState extends State<VoiceActionScreen>
+    with WidgetsBindingObserver {
   final List<EventModel> _events = <EventModel>[];
   final Set<String> _selectedDeleteEventIds = <String>{};
   bool _isLoading = true;
@@ -85,9 +86,24 @@ class _VoiceActionScreenState extends State<VoiceActionScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _voiceCommandRouter = const VoiceCommandRouter();
     _selectedAction = widget.action;
     unawaited(_loadCandidates());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || _isAdd) {
+      return;
+    }
+    unawaited(_loadCandidates(allowAutoSyncRetry: false));
   }
 
   String _actionTitle() {
