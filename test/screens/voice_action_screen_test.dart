@@ -756,8 +756,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('선택된 일정 0개'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-inline-actions')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-inline-button-0-event-1')),
+        findsOneWidget);
     expect(find.byType(Checkbox), findsNWidgets(3));
 
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -260));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(Checkbox).at(0));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(Checkbox).at(1));
@@ -807,6 +813,12 @@ void main() {
         findsOneWidget);
     expect(find.textContaining('2개 후보'), findsOneWidget);
     expect(find.byKey(const ValueKey('voice-delete-candidate-list')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-inline-actions')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-inline-button-0-event-1')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-inline-button-1-event-2')),
         findsOneWidget);
     expect(find.textContaining('삭제할 일정을 선택'), findsOneWidget);
     expect(find.text('선택된 일정 0개'), findsOneWidget);

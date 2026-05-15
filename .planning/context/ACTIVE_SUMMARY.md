@@ -590,3 +590,11 @@
 - Strengthened voice action tests so `2개 후보` also requires the unified section, delete list, rows, per-row delete buttons, and no empty DB card.
 - Reviewer agent returned PASS with no blocking findings.
 - Verification passed: focused analyze, focused `voice_action_screen_test.dart`, reviewer rerun of the same test, `git diff --check`, debug APK build, ADB install, launcher run, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-16 Voice Delete Inline Candidate Failsafe Checkpoint
+- User confirmed the real device still showed no visible schedule candidates after the unified candidate section fix.
+- Added a fail-safe inline delete action strip immediately under the visible candidate count. When delete candidates exist, the screen now shows each candidate title plus a delete action at the top of the target section before the larger card/list body.
+- This means even if the lower candidate card area is clipped, restored oddly, or otherwise not visible on a device, actual schedule names and delete buttons should still appear directly under `N개 후보`.
+- Updated voice action tests to assert the inline fail-safe exists along with the existing delete list/cards/buttons and adjusted multi-select test scrolling for the taller layout.
+- Reviewer agent returned PASS with no blocking findings.
+- Verification passed: focused analyze, focused `voice_action_screen_test.dart`, reviewer rerun of focused test, `git diff --check`, debug APK build, ADB install, and PlanFlow process launch/PID check.

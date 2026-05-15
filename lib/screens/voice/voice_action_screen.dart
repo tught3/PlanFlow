@@ -1813,6 +1813,14 @@ class _VoiceCandidateSection extends StatelessWidget {
             ),
           ),
         ],
+        if (_isDelete && events.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _DeleteCandidateInlineActions(
+            events: events,
+            disabled: disabled,
+            onDelete: onDelete,
+          ),
+        ],
         const SizedBox(height: 8),
         if (isLoading)
           const Center(
@@ -2731,6 +2739,63 @@ class _DeleteSelectionBar extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DeleteCandidateInlineActions extends StatelessWidget {
+  const _DeleteCandidateInlineActions({
+    required this.events,
+    required this.disabled,
+    required this.onDelete,
+  });
+
+  final List<EventModel> events;
+  final bool disabled;
+  final void Function(EventModel event) onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Column(
+      key: const ValueKey('voice-delete-inline-actions'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < events.length; index += 1)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: OutlinedButton.icon(
+              key: ValueKey(
+                  'voice-delete-inline-button-$index-${events[index].id}'),
+              onPressed: disabled ? null : () => onDelete(events[index]),
+              icon: const Icon(Icons.delete_outline, size: 18),
+              label: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '${events[index].title} 삭제',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                alignment: Alignment.centerLeft,
+                foregroundColor: colorScheme.error,
+                side: BorderSide(
+                  color: colorScheme.error.withValues(alpha: 0.24),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 11,
+                ),
+                textStyle: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
