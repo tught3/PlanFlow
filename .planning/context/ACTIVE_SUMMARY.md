@@ -511,3 +511,11 @@
 - Added a stable key to the final delete confirmation button and updated tests to avoid ambiguous `삭제` label matching.
 - Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub lib/screens/voice/voice_action_screen.dart test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 test --no-pub test/screens/voice_action_screen_test.dart`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, and `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`.
 - ADB install succeeded and `adb shell pidof com.planflow.app` returned PID `13633`; `am start` returned Android error code 10 even though the app process was running.
+
+## 2026-05-15 Event Editor Visual Grouping Checkpoint
+- Reworked the shared `CalendarStyleEventEditor` used by voice confirmation and normal event editing so essential fields stay visible and less-used fields are collapsed by default.
+- Kept `기본 정보`, `날짜 · 시간`, and `장소` immediately visible, while `분류 · 반복`, `설명 · 준비`, and `알림 옵션` now show compact summaries and expand only when needed.
+- Added stronger section framing with PlanFlow colors and icons without changing the existing title/date/location save callbacks.
+- Added keyboard dismiss behavior for editor text fields, supplies, smart-prep inputs, and voice direct input; voice direct input still submits after dismissing the keyboard.
+- Worker/reviewer agents were used. The first reviewer caught a direct-input submit regression, it was fixed, and the follow-up reviewer returned PASS.
+- Verification passed: focused analyze, `./scripts/flutter-local.ps1 test --no-pub test/widgets/calendar_style_event_editor_test.dart test/screens/voice_input_screen_test.dart`, `./scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `4953`.

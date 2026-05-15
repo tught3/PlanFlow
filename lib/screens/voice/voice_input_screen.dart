@@ -847,8 +847,12 @@ class _VoiceTranscriptSection extends StatelessWidget {
               focusNode: focusNode,
               maxLines: 4,
               minLines: 2,
+              textInputAction: TextInputAction.done,
               decoration: const InputDecoration(hintText: '입력해주세요'),
-              onSubmitted: (_) => onManualSubmit(),
+              onSubmitted: (_) {
+                FocusScope.of(context).unfocus();
+                onManualSubmit();
+              },
             ),
             if (recognizedText != null) ...[
               const SizedBox(height: 6),

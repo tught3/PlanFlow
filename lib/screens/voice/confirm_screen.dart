@@ -2041,6 +2041,7 @@ class _SuppliesEditor extends StatelessWidget {
                   child: TextField(
                     controller: newSupplyController,
                     focusNode: newSupplyFocusNode,
+                    textInputAction: TextInputAction.done,
                     decoration: InputDecoration(
                       labelText: '준비물 추가',
                       hintText: '예: 물, 여권, 충전기',
@@ -2048,7 +2049,10 @@ class _SuppliesEditor extends StatelessWidget {
                       border: const OutlineInputBorder(),
                       errorText: errorText,
                     ),
-                    onSubmitted: (_) => onAdd(),
+                    onSubmitted: (_) {
+                      onAdd();
+                      FocusScope.of(context).unfocus();
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -2104,6 +2108,8 @@ class _SupplyInputRow extends StatelessWidget {
               child: TextField(
                 controller: draft.titleController,
                 focusNode: draft.focusNode,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => FocusScope.of(context).unfocus(),
                 style: theme.textTheme.bodyMedium,
                 decoration: const InputDecoration(
                   hintText: '준비물 입력',
@@ -2300,6 +2306,8 @@ class _PreActionEditorCard extends StatelessWidget {
             TextField(
               controller: draft.titleController,
               focusNode: draft.titleFocusNode,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => FocusScope.of(context).unfocus(),
               decoration: const InputDecoration(
                 labelText: '행동 이름',
                 hintText: '예: 준비물 다시 확인',
@@ -2310,6 +2318,8 @@ class _PreActionEditorCard extends StatelessWidget {
             TextField(
               controller: draft.offsetController,
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => FocusScope.of(context).unfocus(),
               decoration: const InputDecoration(
                 labelText: '몇 시간 전',
                 helperText: '예: 2는 시작 2시간 전',

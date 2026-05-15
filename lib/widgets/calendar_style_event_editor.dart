@@ -73,6 +73,9 @@ class CalendarStyleEventEditor extends StatefulWidget {
 
 class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
   CalendarDateTarget? _activeTarget;
+  bool _classificationExpanded = false;
+  bool _detailsExpanded = false;
+  bool _alarmExpanded = false;
 
   DateTime get _activeValue {
     if (_activeTarget == CalendarDateTarget.end) {
@@ -124,168 +127,225 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _SectionTitle(label: '기본 정보'),
-          const SizedBox(height: 10),
-          _CalendarHeader(color: categoryColor),
-          const SizedBox(height: 10),
-          TextFormField(
-            controller: widget.titleController,
-            validator: widget.titleValidator,
-            decoration: InputDecoration(
-              labelText: '제목',
-              helperText: widget.titleHelperText,
-              prefixIcon: Icon(Icons.circle, color: categoryColor, size: 16),
-              suffixIcon: const Icon(Icons.mood_outlined),
+          _EditorSection(
+            icon: Icons.event_note_outlined,
+            title: '기본 정보',
+            subtitle: '제목과 캘린더만 먼저 확인하세요.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _CalendarHeader(color: categoryColor),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: widget.titleController,
+                  validator: widget.titleValidator,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) =>
+                      FocusScope.of(context).unfocus(),
+                  decoration: InputDecoration(
+                    labelText: '제목',
+                    helperText: widget.titleHelperText,
+                    prefixIcon:
+                        Icon(Icons.circle, color: categoryColor, size: 16),
+                    suffixIcon: const Icon(Icons.mood_outlined),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 14),
-          const Divider(height: 20, thickness: 0.5),
-          const SizedBox(height: 2),
-          const _SectionTitle(label: '날짜 · 시간'),
-          const SizedBox(height: 8),
-          SwitchListTile.adaptive(
-            value: widget.isAllDay,
-            onChanged: widget.onAllDayChanged,
-            contentPadding: EdgeInsets.zero,
-            title: const Text('종일'),
-            secondary: const Icon(Icons.schedule_outlined),
+          const SizedBox(height: 10),
+          _EditorSection(
+            icon: Icons.schedule_outlined,
+            title: '날짜 · 시간',
+            subtitle: '시작/종료를 누르면 바로 아래에서 조정해요.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SwitchListTile.adaptive(
+                  value: widget.isAllDay,
+                  onChanged: widget.onAllDayChanged,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('종일'),
+                  secondary: const Icon(Icons.schedule_outlined),
+                ),
+                _DateRangeSummary(
+                  startAt: widget.startAt,
+                  endAt: widget.endAt,
+                  isAllDay: widget.isAllDay,
+                  activeTarget: _activeTarget,
+                  onStartTap: () => _toggleTarget(CalendarDateTarget.start),
+                  onEndTap: () => _toggleTarget(CalendarDateTarget.end),
+                ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: _activeTarget == null
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: _InlineDateTimeWheel(
+                            key: ValueKey(_activeTarget),
+                            value: _activeValue,
+                            isAllDay: widget.isAllDay,
+                            target: _activeTarget!,
+                            onChanged: _applyDateTime,
+                            onToday: _pickToday,
+                          ),
+                        ),
+                ),
+              ],
+            ),
           ),
-          _DateRangeSummary(
-            startAt: widget.startAt,
-            endAt: widget.endAt,
-            isAllDay: widget.isAllDay,
-            activeTarget: _activeTarget,
-            onStartTap: () => _toggleTarget(CalendarDateTarget.start),
-            onEndTap: () => _toggleTarget(CalendarDateTarget.end),
+          const SizedBox(height: 10),
+          _EditorSection(
+            icon: Icons.place_outlined,
+            title: '장소',
+            subtitle: '비어 있어도 지도 버튼으로 직접 위치를 고를 수 있어요.',
+            child: TextFormField(
+              controller: widget.locationController,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
+              decoration: InputDecoration(
+                labelText: '장소',
+                helperText: widget.locationHelperText,
+                prefixIcon: const Icon(Icons.place_outlined),
+                suffixIcon: IconButton(
+                  tooltip: '지도에서 위치 선택',
+                  onPressed:
+                      widget.isLookingUpLocation ? null : widget.onLocationPick,
+                  icon: widget.isLookingUpLocation
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.map_outlined),
+                ),
+              ),
+            ),
           ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: _activeTarget == null
-                ? const SizedBox.shrink()
-                : Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: _InlineDateTimeWheel(
-                      key: ValueKey(_activeTarget),
-                      value: _activeValue,
-                      isAllDay: widget.isAllDay,
-                      target: _activeTarget!,
-                      onChanged: _applyDateTime,
-                      onToday: _pickToday,
+          const SizedBox(height: 10),
+          _EditorSection(
+            icon: Icons.tune_outlined,
+            title: '분류 · 반복',
+            subtitle: '${widget.category} · ${_recurrenceSummary(widget.recurrence)}',
+            collapsible: true,
+            expanded: _classificationExpanded,
+            onExpansionChanged: (value) =>
+                setState(() => _classificationExpanded = value),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: PlanFlowEventCategories.values.map((category) {
+                    return ChoiceChip(
+                      label: Text(category),
+                      selected: widget.category == category,
+                      onSelected: (_) => widget.onCategoryChanged(category),
+                    );
+                  }).toList(growable: false),
+                ),
+                const SizedBox(height: 12),
+                RecurrenceSelector(
+                  value: widget.recurrence,
+                  onChanged: widget.onRecurrenceChanged,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          _EditorSection(
+            icon: Icons.notes_outlined,
+            title: '설명 · 준비',
+            subtitle: '메모, 준비물, 스마트 준비 알림은 필요할 때만 열어 수정하세요.',
+            collapsible: true,
+            expanded: _detailsExpanded,
+            onExpansionChanged: (value) =>
+                setState(() => _detailsExpanded = value),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextFormField(
+                  controller: widget.memoController,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) =>
+                      FocusScope.of(context).unfocus(),
+                  decoration: const InputDecoration(
+                    labelText: '설명',
+                    prefixIcon: Icon(Icons.notes_outlined),
+                    alignLabelWithHint: true,
+                  ),
+                  minLines: widget.memoMinLines,
+                  maxLines: widget.memoMaxLines,
+                ),
+                if (widget.extraAfterMemo != null) ...[
+                  const SizedBox(height: 12),
+                  widget.extraAfterMemo!,
+                ],
+                if (widget.extraAfterLocation != null) ...[
+                  const SizedBox(height: 12),
+                  widget.extraAfterLocation!,
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          _EditorSection(
+            icon: Icons.notifications_active_outlined,
+            title: '알림 옵션',
+            subtitle: _alarmSummary(
+              widget.reminderOffset,
+              isCritical: widget.isCritical,
+            ),
+            collapsible: true,
+            expanded: _alarmExpanded,
+            onExpansionChanged: (value) =>
+                setState(() => _alarmExpanded = value),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ReminderOffsetSelector(
+                  value: widget.reminderOffset,
+                  onChanged: widget.onReminderChanged,
+                  subtitle: '기본은 1시간 전입니다. 이 일정만 다르게 바꿀 수 있어요.',
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile.adaptive(
+                  tileColor: widget.isCritical
+                      ? const Color(0xFFFFE3DD)
+                      : PlanFlowColors.surfaceFaint,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(
+                      color: widget.isCritical
+                          ? const Color(0xFFB42318)
+                          : PlanFlowColors.primaryFaint,
+                      width: widget.isCritical ? 1.2 : 0.5,
                     ),
                   ),
-          ),
-          const SizedBox(height: 14),
-          const Divider(height: 20, thickness: 0.5),
-          const SizedBox(height: 2),
-          _SectionTitle(label: '분류'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: PlanFlowEventCategories.values.map((category) {
-              return ChoiceChip(
-                label: Text(category),
-                selected: widget.category == category,
-                onSelected: (_) => widget.onCategoryChanged(category),
-              );
-            }).toList(growable: false),
-          ),
-          const SizedBox(height: 12),
-          const Divider(height: 20, thickness: 0.5),
-          const SizedBox(height: 2),
-          _SectionTitle(label: '반복 / 장소'),
-          const SizedBox(height: 8),
-          RecurrenceSelector(
-            value: widget.recurrence,
-            onChanged: widget.onRecurrenceChanged,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: widget.locationController,
-            decoration: InputDecoration(
-              labelText: '장소',
-              helperText: widget.locationHelperText,
-              prefixIcon: const Icon(Icons.place_outlined),
-              suffixIcon: IconButton(
-                tooltip: '지도에서 위치 선택',
-                onPressed:
-                    widget.isLookingUpLocation ? null : widget.onLocationPick,
-                icon: widget.isLookingUpLocation
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.map_outlined),
-              ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  title: const Text('강한 알림으로 예약'),
+                  subtitle: const Text(
+                    '정확한 알람, 강한 진동, 전체 화면 알림을 시도합니다. 무음·방해금지 우회는 Android 정책상 보장되지 않아요.',
+                  ),
+                  secondary: Icon(
+                    widget.isCritical
+                        ? Icons.priority_high_rounded
+                        : Icons.notifications_active_outlined,
+                    color: widget.isCritical
+                        ? const Color(0xFFB42318)
+                        : PlanFlowColors.textSecondary,
+                  ),
+                  activeThumbColor: const Color(0xFFB42318),
+                  activeTrackColor: const Color(0xFFFFC9BE),
+                  value: widget.isCritical,
+                  onChanged: widget.onCriticalChanged,
+                ),
+              ],
             ),
-          ),
-          if (widget.extraAfterLocation != null) ...[
-            const SizedBox(height: 12),
-            widget.extraAfterLocation!,
-          ],
-          const SizedBox(height: 12),
-          const Divider(height: 20, thickness: 0.5),
-          const SizedBox(height: 2),
-          _SectionTitle(label: '설명'),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: widget.memoController,
-            decoration: const InputDecoration(
-              labelText: '설명',
-              prefixIcon: Icon(Icons.notes_outlined),
-              alignLabelWithHint: true,
-            ),
-            minLines: widget.memoMinLines,
-            maxLines: widget.memoMaxLines,
-          ),
-          if (widget.extraAfterMemo != null) ...[
-            const SizedBox(height: 12),
-            widget.extraAfterMemo!,
-          ],
-          const SizedBox(height: 12),
-          const Divider(height: 20, thickness: 0.5),
-          const SizedBox(height: 2),
-          _SectionTitle(label: '알림'),
-          const SizedBox(height: 8),
-          ReminderOffsetSelector(
-            value: widget.reminderOffset,
-            onChanged: widget.onReminderChanged,
-            subtitle: '기본은 1시간 전입니다. 이 일정만 다르게 바꿀 수 있어요.',
-          ),
-          const SizedBox(height: 12),
-          SwitchListTile.adaptive(
-            tileColor: widget.isCritical
-                ? const Color(0xFFFFE3DD)
-                : PlanFlowColors.surfaceFaint,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: BorderSide(
-                color: widget.isCritical
-                    ? const Color(0xFFB42318)
-                    : PlanFlowColors.primaryFaint,
-                width: widget.isCritical ? 1.2 : 0.5,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 4,
-            ),
-            title: const Text('강한 알림으로 예약'),
-            subtitle: const Text(
-              '일반 알림보다 정확한 알람, 강한 진동, 전체 화면 알림을 시도합니다. 다만 무음·방해금지 우회는 Android 정책상 보장되지 않아요.',
-            ),
-            secondary: Icon(
-              widget.isCritical
-                  ? Icons.priority_high_rounded
-                  : Icons.notifications_active_outlined,
-              color: widget.isCritical
-                  ? const Color(0xFFB42318)
-                  : PlanFlowColors.textSecondary,
-            ),
-            activeThumbColor: const Color(0xFFB42318),
-            activeTrackColor: const Color(0xFFFFC9BE),
-            value: widget.isCritical,
-            onChanged: widget.onCriticalChanged,
           ),
         ],
       ),
@@ -293,21 +353,142 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.label});
+class _EditorSection extends StatelessWidget {
+  const _EditorSection({
+    required this.icon,
+    required this.title,
+    required this.child,
+    this.subtitle,
+    this.collapsible = false,
+    this.expanded = true,
+    this.onExpansionChanged,
+  });
 
-  final String label;
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget child;
+  final bool collapsible;
+  final bool expanded;
+  final ValueChanged<bool>? onExpansionChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      label,
-      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            color: PlanFlowColors.primary,
-            fontWeight: FontWeight.w700,
+    final theme = Theme.of(context);
+    final body = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 160),
+      child: expanded
+          ? Padding(
+              key: const ValueKey('expanded'),
+              padding: const EdgeInsets.only(top: 12),
+              child: child,
+            )
+          : const SizedBox.shrink(key: ValueKey('collapsed')),
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: collapsible && !expanded
+            ? PlanFlowColors.surface
+            : PlanFlowColors.surfaceFaint,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: collapsible && !expanded
+              ? PlanFlowColors.primaryFaint
+              : PlanFlowColors.primaryLight.withValues(alpha: 0.45),
+          width: collapsible && !expanded ? 0.5 : 0.8,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: collapsible
+                ? () => onExpansionChanged?.call(!expanded)
+                : null,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: PlanFlowColors.primaryFaint,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 18, color: PlanFlowColors.primary),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: PlanFlowColors.primary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (collapsible)
+                  Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: PlanFlowColors.textSecondary,
+                  ),
+              ],
+            ),
           ),
+          body,
+        ],
+      ),
     );
   }
+}
+
+String _recurrenceSummary(RecurrenceSelection value) {
+  if (value.isNone) {
+    return '반복 안 함';
+  }
+  return switch (value.frequency) {
+    'daily' => '매일 반복',
+    'weekly' => '매주 반복',
+    'monthly' => '매월 반복',
+    'yearly' => '매년 반복',
+    _ => '반복 안 함',
+  };
+}
+
+String _alarmSummary(Duration? offset, {required bool isCritical}) {
+  final minutes = offset?.inMinutes;
+  final reminder = switch (minutes) {
+    null => '알림 없음',
+    0 => '정시 알림',
+    10 => '10분 전',
+    30 => '30분 전',
+    60 => '1시간 전',
+    120 => '2시간 전',
+    _ when minutes % 60 == 0 => '${minutes ~/ 60}시간 전',
+    _ => '$minutes분 전',
+  };
+  return isCritical ? '$reminder · 강한 알림' : reminder;
 }
 
 class _CalendarHeader extends StatelessWidget {

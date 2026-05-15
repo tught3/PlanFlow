@@ -162,6 +162,39 @@ void main() {
 
     expect(find.text('서울 (GMT+9:00)'), findsNothing);
   });
+
+  testWidgets('less-used editor sections start collapsed and expand on tap',
+      (tester) async {
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 5, 13, 9),
+        endAt: DateTime(2026, 5, 13, 10),
+      ),
+    );
+
+    expect(find.text('장소'), findsWidgets);
+    expect(find.textContaining('반복 안 함'), findsOneWidget);
+    expect(find.text('일정 알림'), findsNothing);
+    expect(find.widgetWithText(TextFormField, '설명'), findsNothing);
+
+    await tester.tap(find.text('분류 · 반복'));
+    await tester.pumpAndSettle();
+    expect(find.text('업무'), findsWidgets);
+    expect(find.text('반복'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('설명 · 준비'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('설명 · 준비'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextFormField, '설명'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('알림 옵션'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('알림 옵션'));
+    await tester.pumpAndSettle();
+    expect(find.text('일정 알림'), findsOneWidget);
+    expect(find.text('강한 알림으로 예약'), findsOneWidget);
+  });
 }
 
 class _TestHost extends StatelessWidget {

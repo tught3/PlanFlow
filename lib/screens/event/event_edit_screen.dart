@@ -865,6 +865,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   onLocationPick: _pickLocationOnMap,
                   extraAfterMemo: TextFormField(
                     controller: _suppliesController,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) =>
+                        FocusScope.of(context).unfocus(),
                     decoration: const InputDecoration(
                       labelText: '준비물',
                       helperText: '쉼표로 구분해서 입력해 주세요.',
