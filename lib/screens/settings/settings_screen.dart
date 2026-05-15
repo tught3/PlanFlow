@@ -134,8 +134,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isNaverCalDavProgressDialogOpen = false;
 
   String? get _userId => widget._userId ?? authProvider.userId;
-  bool get _isFeedbackAdmin =>
-      authProvider.email?.trim().toLowerCase() == feedbackAdminEmail;
+  bool get _isFeedbackAdmin {
+    final email = authProvider.email?.trim().toLowerCase();
+    return email != null && feedbackAdminEmails.contains(email);
+  }
 
   @override
   void initState() {

@@ -547,3 +547,9 @@
 - Added `feedbackAdminEmail = tught3@naver.com` and changed Settings admin-inbox visibility to use that account.
 - Updated Supabase feedback report admin RLS policies in `schema.sql` and `feedback_reports_patch.sql` so only `tught3@naver.com` can select all reports and update report status.
 - Verification passed: focused analyze, feedback sheet widget tests, `git diff --check`, debug APK build, ADB install, app launch, and PID check returned `26626`.
+
+## 2026-05-15 Admin Gmail And Naver CalDAV Account Isolation Checkpoint
+- Added `tught3@gmail.com` to the feedback admin account allow-list while keeping `officialfluxstudio.kr@gmail.com` as the public support email and `tught3@naver.com` as another private admin login.
+- Updated `supabase/schema.sql` and `supabase/feedback_reports_patch.sql` feedback admin RLS policies so both private admin emails can select all feedback reports and update report status after the SQL patch is applied.
+- Fixed Naver CalDAV local credential caching so `FlutterSecureStorage` keys are scoped by the current Supabase user id. This prevents one PlanFlow login account from seeing or migrating another account's Naver ID/app-password cache.
+- Verification passed: focused analyze for settings/feedback/Naver CalDAV files, focused Naver credential and feedback sheet tests, `git diff --check`, debug APK build, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `22203`.

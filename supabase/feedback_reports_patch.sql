@@ -74,8 +74,10 @@ create policy "feedback_reports_select_admin"
   on public.feedback_reports
   for select
   using (
-    lower(coalesce(auth.jwt() ->> 'email', '')) =
-      'tught3@naver.com'
+    lower(coalesce(auth.jwt() ->> 'email', '')) in (
+      'tught3@naver.com',
+      'tught3@gmail.com'
+    )
   );
 
 create policy "feedback_reports_insert_own"
@@ -87,10 +89,14 @@ create policy "feedback_reports_update_status_admin"
   on public.feedback_reports
   for update
   using (
-    lower(coalesce(auth.jwt() ->> 'email', '')) =
-      'tught3@naver.com'
+    lower(coalesce(auth.jwt() ->> 'email', '')) in (
+      'tught3@naver.com',
+      'tught3@gmail.com'
+    )
   )
   with check (
-    lower(coalesce(auth.jwt() ->> 'email', '')) =
-      'tught3@naver.com'
+    lower(coalesce(auth.jwt() ->> 'email', '')) in (
+      'tught3@naver.com',
+      'tught3@gmail.com'
+    )
   );

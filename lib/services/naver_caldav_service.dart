@@ -385,17 +385,29 @@ class NaverCalDavCredentials {
 class LocalNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
   const LocalNaverCalDavCredentialStore({
     FlutterSecureStorage storage = const FlutterSecureStorage(),
-  }) : _storage = storage;
+    String? Function()? currentUserId,
+    bool requireUserScopedKey = false,
+  })  : _storage = storage,
+        _currentUserId = currentUserId,
+        _requireUserScopedKey = requireUserScopedKey;
 
   static const String _idKey = 'naver_caldav_id';
   static const String _passwordKey = 'naver_caldav_app_password';
 
   final FlutterSecureStorage _storage;
+  final String? Function()? _currentUserId;
+  final bool _requireUserScopedKey;
 
   @override
   Future<NaverCalDavCredentials?> readCredentials() async {
-    final id = await _storage.read(key: _idKey);
-    final password = await _storage.read(key: _passwordKey);
+    final idKey = _scopedKey(_idKey);
+    final passwordKey = _scopedKey(_passwordKey);
+    if (idKey == null || passwordKey == null) {
+      return null;
+    }
+
+    final id = await _storage.read(key: idKey);
+    final password = await _storage.read(key: passwordKey);
     if (id == null ||
         id.trim().isEmpty ||
         password == null ||
@@ -413,14 +425,34 @@ class LocalNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
     required String naverId,
     required String appPassword,
   }) async {
-    await _storage.write(key: _idKey, value: naverId);
-    await _storage.write(key: _passwordKey, value: appPassword);
+    final idKey = _scopedKey(_idKey);
+    final passwordKey = _scopedKey(_passwordKey);
+    if (idKey == null || passwordKey == null) {
+      return;
+    }
+
+    await _storage.write(key: idKey, value: naverId);
+    await _storage.write(key: passwordKey, value: appPassword);
   }
 
   @override
   Future<void> clearCredentials() async {
-    await _storage.delete(key: _idKey);
-    await _storage.delete(key: _passwordKey);
+    final idKey = _scopedKey(_idKey);
+    final passwordKey = _scopedKey(_passwordKey);
+    if (idKey == null || passwordKey == null) {
+      return;
+    }
+
+    await _storage.delete(key: idKey);
+    await _storage.delete(key: passwordKey);
+  }
+
+  String? _scopedKey(String key) {
+    final rawUserId = _currentUserId?.call()?.trim();
+    if (rawUserId == null || rawUserId.isEmpty) {
+      return _requireUserScopedKey ? null : key;
+    }
+    return '$key:$rawUserId';
   }
 }
 
@@ -616,12 +648,17 @@ class NaverCalDavService {
   static NaverCalDavCredentialStore _defaultCredentialStore(
     SupabaseClient? client,
   ) {
-    final localStore = const LocalNaverCalDavCredentialStore();
+    final resolvedClient = client ??
+        (AppEnv.isSupabaseReady ? Supabase.instance.client : null);
+    final localStore = LocalNaverCalDavCredentialStore(
+      currentUserId: () => resolvedClient?.auth.currentUser?.id,
+      requireUserScopedKey: resolvedClient != null,
+    );
     if (!AppEnv.isSupabaseReady && client == null) {
       return localStore;
     }
     return CompositeNaverCalDavCredentialStore(
-      remoteStore: SupabaseNaverCalDavCredentialStore(client: client),
+      remoteStore: SupabaseNaverCalDavCredentialStore(client: resolvedClient),
       localStore: localStore,
     );
   }
