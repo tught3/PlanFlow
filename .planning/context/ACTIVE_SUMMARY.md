@@ -553,3 +553,7 @@
 - Updated `supabase/schema.sql` and `supabase/feedback_reports_patch.sql` feedback admin RLS policies so both private admin emails can select all feedback reports and update report status after the SQL patch is applied.
 - Fixed Naver CalDAV local credential caching so `FlutterSecureStorage` keys are scoped by the current Supabase user id. This prevents one PlanFlow login account from seeing or migrating another account's Naver ID/app-password cache.
 - Verification passed: focused analyze for settings/feedback/Naver CalDAV files, focused Naver credential and feedback sheet tests, `git diff --check`, debug APK build, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `22203`.
+
+## 2026-05-15 Naver CalDAV App Password Visibility Checkpoint
+- Changed the Naver CalDAV connection dialog so the `앱 비밀번호` field is visible while typing instead of being masked, because this is an app-specific password and visibility reduces input mistakes.
+- Verification passed: focused settings screen analyze, `git diff --check`, debug APK build, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app` returned PID `28597`.

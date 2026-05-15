@@ -1269,7 +1269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         labelText: '앱 비밀번호',
                         hintText: '네이버 보안설정에서 발급한 비밀번호',
                       ),
-                      obscureText: true,
+                      obscureText: false,
                       textInputAction: TextInputAction.done,
                       scrollPadding: const EdgeInsets.only(bottom: 96),
                       onTap: () => ensureVisible(passwordKey),
