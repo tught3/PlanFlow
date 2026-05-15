@@ -88,6 +88,69 @@ void main() {
       expect(budget.usedAiRequests, 1);
     });
 
+    test('normalizes monthly recurrence, location, and explicit memo cues',
+        () async {
+      late Map<String, dynamic> body;
+
+      final client = MockClient((request) async {
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'normalized_text': '우리회사에서 매월 월례 조회 메모에 주차장 B2 확인',
+                    'intent': 'add',
+                    'confidence': 0.93,
+                    'uncertain_fields': <String>['start_at'],
+                    'schedule_fields': <String, dynamic>{
+                      'title': '우리회사에서 매월 월례 조회',
+                      'location': null,
+                      'memo': null,
+                      'recurrence_rule': null,
+                      'supplies': <String>[],
+                      'pre_actions': <Map<String, dynamic>>[],
+                    },
+                    'requested_changes': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = VoiceCommandAnalysisService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 7, 9, 0),
+      );
+
+      final result = await service.analyze(
+        '우리회사에서 매월 월례 조회 메모에 주차장 B2 확인',
+        stage: VoiceCommandAnalysisStage.complete,
+        budget: VoiceAnalysisRequestBudget(maxAiRequests: 2),
+      );
+
+      final parsed = result.toParsedScheduleMap();
+      expect(body['model'], 'gpt-4o-mini');
+      expect(result.method, VoiceCommandAnalysisMethod.ai);
+      expect(result.scheduleFields['title'], '월례 조회');
+      expect(result.scheduleFields['location'], '우리회사');
+      expect(result.scheduleFields['memo'], '주차장 B2 확인');
+      expect(result.scheduleFields['recurrence_rule'], 'FREQ=MONTHLY');
+      expect(parsed['title'], '월례 조회');
+      expect(parsed['location'], '우리회사');
+      expect(parsed['memo'], '주차장 B2 확인');
+      expect(parsed['recurrence_rule'], 'FREQ=MONTHLY');
+    });
+
     test('falls back to local analysis when the budget is exhausted', () async {
       var requestCount = 0;
 

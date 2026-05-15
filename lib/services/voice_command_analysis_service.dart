@@ -535,28 +535,37 @@ class VoiceCommandAnalysisService {
         gpt.inferStartAtFromRawText(normalizedText) ??
         gpt.inferStartAtFromRawText(rawText) ??
         _parseDateTime(fallback?.scheduleFields['start_at']);
-    final title = _normalizeText(
-      source['title']?.toString(),
-      _deriveLocalTitle(normalizedText),
-    );
+    final titleSource = _stripExplicitMemoClause(normalizedText);
+    final sourceTitle = _normalizeText(source['title']?.toString(), null);
+    final title = sourceTitle.isNotEmpty
+        ? _deriveLocalTitle(sourceTitle)
+        : _deriveLocalTitle(titleSource);
+    final normalizedLocationText =
+        _normalizeText(source['location']?.toString(), null);
+    final inferredLocation = normalizedLocationText.isNotEmpty
+        ? normalizedLocationText
+        : _extractLeadingLocation(titleSource) ??
+            _extractLeadingLocation(title);
 
     return <String, dynamic>{
-      'title': title.isEmpty ? normalizedText : title,
+      'title': title.isEmpty ? titleSource : title,
       'date': source['date'],
       'start_at': inferredStartAt?.toIso8601String(),
       'end_at': _normalizeDateTime(source['end_at'])?.toIso8601String(),
-      'location': _normalizeText(source['location']?.toString(), null),
+      'location': inferredLocation == null
+          ? null
+          : _normalizeSpacingForSchedule(inferredLocation),
       'location_lat': _doubleValue(source['location_lat']),
       'location_lng': _doubleValue(source['location_lng']),
       'travel_origin_lat': _doubleValue(source['travel_origin_lat']),
       'travel_origin_lng': _doubleValue(source['travel_origin_lng']),
       'travel_mode': _normalizeText(source['travel_mode']?.toString(), null),
-      'memo': _normalizeText(source['memo']?.toString(), null),
+      'memo': _extractExplicitMemo(rawText),
       'supplies': _normalizeStringList(source['supplies']),
       'is_critical': source['is_critical'] == true,
       'recurrence_rule': _normalizeText(
         source['recurrence_rule']?.toString(),
-        null,
+        _inferLocalRecurrence(titleSource),
       ),
       'is_all_day': source['is_all_day'] == true,
       'is_multi_day': source['is_multi_day'] == true,
@@ -704,12 +713,16 @@ class VoiceCommandAnalysisService {
   }
 
   String _deriveLocalTitle(String text) {
-    var title = _normalizeText(text, '');
+    var title = _normalizeText(_stripExplicitMemoClause(text), '');
     title = title
         .replaceAll(
           RegExp(
             r'(추가|등록|기록|메모|예약|만들어|해줘|해주세요|바꿔|수정|변경|삭제|지워|찾아|검색|알려|이동)',
           ),
+          ' ',
+        )
+        .replaceAll(
+          RegExp(r'(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'),
           ' ',
         )
         .replaceAll(RegExp(r'(선택|이걸로|이거|그걸로|골라|첫번째|두번째|셋째)'), ' ')
@@ -728,7 +741,222 @@ class VoiceCommandAnalysisService {
         .replaceAll(RegExp(r'(오늘|내일|모레|글피|이번주|다음주|매주|격주|매월|매년)'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    return title.isEmpty ? _normalizeText(text, '') : title;
+    title = _stripLeadingLocationPhrase(title);
+    return title.isEmpty
+        ? _normalizeText(_stripExplicitMemoClause(text), '')
+        : title;
+  }
+
+  String? _extractExplicitMemo(String rawText) {
+    final source = _normalizeText(rawText, '');
+    final match = RegExp(
+      r'(?:메모에|설명에|노트로)\s*[:：]?\s*(.+)$',
+    ).firstMatch(source);
+    if (match == null) {
+      return null;
+    }
+
+    final memo = match.group(1)?.trim();
+    if (memo == null || memo.isEmpty) {
+      return null;
+    }
+
+    final cleaned = _normalizeText(memo, '');
+    final stripped = _stripExplicitMemoClause(cleaned);
+    final normalized = _normalizeSpacingForSchedule(
+      _stripScheduleNoise(stripped),
+    );
+    if (normalized.isEmpty || _looksLikeOnlyScheduleMetadata(normalized)) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  String _stripExplicitMemoClause(String text) {
+    return text
+        .replaceFirst(
+          RegExp(r'\s*(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'),
+          ' ',
+        )
+        .trim();
+  }
+
+  String _stripScheduleNoise(String text) {
+    var cleaned = text.replaceAll(RegExp(r'[\(\)\[\]{}]'), ' ');
+    final patterns = <RegExp>[
+      RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
+      RegExp(r'(?:오늘|내일|모레|글피)'),
+      RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
+      RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
+      RegExp(r'\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따)'),
+      RegExp(r'(?:매주|매월|매년|격주|매일)'),
+      RegExp(r'(?:반복|알림|리마인더|알람|reminder)'),
+      RegExp(r'(?:부터|까지|동안|정각|정도|쯤|경|예정|예약)'),
+      RegExp(r'(?:열두시반|열한시반|열시반|한시반|두시반|세시반|네시반)'),
+    ];
+    for (final pattern in patterns) {
+      cleaned = cleaned.replaceAll(pattern, ' ');
+    }
+    cleaned = cleaned
+        .replaceAll(RegExp(r'^\s*(?:에|로|으로)\s+'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return _normalizeSpacingForSchedule(cleaned);
+  }
+
+  bool _looksLikeOnlyScheduleMetadata(String text) {
+    return RegExp(
+      r'^(?:오늘|내일|모레|글피|오전|오후|아침|점심|저녁|밤|새벽|매주|매월|매년|격주|반복|알림|리마인더|알람|\d{1,2}\s*시|\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따))*$',
+    ).hasMatch(text.replaceAll(RegExp(r'\s+'), ''));
+  }
+
+  String _normalizeSpacingForSchedule(String text) {
+    final compact = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.isEmpty) {
+      return compact;
+    }
+
+    final spaced = compact.replaceAllMapped(
+      RegExp(
+        r'([가-힣A-Za-z0-9·.]{2,}?)(출발|도착|미팅|회의|방문|진료|검진|약속|모임|식사|수업|강의|운동|여행|병문안|상담|출근|퇴근|발표|면접|예약)$',
+      ),
+      (match) {
+        final head = match.group(1);
+        final tail = match.group(2);
+        if (head == null || tail == null) {
+          return match.group(0) ?? '';
+        }
+        return '$head $tail';
+      },
+    );
+    return spaced.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  String? _extractLeadingLocation(String text) {
+    final match = RegExp(
+      r'^([가-힣A-Za-z0-9·.]{2,})\s*(?:에서|에|로|으로)\s+(.+)$',
+    ).firstMatch(text.trim());
+    if (match == null) {
+      return null;
+    }
+
+    final location = match.group(1)?.trim();
+    final remainder = match.group(2)?.trim();
+    if (location == null ||
+        location.isEmpty ||
+        remainder == null ||
+        remainder.isEmpty) {
+      return null;
+    }
+
+    return location;
+  }
+
+  String _stripLeadingLocationPhrase(String text) {
+    final match = RegExp(
+      r'^[가-힣A-Za-z0-9·.]{2,}\s*(?:에서|에|로|으로)\s+(.+)$',
+    ).firstMatch(text.trim());
+    if (match == null) {
+      return text.trim();
+    }
+
+    final remainder = match.group(1)?.trim();
+    if (remainder == null || remainder.isEmpty) {
+      return text.trim();
+    }
+
+    return remainder;
+  }
+
+  String? _inferLocalRecurrence(String text) {
+    final normalized = _normalizeText(text, '');
+    final weekday = _weekdayRRuleToken(normalized);
+
+    if (normalized.contains('격주')) {
+      return 'FREQ=WEEKLY;INTERVAL=2${weekday == null ? '' : ';BYDAY=$weekday'}';
+    }
+    if (normalized.contains('매주')) {
+      return 'FREQ=WEEKLY${weekday == null ? '' : ';BYDAY=$weekday'}';
+    }
+
+    final monthlyOrdinal = RegExp(
+      r'매월\s*(첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*([월화수목금토일])요일',
+    ).firstMatch(normalized);
+    if (monthlyOrdinal != null) {
+      final ordinal = switch (monthlyOrdinal.group(1)?.replaceAll(' ', '')) {
+        '첫번째' || '첫째' => '1',
+        '두번째' || '둘째' => '2',
+        '세번째' || '셋째' => '3',
+        '네번째' || '넷째' => '4',
+        '마지막' => '-1',
+        _ => '1',
+      };
+      final day = _weekdayShortToken(monthlyOrdinal.group(2));
+      if (day != null) {
+        return 'FREQ=MONTHLY;BYDAY=$ordinal$day';
+      }
+    }
+
+    final monthlyDay = RegExp(r'매월\s*(\d{1,2})일').firstMatch(normalized);
+    if (monthlyDay != null) {
+      return 'FREQ=MONTHLY;BYMONTHDAY=${monthlyDay.group(1)}';
+    }
+
+    if (normalized.contains('매월')) {
+      return 'FREQ=MONTHLY';
+    }
+
+    final yearly =
+        RegExp(r'매년\s*(\d{1,2})월\s*(\d{1,2})일').firstMatch(normalized);
+    if (yearly != null) {
+      return 'FREQ=YEARLY;BYMONTH=${yearly.group(1)};BYMONTHDAY=${yearly.group(2)}';
+    }
+
+    if (normalized.contains('매년')) {
+      return 'FREQ=YEARLY';
+    }
+
+    final custom =
+        RegExp(r'(\d{1,2})\s*(일|주|개월|달|월|년)\s*마다').firstMatch(normalized);
+    if (custom != null) {
+      final interval = custom.group(1);
+      final unit = custom.group(2);
+      final freq = switch (unit) {
+        '일' => 'DAILY',
+        '주' => 'WEEKLY',
+        '개월' || '달' || '월' => 'MONTHLY',
+        '년' => 'YEARLY',
+        _ => null,
+      };
+      if (freq != null && interval != null) {
+        return 'FREQ=$freq;INTERVAL=$interval';
+      }
+    }
+
+    return null;
+  }
+
+  String? _weekdayRRuleToken(String text) {
+    final match = RegExp(r'([월화수목금토일])요일').firstMatch(text);
+    if (match == null) {
+      return null;
+    }
+
+    return _weekdayShortToken(match.group(1));
+  }
+
+  String? _weekdayShortToken(String? weekday) {
+    return switch (weekday) {
+      '월' => 'MO',
+      '화' => 'TU',
+      '수' => 'WE',
+      '목' => 'TH',
+      '금' => 'FR',
+      '토' => 'SA',
+      '일' => 'SU',
+      _ => null,
+    };
   }
 
   String _normalizeCategory(String category) {
