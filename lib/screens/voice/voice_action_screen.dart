@@ -1634,15 +1634,16 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final title = _actionTitle();
     final description = _actionDescription();
-    final selectedDeleteCount = _selectedDeleteEventIds.length;
     final candidateSnapshot = _candidateLoadSnapshot;
     final visibleEvents =
         candidateSnapshot?.events ?? List<EventModel>.of(_events);
     final visibleDiagnostics =
         candidateSnapshot?.diagnostics ?? _candidateLoadDiagnostics;
+    final queryDayGroups = !_isAdd && _isQuery
+        ? _buildQueryTimeline(visibleEvents)
+        : const <_QueryDayGroup>[];
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -1674,110 +1675,262 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                 ),
                 const SizedBox(height: 12),
               ],
-              if (_isLoading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              else if (!_isAdd && visibleEvents.isEmpty)
-                _EmptyCard(
-                  message: _message ??
-                      '대상 일정을 찾지 못했어요. 캘린더 동기화 상태를 확인하거나 다시 말해 주세요.',
+              if (!_isAdd)
+                _VoiceCandidateSection(
+                  action: _selectedAction,
+                  isLoading: _isLoading,
+                  events: visibleEvents,
+                  diagnostics: visibleDiagnostics,
+                  message: _message,
                   rawText: _normalizedRawText,
-                  showRecoveryActions: !_isAdd,
-                  diagnosticsText: visibleDiagnostics?.toDisplayText(),
+                  querySummary: _querySummaryText(visibleEvents),
+                  queryRangeLabel: _queryRangeLabel(_normalizedRawText),
+                  queryDayGroups: queryDayGroups,
+                  selectedDeleteCount: _selectedDeleteEventIds.length,
+                  selectedDeleteEventIds: _selectedDeleteEventIds,
+                  disabled: _isDeleting || _isSaving,
+                  actionLabel: _candidateActionLabel(),
+                  actionIcon: _candidateActionIcon(),
                   onAdd: _openAddConfirm,
                   onRetryVoice: () => context.go(AppRoutes.voice),
                   onOpenCalendar: () => context.go(AppRoutes.calendar),
                   onRetrySync: _syncAndReloadCandidates,
-                )
-              // add 모드가 아니고 이벤트가 있을 때만 후보 목록 섹션 표시
-              else if (!_isAdd) ...[
-                Text(
-                  _isQuery ? '단순 조회 결과' : '대상 일정',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: PlanFlowColors.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  onOpenQueryResult: _openQueryResult,
+                  onOpenEdit: _openEdit,
+                  onApplyAndSave: _applyAndSave,
+                  onDeleteSelected: _confirmSelectedDelete,
+                  onToggleDeleteSelection: _toggleDeleteSelection,
+                  onDelete: _confirmDelete,
+                  buildChangePreviewText: _buildChangePreviewText,
                 ),
-                if (visibleDiagnostics != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    visibleDiagnostics.displayedCount > 0 &&
-                            visibleDiagnostics.targetQuery.isNotEmpty
-                        ? '${visibleDiagnostics.displayedCount}개 후보 · 검색어: ${visibleDiagnostics.targetQuery}'
-                        : '${visibleDiagnostics.displayedCount}개 후보',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                if (_isQuery) ...[
-                  _QueryOverviewCard(
-                    summary: _querySummaryText(visibleEvents),
-                    rangeLabel: _queryRangeLabel(_normalizedRawText),
-                  ),
-                  const SizedBox(height: 12),
-                  ..._buildQueryTimeline(visibleEvents).map(
-                    (dayGroup) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _QueryDayGroupCard(
-                        dayGroup: dayGroup,
-                        actionLabel: _candidateActionLabel(),
-                        actionIcon: _candidateActionIcon(),
-                        isDanger: _isDelete,
-                        disabled: _isDeleting,
-                        onTapEvent: (event) => _openQueryResult(event),
-                      ),
-                    ),
-                  ),
-                ] else if (_isDelete) ...[
-                  _DeleteCandidateList(
-                    events: visibleEvents,
-                    selectedCount: selectedDeleteCount,
-                    selectedEventIds: _selectedDeleteEventIds,
-                    disabled: _isDeleting || _isSaving,
-                    onDeleteSelected: _confirmSelectedDelete,
-                    onSelectionChanged: _toggleDeleteSelection,
-                    onDelete: _confirmDelete,
-                  ),
-                ] else ...[
-                  ...visibleEvents.map((event) {
-                    final changePreview =
-                        _isEdit ? _buildChangePreviewText(event) : null;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _EventCandidateCard(
-                        event: event,
-                        actionLabel: _candidateActionLabel(),
-                        actionIcon: _candidateActionIcon(),
-                        isDanger: _isDelete,
-                        disabled: _isDeleting || _isSaving,
-                        isSelected: _selectedDeleteEventIds.contains(event.id),
-                        onSelectionChanged: _isDelete
-                            ? (selected) =>
-                                _toggleDeleteSelection(event, selected)
-                            : null,
-                        onTap: () => _isDelete
-                            ? _confirmDelete(event)
-                            : _isEdit
-                                ? _openEdit(event)
-                                : _openQueryResult(event),
-                        changePreviewText: changePreview,
-                        onDirectApply: (_isEdit && changePreview != null)
-                            ? () => _applyAndSave(event)
-                            : null,
-                      ),
-                    );
-                  }),
-                ],
-              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _VoiceCandidateSection extends StatelessWidget {
+  const _VoiceCandidateSection({
+    required this.action,
+    required this.isLoading,
+    required this.events,
+    required this.rawText,
+    required this.querySummary,
+    required this.queryRangeLabel,
+    required this.queryDayGroups,
+    required this.selectedDeleteCount,
+    required this.selectedDeleteEventIds,
+    required this.disabled,
+    required this.actionLabel,
+    required this.actionIcon,
+    required this.onAdd,
+    required this.onRetryVoice,
+    required this.onOpenCalendar,
+    required this.onRetrySync,
+    required this.onOpenQueryResult,
+    required this.onOpenEdit,
+    required this.onApplyAndSave,
+    required this.onDeleteSelected,
+    required this.onToggleDeleteSelection,
+    required this.onDelete,
+    required this.buildChangePreviewText,
+    this.diagnostics,
+    this.message,
+  });
+
+  final VoiceScheduleAction action;
+  final bool isLoading;
+  final List<EventModel> events;
+  final _CandidateLoadDiagnostics? diagnostics;
+  final String? message;
+  final String rawText;
+  final String querySummary;
+  final String queryRangeLabel;
+  final List<_QueryDayGroup> queryDayGroups;
+  final int selectedDeleteCount;
+  final Set<String> selectedDeleteEventIds;
+  final bool disabled;
+  final String actionLabel;
+  final IconData actionIcon;
+  final VoidCallback onAdd;
+  final VoidCallback onRetryVoice;
+  final VoidCallback onOpenCalendar;
+  final Future<void> Function() onRetrySync;
+  final void Function(EventModel event) onOpenQueryResult;
+  final void Function(EventModel event) onOpenEdit;
+  final void Function(EventModel event) onApplyAndSave;
+  final VoidCallback onDeleteSelected;
+  final void Function(EventModel event, bool selected) onToggleDeleteSelection;
+  final void Function(EventModel event) onDelete;
+  final String? Function(EventModel event) buildChangePreviewText;
+
+  bool get _isQuery => action == VoiceScheduleAction.query;
+  bool get _isDelete => action == VoiceScheduleAction.delete;
+  bool get _isEdit => action == VoiceScheduleAction.edit;
+
+  String get _title => _isQuery ? '단순 조회 결과' : '대상 일정';
+
+  String? get _candidateCountText {
+    final count = events.length;
+    final targetQuery = diagnostics?.targetQuery.trim() ?? '';
+    if (diagnostics == null && count == 0) {
+      return null;
+    }
+    if (count > 0 && targetQuery.isNotEmpty) {
+      return '$count개 후보 · 검색어: $targetQuery';
+    }
+    return '$count개 후보';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    debugPrint(
+      'VoiceActionScreen candidate section build: action=${action.name} '
+      'loading=$isLoading events=${events.length} '
+      'diagnostics=${diagnostics?.toLogLine() ?? '(none)'}',
+    );
+
+    return Column(
+      key: const ValueKey('voice-target-events-section'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: PlanFlowColors.primary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        if (_candidateCountText != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            _candidateCountText!,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: PlanFlowColors.textSecondary,
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+        if (isLoading)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (events.isEmpty)
+          _EmptyCard(
+            message: message ?? '대상 일정을 찾지 못했어요. 캘린더 동기화 상태를 확인하거나 다시 말해 주세요.',
+            rawText: rawText,
+            showRecoveryActions: true,
+            diagnosticsText: diagnostics?.toDisplayText(),
+            onAdd: onAdd,
+            onRetryVoice: onRetryVoice,
+            onOpenCalendar: onOpenCalendar,
+            onRetrySync: onRetrySync,
+          )
+        else if (_isQuery) ...[
+          _QueryOverviewCard(
+            summary: querySummary,
+            rangeLabel: queryRangeLabel,
+          ),
+          const SizedBox(height: 12),
+          ...queryDayGroups.map(
+            (dayGroup) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _QueryDayGroupCard(
+                dayGroup: dayGroup,
+                actionLabel: actionLabel,
+                actionIcon: actionIcon,
+                isDanger: _isDelete,
+                disabled: disabled,
+                onTapEvent: onOpenQueryResult,
+              ),
+            ),
+          ),
+        ] else if (_isDelete)
+          _buildDeleteList()
+        else
+          ...events.map((event) {
+            final changePreview =
+                _isEdit ? buildChangePreviewText(event) : null;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _EventCandidateCard(
+                event: event,
+                actionLabel: actionLabel,
+                actionIcon: actionIcon,
+                isDanger: false,
+                disabled: disabled,
+                onTap: () =>
+                    _isEdit ? onOpenEdit(event) : onOpenQueryResult(event),
+                changePreviewText: changePreview,
+                onDirectApply: (_isEdit && changePreview != null)
+                    ? () => onApplyAndSave(event)
+                    : null,
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  Widget _buildDeleteList() {
+    debugPrint(
+      'VoiceActionScreen render delete candidate rows in section: '
+      'count=${events.length} ids=${events.map((event) => event.id).join(',')}',
+    );
+
+    return Container(
+      key: const ValueKey('voice-delete-candidate-list'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFB42318).withValues(alpha: 0.16),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Builder(
+            builder: (context) {
+              final theme = Theme.of(context);
+              return Text(
+                '삭제할 일정을 선택하거나, 오른쪽 삭제 버튼을 눌러 주세요.',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          _DeleteSelectionBar(
+            selectedCount: selectedDeleteCount,
+            disabled: disabled,
+            onDeleteSelected: onDeleteSelected,
+          ),
+          const SizedBox(height: 10),
+          for (var index = 0; index < events.length; index += 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _DeleteCandidateRow(
+                event: events[index],
+                index: index,
+                disabled: disabled,
+                isSelected: selectedDeleteEventIds.contains(events[index].id),
+                onSelectionChanged: (selected) =>
+                    onToggleDeleteSelection(events[index], selected),
+                onDelete: () => onDelete(events[index]),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -2582,80 +2735,6 @@ class _DeleteSelectionBar extends StatelessWidget {
   }
 }
 
-class _DeleteCandidateList extends StatelessWidget {
-  const _DeleteCandidateList({
-    required this.events,
-    required this.selectedCount,
-    required this.selectedEventIds,
-    required this.disabled,
-    required this.onDeleteSelected,
-    required this.onSelectionChanged,
-    required this.onDelete,
-  });
-
-  final List<EventModel> events;
-  final int selectedCount;
-  final Set<String> selectedEventIds;
-  final bool disabled;
-  final VoidCallback onDeleteSelected;
-  final void Function(EventModel event, bool selected) onSelectionChanged;
-  final void Function(EventModel event) onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    debugPrint(
-      'VoiceActionScreen render delete candidate list: count=${events.length} '
-      'ids=${events.map((event) => event.id).join(',')}',
-    );
-
-    return Container(
-      key: const ValueKey('voice-delete-candidate-list'),
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
-      decoration: BoxDecoration(
-        color: PlanFlowColors.surface.withValues(alpha: 0.78),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.error.withValues(alpha: 0.12),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '삭제할 일정을 선택하거나, 오른쪽 삭제 버튼을 눌러 주세요.',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: PlanFlowColors.textSecondary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          _DeleteSelectionBar(
-            selectedCount: selectedCount,
-            disabled: disabled,
-            onDeleteSelected: onDeleteSelected,
-          ),
-          const SizedBox(height: 10),
-          for (var index = 0; index < events.length; index += 1)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _DeleteCandidateRow(
-                event: events[index],
-                index: index,
-                disabled: disabled,
-                isSelected: selectedEventIds.contains(events[index].id),
-                onSelectionChanged: (selected) =>
-                    onSelectionChanged(events[index], selected),
-                onDelete: () => onDelete(events[index]),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _DeleteCandidateRow extends StatelessWidget {
   const _DeleteCandidateRow({
     required this.event,
@@ -2772,8 +2851,6 @@ class _EventCandidateCard extends StatelessWidget {
     required this.isDanger,
     required this.disabled,
     required this.onTap,
-    this.isSelected = false,
-    this.onSelectionChanged,
     this.changePreviewText,
     this.onDirectApply,
   });
@@ -2784,8 +2861,6 @@ class _EventCandidateCard extends StatelessWidget {
   final bool isDanger;
   final bool disabled;
   final VoidCallback onTap;
-  final bool isSelected;
-  final ValueChanged<bool>? onSelectionChanged;
 
   /// 감지된 변경 내용 요약 (예: "1/22(수) 오전 9시"). null이면 표시 안 함.
   final String? changePreviewText;
@@ -2800,7 +2875,6 @@ class _EventCandidateCard extends StatelessWidget {
     final startAt =
         event.startAt == null ? null : planflowLocal(event.startAt!);
     final hasDirectApply = onDirectApply != null;
-    final showSelection = onSelectionChanged != null;
 
     return Card(
       key: isDanger ? ValueKey('voice-delete-candidate-${event.id}') : null,
@@ -2809,12 +2883,10 @@ class _EventCandidateCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color: isSelected
-              ? colorScheme.error
-              : hasDirectApply
-                  ? PlanFlowColors.primary.withValues(alpha: 0.4)
-                  : PlanFlowColors.primaryFaint,
-          width: isSelected || hasDirectApply ? 1.0 : 0.5,
+          color: hasDirectApply
+              ? PlanFlowColors.primary.withValues(alpha: 0.4)
+              : PlanFlowColors.primaryFaint,
+          width: hasDirectApply ? 1.0 : 0.5,
         ),
       ),
       child: InkWell(
@@ -2827,16 +2899,6 @@ class _EventCandidateCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  if (showSelection) ...[
-                    Checkbox(
-                      value: isSelected,
-                      onChanged: disabled
-                          ? null
-                          : (value) => onSelectionChanged?.call(value ?? false),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    const SizedBox(width: 6),
-                  ],
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

@@ -803,6 +803,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-target-events-section')),
+        findsOneWidget);
     expect(find.textContaining('2개 후보'), findsOneWidget);
     expect(find.byKey(const ValueKey('voice-delete-candidate-list')),
         findsOneWidget);
@@ -816,6 +818,7 @@ void main() {
         findsOneWidget);
     expect(find.byKey(const ValueKey('voice-delete-button-1-event-2')),
         findsOneWidget);
+    expect(find.text('저장된 일정이 앱 DB에서 보이지 않아요'), findsNothing);
   });
 
   testWidgets('복원된 음성 삭제 화면은 앱 재개 시 후보를 다시 불러온다', (tester) async {
@@ -996,7 +999,9 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
-    expect(find.text('대상 일정'), findsNothing);
+    expect(find.text('대상 일정'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-target-events-section')),
+        findsOneWidget);
     expect(syncCalls, 1);
     expect(repository.listEventsCallCount, 2);
     expect(find.text('앱 DB에서 일정을 못 불러왔어요'), findsOneWidget);

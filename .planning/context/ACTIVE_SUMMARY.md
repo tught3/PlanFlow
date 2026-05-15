@@ -581,3 +581,12 @@
 - Added `_CandidateLoadSnapshot` so displayed diagnostics and rendered event cards come from the same immutable candidate load result, preventing `2개 후보` text from diverging from the candidate card list.
 - Added a regression test for same-screen raw text updates and re-ran delete-candidate, restored-screen, and route-state focused tests. Reviewer found no blocking issues.
 - Verification passed: focused analyze, focused voice action tests, reviewer full voice action test pass, `git diff --check`, debug APK build, `adb install -r -t --user 0`, launcher run via monkey, PID/current focus check for `com.planflow.app`.
+
+## 2026-05-16 Voice Delete Candidate Unified Section Checkpoint
+- Revisited the persistent real-device bug where voice delete showed `2개 후보` diagnostics but no candidate cards.
+- Root cause class: candidate diagnostics/title and candidate card rendering could still diverge across separate branches/restored runtime state, similar to the previous map loading deadlock pattern.
+- Replaced the split non-add candidate rendering with a single always-mounted `_VoiceCandidateSection` that owns the title, candidate count, loading/empty state, query/edit rendering, and delete rows together.
+- Delete mode now renders candidate rows directly inside that section from the same `events` list used for the visible candidate count, and logs both section build and delete row rendering for device diagnosis.
+- Strengthened voice action tests so `2개 후보` also requires the unified section, delete list, rows, per-row delete buttons, and no empty DB card.
+- Reviewer agent returned PASS with no blocking findings.
+- Verification passed: focused analyze, focused `voice_action_screen_test.dart`, reviewer rerun of the same test, `git diff --check`, debug APK build, ADB install, launcher run, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
