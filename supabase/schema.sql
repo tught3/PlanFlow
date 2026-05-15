@@ -222,6 +222,8 @@ create table if not exists public.user_settings (
   depart_pre_alarm_offset integer not null default 30,
   travel_mode text not null default 'car',
   voice_auto_start boolean not null default false,
+  preferred_map_provider text not null default 'naver'
+    check (preferred_map_provider in ('naver', 'google', 'tmap')),
   country_code text not null default 'KR',
   locale_code text not null default 'ko-KR',
   time_zone_id text not null default 'Asia/Seoul',
@@ -235,6 +237,9 @@ create table if not exists public.user_settings (
 
   alter table public.user_settings
   add column if not exists voice_auto_start boolean not null default false;
+
+  alter table public.user_settings
+  add column if not exists preferred_map_provider text not null default 'naver';
 
   alter table public.user_settings
   add column if not exists country_code text not null default 'KR';
@@ -256,6 +261,21 @@ create table if not exists public.user_settings (
 
   alter table public.user_settings
   add column if not exists naver_calendar_token text;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'user_settings_preferred_map_provider_check'
+      and conrelid = 'public.user_settings'::regclass
+  ) then
+    alter table public.user_settings
+      add constraint user_settings_preferred_map_provider_check
+      check (preferred_map_provider in ('naver', 'google', 'tmap'));
+  end if;
+end;
+$$;
 
 -- 8. calendar_connections
 create table if not exists public.calendar_connections (
@@ -943,8 +963,9 @@ begin
     insert into public.user_settings (
       id, user_id, morning_briefing_at, evening_briefing_at,
       default_reminder_min, prep_time_min, prep_pre_alarm_offset,
-      depart_pre_alarm_offset, travel_mode, country_code, locale_code,
-      time_zone_id, created_at
+      depart_pre_alarm_offset, travel_mode, voice_auto_start,
+      preferred_map_provider,
+      country_code, locale_code, time_zone_id, created_at
     )
     values (
       coalesce(nullif(item ->> 'id', '')::uuid, gen_random_uuid()),
@@ -960,6 +981,12 @@ begin
           then 'transit'
         else 'car'
       end,
+      coalesce(nullif(item ->> 'voice_auto_start', '')::boolean, false),
+      case
+        when lower(coalesce(item ->> 'preferred_map_provider', '')) in ('google', 'tmap', 'naver')
+          then lower(item ->> 'preferred_map_provider')
+        else 'naver'
+      end,
       coalesce(nullif(item ->> 'country_code', ''), 'KR'),
       coalesce(nullif(item ->> 'locale_code', ''), 'ko-KR'),
       coalesce(nullif(item ->> 'time_zone_id', ''), 'Asia/Seoul'),
@@ -973,6 +1000,8 @@ begin
           prep_pre_alarm_offset = excluded.prep_pre_alarm_offset,
           depart_pre_alarm_offset = excluded.depart_pre_alarm_offset,
           travel_mode = excluded.travel_mode,
+          voice_auto_start = excluded.voice_auto_start,
+          preferred_map_provider = excluded.preferred_map_provider,
           country_code = excluded.country_code,
           locale_code = excluded.locale_code,
           time_zone_id = excluded.time_zone_id;

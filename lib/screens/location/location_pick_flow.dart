@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/env.dart';
 import '../../core/theme.dart';
+import '../../data/repositories/settings_repository.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/location_lookup_service.dart';
 import 'location_picker_screen.dart';
 
@@ -9,25 +12,47 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   required BuildContext context,
   required String query,
   LocationLookupService? locationLookupService,
+  String? preferredMapProvider,
 }) async {
   final trimmed = query.trim();
 
   final service = locationLookupService ?? LocationLookupService();
+  final resolvedMapProvider =
+      _normalizePreferredMapProvider(preferredMapProvider) ??
+          await _loadPreferredMapProvider();
+  if (!context.mounted) {
+    return null;
+  }
+  final inAppMapProvider = _inAppMapProviderFor(resolvedMapProvider);
+  if (resolvedMapProvider == 'tmap' && trimmed.isNotEmpty) {
+    await _openExternalMapTarget(
+      context,
+      _ExternalMapTarget.tmap,
+      trimmed,
+      failureMessage: 'TMAP을 열지 못했어요. 앱 안 지도에서 계속 선택해 주세요.',
+    );
+    if (!context.mounted) {
+      return null;
+    }
+  }
+
   if (trimmed.isEmpty) {
     return Navigator.of(context).push<LocationLookupResult>(
       MaterialPageRoute(
         builder: (_) => LocationPickerScreen(
           initialQuery: '',
           locationLookupService: service,
+          preferredInAppMapProvider: inAppMapProvider,
         ),
       ),
     );
   }
 
   try {
-    final results = await service.search(trimmed).timeout(
+    final lookup = await service.searchWithFallback(trimmed).timeout(
           const Duration(seconds: 12),
         );
+    final results = lookup.results;
     if (!context.mounted) {
       return null;
     }
@@ -38,8 +63,10 @@ Future<LocationLookupResult?> pickLocationFromQuery({
           builder: (_) => LocationPickerScreen(
             initialQuery: trimmed,
             initialResults: const <LocationLookupResult>[],
+            initialFallbackQueries: lookup.fallbackQueries.take(4).toList(),
             initialMessage: '검색 결과가 없어요. 지도에서 직접 위치를 선택해 주세요.',
             locationLookupService: service,
+            preferredInAppMapProvider: inAppMapProvider,
           ),
         ),
       );
@@ -51,6 +78,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
           initialQuery: trimmed,
           initialResults: results,
           locationLookupService: service,
+          preferredInAppMapProvider: inAppMapProvider,
         ),
       ),
     );
@@ -65,6 +93,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
           initialQuery: trimmed,
           initialMessage: '$provider 장소 검색 인증에 실패했어요. 지도에서 직접 위치를 선택해 주세요.',
           locationLookupService: service,
+          preferredInAppMapProvider: inAppMapProvider,
         ),
       ),
     );
@@ -79,10 +108,42 @@ Future<LocationLookupResult?> pickLocationFromQuery({
           initialQuery: trimmed,
           initialMessage: '장소 검색이 오래 걸리거나 실패했어요. 지도에서 직접 위치를 선택해 주세요.',
           locationLookupService: service,
+          preferredInAppMapProvider: inAppMapProvider,
         ),
       ),
     );
   }
+}
+
+Future<String> _loadPreferredMapProvider() async {
+  final userId = authProvider.userId;
+  if (!AppEnv.isSupabaseReady || userId == null || userId.isEmpty) {
+    return 'naver';
+  }
+  try {
+    final settings = await SettingsRepository.supabase().fetchSettings(userId);
+    return _normalizePreferredMapProvider(settings?.preferredMapProvider) ??
+        'naver';
+  } catch (error) {
+    debugPrint('Preferred map provider load skipped: $error');
+    return 'naver';
+  }
+}
+
+String? _normalizePreferredMapProvider(String? value) {
+  final normalized = value?.trim().toLowerCase();
+  return switch (normalized) {
+    'google' || 'tmap' || 'naver' => normalized,
+    _ => null,
+  };
+}
+
+LocationPickerInAppMapProvider? _inAppMapProviderFor(String provider) {
+  return switch (provider) {
+    'google' => LocationPickerInAppMapProvider.google,
+    'naver' => LocationPickerInAppMapProvider.naver,
+    _ => null,
+  };
 }
 
 Future<LocationLookupResult?> showLocationCandidateSheet(
@@ -163,16 +224,28 @@ Future<void> showExternalMapOptions(
   if (!context.mounted || selected == null) {
     return;
   }
+  await _openExternalMapTarget(
+    context,
+    selected,
+    query,
+    failureMessage: '${selected.label}를 열지 못했어요. 앱 설치 또는 브라우저 연결을 확인해 주세요.',
+  );
+}
+
+Future<bool> _openExternalMapTarget(
+  BuildContext context,
+  _ExternalMapTarget target,
+  String query, {
+  required String failureMessage,
+}) async {
   final launched = await launchUrl(
-    selected.uri(query),
+    target.uri(query),
     mode: LaunchMode.externalApplication,
   );
   if (!launched && context.mounted) {
-    await showLocationMessage(
-      context,
-      '${selected.label}를 열지 못했어요. 앱 설치 또는 브라우저 연결을 확인해 주세요.',
-    );
+    await showLocationMessage(context, failureMessage);
   }
+  return launched;
 }
 
 Future<void> showLocationMessage(BuildContext context, String message) async {

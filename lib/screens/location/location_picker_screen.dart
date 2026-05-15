@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as google_maps;
@@ -12,16 +14,20 @@ class LocationPickerScreen extends StatefulWidget {
     super.key,
     required this.initialQuery,
     this.initialResults = const <LocationLookupResult>[],
+    this.initialFallbackQueries = const <String>[],
     this.initialMessage,
     LocationLookupService? locationLookupService,
+    this.preferredInAppMapProvider,
     this.canUseInAppMapOverride,
     this.debugForceMapUnavailableTimeout = false,
   }) : locationLookupService = locationLookupService ?? LocationLookupService();
 
   final String initialQuery;
   final List<LocationLookupResult> initialResults;
+  final List<String> initialFallbackQueries;
   final String? initialMessage;
   final LocationLookupService locationLookupService;
+  final LocationPickerInAppMapProvider? preferredInAppMapProvider;
   final bool? canUseInAppMapOverride;
   final bool debugForceMapUnavailableTimeout;
 
@@ -31,9 +37,13 @@ class LocationPickerScreen extends StatefulWidget {
 
 class _LocationPickerScreenState extends State<LocationPickerScreen> {
   static const _defaultMapReadinessTimeout = Duration(seconds: 5);
+  static const _candidateScrollStep = 240.0;
+  static const _candidateScrollAnimationDuration = Duration(milliseconds: 220);
 
   late final TextEditingController _queryController;
+  late final ScrollController _candidateScrollController;
   late List<LocationLookupResult> _results;
+  late List<String> _fallbackQueries;
   LocationLookupResult? _selected;
   NaverMapController? _mapController;
   google_maps.GoogleMapController? _googleMapController;
@@ -60,6 +70,18 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       ? false
       : (_canUseNaverMap || _canUseGoogleMap);
 
+  bool get _shouldUseNaverMap {
+    if (widget.preferredInAppMapProvider ==
+        LocationPickerInAppMapProvider.google) {
+      return _canUseNaverMap && !_canUseGoogleMap;
+    }
+    if (widget.preferredInAppMapProvider ==
+        LocationPickerInAppMapProvider.naver) {
+      return _canUseNaverMap;
+    }
+    return _canUseNaverMap;
+  }
+
   NLatLng get _initialTarget {
     final selected = _selected;
     if (selected != null) {
@@ -80,7 +102,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   void initState() {
     super.initState();
     _queryController = TextEditingController(text: widget.initialQuery);
+    _candidateScrollController = ScrollController();
     _results = List<LocationLookupResult>.of(widget.initialResults);
+    _fallbackQueries = List<String>.of(widget.initialFallbackQueries);
     _message = widget.initialMessage;
     if (_results.isNotEmpty) {
       _selected = _results.first;
@@ -93,7 +117,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           ? _MapRenderState.loading
           : _MapRenderState.unavailable;
     }
-    if (_results.isEmpty && widget.initialQuery.trim().isNotEmpty) {
+    if (_results.isEmpty &&
+        widget.initialQuery.trim().isNotEmpty &&
+        _message == null &&
+        _fallbackQueries.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _search());
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _watchMapReadiness());
@@ -102,6 +129,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   @override
   void dispose() {
     _queryController.dispose();
+    _candidateScrollController.dispose();
     super.dispose();
   }
 
@@ -120,12 +148,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     });
 
     try {
-      final results = await widget.locationLookupService.search(query);
+      final searchResult =
+          await widget.locationLookupService.searchWithFallback(query);
+      final results = searchResult.results;
       if (!mounted) {
         return;
       }
       setState(() {
         _results = results;
+        _fallbackQueries = results.isEmpty
+            ? searchResult.fallbackQueries.take(4).toList()
+            : const <String>[];
         _selected = results.isEmpty ? _selected : results.first;
         _message = results.isEmpty
             ? (_canUseInAppMap
@@ -133,10 +166,21 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 : '검색 결과가 없어요. 장소명을 더 구체적으로 입력하거나 외부 지도에서 먼저 확인해 주세요.')
             : null;
       });
+      if (_candidateScrollController.hasClients) {
+        _candidateScrollController.jumpTo(0);
+      }
       final selected = _selected;
       if (selected != null) {
         await _moveMapTo(selected);
       }
+    } on LocationLookupException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _fallbackQueries = const <String>[];
+        _message = error.message;
+      });
     } catch (error) {
       if (!mounted) {
         return;
@@ -153,6 +197,27 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         });
       }
     }
+  }
+
+  void _scrollCandidates(int direction) {
+    final controller = _candidateScrollController;
+    if (!controller.hasClients) {
+      return;
+    }
+    final maxExtent = controller.position.maxScrollExtent;
+    final current = controller.offset;
+    final step = _candidateScrollStep;
+    final target = (current + direction * step).clamp(0.0, maxExtent);
+    controller.animateTo(
+      target,
+      duration: _candidateScrollAnimationDuration,
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _searchFallbackQuery(String query) {
+    _queryController.text = query;
+    unawaited(_search());
   }
 
   Future<void> _moveMapTo(LocationLookupResult result) async {
@@ -282,7 +347,13 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               _mapRenderState == _MapRenderState.loading && _canUseInAppMap,
           message: _mapLoadMessage ?? _message,
           results: _results,
+          fallbackQueries: _fallbackQueries,
           selected: _selected,
+          candidateScrollController: _candidateScrollController,
+          showCandidateScrollControls: _results.length > 1,
+          onScrollCandidatesLeft: () => _scrollCandidates(-1),
+          onScrollCandidatesRight: () => _scrollCandidates(1),
+          onSelectFallbackQuery: _searchFallbackQuery,
           onBack: () => Navigator.of(context).pop(),
           onSearch: _search,
           onSelect: _selectResult,
@@ -305,7 +376,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
 
     // 네이버 지도 (loading → ready 모두 NaverMap 위젯 유지)
-    if (_canUseNaverMap) {
+    if (_shouldUseNaverMap) {
       return NaverMap(
         forceGesture: true,
         // ignore: invalid_use_of_visible_for_testing_member
@@ -393,7 +464,13 @@ class _MapControlSheet extends StatelessWidget {
     required this.isMapLoading,
     required this.message,
     required this.results,
+    required this.fallbackQueries,
     required this.selected,
+    required this.candidateScrollController,
+    required this.showCandidateScrollControls,
+    required this.onScrollCandidatesLeft,
+    required this.onScrollCandidatesRight,
+    required this.onSelectFallbackQuery,
     required this.onBack,
     required this.onSearch,
     required this.onSelect,
@@ -405,7 +482,13 @@ class _MapControlSheet extends StatelessWidget {
   final bool isMapLoading;
   final String? message;
   final List<LocationLookupResult> results;
+  final List<String> fallbackQueries;
   final LocationLookupResult? selected;
+  final ScrollController candidateScrollController;
+  final bool showCandidateScrollControls;
+  final VoidCallback onScrollCandidatesLeft;
+  final VoidCallback onScrollCandidatesRight;
+  final ValueChanged<String> onSelectFallbackQuery;
   final VoidCallback onBack;
   final VoidCallback onSearch;
   final ValueChanged<LocationLookupResult> onSelect;
@@ -435,8 +518,7 @@ class _MapControlSheet extends StatelessWidget {
                 color: PlanFlowColors.primary,
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                constraints:
-                    const BoxConstraints(minWidth: 36, minHeight: 36),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               ),
               const SizedBox(width: 4),
               Expanded(
@@ -519,47 +601,102 @@ class _MapControlSheet extends StatelessWidget {
           ],
           // 후보 목록 칩
           if (results.isNotEmpty) ...[
+            if (showCandidateScrollControls) ...[
+              Text(
+                '후보가 여러 개예요. 좌우로 넘겨서 확인해 보세요.',
+                key: const ValueKey('location-candidates-hint'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
             SizedBox(
               height: 36,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: results.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (_, i) {
-                  final r = results[i];
-                  final isSel = r == selected;
-                  return ChoiceChip(
-                    label: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          r.providerLabel,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: isSel
-                                ? PlanFlowColors.surface
-                                : PlanFlowColors.textSecondary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            r.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
+              child: Row(
+                children: [
+                  if (showCandidateScrollControls)
+                    IconButton(
+                      key: const ValueKey('location-candidates-scroll-left'),
+                      icon: const Icon(Icons.chevron_left),
+                      color: PlanFlowColors.primary,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onScrollCandidatesLeft,
                     ),
-                    selected: isSel,
-                    onSelected: (_) => onSelect(r),
-                  );
-                },
+                  Expanded(
+                    child: ListView.separated(
+                      controller: candidateScrollController,
+                      scrollDirection: Axis.horizontal,
+                      itemCount: results.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) {
+                        final r = results[i];
+                        final isSel = r == selected;
+                        return ChoiceChip(
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                r.providerLabel,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: isSel
+                                      ? PlanFlowColors.surface
+                                      : PlanFlowColors.textSecondary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  r.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          selected: isSel,
+                          onSelected: (_) => onSelect(r),
+                        );
+                      },
+                    ),
+                  ),
+                  if (showCandidateScrollControls)
+                    IconButton(
+                      key: const ValueKey('location-candidates-scroll-right'),
+                      icon: const Icon(Icons.chevron_right),
+                      color: PlanFlowColors.primary,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onScrollCandidatesRight,
+                    ),
+                ],
               ),
             ),
             const SizedBox(height: 8),
           ],
           if (results.isEmpty) ...[
+            if (fallbackQueries.isNotEmpty) ...[
+              Text(
+                '이런 검색어로 다시 찾아볼까요?',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  for (final query in fallbackQueries)
+                    ActionChip(
+                      label: Text(query),
+                      onPressed: () => onSelectFallbackQuery(query),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
             Text(
               '현재 검색된 후보가 없어요. 검색어를 바꿔보거나 지도에서 직접 선택해 주세요.',
               style: theme.textTheme.bodySmall
@@ -577,6 +714,11 @@ class _MapControlSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+enum LocationPickerInAppMapProvider {
+  naver,
+  google,
 }
 
 class _MapUnavailablePanel extends StatelessWidget {

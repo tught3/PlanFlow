@@ -61,10 +61,7 @@ class BackupService {
     final counts = <String, int>{};
 
     for (final table in _scopedTables) {
-      final rows = await _client
-          .from(table)
-          .select(_selectColumnsFor(table))
-          .eq('user_id', userId);
+      final rows = await _fetchTableRows(table, userId);
       final tableRows = (rows as List<dynamic>)
           .map((row) => Map<String, dynamic>.from(row as Map))
           .toList(growable: false);
@@ -113,10 +110,45 @@ class BackupService {
     if (table == 'user_settings') {
       return 'id, user_id, morning_briefing_at, evening_briefing_at, '
           'default_reminder_min, prep_time_min, prep_pre_alarm_offset, '
-          'depart_pre_alarm_offset, travel_mode, country_code, locale_code, '
-          'time_zone_id, created_at';
+          'depart_pre_alarm_offset, travel_mode, voice_auto_start, '
+          'preferred_map_provider, country_code, locale_code, time_zone_id, '
+          'created_at';
     }
     return '*';
+  }
+
+  String _legacySelectColumnsFor(String table) {
+    if (table == 'user_settings') {
+      return 'id, user_id, morning_briefing_at, evening_briefing_at, '
+          'default_reminder_min, prep_time_min, prep_pre_alarm_offset, '
+          'depart_pre_alarm_offset, travel_mode, voice_auto_start, '
+          'country_code, locale_code, time_zone_id, created_at';
+    }
+    return _selectColumnsFor(table);
+  }
+
+  Future<dynamic> _fetchTableRows(String table, String userId) async {
+    try {
+      return await _client
+          .from(table)
+          .select(_selectColumnsFor(table))
+          .eq('user_id', userId);
+    } on PostgrestException catch (error) {
+      if (table == 'user_settings' &&
+          _isMissingColumnError(error, 'preferred_map_provider')) {
+        return _client
+            .from(table)
+            .select(_legacySelectColumnsFor(table))
+            .eq('user_id', userId);
+      }
+      rethrow;
+    }
+  }
+
+  bool _isMissingColumnError(PostgrestException error, String column) {
+    final text =
+        '${error.code} ${error.message} ${error.details}'.toLowerCase();
+    return text.contains(column.toLowerCase());
   }
 
   String _requireUserId() {

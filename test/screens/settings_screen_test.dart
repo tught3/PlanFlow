@@ -70,9 +70,9 @@ void main() {
     expect(find.text('기본 알림'), findsNothing);
     expect(find.text('저장'), findsNothing);
     expect(find.text('변경 즉시 적용'), findsNothing);
-    expect(find.text('네이버 캘린더'), findsOneWidget);
-    expect(find.text('연동 해제'), findsWidgets);
-    expect(find.text('네이버 일정 동기화'), findsOneWidget);
+    expect(find.text('캘린더 연동', skipOffstage: false), findsOneWidget);
+    expect(find.text('연동 해제', skipOffstage: false), findsWidgets);
+    expect(find.text('네이버 일정 동기화', skipOffstage: false), findsOneWidget);
     expect(find.text('저장 누락 진단'), findsNothing);
     expect(find.text('Naver CalDAV 직접 연결'), findsNothing);
     expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
@@ -281,6 +281,66 @@ void main() {
     expect(scheduler.lastMorningTime, '07:10');
     expect(scheduler.lastEveningTime, '21:20');
     expect(scheduler.callCount, 2);
+  });
+
+  testWidgets('SettingsScreen saves preferred map provider choice',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final settingsRepository = _FakeSettingsRepository(
+      fetched: const UserSettingsModel(
+        id: 'settings-1',
+        userId: 'user-1',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: settingsRepository,
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.signedOut(
+                CalendarProvider.naver,
+              ),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final preferredMapSelector = find.byKey(
+      const ValueKey('settings-preferred-map-provider-selector'),
+    );
+    await _scrollUntilHitTestable(tester, preferredMapSelector);
+
+    await tester.tap(
+      find.descendant(
+        of: preferredMapSelector,
+        matching: find.text('Google 지도'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(settingsRepository.savedSettings, isNotNull);
+    expect(settingsRepository.savedSettings!.preferredMapProvider, 'google');
+
+    await tester.tap(
+      find.descendant(
+        of: preferredMapSelector,
+        matching: find.text('TMAP'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(settingsRepository.savedSettings!.preferredMapProvider, 'tmap');
   });
 
   testWidgets('SettingsScreen saves smart prep alarm settings', (tester) async {

@@ -14,6 +14,7 @@ void main() {
       departPreAlarmOffset: 0,
       travelMode: 'transit',
       voiceAutoStart: false,
+      preferredMapProvider: 'google',
       googleCalendarToken: 'google-token',
       naverCalendarToken: 'naver-token',
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
@@ -36,6 +37,8 @@ void main() {
     expect(restored.travelMode, 'transit');
     expect(restored.voiceAutoStart, isFalse);
     expect(restored.toJson()['voice_auto_start'], isFalse);
+    expect(restored.preferredMapProvider, 'google');
+    expect(restored.toJson()['preferred_map_provider'], 'google');
     expect(restored.googleCalendarToken, model.googleCalendarToken);
     expect(restored.naverCalendarToken, model.naverCalendarToken);
     expect(restored.createdAt, model.createdAt);
@@ -63,5 +66,7 @@ void main() {
     expect(settings.localeCode, 'ko-KR');
     expect(settings.timeZoneId, 'Asia/Seoul');
     expect(settings.toJson()['country_code'], 'KR');
+    expect(settings.preferredMapProvider, 'naver');
+    expect(settings.toJson()['preferred_map_provider'], 'naver');
   });
 }

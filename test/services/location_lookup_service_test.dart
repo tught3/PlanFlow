@@ -115,6 +115,88 @@ void main() {
     expect(results.single.longitude, 127.9197);
   });
 
+  test(
+      'LocationLookupService retries local fallback queries when exact search is empty',
+      () async {
+    final requests = <String>[];
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        final query = request.url.queryParameters['query'] ??
+            request.url.queryParameters['searchKeyword'] ??
+            '';
+        requests.add('naver:$query');
+
+        if (query == '강남역') {
+          return http.Response(
+            '{"addresses":[{"roadAddress":"Gangnam Station","jibunAddress":"Gangnam","x":"127.001","y":"37.566"}]}',
+            200,
+          );
+        }
+
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    final result = await service.search('강남역에서');
+
+    expect(requests, contains('naver:강남역에서'));
+    expect(requests, contains('naver:강남역'));
+    expect(result, hasLength(1));
+    expect(result.single.name, 'Gangnam Station');
+  });
+
+  test('LocationLookupService builds deduped fallback query suggestions', () {
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      googleMapsApiKey: '',
+    );
+
+    final fallbackQueries = service.buildRetryQueries('  강남역  앞  ');
+
+    expect(fallbackQueries, contains('강남역앞'));
+    expect(fallbackQueries, contains('앞 강남역'));
+    expect(
+      fallbackQueries,
+      hasLength(fallbackQueries.toSet().length),
+    );
+  });
+
+  test(
+      'LocationLookupService searchWithFallback exposes metadata for retry suggestions',
+      () async {
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        final query = request.url.queryParameters['query'] ??
+            request.url.queryParameters['searchKeyword'] ??
+            '';
+        if (query == '강남역') {
+          return http.Response(
+            '{"addresses":[{"roadAddress":"Gangnam Station","jibunAddress":"Gangnam","x":"127.001","y":"37.566"}]}',
+            200,
+          );
+        }
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    final result = await service.searchWithFallback('강남역에서');
+
+    expect(result.searchedQueries, contains('강남역에서'));
+    expect(result.fallbackQueries, contains('강남역'));
+    expect(result.searchedQueries, contains('강남역'));
+    expect(result.results, hasLength(1));
+  });
+
   test('LocationLookupService returns Korean region hints for simple names',
       () async {
     final service = LocationLookupService();
@@ -127,5 +209,39 @@ void main() {
     expect(results.single.label, '서울');
     expect(results.single.latitude, closeTo(37.5665, 0.0001));
     expect(results.single.longitude, closeTo(126.978, 0.0001));
+  });
+
+  test(
+      'LocationLookupService throws auth failure if fallback search still empty',
+      () async {
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        final host = request.url.host;
+        final query = request.url.queryParameters['query'] ??
+            request.url.queryParameters['searchKeyword'] ??
+            '';
+
+        if (host.contains('naveropenapi.apigw.ntruss.com')) {
+          if (query == '강남역') {
+            return http.Response('unauthorized', 401);
+          }
+          return http.Response('{"addresses":[]}', 200);
+        }
+
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    expect(
+      () => service.search('강남역에서'),
+      throwsA(
+        isA<LocationLookupException>()
+            .having((error) => error.isAuthFailure, 'isAuthFailure', isTrue),
+      ),
+    );
   });
 }

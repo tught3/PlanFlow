@@ -10,6 +10,7 @@ class UserSettingsModel {
     this.departPreAlarmOffset = 30,
     this.travelMode = 'car',
     this.voiceAutoStart = false,
+    this.preferredMapProvider = 'naver',
     this.countryCode = 'KR',
     this.localeCode = 'ko-KR',
     this.timeZoneId = 'Asia/Seoul',
@@ -33,6 +34,7 @@ class UserSettingsModel {
       prepPreAlarmOffset: 30,
       departPreAlarmOffset: 30,
       voiceAutoStart: false,
+      preferredMapProvider: 'naver',
       countryCode: 'KR',
       localeCode: 'ko-KR',
       timeZoneId: 'Asia/Seoul',
@@ -52,6 +54,8 @@ class UserSettingsModel {
       departPreAlarmOffset: _intValue(json['depart_pre_alarm_offset'], 30),
       travelMode: _travelModeValue(json['travel_mode']),
       voiceAutoStart: _boolValue(json['voice_auto_start'], false),
+      preferredMapProvider:
+          _preferredMapProviderValue(json['preferred_map_provider']),
       countryCode: _countryCodeValue(json['country_code']),
       localeCode: _localeValue(
         json['locale_code'],
@@ -77,6 +81,7 @@ class UserSettingsModel {
   final int departPreAlarmOffset;
   final String travelMode;
   final bool voiceAutoStart;
+  final String preferredMapProvider;
   final String countryCode;
   final String localeCode;
   final String timeZoneId;
@@ -95,6 +100,7 @@ class UserSettingsModel {
     int? departPreAlarmOffset,
     String? travelMode,
     bool? voiceAutoStart,
+    String? preferredMapProvider,
     String? countryCode,
     String? localeCode,
     String? timeZoneId,
@@ -116,6 +122,7 @@ class UserSettingsModel {
       departPreAlarmOffset: departPreAlarmOffset ?? this.departPreAlarmOffset,
       travelMode: travelMode ?? this.travelMode,
       voiceAutoStart: voiceAutoStart ?? this.voiceAutoStart,
+      preferredMapProvider: preferredMapProvider ?? this.preferredMapProvider,
       countryCode: countryCode ?? this.countryCode,
       localeCode: localeCode ?? this.localeCode,
       timeZoneId: timeZoneId ?? this.timeZoneId,
@@ -141,6 +148,8 @@ class UserSettingsModel {
       'depart_pre_alarm_offset': departPreAlarmOffset,
       'travel_mode': _travelModeValue(travelMode),
       'voice_auto_start': voiceAutoStart,
+      'preferred_map_provider':
+          _preferredMapProviderValue(preferredMapProvider),
       'country_code': _countryCodeValue(countryCode),
       'locale_code': localeCode,
       'time_zone_id': timeZoneId,
@@ -202,6 +211,12 @@ class UserSettingsModel {
   static String _travelModeValue(Object? value) {
     final text = value?.toString().trim().toLowerCase() ?? '';
     return text == 'transit' ? 'transit' : 'car';
+  }
+
+  static String _preferredMapProviderValue(Object? value) {
+    final text = value?.toString().trim().toLowerCase() ?? '';
+    const supported = <String>{'naver', 'google', 'tmap'};
+    return supported.contains(text) ? text : 'naver';
   }
 
   static String _countryCodeValue(Object? value) {

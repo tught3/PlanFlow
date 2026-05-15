@@ -58,6 +58,24 @@ class LocationLookupResult {
   String get providerLabel => provider.providerLabel;
 }
 
+class LocationLookupSearchResult {
+  const LocationLookupSearchResult({
+    required this.originalQuery,
+    required this.results,
+    required this.searchedQueries,
+    required this.fallbackQueries,
+    this.authFailure,
+  });
+
+  final String originalQuery;
+  final List<LocationLookupResult> results;
+  final List<String> searchedQueries;
+  final List<String> fallbackQueries;
+  final LocationLookupException? authFailure;
+
+  bool get hasResults => results.isNotEmpty;
+}
+
 class LocationLookupService {
   LocationLookupService({
     String? clientId,
@@ -81,42 +99,183 @@ class LocationLookupService {
   final http.Client Function() _httpClientFactory;
 
   Future<List<LocationLookupResult>> search(String query) async {
+    final response = await searchWithFallback(query);
+    return response.results;
+  }
+
+  Future<LocationLookupSearchResult> searchWithFallback(String query) async {
     final normalized = query.trim();
     if (normalized.isEmpty) {
-      return const <LocationLookupResult>[];
+      return LocationLookupSearchResult(
+        originalQuery: query,
+        results: const <LocationLookupResult>[],
+        searchedQueries: const <String>[],
+        fallbackQueries: const <String>[],
+      );
     }
 
     final regionResult = _lookupKoreanRegion(normalized);
     if (regionResult != null) {
-      return <LocationLookupResult>[regionResult];
+      return LocationLookupSearchResult(
+        originalQuery: normalized,
+        results: <LocationLookupResult>[regionResult],
+        searchedQueries: const <String>[],
+        fallbackQueries: const <String>[],
+      );
     }
 
     final results = <LocationLookupResult>[];
+    final searchedQueries = <String>[];
     LocationLookupException? authFailure;
+    final fallbackQueries = buildRetryQueries(normalized);
 
-    try {
-      results.addAll(await _searchTmap(normalized));
-    } on LocationLookupException catch (error) {
+    await _searchAllProviders(normalized, results, searchedQueries, (error) {
       authFailure ??= error;
-    }
+    });
 
-    try {
-      results.addAll(await _searchNaver(normalized));
-    } on LocationLookupException catch (error) {
-      authFailure ??= error;
-    }
-
-    try {
-      results.addAll(await _searchGoogle(normalized));
-    } on LocationLookupException catch (error) {
-      authFailure ??= error;
+    if (results.isEmpty && fallbackQueries.isNotEmpty) {
+      for (final retryQuery in fallbackQueries) {
+        await _searchAllProviders(retryQuery, results, searchedQueries,
+            (error) {
+          authFailure ??= error;
+        });
+        if (results.isNotEmpty) {
+          break;
+        }
+      }
     }
 
     final deduped = _dedupeResults(results);
+    final outcome = LocationLookupSearchResult(
+      originalQuery: normalized,
+      results: deduped,
+      searchedQueries: searchedQueries,
+      fallbackQueries: fallbackQueries,
+      authFailure: authFailure,
+    );
     if (deduped.isEmpty && authFailure != null) {
-      throw authFailure;
+      throw authFailure!;
     }
-    return deduped;
+    return outcome;
+  }
+
+  List<String> buildRetryQueries(String query) {
+    final normalized = _normalizeWhitespace(query);
+    if (normalized.isEmpty) {
+      return const <String>[];
+    }
+
+    final variants = <String>{};
+    final noWhitespace = normalized.replaceAll(RegExp(r'\s+'), '');
+    _addQueryVariant(variants, noWhitespace, original: normalized);
+
+    final normalizedTokens = _tokenize(normalized)
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+    final particleCleanTokens = normalizedTokens
+        .map(_removeKoreanParticleSuffix)
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+    final fallbackTokens = particleCleanTokens
+        .map(_removeLocationSuffix)
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+
+    if (particleCleanTokens.isNotEmpty) {
+      _addQueryVariant(variants, particleCleanTokens.join(' '),
+          original: normalized);
+      _addQueryVariant(variants, particleCleanTokens.join(''),
+          original: normalized);
+      if (particleCleanTokens.length >= 2) {
+        _addQueryVariant(variants, particleCleanTokens.reversed.join(' '),
+            original: normalized);
+      }
+    }
+
+    if (fallbackTokens.isNotEmpty) {
+      _addQueryVariant(variants, fallbackTokens.join(' '),
+          original: normalized);
+      _addQueryVariant(variants, fallbackTokens.join(''), original: normalized);
+      if (fallbackTokens.length >= 2) {
+        _addQueryVariant(
+          variants,
+          fallbackTokens.reversed.join(' '),
+          original: normalized,
+        );
+      }
+    }
+
+    for (final region in _matchedKoreanRegionHints(normalized)) {
+      _addQueryVariant(variants, region.displayName, original: normalized);
+      final coreTokens = fallbackTokens
+          .where((token) => !_containsAlias(token, region))
+          .toList(growable: false);
+      if (coreTokens.isNotEmpty) {
+        final core = _normalizeWhitespace(coreTokens.join(' '));
+        if (core.isNotEmpty) {
+          _addQueryVariant(
+            variants,
+            '${region.displayName} $core',
+            original: normalized,
+          );
+          _addQueryVariant(
+            variants,
+            '$core ${region.displayName}',
+            original: normalized,
+          );
+        }
+      }
+      if (coreTokens.isNotEmpty) {
+        _addQueryVariant(variants, coreTokens.first, original: normalized);
+      }
+    }
+
+    if (normalizedTokens.length >= 2) {
+      for (var i = 0; i < normalizedTokens.length - 1; i++) {
+        final swapped = List<String>.from(normalizedTokens);
+        final current = swapped[i];
+        final next = swapped[i + 1];
+        swapped[i] = next;
+        swapped[i + 1] = current;
+        _addQueryVariant(
+          variants,
+          _normalizeWhitespace(swapped.join(' ')),
+          original: normalized,
+        );
+      }
+    }
+
+    return variants.toList(growable: false);
+  }
+
+  String _normalizeWhitespace(String value) {
+    return value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  Future<void> _searchAllProviders(
+    String query,
+    List<LocationLookupResult> results,
+    List<String> searchedQueries,
+    void Function(LocationLookupException error) onAuthError,
+  ) async {
+    searchedQueries.add(query);
+    try {
+      results.addAll(await _searchTmap(query));
+    } on LocationLookupException catch (error) {
+      onAuthError(error);
+    }
+
+    try {
+      results.addAll(await _searchNaver(query));
+    } on LocationLookupException catch (error) {
+      onAuthError(error);
+    }
+
+    try {
+      results.addAll(await _searchGoogle(query));
+    } on LocationLookupException catch (error) {
+      onAuthError(error);
+    }
   }
 
   Future<List<LocationLookupResult>> _searchNaver(String normalized) async {
@@ -445,6 +604,113 @@ class LocationLookupService {
       return value.toDouble();
     }
     return double.tryParse(value?.toString() ?? '');
+  }
+
+  List<String> _tokenize(String query) {
+    return _normalizeWhitespace(query)
+        .split(RegExp(r'\s+'))
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  String _removeKoreanParticleSuffix(String token) {
+    var value = token;
+    for (final suffix in _koreanParticleSuffixes) {
+      if (value.length <= suffix.length + 1) {
+        continue;
+      }
+      if (value.endsWith(suffix)) {
+        value = value.substring(0, value.length - suffix.length);
+        break;
+      }
+    }
+    return value;
+  }
+
+  String _removeLocationSuffix(String token) {
+    var value = token;
+    for (final suffix in _locationSuffixes) {
+      if (value.length <= suffix.length + 1) {
+        continue;
+      }
+      if (value.endsWith(suffix)) {
+        value = value.substring(0, value.length - suffix.length);
+        break;
+      }
+    }
+    return value;
+  }
+
+  List<_KoreanRegionHint> _matchedKoreanRegionHints(
+    String query,
+  ) {
+    final normalized = query.replaceAll(' ', '');
+    final regionSet = <String>{};
+    final matchedRegions = <_KoreanRegionHint>[];
+    for (final region in _koreanRegionHints) {
+      final isMatched = region.aliases
+          .any((alias) => normalized == alias || normalized.startsWith(alias));
+      if (!isMatched) {
+        continue;
+      }
+      if (regionSet.add(region.displayName)) {
+        matchedRegions.add(region);
+      }
+    }
+    return matchedRegions;
+  }
+
+  bool _containsAlias(String token, _KoreanRegionHint region) {
+    return region.aliases
+        .any((alias) => token == alias || token.contains(alias));
+  }
+
+  static const List<String> _koreanParticleSuffixes = <String>[
+    '에서',
+    '으로',
+    '로',
+    '을',
+    '를',
+    '이',
+    '가',
+    '의',
+    '에',
+    '로부터',
+    '부터',
+    '에게',
+    '께',
+    '하고',
+  ];
+
+  static const List<String> _locationSuffixes = <String>[
+    '앞',
+    '옆',
+    '부근',
+    '입구',
+    '역',
+    '일대',
+    '거리',
+    '로',
+    '길',
+    '가',
+    '동',
+    '구',
+    '시',
+  ];
+
+  void _addQueryVariant(
+    Set<String> variants,
+    String candidate, {
+    required String original,
+  }) {
+    final value = _normalizeWhitespace(candidate);
+    if (value.isEmpty) {
+      return;
+    }
+    if (value == original || variants.contains(value)) {
+      return;
+    }
+    variants.add(value);
   }
 
   Uri? _proxyUri(String query) {

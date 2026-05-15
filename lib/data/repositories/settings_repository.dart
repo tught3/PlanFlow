@@ -72,7 +72,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
   static const String selectColumns =
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
       'prep_time_min, prep_pre_alarm_offset, depart_pre_alarm_offset, '
-      'travel_mode, voice_auto_start, country_code, locale_code, time_zone_id, '
+      'travel_mode, voice_auto_start, preferred_map_provider, country_code, locale_code, time_zone_id, '
       'google_calendar_token, naver_calendar_token, created_at';
   static const String legacySelectColumns =
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
@@ -156,6 +156,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
       ..remove('country_code')
       ..remove('locale_code')
       ..remove('time_zone_id');
+    legacyPayload.remove('preferred_map_provider');
     final response = await _client
         .from(tableName)
         .upsert(
@@ -169,6 +170,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
       'country_code': payload['country_code'],
       'locale_code': payload['locale_code'],
       'time_zone_id': payload['time_zone_id'],
+      'preferred_map_provider': payload['preferred_map_provider'],
     };
   }
 
@@ -177,7 +179,8 @@ class SupabaseSettingsGateway implements SettingsGateway {
         '${error.code} ${error.message} ${error.details}'.toLowerCase();
     return text.contains('country_code') ||
         text.contains('locale_code') ||
-        text.contains('time_zone_id');
+        text.contains('time_zone_id') ||
+        text.contains('preferred_map_provider');
   }
 
   bool _isMissingSmartSettingsColumnError(PostgrestException error) {

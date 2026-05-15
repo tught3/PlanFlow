@@ -96,6 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _departPreAlarmOffset = 30;
   String _travelMode = 'car';
   bool _voiceAutoStart = false;
+  String _preferredMapProvider = 'naver';
   String _countryCode = PlanFlowRegions.korea.countryCode;
   String _localeCode = PlanFlowRegions.korea.localeCode;
   String _timeZoneId = PlanFlowRegions.korea.timeZoneId;
@@ -1438,6 +1439,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         departPreAlarmOffset: _departPreAlarmOffset,
         travelMode: _travelMode,
         voiceAutoStart: _voiceAutoStart,
+        preferredMapProvider: _preferredMapProvider,
         countryCode: _countryCode,
         localeCode: _localeCode,
         timeZoneId: _timeZoneId,
@@ -1455,6 +1457,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         departPreAlarmOffset: draft.departPreAlarmOffset,
         travelMode: draft.travelMode,
         voiceAutoStart: draft.voiceAutoStart,
+        preferredMapProvider: draft.preferredMapProvider,
         countryCode: draft.countryCode,
         localeCode: draft.localeCode,
         timeZoneId: draft.timeZoneId,
@@ -1797,6 +1800,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _departPreAlarmOffset = 30;
       _travelMode = 'car';
       _voiceAutoStart = false;
+      _preferredMapProvider = 'naver';
       _countryCode = PlanFlowRegions.korea.countryCode;
       _localeCode = PlanFlowRegions.korea.localeCode;
       _timeZoneId = PlanFlowRegions.korea.timeZoneId;
@@ -1814,6 +1818,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _departPreAlarmOffset = settings.departPreAlarmOffset;
     _travelMode = settings.travelMode;
     _voiceAutoStart = settings.voiceAutoStart;
+    _preferredMapProvider = settings.preferredMapProvider;
     final region = PlanFlowRegions.byLocaleAndTimeZone(
       countryCode: settings.countryCode,
       localeCode: settings.localeCode,
@@ -2107,6 +2112,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onSelectionChanged: (selected) {
                     setState(() {
                       _travelMode = selected.first;
+                    });
+                    unawaited(_persistSettings());
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: '기본 지도',
+                subtitle: '위치 검색과 외부 지도 열기에서 먼저 사용할 지도를 정합니다.',
+                child: SegmentedButton<String>(
+                  key: const ValueKey(
+                      'settings-preferred-map-provider-selector'),
+                  segments: const <ButtonSegment<String>>[
+                    ButtonSegment<String>(
+                      value: 'naver',
+                      icon: Icon(Icons.map_outlined),
+                      label: Text('네이버 지도'),
+                    ),
+                    ButtonSegment<String>(
+                      value: 'google',
+                      icon: Icon(Icons.public_outlined),
+                      label: Text('Google 지도'),
+                    ),
+                    ButtonSegment<String>(
+                      value: 'tmap',
+                      icon: Icon(Icons.route_outlined),
+                      label: Text('TMAP'),
+                    ),
+                  ],
+                  selected: <String>{_preferredMapProvider},
+                  onSelectionChanged: (selected) {
+                    setState(() {
+                      _preferredMapProvider = selected.first;
                     });
                     unawaited(_persistSettings());
                   },
