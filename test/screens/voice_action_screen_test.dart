@@ -528,7 +528,7 @@ void main() {
       isTrue,
     );
     expect(find.text('대상 일정'), findsOneWidget);
-    expect(find.text('오늘일정0'), findsOneWidget);
+    expect(find.text('오늘일정0'), findsWidgets);
     expect(find.text('내일일정0'), findsNothing);
     expect(find.text('내일일정1'), findsNothing);
   });
@@ -566,9 +566,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('대상 일정'), findsOneWidget);
-    expect(find.text('다음일정0'), findsOneWidget);
-    expect(find.text('다음일정1'), findsOneWidget);
-    expect(find.text('다음일정2'), findsOneWidget);
+    expect(find.text('다음일정0'), findsWidgets);
+    expect(find.text('다음일정1'), findsWidgets);
+    expect(find.text('다음일정2'), findsWidgets);
     expect(find.text('다음일정3'), findsNothing);
     expect(find.text('다음일정4'), findsNothing);
   });
@@ -762,11 +762,22 @@ void main() {
         findsOneWidget);
     expect(find.byType(Checkbox), findsNWidgets(3));
 
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -260));
+    final firstCheckbox = find.descendant(
+      of: find.byKey(const ValueKey('voice-delete-candidate-0-event-1')),
+      matching: find.byType(Checkbox),
+    );
+    final secondCheckbox = find.descendant(
+      of: find.byKey(const ValueKey('voice-delete-candidate-1-event-2')),
+      matching: find.byType(Checkbox),
+    );
+
+    await tester.ensureVisible(firstCheckbox);
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(Checkbox).at(0));
+    await tester.tap(firstCheckbox);
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.ensureVisible(secondCheckbox);
+    await tester.pumpAndSettle();
+    await tester.tap(secondCheckbox);
     await tester.pumpAndSettle();
 
     expect(find.text('선택된 일정 2개'), findsOneWidget);
@@ -903,7 +914,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('대상 일정'), findsOneWidget);
-    expect(find.text('아이스크림 전달'), findsOneWidget);
+    expect(find.text('아이스크림 전달'), findsWidgets);
     expect(find.text('삭제'), findsOneWidget);
   });
 
@@ -945,7 +956,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('대상 일정'), findsOneWidget);
-    expect(find.text('약재과 방문 프리셋 텍스 문의'), findsOneWidget);
+    expect(find.text('약재과 방문 프리셋 텍스 문의'), findsWidgets);
     expect(find.text('미래 일정 4'), findsNothing);
   });
 
@@ -980,9 +991,9 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
-    expect(find.text('후보 일정 0'), findsOneWidget);
-    expect(find.text('후보 일정 1'), findsOneWidget);
-    expect(find.text('후보 일정 2'), findsOneWidget);
+    expect(find.text('후보 일정 0'), findsWidgets);
+    expect(find.text('후보 일정 1'), findsWidgets);
+    expect(find.text('후보 일정 2'), findsWidgets);
     expect(find.text('후보 일정 3'), findsNothing);
   });
 
@@ -1065,7 +1076,7 @@ void main() {
     expect(syncCalls, 1);
     expect(repository.listEventsCallCount, 2);
     expect(find.text('대상 일정'), findsOneWidget);
-    expect(find.text('아이스크림 전달'), findsOneWidget);
+    expect(find.text('아이스크림 전달'), findsWidgets);
     expect(find.text('앱 DB에서 일정을 못 불러왔어요'), findsNothing);
     expect(find.text('저장된 일정이 앱 DB에서 보이지 않아요'), findsNothing);
   });

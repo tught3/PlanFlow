@@ -1814,7 +1814,7 @@ class _VoiceCandidateSection extends StatelessWidget {
           ),
         ],
         if (_isDelete && events.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: 18),
           _DeleteCandidateInlineActions(
             events: events,
             disabled: disabled,
@@ -2758,45 +2758,137 @@ class _DeleteCandidateInlineActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final materialLocalizations = MaterialLocalizations.of(context);
 
     return Column(
       key: const ValueKey('voice-delete-inline-actions'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            '삭제 후보',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: PlanFlowColors.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
         for (var index = 0; index < events.length; index += 1)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: OutlinedButton.icon(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Material(
               key: ValueKey(
-                  'voice-delete-inline-button-$index-${events[index].id}'),
-              onPressed: disabled ? null : () => onDelete(events[index]),
-              icon: const Icon(Icons.delete_outline, size: 18),
-              label: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '${events[index].title} 삭제',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                'voice-delete-inline-button-$index-${events[index].id}',
               ),
-              style: OutlinedButton.styleFrom(
-                alignment: Alignment.centerLeft,
-                foregroundColor: colorScheme.error,
-                side: BorderSide(
-                  color: colorScheme.error.withValues(alpha: 0.24),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 11,
-                ),
-                textStyle: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
+              color: PlanFlowColors.surface,
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: disabled ? null : () => onDelete(events[index]),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: PlanFlowColors.primaryFaint,
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: PlanFlowColors.primaryFaint,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.delete_outline,
+                          size: 18,
+                          color: colorScheme.error,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              events[index].title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: PlanFlowColors.primary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _candidateMetaText(
+                                events[index],
+                                materialLocalizations,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: PlanFlowColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.delete_outline,
+                                  size: 14,
+                                  color: colorScheme.error,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '삭제 확인',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.error,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.chevron_right,
+                        color: PlanFlowColors.textSecondary
+                            .withValues(alpha: disabled ? 0.3 : 0.72),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
       ],
     );
+  }
+
+  String _candidateMetaText(
+    EventModel event,
+    MaterialLocalizations materialLocalizations,
+  ) {
+    final startAt =
+        event.startAt == null ? null : planflowLocal(event.startAt!);
+    final timeText = startAt == null
+        ? '시간 미정'
+        : '${materialLocalizations.formatFullDate(startAt)} · ${materialLocalizations.formatTimeOfDay(TimeOfDay.fromDateTime(startAt))}';
+    final location = event.location?.trim();
+    if (location == null || location.isEmpty) {
+      return timeText;
+    }
+    return '$timeText · $location';
   }
 }
 

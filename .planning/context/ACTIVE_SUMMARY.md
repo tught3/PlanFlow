@@ -598,3 +598,10 @@
 - Updated voice action tests to assert the inline fail-safe exists along with the existing delete list/cards/buttons and adjusted multi-select test scrolling for the taller layout.
 - Reviewer agent returned PASS with no blocking findings.
 - Verification passed: focused analyze, focused `voice_action_screen_test.dart`, reviewer rerun of focused test, `git diff --check`, debug APK build, ADB install, and PlanFlow process launch/PID check.
+
+## 2026-05-16 Voice Delete Candidate Card Polish Checkpoint
+- Fixed the real-device voice delete candidate layout where the `대상 일정` diagnostics and the first delete action visually overlapped.
+- Replaced the red outlined inline delete buttons with PlanFlow-style tappable candidate cards that show the event title, KST date/time/location metadata, a subtle primary border, and a compact `삭제 확인` action cue.
+- Preserved the existing candidate keys and whole-card tap-to-delete-confirm behavior, while keeping the lower multi-select delete list intact.
+- Reviewer agent returned PASS with no blocking findings.
+- Verification passed: focused analyze for `voice_action_screen.dart` and `voice_action_screen_test.dart`, full `voice_action_screen_test.dart` widget suite, `git diff --check`, debug APK build, ADB install, PlanFlow launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
