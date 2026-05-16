@@ -657,3 +657,9 @@
 - Reworked local fallback briefing text to speak like a secretary: greeting, schedule count, first/next schedule transitions, spoken Korean times, optional location, and critical-event lead-ins.
 - Updated GPT prompt tests and added fallback execution coverage for critical-event secretary wording.
 - Verification passed: focused analyze, focused GPT/briefing scheduler tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-17 Voice Edit Candidate Precision Checkpoint
+- Tightened voice edit candidate ranking so date/time-like tokens such as `13일`, `5월`, or `9시` do not score title matches, and numeric tokens no longer use fuzzy/prefix matching. This prevents unrelated schedules like `15일 구독갱신` from appearing just because the requested date sounds numerically close.
+- Changed voice edit `바로 저장` success navigation from returning to the previous screen to opening the calendar tab directly.
+- Added regression coverage for the screenshot-style `5월 13일 팀장 동행방문` case and for direct-save calendar navigation.
+- Verification passed: focused analyze, full `voice_action_screen_test.dart`, `git diff --check`, debug APK build, ADB install, PID check, and focused window check showing `com.planflow.app/.MainActivity`.

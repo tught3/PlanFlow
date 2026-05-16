@@ -224,6 +224,92 @@ void main() {
     expect(find.text('편집 화면: event-1'), findsOneWidget);
   });
 
+  testWidgets('수정 후보 검색은 날짜 숫자만 비슷한 다른 일정을 제외한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '팀장 동행방문',
+          startAt: DateTime(2026, 5, 13, 10),
+        ),
+        _event(
+          id: 'event-2',
+          title: '켄스파크 15일 구독갱신',
+          startAt: DateTime(2026, 4, 14, 14),
+        ),
+        _event(
+          id: 'event-3',
+          title: '방문록 미리 준비',
+          startAt: DateTime(2026, 5, 21, 15),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '5월 13일 팀장 동행방문 일정 이번 주 수요일로 변경',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('팀장 동행방문'), findsOneWidget);
+    expect(find.text('켄스파크 15일 구독갱신'), findsNothing);
+    expect(find.text('방문록 미리 준비'), findsNothing);
+  });
+
+  testWidgets('수정 바로 저장 성공 후 일정 탭으로 이동한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '한강 피크닉',
+          startAt: DateTime.now().add(const Duration(days: 1)),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 일정 모레 오전 9시로 변경',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('일정 탭'), findsOneWidget);
+  });
+
   testWidgets('음성 수정 명령의 새 날짜는 편집 화면에 미리 반영된다', (tester) async {
     final repository = _FakeEventRepository(
       events: [
@@ -310,7 +396,7 @@ void main() {
     expect(find.textContaining('서울성남에서 아이스크림 전달일정'), findsOneWidget);
     expect(find.text('대상 일정'), findsOneWidget);
     expect(find.text('서울성남 아이스크림 전달'), findsOneWidget);
-    expect(find.text('목요일 오전 회의'), findsOneWidget);
+    expect(find.text('목요일 오전 회의'), findsNothing);
     final firstTitle = tester.widgetList<Text>(find.byType(Text)).firstWhere(
           (widget) => widget.data == '서울성남 아이스크림 전달',
         );

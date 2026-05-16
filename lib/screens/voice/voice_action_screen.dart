@@ -852,7 +852,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
   List<_RankedEvent> _rankEventItems(List<EventModel> events, String rawText) {
     final now = DateTime.now();
-    final tokens = _voiceCommandRouter.searchTokens(rawText);
+    final tokens = _voiceCommandRouter
+        .searchTokens(rawText)
+        .where(_isTargetMatchToken)
+        .toList(growable: false);
     final ranked = events.map((event) {
       final searchable = _voiceCommandRouter.normalizeManagementText([
         event.title,
@@ -867,11 +870,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
           matchScore += token.length >= 3 ? 2 : 1;
           continue;
         }
-        if (_voiceCommandRouter.hasFuzzyTokenMatch(token, searchableTokens)) {
+        if (!_containsDigit(token) &&
+            _voiceCommandRouter.hasFuzzyTokenMatch(token, searchableTokens)) {
           matchScore += 2;
           continue;
         }
-        if (_voiceCommandRouter.hasPrefixMatch(token, searchableTokens)) {
+        if (!_containsDigit(token) &&
+            _voiceCommandRouter.hasPrefixMatch(token, searchableTokens)) {
           matchScore += 1;
         }
       }
@@ -904,6 +909,25 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
     return ranked;
   }
+
+  bool _isTargetMatchToken(String token) {
+    final normalized = token.trim();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    if (RegExp(r'^\d{1,2}(?:월|일|시|분)$').hasMatch(normalized)) {
+      return false;
+    }
+    if (RegExp(r'^\d{4}년$').hasMatch(normalized)) {
+      return false;
+    }
+    if (RegExp(r'^\d{1,2}:\d{2}$').hasMatch(normalized)) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _containsDigit(String value) => RegExp(r'\d').hasMatch(value);
 
   bool _shouldTryAiCleanup(
     VoiceTextCleanupResult cleanup,
@@ -991,7 +1015,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     try {
       final savedEvent = await _repository.updateEvent(editedEvent);
       final userId = _resolveUserId();
-      if (userId != null) {
+      if (userId != null && AppEnv.isSupabaseReady) {
         final settings = await SettingsRepository.supabase().fetchSettings(
           userId,
         );
@@ -1045,7 +1069,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('일정이 변경되었어요.')),
       );
-      context.pop();
+      context.go(AppRoutes.calendar);
     } catch (error, stackTrace) {
       debugPrint('VoiceActionScreen direct save failed: $error');
       debugPrintStack(stackTrace: stackTrace);
