@@ -921,7 +921,7 @@ void main() {
 
     expect(find.text('대상 일정'), findsOneWidget);
     expect(find.text('아이스크림 전달'), findsWidgets);
-    expect(find.text('삭제 확인'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '삭제'), findsOneWidget);
   });
 
   testWidgets('오늘 삭제 명령은 지난 오늘 일정을 미래 후보보다 우선 표시한다', (tester) async {

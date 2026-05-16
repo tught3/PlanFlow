@@ -2786,22 +2786,24 @@ class _DeleteCandidateCard extends StatelessWidget {
       child: Material(
         key: ValueKey('voice-delete-inline-button-$index-${event.id}'),
         color: isSelected
-            ? PlanFlowColors.primaryFaint.withValues(alpha: 0.72)
-            : PlanFlowColors.background,
-        borderRadius: BorderRadius.circular(10),
+            ? PlanFlowColors.primaryFaint.withValues(alpha: 0.82)
+            : PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        elevation: isSelected ? 1 : 0,
+        shadowColor: PlanFlowColors.primary.withValues(alpha: 0.12),
         child: InkWell(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           onTap: disabled ? null : onDelete,
           child: Container(
             constraints: const BoxConstraints(minHeight: 82),
-            padding: const EdgeInsets.fromLTRB(6, 10, 8, 10),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: isSelected
-                    ? PlanFlowColors.primary
+                    ? PlanFlowColors.primaryMid
                     : PlanFlowColors.primaryFaint,
-                width: isSelected ? 1.1 : 0.8,
+                width: isSelected ? 1.3 : 0.8,
               ),
             ),
             child: Column(
@@ -2817,22 +2819,7 @@ class _DeleteCandidateCard extends StatelessWidget {
                           : (value) => onToggleSelection(value ?? false),
                       visualDensity: VisualDensity.compact,
                     ),
-                    const SizedBox(width: 4),
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color:
-                            colorScheme.errorContainer.withValues(alpha: 0.46),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        Icons.delete_outline,
-                        size: 18,
-                        color: colorScheme.error,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2863,20 +2850,19 @@ class _DeleteCandidateCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
-                FilledButton.tonalIcon(
+                FilledButton(
                   key: ValueKey('voice-delete-button-$index-${event.id}'),
                   onPressed: disabled ? null : onDelete,
-                  icon: const Icon(Icons.delete_outline, size: 16),
-                  label: const Text('삭제 확인'),
                   style: FilledButton.styleFrom(
                     foregroundColor: colorScheme.error,
-                    backgroundColor:
-                        colorScheme.errorContainer.withValues(alpha: 0.52),
+                    backgroundColor: colorScheme.errorContainer
+                        .withValues(alpha: isSelected ? 0.72 : 0.52),
                     minimumSize: const Size.fromHeight(40),
                     textStyle: theme.textTheme.labelMedium?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
                   ),
+                  child: const Text('삭제'),
                 ),
               ],
             ),
