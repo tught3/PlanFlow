@@ -48,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       HomeHeaderSummaryService();
   late final BriefingSchedulerService _briefingSchedulerService;
   EventModel? _pastTodayEvent;
+  List<EventModel> _recentPastEvents = const <EventModel>[];
   List<EventModel> _todayEvents = const <EventModel>[];
   List<EventModel> _upcomingEvents = const <EventModel>[];
   Set<String> _smartPreparationEventIds = const <String>{};
@@ -144,6 +145,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _pastTodayEvent = null;
+          _recentPastEvents = const <EventModel>[];
           _todayEvents = const <EventModel>[];
           _upcomingEvents = const <EventModel>[];
           _smartPreparationEventIds = const <String>{};
@@ -157,6 +159,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _pastTodayEvent = null;
+          _recentPastEvents = const <EventModel>[];
           _todayEvents = const <EventModel>[];
           _upcomingEvents = const <EventModel>[];
           _smartPreparationEventIds = const <String>{};
@@ -208,6 +211,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted && showLoading) {
         setState(() {
           _pastTodayEvent = null;
+          _recentPastEvents = const <EventModel>[];
           _todayEvents = const <EventModel>[];
           _upcomingEvents = const <EventModel>[];
           _smartPreparationEventIds = const <String>{};
@@ -234,6 +238,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final pastTodayEvents = todayEvents
         .where((event) => _isPastEvent(event, now))
         .toList(growable: false);
+    final recentPastEvents = homeRecentPastEvents(
+      allEvents,
+      now: now,
+    );
     final currentTodayEvents = todayEvents
         .where((event) => !_isPastEvent(event, now))
         .toList(growable: false);
@@ -264,6 +272,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {
         _pastTodayEvent = pastTodayEvents.isEmpty ? null : pastTodayEvents.last;
+        _recentPastEvents = recentPastEvents;
         _todayEvents = currentTodayEvents;
         _upcomingEvents = upcomingEvents.take(3).toList(growable: false);
         _smartPreparationEventIds = smartPreparationEventIds;
@@ -462,12 +471,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       const SizedBox(height: 12),
                     ] else ...[
                       if (_pastTodayEvent != null) ...[
-                        Text(
-                          '지나간 일정',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: PlanFlowColors.textSecondary,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        _HomeSectionHeader(
+                          title: '지나간 일정',
+                          actionLabel: '최근 12시간',
+                          onAction: _recentPastEvents.isEmpty
+                              ? null
+                              : () => _showRecentPastEventsSheet(
+                                    context,
+                                    _recentPastEvents,
+                                  ),
                         ),
                         const SizedBox(height: 8),
                         _TodayEventCard(
@@ -522,28 +534,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: PlanFlowColors.primaryFaint,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: const Icon(
-                                  Icons.calendar_month_outlined,
-                                  color: PlanFlowColors.primaryMid,
-                                  size: 26,
-                                ),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: PlanFlowColors.primaryFaint,
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: const Icon(
+                                      Icons.calendar_month_outlined,
+                                      color: PlanFlowColors.primaryMid,
+                                      size: 26,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      '오늘 일정 안내',
+                                      style:
+                                          theme.textTheme.titleMedium?.copyWith(
+                                        color: PlanFlowColors.primary,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 12),
-                              Text(
-                                '오늘 일정 안내',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  color: PlanFlowColors.primary,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
                               Text(
                                 '오늘 남은 일정이 없어요. 이미 지나간 일정은 위에 정리해 두었고, 이제 잠깐 쉬어가도 괜찮아요.',
                                 style: theme.textTheme.bodySmall?.copyWith(
@@ -632,6 +651,71 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       startAt: startAt,
       endAt: event.endAt,
       day: day,
+    );
+  }
+}
+
+@visibleForTesting
+List<EventModel> homeRecentPastEvents(
+  Iterable<EventModel> events, {
+  required DateTime now,
+  Duration lookBack = const Duration(hours: 12),
+}) {
+  final cutoff = now.subtract(lookBack);
+  return events.where((event) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final endedAt = event.endAt ?? startAt;
+    return endedAt.isBefore(now) && !endedAt.isBefore(cutoff);
+  }).toList(growable: false)
+    ..sort((a, b) =>
+        (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)));
+}
+
+class _HomeSectionHeader extends StatelessWidget {
+  const _HomeSectionHeader({
+    required this.title,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: PlanFlowColors.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        if (actionLabel != null)
+          TextButton.icon(
+            key: const ValueKey('home-recent-past-events-button'),
+            onPressed: onAction,
+            iconAlignment: IconAlignment.end,
+            icon: const Icon(Icons.chevron_right, size: 18),
+            label: Text(actionLabel!),
+            style: TextButton.styleFrom(
+              foregroundColor: PlanFlowColors.primaryMid,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              textStyle: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -990,6 +1074,195 @@ Future<void> _showHeaderSummarySheet(
       );
     },
   );
+}
+
+Future<void> _showRecentPastEventsSheet(
+  BuildContext context,
+  List<EventModel> events,
+) async {
+  final rootContext = context;
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      return DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.62,
+        minChildSize: 0.42,
+        maxChildSize: 0.92,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: PlanFlowColors.background,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: PlanFlowColors.primaryFaint,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 10, 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '최근 12시간 지난 일정',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                color: PlanFlowColors.primary,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${events.length}개 일정이 이미 끝났어요.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: PlanFlowColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '닫기',
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+                    itemCount: events.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final event = events[events.length - 1 - index];
+                      final startAt = event.startAt == null
+                          ? null
+                          : planflowLocal(event.startAt!);
+                      return Card(
+                        color: PlanFlowColors.surface,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(
+                            color: PlanFlowColors.primaryFaint,
+                            width: 0.8,
+                          ),
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            Navigator.of(sheetContext).pop();
+                            rootContext.push(
+                              '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                              extra: event,
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    color: PlanFlowColors.tagDoneBg,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.history,
+                                    color: PlanFlowColors.textSecondary,
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        event.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style:
+                                            theme.textTheme.titleMedium?.copyWith(
+                                          color: PlanFlowColors.primary,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        startAt == null
+                                            ? '시간 미정'
+                                            : _formatRecentPastEventTime(
+                                                startAt,
+                                              ),
+                                        style:
+                                            theme.textTheme.bodySmall?.copyWith(
+                                          color: PlanFlowColors.textSecondary,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      if (event.location != null) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          event.location!,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color:
+                                                PlanFlowColors.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(
+                                  Icons.chevron_right,
+                                  color: PlanFlowColors.primaryMid,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+String _formatRecentPastEventTime(DateTime value) {
+  final month = value.month.toString().padLeft(2, '0');
+  final day = value.day.toString().padLeft(2, '0');
+  final hour = value.hour.toString().padLeft(2, '0');
+  final minute = value.minute.toString().padLeft(2, '0');
+  return '$month/$day $hour:$minute';
 }
 
 class _SummaryDetailTile extends StatelessWidget {
@@ -1446,7 +1719,7 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final earlyBirdMessage = RemoteConfigService.earlyBirdMessage;
+    const earlyBirdMessage = '현재 어플이 마음에 드신다면 사전 신청해주세요.';
 
     if (_isSubmitted) {
       return Container(

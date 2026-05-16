@@ -630,3 +630,11 @@
 - Voice delete cleanup now passes the resolved `userId` into side-effect cleanup so delete-driven recalculation works in the same user context.
 - Review loop found and fixed stale departure cases in calendar sync, delete user-id propagation, and empty-upcoming cancellation; final reviewer returned PASS with no blocking findings.
 - Verification passed: focused analyze, focused service/voice tests, `git diff --check`, debug APK build, ADB install, launcher run, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-16 Home Recent Past Events Checkpoint
+- Changed the Home past-events header so the right-side action opens a recent-past modal instead of implying only the single visible past card.
+- Home still shows the latest past schedule card inline, and tapping that card opens its detail page; tapping `최근 12시간` opens a draggable bottom sheet listing every event that ended in the last 12 hours.
+- Updated the empty-today card so the calendar icon and `오늘 일정 안내` title sit on the same row.
+- Updated the PRO early-bird helper text to `현재 어플이 마음에 드신다면 사전 신청해주세요.`
+- Added a regression test for the 12-hour recent-past filter.
+- Verification passed: focused analyze, focused recent-past test, debug APK build, ADB install, launcher run, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
