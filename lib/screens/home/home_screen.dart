@@ -33,10 +33,18 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     this.scrollController,
+    this.userIdOverride,
+    this.eventRepository,
+    this.smartPreparationAlarmService = const SmartPreparationAlarmService(),
+    this.loadHeaderSummary = true,
     BriefingSchedulerService? briefingSchedulerService,
   }) : _briefingSchedulerService = briefingSchedulerService;
 
   final ScrollController? scrollController;
+  final String? userIdOverride;
+  final EventRepository? eventRepository;
+  final SmartPreparationAlarmService smartPreparationAlarmService;
+  final bool loadHeaderSummary;
   final BriefingSchedulerService? _briefingSchedulerService;
 
   @override
@@ -55,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   HomeHeaderSummary? _headerSummary;
   _HomeLoadState _loadState = _HomeLoadState.loading;
   String? _loadMessage;
+  bool _hasRenderedContent = false;
   bool _headerSummaryLoading = true;
   bool _isPlayingMorningBriefing = false;
   bool _isPlayingEveningBriefing = false;
@@ -67,7 +76,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _loadTodayEvents();
-    unawaited(_loadHomeHeaderSummary());
+    if (widget.loadHeaderSummary) {
+      unawaited(_loadHomeHeaderSummary());
+    }
   }
 
   @override
@@ -81,7 +92,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadTodayEvents();
-      unawaited(_loadHomeHeaderSummary());
+      if (widget.loadHeaderSummary) {
+        unawaited(_loadHomeHeaderSummary());
+      }
     }
   }
 
@@ -89,7 +102,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     EventPrefetchService().invalidate(userId: userId);
     _loadTodayEvents();
-    unawaited(_loadHomeHeaderSummary());
+    if (widget.loadHeaderSummary) {
+      unawaited(_loadHomeHeaderSummary());
+    }
   }
 
   Future<void> _loadHomeHeaderSummary() async {
@@ -141,42 +156,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _loadTodayEvents() async {
+    final shouldShowLoading = !_hasRenderedContent;
+
     if (!AppEnv.isSupabaseReady) {
       if (mounted) {
         setState(() {
-          _pastTodayEvent = null;
-          _recentPastEvents = const <EventModel>[];
-          _todayEvents = const <EventModel>[];
-          _upcomingEvents = const <EventModel>[];
-          _smartPreparationEventIds = const <String>{};
+          _clearHomeContent();
           _loadState = _HomeLoadState.supabaseMissing;
         });
       }
       return;
     }
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
+    final resolvedUserId = _resolveUserId();
+    if (resolvedUserId == null) {
       if (mounted) {
         setState(() {
-          _pastTodayEvent = null;
-          _recentPastEvents = const <EventModel>[];
-          _todayEvents = const <EventModel>[];
-          _upcomingEvents = const <EventModel>[];
-          _smartPreparationEventIds = const <String>{};
+          _clearHomeContent();
           _loadState = _HomeLoadState.signedOut;
         });
       }
       return;
     }
 
-    final repository = EventRepository.supabase();
+    final repository = widget.eventRepository ?? EventRepository.supabase();
     final prefetchService = EventPrefetchService();
-    final cachedEvents = prefetchService.getCached(user.id);
+    final cachedEvents = prefetchService.getCached(resolvedUserId);
     if (cachedEvents != null) {
-      await _applyHomeEvents(user.id, cachedEvents);
+      await _applyHomeEvents(resolvedUserId, cachedEvents);
       unawaited(
         _refreshHomeEvents(
-          userId: user.id,
+          userId: resolvedUserId,
           repository: repository,
           showLoading: false,
         ),
@@ -185,9 +194,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     await _refreshHomeEvents(
-      userId: user.id,
+      userId: resolvedUserId,
       repository: repository,
-      showLoading: true,
+      showLoading: shouldShowLoading,
     );
   }
 
@@ -210,11 +219,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (error) {
       if (mounted && showLoading) {
         setState(() {
-          _pastTodayEvent = null;
-          _recentPastEvents = const <EventModel>[];
-          _todayEvents = const <EventModel>[];
-          _upcomingEvents = const <EventModel>[];
-          _smartPreparationEventIds = const <String>{};
+          _clearHomeContent();
           _loadState = _HomeLoadState.error;
           _loadMessage = '오늘 일정을 불러오지 못했어요. 새로고침해 주세요.';
         });
@@ -259,8 +264,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     };
     var smartPreparationEventIds = const <String>{};
     try {
-      smartPreparationEventIds = await const SmartPreparationAlarmService()
-          .listEventIdsWithSmartAlarms(
+      smartPreparationEventIds =
+          await widget.smartPreparationAlarmService.listEventIdsWithSmartAlarms(
         userId: userId,
         eventIds: visibleEventIds,
       );
@@ -278,8 +283,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _smartPreparationEventIds = smartPreparationEventIds;
         _loadState = _HomeLoadState.ready;
         _loadMessage = null;
+        _hasRenderedContent = true;
       });
     }
+  }
+
+  void _clearHomeContent() {
+    _pastTodayEvent = null;
+    _recentPastEvents = const <EventModel>[];
+    _todayEvents = const <EventModel>[];
+    _upcomingEvents = const <EventModel>[];
+    _smartPreparationEventIds = const <String>{};
+    _hasRenderedContent = false;
+  }
+
+  String? _resolveUserId() {
+    final overrideUserId = widget.userIdOverride?.trim();
+    if (overrideUserId != null && overrideUserId.isNotEmpty) {
+      return overrideUserId;
+    }
+    return Supabase.instance.client.auth.currentUser?.id;
   }
 
   Future<void> _playBriefing({required bool isMorning}) async {
@@ -1200,8 +1223,8 @@ Future<void> _showRecentPastEventsSheet(
                                         event.title,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style:
-                                            theme.textTheme.titleMedium?.copyWith(
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
                                           color: PlanFlowColors.primary,
                                           fontWeight: FontWeight.w800,
                                         ),
@@ -1227,8 +1250,7 @@ Future<void> _showRecentPastEventsSheet(
                                           overflow: TextOverflow.ellipsis,
                                           style: theme.textTheme.bodySmall
                                               ?.copyWith(
-                                            color:
-                                                PlanFlowColors.textSecondary,
+                                            color: PlanFlowColors.textSecondary,
                                           ),
                                         ),
                                       ],

@@ -36,6 +36,10 @@ class CalendarAutoSyncService {
         _throttle = throttle,
         _now = now ?? DateTime.now;
 
+  static const String _lastAttemptAtKey = 'calendar_sync:last_attempt_at';
+  static const String _lastStartedAtKey = 'calendar_sync:last_started_at';
+  static bool _globalSyncInProgress = false;
+
   final CalendarSyncService? _calendarSyncService;
   final NaverCalDavService? _naverCalDavService;
   final DeviceCalendarService? _deviceCalendarService;
@@ -113,7 +117,7 @@ class CalendarAutoSyncService {
     String reason = 'app_lifecycle',
     bool force = false,
   }) async {
-    if (!_canSync || _isSyncing) {
+    if (!_canSync) {
       await _recordProviderStatus(
         'all',
         status: 'attention',
@@ -122,18 +126,24 @@ class CalendarAutoSyncService {
       return CalendarAutoSyncResult.skipped('not_ready');
     }
 
+    if (_isSyncing || _globalSyncInProgress) {
+      return CalendarAutoSyncResult.skipped('already_syncing');
+    }
+
     final now = _now();
-    final lastAttemptAt = _lastAttemptAt;
+    final lastAttemptAt = _lastAttemptAt ?? await _loadLastAttemptAt();
     if (!force &&
         lastAttemptAt != null &&
         now.difference(lastAttemptAt) < _throttle) {
+      _lastAttemptAt = lastAttemptAt;
       return CalendarAutoSyncResult.skipped('throttled');
     }
 
-    _lastAttemptAt = now;
     _isSyncing = true;
+    _globalSyncInProgress = true;
     final result = CalendarAutoSyncResult();
     try {
+      await _storeLastStartedAt(now);
       await _runStep(result, 'google_auto_sync', () async {
         final google = await _calendarSync.syncGoogleCalendar(
           interactive: false,
@@ -180,10 +190,15 @@ class CalendarAutoSyncService {
       EventRefreshBus.instance.notifyChanged(
         reason: 'calendar_auto_sync:$reason',
       );
-      await _recordSummary(result, reason: reason);
+      await _recordSummary(
+        result,
+        reason: reason,
+        completedAt: _now(),
+      );
       return result;
     } finally {
       _isSyncing = false;
+      _globalSyncInProgress = false;
     }
   }
 
@@ -247,15 +262,18 @@ class CalendarAutoSyncService {
   Future<void> _recordSummary(
     CalendarAutoSyncResult result, {
     required String reason,
+    DateTime? completedAt,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    final lastAttemptAt = completedAt ?? _now();
+    _lastAttemptAt = lastAttemptAt;
+    await prefs.setString(
+      _lastAttemptAtKey,
+      lastAttemptAt.toIso8601String(),
+    );
     await prefs.setString(
       'calendar_sync:last_reason',
       reason,
-    );
-    await prefs.setString(
-      'calendar_sync:last_attempt_at',
-      _now().toIso8601String(),
     );
     await prefs.setStringList(
       'calendar_sync:last_completed',
@@ -284,6 +302,19 @@ class CalendarAutoSyncService {
     if (status == 'connected') {
       await prefs.setString('$key:last_success_at', _now().toIso8601String());
     }
+  }
+
+  Future<void> _storeLastStartedAt(DateTime startedAt) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _lastStartedAtKey,
+      startedAt.toIso8601String(),
+    );
+  }
+
+  Future<DateTime?> _loadLastAttemptAt() async {
+    final prefs = await SharedPreferences.getInstance();
+    return _parseDateTime(prefs.getString(_lastAttemptAtKey));
   }
 
   String? _resolvedUserId() {

@@ -643,3 +643,10 @@
 - Updated the PRO early-bird helper text in both the Home banner and the reusable signup card to `현재 어플이 마음에 드신다면 사전 신청해주세요. 유료모델 전환때 특별한 혜택을 드립니다.`
 - Confirmed the email submission flow still normalizes and validates the email locally, then submits it through the Supabase RPC gateway `submit_early_bird_email`; it is not just a UI-only state change.
 - Verification passed: focused analyze, focused early-bird repository/card tests, and the existing RPC-backed repository test continues to prove the save path persists through the gateway layer.
+
+## 2026-05-16 Calendar Resume Sync Reliability Checkpoint
+- Changed app pause handling so background calendar sync no longer reuses the foreground session/route/ICS flow; it now performs a quiet calendar-only best-effort sync.
+- Changed calendar auto-sync throttling to rely on the last completed summary timestamp, while storing `calendar_sync:last_started_at` separately for diagnostics. This prevents an unfinished background attempt from blocking the next resume sync.
+- Added a process-wide in-flight guard for calendar auto-sync so app-level and shell-level lifecycle hooks do not run overlapping sync jobs through separate service instances.
+- Home keeps already-rendered schedule content visible during resume refresh, and its regression test now uses injected fakes instead of swallowing SharedPreferences/Supabase setup errors.
+- Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused calendar/home tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.

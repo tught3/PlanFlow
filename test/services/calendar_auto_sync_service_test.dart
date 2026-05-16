@@ -71,6 +71,95 @@ void main() {
     );
   });
 
+  test('syncConnectedCalendars keeps throttling across a new service instance',
+      () async {
+    final firstService = CalendarAutoSyncService(
+      calendarSyncService: _FakeCalendarSyncService(
+        googleResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.google,
+          message: 'Google Calendar가 연결되어 있지 않아 건너뜁니다.',
+        ),
+        naverResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.naver,
+          message: 'Naver 직접 연동이 연결되어 있지 않아 건너뜁니다.',
+        ),
+      ),
+      naverCalDavService: _FakeNaverCalDavService(
+        hasSavedCredentials: false,
+      ),
+      deviceCalendarService: _FakeDeviceCalendarService(
+        hasPermission: false,
+      ),
+      eventRepository: _FakeEventRepository(),
+      throttle: const Duration(minutes: 15),
+      now: () => DateTime(2026, 5, 9, 9, 0),
+    );
+
+    final firstResult = await firstService.syncConnectedCalendars();
+    expect(firstResult.didRun, isTrue);
+
+    final secondCalendarSyncService = _FakeCalendarSyncService(
+      googleResult: CalendarIntegrationResult.synced(CalendarProvider.google),
+      naverResult: CalendarIntegrationResult.synced(CalendarProvider.naver),
+    );
+    final secondNaverCalDavService = _FakeNaverCalDavService(
+      hasSavedCredentials: true,
+    );
+    final secondDeviceCalendarService = _FakeDeviceCalendarService(
+      hasPermission: true,
+    );
+    final secondService = CalendarAutoSyncService(
+      calendarSyncService: secondCalendarSyncService,
+      naverCalDavService: secondNaverCalDavService,
+      deviceCalendarService: secondDeviceCalendarService,
+      eventRepository: _FakeEventRepository(),
+      throttle: const Duration(minutes: 15),
+      now: () => DateTime(2026, 5, 9, 9, 5),
+    );
+
+    final secondResult = await secondService.syncConnectedCalendars();
+
+    expect(secondResult.skippedReason, 'throttled');
+    expect(secondCalendarSyncService.googleSyncCallCount, 0);
+    expect(secondCalendarSyncService.naverSyncCallCount, 0);
+    expect(secondNaverCalDavService.syncAllCallCount, 0);
+    expect(secondDeviceCalendarService.importCallCount, 0);
+  });
+
+  test(
+      'syncConnectedCalendars ignores unfinished background start for throttle',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'calendar_sync:last_started_at': '2026-05-09T09:00:00.000',
+    });
+    final calendarSyncService = _FakeCalendarSyncService(
+      googleResult: CalendarIntegrationResult.synced(CalendarProvider.google),
+      naverResult: CalendarIntegrationResult.synced(CalendarProvider.naver),
+    );
+    final naverCalDavService = _FakeNaverCalDavService(
+      hasSavedCredentials: true,
+    );
+    final deviceCalendarService = _FakeDeviceCalendarService(
+      hasPermission: true,
+    );
+    final service = CalendarAutoSyncService(
+      calendarSyncService: calendarSyncService,
+      naverCalDavService: naverCalDavService,
+      deviceCalendarService: deviceCalendarService,
+      eventRepository: _FakeEventRepository(),
+      throttle: const Duration(minutes: 15),
+      now: () => DateTime(2026, 5, 9, 9, 5),
+    );
+
+    final result = await service.syncConnectedCalendars(reason: 'resume');
+
+    expect(result.didRun, isTrue);
+    expect(calendarSyncService.googleSyncCallCount, 1);
+    expect(calendarSyncService.naverSyncCallCount, 1);
+    expect(naverCalDavService.syncAllCallCount, 1);
+    expect(deviceCalendarService.importCallCount, 1);
+  });
+
   test('syncConnectedCalendars imports Naver CalDAV when credentials exist',
       () async {
     final naverCalDav = _FakeNaverCalDavService(
@@ -334,7 +423,8 @@ void main() {
     expect(preparation.preparedEventIds, ['within-24h']);
   });
 
-  test('syncConnectedCalendars still cancels stale departures when none upcoming',
+  test(
+      'syncConnectedCalendars still cancels stale departures when none upcoming',
       () async {
     final repository = _FakeEventRepository(
       events: <EventModel>[
@@ -419,16 +509,20 @@ class _FakeCalendarSyncService extends CalendarSyncService {
 
   final CalendarIntegrationResult googleResult;
   final CalendarIntegrationResult naverResult;
+  int googleSyncCallCount = 0;
+  int naverSyncCallCount = 0;
 
   @override
   Future<CalendarIntegrationResult> syncGoogleCalendar({
     bool interactive = true,
   }) async {
+    googleSyncCallCount += 1;
     return googleResult;
   }
 
   @override
   Future<CalendarIntegrationResult> syncNaverCalendar() async {
+    naverSyncCallCount += 1;
     return naverResult;
   }
 }
@@ -495,6 +589,7 @@ class _FakeDeviceCalendarService extends DeviceCalendarService {
 
   final bool hasPermission;
   final DeviceCalendarImportResult importResult;
+  int importCallCount = 0;
 
   @override
   Future<bool> checkCalendarPermission() async => hasPermission;
@@ -505,6 +600,7 @@ class _FakeDeviceCalendarService extends DeviceCalendarService {
     DateTime? startAt,
     DateTime? endAt,
   }) async {
+    importCallCount += 1;
     return importResult;
   }
 }
@@ -622,8 +718,7 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
   }) async {
     alarmRecalculateCallCount += 1;
     lastAlarmEvents = events.toList(growable: false);
-    lastExtraDepartureEventIdsToCancel =
-        extraDepartureEventIdsToCancel.toSet();
+    lastExtraDepartureEventIdsToCancel = extraDepartureEventIdsToCancel.toSet();
     lastUserId = userId;
     final dayGroups = <String, List<EventModel>>{};
     for (final event in lastAlarmEvents) {

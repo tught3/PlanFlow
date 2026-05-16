@@ -40,6 +40,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     super.initState();
     _oauthCallbackHandler.start();
     _lifecycleListener = AppLifecycleListener(
+      onPause: () {
+        unawaited(_syncCalendarInBackground());
+      },
       onResume: () {
         unawaited(_syncSessionAndCalendar(reason: 'resume'));
         unawaited(UpdateService.checkAndPrompt());
@@ -52,6 +55,22 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _homeWidgetClickSubscription = HomeWidget.widgetClicked.listen(
       _handleHomeWidgetUri,
     );
+  }
+
+  Future<void> _syncCalendarInBackground() async {
+    try {
+      final signedIn =
+          authProvider.isSignedIn || await authProvider.syncCurrentSession();
+      if (!signedIn) {
+        return;
+      }
+      await _calendarAutoSyncService.syncConnectedCalendars(
+        reason: 'background',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Background calendar sync skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<void> _syncSessionAndCalendar({required String reason}) async {
