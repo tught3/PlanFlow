@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/notification_service.dart';
 
@@ -8,6 +10,8 @@ void main() {
     test('builds default reminder row for manual events', () {
       final service = ManualEventSideEffectService(
         gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
         notificationService: _FakeNotificationService(),
       );
       final startAt = DateTime.utc(2026, 5, 2, 12);
@@ -40,6 +44,8 @@ void main() {
       final notifications = _FakeNotificationService();
       final service = ManualEventSideEffectService(
         gateway: gateway,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
         notificationService: notifications,
       );
       final event = EventModel(
@@ -76,6 +82,8 @@ void main() {
       final notifications = _FakeNotificationService();
       final service = ManualEventSideEffectService(
         gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
         notificationService: notifications,
       );
 
@@ -84,12 +92,157 @@ void main() {
       expect(notifications.cancelledEventIds, ['event-3']);
     });
 
+    test('syncAfterSave recalculates prep and departure alarms for the day',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final departure = _FakeDepartureAlarmService();
+      final tenOClock = EventModel(
+        id: 'ten-place',
+        userId: 'user-1',
+        title: '10시 거래처 방문',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: '강릉아산병원',
+        locationLat: 37.7563,
+        locationLng: 128.8758,
+      );
+      final nineOClock = EventModel(
+        id: 'nine-place',
+        userId: 'user-1',
+        title: '9시 고객 미팅',
+        startAt: DateTime(2026, 5, 8, 9),
+        location: '강릉역',
+        locationLat: 37.7646,
+        locationLng: 128.8995,
+      );
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        eventRepository: _FakeEventRepository(
+          events: <EventModel>[nineOClock, tenOClock],
+        ),
+        departureAlarmService: departure,
+        notificationService: notifications,
+        now: () => DateTime(2026, 5, 8, 6),
+      );
+
+      await service.syncAfterSave(
+        event: nineOClock,
+        userId: 'user-1',
+      );
+
+      final nineTitles = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'nine-place')
+          .map((row) => row['title'].toString());
+      final tenTitles = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'ten-place')
+          .map((row) => row['title'].toString());
+      expect(
+        nineTitles.any((title) => title.contains('지금 준비 시작하세요')),
+        true,
+      );
+      expect(
+        tenTitles.any((title) => title.contains('지금 준비 시작하세요')),
+        false,
+      );
+      expect(
+        notifications.cancelledNotificationIds,
+        containsAll(<int>[
+          notifications.notificationIdFor('nine-place:departure'),
+          notifications.notificationIdFor('ten-place:departure'),
+        ]),
+      );
+      expect(departure.scheduledEventIds, containsAll(<String>[
+        'nine-place',
+        'ten-place',
+      ]));
+      expect(departure.scheduleNextMonitorCallCount, 1);
+    });
+
+    test('delete cleanup recalculates remaining alarms for the signed-in user',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final departure = _FakeDepartureAlarmService();
+      final remaining = EventModel(
+        id: 'remaining-place',
+        userId: 'user-1',
+        title: '남은 외부 일정',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: '대전역',
+        locationLat: 36.332,
+        locationLng: 127.434,
+      );
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        eventRepository: _FakeEventRepository(events: <EventModel>[remaining]),
+        departureAlarmService: departure,
+        notificationService: notifications,
+        now: () => DateTime(2026, 5, 8, 6),
+      );
+
+      await service.cleanupAfterDelete('deleted-event', userId: 'user-1');
+
+      expect(notifications.cancelledEventIds, ['deleted-event']);
+      expect(gateway.deletedExternalPreActionEventIds, ['remaining-place']);
+      final remainingTitles = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'remaining-place')
+          .map((row) => row['title'].toString());
+      expect(
+        remainingTitles.any((title) => title.contains('지금 준비 시작하세요')),
+        true,
+      );
+      expect(
+        notifications.cancelledNotificationIds,
+        contains(notifications.notificationIdFor('remaining-place:departure')),
+      );
+      expect(departure.scheduledEventIds, ['remaining-place']);
+    });
+
+    test('recalculate cancels stale departure alarms even with no upcoming events',
+        () async {
+      final notifications = _FakeNotificationService();
+      final departure = _FakeDepartureAlarmService();
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: departure,
+        notificationService: notifications,
+        now: () => DateTime(2026, 5, 8, 12),
+      );
+
+      final result = await service.recalculateAlarmsForEvents(
+        events: <EventModel>[
+          EventModel(
+            id: 'moved-past',
+            userId: 'user-1',
+            title: '이미 지난 외부 일정',
+            startAt: DateTime(2026, 5, 8, 8),
+            location: '강릉아산병원',
+            locationLat: 37.7563,
+            locationLng: 128.8758,
+          ),
+        ],
+        userId: 'user-1',
+        extraDepartureEventIdsToCancel: const <String>['moved-past'],
+      );
+
+      expect(result.departureScheduled, 0);
+      expect(result.departureSkipped, 0);
+      expect(
+        notifications.cancelledNotificationIds,
+        contains(notifications.notificationIdFor('moved-past:departure')),
+      );
+      expect(departure.scheduledEventIds, isEmpty);
+    });
+
     test('resyncRemindersForEvents replaces DB rows and local alarms',
         () async {
       final gateway = _FakeManualEventGateway();
       final notifications = _FakeNotificationService();
       final service = ManualEventSideEffectService(
         gateway: gateway,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
         notificationService: notifications,
       );
       final event = EventModel(
@@ -126,6 +279,8 @@ void main() {
       final notifications = _FakeNotificationService();
       final service = ManualEventSideEffectService(
         gateway: gateway,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
         notificationService: notifications,
       );
       final event = EventModel(
@@ -159,6 +314,8 @@ void main() {
       final notifications = _FakeNotificationService();
       final service = ManualEventSideEffectService(
         gateway: gateway,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
         notificationService: notifications,
       );
       final event = EventModel(
@@ -194,6 +351,8 @@ void main() {
       final notifications = _FakeNotificationService();
       final service = ManualEventSideEffectService(
         gateway: gateway,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
         notificationService: notifications,
       );
       final phoneCall = EventModel(
@@ -245,6 +404,113 @@ void main() {
         false,
       );
       expect(meetingTitles, contains('지금 출발하세요 🚗 (이동 약 30분)'));
+    });
+
+    test(
+        'resyncExternalPreparationForDay moves prep start to newly earlier place event',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: notifications,
+      );
+      final tenOClock = EventModel(
+        id: 'ten-place',
+        userId: 'user-1',
+        title: '10시 거래처 방문',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: '강릉아산병원',
+      );
+      final nineOClock = EventModel(
+        id: 'nine-place',
+        userId: 'user-1',
+        title: '9시 고객 미팅',
+        startAt: DateTime(2026, 5, 8, 9),
+        location: '강릉역',
+      );
+
+      final result = await service.resyncExternalPreparationForDay(
+        dayEvents: <EventModel>[tenOClock, nineOClock],
+        userId: 'user-1',
+        dayReference: DateTime(2026, 5, 8),
+        now: DateTime(2026, 5, 8, 6),
+      );
+
+      expect(result, true);
+      expect(gateway.deletedExternalPreActionEventIds, [
+        'nine-place',
+        'ten-place',
+      ]);
+      expect(notifications.cancelledSmartPreparationEventIds, [
+        'nine-place',
+        'ten-place',
+      ]);
+      final nineTitles = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'nine-place')
+          .map((row) => row['title']);
+      final tenTitles = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'ten-place')
+          .map((row) => row['title']);
+      expect(
+        nineTitles.any((title) => title.toString().contains('지금 준비 시작하세요')),
+        true,
+      );
+      expect(
+        tenTitles.any((title) => title.toString().contains('지금 준비 시작하세요')),
+        false,
+      );
+      expect(tenTitles, contains('지금 출발하세요 🚗 (이동 약 30분)'));
+    });
+
+    test(
+        'resyncExternalPreparationForDay ignores earlier event without place for prep target',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: notifications,
+      );
+      final noPlace = EventModel(
+        id: 'nine-no-place',
+        userId: 'user-1',
+        title: '9시 전화 회의',
+        startAt: DateTime(2026, 5, 8, 9),
+      );
+      final place = EventModel(
+        id: 'ten-place',
+        userId: 'user-1',
+        title: '10시 거래처 방문',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: '강릉아산병원',
+      );
+
+      final result = await service.resyncExternalPreparationForDay(
+        dayEvents: <EventModel>[noPlace, place],
+        userId: 'user-1',
+        dayReference: DateTime(2026, 5, 8),
+        now: DateTime(2026, 5, 8, 6),
+      );
+
+      expect(result, true);
+      expect(gateway.deletedExternalPreActionEventIds, ['ten-place']);
+      expect(notifications.cancelledSmartPreparationEventIds, ['ten-place']);
+      final noPlaceTitles = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'nine-no-place')
+          .map((row) => row['title']);
+      final placeTitles = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'ten-place')
+          .map((row) => row['title']);
+      expect(noPlaceTitles, isEmpty);
+      expect(
+        placeTitles.any((title) => title.toString().contains('지금 준비 시작하세요')),
+        true,
+      );
     });
   });
 }
@@ -301,6 +567,33 @@ class _SlowManualEventGateway extends _FakeManualEventGateway {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     await super.insertPreActions(payloads);
   }
+}
+
+class _FakeEventRepository extends EventRepository {
+  const _FakeEventRepository({this.events = const <EventModel>[]});
+
+  final List<EventModel> events;
+
+  @override
+  Future<EventModel> createEvent(EventModel event) async => event;
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) async {}
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    return null;
+  }
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    return events
+        .where((event) => userId == null || event.userId == userId)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<EventModel> updateEvent(EventModel event) async => event;
 }
 
 class _FakeNotificationService extends NotificationService {
@@ -361,5 +654,30 @@ class _FakeNotificationService extends NotificationService {
       status: NotificationScheduleStatus.scheduled,
       notifyAt: notifyAt,
     );
+  }
+}
+
+class _FakeDepartureAlarmService extends DepartureAlarmService {
+  int scheduleForEventCallCount = 0;
+  int scheduleNextMonitorCallCount = 0;
+  final scheduledEventIds = <String>[];
+
+  @override
+  Future<DepartureAlarmScheduleResult> scheduleForEvent(
+    EventModel event, {
+    bool rescheduleMonitor = true,
+  }) async {
+    scheduleForEventCallCount += 1;
+    scheduledEventIds.add(event.id);
+    return DepartureAlarmScheduleResult.scheduled(
+      notifyAt: DateTime(2026, 5, 8, 8),
+      travelMinutes: 30,
+    );
+  }
+
+  @override
+  Future<bool> scheduleNextMonitor() async {
+    scheduleNextMonitorCallCount += 1;
+    return true;
   }
 }

@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
+import '../data/repositories/event_repository.dart';
+import 'departure_alarm_service.dart';
 import 'notification_service.dart';
 import 'smart_preparation_alarm_service.dart';
 
@@ -115,8 +118,14 @@ class SupabaseManualEventSideEffectGateway
 class ManualEventSideEffectService {
   const ManualEventSideEffectService({
     this.gateway = const SupabaseManualEventSideEffectGateway(),
+    EventRepository? eventRepository,
+    DepartureAlarmService? departureAlarmService,
     NotificationService? notificationService,
-  }) : _notificationService = notificationService;
+    DateTime Function()? now,
+  })  : _eventRepository = eventRepository,
+        _departureAlarmService = departureAlarmService,
+        _notificationService = notificationService,
+        _now = now;
 
   static const Duration defaultReminderOffset = Duration(minutes: 60);
   static const Duration criticalAlarmOffset = Duration(minutes: 60);
@@ -124,10 +133,17 @@ class ManualEventSideEffectService {
       <String, Future<bool>>{};
 
   final ManualEventSideEffectGateway gateway;
+  final EventRepository? _eventRepository;
+  final DepartureAlarmService? _departureAlarmService;
   final NotificationService? _notificationService;
+  final DateTime Function()? _now;
 
+  EventRepository get _events => _eventRepository ?? EventRepository.supabase();
+  DepartureAlarmService get _departureAlarms =>
+      _departureAlarmService ?? const DepartureAlarmService();
   NotificationService get _notifications =>
       _notificationService ?? NotificationService();
+  DateTime get _currentTime => (_now ?? DateTime.now)();
 
   Future<ManualEventSideEffectResult> syncAfterSave({
     required EventModel event,
@@ -221,6 +237,11 @@ class ManualEventSideEffectService {
       notificationsSynced = false;
     }
 
+    await recalculateUpcomingAlarmsForUser(
+      userId: userId,
+      seedEvents: <EventModel>[event],
+    );
+
     return ManualEventSideEffectResult(
       remindersSynced: remindersSynced,
       notificationsSynced: notificationsSynced,
@@ -228,8 +249,153 @@ class ManualEventSideEffectService {
     );
   }
 
-  Future<void> cleanupAfterDelete(String eventId) {
-    return _notifications.cancelEventNotifications(eventId);
+  Future<void> cleanupAfterDelete(String eventId, {String? userId}) async {
+    await _notifications.cancelEventNotifications(eventId);
+    final resolvedUserId = userId ?? _currentSupabaseUserId();
+    if (resolvedUserId == null || resolvedUserId.isEmpty) {
+      return;
+    }
+    await recalculateUpcomingAlarmsForUser(userId: resolvedUserId);
+  }
+
+  Future<ManualEventAlarmRecalculationResult> recalculateUpcomingAlarmsForUser({
+    required String userId,
+    Iterable<EventModel> seedEvents = const <EventModel>[],
+    DateTime? now,
+    bool resyncDepartureAlarms = true,
+  }) async {
+    final effectiveNow = now ?? _currentTime;
+    final until = effectiveNow.add(const Duration(days: 7));
+    var events = seedEvents.toList(growable: true);
+
+    try {
+      final repositoryEvents = await _events.listEvents(userId: userId);
+      events = repositoryEvents;
+    } catch (error, stackTrace) {
+      if (events.isEmpty) {
+        debugPrint('Manual event alarm recalculation skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        return const ManualEventAlarmRecalculationResult(
+          skippedReason: 'events_unavailable',
+        );
+      }
+      debugPrint(
+        'Manual event alarm recalculation using seed events: $error',
+      );
+    }
+
+    return recalculateAlarmsForEvents(
+      events: events,
+      userId: userId,
+      now: effectiveNow,
+      until: until,
+      resyncDepartureAlarms: resyncDepartureAlarms,
+    );
+  }
+
+  Future<ManualEventAlarmRecalculationResult> recalculateAlarmsForEvents({
+    required Iterable<EventModel> events,
+    required String userId,
+    DateTime? now,
+    DateTime? until,
+    Iterable<String> extraDepartureEventIdsToCancel = const <String>[],
+    bool resyncDepartureAlarms = true,
+  }) async {
+    final effectiveNow = now ?? _currentTime;
+    final effectiveUntil = until ?? effectiveNow.add(const Duration(days: 7));
+    final upcomingEvents = events.where((event) {
+      final startAt = event.startAt;
+      return startAt != null &&
+          startAt.isAfter(effectiveNow) &&
+          startAt.isBefore(effectiveUntil);
+    }).toList(growable: false)
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+
+    var preparationDays = 0;
+    var preparationFailed = false;
+    final dayEvents = <String, List<EventModel>>{};
+    for (final event in upcomingEvents) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        continue;
+      }
+      final localDay = planflowLocal(startAt);
+      final key = '${localDay.year.toString().padLeft(4, '0')}-'
+          '${localDay.month.toString().padLeft(2, '0')}-'
+          '${localDay.day.toString().padLeft(2, '0')}';
+      dayEvents.putIfAbsent(key, () => <EventModel>[]).add(event);
+    }
+
+    for (final eventsForDay in dayEvents.values) {
+      final reference = eventsForDay
+          .map((event) => event.startAt)
+          .whereType<DateTime>()
+          .reduce((a, b) => a.isBefore(b) ? a : b);
+      final ok = await resyncExternalPreparationForDay(
+        dayEvents: eventsForDay,
+        userId: userId,
+        dayReference: reference,
+        now: effectiveNow,
+      );
+      preparationDays += 1;
+      preparationFailed = preparationFailed || !ok;
+    }
+
+    var departureScheduled = 0;
+    var departureSkipped = 0;
+    if (resyncDepartureAlarms) {
+      final departureUntil =
+          effectiveNow.add(DepartureAlarmService.monitorLookAhead);
+      final cancelledDepartureEventIds = extraDepartureEventIdsToCancel
+          .where((id) => id.trim().isNotEmpty)
+          .toSet();
+      for (final event in upcomingEvents.where((event) {
+        final startAt = event.startAt;
+        return startAt != null && startAt.isBefore(departureUntil);
+      })) {
+        cancelledDepartureEventIds.add(event.id);
+      }
+      for (final eventId in cancelledDepartureEventIds) {
+        await _notifications.cancel(
+          _notifications.notificationIdFor('$eventId:departure'),
+        );
+      }
+      for (final event in upcomingEvents.where((event) {
+        final startAt = event.startAt;
+        return startAt != null && startAt.isBefore(departureUntil);
+      })) {
+        if (!_hasPlace(event)) {
+          departureSkipped += 1;
+          continue;
+        }
+        final result = await _departureAlarms.scheduleForEvent(
+          event,
+          rescheduleMonitor: false,
+        );
+        if (result.isScheduled) {
+          departureScheduled += 1;
+        } else {
+          departureSkipped += 1;
+        }
+      }
+      if (departureScheduled > 0 || departureSkipped > 0) {
+        await _departureAlarms.scheduleNextMonitor();
+      }
+    }
+
+    if (upcomingEvents.isEmpty) {
+      return ManualEventAlarmRecalculationResult(
+        departureScheduled: departureScheduled,
+        departureSkipped: departureSkipped,
+      );
+    }
+
+    return ManualEventAlarmRecalculationResult(
+      preparationDays: preparationDays,
+      preparationSucceeded: !preparationFailed,
+      departureScheduled: departureScheduled,
+      departureSkipped: departureSkipped,
+    );
   }
 
   Future<bool> resyncRemindersForEvents({
@@ -414,6 +580,21 @@ class ManualEventSideEffectService {
     return '$userId:$yyyy-$mm-$dd';
   }
 
+  bool _hasPlace(EventModel event) {
+    final location = event.location?.trim();
+    return (location != null && location.isNotEmpty) ||
+        (event.locationLat != null && event.locationLng != null);
+  }
+
+  String? _currentSupabaseUserId() {
+    try {
+      final auth = Supabase.instance.client.auth;
+      return auth.currentSession?.user.id ?? auth.currentUser?.id;
+    } catch (_) {
+      return null;
+    }
+  }
+
   List<Map<String, dynamic>> _deduplicatePayloads(
     Iterable<Map<String, dynamic>> payloads,
   ) {
@@ -555,4 +736,22 @@ class ManualEventSideEffectResult {
 
   bool get isFullySynced =>
       remindersSynced && notificationsSynced && preActionsCleared;
+}
+
+class ManualEventAlarmRecalculationResult {
+  const ManualEventAlarmRecalculationResult({
+    this.preparationDays = 0,
+    this.preparationSucceeded = true,
+    this.departureScheduled = 0,
+    this.departureSkipped = 0,
+    this.skippedReason,
+  });
+
+  final int preparationDays;
+  final bool preparationSucceeded;
+  final int departureScheduled;
+  final int departureSkipped;
+  final String? skippedReason;
+
+  bool get isFullySynced => preparationSucceeded && skippedReason == null;
 }

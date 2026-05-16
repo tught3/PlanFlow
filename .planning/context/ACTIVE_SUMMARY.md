@@ -622,3 +622,11 @@
 - Preserved card tap deletion, per-card delete button, checkbox multi-select, and selected-delete behavior.
 - Reviewer agent returned PASS with no blocking findings.
 - Verification passed: focused analyze, focused `voice_action_screen_test.dart`, debug APK build, ADB install, PlanFlow launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-16 Smart Prep And Departure Alarm Recalculation Checkpoint
+- Centralized smart preparation/departure alarm recalculation in `ManualEventSideEffectService` so schedule save/delete and calendar sync share one alarm recalculation path.
+- Remaining future events are now recalculated after saves, deletes, and calendar sync; the first location-backed external event for each day gets the smart preparation alert, so a newly-added earlier location event moves the prep alarm earlier, while a place-less earlier event does not steal it.
+- Departure alarms are cancelled before rescheduling and stale `eventId:departure` alarms are also cancelled when synced events move to the past, outside the monitoring window, or outside the upcoming window.
+- Voice delete cleanup now passes the resolved `userId` into side-effect cleanup so delete-driven recalculation works in the same user context.
+- Review loop found and fixed stale departure cases in calendar sync, delete user-id propagation, and empty-upcoming cancellation; final reviewer returned PASS with no blocking findings.
+- Verification passed: focused analyze, focused service/voice tests, `git diff --check`, debug APK build, ADB install, launcher run, PID check, and focused window check showing `com.planflow.app/.MainActivity`.

@@ -219,6 +219,15 @@ void main() {
       'event-2',
       'event-1',
     ]);
+    expect(sideEffects.alarmRecalculateCallCount, 1);
+    expect(sideEffects.lastAlarmEvents.map((event) => event.id), [
+      'event-2',
+      'event-1',
+    ]);
+    expect(
+      sideEffects.lastExtraDepartureEventIdsToCancel,
+      containsAll(<String>['event-1', 'event-2']),
+    );
     expect(sideEffects.resyncCallCount, 1);
     expect(sideEffects.lastDayEvents.map((event) => event.id),
         containsAll(<String>['event-1', 'event-2']));
@@ -238,6 +247,8 @@ void main() {
           title: '강릉아산병원 방문',
           startAt: DateTime(2026, 5, 10, 8),
           location: '강릉아산병원',
+          locationLat: 37.7563,
+          locationLng: 128.8758,
           source: 'naver_device',
         ),
         EventModel(
@@ -246,6 +257,8 @@ void main() {
           title: '교보생명 시험',
           startAt: DateTime(2026, 5, 12, 10),
           location: '교보생명',
+          locationLat: 37.5702,
+          locationLng: 126.9779,
           source: 'naver_caldav',
         ),
         EventModel(
@@ -300,11 +313,86 @@ void main() {
 
     final resyncedEventIds =
         sideEffects.dayEventIdsByCall.expand((ids) => ids).toSet();
+    expect(sideEffects.alarmRecalculateCallCount, 1);
+    expect(
+      sideEffects.lastAlarmEvents.map((event) => event.id),
+      containsAll(<String>['within-24h', 'within-7d-outside-24h']),
+    );
+    expect(
+      sideEffects.lastExtraDepartureEventIdsToCancel,
+      containsAll(<String>[
+        'within-24h',
+        'within-7d-outside-24h',
+        'past',
+        'after-7d',
+      ]),
+    );
     expect(resyncedEventIds, contains('within-24h'));
     expect(resyncedEventIds, contains('within-7d-outside-24h'));
     expect(resyncedEventIds, isNot(contains('past')));
     expect(resyncedEventIds, isNot(contains('after-7d')));
     expect(preparation.preparedEventIds, ['within-24h']);
+  });
+
+  test('syncConnectedCalendars still cancels stale departures when none upcoming',
+      () async {
+    final repository = _FakeEventRepository(
+      events: <EventModel>[
+        EventModel(
+          id: 'moved-past',
+          userId: 'user-1',
+          title: '지난 외부 일정',
+          startAt: DateTime(2026, 5, 9, 8),
+          location: '대전역',
+          locationLat: 36.332,
+          locationLng: 127.434,
+          source: 'naver_device',
+        ),
+        EventModel(
+          id: 'after-7d',
+          userId: 'user-1',
+          title: '먼 외부 일정',
+          startAt: DateTime(2026, 5, 20, 16),
+          location: '부산역',
+          locationLat: 35.115,
+          locationLng: 129.042,
+          source: 'naver_device',
+        ),
+      ],
+    );
+    final sideEffects = _FakeManualEventSideEffectService();
+    final service = CalendarAutoSyncService(
+      calendarSyncService: _FakeCalendarSyncService(
+        googleResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.google,
+          message: 'Google Calendar가 연결되어 있지 않아 건너뜁니다.',
+        ),
+        naverResult: CalendarIntegrationResult.signedOut(
+          CalendarProvider.naver,
+          message: 'Naver 직접 연동이 연결되어 있지 않아 건너뜁니다.',
+        ),
+      ),
+      naverCalDavService: _FakeNaverCalDavService(
+        hasSavedCredentials: false,
+      ),
+      deviceCalendarService: _FakeDeviceCalendarService(
+        hasPermission: false,
+      ),
+      eventRepository: repository,
+      sideEffectService: sideEffects,
+      eventPreparationService: _FakeEventPreparationService(),
+      throttle: Duration.zero,
+      now: () => DateTime(2026, 5, 10, 12),
+    );
+
+    await service.syncConnectedCalendars(force: true);
+
+    expect(sideEffects.alarmRecalculateCallCount, 1);
+    expect(sideEffects.lastAlarmEvents, isEmpty);
+    expect(
+      sideEffects.lastExtraDepartureEventIdsToCancel,
+      containsAll(<String>['moved-past', 'after-7d']),
+    );
   });
 }
 
@@ -352,7 +440,7 @@ class _FakeNaverCalDavService extends NaverCalDavService {
       success: true,
       message: '네이버 CalDAV 일정이 최신입니다.',
     ),
-  });
+  }) : super(credentialStore: const _FakeNaverCalDavCredentialStore());
 
   final bool hasSavedCredentials;
   final NaverCalDavSyncResult syncResult;
@@ -374,6 +462,22 @@ class _FakeNaverCalDavService extends NaverCalDavService {
     syncAllCallCount += 1;
     return syncResult;
   }
+}
+
+class _FakeNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
+  const _FakeNaverCalDavCredentialStore();
+
+  @override
+  Future<void> clearCredentials() async {}
+
+  @override
+  Future<NaverCalDavCredentials?> readCredentials() async => null;
+
+  @override
+  Future<void> saveCredentials({
+    required String naverId,
+    required String appPassword,
+  }) async {}
 }
 
 class _FakeDeviceCalendarService extends DeviceCalendarService {
@@ -464,8 +568,11 @@ class _FakeEventRepository extends EventRepository {
 class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
   int resyncCallCount = 0;
   int reminderResyncCallCount = 0;
+  int alarmRecalculateCallCount = 0;
   List<EventModel> lastDayEvents = const <EventModel>[];
   List<EventModel> lastReminderEvents = const <EventModel>[];
+  List<EventModel> lastAlarmEvents = const <EventModel>[];
+  Set<String> lastExtraDepartureEventIdsToCancel = const <String>{};
   String? lastUserId;
   final List<List<String>> dayEventIdsByCall = <List<String>>[];
 
@@ -502,6 +609,48 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
       lastDayEvents.map((event) => event.id).toList(growable: false),
     );
     return true;
+  }
+
+  @override
+  Future<ManualEventAlarmRecalculationResult> recalculateAlarmsForEvents({
+    required Iterable<EventModel> events,
+    required String userId,
+    DateTime? now,
+    DateTime? until,
+    Iterable<String> extraDepartureEventIdsToCancel = const <String>[],
+    bool resyncDepartureAlarms = true,
+  }) async {
+    alarmRecalculateCallCount += 1;
+    lastAlarmEvents = events.toList(growable: false);
+    lastExtraDepartureEventIdsToCancel =
+        extraDepartureEventIdsToCancel.toSet();
+    lastUserId = userId;
+    final dayGroups = <String, List<EventModel>>{};
+    for (final event in lastAlarmEvents) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        continue;
+      }
+      final key = '${startAt.year}-${startAt.month}-${startAt.day}';
+      dayGroups.putIfAbsent(key, () => <EventModel>[]).add(event);
+    }
+    for (final dayEvents in dayGroups.values) {
+      await resyncExternalPreparationForDay(
+        dayEvents: dayEvents,
+        userId: userId,
+        dayReference: dayEvents.first.startAt!,
+        now: now,
+      );
+    }
+    return ManualEventAlarmRecalculationResult(
+      preparationDays: dayGroups.length,
+      departureScheduled: resyncDepartureAlarms
+          ? lastAlarmEvents
+              .where((event) =>
+                  event.locationLat != null && event.locationLng != null)
+              .length
+          : 0,
+    );
   }
 }
 

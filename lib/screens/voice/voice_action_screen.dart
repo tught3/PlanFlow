@@ -1432,7 +1432,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     try {
       for (final event in events) {
         await _repository.deleteEvent(event.id, userId: userId);
-        await widget.sideEffectService.cleanupAfterDelete(event.id);
+        await widget.sideEffectService.cleanupAfterDelete(
+          event.id,
+          userId: userId,
+        );
         await _resyncExternalPreparationAfterDelete(event, userId: userId);
       }
       await _refreshHomeWidget(userId);

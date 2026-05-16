@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
-import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import '../providers/auth_provider.dart';
@@ -17,7 +16,6 @@ import 'event_preparation_service.dart';
 import 'event_refresh_bus.dart';
 import 'manual_event_side_effect_service.dart';
 import 'naver_caldav_service.dart';
-import 'smart_preparation_alarm_service.dart';
 
 class CalendarAutoSyncService {
   CalendarAutoSyncService({
@@ -307,7 +305,6 @@ class CalendarAutoSyncService {
     try {
       final now = _now();
       final events = await _events.listEvents(userId: userId);
-      final smartPreparation = const SmartPreparationAlarmService();
       final upcomingEvents = events.where((event) {
         final startAt = event.startAt;
         if (startAt == null ||
@@ -319,69 +316,45 @@ class CalendarAutoSyncService {
       }).toList(growable: false)
         ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
 
-      if (upcomingEvents.isEmpty) {
-        return;
-      }
-
       await _sideEffects.resyncRemindersForEvents(
         events: upcomingEvents,
         userId: userId,
       );
 
-      final upcomingExternalEvents = upcomingEvents.where((event) {
-        return smartPreparation.isExternalEvent(
-          title: event.title,
-          location: event.location,
-        );
-      }).toList(growable: false)
-        ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+      await _sideEffects.recalculateAlarmsForEvents(
+        events: upcomingEvents,
+        userId: userId,
+        now: now,
+        until: now.add(const Duration(days: 7)),
+        extraDepartureEventIdsToCancel:
+            events.map((event) => event.id).where((id) => id.isNotEmpty),
+      );
 
-      if (upcomingExternalEvents.isEmpty) {
-        return;
-      }
-
-      final dayKeys = <String, List<EventModel>>{};
-      for (final event in upcomingEvents) {
-        final startAt = event.startAt;
-        if (startAt == null) {
-          continue;
-        }
-        final localDay = planflowLocal(startAt);
-        final key = '${localDay.year.toString().padLeft(4, '0')}-'
-            '${localDay.month.toString().padLeft(2, '0')}-'
-            '${localDay.day.toString().padLeft(2, '0')}';
-        dayKeys.putIfAbsent(key, () => <EventModel>[]).add(event);
-      }
-
-      for (final dayEvents in dayKeys.values) {
-        final reference = dayEvents
-            .map((event) => event.startAt)
-            .whereType<DateTime>()
-            .reduce((a, b) => a.isBefore(b) ? a : b);
-        await _sideEffects.resyncExternalPreparationForDay(
-          dayEvents: dayEvents,
-          userId: userId,
-          dayReference: reference,
-          now: now,
-        );
-      }
-
-      for (final event in upcomingExternalEvents.where((event) {
+      final upcomingLocationEvents = upcomingEvents.where((event) {
         final startAt = event.startAt;
         return startAt != null &&
-            startAt.isBefore(now.add(DepartureAlarmService.monitorLookAhead));
-      })) {
+            startAt.isBefore(now.add(DepartureAlarmService.monitorLookAhead)) &&
+            _hasPlace(event);
+      }).toList(growable: false);
+
+      for (final event in upcomingLocationEvents) {
         await _eventPreparation.prepareAfterSave(event);
       }
 
       debugPrint(
         'Calendar auto sync preparation resynced: '
-        'reason=$reason events=${upcomingExternalEvents.length}',
+        'reason=$reason events=${upcomingLocationEvents.length}',
       );
     } catch (error, stackTrace) {
       debugPrint('Calendar auto sync preparation resync failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  bool _hasPlace(EventModel event) {
+    final location = event.location?.trim();
+    return (location != null && location.isNotEmpty) ||
+        (event.locationLat != null && event.locationLng != null);
   }
 
   CalendarAutoSyncStepOutcome _calendarOutcome(

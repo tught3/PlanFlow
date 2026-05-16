@@ -183,7 +183,6 @@ void main() {
         _event(id: 'event-2', title: '치과 방문'),
       ],
     );
-
     final router = GoRouter(
       initialLocation: AppRoutes.voiceAction,
       routes: [
@@ -680,6 +679,7 @@ void main() {
         _event(id: 'event-2', title: '치과 방문'),
       ],
     );
+    final sideEffects = _RecordingSideEffectService();
 
     final router = GoRouter(
       initialLocation: AppRoutes.voiceAction,
@@ -690,7 +690,7 @@ void main() {
             rawText: '한강 피크닉 삭제해줘',
             action: VoiceScheduleAction.delete,
             eventRepository: repository,
-            sideEffectService: const _NoopSideEffectService(),
+            sideEffectService: sideEffects,
             homeWidgetService: _NoopHomeWidgetService(),
             userIdOverride: 'user-1',
           ),
@@ -717,6 +717,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.deletedEventIds, ['event-1']);
+    expect(sideEffects.cleanedUpEventIds, ['event-1']);
+    expect(sideEffects.cleanedUpUserIds, ['user-1']);
     expect(find.text('일정 탭'), findsOneWidget);
   });
 
@@ -1190,7 +1192,18 @@ class _NoopSideEffectService extends ManualEventSideEffectService {
   const _NoopSideEffectService();
 
   @override
-  Future<void> cleanupAfterDelete(String eventId) async {}
+  Future<void> cleanupAfterDelete(String eventId, {String? userId}) async {}
+}
+
+class _RecordingSideEffectService extends ManualEventSideEffectService {
+  final cleanedUpEventIds = <String>[];
+  final cleanedUpUserIds = <String?>[];
+
+  @override
+  Future<void> cleanupAfterDelete(String eventId, {String? userId}) async {
+    cleanedUpEventIds.add(eventId);
+    cleanedUpUserIds.add(userId);
+  }
 }
 
 class _NoopHomeWidgetService extends HomeWidgetService {
