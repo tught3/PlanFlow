@@ -783,9 +783,13 @@ void main() {
 
     expect(find.text('선택된 일정 2개'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilledButton, '선택 삭제').first);
+    await tester.tap(
+      find.byKey(const ValueKey('voice-delete-selected-inline-button')),
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '선택 삭제').last);
+    await tester.tap(
+      find.byKey(const ValueKey('voice-confirm-selected-delete')),
+    );
     await tester.pumpAndSettle();
 
     expect(repository.deletedEventIds, ['event-1', 'event-2']);
@@ -832,7 +836,8 @@ void main() {
         findsOneWidget);
     expect(find.byKey(const ValueKey('voice-delete-inline-button-1-event-2')),
         findsOneWidget);
-    expect(find.textContaining('삭제할 일정을 선택'), findsOneWidget);
+    expect(find.byKey(const ValueKey('voice-delete-inline-instruction')),
+        findsOneWidget);
     expect(find.text('선택된 일정 0개'), findsOneWidget);
     expect(find.byKey(const ValueKey('voice-delete-candidate-0-event-1')),
         findsOneWidget);
@@ -916,7 +921,7 @@ void main() {
 
     expect(find.text('대상 일정'), findsOneWidget);
     expect(find.text('아이스크림 전달'), findsWidgets);
-    expect(find.text('삭제'), findsOneWidget);
+    expect(find.text('삭제 확인'), findsOneWidget);
   });
 
   testWidgets('오늘 삭제 명령은 지난 오늘 일정을 미래 후보보다 우선 표시한다', (tester) async {
