@@ -54,6 +54,7 @@ dev_dependencies:
   shared_preferences_platform_interface: ^2.4.2
 
 flutter:
+  generate: true
   uses-material-design: true
   assets:
     - assets/naver_app_password/

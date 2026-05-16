@@ -21,6 +21,7 @@ import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
+import '../../l10n/app_l10n.dart';
 import '../../widgets/calendar_style_event_editor.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
@@ -767,10 +768,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = appL10n(context);
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
-      appBar: AppBar(title: Text(_isNewEvent ? '일정 만들기' : '일정 편집')),
+      appBar: AppBar(
+        title: Text(_isNewEvent ? l10n.eventCreateTitle : l10n.eventEditTitle),
+      ),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -884,12 +888,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.save_outlined),
-                  label: Text(_isSaving ? '저장 중...' : '저장'),
+                  label: Text(_isSaving ? l10n.saving : l10n.save),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: () => context.pop(),
-                  child: const Text('취소'),
+                  child: Text(l10n.cancel),
                 ),
               ],
             ),

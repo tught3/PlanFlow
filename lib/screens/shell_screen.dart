@@ -16,6 +16,7 @@ import '../services/briefing_scheduler_service.dart';
 import '../services/calendar_auto_sync_service.dart';
 import '../services/departure_alarm_service.dart';
 import '../services/naver_calendar_permission_service.dart';
+import '../l10n/app_l10n.dart';
 import 'calendar/calendar_screen.dart';
 import 'home_screen.dart';
 import 'settings/settings_screen.dart';
@@ -320,24 +321,33 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   List<NavigationDestination> _buildNavigationBarDestinations() {
+    final labels = _localizedDestinationLabels();
     return _shellDestinations
+        .indexed
         .map(
-          (destination) => NavigationDestination(
-            icon: Icon(destination.icon),
-            selectedIcon: Icon(destination.selectedIcon),
-            label: destination.label,
+          (entry) => NavigationDestination(
+            icon: Icon(entry.$2.icon),
+            selectedIcon: Icon(entry.$2.selectedIcon),
+            label: labels[entry.$1],
           ),
         )
         .toList(growable: false);
   }
 
+  List<String> _localizedDestinationLabels() {
+    final l10n = appL10n(context);
+    return <String>[l10n.homeTab, l10n.calendarTab, l10n.settingsTab];
+  }
+
   List<NavigationRailDestination> _buildNavigationRailDestinations() {
+    final labels = _localizedDestinationLabels();
     return _shellDestinations
+        .indexed
         .map(
-          (destination) => NavigationRailDestination(
-            icon: Icon(destination.icon),
-            selectedIcon: Icon(destination.selectedIcon),
-            label: Text(destination.label),
+          (entry) => NavigationRailDestination(
+            icon: Icon(entry.$2.icon),
+            selectedIcon: Icon(entry.$2.selectedIcon),
+            label: Text(labels[entry.$1]),
           ),
         )
         .toList(growable: false);

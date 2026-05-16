@@ -5,6 +5,7 @@ class PlanFlowRegion {
     required this.countryCode,
     required this.countryName,
     required this.localeCode,
+    required this.uiLocaleCode,
     required this.timeZoneId,
     required this.languageHint,
   });
@@ -12,11 +13,20 @@ class PlanFlowRegion {
   final String countryCode;
   final String countryName;
   final String localeCode;
+  final String uiLocaleCode;
   final String timeZoneId;
   final String languageHint;
 
   Locale get locale {
     final parts = localeCode.split('-');
+    if (parts.length < 2) {
+      return Locale(parts.first);
+    }
+    return Locale(parts.first, parts[1]);
+  }
+
+  Locale get uiLocale {
+    final parts = uiLocaleCode.split('-');
     if (parts.length < 2) {
       return Locale(parts.first);
     }
@@ -31,6 +41,7 @@ class PlanFlowRegions {
     countryCode: 'KR',
     countryName: '대한민국',
     localeCode: 'ko-KR',
+    uiLocaleCode: 'ko-KR',
     timeZoneId: 'Asia/Seoul',
     languageHint: 'ko-KR',
   );
@@ -41,6 +52,7 @@ class PlanFlowRegions {
       countryCode: 'US',
       countryName: '미국',
       localeCode: 'en-US',
+      uiLocaleCode: 'en-US',
       timeZoneId: 'America/New_York',
       languageHint: 'en-US',
     ),
@@ -48,6 +60,7 @@ class PlanFlowRegions {
       countryCode: 'JP',
       countryName: '일본',
       localeCode: 'ja-JP',
+      uiLocaleCode: 'en-US',
       timeZoneId: 'Asia/Tokyo',
       languageHint: 'ja-JP',
     ),
@@ -55,6 +68,7 @@ class PlanFlowRegions {
       countryCode: 'GB',
       countryName: '영국',
       localeCode: 'en-GB',
+      uiLocaleCode: 'en-US',
       timeZoneId: 'Europe/London',
       languageHint: 'en-GB',
     ),
@@ -62,6 +76,7 @@ class PlanFlowRegions {
       countryCode: 'DE',
       countryName: '독일',
       localeCode: 'de-DE',
+      uiLocaleCode: 'en-US',
       timeZoneId: 'Europe/Berlin',
       languageHint: 'de-DE',
     ),
@@ -69,6 +84,7 @@ class PlanFlowRegions {
       countryCode: 'FR',
       countryName: '프랑스',
       localeCode: 'fr-FR',
+      uiLocaleCode: 'en-US',
       timeZoneId: 'Europe/Paris',
       languageHint: 'fr-FR',
     ),
@@ -76,6 +92,7 @@ class PlanFlowRegions {
       countryCode: 'AU',
       countryName: '호주',
       localeCode: 'en-AU',
+      uiLocaleCode: 'en-US',
       timeZoneId: 'Australia/Sydney',
       languageHint: 'en-AU',
     ),
@@ -107,6 +124,7 @@ class PlanFlowRegions {
       countryCode: base.countryCode,
       countryName: base.countryName,
       localeCode: locale == null || locale.isEmpty ? base.localeCode : locale,
+      uiLocaleCode: base.uiLocaleCode,
       timeZoneId:
           timeZone == null || timeZone.isEmpty ? base.timeZoneId : timeZone,
       languageHint: locale == null || locale.isEmpty ? base.languageHint : locale,
@@ -136,4 +154,3 @@ class PlanFlowRegionController extends ChangeNotifier {
 
   void reset() => setRegion(PlanFlowRegions.korea);
 }
-

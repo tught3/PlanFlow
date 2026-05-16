@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:planflow/l10n/app_localizations.dart';
 
 import 'core/constants.dart';
 import 'core/env.dart';
@@ -195,17 +196,13 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
           debugShowCheckedModeBanner: false,
           title: 'PlanFlow',
           theme: buildPlanFlowTheme(),
-          locale: PlanFlowRegionController.instance.region.locale,
+          locale: PlanFlowRegionController.instance.region.uiLocale,
           supportedLocales: const [
             Locale('ko', 'KR'),
             Locale('en', 'US'),
-            Locale('ja', 'JP'),
-            Locale('en', 'GB'),
-            Locale('de', 'DE'),
-            Locale('fr', 'FR'),
-            Locale('en', 'AU'),
           ],
           localizationsDelegates: const [
+            AppLocalizations.delegate,
             GlobalMaterialLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,

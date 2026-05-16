@@ -15,6 +15,7 @@ import '../../services/stt_service.dart';
 import '../../services/voice_command_router.dart';
 import '../../services/voice_command_analysis_service.dart';
 import '../../services/voice_text_cleanup_service.dart';
+import '../../l10n/app_l10n.dart';
 
 class VoiceInputScreen extends StatefulWidget {
   const VoiceInputScreen({
@@ -157,7 +158,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
           }
           setState(() {
             _sttRestartCount = count;
-            _statusMessage = '음성 인식이 자동으로 이어졌어요. 완료를 누를 때까지 계속 말해 주세요.';
+            _statusMessage = appL10n(context).voiceAutoRestarted;
           });
         },
       );
@@ -182,7 +183,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       unawaited(AnalyticsService.logVoiceInputFailed(reason: 'stt_no_result'));
       setState(() {
         _statusMessage =
-            result.message ?? '음성 인식 결과를 확인하지 못했어요. 직접 입력으로 이어가 주세요.';
+            result.message ?? appL10n(context).voiceNoResult;
       });
       _focusManualInput();
     } catch (_) {
@@ -191,7 +192,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       }
       unawaited(AnalyticsService.logVoiceInputFailed(reason: 'stt_exception'));
       setState(() {
-        _statusMessage = '음성 인식을 처리하지 못했어요. 직접 입력으로 이어가 주세요.';
+        _statusMessage = appL10n(context).voiceFailed;
       });
       _focusManualInput();
     } finally {
@@ -219,7 +220,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
     setState(() {
       _isListening = false;
-      _statusMessage = '음성 입력을 취소했어요. 다시 시작할 수 있습니다.';
+      _statusMessage = appL10n(context).voiceCancelled;
     });
   }
 
@@ -233,7 +234,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
     setState(() {
       _statusMessage =
-          nextText.trim().isEmpty ? '입력 내용을 비웠어요.' : '마지막 단어를 지웠어요.';
+          nextText.trim().isEmpty
+              ? appL10n(context).voiceClearedEmpty
+              : appL10n(context).voiceDeletedLast;
     });
   }
 
@@ -247,7 +250,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       return;
     }
     setState(() {
-      _statusMessage = '전체 입력을 지웠어요.';
+      _statusMessage = appL10n(context).voiceClearedAll;
     });
   }
 
@@ -609,9 +612,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = appL10n(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('음성 입력')),
+      appBar: AppBar(title: Text(l10n.voiceInputTitle)),
       bottomNavigationBar: _VoiceBottomControls(
         isListening: _isListening,
         hasText: _rawTextController.text.trim().isNotEmpty,
@@ -682,20 +686,38 @@ class _VoiceCommandGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const bullets = <String>[
-      '일정: “내일 오전 10시 정장집 방문”',
-      '기간: “5월 10일 하루종일 휴가”',
-      '반복: “매주 화요일 팀 미팅”',
-      '장소: “내일 오후 3시 강남역 미팅”',
-      '수정: “언제 일정을 다음주로 변경해”',
-      '분류: 병원=건강, 세미나=교육',
-      '조회: “오늘 일정 알려줘”, “이번 주 일정 알려줘”',
-      '제어: 다시/처음부터/전체삭제/전체취소=전체삭제 · 아니/아니다=교정 · 마지막 삭제/방금 삭제=일부삭제 · 취소/중지 등=종료',
-    ];
-    const compactBullets = <String>[
-      '일정/수정/조회: “내일 오전 10시 정장집 방문”, “5월 10일 하루종일 휴가”, “매주 화요일 팀 미팅”, “오늘 일정 알려줘”',
-      '제어: 다시/처음부터/전체삭제/전체취소=전체삭제 · 아니/아니다=교정 · 마지막 삭제/방금 삭제=일부삭제 · 취소/중지 등=종료',
-    ];
+    final l10n = appL10n(context);
+    final isKorean = l10n.localeName == 'ko';
+    final bullets = isKorean
+        ? const <String>[
+            '일정: “내일 오전 10시 정장집 방문”',
+            '기간: “5월 10일 하루종일 휴가”',
+            '반복: “매주 화요일 팀 미팅”',
+            '장소: “내일 오후 3시 강남역 미팅”',
+            '수정: “언제 일정을 다음주로 변경해”',
+            '분류: 병원=건강, 세미나=교육',
+            '조회: “오늘 일정 알려줘”, “이번 주 일정 알려줘”',
+            '제어: 다시/처음부터/전체삭제/전체취소=전체삭제 · 아니/아니다=교정 · 마지막 삭제/방금 삭제=일부삭제 · 취소/중지 등=종료',
+          ]
+        : const <String>[
+            'Event: “Visit the tailor tomorrow at 10 AM”',
+            'All-day: “Vacation all day on May 10”',
+            'Repeat: “Team meeting every Tuesday”',
+            'Place: “Meeting at Gangnam Station tomorrow at 3 PM”',
+            'Edit: “Move that appointment to next week”',
+            'Category: hospital=health, seminar=education',
+            'Query: “Tell me today’s schedule”, “Show this week”',
+            'Control: start over=clear · no=correct · delete last=remove word · stop=end',
+          ];
+    final compactBullets = isKorean
+        ? const <String>[
+            '일정/수정/조회: “내일 오전 10시 정장집 방문”, “5월 10일 하루종일 휴가”, “매주 화요일 팀 미팅”, “오늘 일정 알려줘”',
+            '제어: 다시/처음부터/전체삭제/전체취소=전체삭제 · 아니/아니다=교정 · 마지막 삭제/방금 삭제=일부삭제 · 취소/중지 등=종료',
+          ]
+        : const <String>[
+            'Event/edit/query: “Visit tomorrow at 10 AM”, “Vacation on May 10”, “Team meeting every Tuesday”, “Show today”',
+            'Control: start over=clear · no=correct · delete last=remove word · stop=end',
+          ];
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -726,7 +748,7 @@ class _VoiceCommandGuide extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '이렇게 말해보세요',
+                            l10n.voiceGuideTitle,
                             style: theme.textTheme.titleSmall?.copyWith(
                               color: PlanFlowColors.primary,
                               fontWeight: FontWeight.w800,
@@ -744,7 +766,7 @@ class _VoiceCommandGuide extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            '시간, 장소, 반복 표현을 같이 말하면 더 정확해요.',
+                            l10n.voiceGuideFooter,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodySmall?.copyWith(
@@ -779,6 +801,7 @@ class _ListeningGuide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = appL10n(context);
     return Card(
       elevation: 0,
       color: PlanFlowColors.surface,
@@ -791,9 +814,9 @@ class _ListeningGuide extends StatelessWidget {
         child: Text(
           isListening
               ? restartCount == 0
-                  ? '온디바이스 음성으로 듣는 중입니다. 완료를 누를 때까지 계속 이어서 말할 수 있어요.'
-                  : '음성 인식이 $restartCount번 이어졌어요. 이전 말은 유지됩니다.'
-              : '아래 버튼을 눌러 음성으로 말하거나, 직접 입력해 주세요.',
+                  ? l10n.voiceListenActive
+                  : l10n.voiceListenRestarted(restartCount)
+              : l10n.voiceListenIdle,
           style: theme.textTheme.bodySmall?.copyWith(
             color: PlanFlowColors.textSecondary,
           ),
@@ -821,6 +844,7 @@ class _VoiceTranscriptSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = appL10n(context);
 
     return Card(
       elevation: 0,
@@ -835,7 +859,7 @@ class _VoiceTranscriptSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '음성 원문 / 직접 입력',
+              l10n.voiceTranscriptTitle,
               style: theme.textTheme.titleSmall?.copyWith(
                 color: PlanFlowColors.primary,
                 fontWeight: FontWeight.w700,
@@ -848,7 +872,7 @@ class _VoiceTranscriptSection extends StatelessWidget {
               maxLines: 4,
               minLines: 2,
               textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(hintText: '입력해주세요'),
+              decoration: InputDecoration(hintText: l10n.voiceInputHint),
               onSubmitted: (_) {
                 FocusScope.of(context).unfocus();
                 onManualSubmit();
@@ -857,7 +881,7 @@ class _VoiceTranscriptSection extends StatelessWidget {
             if (recognizedText != null) ...[
               const SizedBox(height: 6),
               Text(
-                isListening ? '계속 듣는 중입니다.' : '인식된 내용을 확인해 주세요.',
+                isListening ? l10n.voiceListeningContinue : l10n.voiceCheckRecognized,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: PlanFlowColors.textSecondary,
                 ),
@@ -887,12 +911,13 @@ class _VoicePrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = appL10n(context);
     final voiceButton = FilledButton.icon(
       onPressed: isListening ? onTapFinish : onTapStart,
       icon: Icon(isListening ? Icons.check : Icons.mic),
       label: FittedBox(
         fit: BoxFit.scaleDown,
-        child: Text(isListening ? '완료' : '음성으로 일정 입력하기'),
+        child: Text(isListening ? l10n.voiceDone : l10n.voicePrimaryStart),
       ),
     );
 
@@ -939,6 +964,7 @@ class _VoiceActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = appL10n(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final compactLabels = constraints.maxWidth < 380 || isListening;
@@ -946,21 +972,27 @@ class _VoiceActionButtons extends StatelessWidget {
           children: [
             Expanded(
               child: _VoiceActionButton(
-                label: compactLabels ? '전체삭제' : '전체 지우기',
+                label: compactLabels
+                    ? l10n.voiceClearAllCompact
+                    : l10n.voiceClearAll,
                 onPressed: hasText ? onClear : null,
               ),
             ),
             const SizedBox(width: 6),
             Expanded(
               child: _VoiceActionButton(
-                label: compactLabels ? '마지막삭제' : '마지막 단어 삭제',
+                label: compactLabels
+                    ? l10n.voiceDeleteLastCompact
+                    : l10n.voiceDeleteLast,
                 onPressed: hasText ? onUndo : null,
               ),
             ),
             const SizedBox(width: 6),
             Expanded(
               child: _VoiceActionButton(
-                label: compactLabels ? '직접입력' : '직접 입력',
+                label: compactLabels
+                    ? l10n.voiceManualInputCompact
+                    : l10n.voiceManualInput,
                 onPressed: hasText ? onManualSubmit : null,
               ),
             ),
@@ -969,7 +1001,7 @@ class _VoiceActionButtons extends StatelessWidget {
               SizedBox.square(
                 dimension: 40,
                 child: IconButton.outlined(
-                  tooltip: '음성 입력 취소',
+                  tooltip: l10n.voiceCancelTooltip,
                   onPressed: onCancel,
                   icon: const Icon(Icons.close, size: 20),
                   padding: EdgeInsets.zero,
@@ -1128,6 +1160,7 @@ class _VoiceBottomNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = appL10n(context);
     return NavigationBar(
       selectedIndex: 0,
       onDestinationSelected: (index) {
@@ -1143,21 +1176,21 @@ class _VoiceBottomNavigation extends StatelessWidget {
             break;
         }
       },
-      destinations: const [
+      destinations: [
         NavigationDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home),
-          label: '홈',
+          icon: const Icon(Icons.home_outlined),
+          selectedIcon: const Icon(Icons.home),
+          label: l10n.homeTab,
         ),
         NavigationDestination(
-          icon: Icon(Icons.calendar_month_outlined),
-          selectedIcon: Icon(Icons.calendar_month),
-          label: '일정',
+          icon: const Icon(Icons.calendar_month_outlined),
+          selectedIcon: const Icon(Icons.calendar_month),
+          label: l10n.calendarTab,
         ),
         NavigationDestination(
-          icon: Icon(Icons.settings_outlined),
-          selectedIcon: Icon(Icons.settings),
-          label: '설정',
+          icon: const Icon(Icons.settings_outlined),
+          selectedIcon: const Icon(Icons.settings),
+          label: l10n.settingsTab,
         ),
       ],
     );

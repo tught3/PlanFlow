@@ -31,6 +31,7 @@ import '../../services/device_calendar_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/naver_caldav_service.dart';
 import '../../services/naver_calendar_permission_service.dart';
+import '../../l10n/app_l10n.dart';
 import 'feedback_report_sheet.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -1861,23 +1862,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildRegionSettings() {
     final selectedRegion = PlanFlowRegions.byCountryCode(_countryCode);
+    final l10n = appL10n(context);
     return _SectionCard(
-      title: '국가/시간',
-      subtitle: '일정 시간대와 날짜 표시 기준을 정합니다.',
+      title: l10n.regionSettingsTitle,
+      subtitle: l10n.regionSettingsSubtitle,
       child: DropdownButtonFormField<String>(
         key: const ValueKey('settings-region-country-selector'),
         initialValue: selectedRegion.countryCode,
-        decoration: const InputDecoration(
-          labelText: '국가',
+        decoration: InputDecoration(
+          labelText: l10n.countryLabel,
           isDense: true,
-          prefixIcon: Icon(Icons.public_outlined),
+          prefixIcon: const Icon(Icons.public_outlined),
         ),
         items: PlanFlowRegions.supported
             .map(
               (region) => DropdownMenuItem<String>(
                 value: region.countryCode,
                 child: Text(
-                  '${region.countryName} · ${region.timeZoneId}',
+                  '${_localizedRegionName(context, region)} · ${region.timeZoneId}',
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -1898,6 +1900,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
     );
+  }
+
+  String _localizedRegionName(BuildContext context, PlanFlowRegion region) {
+    final l10n = appL10n(context);
+    return switch (region.countryCode) {
+      'KR' => l10n.korea,
+      'US' => l10n.unitedStates,
+      'JP' => l10n.japan,
+      'GB' => l10n.unitedKingdom,
+      'DE' => l10n.germany,
+      'FR' => l10n.france,
+      'AU' => l10n.australia,
+      _ => region.countryName,
+    };
   }
 
   Widget _buildSmartAlarmSettings() {
@@ -2028,10 +2044,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
       appBar: AppBar(
-        title: const Text('설정'),
+        title: Text(appL10n(context).settingsTitle),
         actions: [
           IconButton(
-            tooltip: '기본값으로 되돌리기',
+            tooltip: appL10n(context).resetDefaultsTooltip,
             onPressed: _resetToDefaults,
             icon: const Icon(Icons.restart_alt),
           ),
@@ -2180,7 +2196,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildSmartAlarmSettings(),
               const SizedBox(height: 16),
               _SectionCard(
-                title: '캘린더 연동',
+                title: appL10n(context).calendarSyncTitle,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -2420,7 +2436,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 16),
               if (authProvider.isSignedIn && _backupService != null) ...[
                 _SectionCard(
-                  title: '백업 및 복원',
+                  title: appL10n(context).backupRestoreTitle,
                   subtitle: '수동 백업과 매일 새벽 3시 자동 백업 기록을 관리합니다.',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

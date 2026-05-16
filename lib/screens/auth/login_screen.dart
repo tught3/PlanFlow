@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/oauth_callback_handler.dart';
+import '../../l10n/app_l10n.dart';
 
 enum _AuthMode {
   login,
@@ -77,9 +78,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit() async {
+    final l10n = appL10n(context);
     final authService = _authService;
     if (!AppEnv.isSupabaseReady || authService == null) {
-      _setMessage('Supabase 빌드 설정값을 먼저 주입해야 로그인할 수 있습니다.');
+      _setMessage(l10n.supabaseLoginMissing);
       return;
     }
 
@@ -105,7 +107,7 @@ class _LoginScreenState extends State<LoginScreen> {
           unawaited(AnalyticsService.logLogin(method: 'email'));
           context.go(AppRoutes.home);
         } else if (mounted) {
-          _setMessage('로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+          _setMessage(l10n.loginSessionFailed);
         }
       } else if (_mode == _AuthMode.signUp) {
         final response = await authService.signUpWithEmail(
@@ -115,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         if (response.session == null) {
           _setMessage(
-            '회원가입 메일을 보냈습니다. 메일함에서 인증을 완료해 주세요.',
+            l10n.signUpEmailSent,
             isError: false,
           );
           _setMode(_AuthMode.login, keepMessage: true);
@@ -125,13 +127,13 @@ class _LoginScreenState extends State<LoginScreen> {
             unawaited(AnalyticsService.logSignUp(method: 'email'));
             context.go(AppRoutes.home);
           } else if (mounted) {
-            _setMessage('회원가입 세션을 확인하지 못했습니다. 로그인으로 다시 시도해 주세요.');
+            _setMessage(l10n.signUpSessionFailed);
           }
         }
       } else {
         await authService.sendPasswordResetEmail(_emailController.text);
         _setMessage(
-          '비밀번호 재설정 메일을 보냈습니다. 메일함을 확인해 주세요.',
+          l10n.passwordResetSent,
           isError: false,
         );
       }
@@ -147,9 +149,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _socialLogin(PlanFlowOAuthProvider provider) async {
+    final l10n = appL10n(context);
     final authService = _authService;
     if (!AppEnv.isSupabaseReady || authService == null) {
-      _setMessage('Supabase 빌드 설정값을 주입한 뒤 소셜 로그인을 사용할 수 있습니다.');
+      _setMessage(l10n.supabaseSocialMissing);
       return;
     }
 
@@ -163,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final launched = await authService.signInWithOAuth(provider);
       if (!launched) {
         OAuthCallbackHandler.clearPendingCallback();
-        _setMessage('로그인 창을 열지 못했습니다. 브라우저 설정을 확인해 주세요.');
+        _setMessage(l10n.oauthLaunchFailed);
       }
     } catch (error) {
       OAuthCallbackHandler.clearPendingCallback();
@@ -182,17 +185,17 @@ class _LoginScreenState extends State<LoginScreen> {
     final password = _passwordController.text;
 
     if (email.isEmpty || !email.contains('@')) {
-      return '올바른 이메일을 입력해 주세요.';
+      return appL10n(context).invalidEmail;
     }
     if (_mode == _AuthMode.reset) {
       return null;
     }
     if (password.length < 6) {
-      return '비밀번호는 최소 6자 이상이어야 합니다.';
+      return appL10n(context).shortPassword;
     }
     if (_mode == _AuthMode.signUp &&
         password != _confirmPasswordController.text) {
-      return '비밀번호 확인이 일치하지 않습니다.';
+      return appL10n(context).passwordMismatch;
     }
     return null;
   }
@@ -220,29 +223,30 @@ class _LoginScreenState extends State<LoginScreen> {
   String _friendlyAuthMessage(Object error) {
     final message = error.toString();
     if (message.contains('Invalid login credentials')) {
-      return '이메일 또는 비밀번호가 올바르지 않습니다.';
+      return appL10n(context).authInvalidCredentials;
     }
     if (message.contains('Email not confirmed')) {
-      return '이메일 인증이 아직 완료되지 않았습니다. 메일함을 확인해 주세요.';
+      return appL10n(context).authEmailNotConfirmed;
     }
     if (message.contains('User already registered')) {
-      return '이미 가입된 이메일입니다. 로그인으로 진행해 주세요.';
+      return appL10n(context).authAlreadyRegistered;
     }
-    return '인증 처리 중 문제가 발생했습니다. 설정과 입력값을 확인해 주세요.';
+    return appL10n(context).authGenericError;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = appL10n(context);
     final title = switch (_mode) {
-      _AuthMode.login => '로그인',
-      _AuthMode.signUp => '회원가입',
-      _AuthMode.reset => '비밀번호 찾기',
+      _AuthMode.login => l10n.loginTitle,
+      _AuthMode.signUp => l10n.signUpTitle,
+      _AuthMode.reset => l10n.passwordResetTitle,
     };
     final subtitle = switch (_mode) {
-      _AuthMode.login => '이메일과 비밀번호로 먼저 로그인하거나, 아래 소셜 계정으로 바로 시작하세요.',
-      _AuthMode.signUp => '계정을 만들면 일정 데이터가 사용자별로 분리되어 안전하게 저장됩니다.',
-      _AuthMode.reset => '가입한 이메일로 비밀번호 재설정 링크를 보내드립니다.',
+      _AuthMode.login => l10n.loginSubtitle,
+      _AuthMode.signUp => l10n.signUpSubtitle,
+      _AuthMode.reset => l10n.passwordResetSubtitle,
     };
 
     return Scaffold(
@@ -296,9 +300,8 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 12),
             if (!AppEnv.isSupabaseReady)
-              const _MessageBox(
-                message:
-                    'Supabase 빌드 설정값이 없어 실제 로그인은 아직 사용할 수 없습니다. SUPABASE_URL, SUPABASE_ANON_KEY를 --dart-define으로 주입해 주세요.',
+              _MessageBox(
+                message: l10n.supabaseLoginMissing,
                 isError: true,
               ),
             if (_message != null) ...[
@@ -367,14 +370,14 @@ class _EmailLoginCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final title = switch (mode) {
-      _AuthMode.login => '이메일 로그인',
-      _AuthMode.signUp => '이메일 회원가입',
-      _AuthMode.reset => '비밀번호 재설정',
+      _AuthMode.login => appL10n(context).emailLogin,
+      _AuthMode.signUp => appL10n(context).signUpWithEmail,
+      _AuthMode.reset => appL10n(context).sendPasswordReset,
     };
     final buttonLabel = switch (mode) {
-      _AuthMode.login => '이메일로 로그인',
-      _AuthMode.signUp => '이메일로 회원가입',
-      _AuthMode.reset => '재설정 메일 보내기',
+      _AuthMode.login => appL10n(context).loginWithEmail,
+      _AuthMode.signUp => appL10n(context).signUpWithEmail,
+      _AuthMode.reset => appL10n(context).sendPasswordReset,
     };
 
     return Card(
@@ -401,16 +404,16 @@ class _EmailLoginCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             SegmentedButton<_AuthMode>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: _AuthMode.login,
-                  label: Text('로그인'),
-                  icon: Icon(Icons.login),
+                  label: Text(appL10n(context).loginTitle),
+                  icon: const Icon(Icons.login),
                 ),
                 ButtonSegment(
                   value: _AuthMode.signUp,
-                  label: Text('회원가입'),
-                  icon: Icon(Icons.person_add_alt_1),
+                  label: Text(appL10n(context).signUpTitle),
+                  icon: const Icon(Icons.person_add_alt_1),
                 ),
               ],
               selected: <_AuthMode>{
@@ -425,9 +428,9 @@ class _EmailLoginCard extends StatelessWidget {
               TextField(
                 controller: nameController,
                 focusNode: nameFocusNode,
-                decoration: const InputDecoration(
-                  labelText: '이름 또는 닉네임',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: appL10n(context).name,
+                  border: const OutlineInputBorder(),
                 ),
                 textInputAction: TextInputAction.next,
                 scrollPadding: const EdgeInsets.only(bottom: 180),
@@ -439,9 +442,9 @@ class _EmailLoginCard extends StatelessWidget {
             TextField(
               controller: emailController,
               focusNode: emailFocusNode,
-              decoration: const InputDecoration(
-                labelText: '이메일',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: appL10n(context).email,
+                border: const OutlineInputBorder(),
               ),
               keyboardType: TextInputType.emailAddress,
               autofillHints: const [AutofillHints.email],
@@ -460,9 +463,9 @@ class _EmailLoginCard extends StatelessWidget {
               TextField(
                 controller: passwordController,
                 focusNode: passwordFocusNode,
-                decoration: const InputDecoration(
-                  labelText: '비밀번호',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: appL10n(context).password,
+                  border: const OutlineInputBorder(),
                 ),
                 obscureText: true,
                 autofillHints: const [AutofillHints.password],
@@ -485,9 +488,9 @@ class _EmailLoginCard extends StatelessWidget {
               TextField(
                 controller: confirmPasswordController,
                 focusNode: confirmPasswordFocusNode,
-                decoration: const InputDecoration(
-                  labelText: '비밀번호 확인',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: appL10n(context).confirmPassword,
+                  border: const OutlineInputBorder(),
                 ),
                 obscureText: true,
                 textInputAction: TextInputAction.done,
@@ -520,7 +523,9 @@ class _EmailLoginCard extends StatelessWidget {
                             : _AuthMode.reset,
                       ),
               child: Text(
-                mode == _AuthMode.reset ? '로그인으로 돌아가기' : '비밀번호를 잊으셨나요?',
+                mode == _AuthMode.reset
+                    ? appL10n(context).backToLogin
+                    : appL10n(context).forgotPassword,
               ),
             ),
           ],
@@ -594,7 +599,7 @@ class _SocialLoginCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '간편 로그인',
+              appL10n(context).simpleLogin,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: PlanFlowColors.primary,
                     fontWeight: FontWeight.w700,
@@ -602,7 +607,7 @@ class _SocialLoginCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _BrandLoginButton(
-              label: 'Google로 계속하기',
+              label: appL10n(context).googleContinue,
               mark: 'G',
               backgroundColor: Colors.white,
               foregroundColor: const Color(0xFF202124),
@@ -611,7 +616,7 @@ class _SocialLoginCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             _BrandLoginButton(
-              label: '카카오로 계속하기',
+              label: appL10n(context).kakaoContinue,
               mark: 'TALK',
               backgroundColor: const Color(0xFFFEE500),
               foregroundColor: const Color(0xFF191919),
@@ -620,7 +625,7 @@ class _SocialLoginCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             _BrandLoginButton(
-              label: '네이버로 계속하기',
+              label: appL10n(context).naverContinue,
               mark: 'N',
               backgroundColor: const Color(0xFF03C75A),
               foregroundColor: Colors.white,
