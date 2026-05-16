@@ -651,3 +651,9 @@
 - Added a process-wide in-flight guard for calendar auto-sync so app-level and shell-level lifecycle hooks do not run overlapping sync jobs through separate service instances.
 - Home keeps already-rendered schedule content visible during resume refresh, and its regression test now uses injected fakes instead of swallowing SharedPreferences/Supabase setup errors.
 - Verification passed: `./scripts/flutter-local.ps1 analyze --no-pub`, focused calendar/home tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-17 Briefing Secretary Tone Checkpoint
+- Updated the OpenAI morning/evening briefing prompts so important schedules are introduced before the schedule sentence with phrases like `중요한 일정입니다.` instead of ending awkwardly with `중요`.
+- Reworked local fallback briefing text to speak like a secretary: greeting, schedule count, first/next schedule transitions, spoken Korean times, optional location, and critical-event lead-ins.
+- Updated GPT prompt tests and added fallback execution coverage for critical-event secretary wording.
+- Verification passed: focused analyze, focused GPT/briefing scheduler tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.

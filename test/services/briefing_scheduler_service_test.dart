@@ -1,10 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/env.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/services/alarm_service.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
+import 'package:planflow/services/gpt_service.dart';
+import 'package:planflow/services/notification_service.dart';
+import 'package:planflow/services/tts_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -164,6 +168,59 @@ void main() {
     expect(result.morning.scheduledAt, DateTime(2026, 5, 12, 7, 30));
     expect(alarm.morningScheduledAt, DateTime(2026, 5, 12, 7, 30));
   });
+
+  test(
+      'executeBriefing uses secretary-style local fallback for critical events',
+      () async {
+    AppEnv.markSupabaseInitialized();
+    final tts = _FakeTtsService();
+    final service = BriefingSchedulerService(
+      alarmService: _FakeAlarmService(),
+      gptService: _FailingGptService(),
+      ttsService: tts,
+      notificationService: _FakeNotificationService(),
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '팀장님 동행방문',
+            startAt: DateTime.utc(2026, 5, 12, 0),
+            location: '강남역',
+            isCritical: true,
+          ),
+          EventModel(
+            id: 'event-2',
+            userId: 'user-1',
+            title: '고객 미팅',
+            startAt: DateTime.utc(2026, 5, 12, 5),
+            location: '서울시청',
+          ),
+        ],
+      ),
+      settingsRepository: _FakeSettingsRepository(
+        settings: UserSettingsModel.defaults(userId: 'user-1'),
+      ),
+      now: () => DateTime(2026, 5, 12, 7),
+    );
+
+    final result = await service.executeBriefing(
+      isMorning: true,
+      userId: 'user-1',
+    );
+
+    expect(result.usedFallback, isTrue);
+    expect(tts.lastText, contains('좋은 아침입니다. 오늘 일정은 2개입니다.'));
+    expect(
+      tts.lastText,
+      contains('중요한 일정입니다. 오전 9시, 강남역에서 팀장님 동행방문이 있습니다.'),
+    );
+    expect(
+      tts.lastText,
+      contains('다음 일정은 오후 2시, 서울시청에서 고객 미팅이 있습니다.'),
+    );
+    expect(tts.lastText, isNot(contains('중요.')));
+  });
 }
 
 class _FakeAlarmService extends AlarmService {
@@ -244,5 +301,42 @@ class _FakeSettingsRepository extends SettingsRepository {
   @override
   Future<UserSettingsModel> upsertSettings(UserSettingsModel settings) async {
     return settings;
+  }
+}
+
+class _FailingGptService extends GptService {
+  @override
+  Future<String> generateBriefing({
+    required String rawText,
+    required bool isMorning,
+  }) {
+    throw const GptCompletionException(
+      'test_failure',
+      'forced failure',
+    );
+  }
+}
+
+class _FakeTtsService extends TtsService {
+  String? lastText;
+
+  @override
+  Future<void> speak(String text) async {
+    lastText = text;
+  }
+}
+
+class _FakeNotificationService extends NotificationService {
+  String? lastBody;
+
+  @override
+  Future<void> scheduleEventReminder({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime notifyAt,
+    String? payload,
+  }) async {
+    lastBody = body;
   }
 }

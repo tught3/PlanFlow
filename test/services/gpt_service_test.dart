@@ -478,7 +478,11 @@ void main() {
       expect(body['model'], 'gpt-4o-mini');
       expect(
         (body['messages'] as List).first['content'] as String,
-        contains('오늘 일정을 시간순'),
+        contains('오늘 일정을 시간순으로, 실제 비서가 말하듯'),
+      );
+      expect(
+        (body['messages'] as List).first['content'] as String,
+        contains('중요한 일정입니다.'),
       );
     });
 
@@ -515,7 +519,11 @@ void main() {
       expect(body['model'], 'gpt-4o-mini');
       expect(
         (body['messages'] as List).first['content'] as String,
-        contains('내일 일정을 시간순'),
+        contains('내일 일정을 시간순으로, 실제 비서가 말하듯'),
+      );
+      expect(
+        (body['messages'] as List).first['content'] as String,
+        contains('다음 일정은'),
       );
     });
 

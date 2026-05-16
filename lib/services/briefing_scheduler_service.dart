@@ -398,8 +398,8 @@ class BriefingSchedulerService {
       final time = event.startAt == null
           ? '시간 미정'
           : '${planflowLocal(event.startAt!).hour.toString().padLeft(2, '0')}:${planflowLocal(event.startAt!).minute.toString().padLeft(2, '0')}';
-      final location = event.location == null ? '' : ' (${event.location})';
-      final critical = event.isCritical ? ' 중요' : '';
+      final location = event.location == null ? '' : ' 장소: ${event.location}';
+      final critical = event.isCritical ? ' 중요 일정' : '';
       final supplies =
           event.supplies.isEmpty ? '' : ' 준비물: ${event.supplies.join(', ')}';
       return '- $time ${event.title}$location$critical$supplies';
@@ -411,18 +411,58 @@ class BriefingSchedulerService {
     required bool isMorning,
   }) async {
     final prefix = isMorning
-        ? '좋은 아침이에요. 오늘 일정은 ${events.length}개입니다.'
+        ? '좋은 아침입니다. 오늘 일정은 ${events.length}개입니다.'
         : '오늘 하루도 고생하셨어요. 내일 일정은 ${events.length}개입니다.';
-    final highlights = events.take(3).map((event) {
-      final time = event.startAt == null
-          ? '시간 미정'
-          : '${planflowLocal(event.startAt!).hour.toString().padLeft(2, '0')}:${planflowLocal(event.startAt!).minute.toString().padLeft(2, '0')}';
-      final location = event.location == null ? '' : ' ${event.location}';
-      final critical = event.isCritical ? ' 중요한 일정입니다' : '';
-      return '$time ${event.title}$location$critical';
-    }).join(', ');
+    final briefingEvents = events.take(6).toList(growable: false);
+    final highlights = briefingEvents
+        .asMap()
+        .entries
+        .map((entry) => _buildSecretaryEventSentence(
+              entry.value,
+              index: entry.key,
+            ))
+        .join(' ');
+    final remainingCount = events.length - briefingEvents.length;
+    final remainingSummary =
+        remainingCount > 0 ? '이후 일정이 $remainingCount개 더 있습니다.' : '';
     final tightGapWarning = await _buildTightGapWarning(events);
-    return '$prefix $highlights.${tightGapWarning == null ? '' : ' $tightGapWarning'}';
+    return [
+      prefix,
+      highlights,
+      if (remainingSummary.isNotEmpty) remainingSummary,
+      if (tightGapWarning != null) tightGapWarning,
+    ].where((part) => part.trim().isNotEmpty).join(' ');
+  }
+
+  String _buildSecretaryEventSentence(
+    EventModel event, {
+    required int index,
+  }) {
+    final lead = switch (index) {
+      0 when event.isCritical => '중요한 일정입니다.',
+      0 => '첫 일정은',
+      1 when event.isCritical => '다음은 중요한 일정입니다.',
+      1 => '다음 일정은',
+      _ when event.isCritical => '그다음은 중요한 일정입니다.',
+      _ => '그다음 일정은',
+    };
+    final time =
+        event.startAt == null ? '시간 미정' : _spokenLocalTime(event.startAt!);
+    final location = event.location?.trim();
+    final locationPhrase =
+        location == null || location.isEmpty ? '' : ', $location에서';
+    final detail = '$time$locationPhrase ${event.title}이 있습니다.';
+    return '$lead $detail';
+  }
+
+  String _spokenLocalTime(DateTime value) {
+    final local = planflowLocal(value);
+    final period = local.hour < 12 ? '오전' : '오후';
+    final hour12 = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    if (local.minute == 0) {
+      return '$period $hour12시';
+    }
+    return '$period $hour12시 ${local.minute}분';
   }
 
   Future<String?> _buildTightGapWarning(List<EventModel> events) async {
