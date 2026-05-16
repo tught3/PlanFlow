@@ -615,3 +615,10 @@
 - Updated the focused widget test to tap the visible candidate card and confirm deletion through the existing dialog.
 - Reviewer agent returned PASS with no blocking findings.
 - Verification passed: focused analyze, focused `voice_action_screen_test.dart`, `git diff --check`, debug APK build, ADB install, PlanFlow launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-16 Voice Delete Candidate Visual Polish Checkpoint
+- Polished the voice delete candidate cards after user feedback that there were too many delete affordances and the styling felt bland.
+- Removed the extra trash icon next to each checkbox, shortened the per-card action label from `삭제 확인` to `삭제`, and adjusted card background/border colors to better match PlanFlow's white schedule-card style with primary-faint borders and clearer selected state.
+- Preserved card tap deletion, per-card delete button, checkbox multi-select, and selected-delete behavior.
+- Reviewer agent returned PASS with no blocking findings.
+- Verification passed: focused analyze, focused `voice_action_screen_test.dart`, debug APK build, ADB install, PlanFlow launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
