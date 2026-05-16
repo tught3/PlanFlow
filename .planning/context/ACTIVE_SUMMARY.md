@@ -638,3 +638,8 @@
 - Updated the PRO early-bird helper text to `현재 어플이 마음에 드신다면 사전 신청해주세요.`
 - Added a regression test for the 12-hour recent-past filter.
 - Verification passed: focused analyze, focused recent-past test, debug APK build, ADB install, launcher run, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-16 Early Bird Copy And Storage Checkpoint
+- Updated the PRO early-bird helper text in both the Home banner and the reusable signup card to `현재 어플이 마음에 드신다면 사전 신청해주세요. 유료모델 전환때 특별한 혜택을 드립니다.`
+- Confirmed the email submission flow still normalizes and validates the email locally, then submits it through the Supabase RPC gateway `submit_early_bird_email`; it is not just a UI-only state change.
+- Verification passed: focused analyze, focused early-bird repository/card tests, and the existing RPC-backed repository test continues to prove the save path persists through the gateway layer.

@@ -65,7 +65,7 @@ class _EarlyBirdSignupCardState extends State<EarlyBirdSignupCard> {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    '출시 알림과 초기 혜택 안내를 받을 이메일을 남겨 주세요.',
+                    '현재 어플이 마음에 드신다면 사전 신청해주세요. 유료모델 전환때 특별한 혜택을 드립니다.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: PlanFlowColors.textSecondary,
                     ),

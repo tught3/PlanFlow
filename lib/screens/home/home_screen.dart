@@ -1719,7 +1719,8 @@ class _EarlyBirdBannerState extends State<_EarlyBirdBanner> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const earlyBirdMessage = '현재 어플이 마음에 드신다면 사전 신청해주세요.';
+    const earlyBirdMessage =
+        '현재 어플이 마음에 드신다면 사전 신청해주세요. 유료모델 전환때 특별한 혜택을 드립니다.';
 
     if (_isSubmitted) {
       return Container(
