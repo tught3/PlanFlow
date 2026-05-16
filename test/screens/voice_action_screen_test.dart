@@ -708,8 +708,9 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
-    await tester
-        .tap(find.byKey(const ValueKey('voice-delete-button-0-event-1')));
+    await tester.tap(
+      find.byKey(const ValueKey('voice-delete-inline-button-0-event-1')),
+    );
     await tester.pumpAndSettle();
     await tester
         .tap(find.byKey(const ValueKey('voice-confirm-delete-event-1')));

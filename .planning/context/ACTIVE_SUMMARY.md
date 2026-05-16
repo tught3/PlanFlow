@@ -605,3 +605,11 @@
 - Preserved the existing candidate keys and whole-card tap-to-delete-confirm behavior, while keeping the lower multi-select delete list intact.
 - Reviewer agent returned PASS with no blocking findings.
 - Verification passed: focused analyze for `voice_action_screen.dart` and `voice_action_screen_test.dart`, full `voice_action_screen_test.dart` widget suite, `git diff --check`, debug APK build, ADB install, PlanFlow launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-16 Voice Delete Candidate Tap And Spacing Checkpoint
+- Reworked the voice delete candidate area again after the real-device screenshot still showed header/candidate overlap and non-obvious tap behavior.
+- The visible top candidate cards are now the single source of delete interaction: tapping a card opens the existing delete confirmation dialog, the per-card `삭제` button does the same, and the checkbox supports multi-select with `선택 삭제`.
+- Added stronger vertical separation between `대상 일정`/candidate diagnostics and the first candidate card, limited diagnostics text to two lines with ellipsis, and removed the duplicate lower delete candidate list to avoid split UX.
+- Updated the focused widget test to tap the visible candidate card and confirm deletion through the existing dialog.
+- Reviewer agent returned PASS with no blocking findings.
+- Verification passed: focused analyze, focused `voice_action_screen_test.dart`, `git diff --check`, debug APK build, ADB install, PlanFlow launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.

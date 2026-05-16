@@ -1804,24 +1804,35 @@ class _VoiceCandidateSection extends StatelessWidget {
             fontWeight: FontWeight.w800,
           ),
         ),
-        if (_candidateCountText != null) ...[
-          const SizedBox(height: 2),
-          Text(
-            _candidateCountText!,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: PlanFlowColors.textSecondary,
+        if (_candidateCountText != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 3, bottom: 32),
+            child: Text(
+              _candidateCountText!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+          )
+        else if (_isDelete && events.isNotEmpty)
+          const SizedBox(height: 24),
+        if (_isDelete && events.isNotEmpty) ...[
+          KeyedSubtree(
+            key: const ValueKey('voice-delete-candidate-list'),
+            child: _DeleteCandidateInlineActions(
+              events: events,
+              disabled: disabled,
+              selectedEventIds: selectedDeleteEventIds,
+              selectedCount: selectedDeleteCount,
+              onToggleSelection: onToggleDeleteSelection,
+              onDeleteSelected: onDeleteSelected,
+              onDelete: onDelete,
             ),
           ),
         ],
-        if (_isDelete && events.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          _DeleteCandidateInlineActions(
-            events: events,
-            disabled: disabled,
-            onDelete: onDelete,
-          ),
-        ],
-        const SizedBox(height: 8),
+        if (!_isDelete || events.isEmpty) const SizedBox(height: 8),
         if (isLoading)
           const Center(
             child: Padding(
@@ -1860,7 +1871,7 @@ class _VoiceCandidateSection extends StatelessWidget {
             ),
           ),
         ] else if (_isDelete)
-          _buildDeleteList()
+          const SizedBox.shrink()
         else
           ...events.map((event) {
             final changePreview =
@@ -1883,63 +1894,6 @@ class _VoiceCandidateSection extends StatelessWidget {
             );
           }),
       ],
-    );
-  }
-
-  Widget _buildDeleteList() {
-    debugPrint(
-      'VoiceActionScreen render delete candidate rows in section: '
-      'count=${events.length} ids=${events.map((event) => event.id).join(',')}',
-    );
-
-    return Container(
-      key: const ValueKey('voice-delete-candidate-list'),
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
-      decoration: BoxDecoration(
-        color: PlanFlowColors.surface.withValues(alpha: 0.78),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFB42318).withValues(alpha: 0.16),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Builder(
-            builder: (context) {
-              final theme = Theme.of(context);
-              return Text(
-                '삭제할 일정을 선택하거나, 오른쪽 삭제 버튼을 눌러 주세요.',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: PlanFlowColors.textSecondary,
-                  fontWeight: FontWeight.w700,
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-          _DeleteSelectionBar(
-            selectedCount: selectedDeleteCount,
-            disabled: disabled,
-            onDeleteSelected: onDeleteSelected,
-          ),
-          const SizedBox(height: 10),
-          for (var index = 0; index < events.length; index += 1)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _DeleteCandidateRow(
-                event: events[index],
-                index: index,
-                disabled: disabled,
-                isSelected: selectedDeleteEventIds.contains(events[index].id),
-                onSelectionChanged: (selected) =>
-                    onToggleDeleteSelection(events[index], selected),
-                onDelete: () => onDelete(events[index]),
-              ),
-            ),
-        ],
-      ),
     );
   }
 }
@@ -2684,74 +2638,23 @@ class _CandidateLoadSnapshot {
   final List<EventModel> events;
 }
 
-class _DeleteSelectionBar extends StatelessWidget {
-  const _DeleteSelectionBar({
-    required this.selectedCount,
-    required this.disabled,
-    required this.onDeleteSelected,
-  });
-
-  final int selectedCount;
-  final bool disabled;
-  final VoidCallback onDeleteSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colorScheme.errorContainer.withValues(alpha: 0.38),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: colorScheme.error.withValues(alpha: 0.18),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                '선택된 일정 $selectedCount개',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: colorScheme.onErrorContainer,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            FilledButton.icon(
-              onPressed:
-                  disabled || selectedCount == 0 ? null : onDeleteSelected,
-              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-              label: const Text('선택 삭제'),
-              style: FilledButton.styleFrom(
-                backgroundColor: colorScheme.error,
-                foregroundColor: colorScheme.onError,
-                disabledBackgroundColor:
-                    colorScheme.error.withValues(alpha: 0.18),
-                disabledForegroundColor:
-                    colorScheme.onErrorContainer.withValues(alpha: 0.55),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _DeleteCandidateInlineActions extends StatelessWidget {
   const _DeleteCandidateInlineActions({
     required this.events,
     required this.disabled,
+    required this.selectedEventIds,
+    required this.selectedCount,
+    required this.onToggleSelection,
+    required this.onDeleteSelected,
     required this.onDelete,
   });
 
   final List<EventModel> events;
   final bool disabled;
+  final Set<String> selectedEventIds;
+  final int selectedCount;
+  final void Function(EventModel event, bool selected) onToggleSelection;
+  final VoidCallback onDeleteSelected;
   final void Function(EventModel event) onDelete;
 
   @override
@@ -2765,111 +2668,172 @@ class _DeleteCandidateInlineActions extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '삭제할 일정을 선택하거나 후보 카드를 눌러 삭제를 확인해 주세요.',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (selectedCount > 0) ...[
+                const SizedBox(width: 8),
+                FilledButton.tonalIcon(
+                  key: const ValueKey('voice-delete-selected-inline-button'),
+                  onPressed: disabled ? null : onDeleteSelected,
+                  icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                  label: const Text('선택 삭제'),
+                  style: FilledButton.styleFrom(
+                    foregroundColor: colorScheme.error,
+                    backgroundColor:
+                        colorScheme.errorContainer.withValues(alpha: 0.56),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    visualDensity: VisualDensity.compact,
+                    textStyle: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 4),
           child: Text(
-            '삭제 후보',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: PlanFlowColors.primary,
-              fontWeight: FontWeight.w800,
+            '선택된 일정 $selectedCount개',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: PlanFlowColors.textSecondary.withValues(alpha: 0.82),
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
-        for (var index = 0; index < events.length; index += 1)
+        if (selectedCount == 0)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: Material(
-              key: ValueKey(
-                'voice-delete-inline-button-$index-${events[index].id}',
+            child: Text(
+              '여러 개를 지우려면 왼쪽 체크를 선택해 주세요.',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: PlanFlowColors.textSecondary.withValues(alpha: 0.82),
               ),
-              color: PlanFlowColors.surface,
-              borderRadius: BorderRadius.circular(10),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(10),
-                onTap: disabled ? null : () => onDelete(events[index]),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: PlanFlowColors.primaryFaint,
-                      width: 0.8,
-                    ),
+            ),
+          ),
+        for (var index = 0; index < events.length; index += 1)
+          Builder(
+            builder: (context) {
+              final event = events[index];
+              final isSelected = selectedEventIds.contains(event.id);
+
+              return Padding(
+                key: ValueKey('voice-delete-candidate-$index-${event.id}'),
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Material(
+                  key: ValueKey(
+                    'voice-delete-inline-button-$index-${event.id}',
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: PlanFlowColors.primaryFaint,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.delete_outline,
-                          size: 18,
-                          color: colorScheme.error,
+                  color: isSelected
+                      ? PlanFlowColors.primaryFaint.withValues(alpha: 0.76)
+                      : PlanFlowColors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: disabled ? null : () => onDelete(event),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(8, 12, 10, 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? PlanFlowColors.primary
+                              : PlanFlowColors.primaryFaint,
+                          width: isSelected ? 1.2 : 0.8,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              events[index].title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: PlanFlowColors.primary,
-                                fontWeight: FontWeight.w800,
-                              ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Checkbox(
+                            value: isSelected,
+                            onChanged: disabled
+                                ? null
+                                : (value) =>
+                                    onToggleSelection(event, value ?? false),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: colorScheme.errorContainer
+                                  .withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _candidateMetaText(
-                                events[index],
-                                materialLocalizations,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: PlanFlowColors.textSecondary,
-                              ),
+                            child: Icon(
+                              Icons.delete_outline,
+                              size: 18,
+                              color: colorScheme.error,
                             ),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(
-                                  Icons.delete_outline,
-                                  size: 14,
-                                  color: colorScheme.error,
-                                ),
-                                const SizedBox(width: 4),
                                 Text(
-                                  '삭제 확인',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: colorScheme.error,
+                                  event.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    color: PlanFlowColors.primary,
                                     fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _candidateMetaText(
+                                    event,
+                                    materialLocalizations,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: PlanFlowColors.textSecondary,
                                   ),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton.tonalIcon(
+                            key: ValueKey(
+                                'voice-delete-button-$index-${event.id}'),
+                            onPressed: disabled ? null : () => onDelete(event),
+                            icon: const Icon(Icons.delete_outline, size: 15),
+                            label: const Text('삭제'),
+                            style: FilledButton.styleFrom(
+                              foregroundColor: colorScheme.error,
+                              backgroundColor: colorScheme.errorContainer
+                                  .withValues(alpha: 0.52),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 10),
+                              visualDensity: VisualDensity.compact,
+                              textStyle: theme.textTheme.labelSmall?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        Icons.chevron_right,
-                        color: PlanFlowColors.textSecondary
-                            .withValues(alpha: disabled ? 0.3 : 0.72),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
       ],
     );
@@ -2889,114 +2853,6 @@ class _DeleteCandidateInlineActions extends StatelessWidget {
       return timeText;
     }
     return '$timeText · $location';
-  }
-}
-
-class _DeleteCandidateRow extends StatelessWidget {
-  const _DeleteCandidateRow({
-    required this.event,
-    required this.index,
-    required this.disabled,
-    required this.isSelected,
-    required this.onSelectionChanged,
-    required this.onDelete,
-  });
-
-  final EventModel event;
-  final int index;
-  final bool disabled;
-  final bool isSelected;
-  final ValueChanged<bool> onSelectionChanged;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final startAt =
-        event.startAt == null ? null : planflowLocal(event.startAt!);
-    final location = event.location?.trim();
-
-    return DecoratedBox(
-      key: ValueKey('voice-delete-candidate-$index-${event.id}'),
-      decoration: BoxDecoration(
-        color: PlanFlowColors.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isSelected
-              ? colorScheme.error
-              : colorScheme.error.withValues(alpha: 0.16),
-          width: isSelected ? 1.1 : 0.7,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Checkbox(
-              value: isSelected,
-              onChanged: disabled
-                  ? null
-                  : (value) => onSelectionChanged(value ?? false),
-              visualDensity: VisualDensity.compact,
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    event.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: PlanFlowColors.primary,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    startAt == null
-                        ? '시간 미정'
-                        : '${MaterialLocalizations.of(context).formatFullDate(startAt)} · ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(startAt))}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
-                  ),
-                  if (location != null && location.isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      location,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              key: ValueKey('voice-delete-button-$index-${event.id}'),
-              onPressed: disabled ? null : onDelete,
-              icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('삭제'),
-              style: FilledButton.styleFrom(
-                backgroundColor: colorScheme.errorContainer,
-                foregroundColor: colorScheme.onErrorContainer,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                textStyle: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
