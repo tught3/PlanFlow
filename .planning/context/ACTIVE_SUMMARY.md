@@ -681,3 +681,9 @@
 - Added a dedicated `전체 화면 알림` onboarding permission tile and included it in the `필요 권한 모두 요청` flow so users are sent to the Android consent screen during first setup.
 - Updated event editing so enabling `강한 알림으로 예약` immediately shows a rationale dialog and opens the full-screen notification consent screen; saving a critical event also re-checks the consent path.
 - Verification passed: focused analyze, focused onboarding/event-edit/notification/manual side-effect tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`. Device app-ops still showed `USE_FULL_SCREEN_INTENT: default/reject` before manual consent.
+
+## 2026-05-17 Critical Alarm Toggle Permission Bundle Checkpoint
+- Expanded the event edit `강한 알림으로 예약` toggle flow so it checks and requests the full critical-alarm permission bundle: app notifications, exact alarms, and full-screen notifications.
+- The rationale dialog now explains all three required permissions instead of only full-screen notifications, and the save path reuses the same bundle check for critical events.
+- Updated the event edit widget regression so toggling a critical alarm proves notification, exact-alarm, and full-screen permission requests are all attempted.
+- Verification passed: focused analyze, focused onboarding/event-edit/notification tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.

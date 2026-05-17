@@ -86,30 +86,52 @@ void main() {
     await tester.tap(find.text('강한 알림으로 예약'));
     await tester.pumpAndSettle();
 
-    expect(find.text('전체 화면 알림 허용이 필요해요'), findsOneWidget);
+    expect(find.text('중요 알람 권한이 필요해요'), findsOneWidget);
 
     await tester.tap(find.text('허용하러 가기'));
     await tester.pumpAndSettle();
 
+    expect(permissions.notificationPermissionsRequested, isTrue);
+    expect(permissions.exactAlarmRequested, isTrue);
     expect(permissions.fullScreenIntentRequested, isTrue);
   });
 }
 
 class _FakePermissionService extends AppPermissionService {
+  bool notificationPermissionsRequested = false;
+  bool exactAlarmRequested = false;
   bool fullScreenIntentRequested = false;
 
   @override
   Future<AppPermissionSnapshot> checkAll() async {
-    return const AppPermissionSnapshot(
+    return AppPermissionSnapshot(
       microphoneGranted: true,
       locationGranted: true,
       calendarGranted: true,
       notificationStatus: NotificationPermissionStatus(
-        notificationsEnabled: true,
-        exactAlarmsEnabled: true,
-        fullScreenIntentStatus: PermissionCheckState.denied,
+        notificationsEnabled: notificationPermissionsRequested,
+        exactAlarmsEnabled: exactAlarmRequested,
+        fullScreenIntentStatus: fullScreenIntentRequested
+            ? PermissionCheckState.granted
+            : PermissionCheckState.denied,
       ),
     );
+  }
+
+  @override
+  Future<NotificationPermissionStatus> requestNotificationPermissions() async {
+    notificationPermissionsRequested = true;
+    return const NotificationPermissionStatus(
+      notificationsEnabled: true,
+      exactAlarmsEnabled: false,
+      fullScreenIntentStatus: PermissionCheckState.denied,
+    );
+  }
+
+  @override
+  Future<bool> requestExactAlarmPermission() async {
+    exactAlarmRequested = true;
+    return true;
   }
 
   @override

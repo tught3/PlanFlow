@@ -21,6 +21,7 @@ import '../../services/event_preparation_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../l10n/app_l10n.dart';
 import '../../widgets/calendar_style_event_editor.dart';
@@ -137,22 +138,22 @@ class _EventEditScreenState extends State<EventEditScreen> {
       _critical = value;
     });
     if (value) {
-      unawaited(_ensureFullScreenIntentConsent());
+      unawaited(_ensureCriticalAlarmPermissions());
     }
   }
 
-  Future<void> _ensureFullScreenIntentConsent() async {
+  Future<void> _ensureCriticalAlarmPermissions() async {
     try {
       final snapshot = await _permissionService.checkAll();
-      if (snapshot.fullScreenIntentGranted || !mounted) {
+      if (_criticalAlarmPermissionsReady(snapshot) || !mounted) {
         return;
       }
       final shouldOpen = await showDialog<bool>(
             context: context,
             builder: (dialogContext) => AlertDialog(
-              title: const Text('전체 화면 알림 허용이 필요해요'),
+              title: const Text('중요 알람 권한이 필요해요'),
               content: const Text(
-                '중요 알람을 잠금화면과 겉화면에 크게 띄우려면 Android 설정에서 PlanFlow의 전체 화면 알림을 허용해야 합니다.',
+                '강한 알림을 지정한 시간에 크게 띄우려면 앱 알림, 정확한 알람, 전체 화면 알림 권한이 필요합니다. 지금 권한을 확인할게요.',
               ),
               actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
               actions: [
@@ -171,20 +172,42 @@ class _EventEditScreenState extends State<EventEditScreen> {
       if (!shouldOpen || !mounted) {
         return;
       }
-      final granted =
-          await _permissionService.requestFullScreenIntentPermission();
+      final granted = await _requestCriticalAlarmPermissions();
       if (!mounted) {
         return;
       }
       _showMessage(
         granted
-            ? '전체 화면 알림 권한을 확인했습니다.'
-            : '설정에서 PlanFlow의 전체 화면 알림을 허용한 뒤 돌아와 주세요.',
+            ? '중요 알람 권한을 확인했습니다.'
+            : '설정에서 PlanFlow의 알림, 정확한 알람, 전체 화면 알림을 허용한 뒤 돌아와 주세요.',
       );
     } catch (error, stackTrace) {
-      debugPrint('Full-screen intent consent request skipped: $error');
+      debugPrint('Critical alarm permission request skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  bool _criticalAlarmPermissionsReady(AppPermissionSnapshot snapshot) {
+    return snapshot.notificationsGranted &&
+        snapshot.exactAlarmsGranted &&
+        snapshot.fullScreenIntentGranted;
+  }
+
+  Future<bool> _requestCriticalAlarmPermissions() async {
+    final notificationStatus =
+        await _permissionService.requestNotificationPermissions();
+    final notificationsGranted =
+        notificationStatus.notificationsEnabled == true;
+    final exactAlarmsGranted = notificationStatus.exactAlarmsEnabled == true ||
+        await _permissionService.requestExactAlarmPermission();
+    final fullScreenIntentGranted = notificationStatus.fullScreenIntentStatus ==
+            PermissionCheckState.granted ||
+        await _permissionService.requestFullScreenIntentPermission();
+    final latest = await _permissionService.checkAll();
+    return notificationsGranted &&
+        exactAlarmsGranted &&
+        fullScreenIntentGranted &&
+        _criticalAlarmPermissionsReady(latest);
   }
 
   @override
@@ -246,7 +269,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
 
       if (_critical) {
-        await _ensureFullScreenIntentConsent();
+        await _ensureCriticalAlarmPermissions();
       }
 
       String? recurrenceScope;
