@@ -495,7 +495,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     }
 
     final absoluteCleanedRange = _absoluteDateRangeInText(
-      routeResult.cleanedText,
+      routeResult.targetText,
     );
     if (absoluteCleanedRange != null) {
       return absoluteCleanedRange;
@@ -506,7 +506,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return targetRange;
     }
 
-    final normalized = routeResult.cleanedText.replaceAll(RegExp(r'\s+'), ' ');
+    final normalized = routeResult.targetText.replaceAll(RegExp(r'\s+'), ' ');
     final firstDateRange = _firstDateRangeInText(normalized);
     if (firstDateRange != null) {
       return firstDateRange;
@@ -517,7 +517,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
   bool _requiresDateMatchForTarget(VoiceCommandRouteResult routeResult) {
     return _absoluteDateRangeInText(routeResult.targetQuery) != null ||
-        _absoluteDateRangeInText(routeResult.cleanedText) != null;
+        _absoluteDateRangeInText(routeResult.targetText) != null;
   }
 
   _DateRange? _absoluteDateRangeInText(String text) {
@@ -1264,7 +1264,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         !_requestedChanges.contains('start_at')) {
       return null;
     }
-    final text = _normalizedRawText;
+    final changeText = _routeResult?.changeText.trim();
+    final text = changeText == null || changeText.isEmpty
+        ? _normalizedRawText
+        : changeText;
     final originalStartLocal =
         event.startAt == null ? planflowNow() : planflowLocal(event.startAt!);
     final dateCandidate = _inferLastDateCandidate(text, originalStartLocal);
@@ -1377,13 +1380,20 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   String? _inferRequestedLocation() {
+    final plannedLocation = _routeResult?.requestedFieldValues['location'];
+    if (plannedLocation != null && plannedLocation.trim().isNotEmpty) {
+      return plannedLocation.trim();
+    }
     if (_requestedChanges.isNotEmpty &&
         !_requestedChanges.contains('location')) {
       return null;
     }
+    final source = _routeResult?.changeText.trim().isNotEmpty == true
+        ? _routeResult!.changeText
+        : _normalizedRawText;
     final match = RegExp(
       r'(?:장소|위치|주소)\s*(?:를|을)?\s*(.+?)(?:로|으로)\s*(?:변경|바꿔|수정)|(.+?)(?:로|으로)?\s*(?:장소|위치|주소)\s*(?:추가|넣어|입력|설정|등록)',
-    ).firstMatch(_normalizedRawText);
+    ).firstMatch(source);
     final prefixLocation = match?.group(1)?.trim();
     final suffixLocation = match?.group(2)?.trim();
     var location = prefixLocation == null || prefixLocation.isEmpty
@@ -1800,6 +1810,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                   selectedDeleteEventIds: _selectedDeleteEventIds,
                   disabled: _isDeleting || _isSaving,
                   forceManualEdit: _isLocationFieldAddition,
+                  allowDirectApply: _routeResult?.safeDirectApply ?? false,
                   actionLabel: _candidateActionLabel(),
                   actionIcon: _candidateActionIcon(),
                   onAdd: _openAddConfirm,
@@ -1835,6 +1846,7 @@ class _VoiceCandidateSection extends StatelessWidget {
     required this.selectedDeleteEventIds,
     required this.disabled,
     required this.forceManualEdit,
+    required this.allowDirectApply,
     required this.actionLabel,
     required this.actionIcon,
     required this.onAdd,
@@ -1865,6 +1877,7 @@ class _VoiceCandidateSection extends StatelessWidget {
   final Set<String> selectedDeleteEventIds;
   final bool disabled;
   final bool forceManualEdit;
+  final bool allowDirectApply;
   final String actionLabel;
   final IconData actionIcon;
   final VoidCallback onAdd;
@@ -2000,10 +2013,12 @@ class _VoiceCandidateSection extends StatelessWidget {
                 onTap: () =>
                     _isEdit ? onOpenEdit(event) : onOpenQueryResult(event),
                 changePreviewText: changePreview,
-                onDirectApply:
-                    (_isEdit && changePreview != null && !forceManualEdit)
-                        ? () => onApplyAndSave(event)
-                        : null,
+                onDirectApply: (_isEdit &&
+                        changePreview != null &&
+                        allowDirectApply &&
+                        !forceManualEdit)
+                    ? () => onApplyAndSave(event)
+                    : null,
               ),
             );
           }),

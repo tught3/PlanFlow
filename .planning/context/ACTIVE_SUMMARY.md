@@ -4,6 +4,7 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+
 ## Stable Context
 ### Project
 - 거래를 직접 입력하지 않고도 자동으로 가계부를 채울 수 있어야 한다.
@@ -718,3 +719,10 @@
 - Corrected voice location-add edits so the target phrase before `일정에` is used only to find the existing event, while the phrase after it becomes the new location. Location-add edits no longer infer or apply a time/date change and now open the edit screen with the location prefilled instead of direct-saving.
 - Added regression coverage for `내일 오후 1시에 실매출 확인 일정에 원주 세브란스 기독병원 장소 추가해줘`, proving the `실매출 확인` event is selected, the original start time is preserved, and the hospital is applied as location text.
 - Verification passed: feedback repository/sheet tests, settings screen tests, router/voice action tests, `scripts/flutter-local.ps1 analyze`, `git diff --check`, debug APK build, ADB install, app launch, and PID check showing `com.planflow.app` running.
+
+## 2026-05-17 Voice Command Pipeline Checkpoint
+- Added a central `VoiceCommandPipeline` that turns voice text into a structured plan: intent, target text, change text, target query, requested fields, field values, confidence, user-choice requirement, and direct-apply safety.
+- Routed `VoiceCommandRouter` through the pipeline so add/edit/delete/query decisions share the same target/change split rules, including location-add and date-time-change phrases.
+- Updated `VoiceActionScreen` to use pipeline target text for candidate date filtering, pipeline change text for requested new times, pipeline field values for location edits, and pipeline safety flags before showing `바로 저장`.
+- Tightened delete commands with no explicit target so they keep an empty search query and show selectable candidates instead of searching for leftover words like `줘`.
+- Verification passed: focused pipeline/router/STT/voice input/voice action tests, full `scripts/flutter-local.ps1 analyze`, `git diff --check`, debug APK build, ADB install, launch, PID, and focused window check for `com.planflow.app/.MainActivity`.

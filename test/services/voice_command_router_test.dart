@@ -96,6 +96,11 @@ void main() {
 
       expect(route.intent, VoiceCommandRouteIntent.edit);
       expect(route.requestedChanges, contains('location'));
+      expect(route.targetText, contains('교보생명'));
+      expect(route.targetText, contains('시험'));
+      expect(route.targetText, isNot(contains('원주')));
+      expect(route.changeText, contains('원주 교보생명빌딩'));
+      expect(route.requestedFieldValues['location'], '원주 교보생명빌딩');
       expect(route.targetQuery, contains('교보생명'));
       expect(route.targetQuery, contains('시험'));
       expect(route.targetQuery, isNot(contains('원주')));
