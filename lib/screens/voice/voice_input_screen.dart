@@ -53,10 +53,12 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   bool _didResolveAutoStart = false;
   bool _isApplyingTranscriptProgrammatically = false;
   bool _didEditTranscriptManually = false;
+  bool _isSubmittingVoiceCommand = false;
   int _partialTranscriptToken = 0;
   int _draftPreparationToken = 0;
   Map<String, dynamic>? _preparedDraft;
   String? _preparedDraftSourceText;
+  String? _lastSubmittedSignature;
 
   @override
   void initState() {
@@ -182,8 +184,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
       unawaited(AnalyticsService.logVoiceInputFailed(reason: 'stt_no_result'));
       setState(() {
-        _statusMessage =
-            result.message ?? appL10n(context).voiceNoResult;
+        _statusMessage = result.message ?? appL10n(context).voiceNoResult;
       });
       _focusManualInput();
     } catch (_) {
@@ -233,10 +234,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       return;
     }
     setState(() {
-      _statusMessage =
-          nextText.trim().isEmpty
-              ? appL10n(context).voiceClearedEmpty
-              : appL10n(context).voiceDeletedLast;
+      _statusMessage = nextText.trim().isEmpty
+          ? appL10n(context).voiceClearedEmpty
+          : appL10n(context).voiceDeletedLast;
     });
   }
 
@@ -314,54 +314,130 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       context.push(AppRoutes.confirm, extra: const <String, dynamic>{});
       return;
     }
+    if (!_beginVoiceCommandSubmit(rawText)) {
+      return;
+    }
 
     final preparedDraft = _preparedDraftForCurrentText(rawText);
     final preparedAction = _resolvePreparedActionForText(
       preparedDraft,
       rawText,
     );
+    if (_voiceCommandRouter.isAmbiguousFieldAddition(rawText)) {
+      final choice = await _showAmbiguousFieldAdditionSheet(rawText);
+      if (!mounted) {
+        return;
+      }
+      switch (choice) {
+        case _AmbiguousFieldAdditionChoice.updateExisting:
+          await _openVoiceActionFromText(
+            normalizedText,
+            rawText,
+            _VoiceCommandAction.edit,
+          );
+          return;
+        case _AmbiguousFieldAdditionChoice.createNew:
+          await _openAddConfirmFromText(normalizedText, preparedDraft);
+          return;
+        case _AmbiguousFieldAdditionChoice.editText:
+        case null:
+          _resetVoiceCommandSubmitGuard(clearSignature: choice != null);
+          if (choice == _AmbiguousFieldAdditionChoice.editText) {
+            _focusManualInput();
+          }
+          return;
+      }
+    }
     final commandAction =
         preparedAction ?? await _detectCommandActionForSubmit(rawText);
     if (!mounted) {
       return;
     }
     if (commandAction == _VoiceCommandAction.add) {
-      if (preparedDraft != null) {
-        context.push(AppRoutes.confirm, extra: preparedDraft);
-        return;
-      }
-
-      final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
-      if (!mounted) {
-        return;
-      }
-      final cleanedText = cleanup.cleanedText;
-      if (cleanedText.isEmpty) {
-        context.push(AppRoutes.confirm, extra: const <String, dynamic>{});
-        return;
-      }
-
-      final inferredStartAt = GptService().inferStartAtFromRawText(cleanedText);
-      context.push(
-        AppRoutes.confirm,
-        extra: <String, dynamic>{
-          'raw_text': cleanedText,
-          if (cleanup.changed) 'original_raw_text': cleanup.originalText,
-          if (cleanup.changed) 'voice_cleanup_method': cleanup.method.name,
-          if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
-          if (inferredStartAt != null)
-            'start_at': inferredStartAt.toIso8601String(),
-          'parse_pending': true,
-          if (_didEditTranscriptManually) 'manual_text_confirmed': true,
-        },
-      );
+      await _openAddConfirmFromText(normalizedText, preparedDraft);
       return;
     }
+    await _openVoiceActionFromText(normalizedText, rawText, commandAction);
+  }
+
+  bool _beginVoiceCommandSubmit(String rawText) {
+    final signature = VoiceTextCleanupService.normalizeBasic(rawText);
+    if (_isSubmittingVoiceCommand || _lastSubmittedSignature == signature) {
+      return false;
+    }
+    setState(() {
+      _isSubmittingVoiceCommand = true;
+      _lastSubmittedSignature = signature;
+    });
+    return true;
+  }
+
+  void _resetVoiceCommandSubmitGuard({bool clearSignature = false}) {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isSubmittingVoiceCommand = false;
+      if (clearSignature) {
+        _lastSubmittedSignature = null;
+      }
+    });
+  }
+
+  Future<void> _pushVoiceRoute(String location, {Object? extra}) async {
+    unawaited(
+      context.push(location, extra: extra).whenComplete(() {
+        _resetVoiceCommandSubmitGuard(clearSignature: true);
+      }),
+    );
+  }
+
+  Future<void> _openAddConfirmFromText(
+    String normalizedText,
+    Map<String, dynamic>? preparedDraft,
+  ) async {
+    if (preparedDraft != null) {
+      await _pushVoiceRoute(AppRoutes.confirm, extra: preparedDraft);
+      return;
+    }
+
     final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
     if (!mounted) {
       return;
     }
-    context.push(
+    final cleanedText = cleanup.cleanedText;
+    if (cleanedText.isEmpty) {
+      await _pushVoiceRoute(AppRoutes.confirm,
+          extra: const <String, dynamic>{});
+      return;
+    }
+
+    final inferredStartAt = GptService().inferStartAtFromRawText(cleanedText);
+    await _pushVoiceRoute(
+      AppRoutes.confirm,
+      extra: <String, dynamic>{
+        'raw_text': cleanedText,
+        if (cleanup.changed) 'original_raw_text': cleanup.originalText,
+        if (cleanup.changed) 'voice_cleanup_method': cleanup.method.name,
+        if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
+        if (inferredStartAt != null)
+          'start_at': inferredStartAt.toIso8601String(),
+        'parse_pending': true,
+        if (_didEditTranscriptManually) 'manual_text_confirmed': true,
+      },
+    );
+  }
+
+  Future<void> _openVoiceActionFromText(
+    String normalizedText,
+    String rawText,
+    _VoiceCommandAction commandAction,
+  ) async {
+    final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
+    if (!mounted) {
+      return;
+    }
+    await _pushVoiceRoute(
       AppRoutes.voiceAction,
       extra: <String, dynamic>{
         'raw_text': rawText,
@@ -369,6 +445,66 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         if (cleanup.changed) 'voice_cleanup_method': cleanup.method.name,
         if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
         'action': commandAction.name,
+      },
+    );
+  }
+
+  Future<_AmbiguousFieldAdditionChoice?> _showAmbiguousFieldAdditionSheet(
+    String rawText,
+  ) {
+    return showModalBottomSheet<_AmbiguousFieldAdditionChoice>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '어떤 뜻인가요?',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: PlanFlowColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  rawText,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () => Navigator.of(context).pop(
+                    _AmbiguousFieldAdditionChoice.updateExisting,
+                  ),
+                  icon: const Icon(Icons.event_available_outlined),
+                  label: const Text('기존 일정에 내용 추가'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).pop(
+                    _AmbiguousFieldAdditionChoice.createNew,
+                  ),
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: const Text('새 일정으로 추가'),
+                ),
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).pop(
+                    _AmbiguousFieldAdditionChoice.editText,
+                  ),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('직접 편집'),
+                ),
+              ],
+            ),
+          ),
+        );
       },
     );
   }
@@ -679,6 +815,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
 enum _VoiceCommandAction { add, edit, delete, query, choose }
 
+enum _AmbiguousFieldAdditionChoice { updateExisting, createNew, editText }
+
 class _VoiceCommandGuide extends StatelessWidget {
   const _VoiceCommandGuide({required this.theme});
 
@@ -881,7 +1019,9 @@ class _VoiceTranscriptSection extends StatelessWidget {
             if (recognizedText != null) ...[
               const SizedBox(height: 6),
               Text(
-                isListening ? l10n.voiceListeningContinue : l10n.voiceCheckRecognized,
+                isListening
+                    ? l10n.voiceListeningContinue
+                    : l10n.voiceCheckRecognized,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: PlanFlowColors.textSecondary,
                 ),

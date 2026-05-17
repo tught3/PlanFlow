@@ -472,7 +472,10 @@ class SttService {
         committedWords.length - overlap,
       );
       final incomingHead = incomingWords.sublist(0, overlap);
-      if (listEquals(committedTail, incomingHead)) {
+      if (listEquals(
+        committedTail.map(_transcriptOverlapKey).toList(growable: false),
+        incomingHead.map(_transcriptOverlapKey).toList(growable: false),
+      )) {
         return incomingWords.sublist(overlap).join(' ');
       }
     }
@@ -483,6 +486,61 @@ class SttService {
       return '';
     }
     return incoming;
+  }
+
+  static String _transcriptOverlapKey(String token) {
+    return _normalizeTranscriptToken(token).replaceFirst(
+      RegExp(r'(으로|에서|에게|한테|로|에|을|를|이|가)$'),
+      '',
+    );
+  }
+
+  @visibleForTesting
+  static String mergeTranscriptSegment(String committedText, String segment) {
+    final normalizedSegment = segment.trim();
+    if (normalizedSegment.isEmpty) {
+      return committedText.trim();
+    }
+    final committed = committedText.trim();
+    if (committed.isEmpty) {
+      return normalizedSegment;
+    }
+    final committedWords = committed
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    final incomingWords = normalizedSegment
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    final maxOverlap = committedWords.length < incomingWords.length
+        ? committedWords.length
+        : incomingWords.length;
+    for (var overlap = maxOverlap; overlap > 0; overlap -= 1) {
+      final committedTail = committedWords.sublist(
+        committedWords.length - overlap,
+      );
+      final incomingHead = incomingWords.sublist(0, overlap);
+      if (!listEquals(
+        committedTail.map(_transcriptOverlapKey).toList(growable: false),
+        incomingHead.map(_transcriptOverlapKey).toList(growable: false),
+      )) {
+        continue;
+      }
+      final mergedWords = List<String>.of(committedWords);
+      for (var index = 0; index < overlap; index += 1) {
+        final committedIndex = mergedWords.length - overlap + index;
+        final incoming = incomingHead[index];
+        if (_normalizeTranscriptToken(incoming).startsWith(
+          _normalizeTranscriptToken(mergedWords[committedIndex]),
+        )) {
+          mergedWords[committedIndex] = incoming;
+        }
+      }
+      mergedWords.addAll(incomingWords.sublist(overlap));
+      return mergedWords.join(' ');
+    }
+    return '$committed $normalizedSegment'.trim();
   }
 
   @visibleForTesting
@@ -966,21 +1024,30 @@ class SttService {
       onPartialResult?.call(mergedText);
     }
 
-    void commitActiveSession() {
+    bool commitActiveSession() {
       final text = _activeNativeSessionText.trim();
       if (text.isEmpty) {
-        return;
+        return false;
       }
       if (handleNativeVoiceControlCommand(text)) {
-        return;
+        return false;
       }
-      if (committedSegments.isEmpty || committedSegments.last != text) {
-        committedSegments.add(text);
+      final committedText = committedSegments.join(' ').trim();
+      final mergedText = mergeTranscriptSegment(committedText, text);
+      if (mergedText == committedText) {
+        _activeNativeSessionText = '';
+        latestRecognizedText = committedText;
+        _activeRecognizedText = latestRecognizedText;
+        return false;
       }
+      committedSegments
+        ..clear()
+        ..add(mergedText);
       _activeNativeSessionText = '';
-      latestRecognizedText = committedSegments.join(' ').trim();
+      latestRecognizedText = mergedText;
       _activeRecognizedText = latestRecognizedText;
       onPartialResult?.call(latestRecognizedText);
+      return true;
     }
 
     _nativeSttChannel.setMethodCallHandler((call) async {
@@ -1010,7 +1077,10 @@ class SttService {
           break;
         case 'restarted':
           restartCount += 1;
-          commitActiveSession();
+          final committed = commitActiveSession();
+          if (!committed && restartCount > 1) {
+            break;
+          }
           onRestart?.call(restartCount);
           break;
         case 'segmentEnded':

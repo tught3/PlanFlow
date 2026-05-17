@@ -1370,9 +1370,23 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         !_requestedChanges.contains('location')) {
       return null;
     }
-    final match = RegExp(r'(?:장소|위치)\s*(?:를|을)?\s*(.+?)(?:로|으로)\s*(?:변경|바꿔|수정)')
-        .firstMatch(_normalizedRawText);
-    final location = match?.group(1)?.trim();
+    final match = RegExp(
+      r'(?:장소|위치|주소)\s*(?:를|을)?\s*(.+?)(?:로|으로)\s*(?:변경|바꿔|수정)|(.+?)(?:로|으로)\s*(?:장소|위치|주소)\s*(?:추가|넣어|입력|설정|등록)',
+    ).firstMatch(_normalizedRawText);
+    final prefixLocation = match?.group(1)?.trim();
+    final suffixLocation = match?.group(2)?.trim();
+    var location = prefixLocation == null || prefixLocation.isEmpty
+        ? suffixLocation
+        : prefixLocation;
+    if (location != null &&
+        suffixLocation != null &&
+        suffixLocation.isNotEmpty) {
+      final targetBoundaries =
+          RegExp(r'(?:일정|스케줄|약속)에\s+').allMatches(location).toList();
+      if (targetBoundaries.isNotEmpty) {
+        location = location.substring(targetBoundaries.last.end).trim();
+      }
+    }
     return location == null || location.isEmpty ? null : location;
   }
 

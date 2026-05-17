@@ -706,3 +706,9 @@
 - Synced `.env.local` to Supabase Edge Function secrets for project `xqvvfnvmytjlblcngipn`, so `openai-proxy` uses the connector-created key.
 - Updated env documentation and the older Codex prompt to direct OpenAI keys to ignored `.env.local` plus Supabase secrets, and ignored Supabase CLI `.temp` metadata.
 - Verification passed: tracked-file secret scan found no OpenAI key patterns, `openai-proxy` smoke request returned HTTP 200 without `missing_openai_api_key`, and `git diff --check` passed.
+
+## 2026-05-17 Voice Ambiguous Add And STT Dedupe Checkpoint
+- Added a voice-input confirmation sheet for ambiguous field-addition phrases like `장소 추가`, with choices for updating an existing event, creating a new event, or editing the recognized text.
+- Added submit guarding so STT completion and manual submit cannot route the same transcript twice, and tightened Android STT segment merging so rapid restarts do not duplicate overlapping speech.
+- Updated voice command routing and direct-save edit handling so `내일 오전 10시에 교보생명 시험 일정에 원주 교보생명빌딩으로 장소 추가` targets the existing event and applies only the location change.
+- Verification passed: focused router/STT/voice input/voice action tests, `scripts/flutter-local.ps1 analyze`, `git diff --check`, debug APK build, ADB install, app launch, and PID check showing `com.planflow.app` running.

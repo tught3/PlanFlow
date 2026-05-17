@@ -174,4 +174,22 @@ void main() {
       '내일 오전 9시에',
     );
   });
+
+  test('SttService merges native restart segments without duplicating text',
+      () {
+    expect(
+      SttService.mergeTranscriptSegment(
+        '내일 오전 10시에 교보생명 시험 일정',
+        '교보생명 시험 일정',
+      ),
+      '내일 오전 10시에 교보생명 시험 일정',
+    );
+    expect(
+      SttService.mergeTranscriptSegment(
+        '내일 오전 10시에 교보생명 시험 일정',
+        '시험 일정에 원주 교보생명빌딩으로 장소 추가',
+      ),
+      '내일 오전 10시에 교보생명 시험 일정에 원주 교보생명빌딩으로 장소 추가',
+    );
+  });
 }

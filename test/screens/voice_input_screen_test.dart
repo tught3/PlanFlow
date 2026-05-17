@@ -367,9 +367,8 @@ void main() {
     await tester.enterText(find.byType(TextField), '내일 오전 11시 정장집 방문');
     await tester.pump();
 
-    await tester.tap(
-      find.byKey(const ValueKey('voice-input-confirm-current-text-button')),
-    );
+    await tester.tap(find.byType(TextField));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
     await tester.pumpAndSettle();
 
@@ -538,13 +537,115 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('현재 내용으로 입력'), findsOneWidget);
-    await tester.tap(find.text('현재 내용으로 입력'));
+    await tester.tap(find.byType(TextField));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
     expect(find.textContaining('일정 확인:'), findsOneWidget);
     expect(find.textContaining('5분 뒤 요미 허리 약 주기'), findsOneWidget);
     expect(find.textContaining('T'), findsOneWidget);
     expect(find.text('음성 관리 화면'), findsNothing);
+  });
+
+  testWidgets('장소 추가처럼 애매한 추가 명령은 뜻을 먼저 묻는다', (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) =>
+              const VoiceInputScreen(autoStartOverride: false),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '음성 관리: ${extra['action']} / ${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(
+      find.byType(TextField),
+      '내일 오전 10시에 교보생명 시험 일정에 원주 교보생명빌딩으로 장소 추가',
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('voice-input-confirm-current-text-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('어떤 뜻인가요?'), findsOneWidget);
+    expect(find.text('기존 일정에 내용 추가'), findsOneWidget);
+    expect(find.text('새 일정으로 추가'), findsOneWidget);
+
+    await tester.tap(find.text('기존 일정에 내용 추가'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('음성 관리: edit'), findsOneWidget);
+    expect(find.text('일정 확인 화면'), findsNothing);
+  });
+
+  testWidgets('수동 제출과 STT 완료가 겹쳐도 한 번만 이동한다', (tester) async {
+    final fakeStt = _FakeSttService();
+    var confirmBuildCount = 0;
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) {
+            confirmBuildCount += 1;
+            return Text(
+              '일정 확인 $confirmBuildCount',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+
+    await tester.tap(find.byType(TextField));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    await fakeStt.stopActiveListen();
+    await tester.pumpAndSettle();
+
+    expect(find.text('일정 확인 1'), findsOneWidget);
+    expect(confirmBuildCount, 1);
   });
 
   testWidgets('이동 표현은 후보 선택이 아니라 수정 화면으로 간다', (tester) async {

@@ -42,6 +42,15 @@ void main() {
       final memoAdd = router.route('내일 병원 준비물 메모해줘');
       expect(memoAdd.intent, VoiceCommandRouteIntent.add);
 
+      final ambiguousLocationAdd = router.route(
+        '내일 오전 10시에 교보생명 시험 일정에 원주 교보생명빌딩으로 장소 추가',
+      );
+      expect(ambiguousLocationAdd.intent, VoiceCommandRouteIntent.choose);
+      expect(
+        router.isAmbiguousFieldAddition(ambiguousLocationAdd.rawText),
+        isTrue,
+      );
+
       final ambiguousQuery = router.route('조회');
       expect(ambiguousQuery.intent, VoiceCommandRouteIntent.choose);
 
@@ -75,6 +84,22 @@ void main() {
       expect(deleteRoute.targetQuery, contains('아이스크림'));
       expect(deleteRoute.targetQuery, contains('전달'));
       expect(deleteRoute.targetQuery, isNot(contains('삭제')));
+    });
+
+    test('장소 추가 수정 검색어는 새 장소보다 기존 일정 식별어를 우선한다', () {
+      const router = VoiceCommandRouter();
+      final route = router.route(
+        '내일 오전 10시에 교보생명 시험 일정에 원주 교보생명빌딩으로 장소 추가',
+        intent: VoiceCommandRouteIntent.edit,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(route.intent, VoiceCommandRouteIntent.edit);
+      expect(route.requestedChanges, contains('location'));
+      expect(route.targetQuery, contains('교보생명'));
+      expect(route.targetQuery, contains('시험'));
+      expect(route.targetQuery, isNot(contains('원주')));
+      expect(route.targetQuery, isNot(contains('교보생명빌딩')));
     });
 
     test('후보 힌트와 검색 토큰도 공용 라우터가 만든다', () {

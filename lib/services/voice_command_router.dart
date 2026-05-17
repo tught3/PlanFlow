@@ -41,6 +41,9 @@ class VoiceCommandRouter {
         .hasMatch(normalized)) {
       return VoiceCommandRouteIntent.edit;
     }
+    if (isAmbiguousFieldAddition(normalized)) {
+      return VoiceCommandRouteIntent.choose;
+    }
     if (_hasAddIntentCue(normalized)) {
       return VoiceCommandRouteIntent.add;
     }
@@ -187,7 +190,11 @@ class VoiceCommandRouter {
     Iterable<VoiceTextCleanupCandidate> candidates = const [],
     VoiceTextCleanupContext context = VoiceTextCleanupContext.add,
   }) {
-    final normalized = normalizeManagementText(text);
+    final normalized = _targetSearchText(
+      normalizeManagementText(text),
+      intent: intent,
+      requestedChanges: requestedChanges,
+    );
     if (normalized.isEmpty) {
       return <String>[];
     }
@@ -366,6 +373,47 @@ class VoiceCommandRouter {
         _hasRecurringLookupAddCue(normalized) ||
         (_looksLikeScheduleContentToConfirm(normalized) &&
             _hasScheduleCue(normalized));
+  }
+
+  bool isAmbiguousFieldAddition(String text) {
+    final normalized = normalizeManagementText(text);
+    if (!RegExp(
+      r'(장소|위치|주소)\s*(?:를|을|으로|로)?\s*(?:추가|넣어|입력|설정|등록)',
+    ).hasMatch(normalized)) {
+      return false;
+    }
+    return _hasScheduleCue(normalized) ||
+        RegExp(r'(일정|스케줄|약속|회의|시험|방문|미팅)').hasMatch(normalized);
+  }
+
+  String _targetSearchText(
+    String normalized, {
+    VoiceCommandRouteIntent? intent,
+    List<String> requestedChanges = const [],
+  }) {
+    if (intent != VoiceCommandRouteIntent.edit ||
+        !requestedChanges.contains('location')) {
+      return normalized;
+    }
+    final fieldAddition = RegExp(
+      r'(?:장소|위치|주소)\s*(?:를|을|으로|로)?\s*(?:추가|넣어|입력|설정|등록).*?$',
+    ).firstMatch(normalized);
+    if (fieldAddition == null) {
+      return normalized;
+    }
+
+    var prefix = normalized.substring(0, fieldAddition.start).trim();
+    final eventBoundary =
+        RegExp(r'(일정|스케줄|약속)에\s+[^,.;!?]*?(?:으로|로)\s*$').firstMatch(prefix);
+    if (eventBoundary != null) {
+      prefix = prefix
+          .substring(
+            0,
+            eventBoundary.start + (eventBoundary.group(1)?.length ?? 0),
+          )
+          .trim();
+    }
+    return prefix.isEmpty ? normalized : prefix;
   }
 
   bool _hasExplicitAddIntentCue(String text) {

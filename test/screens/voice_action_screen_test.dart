@@ -349,6 +349,53 @@ void main() {
     expect(find.text('일정 탭'), findsOneWidget);
   });
 
+  testWidgets('장소 추가 수정 명령은 기존 일정의 장소만 바로 저장한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '교보생명 시험',
+          startAt: DateTime.now().add(const Duration(days: 1)),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '내일 오전 10시에 교보생명 시험 일정에 원주 교보생명빌딩으로 장소 추가',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+
+    expect(repository.updatedEvents, hasLength(1));
+    final updated = repository.updatedEvents.single;
+    expect(updated.title, '교보생명 시험');
+    expect(updated.location, '원주 교보생명빌딩');
+    expect(find.text('일정 탭'), findsOneWidget);
+  });
+
   testWidgets('음성 수정 명령의 새 날짜는 편집 화면에 미리 반영된다', (tester) async {
     final repository = _FakeEventRepository(
       events: [
@@ -1283,6 +1330,7 @@ class _FakeEventRepository extends EventRepository {
       : _events = List<EventModel>.of(events);
 
   final List<EventModel> _events;
+  final List<EventModel> updatedEvents = <EventModel>[];
   final List<String> deletedEventIds = <String>[];
   int listEventsCallCount = 0;
 
@@ -1312,7 +1360,10 @@ class _FakeEventRepository extends EventRepository {
   }
 
   @override
-  Future<EventModel> updateEvent(EventModel event) async => event;
+  Future<EventModel> updateEvent(EventModel event) async {
+    updatedEvents.add(event);
+    return event;
+  }
 }
 
 class _NoopSideEffectService extends ManualEventSideEffectService {
