@@ -6,6 +6,7 @@ import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/voice/voice_action_screen.dart';
 import 'package:planflow/services/home_widget_service.dart';
+import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 
 void main() {
@@ -328,6 +329,7 @@ void main() {
             userIdOverride: 'user-1',
             sideEffectService: const _NoopSideEffectService(),
             homeWidgetService: _NoopHomeWidgetService(),
+            locationLookupService: _FakeLocationLookupService.empty(),
           ),
         ),
         GoRoute(
@@ -427,6 +429,7 @@ void main() {
             action: VoiceScheduleAction.edit,
             eventRepository: repository,
             userIdOverride: 'user-1',
+            locationLookupService: _FakeLocationLookupService.empty(),
           ),
         ),
         GoRoute(
@@ -1366,6 +1369,78 @@ void main() {
     expect(find.byKey(const ValueKey('voice-delete-candidate-list')),
         findsOneWidget);
   });
+  testWidgets('voice location edit resolves map coordinates before edit screen',
+      (tester) async {
+    final originalStart = DateTime.now().add(const Duration(days: 1));
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '실매출 확인',
+          startAt: originalStart,
+        ),
+      ],
+    );
+    final lookupService = _FakeLocationLookupService(
+      results: const <LocationLookupResult>[
+        LocationLookupResult(
+          name: '원주세브란스기독병원',
+          address: '강원 원주시 일산로 20',
+          latitude: 37.3492,
+          longitude: 127.9463,
+          provider: LocationLookupProvider.tmap,
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '내일 오후 1시에 실매출 확인 일정에 원주세브란스기독병원 장소 추가해줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+            locationLookupService: lookupService,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            final event = state.extra as EventModel;
+            return Text(
+              'edit:${event.title}|${event.location}|${event.locationLat}|${event.locationLng}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('실매출 확인'), findsWidgets);
+    await tester.tap(
+      find
+          .ancestor(
+            of: find.text('실매출 확인').first,
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(lookupService.queries, ['원주세브란스기독병원']);
+    expect(
+      find.textContaining(
+        'edit:실매출 확인|원주세브란스기독병원|37.3492|127.9463',
+      ),
+      findsOneWidget,
+    );
+    expect(repository.updatedEvents, isEmpty);
+  });
 }
 
 EventModel _event({
@@ -1423,6 +1498,21 @@ class _FakeEventRepository extends EventRepository {
   Future<EventModel> updateEvent(EventModel event) async {
     updatedEvents.add(event);
     return event;
+  }
+}
+
+class _FakeLocationLookupService extends LocationLookupService {
+  _FakeLocationLookupService({required this.results});
+
+  _FakeLocationLookupService.empty() : results = const <LocationLookupResult>[];
+
+  final List<LocationLookupResult> results;
+  final List<String> queries = <String>[];
+
+  @override
+  Future<List<LocationLookupResult>> search(String query) async {
+    queries.add(query);
+    return results;
   }
 }
 

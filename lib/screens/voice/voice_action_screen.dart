@@ -17,6 +17,7 @@ import '../../services/calendar_auto_sync_service.dart';
 import '../../services/event_preparation_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
+import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/voice_command_router.dart';
@@ -33,11 +34,14 @@ class VoiceActionScreen extends StatefulWidget {
     this.gptService,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
+    LocationLookupService? locationLookupService,
     this.forceSyncCalendars,
     this.userIdOverride,
   })  : sideEffectService =
             sideEffectService ?? const ManualEventSideEffectService(),
-        homeWidgetService = homeWidgetService ?? HomeWidgetService();
+        homeWidgetService = homeWidgetService ?? HomeWidgetService(),
+        locationLookupService =
+            locationLookupService ?? LocationLookupService();
 
   final String rawText;
   final VoiceScheduleAction action;
@@ -45,6 +49,7 @@ class VoiceActionScreen extends StatefulWidget {
   final GptService? gptService;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
+  final LocationLookupService locationLookupService;
   final Future<void> Function({required String reason, required bool force})?
       forceSyncCalendars;
   final String? userIdOverride;
@@ -1176,6 +1181,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
   Future<void> _openEdit(EventModel event) async {
     final editedEvent = _eventWithRequestedVoiceChanges(event);
+    final locationResolution =
+        await _eventWithResolvedVoiceLocation(editedEvent);
     final appliedVoiceChange = editedEvent.startAt != event.startAt ||
         editedEvent.endAt != event.endAt ||
         editedEvent.location != event.location;
@@ -1187,6 +1194,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     if (!mounted) {
       return;
     }
+    final locationSnackBarMessage =
+        _isLocationFieldAddition && appliedVoiceChange
+            ? locationResolution.message
+            : null;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -1198,9 +1209,87 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         ),
       ),
     );
+    if (locationSnackBarMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(locationSnackBarMessage)),
+      );
+    }
     await context.push(
       '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
-      extra: editedEvent,
+      extra: locationResolution.event,
+    );
+  }
+
+  Future<_VoiceLocationResolution> _eventWithResolvedVoiceLocation(
+    EventModel event,
+  ) async {
+    if (!_isLocationFieldAddition ||
+        event.location == null ||
+        event.location!.trim().isEmpty ||
+        (event.locationLat != null && event.locationLng != null)) {
+      return _VoiceLocationResolution(
+        event: event,
+        message: '장소를 입력해 두었어요. 확인 후 저장해 주세요.',
+      );
+    }
+
+    try {
+      final results = await widget.locationLookupService.search(
+        event.location!.trim(),
+      );
+      if (results.isEmpty) {
+        return _VoiceLocationResolution(
+          event: event,
+          message: '장소명을 입력해 두었어요. 지도에서 정확한 위치를 확인한 뒤 저장해 주세요.',
+        );
+      }
+      return _VoiceLocationResolution(
+        event: _eventWithResolvedLocation(event, results.first),
+        message: '장소 위치를 지도에서 찾았어요. 확인 후 저장해 주세요.',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen location lookup failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return _VoiceLocationResolution(
+        event: event,
+        message: '장소명을 입력해 두었어요. 지도에서 정확한 위치를 확인한 뒤 저장해 주세요.',
+      );
+    }
+  }
+
+  EventModel _eventWithResolvedLocation(
+    EventModel event,
+    LocationLookupResult result,
+  ) {
+    final resolvedName = result.name.trim().isNotEmpty
+        ? result.name.trim()
+        : event.location?.trim();
+    return EventModel(
+      id: event.id,
+      userId: event.userId,
+      title: event.title,
+      startAt: event.startAt,
+      endAt: event.endAt,
+      location: resolvedName ?? event.location,
+      locationLat: result.latitude,
+      locationLng: result.longitude,
+      memo: event.memo,
+      supplies: event.supplies,
+      suppliesChecked: event.suppliesChecked,
+      isCritical: event.isCritical,
+      recurrenceRule: event.recurrenceRule,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
+      parentEventId: event.parentEventId,
+      category: event.category,
+      source: event.source,
+      externalId: event.externalId,
+      externalCalendarId: event.externalCalendarId,
+      externalEtag: event.externalEtag,
+      externalUpdatedAt: event.externalUpdatedAt,
+      lastSyncedAt: event.lastSyncedAt,
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
     );
   }
 
@@ -2724,6 +2813,16 @@ class _EmptyCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _VoiceLocationResolution {
+  const _VoiceLocationResolution({
+    required this.event,
+    required this.message,
+  });
+
+  final EventModel event;
+  final String message;
 }
 
 class _CandidateLoadDiagnostics {

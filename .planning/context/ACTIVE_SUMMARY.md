@@ -726,3 +726,10 @@
 - Updated `VoiceActionScreen` to use pipeline target text for candidate date filtering, pipeline change text for requested new times, pipeline field values for location edits, and pipeline safety flags before showing `바로 저장`.
 - Tightened delete commands with no explicit target so they keep an empty search query and show selectable candidates instead of searching for leftover words like `줘`.
 - Verification passed: focused pipeline/router/STT/voice input/voice action tests, full `scripts/flutter-local.ps1 analyze`, `git diff --check`, debug APK build, ADB install, launch, PID, and focused window check for `com.planflow.app/.MainActivity`.
+
+## 2026-05-17 Voice Location Coordinate Resolution Checkpoint
+- Updated voice location-add/edit flow so selecting a candidate event resolves the requested new place through `LocationLookupService` before opening the edit screen.
+- The edit screen now receives an `EventModel` with `locationLat`/`locationLng` when lookup succeeds, so saving preserves real map coordinates for smart preparation and departure alarm calculations.
+- If lookup fails or returns no result, the voice flow keeps the requested location text and tells the user to verify the exact map position before saving.
+- Added regression coverage proving `내일 오후 1시에 실매출 확인 일정에 원주세브란스기독병원 장소 추가해줘` opens edit with the resolved place coordinates and does not directly save.
+- Verification passed: focused voice pipeline/router/action tests, full `scripts/flutter-local.ps1 analyze`, `git diff --check`, debug APK build, ADB install, launch, PID, and focused window check for `com.planflow.app/.MainActivity`; reviewer returned PASS with no blockers.
