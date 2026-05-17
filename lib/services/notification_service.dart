@@ -42,10 +42,15 @@ class NotificationService {
   static const String _eventReminderChannelDescription = '다가오는 일정 알림';
   static const int _maxSmartPreparationAlarmsPerEvent = 20;
 
-  static const String _criticalAlarmChannelId = 'critical_alarms';
+  @visibleForTesting
+  static const String criticalAlarmChannelId = 'critical_alarms_v2';
+
+  @visibleForTesting
+  static const String criticalAlarmSoundResource = 'planflow_critical_alarm';
+
   static const String _criticalAlarmChannelName = '중요 일정 알람';
   static const String _criticalAlarmChannelDescription =
-      '중요 일정 알람. Android 알림/정확한 알람/전체 화면 알림 권한이 꺼져 있으면 강한 알림과 잠금화면/겉화면 표시가 제한될 수 있습니다.';
+      '중요 일정 알람. 일반 일정 알림과 다른 전용 알림음으로 울립니다. Android 알림/정확한 알람/전체 화면 알림 권한이 꺼져 있으면 강한 알림과 잠금화면/겉화면 표시가 제한될 수 있습니다.';
   static const Color _criticalAlarmColor = Color(0xFFD32F2F);
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
@@ -561,7 +566,7 @@ class NotificationService {
   }) {
     return NotificationDetails(
       android: AndroidNotificationDetails(
-        _criticalAlarmChannelId,
+        criticalAlarmChannelId,
         _criticalAlarmChannelName,
         channelDescription: _criticalAlarmChannelDescription,
         importance: Importance.max,
@@ -576,6 +581,9 @@ class NotificationService {
         channelAction: AndroidNotificationChannelAction.update,
         audioAttributesUsage: AudioAttributesUsage.alarm,
         playSound: true,
+        sound: RawResourceAndroidNotificationSound(
+          criticalAlarmSoundResource,
+        ),
         enableVibration: true,
         autoCancel: false,
         color: _criticalAlarmColor,

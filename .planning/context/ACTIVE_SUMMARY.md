@@ -687,3 +687,9 @@
 - The rationale dialog now explains all three required permissions instead of only full-screen notifications, and the save path reuses the same bundle check for critical events.
 - Updated the event edit widget regression so toggling a critical alarm proves notification, exact-alarm, and full-screen permission requests are all attempted.
 - Verification passed: focused analyze, focused onboarding/event-edit/notification tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-17 Critical Alarm Sound Checkpoint
+- Added a dedicated Android raw WAV resource `planflow_critical_alarm.wav` for important alarms, using a short multi-tone pattern so users can distinguish it from normal schedule reminders by sound.
+- Moved the critical notification channel from `critical_alarms` to `critical_alarms_v2` because Android preserves an existing channel's sound settings after creation; the new channel lets the custom sound apply on upgraded installs.
+- Wired `RawResourceAndroidNotificationSound('planflow_critical_alarm')` into critical alarm notifications while keeping the alarm audio usage, max importance, full-screen intent, stronger vibration, and visual styling.
+- Verification passed: focused analyze, notification/manual/departure tests, `git diff --check`, debug APK build, APK resource inspection showing `res/raw/planflow_critical_alarm.wav`, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.

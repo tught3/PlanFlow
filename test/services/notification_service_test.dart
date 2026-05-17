@@ -72,5 +72,16 @@ void main() {
         '대전 성심당까지 30분 걸립니다.',
       );
     });
+
+    test('uses a distinct channel and raw sound for critical alarms', () {
+      expect(
+        NotificationService.criticalAlarmChannelId,
+        'critical_alarms_v2',
+      );
+      expect(
+        NotificationService.criticalAlarmSoundResource,
+        'planflow_critical_alarm',
+      );
+    });
   });
 }
