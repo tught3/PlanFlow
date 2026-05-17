@@ -193,6 +193,17 @@ class AppPermissionService {
     return _notificationService.requestExactAlarmPermission();
   }
 
+  Future<bool> requestFullScreenIntentPermission() async {
+    final granted =
+        await _notificationService.requestFullScreenIntentPermission();
+    if (granted == true) {
+      return true;
+    }
+    final status = await _notificationService.checkPermissionStatus();
+    return status.fullScreenIntentStatus == PermissionCheckState.granted ||
+        status.fullScreenIntentStatus == PermissionCheckState.unsupported;
+  }
+
   Future<bool> openAppSettings() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return false;
@@ -244,10 +255,17 @@ class AppPermissionSnapshot {
 
   bool get exactAlarmsGranted => notificationStatus.exactAlarmsEnabled == true;
 
+  bool get fullScreenIntentGranted =>
+      notificationStatus.fullScreenIntentStatus ==
+          PermissionCheckState.granted ||
+      notificationStatus.fullScreenIntentStatus ==
+          PermissionCheckState.unsupported;
+
   bool get requiredPermissionsGranted =>
       microphoneGranted &&
       notificationsGranted &&
       exactAlarmsGranted &&
+      fullScreenIntentGranted &&
       locationGranted &&
       calendarGranted;
 }

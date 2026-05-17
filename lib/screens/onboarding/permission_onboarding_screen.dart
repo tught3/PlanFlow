@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -202,6 +202,14 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       failures: failures,
       isGranted: (snapshot) => snapshot.exactAlarmsGranted,
       request: _permissionService.requestExactAlarmPermission,
+      mayOpenSettings: true,
+    );
+    await _runPermissionStep(
+      key: 'fullScreenIntent',
+      label: '전체 화면 알림',
+      failures: failures,
+      isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
+      request: _permissionService.requestFullScreenIntentPermission,
       mayOpenSettings: true,
     );
     await _runPermissionStep(
@@ -426,6 +434,25 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   deniedMessage:
                       '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요. 중요 알람의 잠금화면 표시에도 영향을 줍니다.',
                   request: _permissionService.requestExactAlarmPermission,
+                ),
+              ),
+              const SizedBox(height: 9),
+              _PermissionTile(
+                icon: Icons.open_in_full_outlined,
+                title: '전체 화면 알림',
+                description: '중요 알람을 잠금화면과 폴드/플립 겉화면에 크게 띄우기 위해 필요합니다.',
+                descriptionMaxLines: 2,
+                granted: snapshot?.fullScreenIntentGranted == true,
+                isRequesting: _activeRequestKey == 'fullScreenIntent',
+                key: const ValueKey(
+                  'permission-onboarding-full-screen-intent-tile',
+                ),
+                onRequest: () => _requestOne(
+                  key: 'fullScreenIntent',
+                  grantedMessage: '전체 화면 알림 권한 상태를 다시 확인했습니다.',
+                  deniedMessage:
+                      '전체 화면 알림이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 전체 화면 알림을 허용해 주세요.',
+                  request: _permissionService.requestFullScreenIntentPermission,
                 ),
               ),
               const SizedBox(height: 9),
@@ -678,7 +705,7 @@ class _PermissionTile extends StatelessWidget {
                   ),
                 ],
               ),
-              ),
+            ),
             const SizedBox(width: 8),
             if (granted)
               const Icon(Icons.check_circle_outline, color: Color(0xFF2E7D32))
@@ -698,4 +725,3 @@ class _PermissionTile extends StatelessWidget {
     );
   }
 }
-

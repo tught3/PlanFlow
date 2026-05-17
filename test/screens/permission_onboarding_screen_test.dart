@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:planflow/screens/onboarding/permission_onboarding_screen.dart';
@@ -40,7 +40,7 @@ void main() {
   );
 
   testWidgets(
-    'PermissionOnboardingScreen includes exact alarm in request-all flow',
+    'PermissionOnboardingScreen includes exact alarm and full-screen alarm in request-all flow',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
@@ -65,10 +65,22 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(permissionService.exactAlarmGranted, isTrue);
+      expect(permissionService.fullScreenIntentGranted, isTrue);
       expect(
         find.descendant(
           of: find.byKey(
             const ValueKey('permission-onboarding-exact-alarm-tile'),
+          ),
+          matching: find.byIcon(Icons.check_circle_outline),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey(
+              'permission-onboarding-full-screen-intent-tile',
+            ),
           ),
           matching: find.byIcon(Icons.check_circle_outline),
         ),
@@ -83,6 +95,7 @@ class _FakePermissionService extends AppPermissionService {
       : super(notificationService: _FakeNotificationService());
 
   bool exactAlarmGranted = false;
+  bool fullScreenIntentGranted = false;
   bool notificationGranted = false;
 
   @override
@@ -94,7 +107,9 @@ class _FakePermissionService extends AppPermissionService {
       notificationStatus: NotificationPermissionStatus(
         notificationsEnabled: notificationGranted,
         exactAlarmsEnabled: exactAlarmGranted,
-        fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
+        fullScreenIntentStatus: fullScreenIntentGranted
+            ? PermissionCheckState.granted
+            : PermissionCheckState.denied,
       ),
     );
   }
@@ -131,6 +146,12 @@ class _FakePermissionService extends AppPermissionService {
   }
 
   @override
+  Future<bool> requestFullScreenIntentPermission() async {
+    fullScreenIntentGranted = true;
+    return true;
+  }
+
+  @override
   Future<bool> openAppSettings() async => false;
 }
 
@@ -151,4 +172,3 @@ class _FakeNotificationService extends NotificationService {
     return checkPermissionStatus();
   }
 }
-

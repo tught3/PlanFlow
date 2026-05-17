@@ -675,3 +675,9 @@
 - Strengthened the critical Android notification presentation with red colorization, LED settings, non-auto-cancel behavior, and a longer vibration pattern while preserving exact alarm and full-screen intent scheduling.
 - Device permission check confirmed `POST_NOTIFICATIONS`, `SCHEDULE_EXACT_ALARM`, `VIBRATE`, and manifest `USE_FULL_SCREEN_INTENT` are granted/declared; app-ops still reports `USE_FULL_SCREEN_INTENT: default/reject`, so lock-screen full-screen popup behavior depends on the phone's manual PlanFlow full-screen notification setting.
 - Verification passed: focused analyze, focused notification/departure/manual side-effect tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-17 Full-Screen Alarm Consent Checkpoint
+- Added Android native full-screen intent permission status checking through the PlanFlow settings method channel, using `NotificationManager.canUseFullScreenIntent()` on Android 14+ and treating older Android versions as already supported.
+- Added a dedicated `전체 화면 알림` onboarding permission tile and included it in the `필요 권한 모두 요청` flow so users are sent to the Android consent screen during first setup.
+- Updated event editing so enabling `강한 알림으로 예약` immediately shows a rationale dialog and opens the full-screen notification consent screen; saving a critical event also re-checks the consent path.
+- Verification passed: focused analyze, focused onboarding/event-edit/notification/manual side-effect tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`. Device app-ops still showed `USE_FULL_SCREEN_INTENT: default/reject` before manual consent.

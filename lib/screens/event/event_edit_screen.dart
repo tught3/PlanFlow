@@ -14,6 +14,7 @@ import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../location/location_pick_flow.dart';
+import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/event_preparation_service.dart';
@@ -32,6 +33,7 @@ class EventEditScreen extends StatefulWidget {
     this.event,
     this.eventId,
     this.eventRepository,
+    this.permissionService,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
   })  : sideEffectService =
@@ -41,6 +43,7 @@ class EventEditScreen extends StatefulWidget {
   final EventModel? event;
   final String? eventId;
   final EventRepository? eventRepository;
+  final AppPermissionService? permissionService;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
 
@@ -84,6 +87,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
 
+  AppPermissionService get _permissionService =>
+      widget.permissionService ?? AppPermissionService();
+
   DateTime _eventRangeEnd(DateTime startAt, DateTime? endAt) {
     if (endAt != null && endAt.isAfter(startAt)) {
       return endAt;
@@ -124,6 +130,61 @@ class _EventEditScreenState extends State<EventEditScreen> {
         ],
       ),
     ).then((value) => value ?? false);
+  }
+
+  void _handleCriticalChanged(bool value) {
+    setState(() {
+      _critical = value;
+    });
+    if (value) {
+      unawaited(_ensureFullScreenIntentConsent());
+    }
+  }
+
+  Future<void> _ensureFullScreenIntentConsent() async {
+    try {
+      final snapshot = await _permissionService.checkAll();
+      if (snapshot.fullScreenIntentGranted || !mounted) {
+        return;
+      }
+      final shouldOpen = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('전체 화면 알림 허용이 필요해요'),
+              content: const Text(
+                '중요 알람을 잠금화면과 겉화면에 크게 띄우려면 Android 설정에서 PlanFlow의 전체 화면 알림을 허용해야 합니다.',
+              ),
+              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('나중에'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('허용하러 가기'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!shouldOpen || !mounted) {
+        return;
+      }
+      final granted =
+          await _permissionService.requestFullScreenIntentPermission();
+      if (!mounted) {
+        return;
+      }
+      _showMessage(
+        granted
+            ? '전체 화면 알림 권한을 확인했습니다.'
+            : '설정에서 PlanFlow의 전체 화면 알림을 허용한 뒤 돌아와 주세요.',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Full-screen intent consent request skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   @override
@@ -182,6 +243,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
       if (user == null) {
         _showMessage('로그인 후 저장할 수 있습니다.');
         return;
+      }
+
+      if (_critical) {
+        await _ensureFullScreenIntentConsent();
       }
 
       String? recurrenceScope;
@@ -861,17 +926,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
                       _reminderOffset = value;
                     });
                   },
-                  onCriticalChanged: (value) {
-                    setState(() {
-                      _critical = value;
-                    });
-                  },
+                  onCriticalChanged: _handleCriticalChanged,
                   onLocationPick: _pickLocationOnMap,
                   extraAfterMemo: TextFormField(
                     controller: _suppliesController,
                     textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) =>
-                        FocusScope.of(context).unfocus(),
+                    onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
                     decoration: const InputDecoration(
                       labelText: '준비물',
                       helperText: '쉼표로 구분해서 입력해 주세요.',

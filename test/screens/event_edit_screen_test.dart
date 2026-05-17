@@ -3,8 +3,21 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/screens/event/event_edit_screen.dart';
+import 'package:planflow/services/app_permission_service.dart';
+import 'package:planflow/services/notification_service.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.empty();
+  });
+
+  tearDown(() {
+    SharedPreferencesAsyncPlatform.instance = null;
+  });
+
   testWidgets('EventEditScreen uses inline calendar style editor',
       (tester) async {
     await tester.pumpWidget(
@@ -34,4 +47,74 @@ void main() {
 
     expect(find.text('시작 시간 조정'), findsOneWidget);
   });
+
+  testWidgets(
+      'EventEditScreen asks for full-screen consent when critical is enabled',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(430, 1300));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final permissions = _FakePermissionService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventEditScreen(
+          permissionService: permissions,
+          event: EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '팀장 동행방문',
+            startAt: DateTime.utc(2026, 5, 13, 0),
+            endAt: DateTime.utc(2026, 5, 13, 1),
+            category: '업무',
+          ),
+        ),
+      ),
+    );
+
+    await tester.scrollUntilVisible(
+      find.text('알림 옵션'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('알림 옵션'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('강한 알림으로 예약'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('강한 알림으로 예약'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('전체 화면 알림 허용이 필요해요'), findsOneWidget);
+
+    await tester.tap(find.text('허용하러 가기'));
+    await tester.pumpAndSettle();
+
+    expect(permissions.fullScreenIntentRequested, isTrue);
+  });
+}
+
+class _FakePermissionService extends AppPermissionService {
+  bool fullScreenIntentRequested = false;
+
+  @override
+  Future<AppPermissionSnapshot> checkAll() async {
+    return const AppPermissionSnapshot(
+      microphoneGranted: true,
+      locationGranted: true,
+      calendarGranted: true,
+      notificationStatus: NotificationPermissionStatus(
+        notificationsEnabled: true,
+        exactAlarmsEnabled: true,
+        fullScreenIntentStatus: PermissionCheckState.denied,
+      ),
+    );
+  }
+
+  @override
+  Future<bool> requestFullScreenIntentPermission() async {
+    fullScreenIntentRequested = true;
+    return true;
+  }
 }

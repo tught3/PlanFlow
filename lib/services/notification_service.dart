@@ -286,7 +286,7 @@ class NotificationService {
     return NotificationPermissionStatus(
       notificationsEnabled: notificationsEnabled,
       exactAlarmsEnabled: exactAlarmsEnabled,
-      fullScreenIntentStatus: PermissionCheckState.needsManualCheck,
+      fullScreenIntentStatus: await _checkFullScreenIntentStatus(),
     );
   }
 
@@ -332,6 +332,29 @@ class NotificationService {
   Future<bool?> requestFullScreenIntentPermission() async {
     await initialize();
     return _requestFullScreenIntentPermissionBestEffort();
+  }
+
+  Future<PermissionCheckState> _checkFullScreenIntentStatus() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return PermissionCheckState.unsupported;
+    }
+
+    try {
+      final granted = await _settingsChannel.invokeMethod<bool>(
+        'canUseFullScreenIntent',
+      );
+      if (granted == true) {
+        return PermissionCheckState.granted;
+      }
+      if (granted == false) {
+        return PermissionCheckState.denied;
+      }
+      return PermissionCheckState.needsManualCheck;
+    } catch (error, stackTrace) {
+      debugPrint('Full-screen intent permission check failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return PermissionCheckState.needsManualCheck;
+    }
   }
 
   @visibleForTesting
