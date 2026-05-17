@@ -40,5 +40,37 @@ void main() {
 
       expect(mode, AndroidScheduleMode.exactAllowWhileIdle);
     });
+
+    test('formats critical alarm title so it is visibly distinct', () {
+      expect(
+        NotificationService.criticalAlarmDisplayTitle('팀장 동행방문'),
+        '중요 알람: 팀장 동행방문',
+      );
+      expect(
+        NotificationService.criticalAlarmDisplayTitle('중요 알람: 팀장 동행방문'),
+        '중요 알람: 팀장 동행방문',
+      );
+    });
+
+    test('formats critical alarm body with an urgent lead and event title', () {
+      expect(
+        NotificationService.criticalAlarmDisplayBody(
+          title: '팀장 동행방문',
+          body: '중요 일정이 곧 시작됩니다.',
+        ),
+        '중요 알람입니다. 지금 확인해야 하는 일정입니다.\n'
+        '팀장 동행방문\n'
+        '중요 일정이 곧 시작됩니다.',
+      );
+      expect(
+        NotificationService.criticalAlarmDisplayBody(
+          title: '성심당 출발',
+          body: '대전 성심당까지 30분 걸립니다.',
+        ),
+        '중요 알람입니다. 지금 확인해야 하는 일정입니다.\n'
+        '성심당 출발\n'
+        '대전 성심당까지 30분 걸립니다.',
+      );
+    });
   });
 }

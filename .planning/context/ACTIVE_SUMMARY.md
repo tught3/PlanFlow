@@ -669,3 +669,9 @@
 - Kept relative/new-change phrases like `이번 주 목요일 오전 9시로 변경` from incorrectly acting as the original-event date filter, preserving existing edit flows.
 - Added regression coverage for cases where content matches but date differs, and where date matches but content does not.
 - Verification passed: focused analyze, full `voice_action_screen_test.dart`, `git diff --check`, and debug APK build. ADB install/run check was attempted but no device/emulator was connected at that moment.
+
+## 2026-05-17 Critical Alarm Distinction Checkpoint
+- Made important alarms visibly distinct from normal reminders by forcing critical notification titles to start with `중요 알람`, adding an urgent multi-line body that repeats the event title, and using expanded Android big-text styling.
+- Strengthened the critical Android notification presentation with red colorization, LED settings, non-auto-cancel behavior, and a longer vibration pattern while preserving exact alarm and full-screen intent scheduling.
+- Device permission check confirmed `POST_NOTIFICATIONS`, `SCHEDULE_EXACT_ALARM`, `VIBRATE`, and manifest `USE_FULL_SCREEN_INTENT` are granted/declared; app-ops still reports `USE_FULL_SCREEN_INTENT: default/reject`, so lock-screen full-screen popup behavior depends on the phone's manual PlanFlow full-screen notification setting.
+- Verification passed: focused analyze, focused notification/departure/manual side-effect tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.

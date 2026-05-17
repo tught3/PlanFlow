@@ -46,6 +46,7 @@ class NotificationService {
   static const String _criticalAlarmChannelName = '중요 일정 알람';
   static const String _criticalAlarmChannelDescription =
       '중요 일정 알람. Android 알림/정확한 알람/전체 화면 알림 권한이 꺼져 있으면 강한 알림과 잠금화면/겉화면 표시가 제한될 수 있습니다.';
+  static const Color _criticalAlarmColor = Color(0xFFD32F2F);
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
   );
@@ -205,12 +206,17 @@ class NotificationService {
           message: _criticalAlarmPermissionMessage(status),
         );
       }
+      final alarmTitle = criticalAlarmDisplayTitle(title);
+      final alarmBody = criticalAlarmDisplayBody(title: title, body: body);
       await _scheduleNotification(
         id: id,
-        title: title,
-        body: body ?? '중요 일정이 곧 시작됩니다.',
+        title: alarmTitle,
+        body: alarmBody,
         notifyAt: notifyAt,
-        details: _criticalAlarmDetails,
+        details: _criticalAlarmDetails(
+          title: alarmTitle,
+          body: alarmBody,
+        ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
       return NotificationScheduleResult(
@@ -526,7 +532,10 @@ class NotificationService {
     );
   }
 
-  NotificationDetails get _criticalAlarmDetails {
+  NotificationDetails _criticalAlarmDetails({
+    required String title,
+    required String body,
+  }) {
     return NotificationDetails(
       android: AndroidNotificationDetails(
         _criticalAlarmChannelId,
@@ -534,14 +543,26 @@ class NotificationService {
         channelDescription: _criticalAlarmChannelDescription,
         importance: Importance.max,
         priority: Priority.max,
+        styleInformation: BigTextStyleInformation(
+          body,
+          contentTitle: title,
+          summaryText: '놓치면 안 되는 중요 알람',
+        ),
         category: AndroidNotificationCategory.alarm,
         fullScreenIntent: true,
         channelAction: AndroidNotificationChannelAction.update,
         audioAttributesUsage: AudioAttributesUsage.alarm,
         playSound: true,
         enableVibration: true,
+        autoCancel: false,
+        color: _criticalAlarmColor,
+        colorized: true,
+        enableLights: true,
+        ledColor: _criticalAlarmColor,
+        ledOnMs: 1000,
+        ledOffMs: 500,
         vibrationPattern: Int64List.fromList(
-          <int>[0, 900, 250, 900, 250, 1200],
+          <int>[0, 1200, 250, 1200, 250, 1600],
         ),
         visibility: NotificationVisibility.public,
         ticker: '중요 일정 알람',
@@ -561,6 +582,40 @@ class NotificationService {
         suppressSound: false,
       ),
     );
+  }
+
+  @visibleForTesting
+  static String criticalAlarmDisplayTitle(String title) {
+    final trimmedTitle = title.trim();
+    if (trimmedTitle.isEmpty) {
+      return '중요 알람';
+    }
+    if (trimmedTitle.startsWith('중요 알람')) {
+      return trimmedTitle;
+    }
+    return '중요 알람: $trimmedTitle';
+  }
+
+  @visibleForTesting
+  static String criticalAlarmDisplayBody({
+    required String title,
+    String? body,
+  }) {
+    final trimmedTitle = title.trim();
+    final trimmedBody = body?.trim();
+    final eventLine = trimmedTitle.isEmpty ? null : trimmedTitle;
+    const defaultBody = '중요 일정이 곧 시작됩니다.';
+    final bodyLines = <String>[
+      '중요 알람입니다. 지금 확인해야 하는 일정입니다.',
+      if (eventLine != null) eventLine,
+      if (trimmedBody != null &&
+          trimmedBody.isNotEmpty &&
+          trimmedBody != defaultBody)
+        trimmedBody
+      else
+        defaultBody,
+    ];
+    return bodyLines.join('\n');
   }
 
   int _stableNotificationId(String id) {
