@@ -712,3 +712,9 @@
 - Added submit guarding so STT completion and manual submit cannot route the same transcript twice, and tightened Android STT segment merging so rapid restarts do not duplicate overlapping speech.
 - Updated voice command routing and direct-save edit handling so `내일 오전 10시에 교보생명 시험 일정에 원주 교보생명빌딩으로 장소 추가` targets the existing event and applies only the location change.
 - Verification passed: focused router/STT/voice input/voice action tests, `scripts/flutter-local.ps1 analyze`, `git diff --check`, debug APK build, ADB install, app launch, and PID check showing `com.planflow.app` running.
+
+## 2026-05-17 Feedback Badge And Location Add Correction Checkpoint
+- Added a manager-only new-report badge beside `신고함 열기`; it counts `feedback_reports` rows with `status = new`, refreshes on admin auth changes, and refreshes again after closing the admin inbox.
+- Corrected voice location-add edits so the target phrase before `일정에` is used only to find the existing event, while the phrase after it becomes the new location. Location-add edits no longer infer or apply a time/date change and now open the edit screen with the location prefilled instead of direct-saving.
+- Added regression coverage for `내일 오후 1시에 실매출 확인 일정에 원주 세브란스 기독병원 장소 추가해줘`, proving the `실매출 확인` event is selected, the original start time is preserved, and the hospital is applied as location text.
+- Verification passed: feedback repository/sheet tests, settings screen tests, router/voice action tests, `scripts/flutter-local.ps1 analyze`, `git diff --check`, debug APK build, ADB install, app launch, and PID check showing `com.planflow.app` running.

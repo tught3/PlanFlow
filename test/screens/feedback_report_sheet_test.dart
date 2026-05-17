@@ -165,6 +165,27 @@ void main() {
     expect(gateway.statusUpdates, <String, String>{'report-1': 'triaged'});
     expect(find.text('확인 중 상태로 바꿨어요.'), findsOneWidget);
   });
+
+  testWidgets('FeedbackReportSection shows new admin report badge',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FeedbackReportSection(
+            onPressed: () {},
+            onOpenAdminInbox: () {},
+            newAdminReportCount: 3,
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('settings-feedback-admin-new-badge')),
+      findsOneWidget,
+    );
+    expect(find.text('3'), findsOneWidget);
+  });
 }
 
 FeedbackRepository _testRepository(_FakeFeedbackGateway gateway) {

@@ -134,6 +134,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ValueNotifier<bool>(false);
   Timer? _naverCalDavLongRunningTimer;
   bool _isNaverCalDavProgressDialogOpen = false;
+  int? _newFeedbackReportCount;
+  bool _isLoadingNewFeedbackReportCount = false;
+  String? _lastFeedbackAdminEmail;
 
   String? get _userId => widget._userId ?? authProvider.userId;
   bool get _isFeedbackAdmin {
@@ -178,10 +181,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       unawaited(_loadBackups());
       unawaited(_ensureAutomaticBackup());
     }
+    authProvider.addListener(_handleFeedbackAdminAuthChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _handleFeedbackAdminAuthChanged();
+    });
   }
 
   @override
   void dispose() {
+    authProvider.removeListener(_handleFeedbackAdminAuthChanged);
     _settingsProvider.dispose();
     if (_ownsNaverCalDavService) {
       unawaited(_naverCalDavService.dispose());
@@ -190,6 +198,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _naverCalDavProgress.dispose();
     _naverCalDavLongRunning.dispose();
     super.dispose();
+  }
+
+  void _handleFeedbackAdminAuthChanged() {
+    final email = authProvider.email?.trim().toLowerCase();
+    if (email == _lastFeedbackAdminEmail &&
+        (_newFeedbackReportCount != null || !_isFeedbackAdmin)) {
+      return;
+    }
+    _lastFeedbackAdminEmail = email;
+    unawaited(_refreshNewFeedbackReportCount());
+  }
+
+  Future<void> _refreshNewFeedbackReportCount() async {
+    if (!mounted) {
+      return;
+    }
+    if (!_isFeedbackAdmin) {
+      setState(() {
+        _newFeedbackReportCount = null;
+        _isLoadingNewFeedbackReportCount = false;
+      });
+      return;
+    }
+    setState(() => _isLoadingNewFeedbackReportCount = true);
+    try {
+      final count = await FeedbackRepository.supabase().countNewAdminReports();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _newFeedbackReportCount = count;
+        _isLoadingNewFeedbackReportCount = false;
+      });
+    } on FeedbackSubmissionException catch (error) {
+      debugPrint('Feedback admin badge unavailable: ${error.message}');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _newFeedbackReportCount = null;
+        _isLoadingNewFeedbackReportCount = false;
+      });
+    } catch (error) {
+      debugPrint('Feedback admin badge unavailable: $error');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _newFeedbackReportCount = null;
+        _isLoadingNewFeedbackReportCount = false;
+      });
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -2433,6 +2493,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: _openFeedbackReportSheet,
                 onOpenAdminInbox:
                     _isFeedbackAdmin ? _openFeedbackAdminReportsSheet : null,
+                newAdminReportCount: _newFeedbackReportCount,
+                isLoadingAdminReportCount: _isLoadingNewFeedbackReportCount,
               ),
               const SizedBox(height: 16),
               if (authProvider.isSignedIn && _backupService != null) ...[
@@ -2546,6 +2608,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         repository: repository,
       ),
     );
+    await _refreshNewFeedbackReportCount();
   }
 
   String _formatTime(BuildContext context, TimeOfDay timeOfDay) {

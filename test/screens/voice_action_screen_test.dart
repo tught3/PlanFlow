@@ -349,13 +349,14 @@ void main() {
     expect(find.text('일정 탭'), findsOneWidget);
   });
 
-  testWidgets('장소 추가 수정 명령은 기존 일정의 장소만 바로 저장한다', (tester) async {
+  testWidgets('장소 추가 수정 명령은 시간 변경 없이 편집 화면에 장소만 채운다', (tester) async {
+    final originalStart = DateTime.now().add(const Duration(days: 1));
     final repository = _FakeEventRepository(
       events: [
         _event(
           id: 'event-1',
           title: '교보생명 시험',
-          startAt: DateTime.now().add(const Duration(days: 1)),
+          startAt: originalStart,
         ),
       ],
     );
@@ -374,11 +375,14 @@ void main() {
           ),
         ),
         GoRoute(
-          path: AppRoutes.calendar,
-          builder: (context, state) => const Text(
-            '일정 탭',
-            textDirection: TextDirection.ltr,
-          ),
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            final event = state.extra as EventModel;
+            return Text(
+              '편집 시작: ${event.title}|${event.startAt?.toIso8601String()}|${event.location}',
+              textDirection: TextDirection.ltr,
+            );
+          },
         ),
       ],
     );
@@ -386,14 +390,70 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('바로 저장'));
+    expect(find.text('바로 저장'), findsNothing);
+    await tester.tap(find.text('장소 입력'));
     await tester.pumpAndSettle();
 
-    expect(repository.updatedEvents, hasLength(1));
-    final updated = repository.updatedEvents.single;
-    expect(updated.title, '교보생명 시험');
-    expect(updated.location, '원주 교보생명빌딩');
-    expect(find.text('일정 탭'), findsOneWidget);
+    expect(find.textContaining('교보생명 시험'), findsOneWidget);
+    expect(
+        find.textContaining(originalStart.toIso8601String()), findsOneWidget);
+    expect(find.textContaining('원주 교보생명빌딩'), findsOneWidget);
+    expect(repository.updatedEvents, isEmpty);
+  });
+
+  testWidgets('일정에 장소 추가 검색어는 일정 식별어와 새 장소를 분리한다', (tester) async {
+    final originalStart = DateTime.now().add(const Duration(days: 1));
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '실매출 확인',
+          startAt: originalStart,
+        ),
+        _event(
+          id: 'event-2',
+          title: '원주 세브란스 기독병원 방문',
+          startAt: originalStart,
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '내일 오후 1시에 실매출 확인 일정에 원주 세브란스 기독병원 장소 추가해줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            final event = state.extra as EventModel;
+            return Text(
+              '편집 시작: ${event.title}|${event.startAt?.toIso8601String()}|${event.location}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('실매출 확인'), findsWidgets);
+    expect(find.text('원주 세브란스 기독병원 방문'), findsNothing);
+    await tester.tap(find.text('장소 입력'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('실매출 확인'), findsOneWidget);
+    expect(
+        find.textContaining(originalStart.toIso8601String()), findsOneWidget);
+    expect(find.textContaining('원주 세브란스 기독병원'), findsOneWidget);
   });
 
   testWidgets('음성 수정 명령의 새 날짜는 편집 화면에 미리 반영된다', (tester) async {

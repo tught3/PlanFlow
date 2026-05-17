@@ -403,8 +403,7 @@ class VoiceCommandRouter {
     }
 
     var prefix = normalized.substring(0, fieldAddition.start).trim();
-    final eventBoundary =
-        RegExp(r'(일정|스케줄|약속)에\s+[^,.;!?]*?(?:으로|로)\s*$').firstMatch(prefix);
+    final eventBoundary = RegExp(r'(일정|스케줄|약속)에\s+.*$').firstMatch(prefix);
     if (eventBoundary != null) {
       prefix = prefix
           .substring(

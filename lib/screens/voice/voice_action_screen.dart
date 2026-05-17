@@ -83,6 +83,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       _voiceCommandRouter.normalizeManagementText(widget.rawText);
   List<String> get _requestedChanges =>
       _routeResult?.requestedChanges ?? const <String>[];
+  bool get _isLocationFieldAddition =>
+      _voiceCommandRouter.isAmbiguousFieldAddition(_normalizedRawText) &&
+      _requestedChanges.contains('location');
 
   @override
   void initState() {
@@ -159,6 +162,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   String _candidateActionLabel() {
     if (_isDelete) {
       return '삭제하기';
+    }
+    if (_isEdit && _isLocationFieldAddition) {
+      return '장소 입력';
     }
     if (_isEdit) {
       return '수정하기';
@@ -1185,7 +1191,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       SnackBar(
         content: Text(
           appliedVoiceChange
-              ? '말한 변경값을 반영해 열었어요. 확인 후 저장해 주세요.'
+              ? _isLocationFieldAddition
+                  ? '장소를 입력해 두었어요. 확인 후 저장해 주세요.'
+                  : '말한 변경값을 반영해 열었어요. 확인 후 저장해 주세요.'
               : '수정할 일정을 열었어요. 확인 후 저장해 주세요.',
         ),
       ),
@@ -1249,6 +1257,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   DateTime? _inferRequestedStartLocal(EventModel event) {
+    if (_isLocationFieldAddition) {
+      return null;
+    }
     if (_requestedChanges.isNotEmpty &&
         !_requestedChanges.contains('start_at')) {
       return null;
@@ -1371,7 +1382,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return null;
     }
     final match = RegExp(
-      r'(?:장소|위치|주소)\s*(?:를|을)?\s*(.+?)(?:로|으로)\s*(?:변경|바꿔|수정)|(.+?)(?:로|으로)\s*(?:장소|위치|주소)\s*(?:추가|넣어|입력|설정|등록)',
+      r'(?:장소|위치|주소)\s*(?:를|을)?\s*(.+?)(?:로|으로)\s*(?:변경|바꿔|수정)|(.+?)(?:로|으로)?\s*(?:장소|위치|주소)\s*(?:추가|넣어|입력|설정|등록)',
     ).firstMatch(_normalizedRawText);
     final prefixLocation = match?.group(1)?.trim();
     final suffixLocation = match?.group(2)?.trim();
@@ -1788,6 +1799,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                   selectedDeleteCount: _selectedDeleteEventIds.length,
                   selectedDeleteEventIds: _selectedDeleteEventIds,
                   disabled: _isDeleting || _isSaving,
+                  forceManualEdit: _isLocationFieldAddition,
                   actionLabel: _candidateActionLabel(),
                   actionIcon: _candidateActionIcon(),
                   onAdd: _openAddConfirm,
@@ -1822,6 +1834,7 @@ class _VoiceCandidateSection extends StatelessWidget {
     required this.selectedDeleteCount,
     required this.selectedDeleteEventIds,
     required this.disabled,
+    required this.forceManualEdit,
     required this.actionLabel,
     required this.actionIcon,
     required this.onAdd,
@@ -1851,6 +1864,7 @@ class _VoiceCandidateSection extends StatelessWidget {
   final int selectedDeleteCount;
   final Set<String> selectedDeleteEventIds;
   final bool disabled;
+  final bool forceManualEdit;
   final String actionLabel;
   final IconData actionIcon;
   final VoidCallback onAdd;
@@ -1986,9 +2000,10 @@ class _VoiceCandidateSection extends StatelessWidget {
                 onTap: () =>
                     _isEdit ? onOpenEdit(event) : onOpenQueryResult(event),
                 changePreviewText: changePreview,
-                onDirectApply: (_isEdit && changePreview != null)
-                    ? () => onApplyAndSave(event)
-                    : null,
+                onDirectApply:
+                    (_isEdit && changePreview != null && !forceManualEdit)
+                        ? () => onApplyAndSave(event)
+                        : null,
               ),
             );
           }),

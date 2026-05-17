@@ -303,10 +303,14 @@ class FeedbackReportSection extends StatelessWidget {
     super.key,
     required this.onPressed,
     this.onOpenAdminInbox,
+    this.newAdminReportCount,
+    this.isLoadingAdminReportCount = false,
   });
 
   final VoidCallback onPressed;
   final VoidCallback? onOpenAdminInbox;
+  final int? newAdminReportCount;
+  final bool isLoadingAdminReportCount;
 
   @override
   Widget build(BuildContext context) {
@@ -350,7 +354,10 @@ class FeedbackReportSection extends StatelessWidget {
                 key: const ValueKey('settings-feedback-admin-inbox-button'),
                 onPressed: onOpenAdminInbox,
                 icon: const Icon(Icons.admin_panel_settings_outlined),
-                label: const Text('신고함 열기'),
+                label: _AdminInboxButtonLabel(
+                  newReportCount: newAdminReportCount,
+                  isLoading: isLoadingAdminReportCount,
+                ),
               ),
             ],
             const SizedBox(height: 8),
@@ -363,6 +370,51 @@ class FeedbackReportSection extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AdminInboxButtonLabel extends StatelessWidget {
+  const _AdminInboxButtonLabel({
+    required this.newReportCount,
+    required this.isLoading,
+  });
+
+  final int? newReportCount;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = newReportCount ?? 0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('신고함 열기'),
+        if (isLoading) ...[
+          const SizedBox(width: 8),
+          const SizedBox.square(
+            dimension: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ] else if (count > 0) ...[
+          const SizedBox(width: 8),
+          Container(
+            key: const ValueKey('settings-feedback-admin-new-badge'),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.error,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              count > 99 ? '99+' : '$count',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onError,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

@@ -184,6 +184,14 @@ class FeedbackRepository {
     }
   }
 
+  Future<int> countNewAdminReports({int limit = 100}) async {
+    final reports = await fetchAdminReports(
+      status: FeedbackReportStatus.newReport,
+      limit: limit,
+    );
+    return reports.length;
+  }
+
   Future<void> updateReportStatus({
     required String reportId,
     required FeedbackReportStatus status,
