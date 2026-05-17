@@ -594,6 +594,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     unawaited(_showNaverCalDavProgressDialog(
       dismissible: dismissibleProgress,
     ));
+    _showSnack(
+      '네이버 일정 동기화는 앱을 백그라운드로 보내도 계속 진행됩니다. '
+      '완료되면 다시 알려드릴게요.',
+    );
     final result = await _naverCalDavService.syncAll(
       userId: userId,
       from: from,
@@ -896,6 +900,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(progress?.message ?? '캘린더 확인 중입니다.'),
+                      Text(
+                        '앱을 백그라운드로 보내도 동기화는 계속됩니다. '
+                        '완료되면 다시 알려드릴게요.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.textSecondary,
+                            ),
+                      ),
                       if (progress?.currentCalendar != null) ...[
                         const SizedBox(height: 8),
                         Text('현재 캘린더: ${progress!.currentCalendar}'),

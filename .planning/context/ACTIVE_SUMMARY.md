@@ -733,3 +733,8 @@
 - If lookup fails or returns no result, the voice flow keeps the requested location text and tells the user to verify the exact map position before saving.
 - Added regression coverage proving `내일 오후 1시에 실매출 확인 일정에 원주세브란스기독병원 장소 추가해줘` opens edit with the resolved place coordinates and does not directly save.
 - Verification passed: focused voice pipeline/router/action tests, full `scripts/flutter-local.ps1 analyze`, `git diff --check`, debug APK build, ADB install, launch, PID, and focused window check for `com.planflow.app/.MainActivity`; reviewer returned PASS with no blockers.
+
+## 2026-05-17 Naver CalDAV Background Sync Guidance Checkpoint
+- Added background-sync guidance in the Naver CalDAV import/progress flow so users are told the sync keeps running even if they send the app to the background.
+- Added a slower widget-test path so the progress dialog stays open long enough to verify the guidance text while sync is active.
+- Verification passed: `scripts/flutter-local.ps1 test --no-pub test/screens/settings_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`.

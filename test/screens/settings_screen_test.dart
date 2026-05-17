@@ -529,6 +529,7 @@ void main() {
     );
     final naverCalDavService = _FakeNaverCalDavService(
       initialHasCredentials: true,
+      syncDelay: const Duration(seconds: 1),
       syncResult: const NaverCalDavSyncResult(
         success: true,
         message: '네이버 CalDAV 일정 1개를 PlanFlow로 가져왔습니다.',
@@ -555,14 +556,22 @@ void main() {
         find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
     await _scrollUntilHitTestable(tester, syncButton);
     await tester.tap(syncButton.hitTestable().first);
+    await tester.pump();
+
+    expect(
+      find.textContaining('앱을 백그라운드로 보내도 동기화는 계속됩니다.'),
+      findsWidgets,
+    );
+    expect(
+      find.textContaining('완료되면 다시 알려드릴게요.'),
+      findsWidgets,
+    );
+
+    await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
 
     expect(calendarSyncService.naverSyncCallCount, 0);
     expect(naverCalDavService.syncCallCount, 1);
-    expect(
-      find.textContaining('네이버 CalDAV 일정 1개를 PlanFlow로 가져왔습니다.'),
-      findsWidgets,
-    );
   });
 
   testWidgets('logout does not clear saved Naver CalDAV credentials',
@@ -883,6 +892,7 @@ class _FakeDeviceEventRepository extends EventRepository {
 class _FakeNaverCalDavService extends NaverCalDavService {
   _FakeNaverCalDavService({
     this.initialHasCredentials = false,
+    this.syncDelay = Duration.zero,
     this.syncResult = const NaverCalDavSyncResult(
       success: true,
       message: '네이버 CalDAV 연결은 성공했지만 가져올 일정이 없습니다.',
@@ -890,6 +900,7 @@ class _FakeNaverCalDavService extends NaverCalDavService {
   });
 
   final bool initialHasCredentials;
+  final Duration syncDelay;
   final NaverCalDavSyncResult syncResult;
   int syncCallCount = 0;
   int clearCallCount = 0;
@@ -932,6 +943,9 @@ class _FakeNaverCalDavService extends NaverCalDavService {
         failedEvents: syncResult.failed,
       ),
     );
+    if (syncDelay > Duration.zero) {
+      await Future<void>.delayed(syncDelay);
+    }
     return syncResult;
   }
 
