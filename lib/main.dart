@@ -16,6 +16,7 @@ import 'providers/auth_provider.dart';
 import 'services/remote_config_service.dart';
 import 'services/calendar_auto_sync_service.dart';
 import 'services/event_prefetch_service.dart';
+import 'services/smart_preparation_monitor_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -79,6 +80,7 @@ Future<void> main() async {
       syncPrefetchForAuthUser();
       authProvider.addListener(syncPrefetchForAuthUser);
       unawaited(const DailyCalendarSyncSchedulerService().scheduleDaily());
+      unawaited(const SmartPreparationMonitorService().scheduleNextMonitor());
     } catch (error) {
       debugPrint('Supabase initialization skipped: $error');
     }

@@ -1,9 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
+import 'package:planflow/services/map_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/notification_service.dart';
+import 'package:planflow/services/travel_time_buffer_service.dart';
 
 void main() {
   group('ManualEventSideEffectService', () {
@@ -156,6 +159,39 @@ void main() {
         'ten-place',
       ]));
       expect(departure.scheduleNextMonitorCallCount, 1);
+    });
+
+    test('location coordinate changes rebuild smart prep with live travel time',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final event = EventModel(
+        id: 'place-event',
+        userId: 'user-1',
+        title: '병원 방문',
+        startAt: DateTime(2026, 5, 8, 13),
+        location: '원주세브란스기독병원',
+        locationLat: 37.349,
+        locationLng: 127.948,
+      );
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        eventRepository: _FakeEventRepository(events: <EventModel>[event]),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: _FakeNotificationService(),
+        currentLocationProvider: () async => const GeoPoint(
+          latitude: 37.5665,
+          longitude: 126.978,
+        ),
+        travelTimeBufferService: _FakeTravelTimeBufferService(minutes: 74),
+        now: () => DateTime(2026, 5, 8, 8),
+      );
+
+      await service.syncAfterSave(event: event, userId: 'user-1');
+
+      final departureTitle = gateway.insertedPreActions
+          .map((row) => row['title'].toString())
+          .singleWhere((title) => title.contains('지금 출발하세요'));
+      expect(departureTitle, contains('이동 약 74분'));
     });
 
     test('delete cleanup recalculates remaining alarms for the signed-in user',
@@ -343,6 +379,54 @@ void main() {
           await Future.wait(<Future<bool>>[first, second]), <bool>[true, true]);
       expect(gateway.insertPreActionsCallCount, 1);
       expect(notifications.cancelledSmartPreparationEventIds, ['trip']);
+    });
+
+    test('resyncExternalPreparationForDay reruns live travel resync after inflight work',
+        () async {
+      final gateway = _SlowManualEventGateway();
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: _FakeNotificationService(),
+        travelTimeBufferService: _FakeTravelTimeBufferService(minutes: 74),
+      );
+      final event = EventModel(
+        id: 'trip',
+        userId: 'user-1',
+        title: '병원 방문',
+        startAt: DateTime(2026, 5, 8, 13),
+        location: '원주세브란스기독병원',
+        locationLat: 37.349,
+        locationLng: 127.948,
+      );
+
+      final first = service.resyncExternalPreparationForDay(
+        dayEvents: <EventModel>[event],
+        userId: 'user-1',
+        dayReference: DateTime(2026, 5, 8),
+        now: DateTime(2026, 5, 8, 6),
+      );
+      final second = service.resyncExternalPreparationForDay(
+        dayEvents: <EventModel>[event],
+        userId: 'user-1',
+        dayReference: DateTime(2026, 5, 8),
+        currentLocation: const GeoPoint(
+          latitude: 37.5665,
+          longitude: 126.978,
+        ),
+        now: DateTime(2026, 5, 8, 6),
+      );
+
+      expect(
+          await Future.wait(<Future<bool>>[first, second]), <bool>[true, true]);
+      expect(gateway.insertPreActionsCallCount, 2);
+      expect(
+        gateway.insertedPreActions
+            .map((row) => row['title'].toString())
+            .where((title) => title.contains('이동 약 74분')),
+        isNotEmpty,
+      );
     });
 
     test('resyncExternalPreparationForDay promotes earliest place event',
@@ -679,5 +763,27 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   Future<bool> scheduleNextMonitor() async {
     scheduleNextMonitorCallCount += 1;
     return true;
+  }
+}
+
+class _FakeTravelTimeBufferService extends TravelTimeBufferService {
+  _FakeTravelTimeBufferService({required this.minutes});
+
+  final int minutes;
+
+  @override
+  Future<TravelTimeBufferEstimate> estimateWithMapApis({
+    required double originLat,
+    required double originLng,
+    required double destinationLat,
+    required double destinationLng,
+    MapTravelMode mode = MapTravelMode.car,
+    String? locationText,
+  }) async {
+    return TravelTimeBufferEstimate(
+      buffer: Duration(minutes: minutes),
+      source: TravelTimeBufferSource.tmap,
+      reason: 'test',
+    );
   }
 }

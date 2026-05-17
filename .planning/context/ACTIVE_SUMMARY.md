@@ -746,3 +746,9 @@
 - Updated Flutter Supabase calls to use central `DbSchema`, `DbTable`, and `DbFunction` constants; direct table-name `.from('...')` and literal `rpc('...')` references are gone from `lib`.
 - Verification passed for schema-focused gates: STEP 2-5 reviewer 100%, STEP 6 reviewer 100%, `scripts/flutter-local.ps1 analyze --no-pub`, focused repository/service/screen tests excluding known `confirm_screen_test` date/UI drift, debug APK build, ADB install, app launch, and PID check.
 - STEP 8 public-table deletion is intentionally blocked. `test/screens/confirm_screen_test.dart` currently fails 5 assertions on 2026-05-17 because the test fixture uses past May 2026 dates and current `ConfirmScreen` safety logic rewrites old starts to now; reviewer did not grant STEP 7 100% until that known failing test is fixed or formally excepted.
+
+## 2026-05-17 Smart Preparation Alarm and Icon Checkpoint
+- Added live travel-time recalculation for smart preparation alarms when place coordinates are present. Location-based resyncs now rerun after same-day in-flight work so a newly added or changed place is not swallowed by an older recalculation.
+- Added a 30-minute Android smart preparation monitor that refreshes upcoming preparation/departure alarms in the background using the current Supabase user.
+- Replaced Android launcher icon assets from `PlanFlowlogo.png` for phone app icons and updated `ic_stat_planflow` as a white status-bar notification icon.
+- Verification passed: `scripts/flutter-local.ps1 test --no-pub test/services/manual_event_side_effect_service_test.dart test/services/calendar_auto_sync_service_test.dart test/services/smart_preparation_monitor_service_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`.
