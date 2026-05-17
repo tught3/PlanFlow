@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/constants.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
@@ -46,7 +47,8 @@ class SupabaseManualEventSideEffectGateway
     required String userId,
   }) async {
     await _resolvedClient
-        .from('reminders')
+        .schema(DbSchema.planflow)
+        .from(DbTable.reminders)
         .delete()
         .eq('event_id', eventId)
         .eq('user_id', userId);
@@ -58,7 +60,8 @@ class SupabaseManualEventSideEffectGateway
     required String userId,
   }) async {
     await _resolvedClient
-        .from('pre_actions')
+        .schema(DbSchema.planflow)
+        .from(DbTable.preActions)
         .delete()
         .eq('event_id', eventId)
         .eq('user_id', userId);
@@ -70,7 +73,8 @@ class SupabaseManualEventSideEffectGateway
     required String userId,
   }) async {
     await _resolvedClient
-        .from('pre_actions')
+        .schema(DbSchema.planflow)
+        .from(DbTable.preActions)
         .delete()
         .eq('event_id', eventId)
         .eq('user_id', userId)
@@ -82,7 +86,10 @@ class SupabaseManualEventSideEffectGateway
     if (payloads.isEmpty) {
       return;
     }
-    await _resolvedClient.from('reminders').insert(payloads);
+    await _resolvedClient
+        .schema(DbSchema.planflow)
+        .from(DbTable.reminders)
+        .insert(payloads);
   }
 
   @override
@@ -91,7 +98,10 @@ class SupabaseManualEventSideEffectGateway
     if (dedupedPayloads.isEmpty) {
       return;
     }
-    await _resolvedClient.from('pre_actions').insert(dedupedPayloads);
+    await _resolvedClient
+        .schema(DbSchema.planflow)
+        .from(DbTable.preActions)
+        .insert(dedupedPayloads);
   }
 
   List<Map<String, dynamic>> _deduplicatePreActionPayloads(

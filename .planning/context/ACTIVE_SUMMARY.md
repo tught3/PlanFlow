@@ -738,3 +738,11 @@
 - Added background-sync guidance in the Naver CalDAV import/progress flow so users are told the sync keeps running even if they send the app to the background.
 - Added a slower widget-test path so the progress dialog stays open long enough to verify the guidance text while sync is active.
 - Verification passed: `scripts/flutter-local.ps1 test --no-pub test/screens/settings_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`.
+
+## 2026-05-17 Schema Migration Checkpoint
+- Created and switched to `feature/schema-migration`, preserving pre-existing user/previous-work changes without staging them.
+- Applied non-destructive Supabase schema-split migrations to project `xqvvfnvmytjlblcngipn`: `shared.user_profiles`, PlanFlow tables under `planflow`, `nexusflow.action_items`, RLS/FK/trigger recreation, PostgREST schema exposure, and public RPC wrappers now targeting `planflow`.
+- Verified copied counts match legacy `public` tables: users/user_profiles 4, events 472, pre_actions 41, reminders 58, voice_logs 27, location_history 13, user_settings 3, calendar_connections 4, early_bird_emails 0, user_backups 18, feedback_reports 2, user_behavior_logs 0.
+- Updated Flutter Supabase calls to use central `DbSchema`, `DbTable`, and `DbFunction` constants; direct table-name `.from('...')` and literal `rpc('...')` references are gone from `lib`.
+- Verification passed for schema-focused gates: STEP 2-5 reviewer 100%, STEP 6 reviewer 100%, `scripts/flutter-local.ps1 analyze --no-pub`, focused repository/service/screen tests excluding known `confirm_screen_test` date/UI drift, debug APK build, ADB install, app launch, and PID check.
+- STEP 8 public-table deletion is intentionally blocked. `test/screens/confirm_screen_test.dart` currently fails 5 assertions on 2026-05-17 because the test fixture uses past May 2026 dates and current `ConfirmScreen` safety logic rewrites old starts to now; reviewer did not grant STEP 7 100% until that known failing test is fixed or formally excepted.

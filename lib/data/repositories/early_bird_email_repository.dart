@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/constants.dart';
 import '../models/early_bird_email_model.dart';
 
 enum EarlyBirdSignupStatus {
@@ -61,8 +62,8 @@ class SupabaseEarlyBirdEmailGateway implements EarlyBirdEmailGateway {
   SupabaseEarlyBirdEmailGateway({required SupabaseClient client})
       : _client = client;
 
-  static const String tableName = 'early_bird_emails';
-  static const String functionName = 'submit_early_bird_email';
+  static const String tableName = DbTable.earlyBirdEmails;
+  static const String functionName = DbFunction.submitEarlyBirdEmail;
 
   final SupabaseClient _client;
 

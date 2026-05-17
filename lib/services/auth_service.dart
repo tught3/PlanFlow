@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/constants.dart';
 import '../core/env.dart';
 
 enum PlanFlowOAuthProvider {
@@ -169,7 +170,7 @@ class AuthService {
         metadata['user_name'] ??
         metadata['nickname'];
 
-    await _client.from('users').upsert(
+    await _client.schema(DbSchema.shared).from(DbTable.userProfiles).upsert(
       <String, dynamic>{
         'id': resolvedUser.id,
         'email': resolvedUser.email,

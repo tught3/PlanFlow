@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/constants.dart';
+
 enum NaverCalendarPermissionStatus {
   granted,
   denied,
@@ -84,7 +86,7 @@ class NaverCalendarPermissionService {
     }
 
     try {
-      await client.from('user_settings').upsert(
+      await client.schema(DbSchema.planflow).from(DbTable.userSettings).upsert(
         <String, dynamic>{
           'user_id': userId,
           'naver_calendar_token': null,
@@ -212,7 +214,8 @@ class NaverCalendarPermissionService {
 
     try {
       final row = await client
-          .from('user_settings')
+          .schema(DbSchema.planflow)
+          .from(DbTable.userSettings)
           .select('naver_calendar_token')
           .eq('user_id', userId)
           .maybeSingle();
@@ -241,7 +244,7 @@ class NaverCalendarPermissionService {
     }
 
     try {
-      await client.from('user_settings').upsert(
+      await client.schema(DbSchema.planflow).from(DbTable.userSettings).upsert(
         <String, dynamic>{
           'user_id': userId,
           'naver_calendar_token': token,

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/constants.dart';
 import '../core/env.dart';
 
 class ReminderSettingsService {
@@ -21,7 +22,8 @@ class ReminderSettingsService {
 
     try {
       final response = await _resolvedClient
-          .from('user_settings')
+          .schema(DbSchema.planflow)
+          .from(DbTable.userSettings)
           .select('default_reminder_min')
           .eq('user_id', resolvedUserId)
           .maybeSingle();

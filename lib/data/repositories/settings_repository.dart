@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/constants.dart';
 import '../models/user_settings_model.dart';
 
 abstract class SettingsRepository {
@@ -68,7 +69,7 @@ class SupabaseSettingsRepository extends SettingsRepository {
 class SupabaseSettingsGateway implements SettingsGateway {
   SupabaseSettingsGateway({required SupabaseClient client}) : _client = client;
 
-  static const String tableName = 'user_settings';
+  static const String tableName = DbTable.userSettings;
   static const String selectColumns =
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
       'prep_time_min, prep_pre_alarm_offset, depart_pre_alarm_offset, '
@@ -85,6 +86,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
   Future<Map<String, dynamic>?> fetchSettings(String userId) async {
     try {
       final response = await _client
+          .schema(DbSchema.planflow)
           .from(tableName)
           .select(selectColumns)
           .eq('user_id', userId)
@@ -115,6 +117,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
   ) async {
     try {
       final response = await _client
+          .schema(DbSchema.planflow)
           .from(tableName)
           .upsert(
             payload,
@@ -139,6 +142,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
 
   Future<Map<String, dynamic>?> _fetchSettingsLegacy(String userId) async {
     final response = await _client
+        .schema(DbSchema.planflow)
         .from(tableName)
         .select(legacySelectColumns)
         .eq('user_id', userId)
@@ -158,6 +162,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
       ..remove('time_zone_id');
     legacyPayload.remove('preferred_map_provider');
     final response = await _client
+        .schema(DbSchema.planflow)
         .from(tableName)
         .upsert(
           legacyPayload,
