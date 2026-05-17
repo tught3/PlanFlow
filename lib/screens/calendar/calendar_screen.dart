@@ -11,6 +11,7 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
 
 enum _CalendarLoadState {
@@ -559,7 +560,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
       appBar: AppBar(
-        title: const Text('일정'),
+        title: const PlanFlowLogo(),
         actions: [
           IconButton(
             tooltip: _isSearching ? '검색 닫기' : '일정 검색',

@@ -693,3 +693,9 @@
 - Moved the critical notification channel from `critical_alarms` to `critical_alarms_v2` because Android preserves an existing channel's sound settings after creation; the new channel lets the custom sound apply on upgraded installs.
 - Wired `RawResourceAndroidNotificationSound('planflow_critical_alarm')` into critical alarm notifications while keeping the alarm audio usage, max importance, full-screen intent, stronger vibration, and visual styling.
 - Verification passed: focused analyze, notification/manual/departure tests, `git diff --check`, debug APK build, APK resource inspection showing `res/raw/planflow_critical_alarm.wav`, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-17 PlanFlow Split Logo Checkpoint
+- Added a shared `PlanFlowLogo` widget styled after the FinFlow reference: bold wordmark, `Plan` in the existing PlanFlow blue and `Flow` in near-black.
+- Replaced the Home header wordmark and the Calendar/Settings app-bar titles with the shared logo so all main tabs show the same branded wordmark.
+- Added a widget regression test that locks the split text, colors, heavy weight, and zero letter spacing.
+- Verification passed: focused analyze, logo/home/calendar/settings tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.

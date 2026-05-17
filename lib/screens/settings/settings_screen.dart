@@ -31,6 +31,7 @@ import '../../services/device_calendar_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/naver_caldav_service.dart';
 import '../../services/naver_calendar_permission_service.dart';
+import '../../widgets/planflow_logo.dart';
 import '../../l10n/app_l10n.dart';
 import 'feedback_report_sheet.dart';
 
@@ -2044,7 +2045,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
       appBar: AppBar(
-        title: Text(appL10n(context).settingsTitle),
+        title: const PlanFlowLogo(),
         actions: [
           IconButton(
             tooltip: appL10n(context).resetDefaultsTooltip,

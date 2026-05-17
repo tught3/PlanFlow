@@ -19,6 +19,7 @@ import '../../services/event_refresh_bus.dart';
 import '../../services/home_header_summary_service.dart';
 import '../../services/remote_config_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
+import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
 
 enum _HomeLoadState {
@@ -992,15 +993,7 @@ class _HomeHeader extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'PlanFlow',
-                style: TextStyle(
-                  fontSize: 38,
-                  fontWeight: FontWeight.w900,
-                  color: PlanFlowColors.primaryMid,
-                  letterSpacing: -1.2,
-                ),
-              ),
+              const PlanFlowLogo(fontSize: 30),
               const SizedBox(height: 4),
               Text(
                 todayLabel,
