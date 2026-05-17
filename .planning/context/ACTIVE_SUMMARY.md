@@ -663,3 +663,9 @@
 - Changed voice edit `바로 저장` success navigation from returning to the previous screen to opening the calendar tab directly.
 - Added regression coverage for the screenshot-style `5월 13일 팀장 동행방문` case and for direct-save calendar navigation.
 - Verification passed: focused analyze, full `voice_action_screen_test.dart`, `git diff --check`, debug APK build, ADB install, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-17 Voice Edit Date And Similarity Checkpoint
+- Refined voice edit/delete candidate filtering so absolute date mentions such as `5월 13일` constrain candidates to that exact local date, while title/location/memo/supplies similarity must also match when the command includes target content.
+- Kept relative/new-change phrases like `이번 주 목요일 오전 9시로 변경` from incorrectly acting as the original-event date filter, preserving existing edit flows.
+- Added regression coverage for cases where content matches but date differs, and where date matches but content does not.
+- Verification passed: focused analyze, full `voice_action_screen_test.dart`, `git diff --check`, and debug APK build. ADB install/run check was attempted but no device/emulator was connected at that moment.

@@ -282,10 +282,14 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       final candidateDateRange = _candidateDateRangeForAction(
         routeResult: routeResult,
       );
+      final requiresDateMatchForTarget =
+          _requiresDateMatchForTarget(routeResult);
       final rankedCandidates = _candidateEventsForDisplay(
         rankedItems,
         filteredEvents,
         candidateDateRange: candidateDateRange,
+        hasTargetMatchTokens: _hasTargetMatchTokens(routeResult.targetQuery),
+        requiresDateMatchForTarget: requiresDateMatchForTarget,
       ).map((item) => item.event).toList(growable: false);
       final maxCount = _candidateMaxTake(
         rankedCandidates: rankedCandidates,
@@ -351,6 +355,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     List<_RankedEvent> rankedItems,
     List<EventModel> filteredEvents, {
     _DateRange? candidateDateRange,
+    required bool hasTargetMatchTokens,
+    required bool requiresDateMatchForTarget,
   }) {
     if (_isQuery) {
       return rankedItems;
@@ -372,11 +378,17 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         if (dateMatched.isNotEmpty) {
           return dateMatched;
         }
+        if (hasTargetMatchTokens && requiresDateMatchForTarget) {
+          return const <_RankedEvent>[];
+        }
       }
       return scoredItems.take(5).toList(growable: false);
     }
 
     if (candidateDateRange != null) {
+      if (hasTargetMatchTokens && requiresDateMatchForTarget) {
+        return const <_RankedEvent>[];
+      }
       final inRange = filteredEvents
           .where(
             (event) => _isEventInCandidateDateRange(event, candidateDateRange),
@@ -469,6 +481,20 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return null;
     }
 
+    final absoluteTargetRange = _absoluteDateRangeInText(
+      routeResult.targetQuery,
+    );
+    if (absoluteTargetRange != null) {
+      return absoluteTargetRange;
+    }
+
+    final absoluteCleanedRange = _absoluteDateRangeInText(
+      routeResult.cleanedText,
+    );
+    if (absoluteCleanedRange != null) {
+      return absoluteCleanedRange;
+    }
+
     final targetRange = _queryDateRange(routeResult.targetQuery);
     if (targetRange != null) {
       return targetRange;
@@ -481,6 +507,33 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     }
 
     return _queryDateRange(normalized);
+  }
+
+  bool _requiresDateMatchForTarget(VoiceCommandRouteResult routeResult) {
+    return _absoluteDateRangeInText(routeResult.targetQuery) != null ||
+        _absoluteDateRangeInText(routeResult.cleanedText) != null;
+  }
+
+  _DateRange? _absoluteDateRangeInText(String text) {
+    final normalized = text.replaceAll(RegExp(r'\s+'), ' ');
+    final match = RegExp(
+      r'(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일',
+    ).firstMatch(normalized);
+    if (match == null) {
+      return null;
+    }
+    final now = planflowLocal(planflowNow());
+    final year = int.tryParse(match.group(1) ?? '') ?? now.year;
+    final month = int.tryParse(match.group(2) ?? '');
+    final day = int.tryParse(match.group(3) ?? '');
+    if (month == null || day == null) {
+      return null;
+    }
+    final start = DateTime(year, month, day);
+    if (start.year != year || start.month != month || start.day != day) {
+      return null;
+    }
+    return _DateRange(start, start.add(const Duration(days: 1)));
   }
 
   _DateRange? _firstDateRangeInText(String text) {
@@ -925,6 +978,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return false;
     }
     return true;
+  }
+
+  bool _hasTargetMatchTokens(String rawText) {
+    return _voiceCommandRouter.searchTokens(rawText).any(_isTargetMatchToken);
   }
 
   bool _containsDigit(String value) => RegExp(r'\d').hasMatch(value);

@@ -267,6 +267,45 @@ void main() {
     expect(find.text('방문록 미리 준비'), findsNothing);
   });
 
+  testWidgets('수정 후보 검색은 날짜와 내용 유사도가 함께 맞아야 표시한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '팀장 동행방문',
+          startAt: DateTime(2026, 5, 14, 10),
+        ),
+        _event(
+          id: 'event-2',
+          title: '구독갱신',
+          memo: '결제 확인',
+          startAt: DateTime(2026, 5, 13, 10),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '5월 13일 팀장 동행방문 일정 수정',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('팀장 동행방문'), findsNothing);
+    expect(find.text('구독갱신'), findsNothing);
+    expect(find.textContaining('조건에 맞는 일정을 찾지 못했어요'), findsOneWidget);
+  });
+
   testWidgets('수정 바로 저장 성공 후 일정 탭으로 이동한다', (tester) async {
     final repository = _FakeEventRepository(
       events: [
@@ -1227,6 +1266,7 @@ EventModel _event({
   required String title,
   DateTime? startAt,
   String? location,
+  String? memo,
 }) {
   return EventModel(
     id: id,
@@ -1234,6 +1274,7 @@ EventModel _event({
     title: title,
     startAt: startAt ?? DateTime(2026, 5, 5, 10),
     location: location ?? (title.contains('한강') ? '한강' : null),
+    memo: memo,
   );
 }
 
