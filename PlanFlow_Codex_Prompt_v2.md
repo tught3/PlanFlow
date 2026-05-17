@@ -51,8 +51,8 @@
 
 1. Supabase 대시보드 → SQL Editor → 아래 STEP 1의 SQL 전체 실행
 2. Supabase 대시보드 → Authentication → Providers → Google 로그인 활성화
-3. Supabase 대시보드 → Settings → API → URL과 anon key 복사 → .env에 입력
-4. OpenAI 플랫폼 → API Keys → 새 키 발급 → .env에 입력
+3. Supabase 대시보드 → Settings → API → URL과 anon key 복사 → 클라이언트 define/env/local.json에 입력
+4. OpenAI Platform 커넥터로 프로젝트 전용 키 발급 → ignored `.env.local`의 `OPENAI_API_KEY`로 저장하고 Supabase Edge Function secret에 반영
 5. Google Cloud Console → 프로젝트 생성 → Google Calendar API 활성화 → OAuth 클라이언트 ID 발급
 6. Google Play Console → 앱 등록 (배포 시점)
 ```
@@ -273,10 +273,12 @@ lib/
 ## 🔑 STEP 4 — 환경변수 설정
 
 ```
-# .env (루트 디렉토리)
+# .env.local (루트 디렉토리, git ignore)
+OPENAI_API_KEY=OpenAI_Platform_커넥터로_생성한_프로젝트_전용_키
+
+# env/local.json 또는 빌드 define
 SUPABASE_URL=여기에_입력
 SUPABASE_ANON_KEY=여기에_입력
-OPENAI_API_KEY=여기에_입력
 ```
 
 ```dart
@@ -606,7 +608,7 @@ class NotificationService {
 
 ```
 [ ] 1.  Supabase 프로젝트 생성 + SQL 스키마 실행 → [사용자 작업 요청]
-[ ] 2.  .env 파일 생성 + API 키 입력 → [사용자 작업 요청]
+[ ] 2.  OpenAI Platform 커넥터로 `.env.local`의 `OPENAI_API_KEY` 설정 + 클라이언트 define 입력 → [사용자 작업 요청]
 [ ] 3.  Flutter 프로젝트 생성 + 패키지 설치
 [ ] 4.  폴더 구조 생성
 [ ] 5.  main.dart — Supabase 초기화

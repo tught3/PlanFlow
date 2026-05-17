@@ -5,6 +5,8 @@
 build/
 chat.txt
 .env
+.env.local
 env/local.json
+supabase/.temp/
 android/key.properties
 android/app/planflow-release.jks

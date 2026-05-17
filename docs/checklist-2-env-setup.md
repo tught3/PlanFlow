@@ -46,6 +46,7 @@ Do not commit `env/local.json`.
 - `GOOGLE_WEB_CLIENT_ID` is used as Android `serverClientId` for Google Calendar sign-in.
 - Never put `service_role`, OpenAI API keys, provider client secrets, or other server-only secrets in Flutter app defines, `.env`, APK assets, or any client bundle.
 - GPT/OpenAI calls that require a secret key must go through a trusted backend such as a Supabase Edge Function.
+- For PlanFlow, create the project-specific OpenAI key through the OpenAI Platform connector, store it only in ignored `.env.local` as `OPENAI_API_KEY`, and sync it to Supabase Edge Function secrets.
 - `GOOGLE_MAPS_API_KEY` is used for Google Distance Matrix travel-time fallback.
 - `TMAP_API_KEY` is used first for route duration when origin/destination coordinates exist.
 - `NAVER_MAP_CLIENT_ID` is used by the Android in-app Naver Dynamic Map SDK.

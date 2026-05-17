@@ -699,3 +699,10 @@
 - Replaced the Home header wordmark and the Calendar/Settings app-bar titles with the shared logo so all main tabs show the same branded wordmark.
 - Added a widget regression test that locks the split text, colors, heavy weight, and zero letter spacing.
 - Verification passed: focused analyze, logo/home/calendar/settings tests, `git diff --check`, debug APK build, ADB install, app launch, PID check, and focused window check showing `com.planflow.app/.MainActivity`.
+
+## 2026-05-17 OpenAI Key Connector Setup Checkpoint
+- Created a project-specific OpenAI API key named `PlanFlow Codex` through the OpenAI Platform connector and wrote it locally to ignored `.env.local` as `OPENAI_API_KEY` without printing the key value.
+- Replaced the existing `.env` OpenAI key value with a placeholder and confirmed both `.env` and `.env.local` are ignored and untracked.
+- Synced `.env.local` to Supabase Edge Function secrets for project `xqvvfnvmytjlblcngipn`, so `openai-proxy` uses the connector-created key.
+- Updated env documentation and the older Codex prompt to direct OpenAI keys to ignored `.env.local` plus Supabase secrets, and ignored Supabase CLI `.temp` metadata.
+- Verification passed: tracked-file secret scan found no OpenAI key patterns, `openai-proxy` smoke request returned HTTP 200 without `missing_openai_api_key`, and `git diff --check` passed.
