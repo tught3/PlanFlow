@@ -89,7 +89,7 @@ location_history, user_settings, early_bird_emails
 ## AGENTS (Codex) 통합 규칙
 - 기본 응답 언어는 한국어다.
 - 비단순 작업은 계획 -> 병렬 작업자 -> 별도 리뷰어 -> 수정 -> 재리뷰 순서로 진행한다.
-- 계획은 `gpt-5.5`, 단순 구현은 `gpt-5.3-codex-spark`, 조금 난이도 있는 구현은 `gpt-5.4-mini`, 리뷰/검토/검증은 `gpt-5.4-mini`를 우선한다.
+- 계획은 `gpt-5.5`, 단순 구현은 `gpt-5.3-codex-spark`, 난이도 있는 구현과 리뷰는 `gpt-5.4-mini`를 우선한다.
 - `gpt-5.3-codex-spark`가 한도에 닿으면 구현도 `gpt-5.4-mini`로 대체할 수 있다.
 - 세션 시작 시 `.planning/STATE.md`, `.planning/context/ACTIVE_SUMMARY.md`, `node scripts/gsd-context-hygiene.mjs`를 확인한다.
 - Flutter 명령은 가능하면 `scripts/flutter-local.ps1`를 통해 실행한다.

@@ -10,6 +10,13 @@
 - Added a local `android/key.properties` placeholder pointing at the machine's existing debug keystore so `flutter build appbundle --release` can complete again in this workspace; this is only a local build aid and not a Play release signing replacement.
 - Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, and `scripts/flutter-local.ps1 build appbundle --release --no-pub`. ADB install of the debug APK hit a signature mismatch against the already-installed app because the local signing key differs from the previous install.
 
+## 2026-05-19 Permission Onboarding Settings Redirect Checkpoint
+- Separated permission onboarding so app notifications and exact alarms are checked independently instead of using the combined notification request path.
+- After a denied notification request, the screen now opens Android notification settings; after a denied exact-alarm request, it opens Android app settings.
+- The onboarding screen now refreshes on resume and after returning from settings so the permission tiles reflect the latest OS state.
+- Added focused widget tests for notification-settings redirect, exact-alarm app-settings redirect, and the request-all flow.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, and `adb shell am start -n com.planflow.app/.MainActivity`.
+
 ## 2026-05-18 Voice Delivery Parsing And Core Guard Checkpoint
 - 음성 입력 `지금으로부터 3달뒤 부터 3개월마다 반복알람. 내용은 원주기독 정형외과 김두섭 리바로 갖다주기`가 `김두섭 리바로 갖다주기` 제목, `원주기독 정형외과` 장소, 3개월 뒤 시작일, 3개월 반복 규칙으로 정리되도록 GPT 후처리와 로컬 분석 후처리를 보강했다.
 - `원주기독`/`원주세브란스` 계열 장소 검색 alias를 추가해 `원주세브란스기독병원` 검색으로 이어지게 했고, 새 일정 확인 화면은 사용자가 말한 장소 텍스트를 유지하면서 검색 결과 좌표만 자동으로 저장하도록 했다.

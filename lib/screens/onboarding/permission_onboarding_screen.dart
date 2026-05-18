@@ -52,11 +52,15 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed || !_resumeRequestAll) {
+    if (state != AppLifecycleState.resumed) {
       return;
     }
-    _resumeRequestAll = false;
-    unawaited(_continueRequestAllAfterResume());
+    if (_resumeRequestAll) {
+      _resumeRequestAll = false;
+      unawaited(_continueRequestAllAfterResume());
+      return;
+    }
+    unawaited(_refresh(clearMessage: true));
   }
 
   Future<void> _refresh({bool clearMessage = false}) async {
@@ -94,7 +98,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     required String key,
     required String grantedMessage,
     required String deniedMessage,
+    required bool Function(AppPermissionSnapshot snapshot) isGranted,
     required Future<bool> Function() request,
+    Future<bool> Function()? openSettings,
   }) async {
     if (_activeRequestKey != null || _isRequestingAll) {
       return;
@@ -106,8 +112,16 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     });
 
     try {
-      final granted = await _withPermissionTimeout(request);
+      await _withPermissionTimeout(request);
       await _refresh();
+      final afterRequest = _snapshot;
+      var granted = afterRequest != null && isGranted(afterRequest);
+      if (!granted && openSettings != null) {
+        await _withPermissionTimeout(openSettings);
+        await _refresh();
+        final afterSettings = _snapshot;
+        granted = afterSettings != null && isGranted(afterSettings);
+      }
 
       if (!mounted) {
         return;
@@ -175,57 +189,62 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
   Future<void> _requestAllSteps() async {
     final failures = <String>[];
 
-    await _runPermissionStep(
+    if (!await _runPermissionStep(
       key: 'microphone',
       label: '마이크',
       failures: failures,
       isGranted: (snapshot) => snapshot.microphoneGranted,
       request: _permissionService.requestMicrophonePermission,
-    );
-    await _runPermissionStep(
+    )) {
+      return;
+    }
+    if (!await _runPermissionStep(
       key: 'notifications',
       label: '앱 알림',
       failures: failures,
       isGranted: (snapshot) => snapshot.notificationsGranted,
-      request: () async {
-        final status = await _permissionService
-            .requestNotificationPermissions()
-            .timeout(const Duration(seconds: 12));
-        return status.notificationsEnabled == true &&
-            status.exactAlarmsEnabled == true;
-      },
-      mayOpenSettings: true,
-    );
-    await _runPermissionStep(
+      request: _permissionService.requestNotificationPermission,
+      openSettings: _permissionService.openNotificationSettings,
+    )) {
+      return;
+    }
+    if (!await _runPermissionStep(
       key: 'exactAlarm',
       label: '정확한 알람',
       failures: failures,
       isGranted: (snapshot) => snapshot.exactAlarmsGranted,
       request: _permissionService.requestExactAlarmPermission,
-      mayOpenSettings: true,
-    );
-    await _runPermissionStep(
+      openSettings: _permissionService.openAppSettings,
+    )) {
+      return;
+    }
+    if (!await _runPermissionStep(
       key: 'fullScreenIntent',
       label: '전체 화면 알림',
       failures: failures,
       isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
       request: _permissionService.requestFullScreenIntentPermission,
-      mayOpenSettings: true,
-    );
-    await _runPermissionStep(
+    )) {
+      return;
+    }
+    if (!await _runPermissionStep(
       key: 'location',
       label: '위치',
       failures: failures,
       isGranted: (snapshot) => snapshot.locationGranted,
       request: _permissionService.requestLocationPermission,
-    );
-    await _runPermissionStep(
+    )) {
+      return;
+    }
+    if (!await _runPermissionStep(
       key: 'calendar',
       label: '기기 캘린더',
       failures: failures,
       isGranted: (snapshot) => snapshot.calendarGranted,
       request: _permissionService.requestCalendarPermission,
-    );
+    )) {
+      return;
+    }
 
     await _refresh();
     if (!mounted) {
@@ -242,17 +261,17 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     });
   }
 
-  Future<void> _runPermissionStep({
+  Future<bool> _runPermissionStep({
     required String key,
     required String label,
     required List<String> failures,
     required bool Function(AppPermissionSnapshot snapshot) isGranted,
     required Future<bool> Function() request,
-    bool mayOpenSettings = false,
+    Future<bool> Function()? openSettings,
   }) async {
     final before = await _safeCheckAll();
     if (before != null && isGranted(before)) {
-      return;
+      return true;
     }
 
     if (mounted) {
@@ -263,12 +282,37 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     }
 
     try {
-      await _withPermissionTimeout(request,
+      final granted = await _withPermissionTimeout(request,
           timeout: const Duration(seconds: 12));
+      if (!granted && openSettings != null) {
+        final opened = await _withPermissionTimeout(openSettings);
+        if (opened) {
+          _resumeRequestAll = true;
+          if (mounted) {
+            setState(() {
+              _message =
+                  '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
+            });
+          }
+          return false;
+        }
+      }
     } catch (error) {
       debugPrint('Permission request step failed: $key $error');
       failures.add(label);
-      if (mayOpenSettings) {
+      if (openSettings != null) {
+        final opened = await _withPermissionTimeout(openSettings);
+        if (opened) {
+          _resumeRequestAll = true;
+          if (mounted) {
+            setState(() {
+              _message =
+                  '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
+            });
+          }
+          return false;
+        }
+      } else {
         _resumeRequestAll = true;
       }
     } finally {
@@ -279,10 +323,11 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           _activeRequestKey = null;
         });
       }
-      if (after != null && !isGranted(after) && mayOpenSettings) {
+      if (after != null && !isGranted(after) && openSettings != null) {
         _resumeRequestAll = true;
       }
     }
+    return true;
   }
 
   Future<AppPermissionSnapshot?> _safeCheckAll() async {
@@ -422,6 +467,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   grantedMessage: '마이크 권한이 허용되었습니다.',
                   deniedMessage:
                       '마이크 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
+                  isGranted: (snapshot) => snapshot.microphoneGranted,
                   request: _permissionService.requestMicrophonePermission,
                 ),
               ),
@@ -433,16 +479,15 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 descriptionMaxLines: 2,
                 granted: snapshot?.notificationsGranted == true,
                 isRequesting: _activeRequestKey == 'notification',
+                key: const ValueKey('permission-onboarding-notification-tile'),
                 onRequest: () => _requestOne(
                   key: 'notification',
                   grantedMessage: '앱 알림 권한 상태를 다시 확인했습니다.',
                   deniedMessage:
                       '앱 알림이 아직 꺼져 있습니다. Android 알림 설정에서 PlanFlow 알림을 허용해 주세요. 잠금화면과 겉화면 노출도 이 설정의 영향을 받습니다.',
-                  request: () async {
-                    final status = await _permissionService
-                        .requestNotificationPermissions();
-                    return status.notificationsEnabled == true;
-                  },
+                  isGranted: (snapshot) => snapshot.notificationsGranted,
+                  request: _permissionService.requestNotificationPermission,
+                  openSettings: _permissionService.openNotificationSettings,
                 ),
               ),
               const SizedBox(height: 9),
@@ -460,7 +505,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
                   deniedMessage:
                       '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요. 중요 알람의 잠금화면 표시에도 영향을 줍니다.',
+                  isGranted: (snapshot) => snapshot.exactAlarmsGranted,
                   request: _permissionService.requestExactAlarmPermission,
+                  openSettings: _permissionService.openAppSettings,
                 ),
               ),
               const SizedBox(height: 9),
@@ -479,6 +526,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   grantedMessage: '전체 화면 알림 권한 상태를 다시 확인했습니다.',
                   deniedMessage:
                       '전체 화면 알림이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 전체 화면 알림을 허용해 주세요.',
+                  isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
                   request: _permissionService.requestFullScreenIntentPermission,
                 ),
               ),
@@ -495,6 +543,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   grantedMessage: '위치 권한이 허용되었습니다.',
                   deniedMessage:
                       '위치 권한이 아직 허용되지 않았습니다. 다시 요청하거나 Android 앱 설정에서 켜 주세요.',
+                  isGranted: (snapshot) => snapshot.locationGranted,
                   request: _permissionService.requestLocationPermission,
                 ),
               ),
@@ -512,6 +561,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   grantedMessage: '기기 캘린더 권한을 허용했습니다.',
                   deniedMessage:
                       '기기 캘린더 권한이 아직 허용되지 않았습니다. Android 앱 설정에서 PlanFlow 캘린더 권한을 켜 주세요.',
+                  isGranted: (snapshot) => snapshot.calendarGranted,
                   request: _permissionService.requestCalendarPermission,
                 ),
               ),

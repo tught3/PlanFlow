@@ -143,6 +143,8 @@ void main() {
 
       expect(permissionService.exactAlarmGranted, isTrue);
       expect(permissionService.fullScreenIntentGranted, isTrue);
+      expect(permissionService.notificationRequests, 1);
+      expect(permissionService.exactAlarmRequests, 1);
       expect(
         find.descendant(
           of: find.byKey(
@@ -165,6 +167,94 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'PermissionOnboardingScreen opens notification settings when app notifications stay denied',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+      final permissionService = _FakePermissionService()
+        ..notificationRequestGranted = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PermissionOnboardingScreen(
+            permissionService: permissionService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final requestButton = find.descendant(
+        of: find.byKey(
+          const ValueKey('permission-onboarding-notification-tile'),
+        ),
+        matching: find.byType(TextButton),
+      );
+      await tester.ensureVisible(requestButton);
+      await tester.tap(requestButton);
+      await tester.pumpAndSettle();
+
+      expect(permissionService.notificationSettingsOpened, isTrue);
+      expect(permissionService.notificationGranted, isTrue);
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey('permission-onboarding-notification-tile'),
+          ),
+          matching: find.byIcon(Icons.check_circle_outline),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'PermissionOnboardingScreen opens app settings when exact alarm stays denied',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+      final permissionService = _FakePermissionService()
+        ..exactAlarmRequestGranted = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PermissionOnboardingScreen(
+            permissionService: permissionService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final requestButton = find.descendant(
+        of: find.byKey(
+          const ValueKey('permission-onboarding-exact-alarm-tile'),
+        ),
+        matching: find.byType(TextButton),
+      );
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(requestButton);
+      await tester.tap(requestButton);
+      await tester.pumpAndSettle();
+
+      expect(permissionService.appSettingsOpened, isTrue);
+      expect(permissionService.exactAlarmGranted, isTrue);
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey('permission-onboarding-exact-alarm-tile'),
+          ),
+          matching: find.byIcon(Icons.check_circle_outline),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 class _FakePermissionService extends AppPermissionService {
@@ -174,6 +264,10 @@ class _FakePermissionService extends AppPermissionService {
   bool exactAlarmGranted = false;
   bool fullScreenIntentGranted = false;
   bool notificationGranted = false;
+  bool notificationRequestGranted = true;
+  bool exactAlarmRequestGranted = true;
+  bool notificationSettingsOpened = false;
+  bool appSettingsOpened = false;
   int microphoneRequests = 0;
   int locationRequests = 0;
   int calendarRequests = 0;
@@ -227,7 +321,7 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<NotificationPermissionStatus> requestNotificationPermissions() async {
     notificationRequests += 1;
-    notificationGranted = true;
+    notificationGranted = notificationRequestGranted;
     return NotificationPermissionStatus(
       notificationsEnabled: notificationGranted,
       exactAlarmsEnabled: exactAlarmGranted,
@@ -238,15 +332,15 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestNotificationPermission() async {
     notificationRequests += 1;
-    notificationGranted = true;
-    return true;
+    notificationGranted = notificationRequestGranted;
+    return notificationRequestGranted;
   }
 
   @override
   Future<bool> requestExactAlarmPermission() async {
     exactAlarmRequests += 1;
-    exactAlarmGranted = true;
-    return true;
+    exactAlarmGranted = exactAlarmRequestGranted;
+    return exactAlarmRequestGranted;
   }
 
   @override
@@ -257,7 +351,18 @@ class _FakePermissionService extends AppPermissionService {
   }
 
   @override
-  Future<bool> openAppSettings() async => false;
+  Future<bool> openNotificationSettings() async {
+    notificationSettingsOpened = true;
+    notificationGranted = true;
+    return true;
+  }
+
+  @override
+  Future<bool> openAppSettings() async {
+    appSettingsOpened = true;
+    exactAlarmGranted = true;
+    return true;
+  }
 
   @override
   Future<void> markOnboardingCompleted(String userId) async {
