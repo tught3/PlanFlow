@@ -17,19 +17,33 @@ class AuthProvider extends ChangeNotifier {
   String? _email;
   bool _isPasswordRecovery = false;
   bool _started = false;
+  bool _hasResolvedInitialSession = false;
 
   String? get userId => _userId;
   String? get email => _email;
   bool get isSignedIn => _userId != null;
   bool get isPasswordRecovery => _isPasswordRecovery;
+  bool get hasResolvedInitialSession =>
+      !AppEnv.isSupabaseReady || _hasResolvedInitialSession;
 
   void start() {
-    if (_started || !AppEnv.isSupabaseReady) {
+    if (_started) {
       return;
     }
     _started = true;
+    if (!AppEnv.isSupabaseReady) {
+      _hasResolvedInitialSession = true;
+      notifyListeners();
+      return;
+    }
     final service = AuthService();
-    unawaited(_syncProfileAndApplyUser(service, service.currentUser));
+    unawaited(
+      _syncProfileAndApplyUser(
+        service,
+        service.currentUser,
+        resolvesInitialSession: true,
+      ),
+    );
     _subscription = service.authStateChanges.listen((authState) async {
       debugPrint(
         'Auth state changed: ${authState.event} '
@@ -55,7 +69,11 @@ class AuthProvider extends ChangeNotifier {
     unawaited(
       NaverCalendarPermissionService().captureCurrentProviderToken(),
     );
-    await _syncProfileAndApplyUser(service, service.currentUser);
+    await _syncProfileAndApplyUser(
+      service,
+      service.currentUser,
+      resolvesInitialSession: true,
+    );
     return isSignedIn;
   }
 
@@ -78,9 +96,24 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _syncProfileAndApplyUser(AuthService service, User? user) async {
+  void _markInitialSessionResolved() {
+    if (_hasResolvedInitialSession) {
+      return;
+    }
+    _hasResolvedInitialSession = true;
+    notifyListeners();
+  }
+
+  Future<void> _syncProfileAndApplyUser(
+    AuthService service,
+    User? user, {
+    bool resolvesInitialSession = false,
+  }) async {
     if (user == null) {
       _applyUser(null);
+      if (resolvesInitialSession) {
+        _markInitialSessionResolved();
+      }
       return;
     }
 
@@ -89,6 +122,10 @@ class AuthProvider extends ChangeNotifier {
       await service.ensureProfile(user);
     } catch (error) {
       debugPrint('Profile sync skipped: $error');
+    } finally {
+      if (resolvesInitialSession) {
+        _markInitialSessionResolved();
+      }
     }
   }
 

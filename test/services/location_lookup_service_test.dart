@@ -167,6 +167,63 @@ void main() {
     );
   });
 
+  test('LocationLookupService expands Wonju Christian hospital aliases', () {
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      googleMapsApiKey: '',
+    );
+
+    final fallbackQueries = service.buildRetryQueries('원주기독');
+
+    expect(fallbackQueries, contains('원주세브란스기독병원'));
+    expect(fallbackQueries, contains('연세대학교 원주세브란스기독병원'));
+    expect(
+      fallbackQueries,
+      hasLength(fallbackQueries.toSet().length),
+    );
+  });
+
+  test('LocationLookupService resolves Wonju Christian alias through fallback',
+      () async {
+    final requests = <String>[];
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        final query = request.url.queryParameters['query'] ??
+            request.url.queryParameters['searchKeyword'] ??
+            '';
+        requests.add(query);
+
+        if (query == '원주세브란스기독병원') {
+          return http.Response.bytes(
+            utf8.encode(
+              '{"addresses":[{"roadAddress":"강원특별자치도 원주시 일산로 20","jibunAddress":"강원특별자치도 원주시 일산동 162","x":"127.9458","y":"37.3495"}]}',
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    final result = await service.searchWithFallback('원주기독');
+
+    expect(requests, contains('원주기독'));
+    expect(requests, contains('원주세브란스기독병원'));
+    expect(result.results, hasLength(1));
+    expect(result.results.single.latitude, 37.3495);
+    expect(result.results.single.longitude, 127.9458);
+  });
+
   test(
       'LocationLookupService searchWithFallback exposes metadata for retry suggestions',
       () async {

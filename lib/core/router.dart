@@ -28,11 +28,18 @@ final GoRouter appRouter = GoRouter(
         path == AppRoutes.login || path == AppRoutes.resetPassword;
 
     if (path == AppRoutes.root) {
+      if (!authProvider.hasResolvedInitialSession) {
+        return null;
+      }
       return authProvider.isSignedIn ? AppRoutes.home : AppRoutes.login;
     }
 
     if (!AppEnv.isSupabaseReady) {
       return isAuthPath ? null : AppRoutes.login;
+    }
+
+    if (!authProvider.hasResolvedInitialSession && !isAuthPath) {
+      return AppRoutes.root;
     }
 
     if (authProvider.isPasswordRecovery && path != AppRoutes.resetPassword) {

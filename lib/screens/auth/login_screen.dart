@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/analytics_service.dart';
@@ -73,6 +72,11 @@ class _LoginScreenState extends State<LoginScreen> {
   void _handleOAuthMessage() {
     final message = OAuthCallbackHandler.latestUserMessage.value;
     if (message != null && message.trim().isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
       _setMessage(message);
     }
   }
@@ -96,6 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _message = null;
     });
 
+    var keepLoadingForNavigation = false;
     try {
       if (_mode == _AuthMode.login) {
         await authService.signInWithEmail(
@@ -104,8 +109,8 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         final signedIn = await authProvider.syncCurrentSession();
         if (mounted && signedIn) {
+          keepLoadingForNavigation = true;
           unawaited(AnalyticsService.logLogin(method: 'email'));
-          context.go(AppRoutes.home);
         } else if (mounted) {
           _setMessage(l10n.loginSessionFailed);
         }
@@ -124,8 +129,8 @@ class _LoginScreenState extends State<LoginScreen> {
         } else if (mounted) {
           final signedIn = await authProvider.syncCurrentSession();
           if (mounted && signedIn) {
+            keepLoadingForNavigation = true;
             unawaited(AnalyticsService.logSignUp(method: 'email'));
-            context.go(AppRoutes.home);
           } else if (mounted) {
             _setMessage(l10n.signUpSessionFailed);
           }
@@ -140,7 +145,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (error) {
       _setMessage(_friendlyAuthMessage(error));
     } finally {
-      if (mounted) {
+      if (mounted && !keepLoadingForNavigation) {
         setState(() {
           _isLoading = false;
         });
@@ -161,18 +166,21 @@ class _LoginScreenState extends State<LoginScreen> {
       _message = null;
     });
 
+    var keepLoadingForCallback = false;
     try {
       OAuthCallbackHandler.markPendingLogin(provider);
       final launched = await authService.signInWithOAuth(provider);
       if (!launched) {
         OAuthCallbackHandler.clearPendingCallback();
         _setMessage(l10n.oauthLaunchFailed);
+      } else {
+        keepLoadingForCallback = true;
       }
     } catch (error) {
       OAuthCallbackHandler.clearPendingCallback();
       _setMessage(_friendlyAuthMessage(error));
     } finally {
-      if (mounted) {
+      if (mounted && !keepLoadingForCallback) {
         setState(() {
           _isLoading = false;
         });

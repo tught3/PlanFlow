@@ -429,14 +429,15 @@ class GptService {
     String rawText,
   ) {
     final normalizedRawText = _stripExplicitMemoClause(rawText);
+    final contentClause = _extractContentClause(normalizedRawText);
     final rawTitle = schedule['title']?.toString();
     final normalizedTitle =
-        _normalizeScheduleTitle(rawTitle, normalizedRawText);
+        _normalizeScheduleTitle(rawTitle, contentClause ?? normalizedRawText);
     schedule['title'] = normalizedTitle;
 
     final normalizedLocation = _normalizeScheduleLocation(
       schedule['location']?.toString(),
-      normalizedRawText,
+      contentClause ?? normalizedRawText,
       normalizedTitle,
     );
     schedule['location'] = normalizedLocation;
@@ -451,6 +452,7 @@ class GptService {
 
     final memo = schedule['memo']?.toString();
     schedule['memo'] = _normalizeScheduleMemo(memo, rawText);
+    _preserveDeliveryContent(schedule, contentClause ?? normalizedRawText);
   }
 
   String _normalizeScheduleTitle(String? title, String rawText) {
@@ -533,6 +535,18 @@ class GptService {
         .trim();
   }
 
+  String? _extractContentClause(String rawText) {
+    final source = _normalizeKoreanText(rawText);
+    final match = RegExp(
+      r'(?:내용은|내용\s*[:：]|할\s*일은|일정\s*내용은)\s*(.+)$',
+    ).firstMatch(source);
+    final content = match?.group(1)?.trim();
+    if (content == null || content.isEmpty) {
+      return null;
+    }
+    return content.replaceFirst(RegExp(r'^[.。,\s]+'), '').trim();
+  }
+
   String? _extractExplicitMemo(String rawText) {
     final source = _normalizeKoreanText(rawText);
     final match = RegExp(
@@ -595,10 +609,12 @@ class GptService {
     var cleaned = text.replaceAll(RegExp(r'[\(\)\[\]{}]'), ' ');
     final patterns = <RegExp>[
       RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
+      RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
       RegExp(r'(?:오늘|내일|모레|글피)'),
       RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
       RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
       RegExp(r'\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따)'),
+      RegExp(r'\d{1,2}\s*(?:일|주|개월|달|월|년)\s*마다'),
       RegExp(r'(?:매주|매월|매년|격주|매일)'),
       RegExp(r'(?:반복|알림|리마인더|알람|reminder)'),
       RegExp(r'(?:부터|까지|동안|정각|정도|쯤|경|예정|예약)'),
@@ -612,6 +628,64 @@ class GptService {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     return _normalizeSpacingForSchedule(cleaned);
+  }
+
+  void _preserveDeliveryContent(
+    Map<String, dynamic> schedule,
+    String contentText,
+  ) {
+    final split = _splitLeadingMedicalLocation(contentText);
+    if (split == null ||
+        !RegExp(r'(갖다\s*주|가져다\s*주|전달|배송|납품)').hasMatch(split.remainder)) {
+      return;
+    }
+
+    final currentLocation = schedule['location']?.toString().trim();
+    if (currentLocation == null ||
+        currentLocation.isEmpty ||
+        currentLocation.contains(split.remainder.split(RegExp(r'\s+')).first)) {
+      schedule['location'] = _normalizeSpacingForSchedule(split.location);
+      schedule['location_lat'] = null;
+      schedule['location_lng'] = null;
+    }
+
+    final currentTitle = schedule['title']?.toString().trim() ?? '';
+    final firstRemainderToken = split.remainder.split(RegExp(r'\s+')).first;
+    if (currentTitle.isEmpty || !currentTitle.contains(firstRemainderToken)) {
+      schedule['title'] = _normalizeSpacingForSchedule(split.remainder);
+    }
+
+    final supplies = _normalizeSupplies(schedule['supplies']);
+    if (supplies.isEmpty) {
+      final supplyMatch = RegExp(
+        r'(?:^|\s)([가-힣A-Za-z0-9]+)\s*(?:갖다\s*주|가져다\s*주|전달|배송|납품)',
+      ).firstMatch(split.remainder);
+      final supply = supplyMatch?.group(1)?.trim();
+      if (supply != null &&
+          supply.isNotEmpty &&
+          supply != firstRemainderToken) {
+        schedule['supplies'] = <String>[supply];
+      }
+    }
+  }
+
+  _LocationContentSplit? _splitLeadingMedicalLocation(String text) {
+    final normalized = _normalizeKoreanText(text);
+    final match = RegExp(
+      r'^(.+?(?:정형외과|이비인후과|피부과|성형외과|신경외과|내과|외과|안과|치과|한의원|의원|병원|클리닉|약국))\s+(.+)$',
+    ).firstMatch(normalized);
+    final location = match?.group(1)?.trim();
+    final remainder = match?.group(2)?.trim();
+    if (location == null ||
+        location.isEmpty ||
+        remainder == null ||
+        remainder.isEmpty) {
+      return null;
+    }
+    return _LocationContentSplit(
+      location: location,
+      remainder: remainder,
+    );
   }
 
   bool _looksLikeOnlyScheduleMetadata(String text) {
@@ -960,6 +1034,16 @@ $_scheduleSystemPrompt
       return today;
     }
 
+    final monthOffset = RegExp(
+      r'(?:지금으로부터\s*)?(?<months>\d{1,2})\s*(?:개월|달|월)\s*(?:뒤|후)',
+    ).firstMatch(text);
+    if (monthOffset != null) {
+      final months = int.tryParse(monthOffset.namedGroup('months') ?? '');
+      if (months != null && months >= 0) {
+        return DateTime(today.year, today.month + months, today.day);
+      }
+    }
+
     final explicitDate = RegExp(
       r'(?:(?<year>\d{4})년\s*)?(?<month>\d{1,2})월\s*(?<day>\d{1,2})일',
     ).firstMatch(text);
@@ -1173,6 +1257,16 @@ class _ClockTime {
   final int minute;
 }
 
+class _LocationContentSplit {
+  const _LocationContentSplit({
+    required this.location,
+    required this.remainder,
+  });
+
+  final String location;
+  final String remainder;
+}
+
 const String _scheduleSystemPrompt = '''
 You are a Korean schedule parser.
 Return only a valid JSON object.
@@ -1188,8 +1282,10 @@ category must be one of "업무", "개인", "건강", "교육", "기타"; infer 
 Category examples: "병원 진료" and "헬스장" -> "건강"; "세미나 참석" and "강의" -> "교육"; "JW제약 미팅" -> "업무"; "친구 약속" -> "개인".
 Keep date, time, recurrence, and reminder phrases out of title and memo once they are represented as structured fields.
 Memo is only for an explicit note/description the user wants to keep, and only when the user explicitly says it with phrases like "메모에", "설명에", or "노트로". Do not copy the full raw utterance into memo.
+When the user says "내용은 ..." or "할 일은 ...", treat the following phrase as the schedule content/title source, not as memo.
 Example: "내일 오전 9시에 대전출발" -> title "대전 출발", location "대전", start_at tomorrow 09:00 local, memo null.
 Example: "내일 오전 9시에 대전출발 메모에 주차장 B2 확인" -> title "대전 출발", location "대전", start_at tomorrow 09:00 local, memo "주차장 B2 확인".
+For delivery/drop-off tasks at hospitals or clinics, keep recipient/customer names and items in title. Example: "내용은 원주기독 정형외과 김두섭 리바로 갖다주기" -> location "원주기독 정형외과", title "김두섭 리바로 갖다주기", supplies ["리바로"].
 supplies must be an array of strings.
 is_critical must be a boolean.
 pre_actions must be an array of objects with title and offset_hours.

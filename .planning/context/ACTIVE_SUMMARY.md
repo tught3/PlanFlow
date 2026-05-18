@@ -4,6 +4,24 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-18 Voice Delivery Parsing And Core Guard Checkpoint
+- 음성 입력 `지금으로부터 3달뒤 부터 3개월마다 반복알람. 내용은 원주기독 정형외과 김두섭 리바로 갖다주기`가 `김두섭 리바로 갖다주기` 제목, `원주기독 정형외과` 장소, 3개월 뒤 시작일, 3개월 반복 규칙으로 정리되도록 GPT 후처리와 로컬 분석 후처리를 보강했다.
+- `원주기독`/`원주세브란스` 계열 장소 검색 alias를 추가해 `원주세브란스기독병원` 검색으로 이어지게 했고, 새 일정 확인 화면은 사용자가 말한 장소 텍스트를 유지하면서 검색 결과 좌표만 자동으로 저장하도록 했다.
+- Flow Core/공유 코어 파일은 NexusFlow 등 다른 프로젝트에 영향을 주는 계약으로 보고, `packages/`, `flow_core/`, 공유 모델/저장소/파싱·라우팅 서비스 변경 전 사용자 확인이 필요하다는 규칙을 `AGENTS.md`에 추가했다.
+- 검증: focused 음성/GPT/장소 테스트, ConfirmScreen 자동 좌표/사용자 수정 보존 테스트, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, ADB install/launch/PID/focused window 확인 통과. `confirm_screen_test.dart` 전체는 이번 변경과 무관한 기존 기대값 노후화 케이스가 남아 있어 focused 검증으로 대체했다.
+
+## 2026-05-18 Login Permission Onboarding And Icon Checkpoint
+- 로그인 성공 후 라우팅을 `AuthProvider`/`GoRouter` 중심으로 정리해 로그인 화면으로 되돌아가는 중간 상태를 줄였다. 초기 세션 확인 전에는 root splash에 머물고, 명시 로그인 중 `/login`은 스플래시로 밀리지 않도록 했다.
+- 첫 권한 온보딩은 유지하되 진입만으로 OS 권한 요청을 하지 않고, 사용자가 `필요 권한 모두 요청`/개별 요청을 누른 경우에만 권한 팝업이 뜨게 했다. `나중에 필요한 기능에서 허용할게요`로 첫 온보딩을 완료하면 이후 전체 권한 페이지가 강제 재등장하지 않는다.
+- 런처 아이콘을 기본 다이아몬드에서 파란 일정 카드+체크 형태로 교체하고 adaptive/legacy PNG에 safe-area 여백을 적용했다. `AGENTS.md`에는 NexusFlow 연동으로 DB schema/migration/RLS 변경 전 사용자 확인을 요구하는 규칙을 추가했다.
+- 검증: focused permission/login tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, ADB install, 앱 실행/PID/focused window 확인, reviewer 재검토 PASS.
+
+## 2026-05-18 Launcher Icon Adaptive Crop Fix Checkpoint
+- `planflowlogo.png` 기반 런처 아이콘이 Android adaptive foreground에서 가운데 체크만 확대/크롭되어 보이던 문제를 수정했다.
+- 전체 로고 이미지는 adaptive foreground 안쪽 inset 영역에 맞춰 축소 배치하고, 바깥 흰 모서리는 투명 alpha로 제거했다. legacy `mipmap-*` `ic_launcher`/`ic_launcher_round` PNG도 모든 density에서 같은 원본 비율과 투명 모서리로 재생성했다.
+- 실행 직후 launch background도 같은 투명 아이콘을 중앙에 표시하도록 바꾸고, Android 상태표시줄 알림용 `ic_stat_planflow`은 플랫폼 규격에 맞춘 흰색 단색 마이크+체크리스트 vector로 교체했다.
+- 홈 런처에서 투명 adaptive 배경이 검은 가장자리처럼 렌더링되는 문제를 막기 위해, adaptive background는 파란 그라데이션으로 꽉 채우고 foreground는 심볼만 투명 PNG로 분리했다. legacy PNG도 검은/흰 모서리 없이 완전 불투명 그라데이션 배경+심볼 형태로 다시 생성했다.
+- 검증: `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, ADB install, launcher run, PID check 통과.
 
 ## Stable Context
 ### Project

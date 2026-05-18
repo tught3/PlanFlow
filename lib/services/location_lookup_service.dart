@@ -168,6 +168,7 @@ class LocationLookupService {
     final variants = <String>{};
     final noWhitespace = normalized.replaceAll(RegExp(r'\s+'), '');
     _addQueryVariant(variants, noWhitespace, original: normalized);
+    _addKnownPlaceAliasQueries(variants, normalized);
 
     final normalizedTokens = _tokenize(normalized)
         .where((token) => token.isNotEmpty)
@@ -246,6 +247,18 @@ class LocationLookupService {
     }
 
     return variants.toList(growable: false);
+  }
+
+  void _addKnownPlaceAliasQueries(Set<String> variants, String normalized) {
+    final compact = normalized.replaceAll(RegExp(r'\s+'), '');
+    for (final alias in _knownPlaceAliases) {
+      if (!alias.matches(compact)) {
+        continue;
+      }
+      for (final query in alias.queries) {
+        _addQueryVariant(variants, query, original: normalized);
+      }
+    }
   }
 
   String _normalizeWhitespace(String value) {
@@ -746,7 +759,7 @@ class _KoreanRegionHint {
 
   bool matches(String normalizedQuery) {
     for (final alias in aliases) {
-      if (normalizedQuery == alias || normalizedQuery.contains(alias)) {
+      if (normalizedQuery == alias) {
         return true;
       }
     }
@@ -755,6 +768,12 @@ class _KoreanRegionHint {
 }
 
 const List<_KoreanRegionHint> _koreanRegionHints = <_KoreanRegionHint>[
+  _KoreanRegionHint(
+    displayName: '원주',
+    latitude: 37.3422,
+    longitude: 127.9202,
+    aliases: <String>['원주', '원주시'],
+  ),
   _KoreanRegionHint(
     displayName: '서울',
     latitude: 37.5665,
@@ -850,5 +869,42 @@ const List<_KoreanRegionHint> _koreanRegionHints = <_KoreanRegionHint>[
     latitude: 35.2285,
     longitude: 128.6811,
     aliases: <String>['창원', '창원시'],
+  ),
+];
+
+class _KnownPlaceAlias {
+  const _KnownPlaceAlias({
+    required this.aliases,
+    required this.queries,
+  });
+
+  final List<String> aliases;
+  final List<String> queries;
+
+  bool matches(String compactQuery) {
+    for (final alias in aliases) {
+      if (compactQuery == alias || compactQuery.contains(alias)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
+const List<_KnownPlaceAlias> _knownPlaceAliases = <_KnownPlaceAlias>[
+  _KnownPlaceAlias(
+    aliases: <String>[
+      '원주기독',
+      '원주기독병원',
+      '원주기독정형외과',
+      '원주세브',
+      '원주세브란스',
+      '원주세브란스기독',
+    ],
+    queries: <String>[
+      '원주세브란스기독병원',
+      '원주 세브란스 기독병원',
+      '연세대학교 원주세브란스기독병원',
+    ],
   ),
 ];

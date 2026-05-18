@@ -219,15 +219,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
 
     if (!completed) {
-      final snapshot = await _permissionService.checkAll();
-      if (!mounted) {
-        return;
-      }
-      if (snapshot.requiredPermissionsGranted) {
-        await _permissionService.markOnboardingCompleted(userId);
-      } else {
-        await context.push(AppRoutes.permissionOnboarding);
-      }
+      await context.push(AppRoutes.permissionOnboarding);
     }
 
     if (mounted) {
@@ -322,8 +314,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   List<NavigationDestination> _buildNavigationBarDestinations() {
     final labels = _localizedDestinationLabels();
-    return _shellDestinations
-        .indexed
+    return _shellDestinations.indexed
         .map(
           (entry) => NavigationDestination(
             icon: Icon(entry.$2.icon),
@@ -341,8 +332,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   List<NavigationRailDestination> _buildNavigationRailDestinations() {
     final labels = _localizedDestinationLabels();
-    return _shellDestinations
-        .indexed
+    return _shellDestinations.indexed
         .map(
           (entry) => NavigationRailDestination(
             icon: Icon(entry.$2.icon),
@@ -386,8 +376,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       child: NavigationRail(
         selectedIndex: _currentIndex,
         onDestinationSelected: _goToTab,
-        labelType:
-            extended ? null : NavigationRailLabelType.selected,
+        labelType: extended ? null : NavigationRailLabelType.selected,
         extended: extended,
         minWidth: 72,
         minExtendedWidth: 208,
@@ -487,8 +476,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
                     ],
                   )
                 : _buildShellBody(),
-            bottomNavigationBar:
-                useRail ? null : _buildBottomNavigationBar(),
+            bottomNavigationBar: useRail ? null : _buildBottomNavigationBar(),
           );
         },
       ),

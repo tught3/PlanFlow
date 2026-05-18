@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
+import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/settings_repository.dart';
@@ -74,7 +75,6 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       setState(() {
         _snapshot = snapshot;
       });
-      unawaited(_completeIfReady(snapshot));
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -308,11 +308,18 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       await _permissionService.markOnboardingCompleted(userId);
     }
     if (mounted) {
-      context.go(AppRoutes.voice);
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go(AppRoutes.home);
+      }
     }
   }
 
   Future<void> _savePrepSetting(String userId) async {
+    if (!AppEnv.isSupabaseReady) {
+      return;
+    }
     try {
       final repository = SettingsRepository.supabase();
       final existing = await repository.fetchSettings(userId);
@@ -326,16 +333,10 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     }
   }
 
-  Future<void> _completeIfReady(AppPermissionSnapshot snapshot) async {
-    if (!snapshot.requiredPermissionsGranted || !mounted) {
-      return;
-    }
-    await _complete();
-  }
-
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
+    final ready = snapshot?.requiredPermissionsGranted == true;
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -346,18 +347,44 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       ),
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        child: FilledButton.icon(
-          key: const ValueKey('permission-onboarding-request-all-button'),
-          onPressed: (_isRequestingAll || _activeRequestKey != null)
-              ? null
-              : _requestAll,
-          icon: _isRequestingAll
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.verified_user_outlined),
-          label: Text(_isRequestingAll ? '권한 요청 중...' : '필요 권한 모두 요청'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FilledButton.icon(
+              key: const ValueKey('permission-onboarding-request-all-button'),
+              onPressed: (_isRequestingAll || _activeRequestKey != null)
+                  ? null
+                  : ready
+                      ? _complete
+                      : _requestAll,
+              icon: _isRequestingAll
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      ready
+                          ? Icons.check_circle_outline
+                          : Icons.verified_user_outlined,
+                    ),
+              label: Text(
+                _isRequestingAll
+                    ? '권한 요청 중...'
+                    : ready
+                        ? '시작하기'
+                        : '필요 권한 모두 요청',
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextButton(
+              key: const ValueKey('permission-onboarding-skip-button'),
+              onPressed: (_isRequestingAll || _activeRequestKey != null)
+                  ? null
+                  : _complete,
+              child: const Text('나중에 필요한 기능에서 허용할게요'),
+            ),
+          ],
         ),
       ),
       body: SafeArea(
