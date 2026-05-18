@@ -10,6 +10,11 @@
 - 런처 아이콘을 기본 다이아몬드에서 파란 일정 카드+체크 형태로 교체하고 adaptive/legacy PNG에 safe-area 여백을 적용했다. `AGENTS.md`에는 NexusFlow 연동으로 DB schema/migration/RLS 변경 전 사용자 확인을 요구하는 규칙을 추가했다.
 - 검증: focused permission/login tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, ADB install, 앱 실행/PID/focused window 확인, reviewer 재검토 PASS.
 
+## 2026-05-18 Launcher Icon Adaptive Crop Fix Checkpoint
+- `planflowlogo.png` 기반 런처 아이콘이 Android adaptive foreground에서 가운데 체크만 확대/크롭되어 보이던 문제를 수정했다.
+- 전체 로고 이미지는 adaptive foreground 안쪽 inset 영역에 맞춰 축소 배치하고, 바깥 흰 모서리는 투명 alpha로 제거했다. legacy `mipmap-*` `ic_launcher`/`ic_launcher_round` PNG도 모든 density에서 같은 원본 비율과 투명 모서리로 재생성했다.
+- 검증: `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, ADB install, launcher run, PID check 통과.
+
 ## Stable Context
 ### Project
 - 거래를 직접 입력하지 않고도 자동으로 가계부를 채울 수 있어야 한다.
