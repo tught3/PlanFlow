@@ -7,6 +7,6 @@
         android:top="18dp">
         <bitmap
             android:gravity="fill"
-            android:src="@drawable/ic_launcher_full_image" />
+            android:src="@drawable/ic_launcher_symbols" />
     </item>
 </layer-list>
