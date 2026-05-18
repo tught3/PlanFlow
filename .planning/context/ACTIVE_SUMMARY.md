@@ -13,6 +13,7 @@
 ## 2026-05-18 Launcher Icon Adaptive Crop Fix Checkpoint
 - `planflowlogo.png` 기반 런처 아이콘이 Android adaptive foreground에서 가운데 체크만 확대/크롭되어 보이던 문제를 수정했다.
 - 전체 로고 이미지는 adaptive foreground 안쪽 inset 영역에 맞춰 축소 배치하고, 바깥 흰 모서리는 투명 alpha로 제거했다. legacy `mipmap-*` `ic_launcher`/`ic_launcher_round` PNG도 모든 density에서 같은 원본 비율과 투명 모서리로 재생성했다.
+- 실행 직후 launch background도 같은 투명 아이콘을 중앙에 표시하도록 바꾸고, Android 상태표시줄 알림용 `ic_stat_planflow`은 플랫폼 규격에 맞춘 흰색 단색 마이크+체크리스트 vector로 교체했다.
 - 검증: `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, ADB install, launcher run, PID check 통과.
 
 ## Stable Context
