@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/analytics_service.dart';
+import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../models/feedback_report_model.dart';
 
@@ -36,7 +37,8 @@ class SupabaseFeedbackReportGateway implements FeedbackReportAdminGateway {
   @override
   Future<void> insert(Map<String, Object?> payload) async {
     await _client
-        .from('feedback_reports')
+        .schema(DbSchema.planflow)
+        .from(DbTable.feedbackReports)
         .insert(payload)
         .select('id')
         .single();
@@ -47,7 +49,10 @@ class SupabaseFeedbackReportGateway implements FeedbackReportAdminGateway {
     FeedbackReportStatus? status,
     int limit = 100,
   }) async {
-    final query = _client.from('feedback_reports').select();
+    final query = _client
+        .schema(DbSchema.planflow)
+        .from(DbTable.feedbackReports)
+        .select();
     final List<dynamic> response = status == null
         ? await query.order('created_at', ascending: false).limit(limit)
         : await query
@@ -65,7 +70,8 @@ class SupabaseFeedbackReportGateway implements FeedbackReportAdminGateway {
     required FeedbackReportStatus status,
   }) async {
     await _client
-        .from('feedback_reports')
+        .schema(DbSchema.planflow)
+        .from(DbTable.feedbackReports)
         .update(<String, Object?>{'status': status.value})
         .eq('id', reportId)
         .select('id')

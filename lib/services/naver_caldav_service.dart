@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:xml/xml.dart';
 
+import '../core/constants.dart';
 import '../core/env.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
@@ -481,7 +482,7 @@ class SupabaseNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
     }
 
     try {
-      final response = await client.rpc('fetch_naver_caldav_credentials');
+      final response = await client.rpc(DbFunction.fetchNaverCalDavCredentials);
       final rows = _asRows(response);
       if (rows.isEmpty) {
         return null;
@@ -513,7 +514,7 @@ class SupabaseNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
 
     try {
       await client.rpc(
-        'upsert_naver_caldav_credentials',
+        DbFunction.upsertNaverCalDavCredentials,
         params: <String, dynamic>{
           'naver_caldav_id': naverId,
           'naver_caldav_app_password': appPassword,
@@ -533,7 +534,7 @@ class SupabaseNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
     }
 
     try {
-      await client.rpc('clear_naver_caldav_credentials');
+      await client.rpc(DbFunction.clearNaverCalDavCredentials);
     } catch (error, stackTrace) {
       debugPrint('Naver CalDAV remote credential clear failed: $error');
       debugPrintStack(stackTrace: stackTrace);

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/constants.dart';
 import '../models/calendar_connection_model.dart';
 
 abstract class CalendarConnectionRepository {
@@ -34,7 +35,7 @@ class SupabaseCalendarConnectionRepository
   SupabaseCalendarConnectionRepository({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
 
-  static const String _tableName = 'calendar_connections';
+  static const String _tableName = DbTable.calendarConnections;
   static const String _selectColumns =
       'id, user_id, provider, provider_account_email, status, access_token, '
       'refresh_token, last_synced_at, last_error, created_at, updated_at';
@@ -47,6 +48,7 @@ class SupabaseCalendarConnectionRepository
     required String provider,
   }) async {
     final response = await _client
+        .schema(DbSchema.planflow)
         .from(_tableName)
         .select(_selectColumns)
         .eq('user_id', userId)
@@ -66,6 +68,7 @@ class SupabaseCalendarConnectionRepository
   ) async {
     _validateUser(connection.userId);
     final response = await _client
+        .schema(DbSchema.planflow)
         .from(_tableName)
         .upsert(
           connection.toJson(includeId: connection.id != null),
@@ -102,6 +105,7 @@ class SupabaseCalendarConnectionRepository
   }) async {
     _validateUser(userId);
     await _client
+        .schema(DbSchema.planflow)
         .from(_tableName)
         .delete()
         .eq('user_id', userId)

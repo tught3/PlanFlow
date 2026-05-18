@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/constants.dart';
+
 class BackupSnapshot {
   const BackupSnapshot({
     required this.id,
@@ -32,12 +34,12 @@ class BackupService {
       : _client = client ?? Supabase.instance.client;
 
   static const List<String> _scopedTables = <String>[
-    'events',
-    'pre_actions',
-    'reminders',
-    'voice_logs',
-    'location_history',
-    'user_settings',
+    DbTable.events,
+    DbTable.preActions,
+    DbTable.reminders,
+    DbTable.voiceLogs,
+    DbTable.locationHistory,
+    DbTable.userSettings,
   ];
 
   final SupabaseClient _client;
@@ -45,7 +47,8 @@ class BackupService {
   Future<List<BackupSnapshot>> listBackups() async {
     final userId = _requireUserId();
     final rows = await _client
-        .from('user_backups')
+        .schema(DbSchema.planflow)
+        .from(DbTable.userBackups)
         .select('id, label, item_counts, created_at')
         .eq('user_id', userId)
         .order('created_at', ascending: false);
@@ -70,7 +73,8 @@ class BackupService {
     }
 
     final inserted = await _client
-        .from('user_backups')
+        .schema(DbSchema.planflow)
+        .from(DbTable.userBackups)
         .insert(<String, dynamic>{
           'user_id': userId,
           'label': label ?? '수동 백업',
@@ -101,13 +105,13 @@ class BackupService {
   Future<void> restoreBackup(String backupId) async {
     _requireUserId();
     await _client.rpc(
-      'restore_user_backup',
+      DbFunction.restoreUserBackup,
       params: <String, dynamic>{'backup_id_input': backupId},
     );
   }
 
   String _selectColumnsFor(String table) {
-    if (table == 'user_settings') {
+    if (table == DbTable.userSettings) {
       return 'id, user_id, morning_briefing_at, evening_briefing_at, '
           'default_reminder_min, prep_time_min, prep_pre_alarm_offset, '
           'depart_pre_alarm_offset, travel_mode, voice_auto_start, '
@@ -118,7 +122,7 @@ class BackupService {
   }
 
   String _legacySelectColumnsFor(String table) {
-    if (table == 'user_settings') {
+    if (table == DbTable.userSettings) {
       return 'id, user_id, morning_briefing_at, evening_briefing_at, '
           'default_reminder_min, prep_time_min, prep_pre_alarm_offset, '
           'depart_pre_alarm_offset, travel_mode, voice_auto_start, '
@@ -130,13 +134,15 @@ class BackupService {
   Future<dynamic> _fetchTableRows(String table, String userId) async {
     try {
       return await _client
+          .schema(DbSchema.planflow)
           .from(table)
           .select(_selectColumnsFor(table))
           .eq('user_id', userId);
     } on PostgrestException catch (error) {
-      if (table == 'user_settings' &&
+      if (table == DbTable.userSettings &&
           _isMissingColumnError(error, 'preferred_map_provider')) {
         return _client
+            .schema(DbSchema.planflow)
             .from(table)
             .select(_legacySelectColumnsFor(table))
             .eq('user_id', userId);

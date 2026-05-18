@@ -1824,7 +1824,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
     try {
       await Supabase.instance.client
-          .from('voice_logs')
+          .schema(DbSchema.planflow)
+          .from(DbTable.voiceLogs)
           .insert(<String, dynamic>{
         'user_id': userId,
         'event_id': targetEventId,

@@ -585,7 +585,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
         return;
       }
       final row = await Supabase.instance.client
-          .from('reminders')
+          .schema(DbSchema.planflow)
+          .from(DbTable.reminders)
           .select('notify_at')
           .eq('event_id', event.id)
           .eq('user_id', user.id)

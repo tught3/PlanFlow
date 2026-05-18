@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/constants.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/models/pre_action_model.dart';
@@ -372,7 +373,8 @@ class SmartPreparationAlarmService {
     required String userId,
   }) async {
     final response = await Supabase.instance.client
-        .from('pre_actions')
+        .schema(DbSchema.planflow)
+        .from(DbTable.preActions)
         .select()
         .eq('event_id', eventId)
         .eq('user_id', userId)
@@ -395,7 +397,8 @@ class SmartPreparationAlarmService {
     }
 
     final response = await Supabase.instance.client
-        .from('pre_actions')
+        .schema(DbSchema.planflow)
+        .from(DbTable.preActions)
         .select('event_id')
         .eq('user_id', userId)
         .eq('source', 'external_preparation')

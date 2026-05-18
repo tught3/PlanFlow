@@ -7,6 +7,7 @@ import 'package:planflow/services/calendar_auto_sync_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
 import 'package:planflow/services/event_preparation_service.dart';
+import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
@@ -696,6 +697,7 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     int prepPreAlarmOffset = 30,
     int departPreAlarmOffset = 30,
     int travelMinutes = 30,
+    GeoPoint? currentLocation,
     DateTime? now,
   }) async {
     resyncCallCount += 1;

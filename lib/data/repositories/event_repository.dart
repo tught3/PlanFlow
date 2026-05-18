@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/constants.dart';
 import '../../core/local_time.dart';
 import '../models/event_model.dart';
 
@@ -427,7 +428,7 @@ class SupabaseEventRepository extends EventRepository {
   SupabaseEventRepository({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
 
-  static const String _tableName = 'events';
+  static const String _tableName = DbTable.events;
   static const String _selectColumns =
       'id, user_id, title, start_at, end_at, location, location_lat, '
       'location_lng, memo, supplies, supplies_checked, is_critical, source, '
@@ -650,6 +651,7 @@ class SupabaseEventRepository extends EventRepository {
   Future<void> deleteEvent(String eventId, {String? userId}) async {
     final resolvedUserId = _resolveUserId(userId);
     await _client
+        .schema(DbSchema.planflow)
         .from(_tableName)
         .delete()
         .eq('id', eventId)
@@ -701,6 +703,7 @@ class SupabaseEventRepository extends EventRepository {
   Future<List<dynamic>> _selectEventsForUser(String userId) async {
     try {
       return await _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .select(_selectColumns)
           .eq('user_id', userId)
@@ -710,6 +713,7 @@ class SupabaseEventRepository extends EventRepository {
         rethrow;
       }
       return _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .select(_legacySelectColumns)
           .eq('user_id', userId)
@@ -723,6 +727,7 @@ class SupabaseEventRepository extends EventRepository {
   ) async {
     try {
       return await _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .select(_selectColumns)
           .eq('id', eventId)
@@ -733,6 +738,7 @@ class SupabaseEventRepository extends EventRepository {
         rethrow;
       }
       return _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .select(_legacySelectColumns)
           .eq('id', eventId)
@@ -748,6 +754,7 @@ class SupabaseEventRepository extends EventRepository {
   }) async {
     try {
       return await _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .select(_selectColumns)
           .eq('user_id', userId)
@@ -759,6 +766,7 @@ class SupabaseEventRepository extends EventRepository {
         rethrow;
       }
       return _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .select(_legacySelectColumns)
           .eq('user_id', userId)
@@ -771,6 +779,7 @@ class SupabaseEventRepository extends EventRepository {
   Future<Map<String, dynamic>> _insertEvent(EventModel event) async {
     try {
       return await _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .insert(event.toJson(includeId: event.id.trim().isNotEmpty))
           .select(_selectColumns)
@@ -780,6 +789,7 @@ class SupabaseEventRepository extends EventRepository {
         rethrow;
       }
       return _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .insert(
             _legacyPayload(
@@ -797,6 +807,7 @@ class SupabaseEventRepository extends EventRepository {
   ) async {
     try {
       return await _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .update(event.toUpdateJson())
           .eq('id', event.id)
@@ -808,6 +819,7 @@ class SupabaseEventRepository extends EventRepository {
         rethrow;
       }
       return _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .update(_legacyPayload(event.toUpdateJson()))
           .eq('id', event.id)
@@ -820,6 +832,7 @@ class SupabaseEventRepository extends EventRepository {
   Future<Map<String, dynamic>> _upsertEventRow(EventModel event) async {
     try {
       return await _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .upsert(
             event.toJson(includeId: event.id.trim().isNotEmpty),
@@ -832,6 +845,7 @@ class SupabaseEventRepository extends EventRepository {
         rethrow;
       }
       return _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .upsert(
             _legacyPayload(
@@ -851,6 +865,7 @@ class SupabaseEventRepository extends EventRepository {
   }) async {
     try {
       return await _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .update(<String, dynamic>{'supplies_checked': suppliesChecked})
           .eq('id', eventId)
@@ -862,6 +877,7 @@ class SupabaseEventRepository extends EventRepository {
         rethrow;
       }
       return _client
+          .schema(DbSchema.planflow)
           .from(_tableName)
           .update(<String, dynamic>{'supplies_checked': suppliesChecked})
           .eq('id', eventId)

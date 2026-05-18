@@ -1,12 +1,16 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/constants.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
+import 'app_permission_service.dart';
 import 'departure_alarm_service.dart';
+import 'map_service.dart';
 import 'notification_service.dart';
 import 'smart_preparation_alarm_service.dart';
+import 'travel_time_buffer_service.dart';
 
 abstract class ManualEventSideEffectGateway {
   const ManualEventSideEffectGateway();
@@ -46,7 +50,8 @@ class SupabaseManualEventSideEffectGateway
     required String userId,
   }) async {
     await _resolvedClient
-        .from('reminders')
+        .schema(DbSchema.planflow)
+        .from(DbTable.reminders)
         .delete()
         .eq('event_id', eventId)
         .eq('user_id', userId);
@@ -58,7 +63,8 @@ class SupabaseManualEventSideEffectGateway
     required String userId,
   }) async {
     await _resolvedClient
-        .from('pre_actions')
+        .schema(DbSchema.planflow)
+        .from(DbTable.preActions)
         .delete()
         .eq('event_id', eventId)
         .eq('user_id', userId);
@@ -70,7 +76,8 @@ class SupabaseManualEventSideEffectGateway
     required String userId,
   }) async {
     await _resolvedClient
-        .from('pre_actions')
+        .schema(DbSchema.planflow)
+        .from(DbTable.preActions)
         .delete()
         .eq('event_id', eventId)
         .eq('user_id', userId)
@@ -82,7 +89,10 @@ class SupabaseManualEventSideEffectGateway
     if (payloads.isEmpty) {
       return;
     }
-    await _resolvedClient.from('reminders').insert(payloads);
+    await _resolvedClient
+        .schema(DbSchema.planflow)
+        .from(DbTable.reminders)
+        .insert(payloads);
   }
 
   @override
@@ -91,7 +101,10 @@ class SupabaseManualEventSideEffectGateway
     if (dedupedPayloads.isEmpty) {
       return;
     }
-    await _resolvedClient.from('pre_actions').insert(dedupedPayloads);
+    await _resolvedClient
+        .schema(DbSchema.planflow)
+        .from(DbTable.preActions)
+        .insert(dedupedPayloads);
   }
 
   List<Map<String, dynamic>> _deduplicatePreActionPayloads(
@@ -121,10 +134,14 @@ class ManualEventSideEffectService {
     EventRepository? eventRepository,
     DepartureAlarmService? departureAlarmService,
     NotificationService? notificationService,
+    Future<GeoPoint?> Function()? currentLocationProvider,
+    TravelTimeBufferService? travelTimeBufferService,
     DateTime Function()? now,
   })  : _eventRepository = eventRepository,
         _departureAlarmService = departureAlarmService,
         _notificationService = notificationService,
+        _currentLocationProvider = currentLocationProvider,
+        _travelTimeBufferService = travelTimeBufferService,
         _now = now;
 
   static const Duration defaultReminderOffset = Duration(minutes: 60);
@@ -136,6 +153,8 @@ class ManualEventSideEffectService {
   final EventRepository? _eventRepository;
   final DepartureAlarmService? _departureAlarmService;
   final NotificationService? _notificationService;
+  final Future<GeoPoint?> Function()? _currentLocationProvider;
+  final TravelTimeBufferService? _travelTimeBufferService;
   final DateTime Function()? _now;
 
   EventRepository get _events => _eventRepository ?? EventRepository.supabase();
@@ -143,6 +162,8 @@ class ManualEventSideEffectService {
       _departureAlarmService ?? const DepartureAlarmService();
   NotificationService get _notifications =>
       _notificationService ?? NotificationService();
+  TravelTimeBufferService get _travelTime =>
+      _travelTimeBufferService ?? TravelTimeBufferService();
   DateTime get _currentTime => (_now ?? DateTime.now)();
 
   Future<ManualEventSideEffectResult> syncAfterSave({
@@ -326,7 +347,16 @@ class ManualEventSideEffectService {
       dayEvents.putIfAbsent(key, () => <EventModel>[]).add(event);
     }
 
+    GeoPoint? currentLocation;
+
     for (final eventsForDay in dayEvents.values) {
+      final shouldEstimateTravel = eventsForDay.any(
+            (event) => event.locationLat != null && event.locationLng != null,
+          ) &&
+          currentLocation == null;
+      if (shouldEstimateTravel) {
+        currentLocation = await _currentLocationForTravel();
+      }
       final reference = eventsForDay
           .map((event) => event.startAt)
           .whereType<DateTime>()
@@ -335,6 +365,7 @@ class ManualEventSideEffectService {
         dayEvents: eventsForDay,
         userId: userId,
         dayReference: reference,
+        currentLocation: currentLocation,
         now: effectiveNow,
       );
       preparationDays += 1;
@@ -466,12 +497,22 @@ class ManualEventSideEffectService {
     int departPreAlarmOffset =
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
     int travelMinutes = SmartPreparationAlarmService.defaultTravelBufferMin,
+    GeoPoint? currentLocation,
     DateTime? now,
   }) async {
     final resyncKey = _externalPreparationResyncKey(userId, dayReference);
     final existing = _externalPreparationResyncs[resyncKey];
     if (existing != null) {
-      return existing;
+      if (currentLocation == null) {
+        return existing;
+      }
+      final previousResult = await existing;
+      if (identical(_externalPreparationResyncs[resyncKey], existing)) {
+        _externalPreparationResyncs.remove(resyncKey);
+      }
+      if (!previousResult) {
+        return false;
+      }
     }
 
     late final Future<bool> resyncFuture;
@@ -483,6 +524,7 @@ class ManualEventSideEffectService {
       prepPreAlarmOffset: prepPreAlarmOffset,
       departPreAlarmOffset: departPreAlarmOffset,
       travelMinutes: travelMinutes,
+      currentLocation: currentLocation,
       now: now,
     );
     _externalPreparationResyncs[resyncKey] = resyncFuture;
@@ -503,6 +545,7 @@ class ManualEventSideEffectService {
     required int prepPreAlarmOffset,
     required int departPreAlarmOffset,
     required int travelMinutes,
+    GeoPoint? currentLocation,
     DateTime? now,
   }) async {
     final smartService = SmartPreparationAlarmService(
@@ -531,6 +574,11 @@ class ManualEventSideEffectService {
     final firstExternalEventId = externalEvents.first.id;
     final payloadsByEvent = <EventModel, List<Map<String, dynamic>>>{};
     for (final event in externalEvents) {
+      final eventTravelMinutes = await _travelMinutesForEvent(
+        event,
+        fallbackMinutes: travelMinutes,
+        currentLocation: currentLocation,
+      );
       payloadsByEvent[event] = smartService.buildExternalEventPayloads(
         eventId: event.id,
         userId: userId,
@@ -540,7 +588,7 @@ class ManualEventSideEffectService {
         prepTimeMin: prepTimeMin,
         prepPreAlarmOffset: prepPreAlarmOffset,
         departPreAlarmOffset: departPreAlarmOffset,
-        travelMinutes: travelMinutes,
+        travelMinutes: eventTravelMinutes,
         isFirstExternalEventOfDay: event.id == firstExternalEventId,
         now: now,
       );
@@ -584,6 +632,60 @@ class ManualEventSideEffectService {
     final location = event.location?.trim();
     return (location != null && location.isNotEmpty) ||
         (event.locationLat != null && event.locationLng != null);
+  }
+
+  Future<GeoPoint?> _currentLocationForTravel() async {
+    try {
+      return await (_currentLocationProvider?.call() ??
+          AppPermissionService().getCurrentLocation());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<int> _travelMinutesForEvent(
+    EventModel event, {
+    required int fallbackMinutes,
+    required GeoPoint? currentLocation,
+  }) async {
+    final destinationLat = event.locationLat;
+    final destinationLng = event.locationLng;
+    if (destinationLat == null || destinationLng == null) {
+      return fallbackMinutes;
+    }
+    if (currentLocation == null) {
+      return fallbackMinutes;
+    }
+    try {
+      final estimate = await _travelTime.estimateWithMapApis(
+        originLat: currentLocation.latitude,
+        originLng: currentLocation.longitude,
+        destinationLat: destinationLat,
+        destinationLng: destinationLng,
+        mode: _travelModeFromEvent(event),
+        locationText: event.location,
+      );
+      return estimate.minutes;
+    } catch (error, stackTrace) {
+      debugPrint('Smart preparation travel estimate skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return fallbackMinutes;
+    }
+  }
+
+  MapTravelMode _travelModeFromEvent(EventModel event) {
+    final text = <String>[
+      event.title,
+      event.location ?? '',
+      event.memo ?? '',
+    ].join(' ');
+    if (text.contains('대중교통') ||
+        text.contains('버스') ||
+        text.contains('지하철') ||
+        text.contains('기차')) {
+      return MapTravelMode.transit;
+    }
+    return MapTravelMode.car;
   }
 
   String? _currentSupabaseUserId() {

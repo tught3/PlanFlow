@@ -103,7 +103,8 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
     required String location,
   }) async {
     final response = await _client
-        .from('location_history')
+        .schema(DbSchema.planflow)
+        .from(DbTable.locationHistory)
         .select('supplies, visited_at')
         .eq('user_id', userId)
         .eq('location', location)
@@ -138,7 +139,10 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
     if (payloads.isEmpty) {
       return;
     }
-    await _client.from('pre_actions').insert(payloads);
+    await _client
+        .schema(DbSchema.planflow)
+        .from(DbTable.preActions)
+        .insert(payloads);
   }
 
   @override
@@ -146,17 +150,26 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
     if (payloads.isEmpty) {
       return;
     }
-    await _client.from('reminders').insert(payloads);
+    await _client
+        .schema(DbSchema.planflow)
+        .from(DbTable.reminders)
+        .insert(payloads);
   }
 
   @override
   Future<void> insertLocationHistory(Map<String, dynamic> payload) async {
-    await _client.from('location_history').insert(payload);
+    await _client
+        .schema(DbSchema.planflow)
+        .from(DbTable.locationHistory)
+        .insert(payload);
   }
 
   @override
   Future<void> insertVoiceLog(Map<String, dynamic> payload) async {
-    await _client.from('voice_logs').insert(payload);
+    await _client
+        .schema(DbSchema.planflow)
+        .from(DbTable.voiceLogs)
+        .insert(payload);
   }
 }
 
