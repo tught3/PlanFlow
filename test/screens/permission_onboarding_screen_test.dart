@@ -198,7 +198,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(permissionService.notificationSettingsOpened, isTrue);
-      expect(permissionService.notificationGranted, isTrue);
+      expect(permissionService.notificationGranted, isFalse);
+
+      permissionService.notificationGranted = true;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
       expect(
         find.descendant(
           of: find.byKey(
@@ -243,7 +248,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(permissionService.appSettingsOpened, isTrue);
-      expect(permissionService.exactAlarmGranted, isTrue);
+      expect(permissionService.exactAlarmGranted, isFalse);
+
+      permissionService.exactAlarmGranted = true;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
       expect(
         find.descendant(
           of: find.byKey(
@@ -353,14 +363,12 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> openNotificationSettings() async {
     notificationSettingsOpened = true;
-    notificationGranted = true;
     return true;
   }
 
   @override
   Future<bool> openAppSettings() async {
     appSettingsOpened = true;
-    exactAlarmGranted = true;
     return true;
   }
 
