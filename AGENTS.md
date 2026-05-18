@@ -22,6 +22,11 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - Keep `claude-sonnet-4-5` as the default for UI changes, focused bug fixes, tests, docs, and low-risk plumbing.
 - If a task benefits from GSD, use GSD first and keep the same model split inside that workflow.
 
+## Hard routing rule
+- For any non-trivial PlanFlow task, always follow plan -> worker -> reviewer as separate steps before editing code.
+- A user-requested model does not override the repo routing for non-trivial work.
+- If a task is truly trivial enough to skip the split, say why it is trivial before editing.
+
 ## Workflow rules
 - Mandatory enforcement: for multi-issue or high-risk work, do not report completion unless context hygiene, role/model routing, worker delegation, reviewer verification, fix-after-review loop, tests/build, checkpoint, commit, push, and device run check have all been attempted and explicitly reported.
 - Model routing is not advisory. Use `gpt-5.5` for planning, `gpt-5.3-codex-spark` for normal execution/review, and escalate execution/review to `gpt-5.4-mini` for the high-risk areas listed below.
