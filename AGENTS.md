@@ -14,14 +14,12 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 5. Only report completion when nothing is left to change.
 
 ## Model routing
-- Planning: `claude-opus-4-5`
-- Execution: `claude-sonnet-4-5`
-- Review / verification: `claude-sonnet-4-5`
-- Escalate execution and/or review to `claude-sonnet-4-5` for high-risk work: calendar sync, auth, timezone/date math, notification scheduling, voice parsing/routing, Supabase schema/RLS, release signing, or broad refactors.
-- Use `claude-haiku-3-5` for narrow, mechanical tasks: renaming, formatting, constant edits, trivial single-file changes.
-- Keep `claude-sonnet-4-5` as the default for UI changes, focused bug fixes, tests, docs, and low-risk plumbing.
-- If a task benefits from GSD, use GSD first and keep the same model split inside that workflow.
-
+- Default behavior: route work by task complexity automatically, even if the user names a model.
+- Planner/Main for non-trivial work: `gpt-5.5`.
+- Worker agents for general execution, code edits, and test updates: `gpt-5.3-codex-spark`.
+- Complex refactors, architecture changes, or hard bugs: escalate to `gpt-5.4-mini` or higher.
+- Review / verification: default `gpt-5.3-codex-spark`; use `gpt-5.4-mini` for high-risk changes.
+- If the exact model cannot be selected in the current environment, keep the same role split and report the limitation.
 ## Workflow rules
 - Mandatory enforcement: for multi-issue or high-risk work, do not report completion unless context hygiene, role/model routing, worker delegation, reviewer verification, fix-after-review loop, tests/build, checkpoint, commit, push, and device run check have all been attempted and explicitly reported.
 - Model routing is not advisory. Use `gpt-5.5` for planning, `gpt-5.3-codex-spark` for normal execution/review, and escalate execution/review to `gpt-5.4-mini` for the high-risk areas listed below.
@@ -90,3 +88,4 @@ supabase/schema.sql      # DB schema and RLS source of truth
 - Workflow details: `docs/agent-rules-workflow.md`
 - Validation details: `docs/agent-rules-validation.md`
 - Operations details: `docs/agent-rules-operations.md`
+
