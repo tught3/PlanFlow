@@ -127,7 +127,6 @@ node scripts/gsd-context-hygiene.mjs
 - **작업 기준 디렉터리**: `C:\PlanFlow`
 - `E:\Project\PlanFlow` — 읽기 전용 참조 소스 (수정 금지)
 - `G:\AI-automatic-expense-tracker` — 참조 전용 (수정 금지)
-- `lite-app/` — 읽기 전용 (수정 금지)
 - Flutter 빌드·실행 → **항상 `scripts/flutter-local.ps1` 래퍼 사용** (`env/local.json` + `--dart-define` 자동 주입)
 - ADB 명령어는 **`com.planflow.app`만 대상**으로 한다 (다른 앱 패키지 건드리지 말 것)
 - 음성 파일은 외부 서버로 전송 금지. STT 텍스트만 저장·전송

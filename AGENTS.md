@@ -54,7 +54,6 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - Work from `C:\PlanFlow` unless the user explicitly changes the working path.
 - `E:\Project\PlanFlow` is a read-only reference source for files that previously worked, especially login and app flow.
 - `G:\AI-automatic-expense-tracker` is reference-only and must not be modified.
-- `lite-app/` is read-only for this work; do not modify it.
 - PlanFlow product scope is defined by `PlanFlow_Codex_Prompt_v3.md`.
 - Supabase schema source of truth is `supabase/schema.sql`.
 - Because of NexusFlow integration, stop and get explicit user confirmation before any DB schema, migration, or RLS change.
