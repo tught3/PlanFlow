@@ -3,6 +3,7 @@
 captures/
 local.properties
 keystore.properties
+key.properties
 app/debug/
 app/profile/
 app/release/

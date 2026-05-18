@@ -37,13 +37,6 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     final service = AuthService();
-    unawaited(
-      _syncProfileAndApplyUser(
-        service,
-        service.currentUser,
-        resolvesInitialSession: true,
-      ),
-    );
     _subscription = service.authStateChanges.listen((authState) async {
       debugPrint(
         'Auth state changed: ${authState.event} '
@@ -59,6 +52,7 @@ class AuthProvider extends ChangeNotifier {
     }, onError: (Object error, StackTrace stackTrace) {
       debugPrint('Auth state listener error: $error');
     });
+    unawaited(_bootstrapInitialSession(service));
   }
 
   Future<bool> syncCurrentSession() async {
@@ -69,9 +63,14 @@ class AuthProvider extends ChangeNotifier {
     unawaited(
       NaverCalendarPermissionService().captureCurrentProviderToken(),
     );
+    try {
+      await service.refreshSession();
+    } catch (error) {
+      debugPrint('Session refresh skipped: $error');
+    }
     await _syncProfileAndApplyUser(
       service,
-      service.currentUser,
+      service.currentSession?.user ?? service.currentUser,
       resolvesInitialSession: true,
     );
     return isSignedIn;
@@ -127,6 +126,20 @@ class AuthProvider extends ChangeNotifier {
         _markInitialSessionResolved();
       }
     }
+  }
+
+  Future<void> _bootstrapInitialSession(AuthService service) async {
+    try {
+      await service.refreshSession();
+    } catch (error) {
+      debugPrint('Initial session refresh skipped: $error');
+    }
+
+    await _syncProfileAndApplyUser(
+      service,
+      service.currentSession?.user ?? service.currentUser,
+      resolvesInitialSession: true,
+    );
   }
 
   @override

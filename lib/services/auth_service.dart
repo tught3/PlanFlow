@@ -18,9 +18,14 @@ class AuthService {
 
   final SupabaseClient _client;
 
+  Session? get currentSession => _client.auth.currentSession;
   User? get currentUser => _client.auth.currentUser;
 
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
+
+  Future<void> refreshSession() async {
+    await _client.auth.refreshSession();
+  }
 
   Future<AuthResponse> signInWithEmail({
     required String email,

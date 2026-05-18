@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 
@@ -9,6 +8,7 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
@@ -22,19 +22,15 @@ class SplashScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'PlanFlow를 준비하고 있어요.',
+                  '잠시만 기다려 주세요.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: () => context.go(AppRoutes.login),
-                  child: const Text('로그인'),
-                ),
-                const SizedBox(height: AppConstants.sectionSpacing),
-                OutlinedButton(
-                  onPressed: () => context.go(AppRoutes.home),
-                  child: const Text('홈으로 이동'),
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
                 ),
               ],
             ),
