@@ -80,10 +80,6 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
     await _syncRegionSettings();
-    final currentPath = appRouter.routeInformationProvider.value.uri.path;
-    if (currentPath == AppRoutes.login || currentPath == AppRoutes.root) {
-      appRouter.go(AppRoutes.home);
-    }
     final pendingIcsPaths = await _naverIcsShareStore.takePendingPaths();
     if (pendingIcsPaths.isNotEmpty) {
       appRouter.go(AppRoutes.naverIcsImport, extra: pendingIcsPaths);

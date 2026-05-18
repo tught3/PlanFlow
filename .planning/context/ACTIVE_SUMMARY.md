@@ -4,6 +4,11 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-18 Login Permission Onboarding And Icon Checkpoint
+- 로그인 성공 후 라우팅을 `AuthProvider`/`GoRouter` 중심으로 정리해 로그인 화면으로 되돌아가는 중간 상태를 줄였다. 초기 세션 확인 전에는 root splash에 머물고, 명시 로그인 중 `/login`은 스플래시로 밀리지 않도록 했다.
+- 첫 권한 온보딩은 유지하되 진입만으로 OS 권한 요청을 하지 않고, 사용자가 `필요 권한 모두 요청`/개별 요청을 누른 경우에만 권한 팝업이 뜨게 했다. `나중에 필요한 기능에서 허용할게요`로 첫 온보딩을 완료하면 이후 전체 권한 페이지가 강제 재등장하지 않는다.
+- 런처 아이콘을 기본 다이아몬드에서 파란 일정 카드+체크 형태로 교체하고 adaptive/legacy PNG에 safe-area 여백을 적용했다. `AGENTS.md`에는 NexusFlow 연동으로 DB schema/migration/RLS 변경 전 사용자 확인을 요구하는 규칙을 추가했다.
+- 검증: focused permission/login tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, ADB install, 앱 실행/PID/focused window 확인, reviewer 재검토 PASS.
 
 ## Stable Context
 ### Project

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:planflow/core/constants.dart';
+import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/onboarding/permission_onboarding_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
@@ -8,6 +11,10 @@ import 'package:shared_preferences_platform_interface/in_memory_shared_preferenc
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 void main() {
+  tearDown(() {
+    authProvider.setUser(null);
+  });
+
   testWidgets(
     'PermissionOnboardingScreen keeps the main request button visible on compact height',
     (tester) async {
@@ -36,6 +43,76 @@ void main() {
       );
       expect(find.text('Android 앱 설정 열기'), findsNothing);
       expect(find.text('마이크').hitTestable(), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'PermissionOnboardingScreen does not request OS permissions on entry',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+      final permissionService = _FakePermissionService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PermissionOnboardingScreen(
+            permissionService: permissionService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(permissionService.microphoneRequests, isZero);
+      expect(permissionService.locationRequests, isZero);
+      expect(permissionService.calendarRequests, isZero);
+      expect(permissionService.notificationRequests, isZero);
+      expect(permissionService.exactAlarmRequests, isZero);
+      expect(permissionService.fullScreenIntentRequests, isZero);
+      expect(
+        find.byKey(const ValueKey('permission-onboarding-skip-button')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'PermissionOnboardingScreen skip completes onboarding without OS permission requests',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+      authProvider.setUser('user-1');
+
+      final permissionService = _FakePermissionService();
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: AppRoutes.root,
+            builder: (context, state) => PermissionOnboardingScreen(
+              permissionService: permissionService,
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.home,
+            builder: (context, state) =>
+                const Scaffold(body: Text('home reached')),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('permission-onboarding-skip-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('home reached'), findsOneWidget);
+      expect(permissionService.completedUserId, 'user-1');
+      expect(permissionService.totalRequests, isZero);
     },
   );
 
@@ -97,6 +174,21 @@ class _FakePermissionService extends AppPermissionService {
   bool exactAlarmGranted = false;
   bool fullScreenIntentGranted = false;
   bool notificationGranted = false;
+  int microphoneRequests = 0;
+  int locationRequests = 0;
+  int calendarRequests = 0;
+  int notificationRequests = 0;
+  int exactAlarmRequests = 0;
+  int fullScreenIntentRequests = 0;
+  String? completedUserId;
+
+  int get totalRequests =>
+      microphoneRequests +
+      locationRequests +
+      calendarRequests +
+      notificationRequests +
+      exactAlarmRequests +
+      fullScreenIntentRequests;
 
   @override
   Future<AppPermissionSnapshot> checkAll() async {
@@ -115,16 +207,26 @@ class _FakePermissionService extends AppPermissionService {
   }
 
   @override
-  Future<bool> requestMicrophonePermission() async => false;
+  Future<bool> requestMicrophonePermission() async {
+    microphoneRequests += 1;
+    return false;
+  }
 
   @override
-  Future<bool> requestLocationPermission() async => false;
+  Future<bool> requestLocationPermission() async {
+    locationRequests += 1;
+    return false;
+  }
 
   @override
-  Future<bool> requestCalendarPermission() async => false;
+  Future<bool> requestCalendarPermission() async {
+    calendarRequests += 1;
+    return false;
+  }
 
   @override
   Future<NotificationPermissionStatus> requestNotificationPermissions() async {
+    notificationRequests += 1;
     notificationGranted = true;
     return NotificationPermissionStatus(
       notificationsEnabled: notificationGranted,
@@ -135,24 +237,32 @@ class _FakePermissionService extends AppPermissionService {
 
   @override
   Future<bool> requestNotificationPermission() async {
+    notificationRequests += 1;
     notificationGranted = true;
     return true;
   }
 
   @override
   Future<bool> requestExactAlarmPermission() async {
+    exactAlarmRequests += 1;
     exactAlarmGranted = true;
     return true;
   }
 
   @override
   Future<bool> requestFullScreenIntentPermission() async {
+    fullScreenIntentRequests += 1;
     fullScreenIntentGranted = true;
     return true;
   }
 
   @override
   Future<bool> openAppSettings() async => false;
+
+  @override
+  Future<void> markOnboardingCompleted(String userId) async {
+    completedUserId = userId;
+  }
 }
 
 class _FakeNotificationService extends NotificationService {

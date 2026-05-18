@@ -57,6 +57,7 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - `lite-app/` is read-only for this work; do not modify it.
 - PlanFlow product scope is defined by `PlanFlow_Codex_Prompt_v3.md`.
 - Supabase schema source of truth is `supabase/schema.sql`.
+- Because of NexusFlow integration, stop and get explicit user confirmation before any DB schema, migration, or RLS change.
 - For 1st release, do not implement billing, ads, reward ads, Kakao/SMS/call detection, or TEAM/BUSINESS features.
 - Naver Calendar is now a 1st-release working feature. Keep OAuth consent, token handling, and calendar export behavior visible and testable.
 - Keep all user-facing UI text Korean unless a platform/provider brand requires otherwise.
