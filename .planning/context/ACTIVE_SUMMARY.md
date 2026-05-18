@@ -4,6 +4,12 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-18 Voice Delivery Parsing And Core Guard Checkpoint
+- 음성 입력 `지금으로부터 3달뒤 부터 3개월마다 반복알람. 내용은 원주기독 정형외과 김두섭 리바로 갖다주기`가 `김두섭 리바로 갖다주기` 제목, `원주기독 정형외과` 장소, 3개월 뒤 시작일, 3개월 반복 규칙으로 정리되도록 GPT 후처리와 로컬 분석 후처리를 보강했다.
+- `원주기독`/`원주세브란스` 계열 장소 검색 alias를 추가해 `원주세브란스기독병원` 검색으로 이어지게 했고, 새 일정 확인 화면은 사용자가 말한 장소 텍스트를 유지하면서 검색 결과 좌표만 자동으로 저장하도록 했다.
+- Flow Core/공유 코어 파일은 NexusFlow 등 다른 프로젝트에 영향을 주는 계약으로 보고, `packages/`, `flow_core/`, 공유 모델/저장소/파싱·라우팅 서비스 변경 전 사용자 확인이 필요하다는 규칙을 `AGENTS.md`에 추가했다.
+- 검증: focused 음성/GPT/장소 테스트, ConfirmScreen 자동 좌표/사용자 수정 보존 테스트, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, ADB install/launch/PID/focused window 확인 통과. `confirm_screen_test.dart` 전체는 이번 변경과 무관한 기존 기대값 노후화 케이스가 남아 있어 focused 검증으로 대체했다.
+
 ## 2026-05-18 Login Permission Onboarding And Icon Checkpoint
 - 로그인 성공 후 라우팅을 `AuthProvider`/`GoRouter` 중심으로 정리해 로그인 화면으로 되돌아가는 중간 상태를 줄였다. 초기 세션 확인 전에는 root splash에 머물고, 명시 로그인 중 `/login`은 스플래시로 밀리지 않도록 했다.
 - 첫 권한 온보딩은 유지하되 진입만으로 OS 권한 요청을 하지 않고, 사용자가 `필요 권한 모두 요청`/개별 요청을 누른 경우에만 권한 팝업이 뜨게 했다. `나중에 필요한 기능에서 허용할게요`로 첫 온보딩을 완료하면 이후 전체 권한 페이지가 강제 재등장하지 않는다.

@@ -334,6 +334,20 @@ void main() {
       );
     });
 
+    test('public local inference handles relative month offsets as date hints',
+        () {
+      final now = DateTime(2026, 5, 18, 14, 20);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('지금으로부터 3달뒤 부터 3개월마다 반복알람'),
+        DateTime(2026, 8, 18, 9),
+      );
+    });
+
     test('public local inference handles natural Korean half-hour words', () {
       final now = DateTime(2026, 5, 7, 9, 30);
       final service = GptService(
@@ -403,6 +417,51 @@ void main() {
 
       final monthly = await service.parseSchedule('매월 첫 번째 월요일 월간 보고');
       expect(monthly['recurrence_rule'], 'FREQ=MONTHLY;BYDAY=1MO');
+    });
+
+    test('preserves person name in delivery title and separates hospital place',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '리바로 갖다주기',
+                    'location': '원주기독 정형외과 김두섭',
+                    'start_at': null,
+                    'end_at': null,
+                    'recurrence_rule': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 14, 20),
+      );
+
+      final result = await service.parseSchedule(
+        '지금으로부터 3달뒤 부터 3개월마다 반복알람. 내용은 원주기독 정형외과 김두섭 리바로 갖다주기',
+      );
+
+      expect(result['title'], '김두섭 리바로 갖다주기');
+      expect(result['location'], '원주기독 정형외과');
+      expect(result['start_at'], '2026-08-18T09:00:00.000');
+      expect(result['recurrence_rule'], 'FREQ=MONTHLY;INTERVAL=3');
+      expect(result['memo'], isNull);
+      expect(result['supplies'], <String>['리바로']);
     });
 
     test('explicit Korean time overrides a wrong model-provided current time',

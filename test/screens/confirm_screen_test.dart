@@ -162,6 +162,55 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
   });
 
+  testWidgets('ConfirmScreen auto-resolves parsed voice location coordinates',
+      (tester) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '김두섭 리바로 갖다주기',
+            location: '원주기독',
+            memo: null,
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _SingleLocationLookupService(),
+        ),
+      ),
+    );
+
+    for (var i = 0; i < 20; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+      final locationField = _textFieldWithLabel('장소');
+      if (tester.widget<TextFormField>(locationField).controller?.text ==
+          '원주기독') {
+        break;
+      }
+    }
+
+    final locationField = _textFieldWithLabel('장소');
+    expect(
+      tester.widget<TextFormField>(locationField).controller?.text,
+      '원주기독',
+    );
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final saved = repository.createdEvents.single;
+    expect(saved.location, '원주기독');
+    expect(saved.locationLat, 37.3495);
+    expect(saved.locationLng, 127.9458);
+  });
+
   testWidgets(
       'ConfirmScreen keeps user-edited fields while hydrating and does not seed memo from raw text',
       (tester) async {
@@ -189,9 +238,13 @@ void main() {
 
     await tester.pump();
 
-    final titleField = find.widgetWithText(TextFormField, '제목');
-    final locationField = find.widgetWithText(TextFormField, '장소');
-    final memoField = find.widgetWithText(TextFormField, '설명');
+    await tester.ensureVisible(find.text('설명 · 준비물'));
+    await tester.tap(find.text('설명 · 준비물'));
+    await tester.pump(const Duration(milliseconds: 250));
+
+    final titleField = _textFieldWithLabel('제목');
+    final locationField = _textFieldWithLabel('장소');
+    final memoField = _textFieldWithLabel('설명');
 
     expect(tester.widget<TextFormField>(memoField).controller?.text, isEmpty);
 
@@ -339,6 +392,13 @@ Widget _testApp(Widget child) {
   return MaterialApp.router(routerConfig: router);
 }
 
+Finder _textFieldWithLabel(String label) {
+  return find.ancestor(
+    of: find.text(label),
+    matching: find.byType(TextFormField),
+  );
+}
+
 Map<String, dynamic> _parsedSchedule({
   bool isCritical = false,
   DateTime? startAt,
@@ -378,6 +438,20 @@ class _EmptyLocationLookupService extends LocationLookupService {
   @override
   Future<List<LocationLookupResult>> search(String query) async {
     return const <LocationLookupResult>[];
+  }
+}
+
+class _SingleLocationLookupService extends LocationLookupService {
+  @override
+  Future<List<LocationLookupResult>> search(String query) async {
+    return const <LocationLookupResult>[
+      LocationLookupResult(
+        name: '원주세브란스기독병원',
+        address: '강원특별자치도 원주시 일산로 20',
+        latitude: 37.3495,
+        longitude: 127.9458,
+      ),
+    ];
   }
 }
 

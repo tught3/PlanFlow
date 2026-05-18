@@ -535,7 +535,8 @@ class VoiceCommandAnalysisService {
         gpt.inferStartAtFromRawText(normalizedText) ??
         gpt.inferStartAtFromRawText(rawText) ??
         _parseDateTime(fallback?.scheduleFields['start_at']);
-    final titleSource = _stripExplicitMemoClause(normalizedText);
+    final titleSource = _extractContentClause(normalizedText) ??
+        _stripExplicitMemoClause(normalizedText);
     final sourceTitle = _normalizeText(source['title']?.toString(), null);
     final title = sourceTitle.isNotEmpty
         ? _deriveLocalTitle(sourceTitle)
@@ -547,7 +548,7 @@ class VoiceCommandAnalysisService {
         : _extractLeadingLocation(titleSource) ??
             _extractLeadingLocation(title);
 
-    return <String, dynamic>{
+    final scheduleFields = <String, dynamic>{
       'title': title.isEmpty ? titleSource : title,
       'date': source['date'],
       'start_at': inferredStartAt?.toIso8601String(),
@@ -565,7 +566,7 @@ class VoiceCommandAnalysisService {
       'is_critical': source['is_critical'] == true,
       'recurrence_rule': _normalizeText(
         source['recurrence_rule']?.toString(),
-        _inferLocalRecurrence(titleSource),
+        _inferLocalRecurrence(normalizedText),
       ),
       'is_all_day': source['is_all_day'] == true,
       'is_multi_day': source['is_multi_day'] == true,
@@ -578,6 +579,8 @@ class VoiceCommandAnalysisService {
       'pre_actions': _normalizePreActions(source['pre_actions']),
       'voice_intent': intent.name,
     };
+    _preserveDeliveryContent(scheduleFields, titleSource);
+    return scheduleFields;
   }
 
   Map<String, dynamic>? _normalizeTargetEventHint(
@@ -782,14 +785,28 @@ class VoiceCommandAnalysisService {
         .trim();
   }
 
+  String? _extractContentClause(String rawText) {
+    final source = _normalizeText(rawText, '');
+    final match = RegExp(
+      r'(?:내용은|내용\s*[:：]|할\s*일은|일정\s*내용은)\s*(.+)$',
+    ).firstMatch(source);
+    final content = match?.group(1)?.trim();
+    if (content == null || content.isEmpty) {
+      return null;
+    }
+    return content.replaceFirst(RegExp(r'^[.。,\s]+'), '').trim();
+  }
+
   String _stripScheduleNoise(String text) {
     var cleaned = text.replaceAll(RegExp(r'[\(\)\[\]{}]'), ' ');
     final patterns = <RegExp>[
       RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
+      RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
       RegExp(r'(?:오늘|내일|모레|글피)'),
       RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
       RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
       RegExp(r'\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따)'),
+      RegExp(r'\d{1,2}\s*(?:일|주|개월|달|월|년)\s*마다'),
       RegExp(r'(?:매주|매월|매년|격주|매일)'),
       RegExp(r'(?:반복|알림|리마인더|알람|reminder)'),
       RegExp(r'(?:부터|까지|동안|정각|정도|쯤|경|예정|예약)'),
@@ -803,6 +820,61 @@ class VoiceCommandAnalysisService {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     return _normalizeSpacingForSchedule(cleaned);
+  }
+
+  void _preserveDeliveryContent(
+    Map<String, dynamic> scheduleFields,
+    String contentText,
+  ) {
+    final split = _splitLeadingMedicalLocation(contentText);
+    if (split == null ||
+        !RegExp(r'(갖다\s*주|가져다\s*주|전달|배송|납품)').hasMatch(split.remainder)) {
+      return;
+    }
+
+    final firstRemainderToken = split.remainder.split(RegExp(r'\s+')).first;
+    final currentLocation = scheduleFields['location']?.toString().trim();
+    if (currentLocation == null ||
+        currentLocation.isEmpty ||
+        currentLocation.contains(firstRemainderToken)) {
+      scheduleFields['location'] = _normalizeSpacingForSchedule(split.location);
+      scheduleFields['location_lat'] = null;
+      scheduleFields['location_lng'] = null;
+    }
+
+    final currentTitle = scheduleFields['title']?.toString().trim() ?? '';
+    if (currentTitle.isEmpty || !currentTitle.contains(firstRemainderToken)) {
+      scheduleFields['title'] = _normalizeSpacingForSchedule(split.remainder);
+    }
+
+    final supplies = _normalizeStringList(scheduleFields['supplies']);
+    if (supplies.isEmpty) {
+      final supplyMatch = RegExp(
+        r'(?:^|\s)([가-힣A-Za-z0-9]+)\s*(?:갖다\s*주|가져다\s*주|전달|배송|납품)',
+      ).firstMatch(split.remainder);
+      final supply = supplyMatch?.group(1)?.trim();
+      if (supply != null &&
+          supply.isNotEmpty &&
+          supply != firstRemainderToken) {
+        scheduleFields['supplies'] = <String>[supply];
+      }
+    }
+  }
+
+  _LocationContentSplit? _splitLeadingMedicalLocation(String text) {
+    final normalized = _normalizeText(text, '');
+    final match = RegExp(
+      r'^(.+?(?:정형외과|이비인후과|피부과|성형외과|신경외과|내과|외과|안과|치과|한의원|의원|병원|클리닉|약국))\s+(.+)$',
+    ).firstMatch(normalized);
+    final location = match?.group(1)?.trim();
+    final remainder = match?.group(2)?.trim();
+    if (location == null ||
+        location.isEmpty ||
+        remainder == null ||
+        remainder.isEmpty) {
+      return null;
+    }
+    return _LocationContentSplit(location: location, remainder: remainder);
   }
 
   bool _looksLikeOnlyScheduleMetadata(String text) {
@@ -1205,6 +1277,16 @@ class VoiceCommandAnalysisService {
     final gpt = GptService(now: _now);
     return gpt.inferStartAtFromRawText(text);
   }
+}
+
+class _LocationContentSplit {
+  const _LocationContentSplit({
+    required this.location,
+    required this.remainder,
+  });
+
+  final String location;
+  final String remainder;
 }
 
 const String _voiceCommandAnalysisPrompt = '''

@@ -151,6 +151,62 @@ void main() {
       expect(parsed['recurrence_rule'], 'FREQ=MONTHLY');
     });
 
+    test('preserves recipient name when AI over-classifies delivery place',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'normalized_text':
+                        '지금으로부터 3달뒤 부터 3개월마다 반복알람. 내용은 원주기독 정형외과 김두섭 리바로 갖다주기',
+                    'intent': 'add',
+                    'confidence': 0.91,
+                    'uncertain_fields': <String>[],
+                    'schedule_fields': <String, dynamic>{
+                      'title': '리바로 갖다주기',
+                      'location': '원주기독 정형외과 김두섭',
+                      'start_at': null,
+                      'recurrence_rule': null,
+                      'supplies': <String>[],
+                      'pre_actions': <Map<String, dynamic>>[],
+                    },
+                    'requested_changes': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = VoiceCommandAnalysisService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 14, 20),
+      );
+
+      final result = await service.analyze(
+        '지금으로부터 3달뒤 부터 3개월마다 반복알람. 내용은 원주기독 정형외과 김두섭 리바로 갖다주기',
+        stage: VoiceCommandAnalysisStage.complete,
+        budget: VoiceAnalysisRequestBudget(maxAiRequests: 2),
+      );
+
+      final parsed = result.toParsedScheduleMap();
+      expect(result.scheduleFields['title'], '김두섭 리바로 갖다주기');
+      expect(result.scheduleFields['location'], '원주기독 정형외과');
+      expect(result.scheduleFields['start_at'], '2026-08-18T09:00:00.000');
+      expect(
+          result.scheduleFields['recurrence_rule'], 'FREQ=MONTHLY;INTERVAL=3');
+      expect(result.scheduleFields['memo'], isNull);
+      expect(result.scheduleFields['supplies'], <String>['리바로']);
+      expect(parsed['title'], '김두섭 리바로 갖다주기');
+    });
+
     test('falls back to local analysis when the budget is exhausted', () async {
       var requestCount = 0;
 
