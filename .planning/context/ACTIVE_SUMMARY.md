@@ -786,3 +786,10 @@
 - Tightened both GPT fallback parsing and local voice analysis title derivation to use the same cue-aware relative-day preservation logic.
 - Adjusted regression coverage to verify the start time stays on the earlier explicit cue while the later relative-day wording remains visible in the title.
 - Verification passed: `scripts/flutter-local.ps1 test --no-pub test/services/gpt_service_test.dart --plain-name "fallback parsing preserves later relative-day content after an earlier time cue"`, `scripts/flutter-local.ps1 test --no-pub test/services/voice_command_analysis_service_test.dart --plain-name "preserves later relative-day wording after an earlier time cue"`, and `scripts/flutter-local.ps1 analyze --no-pub`.
+
+## 2026-05-19 Session Restore Stability Checkpoint
+- Reduced login flicker risk by making the initial auth bootstrap trust the restored Supabase snapshot instead of forcing an immediate refresh on startup.
+- Added a small auth-session interface so `AuthProvider` can be tested without a live Supabase instance.
+- Preserved the existing signed-in user when a refresh attempt fails during session sync, instead of immediately clearing auth state.
+- Added provider tests for restored-session startup and refresh-failure preservation, and verified the login screen still renders correctly.
+- Verification passed: `scripts/flutter-local.ps1 test --no-pub test/providers/auth_provider_test.dart`, `scripts/flutter-local.ps1 test --no-pub test/screens/login_screen_test.dart`, and `scripts/flutter-local.ps1 analyze --no-pub`.

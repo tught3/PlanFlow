@@ -12,17 +12,31 @@ enum PlanFlowOAuthProvider {
   naver,
 }
 
-class AuthService {
+abstract class AuthSessionClient {
+  Session? get currentSession;
+  User? get currentUser;
+  Stream<AuthState> get authStateChanges;
+  Future<void> refreshSession();
+  Future<void> ensureProfile([User? user]);
+  Future<void> signOut();
+}
+
+class AuthService implements AuthSessionClient {
   AuthService({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
 
+  @override
   Session? get currentSession => _client.auth.currentSession;
+
+  @override
   User? get currentUser => _client.auth.currentUser;
 
+  @override
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 
+  @override
   Future<void> refreshSession() async {
     await _client.auth.refreshSession();
   }
@@ -158,10 +172,12 @@ class AuthService {
     );
   }
 
+  @override
   Future<void> signOut() {
     return _client.auth.signOut();
   }
 
+  @override
   Future<void> ensureProfile([User? user]) async {
     final resolvedUser = user ?? currentUser;
     if (resolvedUser == null || _client.auth.currentSession == null) {

@@ -10,9 +10,12 @@ import '../services/naver_calendar_permission_service.dart';
 final AuthProvider authProvider = AuthProvider();
 
 class AuthProvider extends ChangeNotifier {
-  AuthProvider();
+  AuthProvider({
+    AuthSessionClient? authService,
+  }) : _authService = authService ?? AuthService();
 
   StreamSubscription<AuthState>? _subscription;
+  final AuthSessionClient _authService;
   String? _userId;
   String? _email;
   bool _isPasswordRecovery = false;
@@ -36,8 +39,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final service = AuthService();
-    _subscription = service.authStateChanges.listen((authState) async {
+    _subscription = _authService.authStateChanges.listen((authState) async {
       debugPrint(
         'Auth state changed: ${authState.event} '
         'user=${authState.session?.user.id ?? '<none>'}',
@@ -48,18 +50,20 @@ class AuthProvider extends ChangeNotifier {
           NaverCalendarPermissionService().captureCurrentProviderToken(),
         );
       }
-      await _syncProfileAndApplyUser(service, authState.session?.user);
+      await _syncProfileAndApplyUser(_authService, authState.session?.user);
     }, onError: (Object error, StackTrace stackTrace) {
       debugPrint('Auth state listener error: $error');
     });
-    unawaited(_bootstrapInitialSession(service));
+    unawaited(_bootstrapInitialSession());
   }
 
   Future<bool> syncCurrentSession() async {
     if (!AppEnv.isSupabaseReady) {
       return false;
     }
-    final service = AuthService();
+    final service = _authService;
+    final snapshotUser = service.currentSession?.user ?? service.currentUser;
+    final hadSignedInUser = isSignedIn;
     unawaited(
       NaverCalendarPermissionService().captureCurrentProviderToken(),
     );
@@ -67,10 +71,22 @@ class AuthProvider extends ChangeNotifier {
       await service.refreshSession();
     } catch (error) {
       debugPrint('Session refresh skipped: $error');
+      if (snapshotUser != null) {
+        await _syncProfileAndApplyUser(
+          service,
+          snapshotUser,
+          resolvesInitialSession: true,
+        );
+        return true;
+      }
+      if (hadSignedInUser) {
+        _markInitialSessionResolved();
+        return true;
+      }
     }
     await _syncProfileAndApplyUser(
       service,
-      service.currentSession?.user ?? service.currentUser,
+      service.currentSession?.user ?? service.currentUser ?? snapshotUser,
       resolvesInitialSession: true,
     );
     return isSignedIn;
@@ -104,7 +120,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _syncProfileAndApplyUser(
-    AuthService service,
+    AuthSessionClient service,
     User? user, {
     bool resolvesInitialSession = false,
   }) async {
@@ -128,16 +144,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _bootstrapInitialSession(AuthService service) async {
-    try {
-      await service.refreshSession();
-    } catch (error) {
-      debugPrint('Initial session refresh skipped: $error');
-    }
-
+  Future<void> _bootstrapInitialSession() async {
+    final snapshotUser =
+        _authService.currentSession?.user ?? _authService.currentUser;
     await _syncProfileAndApplyUser(
-      service,
-      service.currentSession?.user ?? service.currentUser,
+      _authService,
+      snapshotUser,
       resolvesInitialSession: true,
     );
   }
