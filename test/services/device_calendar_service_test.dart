@@ -73,8 +73,10 @@ void main() {
         EventModel(
           id: 'manual-1',
           userId: 'user-1',
-          title: '서초 미팅',
+          title: 'Team meeting',
           startAt: DateTime(2026, 5, 6, 10),
+          participants: const <String>['leader'],
+          targets: const <String>['director'],
         ),
       ],
     );
@@ -83,7 +85,7 @@ void main() {
         calendars: [
           {
             'id': '7',
-            'displayName': '네이버 캘린더',
+            'displayName': 'Naver Calendar',
             'accountName': 'tught3@naver.com',
           },
         ],
@@ -91,7 +93,7 @@ void main() {
           {
             'eventId': '42',
             'calendarId': '7',
-            'title': '서초 미팅',
+            'title': 'Team meeting',
             'beginMillis': DateTime(2026, 5, 6, 10).millisecondsSinceEpoch,
             'endMillis': DateTime(2026, 5, 6, 11).millisecondsSinceEpoch,
             'lastDateMillis': DateTime(2026, 5, 5, 9).millisecondsSinceEpoch,
@@ -110,6 +112,55 @@ void main() {
     expect(repository.updated.single.id, 'manual-1');
     expect(repository.updated.single.externalId, 'android:7:42');
     expect(repository.updated.single.externalCalendarId, 'android:7');
+    expect(repository.updated.single.participants, <String>['leader']);
+    expect(repository.updated.single.targets, <String>['director']);
+  });
+
+  test('keeps people fields when reflected device calendar sync relinks',
+      () async {
+    final repository = _FakeEventRepository(
+      seedEvents: <EventModel>[
+        EventModel(
+          id: 'manual-1',
+          userId: 'user-1',
+          title: 'Team meeting',
+          startAt: DateTime(2026, 5, 6, 10),
+          participants: const <String>['leader'],
+          targets: const <String>['director'],
+        ),
+      ],
+    );
+    final service = DeviceCalendarService(
+      gateway: _FakeDeviceCalendarGateway(
+        calendars: [
+          {
+            'id': '7',
+            'displayName': 'Naver Calendar',
+            'accountName': 'tught3@naver.com',
+          },
+        ],
+        events: [
+          {
+            'eventId': '42',
+            'calendarId': '7',
+            'title': 'Team meeting',
+            'beginMillis': DateTime(2026, 5, 6, 10).millisecondsSinceEpoch,
+            'endMillis': DateTime(2026, 5, 6, 11).millisecondsSinceEpoch,
+            'lastDateMillis': DateTime(2026, 5, 5, 9).millisecondsSinceEpoch,
+          },
+        ],
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.importNaverEvents();
+
+    expect(result.status, DeviceCalendarImportStatus.imported);
+    expect(result.importedCount, 0);
+    expect(repository.updated, hasLength(1));
+    expect(repository.updated.single.participants, <String>['leader']);
+    expect(repository.updated.single.targets, <String>['director']);
   });
 
   test('skips reflected PlanFlow device calendar event by event key', () async {

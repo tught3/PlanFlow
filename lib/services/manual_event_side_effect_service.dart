@@ -702,29 +702,27 @@ class ManualEventSideEffectService {
       return GeoPoint(latitude: destinationLat, longitude: destinationLng);
     }
 
-    final location = event.location?.trim();
-    if (location == null || location.isEmpty) {
-      return null;
+    for (final query in _buildDestinationSearchQueries(event)) {
+      try {
+        final searchResult = await _locationLookup.searchWithFallback(query);
+        if (searchResult.results.isEmpty) {
+          continue;
+        }
+        final selected = searchResult.results.first;
+        return GeoPoint(
+          latitude: selected.latitude,
+          longitude: selected.longitude,
+        );
+      } catch (error, stackTrace) {
+        debugPrint(
+          'Smart preparation travel fallback: location lookup failed for '
+          '${event.id}: $error',
+        );
+        debugPrintStack(stackTrace: stackTrace);
+      }
     }
 
-    try {
-      final searchResult = await _locationLookup.searchWithFallback(location);
-      if (searchResult.results.isEmpty) {
-        return null;
-      }
-      final selected = searchResult.results.first;
-      return GeoPoint(
-        latitude: selected.latitude,
-        longitude: selected.longitude,
-      );
-    } catch (error, stackTrace) {
-      debugPrint(
-        'Smart preparation travel fallback: location lookup failed for '
-        '${event.id}: $error',
-      );
-      debugPrintStack(stackTrace: stackTrace);
-      return null;
-    }
+    return null;
   }
 
   Future<GeoPoint?> _resolveOriginLocation() async {
@@ -748,6 +746,37 @@ class ManualEventSideEffectService {
       return MapTravelMode.transit;
     }
     return MapTravelMode.car;
+  }
+
+  List<String> _buildDestinationSearchQueries(EventModel event) {
+    final queries = <String>[];
+    void addQuery(String? value) {
+      final normalized = value?.trim();
+      if (normalized == null || normalized.isEmpty) {
+        return;
+      }
+      if (queries.contains(normalized)) {
+        return;
+      }
+      queries.add(normalized);
+    }
+
+    addQuery(event.location);
+    addQuery(event.title);
+    addQuery(event.memo);
+    addQuery([
+      event.location,
+      event.title,
+    ].whereType<String>().join(' '));
+    addQuery([
+      event.title,
+      event.memo,
+    ].whereType<String>().join(' '));
+    addQuery([
+      event.location,
+      event.memo,
+    ].whereType<String>().join(' '));
+    return queries;
   }
 
   bool _hasPlace(EventModel event) {

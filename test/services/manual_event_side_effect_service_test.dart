@@ -317,6 +317,53 @@ void main() {
       );
     });
 
+    test('syncAfterSave geocodes title text when location is missing',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final fakeTravelTime = _FakeTravelTimeBufferService(
+        routeMinutes: 55,
+      );
+      final lookup = _FakeLocationLookupService(
+        result: const LocationLookupResult(
+          name: 'Wonju Severance Christian Hospital',
+          address: 'Gangwon-do Wonju-si',
+          latitude: 37.3421,
+          longitude: 127.9421,
+        ),
+      );
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        notificationService: notifications,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        travelTimeBufferService: fakeTravelTime,
+        locationLookupService: lookup,
+        currentLocationProvider: () async =>
+            const GeoPoint(latitude: 37.5, longitude: 127),
+        now: () => DateTime(2026, 5, 8, 6),
+      );
+      final event = EventModel(
+        id: 'title-only-event',
+        userId: 'user-1',
+        title: 'Wonju Severance Christian Hospital visit',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: null,
+      );
+
+      await service.syncAfterSave(
+        event: event,
+        userId: 'user-1',
+      );
+
+      expect(
+        lookup.searchQueries.first,
+        'Wonju Severance Christian Hospital visit',
+      );
+      expect(fakeTravelTime.lastDestinationLat, 37.3421);
+      expect(fakeTravelTime.lastDestinationLng, 127.9421);
+    });
+
     test(
         'recalculate cancels stale departure alarms even with no upcoming events',
         () async {

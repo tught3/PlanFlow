@@ -81,35 +81,12 @@ abstract class EventRepository {
       return null;
     }
 
-    final linkedEvent = EventModel(
-      id: existing.id,
-      userId: existing.userId,
-      title: existing.title,
-      startAt: existing.startAt,
-      endAt: existing.endAt,
-      location: existing.location,
-      locationLat: existing.locationLat,
-      locationLng: existing.locationLng,
-      memo: existing.memo,
-      supplies: existing.supplies,
-      suppliesChecked: existing.suppliesChecked,
-      participants: existing.participants,
-      targets: existing.targets,
-      isCritical: existing.isCritical,
-      recurrenceRule: existing.recurrenceRule,
-      isAllDay: existing.isAllDay,
-      isMultiDay: existing.isMultiDay,
-      parentEventId: existing.parentEventId,
-      category: existing.category,
-      source: existing.source,
+    final linkedEvent = _mergeExternalMetadata(
+      existing: existing,
+      incoming: incoming,
       externalId: incomingExternalId,
       externalCalendarId: incomingCalendarId,
-      externalEtag: incoming.externalEtag ?? existing.externalEtag,
-      externalUpdatedAt:
-          incoming.externalUpdatedAt ?? existing.externalUpdatedAt,
-      lastSyncedAt: incoming.lastSyncedAt ?? DateTime.now().toUtc(),
-      createdAt: existing.createdAt,
-      updatedAt: existing.updatedAt,
+      keepExistingPeopleFields: true,
     );
     return updateEvent(linkedEvent);
   }
@@ -590,37 +567,13 @@ class SupabaseEventRepository extends EventRepository {
       return existing;
     }
 
-    final mergedEvent = EventModel(
-      id: existing.id,
-      userId: event.userId,
-      title: event.title,
-      startAt: event.startAt,
-      endAt: event.endAt,
-      location: event.location,
-      locationLat: event.locationLat,
-      locationLng: event.locationLng,
-      memo: event.memo,
-      supplies: event.supplies,
-      suppliesChecked: event.suppliesChecked,
-      participants: event.participants.isEmpty
-          ? existing.participants
-          : event.participants,
-      targets: event.targets.isEmpty ? existing.targets : event.targets,
-      isCritical: event.isCritical,
-      recurrenceRule: event.recurrenceRule,
-      isAllDay: event.isAllDay,
-      isMultiDay: event.isMultiDay,
-      parentEventId: event.parentEventId,
-      category: event.category,
-      source: normalizedSource,
+    final mergedEvent = _mergeExternalMetadata(
+      existing: existing,
+      incoming: event,
       externalId: normalizedExternalId,
       externalCalendarId: event.externalCalendarId,
-      externalEtag: event.externalEtag,
-      externalUpdatedAt: event.externalUpdatedAt,
-      lastSyncedAt: event.lastSyncedAt,
-      createdAt: existing.createdAt,
-      updatedAt: existing.updatedAt,
-    );
+      keepExistingPeopleFields: false,
+    ).copyWithSource(normalizedSource);
 
     return updateEvent(mergedEvent);
   }
@@ -910,4 +863,82 @@ class SupabaseEventRepository extends EventRepository {
         text.contains('pgrst204') ||
         text.contains('42703');
   }
+}
+
+extension on EventModel {
+  EventModel copyWithSource(String source) {
+    return EventModel(
+      id: id,
+      userId: userId,
+      title: title,
+      startAt: startAt,
+      endAt: endAt,
+      location: location,
+      locationLat: locationLat,
+      locationLng: locationLng,
+      memo: memo,
+      supplies: supplies,
+      suppliesChecked: suppliesChecked,
+      participants: participants,
+      targets: targets,
+      isCritical: isCritical,
+      recurrenceRule: recurrenceRule,
+      isAllDay: isAllDay,
+      isMultiDay: isMultiDay,
+      parentEventId: parentEventId,
+      category: category,
+      source: source,
+      externalId: externalId,
+      externalCalendarId: externalCalendarId,
+      externalEtag: externalEtag,
+      externalUpdatedAt: externalUpdatedAt,
+      lastSyncedAt: lastSyncedAt,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    );
+  }
+}
+
+EventModel _mergeExternalMetadata({
+  required EventModel existing,
+  required EventModel incoming,
+  required String externalId,
+  required String? externalCalendarId,
+  required bool keepExistingPeopleFields,
+}) {
+  final participants = keepExistingPeopleFields || incoming.participants.isEmpty
+      ? existing.participants
+      : incoming.participants;
+  final targets = keepExistingPeopleFields || incoming.targets.isEmpty
+      ? existing.targets
+      : incoming.targets;
+  return EventModel(
+    id: existing.id,
+    userId: incoming.userId,
+    title: incoming.title,
+    startAt: incoming.startAt,
+    endAt: incoming.endAt,
+    location: incoming.location,
+    locationLat: incoming.locationLat,
+    locationLng: incoming.locationLng,
+    memo: incoming.memo,
+    supplies: incoming.supplies,
+    suppliesChecked: incoming.suppliesChecked,
+    participants: participants,
+    targets: targets,
+    isCritical: incoming.isCritical,
+    recurrenceRule: incoming.recurrenceRule,
+    isAllDay: incoming.isAllDay,
+    isMultiDay: incoming.isMultiDay,
+    parentEventId: incoming.parentEventId,
+    category: incoming.category,
+    source: incoming.source,
+    externalId: externalId,
+    externalCalendarId: externalCalendarId,
+    externalEtag: incoming.externalEtag ?? existing.externalEtag,
+    externalUpdatedAt: incoming.externalUpdatedAt ?? existing.externalUpdatedAt,
+    lastSyncedAt: incoming.lastSyncedAt ?? DateTime.now().toUtc(),
+    createdAt: existing.createdAt,
+    updatedAt: existing.updatedAt,
+  );
 }

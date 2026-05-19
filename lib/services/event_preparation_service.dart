@@ -74,26 +74,27 @@ class EventPreparationService {
   }
 
   Future<EventModel> _ensureLocationCoordinates(EventModel event) async {
-    final location = event.location?.trim();
-    if (location == null ||
-        location.isEmpty ||
-        (event.locationLat != null && event.locationLng != null)) {
+    if (event.locationLat != null && event.locationLng != null) {
       return event;
     }
 
-    final candidates = await _locations.search(location);
-    if (candidates.isEmpty) {
-      return event;
+    for (final query in _buildDestinationSearchQueries(event)) {
+      final candidates = await _locations.search(query);
+      if (candidates.isEmpty) {
+        continue;
+      }
+
+      final selected = candidates.first;
+      final updated = _copyEvent(
+        event,
+        location: selected.name.isNotEmpty ? selected.name : event.location,
+        locationLat: selected.latitude,
+        locationLng: selected.longitude,
+      );
+      return _events.updateEvent(updated);
     }
 
-    final selected = candidates.first;
-    final updated = _copyEvent(
-      event,
-      location: selected.name.isNotEmpty ? selected.name : event.location,
-      locationLat: selected.latitude,
-      locationLng: selected.longitude,
-    );
-    return _events.updateEvent(updated);
+    return event;
   }
 
   Future<int> _precomputeAdjacentTravel(EventModel event) async {
@@ -144,6 +145,37 @@ class EventPreparationService {
       computed += 1;
     }
     return computed;
+  }
+
+  List<String> _buildDestinationSearchQueries(EventModel event) {
+    final queries = <String>[];
+    void addQuery(String? value) {
+      final normalized = value?.trim();
+      if (normalized == null || normalized.isEmpty) {
+        return;
+      }
+      if (queries.contains(normalized)) {
+        return;
+      }
+      queries.add(normalized);
+    }
+
+    addQuery(event.location);
+    addQuery(event.title);
+    addQuery(event.memo);
+    addQuery([
+      event.location,
+      event.title,
+    ].whereType<String>().join(' '));
+    addQuery([
+      event.title,
+      event.memo,
+    ].whereType<String>().join(' '));
+    addQuery([
+      event.location,
+      event.memo,
+    ].whereType<String>().join(' '));
+    return queries;
   }
 
   Future<void> _logTravelEstimate({
