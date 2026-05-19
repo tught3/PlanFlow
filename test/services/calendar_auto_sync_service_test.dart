@@ -696,6 +696,7 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     int prepPreAlarmOffset = 30,
     int departPreAlarmOffset = 30,
     int travelMinutes = 30,
+    String travelMode = 'car',
     DateTime? now,
   }) async {
     resyncCallCount += 1;
@@ -715,6 +716,10 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     DateTime? until,
     Iterable<String> extraDepartureEventIdsToCancel = const <String>[],
     bool resyncDepartureAlarms = true,
+    int prepTimeMin = 30,
+    int prepPreAlarmOffset = 30,
+    int departPreAlarmOffset = 30,
+    String travelMode = 'car',
   }) async {
     alarmRecalculateCallCount += 1;
     lastAlarmEvents = events.toList(growable: false);
@@ -734,6 +739,7 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
         dayEvents: dayEvents,
         userId: userId,
         dayReference: dayEvents.first.startAt!,
+        travelMode: travelMode,
         now: now,
       );
     }

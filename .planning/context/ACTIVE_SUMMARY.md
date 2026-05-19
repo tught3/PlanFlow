@@ -827,3 +827,9 @@
 - Voice/direct input now stores 함께 가는 사람 expressions like `김대리랑`, `팀장님과`, and `동행` in `participants`; `targets` remains only for action recipients such as `원장님께 보고`, `팀장님한테 전화`, or `전달/문의/확인`.
 - Updated backup restore SQL so `participants` and `targets` survive restore; no live `drop column` was added, so existing databases that already have `companions` keep it harmlessly unused.
 - Verification passed: focused model/voice/GPT/analysis tests, device-calendar/calendar-sync/Naver-CalDAV tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build; ADB had no connected devices for install/run.
+
+## 2026-05-19 Release Signing And Smart Travel Alarm Checkpoint
+- Created a local PlanFlow release/upload signing setup with ignored `android/app/planflow-release.jks`, ignored `android/key.properties`, and an encrypted ignored signing archive under `android/signing/`; no signing secrets are tracked.
+- Added `docs/planflow-signing.md`, `scripts/restore-planflow-signing.ps1`, and `scripts/adb-install-update.ps1` so another PC restores the same key and device checks use `adb install -r` without clearing app data.
+- Updated smart preparation side effects so event save, resync, recalculation, and delete cleanup pass user prep offsets and `travelMode`; route estimates use current/event coordinates through map APIs and fall back to 30 minutes with logged reasons when location data is unavailable.
+- Verification passed: focused manual side-effect and voice-action tests, `scripts/flutter-local.ps1 analyze --no-pub`, debug APK build, release appbundle build, APK signing certificate check. Device update install was attempted with `adb install -r` and correctly stopped on `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because the installed package is still signed with the old Android Debug key.

@@ -1096,6 +1096,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
               SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
           departPreAlarmOffset: settings?.departPreAlarmOffset ??
               SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+          travelMode: settings?.travelMode ?? 'car',
           isFirstExternalEventOfDay: await _isFirstExternalEventOfDay(
             userId: userId,
             event: savedEvent,
@@ -1639,11 +1640,19 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     });
 
     try {
+      final settings = await _fetchSettingsOrNull(userId);
       for (final event in events) {
         await _repository.deleteEvent(event.id, userId: userId);
         await widget.sideEffectService.cleanupAfterDelete(
           event.id,
           userId: userId,
+          prepTimeMin: settings?.prepTimeMin ??
+              SmartPreparationAlarmService.defaultPrepTimeMin,
+          prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+              SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+          departPreAlarmOffset: settings?.departPreAlarmOffset ??
+              SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+          travelMode: settings?.travelMode ?? 'car',
         );
         await _resyncExternalPreparationAfterDelete(event, userId: userId);
       }
@@ -1739,11 +1748,19 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return;
     }
     try {
+      final settings = await _fetchSettingsOrNull(userId);
       final events = await _repository.listEvents(userId: userId);
       await widget.sideEffectService.resyncExternalPreparationForDay(
         dayEvents: events,
         userId: userId,
         dayReference: deletedStartAt,
+        prepTimeMin: settings?.prepTimeMin ??
+            SmartPreparationAlarmService.defaultPrepTimeMin,
+        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+        departPreAlarmOffset: settings?.departPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        travelMode: settings?.travelMode ?? 'car',
       );
     } catch (error, stackTrace) {
       debugPrint(
@@ -1767,6 +1784,16 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       debugPrint('VoiceActionScreen first external lookup skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
       return true;
+    }
+  }
+
+  Future<UserSettingsModel?> _fetchSettingsOrNull(String userId) async {
+    try {
+      return await SettingsRepository.supabase().fetchSettings(userId);
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen settings lookup skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
     }
   }
 
@@ -1799,6 +1826,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
         departPreAlarmOffset: settings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        travelMode: settings?.travelMode ?? 'car',
       );
     } catch (error, stackTrace) {
       debugPrint('VoiceActionScreen external prep resync skipped: $error');

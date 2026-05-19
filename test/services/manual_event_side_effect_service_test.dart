@@ -1,11 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
+import 'package:planflow/services/map_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/notification_service.dart';
+import 'package:planflow/services/travel_time_buffer_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('ManualEventSideEffectService', () {
     test('builds default reminder row for manual events', () {
       final service = ManualEventSideEffectService(
@@ -151,10 +156,12 @@ void main() {
           notifications.notificationIdFor('ten-place:departure'),
         ]),
       );
-      expect(departure.scheduledEventIds, containsAll(<String>[
-        'nine-place',
-        'ten-place',
-      ]));
+      expect(
+          departure.scheduledEventIds,
+          containsAll(<String>[
+            'nine-place',
+            'ten-place',
+          ]));
       expect(departure.scheduleNextMonitorCallCount, 1);
     });
 
@@ -198,7 +205,67 @@ void main() {
       expect(departure.scheduledEventIds, ['remaining-place']);
     });
 
-    test('recalculate cancels stale departure alarms even with no upcoming events',
+    test(
+        'syncAfterSave uses dynamic travel minutes when route can be estimated',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final fakeTravelTime = _FakeTravelTimeBufferService(
+        routeMinutes: 90,
+      );
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        notificationService: notifications,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        travelTimeBufferService: fakeTravelTime,
+        currentLocationProvider: () async =>
+            const GeoPoint(latitude: 37.5, longitude: 127),
+        now: () => DateTime(2026, 5, 8, 6),
+      );
+      final event = EventModel(
+        id: 'route-event',
+        userId: 'user-1',
+        title: 'Client visit',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: 'Seoul Station',
+        locationLat: 37.7646,
+        locationLng: 128.8995,
+      );
+
+      await service.syncAfterSave(
+        event: event,
+        userId: 'user-1',
+        travelMode: 'car',
+      );
+
+      final externalRows = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'route-event')
+          .toList();
+      expect(fakeTravelTime.lastMode, MapTravelMode.car);
+      expect(externalRows, isNotEmpty,
+          reason: 'external preparation rows should exist');
+      expect(
+        externalRows.any((row) => row['title'].toString().contains('90')),
+        true,
+      );
+      final departureRow = externalRows.firstWhere(
+        (row) => row['title'].toString().contains('90'),
+        orElse: () => const <String, dynamic>{},
+      );
+      expect(fakeTravelTime.lastMode, MapTravelMode.car);
+      expect(
+        departureRow,
+        isNot(const <String, dynamic>{}),
+      );
+      expect(
+        departureRow['notify_at'],
+        DateTime(2026, 5, 8, 8).toIso8601String(),
+      );
+    });
+
+    test(
+        'recalculate cancels stale departure alarms even with no upcoming events',
         () async {
       final notifications = _FakeNotificationService();
       final departure = _FakeDepartureAlarmService();
@@ -343,6 +410,62 @@ void main() {
           await Future.wait(<Future<bool>>[first, second]), <bool>[true, true]);
       expect(gateway.insertPreActionsCallCount, 1);
       expect(notifications.cancelledSmartPreparationEventIds, ['trip']);
+    });
+
+    test(
+        'resyncExternalPreparationForDay uses dynamic travel minutes from route estimate',
+        () async {
+      final fakeTravelTime = _FakeTravelTimeBufferService(routeMinutes: 90);
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        travelTimeBufferService: fakeTravelTime,
+        currentLocationProvider: () async =>
+            const GeoPoint(latitude: 37.5, longitude: 127),
+        notificationService: notifications,
+        now: () => DateTime(2026, 5, 8, 6),
+      );
+      final event = EventModel(
+        id: 'trip-route',
+        userId: 'user-1',
+        title: '버스 이용 미팅',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: '서울역',
+        locationLat: 37.7646,
+        locationLng: 128.8995,
+      );
+
+      await service.resyncExternalPreparationForDay(
+        dayEvents: <EventModel>[event],
+        userId: 'user-1',
+        dayReference: DateTime(2026, 5, 8),
+        travelMode: 'transit',
+        now: DateTime(2026, 5, 8, 6),
+      );
+
+      final externalRows = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'trip-route')
+          .toList();
+      expect(
+        externalRows.any((row) => row['title'].toString().contains('90')),
+        true,
+      );
+      final departureRow = externalRows.firstWhere(
+        (row) => row['title'].toString().contains('90'),
+        orElse: () => const <String, dynamic>{},
+      );
+      expect(
+        departureRow,
+        isNot(const <String, dynamic>{}),
+      );
+      expect(fakeTravelTime.lastMode, MapTravelMode.transit);
+      expect(
+        departureRow['notify_at'],
+        DateTime(2026, 5, 8, 8).toIso8601String(),
+      );
     });
 
     test('resyncExternalPreparationForDay promotes earliest place event',
@@ -566,6 +689,30 @@ class _SlowManualEventGateway extends _FakeManualEventGateway {
     insertPreActionsCallCount += 1;
     await Future<void>.delayed(const Duration(milliseconds: 20));
     await super.insertPreActions(payloads);
+  }
+}
+
+class _FakeTravelTimeBufferService extends TravelTimeBufferService {
+  _FakeTravelTimeBufferService({required this.routeMinutes});
+
+  final int routeMinutes;
+  MapTravelMode? lastMode;
+
+  @override
+  Future<TravelTimeBufferEstimate> estimateWithMapApis({
+    required double originLat,
+    required double originLng,
+    required double destinationLat,
+    required double destinationLng,
+    MapTravelMode mode = MapTravelMode.car,
+    String? locationText,
+  }) async {
+    lastMode = mode;
+    return TravelTimeBufferEstimate(
+      buffer: Duration(minutes: routeMinutes),
+      source: TravelTimeBufferSource.googleMaps,
+      reason: 'fake route estimate',
+    );
   }
 }
 

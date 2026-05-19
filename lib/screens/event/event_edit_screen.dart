@@ -588,7 +588,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
   }
 
-
   Future<void> _runPostSaveSideEffects({
     required String userId,
     required EventModel savedEvent,
@@ -609,6 +608,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
         departPreAlarmOffset: settings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        travelMode: settings?.travelMode ?? 'car',
         isFirstExternalEventOfDay: await _isFirstExternalEventOfDay(
           userId: userId,
           event: savedEvent,
@@ -727,6 +727,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
         departPreAlarmOffset: settings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        travelMode: settings?.travelMode ?? 'car',
       );
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen external prep resync skipped: $error');

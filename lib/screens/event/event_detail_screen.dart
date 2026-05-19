@@ -11,7 +11,9 @@ import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/models/pre_action_model.dart';
+import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
@@ -251,8 +253,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     try {
       if (AppEnv.isSupabaseReady) {
+        final user = Supabase.instance.client.auth.currentUser;
+        final settings =
+            user == null ? null : await _fetchSettingsOrNull(user.id);
         await _repository.deleteEvent(event.id);
-        await widget.sideEffectService.cleanupAfterDelete(event.id);
+        await widget.sideEffectService.cleanupAfterDelete(
+          event.id,
+          userId: user?.id,
+          prepTimeMin: settings?.prepTimeMin ??
+              SmartPreparationAlarmService.defaultPrepTimeMin,
+          prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+              SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+          departPreAlarmOffset: settings?.departPreAlarmOffset ??
+              SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+          travelMode: settings?.travelMode ?? 'car',
+        );
         await _resyncExternalPreparationAfterDelete(event);
         unawaited(_refreshHomeWidget(_repository));
       }
@@ -337,17 +352,35 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       return;
     }
     try {
+      final settings = await _fetchSettingsOrNull(user.id);
       final events = await _repository.listEvents(userId: user.id);
       await widget.sideEffectService.resyncExternalPreparationForDay(
         dayEvents: events,
         userId: user.id,
         dayReference: deletedStartAt,
+        prepTimeMin: settings?.prepTimeMin ??
+            SmartPreparationAlarmService.defaultPrepTimeMin,
+        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+        departPreAlarmOffset: settings?.departPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        travelMode: settings?.travelMode ?? 'car',
       );
     } catch (error, stackTrace) {
       debugPrint(
         'EventDetailScreen external prep delete resync skipped: $error',
       );
       debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<UserSettingsModel?> _fetchSettingsOrNull(String userId) async {
+    try {
+      return await SettingsRepository.supabase().fetchSettings(userId);
+    } catch (error, stackTrace) {
+      debugPrint('EventDetailScreen settings lookup skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
     }
   }
 

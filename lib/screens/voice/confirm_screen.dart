@@ -932,6 +932,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
         departPreAlarmOffset: settings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        travelMode: settings?.travelMode ?? 'car',
       );
     } catch (error, stackTrace) {
       debugPrint('ConfirmScreen external prep resync skipped: $error');

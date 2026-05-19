@@ -4,9 +4,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
+import 'app_permission_service.dart';
 import 'departure_alarm_service.dart';
+import 'map_service.dart';
 import 'notification_service.dart';
 import 'smart_preparation_alarm_service.dart';
+import 'travel_time_buffer_service.dart';
 
 abstract class ManualEventSideEffectGateway {
   const ManualEventSideEffectGateway();
@@ -121,10 +124,14 @@ class ManualEventSideEffectService {
     EventRepository? eventRepository,
     DepartureAlarmService? departureAlarmService,
     NotificationService? notificationService,
+    TravelTimeBufferService? travelTimeBufferService,
+    Future<GeoPoint?> Function()? currentLocationProvider,
     DateTime Function()? now,
   })  : _eventRepository = eventRepository,
         _departureAlarmService = departureAlarmService,
         _notificationService = notificationService,
+        _travelTimeBufferService = travelTimeBufferService,
+        _currentLocationProvider = currentLocationProvider,
         _now = now;
 
   static const Duration defaultReminderOffset = Duration(minutes: 60);
@@ -136,6 +143,8 @@ class ManualEventSideEffectService {
   final EventRepository? _eventRepository;
   final DepartureAlarmService? _departureAlarmService;
   final NotificationService? _notificationService;
+  final TravelTimeBufferService? _travelTimeBufferService;
+  final Future<GeoPoint?> Function()? _currentLocationProvider;
   final DateTime Function()? _now;
 
   EventRepository get _events => _eventRepository ?? EventRepository.supabase();
@@ -143,6 +152,8 @@ class ManualEventSideEffectService {
       _departureAlarmService ?? const DepartureAlarmService();
   NotificationService get _notifications =>
       _notificationService ?? NotificationService();
+  TravelTimeBufferService get _travelTimeBuffer =>
+      _travelTimeBufferService ?? TravelTimeBufferService();
   DateTime get _currentTime => (_now ?? DateTime.now)();
 
   Future<ManualEventSideEffectResult> syncAfterSave({
@@ -157,6 +168,7 @@ class ManualEventSideEffectService {
     int departPreAlarmOffset =
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
     int travelMinutes = SmartPreparationAlarmService.defaultTravelBufferMin,
+    String travelMode = 'car',
     bool isFirstExternalEventOfDay = true,
   }) async {
     final startAt = event.startAt;
@@ -171,6 +183,12 @@ class ManualEventSideEffectService {
     var remindersSynced = false;
     var notificationsSynced = false;
     var preActionsCleared = !clearPreActions;
+    final effectiveNow = _currentTime;
+    final resolvedTravelMinutes = await _resolveTravelMinutesForEvent(
+      event,
+      fallbackTravelMinutes: travelMinutes,
+      travelMode: travelMode,
+    );
 
     await _notifications.cancelEventNotifications(event.id);
 
@@ -193,8 +211,9 @@ class ManualEventSideEffectService {
         prepTimeMin: prepTimeMin,
         prepPreAlarmOffset: prepPreAlarmOffset,
         departPreAlarmOffset: departPreAlarmOffset,
-        travelMinutes: travelMinutes,
+        travelMinutes: resolvedTravelMinutes,
         isFirstExternalEventOfDay: isFirstExternalEventOfDay,
+        now: effectiveNow,
       );
       await gateway.insertPreActions(externalPreparationPayloads);
       await gateway.insertReminders(
@@ -228,8 +247,9 @@ class ManualEventSideEffectService {
           prepTimeMin: prepTimeMin,
           prepPreAlarmOffset: prepPreAlarmOffset,
           departPreAlarmOffset: departPreAlarmOffset,
-          travelMinutes: travelMinutes,
+          travelMinutes: resolvedTravelMinutes,
           isFirstExternalEventOfDay: isFirstExternalEventOfDay,
+          now: effectiveNow,
         ),
       );
       notificationsSynced = true;
@@ -240,6 +260,7 @@ class ManualEventSideEffectService {
     await recalculateUpcomingAlarmsForUser(
       userId: userId,
       seedEvents: <EventModel>[event],
+      travelMode: travelMode,
     );
 
     return ManualEventSideEffectResult(
@@ -249,13 +270,28 @@ class ManualEventSideEffectService {
     );
   }
 
-  Future<void> cleanupAfterDelete(String eventId, {String? userId}) async {
+  Future<void> cleanupAfterDelete(
+    String eventId, {
+    String? userId,
+    int prepTimeMin = SmartPreparationAlarmService.defaultPrepTimeMin,
+    int prepPreAlarmOffset =
+        SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+    int departPreAlarmOffset =
+        SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+    String travelMode = 'car',
+  }) async {
     await _notifications.cancelEventNotifications(eventId);
     final resolvedUserId = userId ?? _currentSupabaseUserId();
     if (resolvedUserId == null || resolvedUserId.isEmpty) {
       return;
     }
-    await recalculateUpcomingAlarmsForUser(userId: resolvedUserId);
+    await recalculateUpcomingAlarmsForUser(
+      userId: resolvedUserId,
+      prepTimeMin: prepTimeMin,
+      prepPreAlarmOffset: prepPreAlarmOffset,
+      departPreAlarmOffset: departPreAlarmOffset,
+      travelMode: travelMode,
+    );
   }
 
   Future<ManualEventAlarmRecalculationResult> recalculateUpcomingAlarmsForUser({
@@ -263,6 +299,12 @@ class ManualEventSideEffectService {
     Iterable<EventModel> seedEvents = const <EventModel>[],
     DateTime? now,
     bool resyncDepartureAlarms = true,
+    int prepTimeMin = SmartPreparationAlarmService.defaultPrepTimeMin,
+    int prepPreAlarmOffset =
+        SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+    int departPreAlarmOffset =
+        SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+    String travelMode = 'car',
   }) async {
     final effectiveNow = now ?? _currentTime;
     final until = effectiveNow.add(const Duration(days: 7));
@@ -290,6 +332,10 @@ class ManualEventSideEffectService {
       now: effectiveNow,
       until: until,
       resyncDepartureAlarms: resyncDepartureAlarms,
+      prepTimeMin: prepTimeMin,
+      prepPreAlarmOffset: prepPreAlarmOffset,
+      departPreAlarmOffset: departPreAlarmOffset,
+      travelMode: travelMode,
     );
   }
 
@@ -300,6 +346,12 @@ class ManualEventSideEffectService {
     DateTime? until,
     Iterable<String> extraDepartureEventIdsToCancel = const <String>[],
     bool resyncDepartureAlarms = true,
+    int prepTimeMin = SmartPreparationAlarmService.defaultPrepTimeMin,
+    int prepPreAlarmOffset =
+        SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+    int departPreAlarmOffset =
+        SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+    String travelMode = 'car',
   }) async {
     final effectiveNow = now ?? _currentTime;
     final effectiveUntil = until ?? effectiveNow.add(const Duration(days: 7));
@@ -335,7 +387,11 @@ class ManualEventSideEffectService {
         dayEvents: eventsForDay,
         userId: userId,
         dayReference: reference,
+        prepTimeMin: prepTimeMin,
+        prepPreAlarmOffset: prepPreAlarmOffset,
+        departPreAlarmOffset: departPreAlarmOffset,
         now: effectiveNow,
+        travelMode: travelMode,
       );
       preparationDays += 1;
       preparationFailed = preparationFailed || !ok;
@@ -466,6 +522,7 @@ class ManualEventSideEffectService {
     int departPreAlarmOffset =
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
     int travelMinutes = SmartPreparationAlarmService.defaultTravelBufferMin,
+    String travelMode = 'car',
     DateTime? now,
   }) async {
     final resyncKey = _externalPreparationResyncKey(userId, dayReference);
@@ -483,6 +540,7 @@ class ManualEventSideEffectService {
       prepPreAlarmOffset: prepPreAlarmOffset,
       departPreAlarmOffset: departPreAlarmOffset,
       travelMinutes: travelMinutes,
+      travelMode: travelMode,
       now: now,
     );
     _externalPreparationResyncs[resyncKey] = resyncFuture;
@@ -503,6 +561,7 @@ class ManualEventSideEffectService {
     required int prepPreAlarmOffset,
     required int departPreAlarmOffset,
     required int travelMinutes,
+    required String travelMode,
     DateTime? now,
   }) async {
     final smartService = SmartPreparationAlarmService(
@@ -531,6 +590,11 @@ class ManualEventSideEffectService {
     final firstExternalEventId = externalEvents.first.id;
     final payloadsByEvent = <EventModel, List<Map<String, dynamic>>>{};
     for (final event in externalEvents) {
+      final resolvedTravelMinutes = await _resolveTravelMinutesForEvent(
+        event,
+        fallbackTravelMinutes: travelMinutes,
+        travelMode: travelMode,
+      );
       payloadsByEvent[event] = smartService.buildExternalEventPayloads(
         eventId: event.id,
         userId: userId,
@@ -540,7 +604,7 @@ class ManualEventSideEffectService {
         prepTimeMin: prepTimeMin,
         prepPreAlarmOffset: prepPreAlarmOffset,
         departPreAlarmOffset: departPreAlarmOffset,
-        travelMinutes: travelMinutes,
+        travelMinutes: resolvedTravelMinutes,
         isFirstExternalEventOfDay: event.id == firstExternalEventId,
         now: now,
       );
@@ -578,6 +642,69 @@ class ManualEventSideEffectService {
     final mm = localDay.month.toString().padLeft(2, '0');
     final dd = localDay.day.toString().padLeft(2, '0');
     return '$userId:$yyyy-$mm-$dd';
+  }
+
+  Future<int> _resolveTravelMinutesForEvent(
+    EventModel event, {
+    required int fallbackTravelMinutes,
+    required String travelMode,
+  }) async {
+    if (fallbackTravelMinutes !=
+        SmartPreparationAlarmService.defaultTravelBufferMin) {
+      return fallbackTravelMinutes;
+    }
+    final destinationLat = event.locationLat;
+    final destinationLng = event.locationLng;
+    if (destinationLat == null || destinationLng == null) {
+      debugPrint(
+        'Smart preparation travel fallback: no event coordinates for ${event.id}.',
+      );
+      return fallbackTravelMinutes;
+    }
+
+    final origin = await _currentLocationProvider?.call() ??
+        await _permissionServiceCurrentLocation();
+    if (origin == null) {
+      debugPrint(
+        'Smart preparation travel fallback: no current location for ${event.id}.',
+      );
+      return fallbackTravelMinutes;
+    }
+
+    try {
+      final estimate = await _travelTimeBuffer.estimateWithMapApis(
+        originLat: origin.latitude,
+        originLng: origin.longitude,
+        destinationLat: destinationLat,
+        destinationLng: destinationLng,
+        mode: _travelModeFromSettings(travelMode),
+        locationText: event.location,
+      );
+      return estimate.minutes;
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Smart preparation travel fallback: route estimate failed for '
+        '${event.id}: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      return fallbackTravelMinutes;
+    }
+  }
+
+  Future<GeoPoint?> _permissionServiceCurrentLocation() async {
+    if (kIsWeb) {
+      return null;
+    }
+    final permissionService = AppPermissionService();
+    final lastKnown = await permissionService.getLastKnownLocation();
+    return lastKnown ?? await permissionService.getCurrentLocation();
+  }
+
+  MapTravelMode _travelModeFromSettings(String travelMode) {
+    if (travelMode == 'transit') {
+      return MapTravelMode.transit;
+    }
+    return MapTravelMode.car;
   }
 
   bool _hasPlace(EventModel event) {

@@ -1520,7 +1520,14 @@ class _NoopSideEffectService extends ManualEventSideEffectService {
   const _NoopSideEffectService();
 
   @override
-  Future<void> cleanupAfterDelete(String eventId, {String? userId}) async {}
+  Future<void> cleanupAfterDelete(
+    String eventId, {
+    String? userId,
+    int prepTimeMin = 30,
+    int prepPreAlarmOffset = 30,
+    int departPreAlarmOffset = 30,
+    String travelMode = 'car',
+  }) async {}
 }
 
 class _RecordingSideEffectService extends ManualEventSideEffectService {
@@ -1528,7 +1535,14 @@ class _RecordingSideEffectService extends ManualEventSideEffectService {
   final cleanedUpUserIds = <String?>[];
 
   @override
-  Future<void> cleanupAfterDelete(String eventId, {String? userId}) async {
+  Future<void> cleanupAfterDelete(
+    String eventId, {
+    String? userId,
+    int prepTimeMin = 30,
+    int prepPreAlarmOffset = 30,
+    int departPreAlarmOffset = 30,
+    String travelMode = 'car',
+  }) async {
     cleanedUpEventIds.add(eventId);
     cleanedUpUserIds.add(userId);
   }
