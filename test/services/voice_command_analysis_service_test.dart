@@ -207,6 +207,54 @@ void main() {
       expect(parsed['title'], '김두섭 리바로 갖다주기');
     });
 
+    test('preserves later relative-day wording after an earlier time cue',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'normalized_text': '오늘 오후 2시에 내일팀장님 동행방문하시는지 확인전화하기',
+                    'intent': 'add',
+                    'confidence': 0.9,
+                    'uncertain_fields': <String>[],
+                    'schedule_fields': <String, dynamic>{
+                      'title': '내일팀장님 동행방문하시는지 확인전화하기',
+                      'start_at': '2026-05-18T14:00:00.000',
+                      'supplies': <String>[],
+                      'pre_actions': <Map<String, dynamic>>[],
+                    },
+                    'requested_changes': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = VoiceCommandAnalysisService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 9),
+      );
+
+      final result = await service.analyze(
+        '오늘 오후 2시에 내일팀장님 동행방문하시는지 확인전화하기',
+        stage: VoiceCommandAnalysisStage.complete,
+        budget: VoiceAnalysisRequestBudget(maxAiRequests: 2),
+      );
+
+      expect(result.scheduleFields['title'], startsWith('내일'));
+      expect(result.scheduleFields['title'], contains('확인전화하기'));
+      expect(result.scheduleFields['start_at'], '2026-05-18T14:00:00.000');
+      expect(result.intent, VoiceCommandIntent.add);
+    });
+
     test('falls back to local analysis when the budget is exhausted', () async {
       var requestCount = 0;
 

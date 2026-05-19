@@ -461,7 +461,10 @@ class GptService {
         (title != null && title.trim().isNotEmpty) ? title : rawText,
       ),
     );
-    final cleaned = _stripScheduleNoise(source);
+    final cleaned = _stripScheduleNoise(
+      source,
+      preserveRelativeDayWords: _shouldPreserveRelativeDayWords(rawText),
+    );
     final titleWithoutLocation = _stripLeadingLocationPhrase(cleaned);
     if (titleWithoutLocation.isNotEmpty) {
       return _normalizeSpacingForSchedule(titleWithoutLocation);
@@ -469,7 +472,9 @@ class GptService {
 
     final fallback = _stripLeadingLocationPhrase(
       _stripScheduleNoise(
-          _normalizeKoreanText(_stripExplicitMemoClause(rawText))),
+        rawText,
+        preserveRelativeDayWords: _shouldPreserveRelativeDayWords(rawText),
+      ),
     );
     if (fallback.isNotEmpty) {
       return _normalizeSpacingForSchedule(fallback);
@@ -605,12 +610,14 @@ class GptService {
     return remainder;
   }
 
-  String _stripScheduleNoise(String text) {
+  String _stripScheduleNoise(
+    String text, {
+    bool preserveRelativeDayWords = false,
+  }) {
     var cleaned = text.replaceAll(RegExp(r'[\(\)\[\]{}]'), ' ');
     final patterns = <RegExp>[
       RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
       RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
-      RegExp(r'(?:오늘|내일|모레|글피)'),
       RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
       RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
       RegExp(r'\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따)'),
@@ -620,6 +627,9 @@ class GptService {
       RegExp(r'(?:부터|까지|동안|정각|정도|쯤|경|예정|예약)'),
       RegExp(r'(?:열두시반|열한시반|열시반|한시반|두시반|세시반|네시반)'),
     ];
+    if (!preserveRelativeDayWords) {
+      patterns.add(RegExp(r'(?:오늘|내일|모레|글피)'));
+    }
     for (final pattern in patterns) {
       cleaned = cleaned.replaceAll(pattern, ' ');
     }
@@ -628,6 +638,57 @@ class GptService {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     return _normalizeSpacingForSchedule(cleaned);
+  }
+
+  bool _shouldPreserveRelativeDayWords(String text) {
+    final normalized = _normalizeKoreanText(text);
+    final cueMatch = _firstScheduleCueMatch(normalized);
+    if (cueMatch == null) {
+      return false;
+    }
+
+    final tail = normalized.substring(cueMatch.end);
+    return RegExp(r'(오늘|내일|모레|글피)').hasMatch(tail);
+  }
+
+  String _stripRelativeDayWordsIfContent(String text) {
+    if (!_shouldPreserveRelativeDayWords(text)) {
+      return text;
+    }
+
+    final normalized = _normalizeKoreanText(text);
+    final cueMatch = _firstScheduleCueMatch(normalized);
+    if (cueMatch == null) {
+      return text;
+    }
+
+    final prefix = normalized.substring(0, cueMatch.end);
+    final tail = normalized
+        .substring(cueMatch.end)
+        .replaceAll(RegExp(r'(?:오늘|내일|모레|글피)'), ' ');
+    return '$prefix$tail';
+  }
+
+  RegExpMatch? _firstScheduleCueMatch(String text) {
+    final patterns = <RegExp>[
+      RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
+      RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
+      RegExp(r'(?:오늘|내일|모레|글피)'),
+      RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
+      RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
+    ];
+
+    RegExpMatch? first;
+    for (final pattern in patterns) {
+      for (final match in pattern.allMatches(text)) {
+        if (first == null ||
+            match.start < first.start ||
+            (match.start == first.start && match.end > first.end)) {
+          first = match;
+        }
+      }
+    }
+    return first;
   }
 
   void _preserveDeliveryContent(
@@ -769,13 +830,14 @@ class GptService {
     }
 
     final now = _now();
-    final relative = _extractRelativeOffsetFromText(normalized, now);
+    final dateTimeText = _stripRelativeDayWordsIfContent(normalized);
+    final relative = _extractRelativeOffsetFromText(dateTimeText, now);
     if (relative != null) {
       return relative;
     }
 
-    final date = _extractDateFromText(normalized, now);
-    final time = _extractTimeFromText(normalized);
+    final date = _extractDateFromText(dateTimeText, now);
+    final time = _extractTimeFromText(dateTimeText);
 
     if (date == null && time == null) {
       return null;

@@ -780,3 +780,9 @@
 - Added background-sync guidance in the Naver CalDAV import/progress flow so users are told the sync keeps running even if they send the app to the background.
 - Added a slower widget-test path so the progress dialog stays open long enough to verify the guidance text while sync is active.
 - Verification passed: `scripts/flutter-local.ps1 test --no-pub test/screens/settings_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`.
+
+## 2026-05-19 Voice Relative-Day Preservation Checkpoint
+- Updated voice parsing so later relative-day words like `내일` are preserved when they appear after an earlier explicit time cue such as `오늘 오후 2시`.
+- Tightened both GPT fallback parsing and local voice analysis title derivation to use the same cue-aware relative-day preservation logic.
+- Adjusted regression coverage to verify the start time stays on the earlier explicit cue while the later relative-day wording remains visible in the title.
+- Verification passed: `scripts/flutter-local.ps1 test --no-pub test/services/gpt_service_test.dart --plain-name "fallback parsing preserves later relative-day content after an earlier time cue"`, `scripts/flutter-local.ps1 test --no-pub test/services/voice_command_analysis_service_test.dart --plain-name "preserves later relative-day wording after an earlier time cue"`, and `scripts/flutter-local.ps1 analyze --no-pub`.

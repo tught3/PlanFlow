@@ -539,8 +539,8 @@ class VoiceCommandAnalysisService {
         _stripExplicitMemoClause(normalizedText);
     final sourceTitle = _normalizeText(source['title']?.toString(), null);
     final title = sourceTitle.isNotEmpty
-        ? _deriveLocalTitle(sourceTitle)
-        : _deriveLocalTitle(titleSource);
+        ? _deriveLocalTitle(sourceTitle, referenceText: normalizedText)
+        : _deriveLocalTitle(titleSource, referenceText: normalizedText);
     final normalizedLocationText =
         _normalizeText(source['location']?.toString(), null);
     final inferredLocation = normalizedLocationText.isNotEmpty
@@ -715,8 +715,10 @@ class VoiceCommandAnalysisService {
         RegExp(r'(오늘|내일|모레|글피|이번주|다음주|매주|격주|매월|매년)').hasMatch(normalized);
   }
 
-  String _deriveLocalTitle(String text) {
+  String _deriveLocalTitle(String text, {String? referenceText}) {
     var title = _normalizeText(_stripExplicitMemoClause(text), '');
+    final preserveRelativeDayWords =
+        _shouldPreserveRelativeDayWords(referenceText ?? title);
     title = title
         .replaceAll(
           RegExp(
@@ -741,7 +743,12 @@ class VoiceCommandAnalysisService {
           ' ',
         )
         .replaceAll(RegExp(r'\d{1,3}\s*(분|시간)\s*(뒤|후|있다가|이따)'), ' ')
-        .replaceAll(RegExp(r'(오늘|내일|모레|글피|이번주|다음주|매주|격주|매월|매년)'), ' ')
+        .replaceAll(
+          preserveRelativeDayWords
+              ? RegExp(r'(이번주|다음주|매주|격주|매월|매년)')
+              : RegExp(r'(오늘|내일|모레|글피|이번주|다음주|매주|격주|매월|매년)'),
+          ' ',
+        )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     title = _stripLeadingLocationPhrase(title);
@@ -785,6 +792,39 @@ class VoiceCommandAnalysisService {
         .trim();
   }
 
+  bool _shouldPreserveRelativeDayWords(String text) {
+    final normalized = _normalizeText(text, '');
+    final cueMatch = _firstScheduleCueMatch(normalized);
+    if (cueMatch == null) {
+      return false;
+    }
+
+    final tail = normalized.substring(cueMatch.end);
+    return RegExp(r'(오늘|내일|모레|글피)').hasMatch(tail);
+  }
+
+  RegExpMatch? _firstScheduleCueMatch(String text) {
+    final patterns = <RegExp>[
+      RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
+      RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
+      RegExp(r'(?:오늘|내일|모레|글피)'),
+      RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
+      RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
+    ];
+
+    RegExpMatch? first;
+    for (final pattern in patterns) {
+      for (final match in pattern.allMatches(text)) {
+        if (first == null ||
+            match.start < first.start ||
+            (match.start == first.start && match.end > first.end)) {
+          first = match;
+        }
+      }
+    }
+    return first;
+  }
+
   String? _extractContentClause(String rawText) {
     final source = _normalizeText(rawText, '');
     final match = RegExp(
@@ -797,12 +837,14 @@ class VoiceCommandAnalysisService {
     return content.replaceFirst(RegExp(r'^[.。,\s]+'), '').trim();
   }
 
-  String _stripScheduleNoise(String text) {
+  String _stripScheduleNoise(
+    String text, {
+    bool preserveRelativeDayWords = false,
+  }) {
     var cleaned = text.replaceAll(RegExp(r'[\(\)\[\]{}]'), ' ');
     final patterns = <RegExp>[
       RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
       RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
-      RegExp(r'(?:오늘|내일|모레|글피)'),
       RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
       RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
       RegExp(r'\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따)'),
@@ -812,6 +854,9 @@ class VoiceCommandAnalysisService {
       RegExp(r'(?:부터|까지|동안|정각|정도|쯤|경|예정|예약)'),
       RegExp(r'(?:열두시반|열한시반|열시반|한시반|두시반|세시반|네시반)'),
     ];
+    if (!preserveRelativeDayWords) {
+      patterns.add(RegExp(r'(?:오늘|내일|모레|글피)'));
+    }
     for (final pattern in patterns) {
       cleaned = cleaned.replaceAll(pattern, ' ');
     }

@@ -176,6 +176,43 @@ void main() {
       expect(result['memo'], '주차장 B2 확인');
     });
 
+    test(
+        'fallback parsing preserves later relative-day content after an earlier time cue',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': 'not valid json',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 9),
+      );
+
+      final result = await service.parseSchedule(
+        '오늘 오후 2시에 내일팀장님 동행방문하시는지 확인전화하기',
+      );
+
+      expect(result['parse_failed'], isTrue);
+      expect(result['start_at'], '2026-05-18T14:00:00.000');
+      expect(result['title'], startsWith('내일'));
+      expect(result['title'], contains('동행방문'));
+    });
+
     test('fallback parsing keeps monthly recurrence and removes location noise',
         () async {
       final client = MockClient((request) async {
