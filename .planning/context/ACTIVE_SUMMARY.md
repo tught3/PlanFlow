@@ -4,6 +4,12 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-19 Calendar Silent Refresh Checkpoint
+- CalendarScreen now keeps the last rendered calendar content visible during refresh, no longer shows the `캘린더 확인 중` loading panel, and uses the app bar refresh button only as a silent trigger.
+- Only terminal states remain visible on the calendar tab: Supabase missing, signed out, or a real load error. Refreshes now preserve the previous event list instead of clearing the screen.
+- Added a focused calendar screen test that asserts the loading panel does not appear while the tab initializes.
+- Verification passed: `dart analyze lib/screens/calendar/calendar_screen.dart test/screens/calendar_screen_test.dart test/screens/calendar_marker_test.dart test/screens/calendar_day_events_sheet_test.dart`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app`.
+
 ## 2026-05-19 Startup Login Flash Fix Checkpoint
 - Hardened auth startup so `AuthProvider` refreshes the Supabase session before marking the initial session resolved, which keeps already-signed-in users on splash until the session is ready instead of flashing the login screen.
 - Simplified the splash screen into a passive loading state with no manual login/home buttons during startup, so the first visible screen stays calm while auth settles.

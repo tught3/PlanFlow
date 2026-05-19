@@ -86,9 +86,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _selectedDate = DateTime.now();
   DateTime _focusedMonth = DateTime.now();
   List<EventModel> _allEvents = const <EventModel>[];
-  _CalendarLoadState _loadState = _CalendarLoadState.loading;
+  _CalendarLoadState _loadState = _CalendarLoadState.ready;
   String? _loadMessage;
   bool _isSearching = false;
+  bool _isRefreshing = false;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -112,22 +113,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _loadEvents({DateTime? focusDate}) async {
+    if (_isRefreshing) {
+      return;
+    }
+
     if (mounted) {
       setState(() {
+        _isRefreshing = true;
         if (focusDate != null) {
           _selectedDate = focusDate;
           _focusedMonth = DateTime(focusDate.year, focusDate.month);
         }
-        _loadState = _CalendarLoadState.loading;
-        _loadMessage = null;
       });
     }
 
     if (!AppEnv.isSupabaseReady) {
       if (mounted) {
         setState(() {
-          _allEvents = const <EventModel>[];
           _loadState = _CalendarLoadState.supabaseMissing;
+          _loadMessage = null;
+        });
+      }
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
         });
       }
       return;
@@ -136,8 +145,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (user == null) {
       if (mounted) {
         setState(() {
-          _allEvents = const <EventModel>[];
           _loadState = _CalendarLoadState.signedOut;
+          _loadMessage = null;
+        });
+      }
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
         });
       }
       return;
@@ -154,19 +168,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
             _focusedMonth = DateTime(focusDate.year, focusDate.month);
           }
           _loadState = _CalendarLoadState.ready;
+          _loadMessage = null;
         });
       }
     } catch (error) {
       if (mounted) {
         setState(() {
-          _allEvents = const <EventModel>[];
           _loadState = _CalendarLoadState.error;
           _loadMessage = '캘린더 일정을 불러오지 못했어요. 다시 시도해 주세요.';
         });
       }
       debugPrint('CalendarScreen load failed: $error');
     } finally {
-      // Loading state is replaced by one of the terminal states above.
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
     }
   }
 
@@ -555,7 +573,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final monthLabel = '${_focusedMonth.year}년 ${_focusedMonth.month}월';
     final selectedDateLabel = _koreanDateLabel(_selectedDate);
     final dayEvents = _eventsForSelectedDate;
-    final isLoading = _loadState == _CalendarLoadState.loading;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -576,13 +593,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
           IconButton(
             tooltip: '새로고침',
-            onPressed: isLoading ? null : () => _loadEvents(),
-            icon: isLoading
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
+            onPressed: () => _loadEvents(),
+            icon: const Icon(Icons.refresh),
           ),
         ],
       ),
@@ -598,7 +610,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(AppConstants.defaultPadding),
               children: [
-                if (_loadState != _CalendarLoadState.ready) ...[
+                if (_loadState == _CalendarLoadState.supabaseMissing ||
+                    _loadState == _CalendarLoadState.signedOut ||
+                    _loadState == _CalendarLoadState.error) ...[
                   _CalendarStatusCard(
                     state: _loadState,
                     message: _loadMessage,
