@@ -88,6 +88,26 @@ class FeedbackReport {
     );
   }
 
+  FeedbackReport copyWith({
+    FeedbackReportStatus? status,
+  }) {
+    return FeedbackReport(
+      id: id,
+      userId: userId,
+      type: type,
+      message: message,
+      expectedBehavior: expectedBehavior,
+      appVersion: appVersion,
+      platform: platform,
+      deviceSummary: deviceSummary,
+      routeOrScreen: routeOrScreen,
+      diagnostics: diagnostics,
+      status: status ?? this.status,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    );
+  }
+
   static Map<String, Object?> _mapFromJsonb(Object? value) {
     if (value is Map<String, Object?>) {
       return value;

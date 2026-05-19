@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -441,6 +443,7 @@ class _FeedbackAdminReportsSheetState extends State<FeedbackAdminReportsSheet> {
   ];
 
   late Future<List<FeedbackReport>> _reportsFuture;
+  List<FeedbackReport> _cachedReports = const <FeedbackReport>[];
   String? _updatingReportId;
   String? _errorMessage;
 
@@ -572,24 +575,47 @@ class _FeedbackAdminReportsSheetState extends State<FeedbackAdminReportsSheet> {
   }
 
   Future<List<FeedbackReport>> _loadReportsAndMarkViewed() async {
-    final reports = await widget.repository.fetchAdminReports(limit: 100);
-    final newReports = reports
-        .where((report) => report.status == FeedbackReportStatus.newReport)
-        .toList(growable: false);
+    try {
+      final reports = await widget.repository.fetchAdminReports(limit: 100);
+      final newReports = reports
+          .where((report) => report.status == FeedbackReportStatus.newReport)
+          .toList(growable: false);
 
-    if (newReports.isEmpty) {
-      return reports;
+      final visibleReports = newReports.isEmpty
+          ? reports
+          : reports
+              .map(
+                (report) => report.status == FeedbackReportStatus.newReport
+                    ? report.copyWith(
+                        status: FeedbackReportStatus.triaged,
+                      )
+                    : report,
+              )
+              .toList(growable: false);
+
+      _cachedReports = visibleReports;
+      if (newReports.isNotEmpty) {
+        unawaited(_markReportsTriaged(newReports));
+      }
+      return visibleReports;
+    } catch (_) {
+      return _cachedReports;
     }
+  }
 
-    await Future.wait(
-      newReports.map(
-        (report) => widget.repository.updateReportStatus(
-          reportId: report.id,
-          status: FeedbackReportStatus.triaged,
+  Future<void> _markReportsTriaged(List<FeedbackReport> reports) async {
+    try {
+      await Future.wait(
+        reports.map(
+          (report) => widget.repository.updateReportStatus(
+            reportId: report.id,
+            status: FeedbackReportStatus.triaged,
+          ),
         ),
-      ),
-    );
-    return widget.repository.fetchAdminReports(limit: 100);
+      );
+    } catch (_) {
+      // Ignore background triage failures so the inbox still opens normally.
+    }
   }
 
   void _refresh() {
