@@ -4,6 +4,17 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-19 PlanFlow Bootstrap Script Checkpoint
+- Added `scripts/bootstrap-planflow-dev.ps1` as a single-command setup helper for new PCs.
+- The script now auto-discovers OneDrive archive path first, or accepts `-ArchivePath`, restores signing, builds debug APK and release AAB through `scripts/flutter-local.ps1`, verifies the debug APK fingerprint, and optionally runs `scripts/adb-install-update.ps1` with `-Install`.
+- Updated `docs/planflow-signing.md` to recommend the one-command bootstrap path and document optional flags.
+- A smoke run (`.\scripts/bootstrap-planflow-dev.ps1 -ArchivePath .\does-not-exist.zip`) validated script parsing and clear failure when the archive path is invalid.
+
+## 2026-05-19 PlanFlow Release Bootstrap Checkpoint
+- Added `scripts/planflow-release-bootstrap.ps1` as a one-command entrypoint for the second-PC signing flow. It restores signing only when needed, builds the debug APK and release appbundle, verifies the PlanFlow release APK fingerprint, installs to a connected device, and launches the app unless skipped.
+- Rewrote `docs/planflow-signing.md` so the new bootstrap script is the preferred path, with explicit `-ArchivePath`, `-PasswordFile`, and `-AllowOneTimeTransition` options for the rare old-debug-install case.
+- The existing `scripts/restore-planflow-signing.ps1` and `scripts/adb-install-update.ps1` remain the lower-level helpers; the bootstrap script now wraps them so the user does not have to repeat the manual sequence.
+
 
 ## 2026-05-19 Post-save Background Follow-ups Checkpoint
 - Voice confirm and event edit saves now return to the user immediately after the event row is written, while follow-up work such as pre_actions, reminders, departure alarms, location history, voice logs, external prep resync, calendar auto-sync, and home-widget refresh runs in the background.

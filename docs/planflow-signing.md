@@ -11,26 +11,39 @@ PlanFlow must use the same release/upload keystore on every PC. If a build is si
 
 All files above are intentionally ignored by Git. Never commit them or paste their contents into chat, tickets, logs, or screenshots.
 
-## New PC Restore
+## New PC Bootstrap
 
-1. Copy `PlanFlow-signing-keys.zip.aes` to `android/signing/` through a private channel.
-2. Get the archive password through a separate private channel.
-3. Run:
+The easiest one-command flow is:
 
 ```powershell
-.\scripts\restore-planflow-signing.ps1
+.\scripts\planflow-release-bootstrap.ps1
 ```
 
-4. Build with the repo wrapper:
+That script does the whole repeatable setup in one run:
+
+1. Restores signing files if they are missing locally, using the encrypted archive from OneDrive first and then the repo-local fallback path.
+2. Builds the debug APK and release appbundle with `scripts/flutter-local.ps1`.
+3. Verifies the APK signer fingerprint is the PlanFlow release certificate:
+   `b3f2289851b78881263ca939fc09181efc310152828dd700fab7c552bef9a231`
+4. Updates the connected device with `scripts/adb-install-update.ps1`.
+5. Launches the app and prints the PID unless `-SkipLaunch` is used.
+
+If the archive lives somewhere else, pass it explicitly:
 
 ```powershell
-.\scripts\flutter-local.ps1 build appbundle --release --no-pub
+.\scripts\planflow-release-bootstrap.ps1 -ArchivePath "D:\custom\PlanFlow-signing-keys.zip.aes"
 ```
 
-5. For device verification, update-install only:
+If you want the password to come from a file instead of an interactive prompt:
 
 ```powershell
-.\scripts\adb-install-update.ps1
+.\scripts\planflow-release-bootstrap.ps1 -PasswordFile "C:\secure\planflow-signing-pass.txt"
+```
+
+If the connected device still has the old Android Debug-signed PlanFlow installed and you want a one-time transition, use:
+
+```powershell
+.\scripts\planflow-release-bootstrap.ps1 -AllowOneTimeTransition
 ```
 
 Do not use `adb uninstall com.planflow.app`, `pm clear`, or any broad cleanup script as a normal update check. If Android reports `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, compare the installed app signature and the APK/AAB signature, then decide manually how to migrate the device.
