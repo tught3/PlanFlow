@@ -36,5 +36,30 @@ void main() {
       expect(result.titleCandidate, '매주 팀장님 확인전화');
       expect(result.explicitFieldClauses['recurrence_rule'], '매주');
     });
+
+    test('keeps person words in title and extracts participants', () {
+      const rawText = '내일 오전 11시 팀장님 원주세브란스방문';
+
+      final people = service.extractPeopleFields(rawText);
+      final title = service.normalizeParsedScheduleTitle(
+        '원주세브란스 방문',
+        rawText: rawText,
+      );
+
+      expect(people.participants, <String>['팀장님']);
+      expect(people.companions, isEmpty);
+      expect(people.targets, isEmpty);
+      expect(title, '팀장님 원주세브란스 방문');
+    });
+
+    test('classifies companions and targets separately', () {
+      final companion = service.extractPeopleFields('내일 김대리랑 병원 방문');
+      final target = service.extractPeopleFields('오늘 원장님께 보고 전화');
+
+      expect(companion.companions, <String>['김대리']);
+      expect(companion.participants, isEmpty);
+      expect(target.targets, <String>['원장님']);
+      expect(target.participants, isEmpty);
+    });
   });
 }

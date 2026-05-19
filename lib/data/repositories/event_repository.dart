@@ -93,6 +93,9 @@ abstract class EventRepository {
       memo: existing.memo,
       supplies: existing.supplies,
       suppliesChecked: existing.suppliesChecked,
+      participants: existing.participants,
+      companions: existing.companions,
+      targets: existing.targets,
       isCritical: existing.isCritical,
       recurrenceRule: existing.recurrenceRule,
       isAllDay: existing.isAllDay,
@@ -336,6 +339,9 @@ EventModel _copyEventWithTime(
     memo: event.memo,
     supplies: event.supplies,
     suppliesChecked: event.suppliesChecked,
+    participants: event.participants,
+    companions: event.companions,
+    targets: event.targets,
     isCritical: event.isCritical,
     recurrenceRule: event.recurrenceRule,
     isAllDay: event.isAllDay,
@@ -431,6 +437,7 @@ class SupabaseEventRepository extends EventRepository {
   static const String _selectColumns =
       'id, user_id, title, start_at, end_at, location, location_lat, '
       'location_lng, memo, supplies, supplies_checked, is_critical, source, '
+      'participants, companions, targets, '
       'recurrence_rule, is_all_day, is_multi_day, parent_event_id, category, '
       'external_id, external_calendar_id, external_etag, external_updated_at, '
       'last_synced_at, created_at, updated_at';
@@ -597,6 +604,12 @@ class SupabaseEventRepository extends EventRepository {
       memo: event.memo,
       supplies: event.supplies,
       suppliesChecked: event.suppliesChecked,
+      participants: event.participants.isEmpty
+          ? existing.participants
+          : event.participants,
+      companions:
+          event.companions.isEmpty ? existing.companions : event.companions,
+      targets: event.targets.isEmpty ? existing.targets : event.targets,
       isCritical: event.isCritical,
       recurrenceRule: event.recurrenceRule,
       isAllDay: event.isAllDay,

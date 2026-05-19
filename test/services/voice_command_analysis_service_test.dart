@@ -302,6 +302,61 @@ void main() {
       expect(result.intent, VoiceCommandIntent.add);
     });
 
+    test('preserves person words and extracts participants from add command',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'normalized_text': '내일 오전 11시 팀장님 원주세브란스방문',
+                    'intent': 'add',
+                    'confidence': 0.9,
+                    'uncertain_fields': <String>[],
+                    'schedule_fields': <String, dynamic>{
+                      'title': '원주세브란스 방문',
+                      'start_at': '2026-05-20T11:00:00.000',
+                      'location': '원주세브란스',
+                      'participants': <String>[],
+                      'companions': <String>[],
+                      'targets': <String>[],
+                      'supplies': <String>[],
+                      'pre_actions': <Map<String, dynamic>>[],
+                    },
+                    'requested_changes': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = VoiceCommandAnalysisService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 19, 9),
+      );
+
+      final result = await service.analyze(
+        '내일 오전 11시 팀장님 원주세브란스방문',
+        stage: VoiceCommandAnalysisStage.complete,
+        budget: VoiceAnalysisRequestBudget(maxAiRequests: 2),
+      );
+
+      final parsed = result.toParsedScheduleMap();
+      expect(result.scheduleFields['title'], '팀장님 원주세브란스 방문');
+      expect(result.scheduleFields['participants'], <String>['팀장님']);
+      expect(result.scheduleFields['companions'], isEmpty);
+      expect(result.scheduleFields['targets'], isEmpty);
+      expect(parsed['title'], '팀장님 원주세브란스 방문');
+      expect(parsed['participants'], <String>['팀장님']);
+    });
+
     test('falls back to local analysis when the budget is exhausted', () async {
       var requestCount = 0;
 

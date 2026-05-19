@@ -15,6 +15,9 @@ void main() {
       memo: 'Weekly meeting',
       supplies: const <String>['laptop', 'notes'],
       suppliesChecked: const <String>['notes'],
+      participants: const <String>['팀장님'],
+      companions: const <String>['김대리'],
+      targets: const <String>['원장님'],
       isCritical: true,
       recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU',
       isAllDay: true,
@@ -45,6 +48,9 @@ void main() {
     expect(restored.memo, model.memo);
     expect(restored.supplies, model.supplies);
     expect(restored.suppliesChecked, model.suppliesChecked);
+    expect(restored.participants, model.participants);
+    expect(restored.companions, model.companions);
+    expect(restored.targets, model.targets);
     expect(restored.isCritical, isTrue);
     expect(restored.recurrenceRule, 'FREQ=WEEKLY;BYDAY=TU');
     expect(restored.isAllDay, isTrue);
@@ -67,6 +73,9 @@ void main() {
     expect(json['is_multi_day'], isTrue);
     expect(json['parent_event_id'], 'parent-1');
     expect(json['category'], '업무');
+    expect(json['participants'], <String>['팀장님']);
+    expect(json['companions'], <String>['김대리']);
+    expect(json['targets'], <String>['원장님']);
   });
 
   test('EventModel can omit id for inserts', () {
@@ -106,6 +115,9 @@ void main() {
     expect(json['title'], 'Updated event');
     expect(json['source'], 'manual');
     expect(json['category'], '건강');
+    expect(json['participants'], isEmpty);
+    expect(json['companions'], isEmpty);
+    expect(json['targets'], isEmpty);
     expect(json['external_etag'], '"etag-2"');
     expect(json['last_synced_at'], '2026-05-01T09:01:00.000Z');
   });

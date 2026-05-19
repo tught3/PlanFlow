@@ -213,6 +213,51 @@ void main() {
       expect(result['title'], contains('동행방문'));
     });
 
+    test('preserves person words in parsed title and people fields', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '원주세브란스 방문',
+                    'start_at': '2026-05-20T11:00:00.000',
+                    'location': '원주세브란스',
+                    'participants': <String>[],
+                    'companions': <String>[],
+                    'targets': <String>[],
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 19, 9),
+      );
+
+      final result = await service.parseSchedule(
+        '내일 오전 11시 팀장님 원주세브란스방문',
+      );
+
+      expect(result['title'], '팀장님 원주세브란스 방문');
+      expect(result['participants'], <String>['팀장님']);
+      expect(result['companions'], isEmpty);
+      expect(result['targets'], isEmpty);
+    });
+
     test('fallback parsing treats text after leading time cue as title content',
         () async {
       final client = MockClient((request) async {

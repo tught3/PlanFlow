@@ -808,3 +808,9 @@
 - Preserved the existing signed-in user when a refresh attempt fails during session sync, instead of immediately clearing auth state.
 - Added provider tests for restored-session startup and refresh-failure preservation, and verified the login screen still renders correctly.
 - Verification passed: `scripts/flutter-local.ps1 test --no-pub test/providers/auth_provider_test.dart`, `scripts/flutter-local.ps1 test --no-pub test/screens/login_screen_test.dart`, and `scripts/flutter-local.ps1 analyze --no-pub`.
+
+## 2026-05-19 Voice People Fields Checkpoint
+- Added structured people fields to events: `participants`, `companions`, and `targets`, with schema/model/repository serialization and preservation across edit, calendar, Naver, voice, and preparation copy paths.
+- Updated GPT and local voice analysis so person words like `팀장님` remain in the visible title and are also stored in the appropriate people field instead of being dropped.
+- Preserved existing people fields during external-id upserts when imported calendar rows do not carry those fields, preventing device-calendar re-sync from clearing PlanFlow-only people metadata.
+- Verification passed: focused model/voice/GPT/analysis/device-calendar/calendar-sync/Naver-CalDAV tests, `scripts/flutter-local.ps1 analyze --no-pub`, debug APK build, and reviewer re-check returned `100% 통과`; full `scripts/flutter-local.ps1 test --no-pub` hit the 10-minute command timeout before completion.

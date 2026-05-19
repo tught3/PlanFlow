@@ -146,6 +146,9 @@ class VoiceCommandAnalysisResult {
       'travel_mode': scheduleFields['travel_mode'],
       'memo': scheduleFields['memo'],
       'supplies': scheduleFields['supplies'] ?? <String>[],
+      'participants': scheduleFields['participants'] ?? <String>[],
+      'companions': scheduleFields['companions'] ?? <String>[],
+      'targets': scheduleFields['targets'] ?? <String>[],
       'is_critical': scheduleFields['is_critical'] ?? false,
       'recurrence_rule': scheduleFields['recurrence_rule'],
       'is_all_day': scheduleFields['is_all_day'] ?? false,
@@ -498,6 +501,9 @@ class VoiceCommandAnalysisService {
         'travel_mode',
         'memo',
         'supplies',
+        'participants',
+        'companions',
+        'targets',
         'is_critical',
         'recurrence_rule',
         'is_all_day',
@@ -577,6 +583,9 @@ class VoiceCommandAnalysisService {
       'travel_mode': _normalizeText(source['travel_mode']?.toString(), null),
       'memo': _extractExplicitMemo(rawText),
       'supplies': _normalizeStringList(source['supplies']),
+      'participants': _normalizeStringList(source['participants']),
+      'companions': _normalizeStringList(source['companions']),
+      'targets': _normalizeStringList(source['targets']),
       'is_critical': source['is_critical'] == true,
       'recurrence_rule': _normalizeText(
         source['recurrence_rule']?.toString(),
@@ -594,7 +603,58 @@ class VoiceCommandAnalysisService {
       'voice_intent': intent.name,
     };
     _preserveDeliveryContent(scheduleFields, titleSource);
+    _preservePeopleFields(scheduleFields, titleSource);
     return scheduleFields;
+  }
+
+  void _preservePeopleFields(
+    Map<String, dynamic> scheduleFields,
+    String sourceText,
+  ) {
+    final people = _voiceScheduleStructureService.extractPeopleFields(
+      sourceText,
+    );
+    scheduleFields['participants'] = _mergeStringLists(
+      scheduleFields['participants'],
+      people.participants,
+    );
+    scheduleFields['companions'] = _mergeStringLists(
+      scheduleFields['companions'],
+      people.companions,
+    );
+    scheduleFields['targets'] = _mergeStringLists(
+      scheduleFields['targets'],
+      people.targets,
+    );
+
+    final title = scheduleFields['title']?.toString() ?? '';
+    scheduleFields['title'] =
+        _voiceScheduleStructureService.ensurePeopleInTitle(
+      title,
+      sourceText,
+    );
+  }
+
+  List<String> _mergeStringLists(Object? existing, List<String> inferred) {
+    final values = <String>[];
+    void add(String value) {
+      final normalized = value.trim();
+      if (normalized.isNotEmpty && !values.contains(normalized)) {
+        values.add(normalized);
+      }
+    }
+
+    if (existing is Iterable) {
+      for (final item in existing) {
+        add(item.toString());
+      }
+    } else if (existing != null) {
+      add(existing.toString());
+    }
+    for (final value in inferred) {
+      add(value);
+    }
+    return values;
   }
 
   Map<String, dynamic>? _normalizeTargetEventHint(
@@ -1137,7 +1197,15 @@ Rules:
 - For add intent, fill schedule_fields with parseSchedule-compatible keys:
   title, date, start_at, end_at, location, location_lat, location_lng,
   travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies,
-  is_critical, recurrence_rule, is_all_day, is_multi_day, category, pre_actions.
+  participants, companions, targets, is_critical, recurrence_rule, is_all_day,
+  is_multi_day, category, pre_actions.
+- Keep person words such as "팀장님", "원장님", "교수님", "고객님", or named
+  contacts in title and also classify them into people fields when clear.
+- Use companions for "랑/와/과/하고/함께/동행", targets for
+  "께/한테/에게/보고/전화/전달/문의/확인", and participants for other people
+  attached to the schedule.
+- Example: "내일 오전 11시 팀장님 원주세브란스방문" -> schedule_fields.title
+  "팀장님 원주세브란스 방문", participants ["팀장님"], companions [], targets [].
 - For edit, delete, and query intents, use target_event_hint and
   requested_changes to identify what should be acted on.
 - Use choose when the text is too ambiguous to decide between adding a schedule

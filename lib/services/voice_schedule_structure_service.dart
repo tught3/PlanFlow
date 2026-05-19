@@ -30,8 +30,29 @@ class VoiceScheduleStructureSplit {
   final String remainder;
 }
 
+class VoiceSchedulePeopleFields {
+  const VoiceSchedulePeopleFields({
+    this.participants = const <String>[],
+    this.companions = const <String>[],
+    this.targets = const <String>[],
+  });
+
+  final List<String> participants;
+  final List<String> companions;
+  final List<String> targets;
+
+  List<String> get all => <String>{
+        ...participants,
+        ...companions,
+        ...targets,
+      }.toList(growable: false);
+}
+
 class VoiceScheduleStructureService {
   const VoiceScheduleStructureService();
+
+  static const String _personSuffixPattern =
+      r'팀장님|팀장|원장님|원장|교수님|교수|과장님|과장|부장님|부장|차장님|차장|대표님|대표|선생님|대리님|대리|고객님|고객|님';
 
   static final List<RegExp> _cuePatterns = <RegExp>[
     RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
@@ -216,10 +237,16 @@ class VoiceScheduleStructureService {
       structuredTitle: structuredTitle,
       structure: structure,
     )) {
-      return normalizeSpacingForSchedule(structuredTitle);
+      return ensurePeopleInTitle(
+        normalizeSpacingForSchedule(structuredTitle),
+        rawText,
+      );
     }
     if (titleWithoutLocation.isNotEmpty) {
-      return normalizeSpacingForSchedule(titleWithoutLocation);
+      return ensurePeopleInTitle(
+        normalizeSpacingForSchedule(titleWithoutLocation),
+        rawText,
+      );
     }
 
     final fallback = stripLeadingLocationPhrase(
@@ -229,7 +256,8 @@ class VoiceScheduleStructureService {
       ),
     );
     if (fallback.isNotEmpty) {
-      return normalizeSpacingForSchedule(fallback);
+      return ensurePeopleInTitle(
+          normalizeSpacingForSchedule(fallback), rawText);
     }
 
     return '일정';
@@ -290,11 +318,71 @@ class VoiceScheduleStructureService {
       structuredTitle: structuredTitle,
       structure: structure,
     )) {
-      return normalizeSpacingForSchedule(structuredTitle);
+      return ensurePeopleInTitle(
+        normalizeSpacingForSchedule(structuredTitle),
+        referenceText ?? text,
+      );
     }
-    return title.isEmpty
+    final resolvedTitle = title.isEmpty
         ? normalizeText(stripExplicitMemoClause(text), '')
         : title;
+    return ensurePeopleInTitle(resolvedTitle, referenceText ?? text);
+  }
+
+  VoiceSchedulePeopleFields extractPeopleFields(String rawText) {
+    final source = normalizeText(rawText, '');
+    if (source.isEmpty) {
+      return const VoiceSchedulePeopleFields();
+    }
+
+    final companions = _peopleNearPattern(
+      source,
+      RegExp(
+        '([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern))\\s*(?:이랑|랑|와|과|하고|함께|동행)',
+      ),
+    );
+    final targets = <String>{
+      ..._peopleNearPattern(
+        source,
+        RegExp(
+          '([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern))\\s*(?:께|한테|에게)',
+        ),
+      ),
+      ..._peopleNearPattern(
+        source,
+        RegExp(
+          '([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern)).{0,12}(?:전화|보고|전달|문의|확인)',
+        ),
+      ),
+    }.toList(growable: false);
+    final allPeople = _peopleNearPattern(
+      source,
+      RegExp(
+        '([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern))',
+      ),
+    );
+    final participants = allPeople
+        .where((person) =>
+            !companions.contains(person) && !targets.contains(person))
+        .toList(growable: false);
+
+    return VoiceSchedulePeopleFields(
+      participants: participants,
+      companions: companions,
+      targets: targets,
+    );
+  }
+
+  String ensurePeopleInTitle(String title, String rawText) {
+    final normalizedTitle = normalizeSpacingForSchedule(title);
+    final people = extractPeopleFields(rawText)
+        .all
+        .where((person) => !normalizedTitle.contains(person))
+        .toList(growable: false);
+    if (people.isEmpty) {
+      return normalizedTitle;
+    }
+    return normalizeSpacingForSchedule('${people.join(' ')} $normalizedTitle');
   }
 
   String? normalizeScheduleLocation({
@@ -492,6 +580,34 @@ class VoiceScheduleStructureService {
         .map((token) => token.trim())
         .where((token) => token.length >= 2)
         .toSet();
+  }
+
+  List<String> _peopleNearPattern(String source, RegExp pattern) {
+    final people = <String>[];
+    for (final match in pattern.allMatches(source)) {
+      final person = match.group(1)?.trim();
+      if (person == null ||
+          person.isEmpty ||
+          _isProbablyNonPerson(person) ||
+          people.contains(person)) {
+        continue;
+      }
+      people.add(person);
+    }
+    return people;
+  }
+
+  bool _isProbablyNonPerson(String text) {
+    const nonPersonTerms = <String>{
+      '주차장',
+      '매장',
+      '출장',
+      '공장',
+      '시장',
+      '현장',
+      '식장',
+    };
+    return nonPersonTerms.contains(text);
   }
 
   String _extractContentClause(String text) {

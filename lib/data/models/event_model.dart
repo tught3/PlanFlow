@@ -13,6 +13,9 @@ class EventModel {
     this.memo,
     this.supplies = const <String>[],
     this.suppliesChecked = const <String>[],
+    this.participants = const <String>[],
+    this.companions = const <String>[],
+    this.targets = const <String>[],
     this.isCritical = false,
     this.recurrenceRule,
     this.isAllDay = false,
@@ -42,6 +45,9 @@ class EventModel {
       memo: json['memo'] as String?,
       supplies: _stringListValue(json['supplies']),
       suppliesChecked: _stringListValue(json['supplies_checked']),
+      participants: _stringListValue(json['participants']),
+      companions: _stringListValue(json['companions']),
+      targets: _stringListValue(json['targets']),
       isCritical: _boolValue(json['is_critical']),
       recurrenceRule: _optionalStringValue(json['recurrence_rule']),
       isAllDay: _boolValue(json['is_all_day']),
@@ -70,6 +76,9 @@ class EventModel {
   final String? memo;
   final List<String> supplies;
   final List<String> suppliesChecked;
+  final List<String> participants;
+  final List<String> companions;
+  final List<String> targets;
   final bool isCritical;
   final String? recurrenceRule;
   final bool isAllDay;
@@ -98,6 +107,9 @@ class EventModel {
       'memo': memo,
       'supplies': supplies,
       'supplies_checked': suppliesChecked,
+      'participants': participants,
+      'companions': companions,
+      'targets': targets,
       'is_critical': isCritical,
       'recurrence_rule': _optionalStringValue(recurrenceRule),
       'is_all_day': isAllDay,
@@ -126,6 +138,9 @@ class EventModel {
       'memo': memo,
       'supplies': supplies,
       'supplies_checked': suppliesChecked,
+      'participants': participants,
+      'companions': companions,
+      'targets': targets,
       'is_critical': isCritical,
       'recurrence_rule': _optionalStringValue(recurrenceRule),
       'is_all_day': isAllDay,

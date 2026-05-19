@@ -648,8 +648,8 @@ class NaverCalDavService {
   static NaverCalDavCredentialStore _defaultCredentialStore(
     SupabaseClient? client,
   ) {
-    final resolvedClient = client ??
-        (AppEnv.isSupabaseReady ? Supabase.instance.client : null);
+    final resolvedClient =
+        client ?? (AppEnv.isSupabaseReady ? Supabase.instance.client : null);
     final localStore = LocalNaverCalDavCredentialStore(
       currentUserId: () => resolvedClient?.auth.currentUser?.id,
       requireUserScopedKey: resolvedClient != null,
@@ -1596,6 +1596,9 @@ class NaverCalDavService {
       memo: event.memo,
       supplies: event.supplies,
       suppliesChecked: event.suppliesChecked,
+      participants: event.participants,
+      companions: event.companions,
+      targets: event.targets,
       isCritical: event.isCritical,
       recurrenceRule: event.recurrenceRule,
       isAllDay: event.isAllDay,
