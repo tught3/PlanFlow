@@ -33,17 +33,14 @@ class VoiceScheduleStructureSplit {
 class VoiceSchedulePeopleFields {
   const VoiceSchedulePeopleFields({
     this.participants = const <String>[],
-    this.companions = const <String>[],
     this.targets = const <String>[],
   });
 
   final List<String> participants;
-  final List<String> companions;
   final List<String> targets;
 
   List<String> get all => <String>{
         ...participants,
-        ...companions,
         ...targets,
       }.toList(growable: false);
 }
@@ -335,12 +332,6 @@ class VoiceScheduleStructureService {
       return const VoiceSchedulePeopleFields();
     }
 
-    final companions = _peopleNearPattern(
-      source,
-      RegExp(
-        '([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern))\\s*(?:이랑|랑|와|과|하고|함께|동행)',
-      ),
-    );
     final targets = <String>{
       ..._peopleNearPattern(
         source,
@@ -362,13 +353,11 @@ class VoiceScheduleStructureService {
       ),
     );
     final participants = allPeople
-        .where((person) =>
-            !companions.contains(person) && !targets.contains(person))
+        .where((person) => !targets.contains(person))
         .toList(growable: false);
 
     return VoiceSchedulePeopleFields(
       participants: participants,
-      companions: companions,
       targets: targets,
     );
   }

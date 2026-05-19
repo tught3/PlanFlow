@@ -320,7 +320,6 @@ void main() {
                       'start_at': '2026-05-20T11:00:00.000',
                       'location': '원주세브란스',
                       'participants': <String>[],
-                      'companions': <String>[],
                       'targets': <String>[],
                       'supplies': <String>[],
                       'pre_actions': <Map<String, dynamic>>[],
@@ -351,7 +350,6 @@ void main() {
       final parsed = result.toParsedScheduleMap();
       expect(result.scheduleFields['title'], '팀장님 원주세브란스 방문');
       expect(result.scheduleFields['participants'], <String>['팀장님']);
-      expect(result.scheduleFields['companions'], isEmpty);
       expect(result.scheduleFields['targets'], isEmpty);
       expect(parsed['title'], '팀장님 원주세브란스 방문');
       expect(parsed['participants'], <String>['팀장님']);

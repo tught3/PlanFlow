@@ -189,7 +189,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
   List<String> _pastSupplies = const <String>[];
   List<String> _participants = const <String>[];
-  List<String> _companions = const <String>[];
   List<String> _targets = const <String>[];
   Timer? _locationDebounce;
   bool _hasFollowUpFailures = false;
@@ -222,7 +221,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       widget.parsedSchedule['supplies'],
     ).map(_SupplyDraft.new).toList(growable: true);
     _participants = _stringListValue(widget.parsedSchedule['participants']);
-    _companions = _stringListValue(widget.parsedSchedule['companions']);
     _targets = _stringListValue(widget.parsedSchedule['targets']);
     _preActions = _initialPreActions();
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
@@ -488,13 +486,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         }
 
         final participants = _stringListValue(parsed['participants']);
-        final companions = _stringListValue(parsed['companions']);
         final targets = _stringListValue(parsed['targets']);
         if (participants.isNotEmpty) {
           _participants = participants;
-        }
-        if (companions.isNotEmpty) {
-          _companions = companions;
         }
         if (targets.isNotEmpty) {
           _targets = targets;
@@ -643,7 +637,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             .where((item) => item.isNotEmpty),
       ),
       participants: _participants,
-      companions: _companions,
       targets: _targets,
       isCritical: _isCritical,
       recurrenceRule: _recurrenceSelection.toRRule(),

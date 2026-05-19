@@ -814,3 +814,9 @@
 - Updated GPT and local voice analysis so person words like `팀장님` remain in the visible title and are also stored in the appropriate people field instead of being dropped.
 - Preserved existing people fields during external-id upserts when imported calendar rows do not carry those fields, preventing device-calendar re-sync from clearing PlanFlow-only people metadata.
 - Verification passed: focused model/voice/GPT/analysis/device-calendar/calendar-sync/Naver-CalDAV tests, `scripts/flutter-local.ps1 analyze --no-pub`, debug APK build, and reviewer re-check returned `100% 통과`; full `scripts/flutter-local.ps1 test --no-pub` hit the 10-minute command timeout before completion.
+
+## 2026-05-19 Voice People Fields Simplification Checkpoint
+- Simplified the event people structure by removing the separate `companions` field from the Flutter model, voice parsing contract, tests, and schema source of truth.
+- Voice/direct input now stores 함께 가는 사람 expressions like `김대리랑`, `팀장님과`, and `동행` in `participants`; `targets` remains only for action recipients such as `원장님께 보고`, `팀장님한테 전화`, or `전달/문의/확인`.
+- Updated backup restore SQL so `participants` and `targets` survive restore; no live `drop column` was added, so existing databases that already have `companions` keep it harmlessly unused.
+- Verification passed: focused model/voice/GPT/analysis tests, device-calendar/calendar-sync/Naver-CalDAV tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build; ADB had no connected devices for install/run.

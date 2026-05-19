@@ -1,5 +1,6 @@
 ﻿<!-- [WIKI:START] Personal Wiki Reference - 직접 수정 금지 -->
-<!-- 생성: 2026-05-19 19:29 -->
+<!-- 작업 경로: E:\FluxStudio\planflow -->
+<!-- 생성: 2026-05-19 20:06 -->
 
 # Codex Common Rules
 <!-- 프로젝트 공통 Codex 작업 규칙 -->

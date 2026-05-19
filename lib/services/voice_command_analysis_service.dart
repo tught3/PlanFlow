@@ -147,7 +147,6 @@ class VoiceCommandAnalysisResult {
       'memo': scheduleFields['memo'],
       'supplies': scheduleFields['supplies'] ?? <String>[],
       'participants': scheduleFields['participants'] ?? <String>[],
-      'companions': scheduleFields['companions'] ?? <String>[],
       'targets': scheduleFields['targets'] ?? <String>[],
       'is_critical': scheduleFields['is_critical'] ?? false,
       'recurrence_rule': scheduleFields['recurrence_rule'],
@@ -502,7 +501,6 @@ class VoiceCommandAnalysisService {
         'memo',
         'supplies',
         'participants',
-        'companions',
         'targets',
         'is_critical',
         'recurrence_rule',
@@ -584,7 +582,6 @@ class VoiceCommandAnalysisService {
       'memo': _extractExplicitMemo(rawText),
       'supplies': _normalizeStringList(source['supplies']),
       'participants': _normalizeStringList(source['participants']),
-      'companions': _normalizeStringList(source['companions']),
       'targets': _normalizeStringList(source['targets']),
       'is_critical': source['is_critical'] == true,
       'recurrence_rule': _normalizeText(
@@ -617,10 +614,6 @@ class VoiceCommandAnalysisService {
     scheduleFields['participants'] = _mergeStringLists(
       scheduleFields['participants'],
       people.participants,
-    );
-    scheduleFields['companions'] = _mergeStringLists(
-      scheduleFields['companions'],
-      people.companions,
     );
     scheduleFields['targets'] = _mergeStringLists(
       scheduleFields['targets'],
@@ -1197,15 +1190,15 @@ Rules:
 - For add intent, fill schedule_fields with parseSchedule-compatible keys:
   title, date, start_at, end_at, location, location_lat, location_lng,
   travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies,
-  participants, companions, targets, is_critical, recurrence_rule, is_all_day,
+  participants, targets, is_critical, recurrence_rule, is_all_day,
   is_multi_day, category, pre_actions.
 - Keep person words such as "팀장님", "원장님", "교수님", "고객님", or named
   contacts in title and also classify them into people fields when clear.
-- Use companions for "랑/와/과/하고/함께/동행", targets for
-  "께/한테/에게/보고/전화/전달/문의/확인", and participants for other people
-  attached to the schedule.
+- Use participants for people attached to the schedule, including
+  "랑/와/과/하고/함께/동행" expressions. Use targets only for action recipients
+  such as "께/한테/에게/보고/전화/전달/문의/확인".
 - Example: "내일 오전 11시 팀장님 원주세브란스방문" -> schedule_fields.title
-  "팀장님 원주세브란스 방문", participants ["팀장님"], companions [], targets [].
+  "팀장님 원주세브란스 방문", participants ["팀장님"], targets [].
 - For edit, delete, and query intents, use target_event_hint and
   requested_changes to identify what should be acted on.
 - Use choose when the text is too ambiguous to decide between adding a schedule

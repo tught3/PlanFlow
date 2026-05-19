@@ -47,17 +47,15 @@ void main() {
       );
 
       expect(people.participants, <String>['팀장님']);
-      expect(people.companions, isEmpty);
       expect(people.targets, isEmpty);
       expect(title, '팀장님 원주세브란스 방문');
     });
 
-    test('classifies companions and targets separately', () {
-      final companion = service.extractPeopleFields('내일 김대리랑 병원 방문');
+    test('keeps 함께 가는 사람 in participants and separates targets', () {
+      final participants = service.extractPeopleFields('내일 김대리랑 병원 방문');
       final target = service.extractPeopleFields('오늘 원장님께 보고 전화');
 
-      expect(companion.companions, <String>['김대리']);
-      expect(companion.participants, isEmpty);
+      expect(participants.participants, <String>['김대리']);
       expect(target.targets, <String>['원장님']);
       expect(target.participants, isEmpty);
     });

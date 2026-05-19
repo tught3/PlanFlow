@@ -412,7 +412,6 @@ class GptService {
       'memo': null,
       'supplies': <String>[],
       'participants': <String>[],
-      'companions': <String>[],
       'targets': <String>[],
       'is_critical': false,
       'pre_actions': const SmartPreparationAlarmService().enrichParsedSchedule(
@@ -451,10 +450,6 @@ class GptService {
     schedule['participants'] = _mergeStringLists(
       schedule['participants'],
       peopleFields.participants,
-    );
-    schedule['companions'] = _mergeStringLists(
-      schedule['companions'],
-      peopleFields.companions,
     );
     schedule['targets'] = _mergeStringLists(
       schedule['targets'],
@@ -1149,7 +1144,7 @@ const String _scheduleSystemPrompt = '''
 You are a Korean schedule parser.
 Return only a valid JSON object.
 Use these keys:
-title, date, start_at, end_at, location, location_lat, location_lng, travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies, participants, companions, targets, is_critical, recurrence_rule, is_all_day, is_multi_day, category, pre_actions.
+title, date, start_at, end_at, location, location_lat, location_lng, travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies, participants, targets, is_critical, recurrence_rule, is_all_day, is_multi_day, category, pre_actions.
 start_at and end_at must be ISO-8601 date-time strings when possible.
 Keep date, time, recurrence, and reminder expressions out of title and memo; put them only into the structured fields.
 For Korean relative and colloquial time expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", "열두시반", "오후 두시 반", and "저녁 일곱시 삼십분", resolve them from the current local date and time.
@@ -1161,10 +1156,10 @@ Category examples: "병원 진료" and "헬스장" -> "건강"; "세미나 참�
 Keep date, time, recurrence, and reminder phrases out of title and memo once they are represented as structured fields.
 Memo is only for an explicit note/description the user wants to keep, and only when the user explicitly says it with phrases like "메모에", "설명에", or "노트로". Do not copy the full raw utterance into memo.
 When the user says "내용은 ..." or "할 일은 ...", treat the following phrase as the schedule content/title source, not as memo.
-Keep people words such as "팀장님", "원장님", "교수님", "고객님", or named contacts in the title and also classify them into participants, companions, or targets when clear.
-Use companions for "랑/와/과/하고/함께/동행", targets for "께/한테/에게/보고/전화/전달/문의/확인", and participants for other people attached to the schedule.
+Keep people words such as "팀장님", "원장님", "교수님", "고객님", or named contacts in the title and also classify them into participants or targets when clear.
+Use participants for people attached to the schedule, including "랑/와/과/하고/함께/동행" expressions. Use targets only for action recipients such as "께/한테/에게/보고/전화/전달/문의/확인".
 Example: "내일 오전 9시에 대전출발" -> title "대전 출발", location "대전", start_at tomorrow 09:00 local, memo null.
-Example: "내일 오전 11시 팀장님 원주세브란스방문" -> title "팀장님 원주세브란스 방문", location "원주세브란스", participants ["팀장님"], companions [], targets [].
+Example: "내일 오전 11시 팀장님 원주세브란스방문" -> title "팀장님 원주세브란스 방문", location "원주세브란스", participants ["팀장님"], targets [].
 Example: "내일 오전 9시에 대전출발 메모에 주차장 B2 확인" -> title "대전 출발", location "대전", start_at tomorrow 09:00 local, memo "주차장 B2 확인".
 For delivery/drop-off tasks at hospitals or clinics, keep recipient/customer names and items in title. Example: "내용은 원주기독 정형외과 김두섭 리바로 갖다주기" -> location "원주기독 정형외과", title "김두섭 리바로 갖다주기", supplies ["리바로"].
 supplies must be an array of strings.

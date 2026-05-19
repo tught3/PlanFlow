@@ -193,7 +193,6 @@ class EventPreparationService {
       supplies: event.supplies,
       suppliesChecked: event.suppliesChecked,
       participants: event.participants,
-      companions: event.companions,
       targets: event.targets,
       isCritical: event.isCritical,
       recurrenceRule: event.recurrenceRule,

@@ -55,7 +55,6 @@ create table if not exists public.events (
   supplies text[] not null default '{}',
   supplies_checked text[] not null default '{}',
   participants text[] not null default '{}',
-  companions text[] not null default '{}',
   targets text[] not null default '{}',
   is_critical boolean not null default false,
   recurrence_rule text,
@@ -80,7 +79,6 @@ alter table public.events
   add column if not exists location_lng double precision,
   add column if not exists supplies_checked text[] not null default '{}',
   add column if not exists participants text[] not null default '{}',
-  add column if not exists companions text[] not null default '{}',
   add column if not exists targets text[] not null default '{}',
   add column if not exists recurrence_rule text,
   add column if not exists recurrence_end_date date,
@@ -895,6 +893,8 @@ declare
   event_id_value uuid;
   supplies_value text[];
   supplies_checked_value text[];
+  participants_value text[];
+  targets_value text[];
 begin
   if uid is null then
     raise exception 'A signed-in user is required.' using errcode = '28000';
@@ -924,10 +924,17 @@ begin
     supplies_checked_value := array(
       select jsonb_array_elements_text(coalesce(item -> 'supplies_checked', '[]'::jsonb))
     );
+    participants_value := array(
+      select jsonb_array_elements_text(coalesce(item -> 'participants', '[]'::jsonb))
+    );
+    targets_value := array(
+      select jsonb_array_elements_text(coalesce(item -> 'targets', '[]'::jsonb))
+    );
 
     insert into public.events (
       id, user_id, title, start_at, end_at, location, location_lat,
-      location_lng, memo, supplies, supplies_checked, is_critical, source,
+      location_lng, memo, supplies, supplies_checked, participants, targets,
+      is_critical, source,
       recurrence_rule, is_all_day, is_multi_day, parent_event_id, category,
       external_id, external_calendar_id, external_etag, external_updated_at, last_synced_at,
       created_at, updated_at
@@ -944,6 +951,8 @@ begin
       nullif(item ->> 'memo', ''),
       coalesce(supplies_value, '{}'::text[]),
       coalesce(supplies_checked_value, '{}'::text[]),
+      coalesce(participants_value, '{}'::text[]),
+      coalesce(targets_value, '{}'::text[]),
       coalesce(nullif(item ->> 'is_critical', '')::boolean, false),
       coalesce(nullif(item ->> 'source', ''), 'manual'),
       nullif(item ->> 'recurrence_rule', ''),
@@ -977,6 +986,8 @@ begin
           memo = excluded.memo,
           supplies = excluded.supplies,
           supplies_checked = excluded.supplies_checked,
+          participants = excluded.participants,
+          targets = excluded.targets,
           is_critical = excluded.is_critical,
           source = excluded.source,
           recurrence_rule = excluded.recurrence_rule,

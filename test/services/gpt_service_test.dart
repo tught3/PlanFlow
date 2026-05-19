@@ -225,7 +225,6 @@ void main() {
                     'start_at': '2026-05-20T11:00:00.000',
                     'location': '원주세브란스',
                     'participants': <String>[],
-                    'companions': <String>[],
                     'targets': <String>[],
                     'supplies': <String>[],
                     'is_critical': false,
@@ -254,7 +253,6 @@ void main() {
 
       expect(result['title'], '팀장님 원주세브란스 방문');
       expect(result['participants'], <String>['팀장님']);
-      expect(result['companions'], isEmpty);
       expect(result['targets'], isEmpty);
     });
 
