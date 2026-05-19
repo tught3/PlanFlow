@@ -4,6 +4,13 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+
+## 2026-05-19 Post-save Background Follow-ups Checkpoint
+- Voice confirm and event edit saves now return to the user immediately after the event row is written, while follow-up work such as pre_actions, reminders, departure alarms, location history, voice logs, external prep resync, calendar auto-sync, and home-widget refresh runs in the background.
+- ConfirmScreen and EventEditScreen both keep the save path focused on the event payload first, so users do not sit through the slower side-effect chain before navigation.
+- Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb uninstall com.planflow.app`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app`.
+- `test/screens/event_edit_screen_test.dart` passed; `test/screens/confirm_screen_test.dart` still has existing expectation failures around its smart-preparation card assertions and some test-environment initialization paths.
+
 ## 2026-05-19 Release Signing Unification Checkpoint
 - Android debug builds now use the same `release` signing config as release builds so local APK installs and distribution candidates share the PlanFlow release certificate.
 - Verified both `app-debug.apk` and `app-release.apk` are signed by `CN=PlanFlow` with SHA-256 `75ab45c88419d972f46f341fb29760ce7c14fc0ba91dba11936c02df0075361e`.

@@ -191,7 +191,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   List<String> _participants = const <String>[];
   List<String> _targets = const <String>[];
   Timer? _locationDebounce;
-  bool _hasFollowUpFailures = false;
   String? _supplyErrorText;
   String? _hydrateMessage;
   String? _selectedAmbiguousPurpose;
@@ -669,21 +668,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     try {
       final savedEvent = await repository.createEvent(draftEvent);
 
-      await _saveRelatedRecords(userId: userId, event: savedEvent);
-      await _resyncExternalPreparationForDay(
-        userId: userId,
-        event: savedEvent,
+      unawaited(
+        _runPostSaveFollowUps(
+          userId: userId,
+          event: savedEvent,
+          repository: repository,
+        ),
       );
-      await _updateHomeWidget(repository, savedEvent);
-      unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
-      unawaited(EventPreparationService().prepareAfterSave(savedEvent));
 
       if (mounted) {
-        _showMessage(
-          _hasFollowUpFailures
-              ? '일정은 저장됐지만 알림/준비 기록 중 일부를 저장하지 못했어요. 설정과 권한을 확인해 주세요.'
-              : '일정을 저장했어요.',
-        );
+        _showMessage('일정을 저장했어요.');
         EventRefreshBus.instance.notifyChanged(
           reason: 'confirm_saved',
           eventId: savedEvent.id,
@@ -711,7 +705,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     required String userId,
     required EventModel event,
   }) async {
-    _hasFollowUpFailures = false;
     final eventStartAt = event.startAt ?? _startAt;
     final preActionPayloads = _buildPreActionPayloads(
       userId: userId,
@@ -825,7 +818,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         ? notifyAtValue
         : DateTime.tryParse(notifyAtValue?.toString() ?? '');
     if (notifyAt == null || !notifyAt.isAfter(DateTime.now())) {
-      _hasFollowUpFailures = true;
       debugPrint(
         'ConfirmScreen critical alarm skipped because notify_at is invalid.',
       );
@@ -858,10 +850,24 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     try {
       await action();
     } catch (error, stackTrace) {
-      _hasFollowUpFailures = true;
       debugPrint('ConfirmScreen follow-up save failed ($label): $error');
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  Future<void> _runPostSaveFollowUps({
+    required String userId,
+    required EventModel event,
+    required EventRepository repository,
+  }) async {
+    await _saveRelatedRecords(userId: userId, event: event);
+    await _resyncExternalPreparationForDay(
+      userId: userId,
+      event: event,
+    );
+    await _updateHomeWidget(repository, event);
+    unawaited(CalendarAutoSyncService().syncAfterEventSave(event));
+    unawaited(EventPreparationService().prepareAfterSave(event));
   }
 
   List<Map<String, dynamic>> _buildPreActionPayloads({
@@ -938,20 +944,20 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     required String eventId,
     required DateTime eventStartAt,
   }) async {
-    final destinationLat = _locationLat;
-    final destinationLng = _locationLng;
-    if (destinationLat == null || destinationLng == null) {
-      return null;
-    }
-
-    final permissionService =
-        widget.permissionService ?? AppPermissionService();
-    final origin = await permissionService.getLastKnownLocation();
-    if (origin == null) {
-      return null;
-    }
-
     try {
+      final destinationLat = _locationLat;
+      final destinationLng = _locationLng;
+      if (destinationLat == null || destinationLng == null) {
+        return null;
+      }
+
+      final permissionService =
+          widget.permissionService ?? AppPermissionService();
+      final origin = await permissionService.getLastKnownLocation();
+      if (origin == null) {
+        return null;
+      }
+
       final estimate = await widget.travelTimeBufferService.estimateWithMapApis(
         originLat: origin.latitude,
         originLng: origin.longitude,

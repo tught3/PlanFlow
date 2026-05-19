@@ -9,21 +9,24 @@ class AppPermissionService {
     NotificationService? notificationService,
     SharedPreferencesAsync? preferences,
   })  : _notificationService = notificationService ?? NotificationService(),
-        _preferences = preferences ?? SharedPreferencesAsync();
+        _preferences = preferences;
 
   static const MethodChannel _androidPermissionsChannel =
       MethodChannel('planflow/android_permissions');
   static const String _onboardingPrefix = 'planflow_permissions_onboarded_v1';
 
   final NotificationService _notificationService;
-  final SharedPreferencesAsync _preferences;
+  final SharedPreferencesAsync? _preferences;
+
+  SharedPreferencesAsync get _resolvedPreferences =>
+      _preferences ?? SharedPreferencesAsync();
 
   Future<bool> isOnboardingCompleted(String userId) async {
-    return await _preferences.getBool(_onboardingKey(userId)) ?? false;
+    return await _resolvedPreferences.getBool(_onboardingKey(userId)) ?? false;
   }
 
   Future<void> markOnboardingCompleted(String userId) {
-    return _preferences.setBool(_onboardingKey(userId), true);
+    return _resolvedPreferences.setBool(_onboardingKey(userId), true);
   }
 
   Future<AppPermissionSnapshot> checkAll() async {

@@ -378,52 +378,17 @@ class _EventEditScreenState extends State<EventEditScreen> {
         savedEvent = await _repository.updateEvent(updatedEvent);
       }
 
-      final settings = await SettingsRepository.supabase().fetchSettings(
-        user.id,
-      );
-      final sideEffectResult = await widget.sideEffectService.syncAfterSave(
-        event: savedEvent,
-        userId: user.id,
-        reminderOffset: _reminderOffset,
-        criticalAlarmOffset: _reminderOffset,
-        prepTimeMin: settings?.prepTimeMin ??
-            SmartPreparationAlarmService.defaultPrepTimeMin,
-        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
-            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
-        departPreAlarmOffset: settings?.departPreAlarmOffset ??
-            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
-        isFirstExternalEventOfDay: await _isFirstExternalEventOfDay(
+      unawaited(
+        _runPostSaveSideEffects(
           userId: user.id,
-          event: savedEvent,
+          savedEvent: savedEvent,
+          previousStartAt: previousStartAt,
         ),
       );
-      await _resyncExternalPreparationForDay(
-        userId: user.id,
-        event: savedEvent,
-        settings: settings,
-      );
-      if (previousStartAt != null &&
-          savedEvent.startAt != null &&
-          !planflowIsSameLocalDay(previousStartAt, savedEvent.startAt!)) {
-        await _resyncExternalPreparationForDay(
-          userId: user.id,
-          event: savedEvent,
-          settings: settings,
-          dayReference: previousStartAt,
-        );
-      }
-      unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
-      unawaited(EventPreparationService().prepareAfterSave(savedEvent));
-      final widgetRefreshed = await _refreshHomeWidget(_repository, savedEvent);
 
       if (mounted) {
         final actionText = _isNewEvent ? '일정을 만들었습니다.' : '일정을 수정했습니다.';
-        final warningText = sideEffectResult.isFullySynced
-            ? ''
-            : ' 알림 동기화가 일부 실패했습니다. 설정을 확인해 주세요.';
-        final widgetWarningText =
-            widgetRefreshed ? '' : ' 홈 위젯 갱신은 다시 확인해 주세요.';
-        _showMessage('$actionText$warningText$widgetWarningText');
+        _showMessage(actionText);
         EventRefreshBus.instance.notifyChanged(
           reason: _isNewEvent ? 'event_created' : 'event_updated',
           eventId: savedEvent.id,
@@ -619,6 +584,61 @@ class _EventEditScreenState extends State<EventEditScreen> {
       });
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen reminder load skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+
+  Future<void> _runPostSaveSideEffects({
+    required String userId,
+    required EventModel savedEvent,
+    DateTime? previousStartAt,
+  }) async {
+    try {
+      final settings = await SettingsRepository.supabase().fetchSettings(
+        userId,
+      );
+      final sideEffectResult = await widget.sideEffectService.syncAfterSave(
+        event: savedEvent,
+        userId: userId,
+        reminderOffset: _reminderOffset,
+        criticalAlarmOffset: _reminderOffset,
+        prepTimeMin: settings?.prepTimeMin ??
+            SmartPreparationAlarmService.defaultPrepTimeMin,
+        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+        departPreAlarmOffset: settings?.departPreAlarmOffset ??
+            SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        isFirstExternalEventOfDay: await _isFirstExternalEventOfDay(
+          userId: userId,
+          event: savedEvent,
+        ),
+      );
+      await _resyncExternalPreparationForDay(
+        userId: userId,
+        event: savedEvent,
+        settings: settings,
+      );
+      if (previousStartAt != null &&
+          savedEvent.startAt != null &&
+          !planflowIsSameLocalDay(previousStartAt, savedEvent.startAt!)) {
+        await _resyncExternalPreparationForDay(
+          userId: userId,
+          event: savedEvent,
+          settings: settings,
+          dayReference: previousStartAt,
+        );
+      }
+      unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
+      unawaited(EventPreparationService().prepareAfterSave(savedEvent));
+      final widgetRefreshed = await _refreshHomeWidget(_repository, savedEvent);
+      debugPrint(
+        'EventEditScreen post-save side effects finished: '
+        'synced=${sideEffectResult.isFullySynced}, '
+        'widgetRefreshed=$widgetRefreshed',
+      );
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen post-save side effects failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
   }
