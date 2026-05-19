@@ -4,6 +4,12 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-19 Release Signing Unification Checkpoint
+- Android debug builds now use the same `release` signing config as release builds so local APK installs and distribution candidates share the PlanFlow release certificate.
+- Verified both `app-debug.apk` and `app-release.apk` are signed by `CN=PlanFlow` with SHA-256 `75ab45c88419d972f46f341fb29760ce7c14fc0ba91dba11936c02df0075361e`.
+- The device had an older Android Debug signed install, so it could not be upgraded in place. After targeted cleanup of `com.planflow.app`, the release-signed debug APK installed successfully, a second `adb install -r` succeeded, and the app launched with PID/focused-window confirmation.
+- Verification passed: `scripts/flutter-local.ps1 build apk --debug --no-pub`, certificate inspection with `apksigner`, `scripts/flutter-local.ps1 analyze --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`, and focused window check.
+
 ## 2026-05-19 Calendar Silent Refresh Checkpoint
 - CalendarScreen now keeps the last rendered calendar content visible during refresh, no longer shows the `캘린더 확인 중` loading panel, and uses the app bar refresh button only as a silent trigger.
 - Only terminal states remain visible on the calendar tab: Supabase missing, signed out, or a real load error. Refreshes now preserve the previous event list instead of clearing the screen.
