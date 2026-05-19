@@ -8,6 +8,7 @@
 - Added `scripts/planflow-release-bootstrap.ps1` as the single-command setup helper for new PCs. It auto-discovers the signing archive from OneDrive first, falls back to the repo-local signing backup, restores signing only when needed, builds the debug APK and release appbundle through `scripts/flutter-local.ps1`, verifies the PlanFlow release APK fingerprint, and optionally runs `scripts/adb-install-update.ps1` with `-AllowOneTimeTransition` for the rare old-debug-install case.
 - Updated `docs/planflow-signing.md` to recommend the new bootstrap path and document the optional archive/password flags.
 - The existing `scripts/restore-planflow-signing.ps1` and `scripts/adb-install-update.ps1` remain the lower-level helpers; the bootstrap script wraps them so the user does not have to repeat the manual sequence.
+- Follow-up: `apksigner` Java stderr warnings are now captured without tripping PowerShell's global stop policy, while non-zero verifier exits still fail the bootstrap. Verified with `.\scripts\planflow-release-bootstrap.ps1 -SkipRestore -SkipBuild -SkipInstall`.
 
 
 ## 2026-05-19 Post-save Background Follow-ups Checkpoint

@@ -98,10 +98,24 @@ function Verify-ApkSignature {
   )
 
   $apksigner = Get-ApkSignerPath
-  $verification = & $apksigner verify --print-certs $ApkPath 2>&1
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    # Newer Java runtimes can write non-fatal warnings to stderr while
+    # apksigner still exits successfully. Capture those warnings without
+    # letting PowerShell's global Stop policy turn them into script failures.
+    $ErrorActionPreference = "Continue"
+    $verification = & $apksigner verify --print-certs $ApkPath 2>&1
+    $verificationExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
   $verificationText = $verification | Out-String
   $verificationText = $verificationText.TrimEnd()
   Write-Host $verificationText
+
+  if ($verificationExitCode -ne 0) {
+    throw "APK signature verification failed with exit code $verificationExitCode."
+  }
 
   $match = [regex]::Match($verificationText, "SHA-256(?: digest)?\s*:\s*([0-9a-fA-F]{64})", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
   if ($match.Success) {
