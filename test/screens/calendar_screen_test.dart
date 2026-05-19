@@ -13,8 +13,8 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('캘린더 확인 중'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.textContaining('\uD655\uC778\uC911'), findsNothing);
     expect(find.textContaining('Supabase'), findsOneWidget);
   });
 }
