@@ -8,6 +8,7 @@ import '../core/local_time.dart';
 import '../core/region_settings.dart';
 import 'remote_config_service.dart';
 import 'smart_preparation_alarm_service.dart';
+import 'voice_schedule_structure_service.dart';
 import 'voice_text_cleanup_service.dart';
 
 class GptCompletionException implements Exception {
@@ -50,6 +51,8 @@ class GptService {
   final http.Client? _client;
   final Uri _endpoint;
   final DateTime Function() _now;
+  static const VoiceScheduleStructureService _voiceScheduleStructureService =
+      VoiceScheduleStructureService();
 
   static String get _model => RemoteConfigService.gptModel;
   static const Map<String, dynamic> _responseFormat = <String, dynamic>{
@@ -430,14 +433,21 @@ class GptService {
   ) {
     final normalizedRawText = _stripExplicitMemoClause(rawText);
     final contentClause = _extractContentClause(normalizedRawText);
+    final structured = _voiceScheduleStructureService
+        .analyze(contentClause ?? normalizedRawText);
     final rawTitle = schedule['title']?.toString();
-    final normalizedTitle =
-        _normalizeScheduleTitle(rawTitle, contentClause ?? normalizedRawText);
+    final normalizedTitle = _normalizeScheduleTitle(
+      rawTitle,
+      contentClause ?? normalizedRawText,
+      structured: structured,
+    );
     schedule['title'] = normalizedTitle;
 
     final normalizedLocation = _normalizeScheduleLocation(
       schedule['location']?.toString(),
-      contentClause ?? normalizedRawText,
+      structured.contentText.isEmpty
+          ? contentClause ?? normalizedRawText
+          : structured.contentText,
       normalizedTitle,
     );
     schedule['location'] = normalizedLocation;
@@ -452,35 +462,24 @@ class GptService {
 
     final memo = schedule['memo']?.toString();
     schedule['memo'] = _normalizeScheduleMemo(memo, rawText);
-    _preserveDeliveryContent(schedule, contentClause ?? normalizedRawText);
+    _preserveDeliveryContent(
+      schedule,
+      structured.contentText.isEmpty
+          ? contentClause ?? normalizedRawText
+          : structured.contentText,
+    );
   }
 
-  String _normalizeScheduleTitle(String? title, String rawText) {
-    final source = _normalizeKoreanText(
-      _stripExplicitMemoClause(
-        (title != null && title.trim().isNotEmpty) ? title : rawText,
-      ),
+  String _normalizeScheduleTitle(
+    String? title,
+    String rawText, {
+    VoiceScheduleStructure? structured,
+  }) {
+    return _voiceScheduleStructureService.normalizeParsedScheduleTitle(
+      title,
+      rawText: rawText,
+      structured: structured,
     );
-    final cleaned = _stripScheduleNoise(
-      source,
-      preserveRelativeDayWords: _shouldPreserveRelativeDayWords(rawText),
-    );
-    final titleWithoutLocation = _stripLeadingLocationPhrase(cleaned);
-    if (titleWithoutLocation.isNotEmpty) {
-      return _normalizeSpacingForSchedule(titleWithoutLocation);
-    }
-
-    final fallback = _stripLeadingLocationPhrase(
-      _stripScheduleNoise(
-        rawText,
-        preserveRelativeDayWords: _shouldPreserveRelativeDayWords(rawText),
-      ),
-    );
-    if (fallback.isNotEmpty) {
-      return _normalizeSpacingForSchedule(fallback);
-    }
-
-    return '일정';
   }
 
   String? _normalizeScheduleLocation(
@@ -488,56 +487,15 @@ class GptService {
     String rawText,
     String title,
   ) {
-    final trimmed = location?.trim();
-    if (trimmed != null && trimmed.isNotEmpty) {
-      return _normalizeSpacingForSchedule(trimmed);
-    }
-
-    final source = _normalizeKoreanText(rawText);
-    final inferredFromLeadingLocation = _extractLeadingLocation(source);
-    if (inferredFromLeadingLocation != null &&
-        inferredFromLeadingLocation.isNotEmpty) {
-      return _normalizeSpacingForSchedule(inferredFromLeadingLocation);
-    }
-
-    final inferredFromDeparture = RegExp(
-      r'([가-힣A-Za-z0-9·.]{2,})\s*(?:에서\s*)?출발',
-    ).firstMatch(source);
-    if (inferredFromDeparture != null) {
-      final inferred = inferredFromDeparture.group(1)?.trim();
-      if (inferred != null && inferred.isNotEmpty) {
-        return _normalizeSpacingForSchedule(inferred);
-      }
-    }
-
-    final inferredFromTitle = RegExp(
-      r'([가-힣A-Za-z0-9·.]{2,})\s*(?:출발|도착)$',
-    ).firstMatch(title);
-    if (inferredFromTitle != null) {
-      final inferred = inferredFromTitle.group(1)?.trim();
-      if (inferred != null && inferred.isNotEmpty) {
-        return _normalizeSpacingForSchedule(inferred);
-      }
-    }
-
-    return null;
+    return _voiceScheduleStructureService.normalizeScheduleLocation(
+      location: location,
+      rawText: rawText,
+      title: title,
+    );
   }
 
   String? _normalizeScheduleMemo(String? memo, String rawText) {
-    final explicitMemo = _extractExplicitMemo(rawText);
-    if (explicitMemo == null) {
-      return null;
-    }
-    return explicitMemo;
-  }
-
-  String _stripExplicitMemoClause(String text) {
-    return text
-        .replaceFirst(
-          RegExp(r'\s*(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'),
-          ' ',
-        )
-        .trim();
+    return _voiceScheduleStructureService.extractExplicitMemo(rawText);
   }
 
   String? _extractContentClause(String rawText) {
@@ -552,229 +510,23 @@ class GptService {
     return content.replaceFirst(RegExp(r'^[.。,\s]+'), '').trim();
   }
 
-  String? _extractExplicitMemo(String rawText) {
-    final source = _normalizeKoreanText(rawText);
-    final match = RegExp(
-      r'(?:메모에|설명에|노트로)\s*[:：]?\s*(.+)$',
-    ).firstMatch(source);
-    if (match == null) {
-      return null;
-    }
-
-    final memo = match.group(1)?.trim();
-    if (memo == null || memo.isEmpty) {
-      return null;
-    }
-
-    final cleaned = _stripScheduleNoise(memo);
-    if (cleaned.isEmpty || _looksLikeOnlyScheduleMetadata(cleaned)) {
-      return null;
-    }
-
-    return _normalizeSpacingForSchedule(cleaned);
-  }
-
-  String? _extractLeadingLocation(String text) {
-    final match = RegExp(
-      r'^([가-힣A-Za-z0-9·.]{2,})\s*(?:에서|에|로|으로)\s+(.+)$',
-    ).firstMatch(text.trim());
-    if (match == null) {
-      return null;
-    }
-
-    final location = match.group(1)?.trim();
-    final remainder = match.group(2)?.trim();
-    if (location == null ||
-        location.isEmpty ||
-        remainder == null ||
-        remainder.isEmpty) {
-      return null;
-    }
-
-    return location;
-  }
-
-  String _stripLeadingLocationPhrase(String text) {
-    final match = RegExp(
-      r'^[가-힣A-Za-z0-9·.]{2,}\s*(?:에서|에|로|으로)\s+(.+)$',
-    ).firstMatch(text.trim());
-    if (match == null) {
-      return text.trim();
-    }
-
-    final remainder = match.group(1)?.trim();
-    if (remainder == null || remainder.isEmpty) {
-      return text.trim();
-    }
-
-    return remainder;
-  }
-
-  String _stripScheduleNoise(
-    String text, {
-    bool preserveRelativeDayWords = false,
-  }) {
-    var cleaned = text.replaceAll(RegExp(r'[\(\)\[\]{}]'), ' ');
-    final patterns = <RegExp>[
-      RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
-      RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
-      RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
-      RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
-      RegExp(r'\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따)'),
-      RegExp(r'\d{1,2}\s*(?:일|주|개월|달|월|년)\s*마다'),
-      RegExp(r'(?:매주|매월|매년|격주|매일)'),
-      RegExp(r'(?:반복|알림|리마인더|알람|reminder)'),
-      RegExp(r'(?:부터|까지|동안|정각|정도|쯤|경|예정|예약)'),
-      RegExp(r'(?:열두시반|열한시반|열시반|한시반|두시반|세시반|네시반)'),
-    ];
-    if (!preserveRelativeDayWords) {
-      patterns.add(RegExp(r'(?:오늘|내일|모레|글피)'));
-    }
-    for (final pattern in patterns) {
-      cleaned = cleaned.replaceAll(pattern, ' ');
-    }
-    cleaned = cleaned
-        .replaceAll(RegExp(r'^\s*(?:에|로|으로)\s+'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    return _normalizeSpacingForSchedule(cleaned);
-  }
-
-  bool _shouldPreserveRelativeDayWords(String text) {
-    final normalized = _normalizeKoreanText(text);
-    final cueMatch = _firstScheduleCueMatch(normalized);
-    if (cueMatch == null) {
-      return false;
-    }
-
-    final tail = normalized.substring(cueMatch.end);
-    return RegExp(r'(오늘|내일|모레|글피)').hasMatch(tail);
+  String _stripExplicitMemoClause(String text) {
+    return _voiceScheduleStructureService.stripExplicitMemoClause(text);
   }
 
   String _stripRelativeDayWordsIfContent(String text) {
-    if (!_shouldPreserveRelativeDayWords(text)) {
-      return text;
-    }
-
-    final normalized = _normalizeKoreanText(text);
-    final cueMatch = _firstScheduleCueMatch(normalized);
-    if (cueMatch == null) {
-      return text;
-    }
-
-    final prefix = normalized.substring(0, cueMatch.end);
-    final tail = normalized
-        .substring(cueMatch.end)
-        .replaceAll(RegExp(r'(?:오늘|내일|모레|글피)'), ' ');
-    return '$prefix$tail';
-  }
-
-  RegExpMatch? _firstScheduleCueMatch(String text) {
-    final patterns = <RegExp>[
-      RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
-      RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
-      RegExp(r'(?:오늘|내일|모레|글피)'),
-      RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
-      RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
-    ];
-
-    RegExpMatch? first;
-    for (final pattern in patterns) {
-      for (final match in pattern.allMatches(text)) {
-        if (first == null ||
-            match.start < first.start ||
-            (match.start == first.start && match.end > first.end)) {
-          first = match;
-        }
-      }
-    }
-    return first;
+    return _voiceScheduleStructureService
+        .stripRelativeDayWordsForTimeText(text);
   }
 
   void _preserveDeliveryContent(
     Map<String, dynamic> schedule,
     String contentText,
   ) {
-    final split = _splitLeadingMedicalLocation(contentText);
-    if (split == null ||
-        !RegExp(r'(갖다\s*주|가져다\s*주|전달|배송|납품)').hasMatch(split.remainder)) {
-      return;
-    }
-
-    final currentLocation = schedule['location']?.toString().trim();
-    if (currentLocation == null ||
-        currentLocation.isEmpty ||
-        currentLocation.contains(split.remainder.split(RegExp(r'\s+')).first)) {
-      schedule['location'] = _normalizeSpacingForSchedule(split.location);
-      schedule['location_lat'] = null;
-      schedule['location_lng'] = null;
-    }
-
-    final currentTitle = schedule['title']?.toString().trim() ?? '';
-    final firstRemainderToken = split.remainder.split(RegExp(r'\s+')).first;
-    if (currentTitle.isEmpty || !currentTitle.contains(firstRemainderToken)) {
-      schedule['title'] = _normalizeSpacingForSchedule(split.remainder);
-    }
-
-    final supplies = _normalizeSupplies(schedule['supplies']);
-    if (supplies.isEmpty) {
-      final supplyMatch = RegExp(
-        r'(?:^|\s)([가-힣A-Za-z0-9]+)\s*(?:갖다\s*주|가져다\s*주|전달|배송|납품)',
-      ).firstMatch(split.remainder);
-      final supply = supplyMatch?.group(1)?.trim();
-      if (supply != null &&
-          supply.isNotEmpty &&
-          supply != firstRemainderToken) {
-        schedule['supplies'] = <String>[supply];
-      }
-    }
-  }
-
-  _LocationContentSplit? _splitLeadingMedicalLocation(String text) {
-    final normalized = _normalizeKoreanText(text);
-    final match = RegExp(
-      r'^(.+?(?:정형외과|이비인후과|피부과|성형외과|신경외과|내과|외과|안과|치과|한의원|의원|병원|클리닉|약국))\s+(.+)$',
-    ).firstMatch(normalized);
-    final location = match?.group(1)?.trim();
-    final remainder = match?.group(2)?.trim();
-    if (location == null ||
-        location.isEmpty ||
-        remainder == null ||
-        remainder.isEmpty) {
-      return null;
-    }
-    return _LocationContentSplit(
-      location: location,
-      remainder: remainder,
+    return _voiceScheduleStructureService.preserveDeliveryContent(
+      schedule,
+      contentText,
     );
-  }
-
-  bool _looksLikeOnlyScheduleMetadata(String text) {
-    return RegExp(
-      r'^(?:오늘|내일|모레|글피|오전|오후|아침|점심|저녁|밤|새벽|매주|매월|매년|격주|반복|알림|리마인더|알람|\d{1,2}\s*시|\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따))*$',
-    ).hasMatch(text.replaceAll(RegExp(r'\s+'), ''));
-  }
-
-  String _normalizeSpacingForSchedule(String text) {
-    final compact = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (compact.isEmpty) {
-      return compact;
-    }
-
-    final spaced = compact.replaceAllMapped(
-      RegExp(
-        r'([가-힣A-Za-z0-9·.]{2,}?)(출발|도착|미팅|회의|방문|진료|검진|약속|모임|식사|수업|강의|운동|여행|병문안|상담|출근|퇴근|발표|면접|예약)$',
-      ),
-      (match) {
-        final head = match.group(1);
-        final tail = match.group(2);
-        if (head == null || tail == null) {
-          return match.group(0) ?? '';
-        }
-        return '$head $tail';
-      },
-    );
-    return spaced.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   List<String> _normalizeSupplies(Object? supplies) {
@@ -837,7 +589,10 @@ class GptService {
     }
 
     final date = _extractDateFromText(dateTimeText, now);
-    final time = _extractTimeFromText(dateTimeText);
+    final time = _normalizeAmbiguousLeadingTime(
+      dateTimeText,
+      _extractTimeFromText(dateTimeText),
+    );
 
     if (date == null && time == null) {
       return null;
@@ -858,6 +613,37 @@ class GptService {
     }
 
     return candidate;
+  }
+
+  _ClockTime? _normalizeAmbiguousLeadingTime(
+    String text,
+    _ClockTime? clock,
+  ) {
+    if (clock == null) {
+      return null;
+    }
+
+    final hasExplicitPeriod = RegExp(
+          r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?\d{1,2}\s*시',
+        ).firstMatch(text)?.group(1) !=
+        null;
+    if (hasExplicitPeriod) {
+      return clock;
+    }
+
+    if (!RegExp(r'^(?:\s*(?:오늘|내일|모레|글피))\s*\d{1,2}\s*시').hasMatch(text)) {
+      return clock;
+    }
+
+    if (clock.hour < 1 || clock.hour > 6) {
+      return clock;
+    }
+
+    return _clockTimeFromParts(
+      period: '오후',
+      hour: clock.hour,
+      minute: clock.minute,
+    );
   }
 
   String _scheduleSystemPromptForRegion() {
@@ -1317,16 +1103,6 @@ class _ClockTime {
 
   final int hour;
   final int minute;
-}
-
-class _LocationContentSplit {
-  const _LocationContentSplit({
-    required this.location,
-    required this.remainder,
-  });
-
-  final String location;
-  final String remainder;
 }
 
 const String _scheduleSystemPrompt = '''

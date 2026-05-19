@@ -148,6 +148,12 @@ class NotificationService {
     }
   }
 
+  Future<void> reinitializeForAppUpdate() async {
+    _initializationFuture = null;
+    await initialize();
+    await scheduleMonthlyNaverIcsReminder();
+  }
+
   Future<void> scheduleMonthlyNaverIcsReminder({DateTime? now}) {
     final basis = now ?? DateTime.now();
     final nextReminder = _nextMonthlyNaverIcsReminderAt(basis);

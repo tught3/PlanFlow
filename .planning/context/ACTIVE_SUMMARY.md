@@ -10,6 +10,15 @@
 - The device had an older Android Debug signed install, so it could not be upgraded in place. After targeted cleanup of `com.planflow.app`, the release-signed debug APK installed successfully, a second `adb install -r` succeeded, and the app launched with PID/focused-window confirmation.
 - Verification passed: `scripts/flutter-local.ps1 build apk --debug --no-pub`, certificate inspection with `apksigner`, `scripts/flutter-local.ps1 analyze --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, `adb shell pidof com.planflow.app`, and focused window check.
 
+## 2026-05-19 Voice Schedule Structure Service Checkpoint
+- `lib/services/voice_schedule_structure_service.dart`를 도입해 `gpt_service.dart`와 `voice_command_analysis_service.dart`에서 공통 제목/장소/메모/시간 힌트 정규화를 공유하도록 전환했습니다.
+- 핵심 규칙으로 `오늘 4시에 팀장님 내일 오시는지 확인전화하기`에서 선두 시간 큐를 구조화에서 제거하고 제목은 `팀장님 내일 오시는지 확인전화하기`로 정리되도록 했고, 후행 상대일 표현(`내일`)은 제목에 유지했습니다.
+- 음성 입력 안내 첫 예시를 같은 문맥 분리 패턴으로 교체했고 compact 안내는 기존 2줄 구조를 유지했습니다.
+- 앱 startup/resume 양쪽에서 업데이트 체크를 수행하고, `last_seen_version_code` 기반 post-update hook으로 알림 채널 재초기화와 Naver ICS 리마인더 재예약을 idempotent하게 실행하도록 했습니다.
+- 강제 업데이트는 in-app update 상태가 unavailable/unknown이거나 체크 예외가 발생해도 Play Store fallback으로 이어지며, startup/resume 중복 호출은 service 내부 in-flight lock으로 합쳐집니다.
+- 동일 규칙을 보존하는 회귀를 `test/services/gpt_service_test.dart`, `test/services/voice_command_analysis_service_test.dart`, `test/services/voice_schedule_structure_service_test.dart`, `test/services/update_service_test.dart`, `test/screens/voice_input_screen_test.dart`에 추가/갱신했습니다.
+- 검증: focused voice/update/UI tests, reviewer 지적 2건 수정 후 재검증, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb shell am start -n com.planflow.app/.MainActivity`, PID/focused window 확인 통과.
+
 ## 2026-05-19 Calendar Silent Refresh Checkpoint
 - CalendarScreen now keeps the last rendered calendar content visible during refresh, no longer shows the `캘린더 확인 중` loading panel, and uses the app bar refresh button only as a silent trigger.
 - Only terminal states remain visible on the calendar tab: Supabase missing, signed out, or a real load error. Refreshes now preserve the previous event list instead of clearing the screen.

@@ -213,6 +213,41 @@ void main() {
       expect(result['title'], contains('동행방문'));
     });
 
+    test('fallback parsing treats text after leading time cue as title content',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': 'not valid json',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 9),
+      );
+
+      final result = await service.parseSchedule(
+        '오늘 4시에 팀장님 내일 오시는지 확인전화하기',
+      );
+
+      expect(result['parse_failed'], isTrue);
+      expect(result['start_at'], '2026-05-18T16:00:00.000');
+      expect(result['title'], '팀장님 내일 오시는지 확인전화하기');
+    });
+
     test('fallback parsing keeps monthly recurrence and removes location noise',
         () async {
       final client = MockClient((request) async {

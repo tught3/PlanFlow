@@ -46,9 +46,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       },
       onResume: () {
         unawaited(_syncSessionAndCalendar(reason: 'resume'));
-        unawaited(UpdateService.checkAndPrompt());
+        unawaited(_checkForAppUpdate());
       },
     );
+    unawaited(_checkForAppUpdate());
     unawaited(_syncSessionAndCalendar(reason: 'startup'));
     unawaited(_listenForSharedIcsFiles());
     unawaited(_notificationService.scheduleMonthlyNaverIcsReminder());
@@ -86,6 +87,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
     await _calendarAutoSyncService.syncConnectedCalendars(reason: reason);
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    await UpdateService.checkAndPrompt();
   }
 
   Future<void> _syncRegionSettings() async {

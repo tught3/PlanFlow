@@ -8,6 +8,7 @@ import '../core/local_time.dart';
 import 'gpt_service.dart';
 import 'remote_config_service.dart';
 import 'voice_command_router.dart';
+import 'voice_schedule_structure_service.dart';
 import 'voice_text_cleanup_service.dart';
 
 enum VoiceCommandAnalysisStage {
@@ -186,6 +187,8 @@ class VoiceCommandAnalysisService {
   final Map<String, VoiceCommandAnalysisResult> _aiCache =
       <String, VoiceCommandAnalysisResult>{};
   static const VoiceCommandRouter _router = VoiceCommandRouter();
+  static const VoiceScheduleStructureService _voiceScheduleStructureService =
+      VoiceScheduleStructureService();
 
   VoiceCommandAnalysisResult? _latestDraft;
 
@@ -537,10 +540,21 @@ class VoiceCommandAnalysisService {
         _parseDateTime(fallback?.scheduleFields['start_at']);
     final titleSource = _extractContentClause(normalizedText) ??
         _stripExplicitMemoClause(normalizedText);
+    final structured = _voiceScheduleStructureService.analyze(
+      titleSource,
+    );
     final sourceTitle = _normalizeText(source['title']?.toString(), null);
     final title = sourceTitle.isNotEmpty
-        ? _deriveLocalTitle(sourceTitle, referenceText: normalizedText)
-        : _deriveLocalTitle(titleSource, referenceText: normalizedText);
+        ? _deriveLocalTitle(
+            sourceTitle,
+            referenceText: normalizedText,
+            structured: structured,
+          )
+        : _deriveLocalTitle(
+            titleSource,
+            referenceText: normalizedText,
+            structured: structured,
+          );
     final normalizedLocationText =
         _normalizeText(source['location']?.toString(), null);
     final inferredLocation = normalizedLocationText.isNotEmpty
@@ -715,114 +729,25 @@ class VoiceCommandAnalysisService {
         RegExp(r'(오늘|내일|모레|글피|이번주|다음주|매주|격주|매월|매년)').hasMatch(normalized);
   }
 
-  String _deriveLocalTitle(String text, {String? referenceText}) {
-    var title = _normalizeText(_stripExplicitMemoClause(text), '');
-    final preserveRelativeDayWords =
-        _shouldPreserveRelativeDayWords(referenceText ?? title);
-    title = title
-        .replaceAll(
-          RegExp(
-            r'(추가|등록|기록|메모|예약|만들어|해줘|해주세요|바꿔|수정|변경|삭제|지워|찾아|검색|알려|이동)',
-          ),
-          ' ',
-        )
-        .replaceAll(
-          RegExp(r'(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'),
-          ' ',
-        )
-        .replaceAll(RegExp(r'(선택|이걸로|이거|그걸로|골라|첫번째|두번째|셋째)'), ' ')
-        .replaceAll(
-          RegExp(
-            r'(?:(?:\d{4})년\s*)?(?:\d{1,2}|[가-힣]{1,8})월\s*(?:\d{1,2}|[가-힣]{1,8})일',
-          ),
-          ' ',
-        )
-        .replaceAll(
-          RegExp(
-              r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?[가-힣0-9]{1,8}\s*시(?:\s*[가-힣0-9]{1,8}\s*분?|\s*반)?'),
-          ' ',
-        )
-        .replaceAll(RegExp(r'\d{1,3}\s*(분|시간)\s*(뒤|후|있다가|이따)'), ' ')
-        .replaceAll(
-          preserveRelativeDayWords
-              ? RegExp(r'(이번주|다음주|매주|격주|매월|매년)')
-              : RegExp(r'(오늘|내일|모레|글피|이번주|다음주|매주|격주|매월|매년)'),
-          ' ',
-        )
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    title = _stripLeadingLocationPhrase(title);
-    return title.isEmpty
-        ? _normalizeText(_stripExplicitMemoClause(text), '')
-        : title;
+  String _deriveLocalTitle(
+    String text, {
+    String? referenceText,
+    VoiceScheduleStructure? structured,
+  }) {
+    return _voiceScheduleStructureService.normalizeLocalVoiceTitle(
+      text,
+      referenceText: referenceText,
+      structured: structured ??
+          _voiceScheduleStructureService.analyze(referenceText ?? text),
+    );
   }
 
   String? _extractExplicitMemo(String rawText) {
-    final source = _normalizeText(rawText, '');
-    final match = RegExp(
-      r'(?:메모에|설명에|노트로)\s*[:：]?\s*(.+)$',
-    ).firstMatch(source);
-    if (match == null) {
-      return null;
-    }
-
-    final memo = match.group(1)?.trim();
-    if (memo == null || memo.isEmpty) {
-      return null;
-    }
-
-    final cleaned = _normalizeText(memo, '');
-    final stripped = _stripExplicitMemoClause(cleaned);
-    final normalized = _normalizeSpacingForSchedule(
-      _stripScheduleNoise(stripped),
-    );
-    if (normalized.isEmpty || _looksLikeOnlyScheduleMetadata(normalized)) {
-      return null;
-    }
-
-    return normalized;
+    return _voiceScheduleStructureService.extractExplicitMemo(rawText);
   }
 
   String _stripExplicitMemoClause(String text) {
-    return text
-        .replaceFirst(
-          RegExp(r'\s*(?:메모에|설명에|노트로)\s*[:：]?\s*.+$'),
-          ' ',
-        )
-        .trim();
-  }
-
-  bool _shouldPreserveRelativeDayWords(String text) {
-    final normalized = _normalizeText(text, '');
-    final cueMatch = _firstScheduleCueMatch(normalized);
-    if (cueMatch == null) {
-      return false;
-    }
-
-    final tail = normalized.substring(cueMatch.end);
-    return RegExp(r'(오늘|내일|모레|글피)').hasMatch(tail);
-  }
-
-  RegExpMatch? _firstScheduleCueMatch(String text) {
-    final patterns = <RegExp>[
-      RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
-      RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
-      RegExp(r'(?:오늘|내일|모레|글피)'),
-      RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
-      RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
-    ];
-
-    RegExpMatch? first;
-    for (final pattern in patterns) {
-      for (final match in pattern.allMatches(text)) {
-        if (first == null ||
-            match.start < first.start ||
-            (match.start == first.start && match.end > first.end)) {
-          first = match;
-        }
-      }
-    }
-    return first;
+    return _voiceScheduleStructureService.stripExplicitMemoClause(text);
   }
 
   String? _extractContentClause(String rawText) {
@@ -837,153 +762,22 @@ class VoiceCommandAnalysisService {
     return content.replaceFirst(RegExp(r'^[.。,\s]+'), '').trim();
   }
 
-  String _stripScheduleNoise(
-    String text, {
-    bool preserveRelativeDayWords = false,
-  }) {
-    var cleaned = text.replaceAll(RegExp(r'[\(\)\[\]{}]'), ' ');
-    final patterns = <RegExp>[
-      RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
-      RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
-      RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
-      RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
-      RegExp(r'\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따)'),
-      RegExp(r'\d{1,2}\s*(?:일|주|개월|달|월|년)\s*마다'),
-      RegExp(r'(?:매주|매월|매년|격주|매일)'),
-      RegExp(r'(?:반복|알림|리마인더|알람|reminder)'),
-      RegExp(r'(?:부터|까지|동안|정각|정도|쯤|경|예정|예약)'),
-      RegExp(r'(?:열두시반|열한시반|열시반|한시반|두시반|세시반|네시반)'),
-    ];
-    if (!preserveRelativeDayWords) {
-      patterns.add(RegExp(r'(?:오늘|내일|모레|글피)'));
-    }
-    for (final pattern in patterns) {
-      cleaned = cleaned.replaceAll(pattern, ' ');
-    }
-    cleaned = cleaned
-        .replaceAll(RegExp(r'^\s*(?:에|로|으로)\s+'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    return _normalizeSpacingForSchedule(cleaned);
-  }
-
   void _preserveDeliveryContent(
     Map<String, dynamic> scheduleFields,
     String contentText,
   ) {
-    final split = _splitLeadingMedicalLocation(contentText);
-    if (split == null ||
-        !RegExp(r'(갖다\s*주|가져다\s*주|전달|배송|납품)').hasMatch(split.remainder)) {
-      return;
-    }
-
-    final firstRemainderToken = split.remainder.split(RegExp(r'\s+')).first;
-    final currentLocation = scheduleFields['location']?.toString().trim();
-    if (currentLocation == null ||
-        currentLocation.isEmpty ||
-        currentLocation.contains(firstRemainderToken)) {
-      scheduleFields['location'] = _normalizeSpacingForSchedule(split.location);
-      scheduleFields['location_lat'] = null;
-      scheduleFields['location_lng'] = null;
-    }
-
-    final currentTitle = scheduleFields['title']?.toString().trim() ?? '';
-    if (currentTitle.isEmpty || !currentTitle.contains(firstRemainderToken)) {
-      scheduleFields['title'] = _normalizeSpacingForSchedule(split.remainder);
-    }
-
-    final supplies = _normalizeStringList(scheduleFields['supplies']);
-    if (supplies.isEmpty) {
-      final supplyMatch = RegExp(
-        r'(?:^|\s)([가-힣A-Za-z0-9]+)\s*(?:갖다\s*주|가져다\s*주|전달|배송|납품)',
-      ).firstMatch(split.remainder);
-      final supply = supplyMatch?.group(1)?.trim();
-      if (supply != null &&
-          supply.isNotEmpty &&
-          supply != firstRemainderToken) {
-        scheduleFields['supplies'] = <String>[supply];
-      }
-    }
-  }
-
-  _LocationContentSplit? _splitLeadingMedicalLocation(String text) {
-    final normalized = _normalizeText(text, '');
-    final match = RegExp(
-      r'^(.+?(?:정형외과|이비인후과|피부과|성형외과|신경외과|내과|외과|안과|치과|한의원|의원|병원|클리닉|약국))\s+(.+)$',
-    ).firstMatch(normalized);
-    final location = match?.group(1)?.trim();
-    final remainder = match?.group(2)?.trim();
-    if (location == null ||
-        location.isEmpty ||
-        remainder == null ||
-        remainder.isEmpty) {
-      return null;
-    }
-    return _LocationContentSplit(location: location, remainder: remainder);
-  }
-
-  bool _looksLikeOnlyScheduleMetadata(String text) {
-    return RegExp(
-      r'^(?:오늘|내일|모레|글피|오전|오후|아침|점심|저녁|밤|새벽|매주|매월|매년|격주|반복|알림|리마인더|알람|\d{1,2}\s*시|\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따))*$',
-    ).hasMatch(text.replaceAll(RegExp(r'\s+'), ''));
+    return _voiceScheduleStructureService.preserveDeliveryContent(
+      scheduleFields,
+      contentText,
+    );
   }
 
   String _normalizeSpacingForSchedule(String text) {
-    final compact = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (compact.isEmpty) {
-      return compact;
-    }
-
-    final spaced = compact.replaceAllMapped(
-      RegExp(
-        r'([가-힣A-Za-z0-9·.]{2,}?)(출발|도착|미팅|회의|방문|진료|검진|약속|모임|식사|수업|강의|운동|여행|병문안|상담|출근|퇴근|발표|면접|예약)$',
-      ),
-      (match) {
-        final head = match.group(1);
-        final tail = match.group(2);
-        if (head == null || tail == null) {
-          return match.group(0) ?? '';
-        }
-        return '$head $tail';
-      },
-    );
-    return spaced.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return _voiceScheduleStructureService.normalizeSpacingForSchedule(text);
   }
 
   String? _extractLeadingLocation(String text) {
-    final match = RegExp(
-      r'^([가-힣A-Za-z0-9·.]{2,})\s*(?:에서|에|로|으로)\s+(.+)$',
-    ).firstMatch(text.trim());
-    if (match == null) {
-      return null;
-    }
-
-    final location = match.group(1)?.trim();
-    final remainder = match.group(2)?.trim();
-    if (location == null ||
-        location.isEmpty ||
-        remainder == null ||
-        remainder.isEmpty) {
-      return null;
-    }
-
-    return location;
-  }
-
-  String _stripLeadingLocationPhrase(String text) {
-    final match = RegExp(
-      r'^[가-힣A-Za-z0-9·.]{2,}\s*(?:에서|에|로|으로)\s+(.+)$',
-    ).firstMatch(text.trim());
-    if (match == null) {
-      return text.trim();
-    }
-
-    final remainder = match.group(1)?.trim();
-    if (remainder == null || remainder.isEmpty) {
-      return text.trim();
-    }
-
-    return remainder;
+    return _voiceScheduleStructureService.extractLeadingLocation(text);
   }
 
   String? _inferLocalRecurrence(String text) {
@@ -1322,16 +1116,6 @@ class VoiceCommandAnalysisService {
     final gpt = GptService(now: _now);
     return gpt.inferStartAtFromRawText(text);
   }
-}
-
-class _LocationContentSplit {
-  const _LocationContentSplit({
-    required this.location,
-    required this.remainder,
-  });
-
-  final String location;
-  final String remainder;
 }
 
 const String _voiceCommandAnalysisPrompt = '''

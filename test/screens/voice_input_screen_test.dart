@@ -406,7 +406,10 @@ void main() {
 
     expect(find.text('말하거나 직접 입력한 뒤 바로 확인하세요.'), findsNothing);
     expect(find.text('이렇게 말해보세요'), findsOneWidget);
-    expect(find.textContaining('내일 오전 10시 정장집 방문'), findsOneWidget);
+    expect(
+      find.textContaining('오늘 4시에 팀장님 내일 오시는지 확인전화하기'),
+      findsOneWidget,
+    );
     expect(find.textContaining('5월 10일 하루종일 휴가'), findsOneWidget);
     expect(find.textContaining('매주 화요일 팀 미팅'), findsOneWidget);
     expect(

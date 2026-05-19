@@ -255,6 +255,53 @@ void main() {
       expect(result.intent, VoiceCommandIntent.add);
     });
 
+    test('prefers raw content after leading time cue over awkward AI title',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'normalized_text': '오늘 4시에 팀장님 내일 오시는지 확인전화하기',
+                    'intent': 'add',
+                    'confidence': 0.9,
+                    'uncertain_fields': <String>[],
+                    'schedule_fields': <String, dynamic>{
+                      'title': '오늘 팀장님 내일 확인전화하기',
+                      'start_at': '2026-05-18T16:00:00.000',
+                      'supplies': <String>[],
+                      'pre_actions': <Map<String, dynamic>>[],
+                    },
+                    'requested_changes': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = VoiceCommandAnalysisService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 9),
+      );
+
+      final result = await service.analyze(
+        '오늘 4시에 팀장님 내일 오시는지 확인전화하기',
+        stage: VoiceCommandAnalysisStage.complete,
+        budget: VoiceAnalysisRequestBudget(maxAiRequests: 2),
+      );
+
+      expect(result.scheduleFields['title'], '팀장님 내일 오시는지 확인전화하기');
+      expect(result.scheduleFields['start_at'], '2026-05-18T16:00:00.000');
+      expect(result.intent, VoiceCommandIntent.add);
+    });
+
     test('falls back to local analysis when the budget is exhausted', () async {
       var requestCount = 0;
 
