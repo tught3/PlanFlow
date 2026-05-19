@@ -547,7 +547,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final quickResult = await _runNaverCalDavImport(
       userId: userId,
       mode: NaverCalDavSyncMode.quick,
-      dismissibleProgress: false,
     );
     if (!mounted || quickResult == null || !quickResult.success) {
       return quickResult;
@@ -562,7 +561,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       mode: range.mode,
       from: range.from,
       to: range.to,
-      dismissibleProgress: true,
       additionalLabel: range.label,
     );
   }
@@ -572,7 +570,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required NaverCalDavSyncMode mode,
     DateTime? from,
     DateTime? to,
-    required bool dismissibleProgress,
     String? additionalLabel,
     bool diagnosticImport = false,
   }) async {
@@ -591,13 +588,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _naverCalDavLongRunningTimer = Timer(const Duration(seconds: 10), () {
       _naverCalDavLongRunning.value = true;
     });
-    unawaited(_showNaverCalDavProgressDialog(
-      dismissible: dismissibleProgress,
-    ));
-    _showSnack(
-      '네이버 일정 동기화는 앱을 백그라운드로 보내도 계속 진행됩니다. '
-      '완료되면 다시 알려드릴게요.',
-    );
     final result = await _naverCalDavService.syncAll(
       userId: userId,
       from: from,
@@ -667,7 +657,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _runNaverCalDavImport(
       userId: userId,
       mode: NaverCalDavSyncMode.quick,
-      dismissibleProgress: false,
       additionalLabel: '진단',
       diagnosticImport: true,
     );
@@ -866,6 +855,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // ignore: unused_element
   Future<void> _showNaverCalDavProgressDialog({
     required bool dismissible,
   }) {
@@ -2333,13 +2323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     _isDisconnectingGoogleCalendar
                                 ? null
                                 : _syncGoogleCalendar,
-                            icon: _isSyncingGoogleCalendar
-                                ? const SizedBox.square(
-                                    dimension: 18,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.sync),
+                            icon: const Icon(Icons.sync),
                             label: Text(_googleCalendarActionLabel()),
                           ),
                         ),
@@ -2405,21 +2389,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             _isDisconnectingNaverCalendar
                                         ? null
                                         : _syncOrReconnectNaverCalendar,
-                                    icon: _isTestingNaverCalDav ||
-                                            _isImportingNaverCalDav
-                                        ? const SizedBox.square(
-                                            dimension: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : const Icon(Icons.sync),
+                                    icon: const Icon(Icons.sync),
                                     label: Text(
-                                      _isImportingNaverCalDav
-                                          ? '동기화 중...'
-                                          : _isTestingNaverCalDav
-                                              ? '연결 확인 중...'
-                                              : '네이버 일정 동기화',
+                                      '네이버 일정 동기화',
                                     ),
                                   ),
                                 ),
@@ -2479,18 +2451,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     _isDisconnectingDeviceCalendar
                                 ? null
                                 : _importDeviceNaverCalendar,
-                            icon: _isImportingDeviceNaverCalendar
-                                ? const SizedBox.square(
-                                    dimension: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.phone_android_outlined),
+                            icon: const Icon(Icons.phone_android_outlined),
                             label: Text(
-                              _isImportingDeviceNaverCalendar
-                                  ? '가져오는 중...'
-                                  : '휴대폰 내부 캘린더 일정 가져오기',
+                              '휴대폰 내부 캘린더 일정 가져오기',
                             ),
                           ),
                         ),
@@ -2657,9 +2620,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String _googleCalendarActionLabel() {
-    if (_isSyncingGoogleCalendar) {
-      return '동기화 중...';
-    }
     final status = _calendarSyncSummary?.google.status;
     return switch (status) {
       CalendarIntegrationStatus.ready ||
@@ -2672,12 +2632,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String _naverCalendarStatusLabel() {
-    if (_isTestingNaverCalDav) {
-      return 'CalDAV 연결을 확인하는 중입니다.';
-    }
-    if (_isImportingNaverCalDav) {
-      return '네이버 일정을 가져오는 중입니다.';
-    }
     if (_hasNaverCalDavCredentials) {
       return _lastNaverCalDavResult?.message ?? 'CalDAV 연결됨';
     }

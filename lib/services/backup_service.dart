@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class BackupSnapshot {
@@ -39,6 +40,9 @@ class BackupService {
     'location_history',
     'user_settings',
   ];
+  static const String _automaticBackupLabel = '자동 백업';
+  static const Duration _recentAutomaticBackupWindow = Duration(days: 30);
+  static const Duration _monthlyAutomaticBackupWindow = Duration(days: 365);
 
   final SupabaseClient _client;
 
@@ -50,8 +54,31 @@ class BackupService {
         .eq('user_id', userId)
         .order('created_at', ascending: false);
 
-    return (rows as List<dynamic>)
+    final backups = (rows as List<dynamic>)
         .map((row) => BackupSnapshot.fromJson(Map<String, dynamic>.from(row)))
+        .toList(growable: false);
+    final pruneIds = automaticBackupIdsToPrune(
+      backups,
+      now: DateTime.now().toUtc(),
+    );
+    if (pruneIds.isEmpty) {
+      return backups;
+    }
+
+    try {
+      await _client
+          .from('user_backups')
+          .delete()
+          .eq('user_id', userId)
+          .inFilter('id', pruneIds.toList(growable: false));
+    } catch (error, stackTrace) {
+      debugPrint('Backup retention prune skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return backups;
+    }
+
+    return backups
+        .where((backup) => !pruneIds.contains(backup.id))
         .toList(growable: false);
   }
 
@@ -88,14 +115,15 @@ class BackupService {
     final dueAt = _latestBackupBoundary(current);
     final backups = await listBackups();
     final hasFreshAutomaticBackup = backups.any((backup) {
-      return backup.label == '자동 백업' && !backup.createdAt.isBefore(dueAt);
+      return backup.label == _automaticBackupLabel &&
+          !backup.createdAt.isBefore(dueAt);
     });
 
     if (hasFreshAutomaticBackup) {
       return null;
     }
 
-    return createBackup(label: '자동 백업');
+    return createBackup(label: _automaticBackupLabel);
   }
 
   Future<void> restoreBackup(String backupId) async {
@@ -165,5 +193,46 @@ class BackupService {
       boundary = boundary.subtract(const Duration(days: 1));
     }
     return boundary;
+  }
+
+  static Set<String> automaticBackupIdsToPrune(
+    List<BackupSnapshot> backups, {
+    required DateTime now,
+  }) {
+    if (backups.isEmpty) {
+      return const <String>{};
+    }
+
+    final ordered = backups.toList(growable: false)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    final recentCutoff = now.toUtc().subtract(_recentAutomaticBackupWindow);
+    final monthlyCutoff = now.toUtc().subtract(_monthlyAutomaticBackupWindow);
+    final retainedMonthlyBuckets = <String>{};
+    final pruneIds = <String>{};
+
+    for (final backup in ordered) {
+      if (backup.label != _automaticBackupLabel) {
+        continue;
+      }
+
+      final createdAt = backup.createdAt.toUtc();
+      if (!createdAt.isBefore(recentCutoff)) {
+        continue;
+      }
+      if (createdAt.isBefore(monthlyCutoff)) {
+        pruneIds.add(backup.id);
+        continue;
+      }
+
+      final monthlyBucket =
+          '${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}';
+      if (retainedMonthlyBuckets.add(monthlyBucket)) {
+        continue;
+      }
+      pruneIds.add(backup.id);
+    }
+
+    return pruneIds;
   }
 }

@@ -447,7 +447,7 @@ class _FeedbackAdminReportsSheetState extends State<FeedbackAdminReportsSheet> {
   @override
   void initState() {
     super.initState();
-    _reportsFuture = _fetchReports();
+    _reportsFuture = _loadReportsAndMarkViewed();
   }
 
   @override
@@ -571,14 +571,31 @@ class _FeedbackAdminReportsSheetState extends State<FeedbackAdminReportsSheet> {
     );
   }
 
-  Future<List<FeedbackReport>> _fetchReports() {
+  Future<List<FeedbackReport>> _loadReportsAndMarkViewed() async {
+    final reports = await widget.repository.fetchAdminReports(limit: 100);
+    final newReports = reports
+        .where((report) => report.status == FeedbackReportStatus.newReport)
+        .toList(growable: false);
+
+    if (newReports.isEmpty) {
+      return reports;
+    }
+
+    await Future.wait(
+      newReports.map(
+        (report) => widget.repository.updateReportStatus(
+          reportId: report.id,
+          status: FeedbackReportStatus.triaged,
+        ),
+      ),
+    );
     return widget.repository.fetchAdminReports(limit: 100);
   }
 
   void _refresh() {
     setState(() {
       _errorMessage = null;
-      _reportsFuture = _fetchReports();
+      _reportsFuture = _loadReportsAndMarkViewed();
     });
   }
 
@@ -602,7 +619,7 @@ class _FeedbackAdminReportsSheetState extends State<FeedbackAdminReportsSheet> {
         return;
       }
       setState(() {
-        _reportsFuture = _fetchReports();
+        _reportsFuture = _loadReportsAndMarkViewed();
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${status.label} 상태로 바꿨어요.')),

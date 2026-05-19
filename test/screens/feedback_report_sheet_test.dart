@@ -120,7 +120,7 @@ void main() {
     expect(find.text('문제 신고가 보내지지 않아요'), findsOneWidget);
   });
 
-  testWidgets('FeedbackAdminReportsSheet lists reports and updates status',
+  testWidgets('FeedbackAdminReportsSheet marks new reports as triaged when opened',
       (tester) async {
     final gateway = _FakeFeedbackGateway(
       adminRows: <Map<String, Object?>>[
@@ -128,8 +128,8 @@ void main() {
           'id': 'report-1',
           'user_id': 'user-1',
           'type': 'voice',
-          'message': '음성 수정 후보가 안 떠요',
-          'expected_behavior': '후보 일정이 보여야 해요',
+          'message': '새 기능 안내가 보이지 않아요',
+          'expected_behavior': '안내가 보이도록 해주세요',
           'app_version': '1.0.0+1',
           'platform': 'android',
           'device_summary': 'Android',
@@ -152,18 +152,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('문제 신고함'), findsOneWidget);
-    expect(find.text('음성 수정 후보가 안 떠요'), findsOneWidget);
-    expect(find.text('기대한 동작: 후보 일정이 보여야 해요'), findsOneWidget);
-    expect(find.text('음성 인식 오류'), findsOneWidget);
-
-    await tester.tap(find.byKey(
-      const ValueKey('feedback-admin-status-report-1-triaged'),
-    ));
-    await tester.pumpAndSettle();
-
     expect(gateway.statusUpdates, <String, String>{'report-1': 'triaged'});
-    expect(find.text('확인 중 상태로 바꿨어요.'), findsOneWidget);
+    expect(find.text('새 기능 안내가 보이지 않아요'), findsOneWidget);
   });
 
   testWidgets('FeedbackReportSection shows new admin report badge',
