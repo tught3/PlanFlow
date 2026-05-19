@@ -384,7 +384,12 @@ class NaverCalDavCredentials {
 
 class LocalNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
   const LocalNaverCalDavCredentialStore({
-    FlutterSecureStorage storage = const FlutterSecureStorage(),
+    FlutterSecureStorage storage = const FlutterSecureStorage(
+      aOptions: AndroidOptions(
+        encryptedSharedPreferences: true,
+        resetOnError: false,
+      ),
+    ),
     String? Function()? currentUserId,
     bool requireUserScopedKey = false,
   })  : _storage = storage,

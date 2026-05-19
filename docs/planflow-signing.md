@@ -28,6 +28,8 @@ That script does the whole repeatable setup in one run:
 4. Updates the connected device with `scripts/adb-install-update.ps1`.
 5. Launches the app and prints the PID unless `-SkipLaunch` is used.
 
+The Android build now fails fast if `android/key.properties` is missing or the release keystore path is blank, so the signing files must be restored before the first build on any PC.
+
 If the archive lives somewhere else, pass it explicitly:
 
 ```powershell

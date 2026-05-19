@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants.dart';
+import '../../widgets/planflow_logo.dart';
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
@@ -16,10 +17,7 @@ class SplashScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  AppConstants.appName,
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
+                const PlanFlowLogo(fontSize: 30),
                 const SizedBox(height: 8),
                 Text(
                   '잠시만 기다려 주세요.',

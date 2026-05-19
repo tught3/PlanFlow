@@ -1,5 +1,6 @@
 import java.util.Base64
 import java.util.Properties
+import org.gradle.api.GradleException
 
 plugins {
     id("com.android.application")
@@ -13,6 +14,25 @@ val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+} else {
+    throw GradleException(
+        "Missing android/key.properties. Restore the PlanFlow signing files before building.",
+    )
+}
+
+val releaseStoreFile = keystoreProperties["storeFile"] as String?
+    ?: throw GradleException(
+        "android/key.properties is missing storeFile. Restore the PlanFlow signing files before building.",
+    )
+if (releaseStoreFile.isBlank()) {
+    throw GradleException(
+        "android/key.properties storeFile is blank. Restore the PlanFlow signing files before building.",
+    )
+}
+if (!file(releaseStoreFile).exists()) {
+    throw GradleException(
+        "Release keystore file does not exist at $releaseStoreFile. Restore the PlanFlow signing files before building.",
+    )
 }
 
 fun readDartDefineValue(key: String): String {
@@ -61,7 +81,7 @@ android {
         create("release") {
             keyAlias = keystoreProperties["keyAlias"] as String?
             keyPassword = keystoreProperties["keyPassword"] as String?
-            storeFile = (keystoreProperties["storeFile"] as String?)?.let { file(it) }
+            storeFile = file(releaseStoreFile)
             storePassword = keystoreProperties["storePassword"] as String?
         }
     }

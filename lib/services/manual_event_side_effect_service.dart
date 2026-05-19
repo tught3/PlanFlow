@@ -6,6 +6,7 @@ import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'app_permission_service.dart';
 import 'departure_alarm_service.dart';
+import 'location_lookup_service.dart';
 import 'map_service.dart';
 import 'notification_service.dart';
 import 'smart_preparation_alarm_service.dart';
@@ -125,12 +126,14 @@ class ManualEventSideEffectService {
     DepartureAlarmService? departureAlarmService,
     NotificationService? notificationService,
     TravelTimeBufferService? travelTimeBufferService,
+    LocationLookupService? locationLookupService,
     Future<GeoPoint?> Function()? currentLocationProvider,
     DateTime Function()? now,
   })  : _eventRepository = eventRepository,
         _departureAlarmService = departureAlarmService,
         _notificationService = notificationService,
         _travelTimeBufferService = travelTimeBufferService,
+        _locationLookupService = locationLookupService,
         _currentLocationProvider = currentLocationProvider,
         _now = now;
 
@@ -144,6 +147,7 @@ class ManualEventSideEffectService {
   final DepartureAlarmService? _departureAlarmService;
   final NotificationService? _notificationService;
   final TravelTimeBufferService? _travelTimeBufferService;
+  final LocationLookupService? _locationLookupService;
   final Future<GeoPoint?> Function()? _currentLocationProvider;
   final DateTime Function()? _now;
 
@@ -154,6 +158,8 @@ class ManualEventSideEffectService {
       _notificationService ?? NotificationService();
   TravelTimeBufferService get _travelTimeBuffer =>
       _travelTimeBufferService ?? TravelTimeBufferService();
+  LocationLookupService get _locationLookup =>
+      _locationLookupService ?? LocationLookupService();
   DateTime get _currentTime => (_now ?? DateTime.now)();
 
   Future<ManualEventSideEffectResult> syncAfterSave({
@@ -653,17 +659,15 @@ class ManualEventSideEffectService {
         SmartPreparationAlarmService.defaultTravelBufferMin) {
       return fallbackTravelMinutes;
     }
-    final destinationLat = event.locationLat;
-    final destinationLng = event.locationLng;
-    if (destinationLat == null || destinationLng == null) {
+    final destination = await _resolveDestinationForEvent(event);
+    if (destination == null) {
       debugPrint(
-        'Smart preparation travel fallback: no event coordinates for ${event.id}.',
+        'Smart preparation travel fallback: no destination coordinates for ${event.id}.',
       );
       return fallbackTravelMinutes;
     }
 
-    final origin = await _currentLocationProvider?.call() ??
-        await _permissionServiceCurrentLocation();
+    final origin = await _resolveOriginLocation();
     if (origin == null) {
       debugPrint(
         'Smart preparation travel fallback: no current location for ${event.id}.',
@@ -675,8 +679,8 @@ class ManualEventSideEffectService {
       final estimate = await _travelTimeBuffer.estimateWithMapApis(
         originLat: origin.latitude,
         originLng: origin.longitude,
-        destinationLat: destinationLat,
-        destinationLng: destinationLng,
+        destinationLat: destination.latitude,
+        destinationLng: destination.longitude,
         mode: _travelModeFromSettings(travelMode),
         locationText: event.location,
       );
@@ -691,13 +695,52 @@ class ManualEventSideEffectService {
     }
   }
 
-  Future<GeoPoint?> _permissionServiceCurrentLocation() async {
+  Future<GeoPoint?> _resolveDestinationForEvent(EventModel event) async {
+    final destinationLat = event.locationLat;
+    final destinationLng = event.locationLng;
+    if (destinationLat != null && destinationLng != null) {
+      return GeoPoint(latitude: destinationLat, longitude: destinationLng);
+    }
+
+    final location = event.location?.trim();
+    if (location == null || location.isEmpty) {
+      return null;
+    }
+
+    try {
+      final searchResult = await _locationLookup.searchWithFallback(location);
+      if (searchResult.results.isEmpty) {
+        return null;
+      }
+      final selected = searchResult.results.first;
+      return GeoPoint(
+        latitude: selected.latitude,
+        longitude: selected.longitude,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Smart preparation travel fallback: location lookup failed for '
+        '${event.id}: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
+    }
+  }
+
+  Future<GeoPoint?> _resolveOriginLocation() async {
+    final current = await _currentLocationProvider?.call();
+    if (current != null) {
+      return current;
+    }
     if (kIsWeb) {
       return null;
     }
     final permissionService = AppPermissionService();
-    final lastKnown = await permissionService.getLastKnownLocation();
-    return lastKnown ?? await permissionService.getCurrentLocation();
+    final live = await permissionService.getCurrentLocation();
+    if (live != null) {
+      return live;
+    }
+    return permissionService.getLastKnownLocation();
   }
 
   MapTravelMode _travelModeFromSettings(String travelMode) {

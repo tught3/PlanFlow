@@ -5,6 +5,7 @@ import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/map_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
+import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:planflow/services/travel_time_buffer_service.dart';
 
@@ -261,6 +262,58 @@ void main() {
       expect(
         departureRow['notify_at'],
         DateTime(2026, 5, 8, 8).toIso8601String(),
+      );
+    });
+
+    test('syncAfterSave geocodes destination text before estimating travel',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final fakeTravelTime = _FakeTravelTimeBufferService(
+        routeMinutes: 42,
+      );
+      final lookup = _FakeLocationLookupService(
+        result: const LocationLookupResult(
+          name: 'Wonju Severance Christian Hospital',
+          address: 'Gangwon-do Wonju-si',
+          latitude: 37.3421,
+          longitude: 127.9421,
+        ),
+      );
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        notificationService: notifications,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        travelTimeBufferService: fakeTravelTime,
+        locationLookupService: lookup,
+        currentLocationProvider: () async =>
+            const GeoPoint(latitude: 37.5, longitude: 127),
+        now: () => DateTime(2026, 5, 8, 6),
+      );
+      final event = EventModel(
+        id: 'geo-event',
+        userId: 'user-1',
+        title: 'Client visit',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: 'Wonju Severance Christian Hospital',
+      );
+
+      await service.syncAfterSave(
+        event: event,
+        userId: 'user-1',
+        travelMode: 'transit',
+      );
+
+      expect(lookup.searchQueries, ['Wonju Severance Christian Hospital']);
+      expect(fakeTravelTime.lastMode, MapTravelMode.transit);
+      expect(fakeTravelTime.lastDestinationLat, 37.3421);
+      expect(fakeTravelTime.lastDestinationLng, 127.9421);
+      expect(
+        gateway.insertedPreActions.any(
+          (row) => row['event_id'] == 'geo-event',
+        ),
+        true,
       );
     });
 
@@ -697,6 +750,10 @@ class _FakeTravelTimeBufferService extends TravelTimeBufferService {
 
   final int routeMinutes;
   MapTravelMode? lastMode;
+  double? lastOriginLat;
+  double? lastOriginLng;
+  double? lastDestinationLat;
+  double? lastDestinationLng;
 
   @override
   Future<TravelTimeBufferEstimate> estimateWithMapApis({
@@ -708,10 +765,32 @@ class _FakeTravelTimeBufferService extends TravelTimeBufferService {
     String? locationText,
   }) async {
     lastMode = mode;
+    lastOriginLat = originLat;
+    lastOriginLng = originLng;
+    lastDestinationLat = destinationLat;
+    lastDestinationLng = destinationLng;
     return TravelTimeBufferEstimate(
       buffer: Duration(minutes: routeMinutes),
       source: TravelTimeBufferSource.googleMaps,
       reason: 'fake route estimate',
+    );
+  }
+}
+
+class _FakeLocationLookupService extends LocationLookupService {
+  _FakeLocationLookupService({required this.result});
+
+  final LocationLookupResult result;
+  final searchQueries = <String>[];
+
+  @override
+  Future<LocationLookupSearchResult> searchWithFallback(String query) async {
+    searchQueries.add(query);
+    return LocationLookupSearchResult(
+      originalQuery: query,
+      results: <LocationLookupResult>[result],
+      searchedQueries: <String>[query],
+      fallbackQueries: const <String>[],
     );
   }
 }

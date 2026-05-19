@@ -846,3 +846,9 @@
 - Re-ran `scripts/adb-install-update.ps1` after the transition; update install succeeded without clearing app data, proving future local builds with the same release key update normally.
 - Copied the encrypted signing backup to `C:\Users\tught\OneDrive\PlanFlow Signing Backup\PlanFlow-signing-keys.zip.aes`; the archive password was not copied with it.
 - Verification passed: debug APK build, release AAB build, installed APK signature check, update-install recheck, app launch, PID check, and Gradle daemon closeout.
+
+## 2026-05-19 Codex Prompt Sync Checkpoint
+- Hardened Android signing setup so the Gradle build now fails fast if `android/key.properties` is missing or the release keystore path is blank, which keeps the release bootstrap honest on new PCs.
+- Added `android:allowBackup="false"` to the manifest, swapped the splash title to `PlanFlowLogo(fontSize: 30)`, and made local Naver CalDAV secure storage explicit with Android encrypted shared preferences.
+- Updated smart preparation side effects so missing destination coordinates are geocoded from location text before route estimation, with current-location fallback order preserved and new regression coverage for both the geocode and splash paths.
+- Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 test test/services/manual_event_side_effect_service_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/splash_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `scripts/flutter-local.ps1 build appbundle --release --no-pub`, `scripts/planflow-release-bootstrap.ps1 -SkipRestore -SkipBuild -SkipInstall -SkipLaunch`, `scripts/adb-install-update.ps1`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app`.
