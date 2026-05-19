@@ -34,3 +34,16 @@ All files above are intentionally ignored by Git. Never commit them or paste the
 ```
 
 Do not use `adb uninstall com.planflow.app`, `pm clear`, or any broad cleanup script as a normal update check. If Android reports `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, compare the installed app signature and the APK/AAB signature, then decide manually how to migrate the device.
+
+## One-Time Debug To Release Transition
+
+If a development device already has `com.planflow.app` installed with the Android Debug certificate, Android cannot update it to the PlanFlow release certificate. This is expected Android signature protection, not a build bug.
+
+Use this one time only, and only for `com.planflow.app`:
+
+```powershell
+adb uninstall com.planflow.app
+.\scripts\adb-install-update.ps1
+```
+
+After this transition, repeat `.\scripts\adb-install-update.ps1` for normal update checks. It should succeed without clearing app data as long as every PC restores the same `planflow-release.jks`.

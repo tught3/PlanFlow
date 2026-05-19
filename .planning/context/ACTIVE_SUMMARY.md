@@ -833,3 +833,10 @@
 - Added `docs/planflow-signing.md`, `scripts/restore-planflow-signing.ps1`, and `scripts/adb-install-update.ps1` so another PC restores the same key and device checks use `adb install -r` without clearing app data.
 - Updated smart preparation side effects so event save, resync, recalculation, and delete cleanup pass user prep offsets and `travelMode`; route estimates use current/event coordinates through map APIs and fall back to 30 minutes with logged reasons when location data is unavailable.
 - Verification passed: focused manual side-effect and voice-action tests, `scripts/flutter-local.ps1 analyze --no-pub`, debug APK build, release appbundle build, APK signing certificate check. Device update install was attempted with `adb install -r` and correctly stopped on `INSTALL_FAILED_UPDATE_INCOMPATIBLE` because the installed package is still signed with the old Android Debug key.
+
+## 2026-05-19 Release Signing Device Transition Checkpoint
+- Rebuilt debug APK and release AAB with the fixed PlanFlow release certificate and confirmed the APK signer is `CN=PlanFlow, OU=FluxStudio, O=FluxStudio, L=Seoul, ST=Seoul, C=KR` with SHA-256 `b3f2289851b78881263ca939fc09181efc310152828dd700fab7c552bef9a231`.
+- Confirmed the device had the old Android Debug certificate, then performed the one-time `adb uninstall com.planflow.app` transition only for the PlanFlow package and installed the release-signed APK.
+- Re-ran `scripts/adb-install-update.ps1` after the transition; update install succeeded without clearing app data, proving future local builds with the same release key update normally.
+- Copied the encrypted signing backup to `C:\Users\tught\OneDrive\PlanFlow Signing Backup\PlanFlow-signing-keys.zip.aes`; the archive password was not copied with it.
+- Verification passed: debug APK build, release AAB build, installed APK signature check, update-install recheck, app launch, PID check, and Gradle daemon closeout.
