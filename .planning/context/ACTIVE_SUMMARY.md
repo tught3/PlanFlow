@@ -893,3 +893,9 @@
 - The cron schedule is `30 18 * * *` UTC, which runs at 03:30 KST daily. A first `manual_initial` snapshot and today's `automatic` snapshot were created successfully.
 - Current automatic snapshot counts confirmed: users 4, events 474, reminders 61, pre_actions 42, voice_logs 31, location_history 14, user_settings 3, calendar_connections 4, user_backups 18, feedback_reports 2, early_bird_emails 0, user_behavior_logs 0.
 - Updated `supabase/schema.sql` and `docs/database-backup-runbook.md` so the in-project backup path is the active backup method, with external `pg_dump` backups documented as an optional later layer.
+
+## 2026-05-20 Feedback Admin Inbox RLS Checkpoint
+- Fixed the live Supabase feedback admin policies so both app-admin emails, `tught3@naver.com` and `tught3@gmail.com`, can select and update feedback report statuses.
+- Updated local feedback SQL sources so status updates also grant `updated_at`, matching the `feedback_reports_set_updated_at` trigger that runs during status changes.
+- Added `supabase/feedback_reports_admin_policy_fix.sql` and a schema regression test to keep future feedback SQL patches aligned with the app admin list.
+- Verification passed: Supabase policy and column privilege queries, `scripts/flutter-local.ps1 test test/supabase/feedback_reports_schema_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/feedback_report_sheet_test.dart --no-pub`, and `scripts/flutter-local.ps1 analyze --no-pub`.
