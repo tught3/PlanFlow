@@ -140,6 +140,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String? get _userId => widget._userId ?? authProvider.userId;
   bool get _isFeedbackAdmin {
+    if (!AppEnv.isSupabaseReady) {
+      return false;
+    }
     final email = authProvider.email?.trim().toLowerCase();
     return email != null && feedbackAdminEmails.contains(email);
   }
@@ -181,15 +184,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       unawaited(_loadBackups());
       unawaited(_ensureAutomaticBackup());
     }
-    authProvider.addListener(_handleFeedbackAdminAuthChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _handleFeedbackAdminAuthChanged();
-    });
+    if (AppEnv.isSupabaseReady) {
+      authProvider.addListener(_handleFeedbackAdminAuthChanged);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleFeedbackAdminAuthChanged();
+      });
+    }
   }
 
   @override
   void dispose() {
-    authProvider.removeListener(_handleFeedbackAdminAuthChanged);
+    if (AppEnv.isSupabaseReady) {
+      authProvider.removeListener(_handleFeedbackAdminAuthChanged);
+    }
     _settingsProvider.dispose();
     if (_ownsNaverCalDavService) {
       unawaited(_naverCalDavService.dispose());
@@ -510,11 +517,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _isTestingNaverCalDav = false;
       _hasNaverCalDavCredentials = result.isSuccess;
     });
-    _showSnack(result.message);
     if (!result.isSuccess) {
+      _showSnack(result.message);
       return false;
     }
 
+    _showSnack('네이버 CalDAV 연결에 성공했습니다. 이제 일정을 가져옵니다.');
     await _markNaverCalDavConnection(
       status: CalendarConnectionStatus.connected,
       lastError: null,
@@ -588,6 +596,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _naverCalDavLongRunningTimer = Timer(const Duration(seconds: 10), () {
       _naverCalDavLongRunning.value = true;
     });
+    if (!_isNaverCalDavProgressDialogOpen) {
+      unawaited(_showNaverCalDavProgressDialog(dismissible: true));
+    }
     final result = await _naverCalDavService.syncAll(
       userId: userId,
       from: from,
@@ -855,7 +866,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ignore: unused_element
   Future<void> _showNaverCalDavProgressDialog({
     required bool dismissible,
   }) {
@@ -2471,7 +2481,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 isLoadingAdminReportCount: _isLoadingNewFeedbackReportCount,
               ),
               const SizedBox(height: 16),
-              if (authProvider.isSignedIn && _backupService != null) ...[
+              if (AppEnv.isSupabaseReady &&
+                  authProvider.isSignedIn &&
+                  _backupService != null) ...[
                 _SectionCard(
                   title: appL10n(context).backupRestoreTitle,
                   subtitle: '수동 백업과 매일 새벽 3시 자동 백업 기록을 관리합니다.',

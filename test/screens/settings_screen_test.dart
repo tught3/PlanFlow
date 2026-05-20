@@ -558,10 +558,10 @@ void main() {
     await tester.tap(syncButton.hitTestable().first);
     await tester.pump();
 
-    expect(find.text('네이버 일정 동기화'), findsOneWidget);
+    expect(find.text('네이버 일정 가져오는 중'), findsOneWidget);
     expect(
       find.textContaining('앱을 백그라운드로 보내도 동기화는 계속됩니다.'),
-      findsNothing,
+      findsOneWidget,
     );
 
     await tester.pump(const Duration(seconds: 2));

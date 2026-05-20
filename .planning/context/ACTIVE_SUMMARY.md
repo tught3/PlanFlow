@@ -10,6 +10,12 @@
 - The existing `scripts/restore-planflow-signing.ps1` and `scripts/adb-install-update.ps1` remain the lower-level helpers; the bootstrap script wraps them so the user does not have to repeat the manual sequence.
 - Follow-up: `apksigner` Java stderr warnings are now captured without tripping PowerShell's global stop policy, while non-zero verifier exits still fail the bootstrap. Verified with `.\scripts\planflow-release-bootstrap.ps1 -SkipRestore -SkipBuild -SkipInstall`.
 
+## 2026-05-20 Naver CalDAV Import Feedback Checkpoint
+- 네이버 CalDAV 연결 성공 후 연결 테스트 성공 스낵바에서 멈춘 것처럼 보이던 흐름을 수정해, 성공 시 바로 `네이버 CalDAV 연결에 성공했습니다. 이제 일정을 가져옵니다.`를 안내하고 실제 `syncAll` 가져오기 진행창을 띄우도록 했습니다.
+- 저장된 네이버 CalDAV 자격증명으로 동기화 버튼을 누르는 경우에도 `네이버 일정 가져오는 중` 진행창과 백그라운드 동기화 안내가 보이도록 연결했습니다.
+- Supabase가 준비되지 않은 테스트/오프라인 환경에서 설정 화면의 관리자 피드백/백업 영역이 전역 `authProvider`를 먼저 초기화하지 않도록 방어했습니다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, 앱 실행/PID 확인 통과. focused settings widget test는 기존 Supabase 미초기화 authProvider 접근 경로가 남아 있어 실패했습니다.
+
 
 ## 2026-05-19 Post-save Background Follow-ups Checkpoint
 - Voice confirm and event edit saves now return to the user immediately after the event row is written, while follow-up work such as pre_actions, reminders, departure alarms, location history, voice logs, external prep resync, calendar auto-sync, and home-widget refresh runs in the background.
