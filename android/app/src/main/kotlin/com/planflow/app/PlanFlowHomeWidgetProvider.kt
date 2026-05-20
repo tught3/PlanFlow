@@ -10,6 +10,7 @@ import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetProvider
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -479,9 +480,16 @@ class PlanFlowMonthlyWidgetProvider :
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
+        val hasMonthCellPayload = hasMonthCellPayload(widgetData)
+        val fallbackCells = if (hasMonthCellPayload) {
+            null
+        } else {
+            buildCurrentMonthFallbackCells()
+        }
+
         views.setTextViewText(
             R.id.widget_month_title,
-            widgetData.getString("month_title", null) ?: "월간 일정",
+            widgetData.getString("month_title", null) ?: fallbackMonthTitle(),
         )
 
         for (slot in 1..42) {
@@ -489,18 +497,33 @@ class PlanFlowMonthlyWidgetProvider :
             val dayId = findViewId(context, "${prefix}_day")
             val inMonthId = findViewId(context, "${prefix}_in_month")
             val overflowId = findViewId(context, "${prefix}_overflow_count")
+            val fallbackCell = fallbackCells?.getOrNull(slot - 1)
 
             if (dayId == 0) {
                 continue
             }
 
             val dayValue = widgetData.all["${prefix}_day"]?.toString()
-            val dayText = dayValue?.trim()?.takeIf { it.isNotBlank() }
-            val inMonth = if (widgetData.contains("${prefix}_in_month")) {
-                widgetData.getBoolean("${prefix}_in_month", true)
+            val dayText = if (hasMonthCellPayload) {
+                dayValue?.trim()?.takeIf { it.isNotBlank() }
             } else {
-                true
-            } && dayText != null
+                fallbackCell?.first?.toString()
+            }
+            val inMonth = if (hasMonthCellPayload) {
+                if (widgetData.contains("${prefix}_in_month")) {
+                    widgetData.getBoolean("${prefix}_in_month", false)
+                } else {
+                    false
+                } && dayText != null
+            } else {
+                fallbackCell?.second ?: false
+            }
+
+            var overflow = if (hasMonthCellPayload) {
+                widgetData.getInt("${prefix}_overflow_count", 0)
+            } else {
+                0
+            }
 
             views.setTextViewText(dayId, dayText ?: "")
             views.setViewVisibility(dayId, if (dayText == null) View.INVISIBLE else View.VISIBLE)
@@ -519,7 +542,6 @@ class PlanFlowMonthlyWidgetProvider :
                 views.setViewVisibility(inMonthId, View.GONE)
             }
 
-            var overflow = widgetData.getInt("${prefix}_overflow_count", 0)
             if (overflow > 0) {
                 views.setTextViewText(overflowId, "+$overflow")
                 views.setViewVisibility(overflowId, if (inMonth) View.VISIBLE else View.GONE)
@@ -529,19 +551,31 @@ class PlanFlowMonthlyWidgetProvider :
 
             for (eventSlot in 1..3) {
                 val eventId = findViewId(context, "${prefix}_event_${eventSlot}_title")
-                val title = widgetData.getString("${prefix}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
-                val time = widgetData.getString("${prefix}_event_${eventSlot}_time", null)
-                val isCritical = widgetData.getBoolean(
-                    "${prefix}_event_${eventSlot}_is_critical",
-                    false,
-                )
+                val eventTitle =
+                    if (hasMonthCellPayload) {
+                        widgetData.getString("${prefix}_event_${eventSlot}_title", null)
+                            ?.takeIf { it.isNotBlank() }
+                    } else {
+                        null
+                    }
+                val eventTime =
+                    if (hasMonthCellPayload) {
+                        widgetData.getString("${prefix}_event_${eventSlot}_time", null)
+                    } else {
+                        null
+                    }
+                val eventCritical = if (hasMonthCellPayload) {
+                    widgetData.getBoolean("${prefix}_event_${eventSlot}_is_critical", false)
+                } else {
+                    false
+                }
                 if (eventId != 0) {
                     bindEventText(
                         views,
                         eventId,
-                        if (inMonth) title else null,
-                        if (inMonth) time else null,
-                        isCritical = isCritical,
+                        if (inMonth) eventTitle else null,
+                        if (inMonth) eventTime else null,
+                        isCritical = eventCritical,
                         isMuted = !inMonth,
                     )
                 }
@@ -550,6 +584,31 @@ class PlanFlowMonthlyWidgetProvider :
 
         bindOpenApp(context, views, R.id.widget_month_container)
         bindVoice(context, views, R.id.widget_month_voice_button)
+    }
+
+    private fun hasMonthCellPayload(widgetData: SharedPreferences): Boolean {
+        for (slot in 1..42) {
+            if (widgetData.contains("month_cell_${slot}_day")) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun buildCurrentMonthFallbackCells(): List<Pair<Int, Boolean>> {
+        val monthStart = LocalDate.now(ZoneId.of("Asia/Seoul")).withDayOfMonth(1)
+        val startOffset = monthStart.dayOfWeek.value % 7
+        val firstCellDate = monthStart.minusDays(startOffset.toLong())
+        return List(42) { index ->
+            val day = firstCellDate.plusDays(index.toLong())
+            val inMonth = day.year == monthStart.year && day.month == monthStart.month
+            Pair(day.dayOfMonth, inMonth)
+        }
+    }
+
+    private fun fallbackMonthTitle(): String {
+        val now = LocalDate.now(ZoneId.of("Asia/Seoul"))
+        return "${now.year}년 ${now.monthValue}월"
     }
 }
 

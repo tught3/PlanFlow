@@ -916,3 +916,9 @@
 - Refined the Android home widgets after device UX review: the 1x1 voice widget now uses a clear mic icon, today's widget separates recent past/today/tomorrow sections, weekly view is a 7-column board, and monthly view is a 42-cell calendar layout with event titles and overflow counts.
 - Centralized home-widget schedule payload generation so save/edit/delete/voice refresh paths use the full event list rather than only upcoming events, preserving past-today, tomorrow fallback, weekly, monthly, and multi-day/ongoing event visibility.
 - Verification passed: `scripts/flutter-local.ps1 test test/services/home_widget_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:5555 install -r -t --user 0 build\app\outputs\flutter-apk\app-debug.apk`, `adb -s 192.168.0.102:5555 shell am start -n com.planflow.app/.MainActivity`, and `adb -s 192.168.0.102:5555 shell pidof com.planflow.app`.
+
+## 2026-05-21 Widget Compact UI & 월간 위젯 Fallback Checkpoint
+- Android 1x1 마이크 위젯의 벡터/레이아웃을 보강해 작은 크기에서도 파란 배경 안의 흰색 마이크가 선명하게 보이도록 버튼 크기·패딩·텍스트를 조정했습니다.
+- 주간 위젯은 7열 레이아웃은 유지하면서 `appwidget` 최소 높이와 패딩/상단 마진을 줄여 전체 높이 피트를 축소했습니다.
+- 월간 위젯 바인딩에서 Flutter가 월 데이터(payload)를 저장하기 전에도 42칸 달력을 구성하도록 Kotlin fallback 로직을 추가했습니다. 현재 월 기준(서울 타임존) 첫 날 정렬 기준으로 날짜와 inMonth를 계산해 `month_cell_1~42_day/in_month` 를 채우고, 이벤트 텍스트는 payload 없을 때 숨기고 기본 제목도 날짜 기준으로 구성합니다.
+- 검증: `node scripts/gsd-context-hygiene.mjs`, `.\gradlew :app:processDebugResources`(android), `git diff --check`.

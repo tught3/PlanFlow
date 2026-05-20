@@ -6,27 +6,20 @@
     android:background="@drawable/widget_background"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="8dp">
+    android:padding="6dp">
 
     <FrameLayout
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:layout_gravity="center"
         android:background="@drawable/widget_mic_button_background"
-        android:padding="8dp">
+        android:padding="7dp">
 
         <ImageView
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="center"
             android:contentDescription="음성 입력"
             android:src="@drawable/widget_mic_icon" />
     </FrameLayout>
-
-    <TextView
-        style="@style/PlanFlowWidgetHintText"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
-        android:gravity="center"
-        android:text="음성 입력"
-        android:textColor="#1F4168" />
 </LinearLayout>
