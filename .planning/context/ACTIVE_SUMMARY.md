@@ -17,6 +17,13 @@
 - 검증: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, 앱 실행/PID 확인 통과. focused settings widget test는 기존 Supabase 미초기화 authProvider 접근 경로가 남아 있어 실패했습니다.
 
 
+## 2026-05-20 Save Session Restore Checkpoint
+- ConfirmScreen now refreshes the Supabase session before saving, falls back to `authProvider.userId` when available, and reports state/Postgrest failures with more specific Korean guidance instead of the old generic login/Supabase snackbar.
+- EventEditScreen now uses the same session refresh pattern before write operations so edit saves do not fail just because the Supabase snapshot lagged behind the app auth state.
+- Added a focused ConfirmScreen regression that proves a missing signed-in session surfaces the new login guidance message.
+- Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, focused `test/screens/confirm_screen_test.dart` login-guidance regression, and `test/screens/event_edit_screen_test.dart`. Full `scripts/flutter-local.ps1 build apk --debug --no-pub` still fails on existing Android compileSdk 36 vs `glance-appwidget`/`remote-creation-android` SDK 37 requirements, and no ADB device was connected for a run check.
+
+
 ## 2026-05-19 Post-save Background Follow-ups Checkpoint
 - Voice confirm and event edit saves now return to the user immediately after the event row is written, while follow-up work such as pre_actions, reminders, departure alarms, location history, voice logs, external prep resync, calendar auto-sync, and home-widget refresh runs in the background.
 - ConfirmScreen and EventEditScreen both keep the save path focused on the event payload first, so users do not sit through the slower side-effect chain before navigation.

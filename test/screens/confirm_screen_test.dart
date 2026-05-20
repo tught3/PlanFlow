@@ -92,6 +92,29 @@ void main() {
     );
   });
 
+  testWidgets(
+      'ConfirmScreen shows login guidance when save session is missing',
+      (tester) async {
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _ThrowingEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('로그인 상태를 다시 확인해 주세요.'), findsOneWidget);
+  });
+
   testWidgets('ConfirmScreen warns before saving overlapping events',
       (tester) async {
     final repository = _FakeEventRepository();
@@ -541,6 +564,13 @@ class _FakeEventRepository extends EventRepository {
 
   @override
   Future<EventModel> updateEvent(EventModel event) async => event;
+}
+
+class _ThrowingEventRepository extends _FakeEventRepository {
+  @override
+  Future<EventModel> createEvent(EventModel event) async {
+    throw StateError('A signed-in user is required for event writes.');
+  }
 }
 
 class _FakeNotificationService extends NotificationService {

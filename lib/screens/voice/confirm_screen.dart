@@ -14,6 +14,7 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../core/analytics_service.dart';
+import '../../providers/auth_provider.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/review_service.dart';
 import '../../services/calendar_auto_sync_service.dart';
@@ -533,7 +534,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
   String? _resolveUserId() {
     final userId =
-        widget.userId ?? Supabase.instance.client.auth.currentUser?.id;
+        widget.userId ??
+        authProvider.userId ??
+        Supabase.instance.client.auth.currentUser?.id;
     if (userId == null || userId.trim().isEmpty) {
       return null;
     }
@@ -597,6 +600,14 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     if (title.isEmpty) {
       _showMessage('제목을 입력해 주세요.');
       return;
+    }
+
+    if (AppEnv.isSupabaseReady) {
+      try {
+        await authProvider.syncCurrentSession();
+      } catch (error) {
+        debugPrint('ConfirmScreen session sync failed before save: $error');
+      }
     }
 
     final userId = _resolveUserId();
@@ -688,9 +699,24 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         unawaited(ReviewService.onEventSaved());
         context.go(AppRoutes.home);
       }
-    } catch (_) {
+    } on StateError catch (error) {
+      debugPrint('ConfirmScreen save state error: $error');
       if (mounted) {
-        _showMessage('저장하지 못했어요. 로그인과 Supabase 설정을 확인해 주세요.');
+        _showMessage(_messageForSaveStateError(error));
+      }
+    } on PostgrestException catch (error) {
+      debugPrint(
+        'ConfirmScreen save postgrest error: '
+        'code=${error.code} message=${error.message} details=${error.details}',
+      );
+      if (mounted) {
+        _showMessage(_messageForPostgrestError(error));
+      }
+    } catch (error, stackTrace) {
+      debugPrint('ConfirmScreen save failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showMessage('저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
       }
     } finally {
       if (mounted) {
@@ -699,6 +725,38 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         });
       }
     }
+  }
+
+  String _messageForSaveStateError(StateError error) {
+    final text = error.message.toLowerCase();
+    if (text.contains('signed-in user') || text.contains('current user')) {
+      return '로그인 상태를 다시 확인해 주세요.';
+    }
+    if (text.contains('must match the signed-in user')) {
+      return '로그인한 계정과 저장하려는 일정의 사용자 정보가 맞지 않아요. 다시 로그인해 주세요.';
+    }
+    return '저장할 준비가 아직 안 되었어요. 로그인 상태를 다시 확인해 주세요.';
+  }
+
+  String _messageForPostgrestError(PostgrestException error) {
+    final code = error.code?.toUpperCase() ?? '';
+    final text =
+        '${error.message} ${error.details} ${error.hint}'.toLowerCase();
+    if (code == '42501' ||
+        text.contains('row-level security') ||
+        text.contains('permission denied')) {
+      return 'Supabase 권한 설정이 막고 있어요. 로그인 상태와 RLS를 확인해 주세요.';
+    }
+    if (code == '23503' || text.contains('foreign key')) {
+      return '로그인 프로필이 아직 준비되지 않았어요. 다시 로그인한 뒤 저장해 주세요.';
+    }
+    if (text.contains('users') && text.contains('does not exist')) {
+      return '사용자 정보가 아직 준비되지 않았어요. 잠시 후 다시 시도해 주세요.';
+    }
+    if (text.contains('events') && text.contains('does not exist')) {
+      return '일정 저장 테이블이 아직 준비되지 않았어요. Supabase 설정을 확인해 주세요.';
+    }
+    return '저장하지 못했어요. Supabase 연결 상태를 확인해 주세요.';
   }
 
   Future<void> _saveRelatedRecords({
