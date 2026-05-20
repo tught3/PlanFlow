@@ -2786,6 +2786,31 @@ class _AccountSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!AppEnv.isSupabaseReady) {
+      return _SectionCard(
+        title: '계정',
+        subtitle: '현재 로그인 상태를 확인하고 필요하면 로그아웃할 수 있습니다.',
+        child: Column(
+          children: [
+            const _StatusRow(
+              label: '로그인 상태',
+              value: '로그아웃됨',
+              icon: Icons.account_circle_outlined,
+              isConfigured: false,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => context.go(AppRoutes.login),
+                child: const Text('로그인'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return _SectionCard(
       title: '계정',
       subtitle: '현재 로그인 상태를 확인하고 필요하면 로그아웃할 수 있습니다.',
