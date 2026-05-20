@@ -16,6 +16,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private const val DEFAULT_TEXT_COLOR = 0xFF203A57.toInt()
+private const val MUTED_TEXT_COLOR = 0xFF8FA4B7.toInt()
 private const val CRITICAL_TEXT_COLOR = 0xFFD94444.toInt()
 
 abstract class BasePlanFlowWidgetProvider(
@@ -85,14 +86,27 @@ abstract class BasePlanFlowWidgetProvider(
         }
     }
 
-    protected fun formatWeekday(raw: String?, fallback: String): String {
+    protected fun formatWeekdayLabel(raw: String?, fallback: String): String {
         if (raw.isNullOrBlank()) {
             return fallback
         }
 
         return try {
             val dateTime = Instant.parse(raw).atZone(planFlowZone)
-            DateTimeFormatter.ofPattern("E M/d", Locale.KOREA).format(dateTime)
+            DateTimeFormatter.ofPattern("E", Locale.KOREA).format(dateTime)
+        } catch (_: Exception) {
+            fallback
+        }
+    }
+
+    protected fun formatMonthDay(raw: String?, fallback: String): String {
+        if (raw.isNullOrBlank()) {
+            return fallback
+        }
+
+        return try {
+            val dateTime = Instant.parse(raw).atZone(planFlowZone)
+            DateTimeFormatter.ofPattern("M/d", Locale.KOREA).format(dateTime)
         } catch (_: Exception) {
             fallback
         }
@@ -102,7 +116,7 @@ abstract class BasePlanFlowWidgetProvider(
         if (travelMinutes == null || travelMinutes <= 0) {
             return ""
         }
-        return "이동: ${travelMinutes}분"
+        return "출발 ${travelMinutes}분 전"
     }
 
     protected fun formatDepartureTime(startAt: String?, travelMinutes: Int?): String {
@@ -112,7 +126,7 @@ abstract class BasePlanFlowWidgetProvider(
 
         val dateTime = parseDateTime(startAt) ?: return ""
         val departureAt = dateTime.minusMinutes(travelMinutes.toLong())
-        return "출발: ${DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA).format(departureAt)}"
+        return "알림: ${DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA).format(departureAt)}"
     }
 
     protected fun formatCountdown(startAt: String?): String {
@@ -122,7 +136,7 @@ abstract class BasePlanFlowWidgetProvider(
         if (minutes <= 0) {
             return ""
         }
-        return "남은 시간: ${minutes}분"
+        return "D-${minutes}분"
     }
 
     private fun parseDateTime(raw: String?): ZonedDateTime? {
@@ -150,19 +164,35 @@ abstract class BasePlanFlowWidgetProvider(
         views.setViewVisibility(id, View.VISIBLE)
     }
 
-    protected fun formatTimelineItem(widgetData: SharedPreferences, slot: Int): Pair<String, Boolean> {
-        val title = widgetData.getString("event_list_${slot}_title", null)
-            ?.takeIf { it.isNotBlank() }
-            ?: return when (slot) {
-                1 -> Pair("남은 일정이 없어요", false)
-                else -> Pair("", false)
+    protected fun bindEventText(
+        views: RemoteViews,
+        id: Int,
+        title: String?,
+        time: String?,
+        isCritical: Boolean,
+        isMuted: Boolean = false,
+        emptyText: String? = null,
+    ) {
+        val text = title?.trim()?.takeIf { it.isNotBlank() }
+        if (text.isNullOrBlank()) {
+            if (emptyText == null) {
+                views.setViewVisibility(id, View.GONE)
+                return
             }
-        val isCritical = widgetData.getBoolean("event_list_${slot}_is_critical", false)
-        val rawTime = widgetData.getString("event_list_${slot}_time", null)
-        val time = formatShortTime(rawTime)
-        val prefix = if (isCritical) "중요 " else ""
-        val text = if (time.isBlank()) "$prefix$title" else "$time  $prefix$title"
-        return Pair(text, isCritical)
+            views.setTextViewText(id, emptyText)
+            views.setTextColor(id, MUTED_TEXT_COLOR)
+            views.setViewVisibility(id, View.VISIBLE)
+            return
+        }
+
+        val formattedTime = formatShortTime(time)
+        val content = if (formattedTime.isBlank()) text else "$formattedTime  $text"
+        views.setTextViewText(id, content)
+        views.setTextColor(
+            id,
+            if (isMuted) MUTED_TEXT_COLOR else if (isCritical) CRITICAL_TEXT_COLOR else DEFAULT_TEXT_COLOR,
+        )
+        views.setViewVisibility(id, View.VISIBLE)
     }
 
     protected fun bindTimelineItem(
@@ -171,15 +201,63 @@ abstract class BasePlanFlowWidgetProvider(
         slot: Int,
         widgetData: SharedPreferences,
     ) {
-        val (text, isCritical) = formatTimelineItem(widgetData, slot)
-        if (text.isBlank()) {
-            views.setViewVisibility(id, View.GONE)
-            return
+        val title = widgetData.getString("event_list_${slot}_title", null)
+            ?.takeIf { it.isNotBlank() }
+            ?: return when (slot) {
+                1 -> {
+                    views.setTextViewText(id, "남은 일정 없음")
+                    views.setTextColor(id, DEFAULT_TEXT_COLOR)
+                    views.setViewVisibility(id, View.VISIBLE)
+                }
+                else -> {
+                    views.setViewVisibility(id, View.GONE)
+                    return
+                }
+            }
+
+        val isCritical = widgetData.getBoolean("event_list_${slot}_is_critical", false)
+        val rawTime = widgetData.getString("event_list_${slot}_time", null)
+        bindEventText(views, id, title, rawTime, isCritical)
+    }
+
+    protected fun findViewId(context: Context, idName: String): Int {
+        return context.resources.getIdentifier(idName, "id", context.packageName)
+    }
+
+    protected fun bindSectionEvents(
+        context: Context,
+        views: RemoteViews,
+        widgetData: SharedPreferences,
+        prefix: String,
+        eventIds: IntArray,
+        isFaded: Boolean,
+        emptyMessageId: Int? = null,
+        emptyMessage: String? = null,
+    ) {
+        var hasAnyEvent = false
+
+        eventIds.forEachIndexed { index, id ->
+            val slot = index + 1
+            val title = widgetData.getString("${prefix}_${slot}_title", null)?.takeIf { it.isNotBlank() }
+            val time = widgetData.getString("${prefix}_${slot}_time", null)
+            val isCritical = widgetData.getBoolean("${prefix}_${slot}_is_critical", false)
+            if (!title.isNullOrBlank()) {
+                hasAnyEvent = true
+            }
+            bindEventText(views, id, title, time, isCritical, isFaded)
         }
 
-        views.setTextViewText(id, text)
-        views.setTextColor(id, if (isCritical) CRITICAL_TEXT_COLOR else DEFAULT_TEXT_COLOR)
-        views.setViewVisibility(id, View.VISIBLE)
+        if (emptyMessageId != null) {
+            if (hasAnyEvent) {
+                views.setViewVisibility(emptyMessageId, View.GONE)
+            } else if (emptyMessage != null) {
+                views.setTextViewText(emptyMessageId, emptyMessage)
+                views.setTextColor(emptyMessageId, MUTED_TEXT_COLOR)
+                views.setViewVisibility(emptyMessageId, View.VISIBLE)
+            } else {
+                views.setViewVisibility(emptyMessageId, View.GONE)
+            }
+        }
     }
 }
 
@@ -189,10 +267,8 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        val title = widgetData.getString("next_event_title", null)
-            ?: "오늘 다음 일정이 없어요"
-        val location = widgetData.getString("next_event_location", null)
-            ?: "음성으로 일정을 추가해 보세요"
+        val title = widgetData.getString("next_event_title", null) ?: "오늘 첫 일정"
+        val location = widgetData.getString("next_event_location", null) ?: "입력으로 일정 추가"
         val startAt = widgetData.getString("next_event_start_at", null)
         val isCritical = widgetData.getBoolean("next_event_is_critical", false)
         val travelMinutes = if (widgetData.contains("next_event_travel_buffer_minutes")) {
@@ -209,7 +285,7 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
         bindTextIfNotEmpty(views, R.id.widget_countdown, formatCountdown(startAt))
 
         if (isCritical) {
-            views.setTextViewText(R.id.widget_badge, "중요 일정")
+            views.setTextViewText(R.id.widget_badge, "긴급 일정")
             views.setInt(
                 R.id.widget_badge,
                 "setBackgroundResource",
@@ -217,7 +293,7 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
             )
             views.setTextColor(R.id.widget_badge, CRITICAL_TEXT_COLOR)
         } else {
-            views.setTextViewText(R.id.widget_badge, "다음 일정")
+            views.setTextViewText(R.id.widget_badge, "오늘 일정")
             views.setInt(
                 R.id.widget_badge,
                 "setBackgroundResource",
@@ -242,27 +318,157 @@ class PlanFlowVerticalScheduleWidgetProvider :
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        views.setTextViewText(R.id.widget_vertical_title, "오늘 남은 일정")
-        views.setTextViewText(
-            R.id.widget_vertical_subtitle,
-            widgetData.getString("next_event_title", null)?.let { "현재 다음: $it" }
-                ?: "음성으로 일정을 추가해 보세요",
+        views.setTextViewText(R.id.widget_vertical_title, "오늘 일정")
+
+        bindEventText(
+            views,
+            R.id.widget_last_past_event_1_title,
+            widgetData.getString("last_past_event_title", null),
+            widgetData.getString("last_past_event_time", null),
+            widgetData.getBoolean("last_past_event_is_critical", false),
+            isMuted = true,
+        )
+        views.setViewVisibility(R.id.widget_last_past_event_2_title, View.GONE)
+
+        bindSectionEvents(
+            context,
+            views,
+            widgetData,
+            "today_upcoming",
+            intArrayOf(
+                R.id.widget_today_upcoming_event_1_title,
+                R.id.widget_today_upcoming_event_2_title,
+                R.id.widget_today_upcoming_event_3_title,
+                R.id.widget_today_upcoming_event_4_title,
+            ),
+            isFaded = false,
+            emptyMessageId = R.id.widget_today_upcoming_empty_message,
+            emptyMessage = "오늘 남은 일정은 없어요",
         )
 
-        val ids = intArrayOf(
-            R.id.widget_today_item_1,
-            R.id.widget_today_item_2,
-            R.id.widget_today_item_3,
-            R.id.widget_today_item_4,
-            R.id.widget_today_item_5,
-            R.id.widget_today_item_6,
+        bindSectionEvents(
+            context,
+            views,
+            widgetData,
+            "tomorrow_event",
+            intArrayOf(
+                R.id.widget_tomorrow_event_1_title,
+                R.id.widget_tomorrow_event_2_title,
+            ),
+            isFaded = false,
         )
-        ids.forEachIndexed { index, id ->
-            bindTimelineItem(views, id, index + 1, widgetData)
-        }
 
         bindOpenApp(context, views, R.id.widget_vertical_container)
         bindVoice(context, views, R.id.widget_vertical_voice_button)
+    }
+}
+
+class PlanFlowWeeklyWidgetProvider :
+    BasePlanFlowWidgetProvider(R.layout.planflow_weekly_widget) {
+    override fun render(
+        context: Context,
+        views: RemoteViews,
+        widgetData: SharedPreferences,
+    ) {
+        views.setTextViewText(R.id.widget_week_title, "주간 일정")
+
+        val labelIds = intArrayOf(
+            R.id.widget_week_day_1_label,
+            R.id.widget_week_day_2_label,
+            R.id.widget_week_day_3_label,
+            R.id.widget_week_day_4_label,
+            R.id.widget_week_day_5_label,
+            R.id.widget_week_day_6_label,
+            R.id.widget_week_day_7_label,
+        )
+        val dateIds = intArrayOf(
+            R.id.widget_week_day_1_date,
+            R.id.widget_week_day_2_date,
+            R.id.widget_week_day_3_date,
+            R.id.widget_week_day_4_date,
+            R.id.widget_week_day_5_date,
+            R.id.widget_week_day_6_date,
+            R.id.widget_week_day_7_date,
+        )
+        val event1Ids = intArrayOf(
+            R.id.widget_week_day_1_event_1,
+            R.id.widget_week_day_2_event_1,
+            R.id.widget_week_day_3_event_1,
+            R.id.widget_week_day_4_event_1,
+            R.id.widget_week_day_5_event_1,
+            R.id.widget_week_day_6_event_1,
+            R.id.widget_week_day_7_event_1,
+        )
+        val event2Ids = intArrayOf(
+            R.id.widget_week_day_1_event_2,
+            R.id.widget_week_day_2_event_2,
+            R.id.widget_week_day_3_event_2,
+            R.id.widget_week_day_4_event_2,
+            R.id.widget_week_day_5_event_2,
+            R.id.widget_week_day_6_event_2,
+            R.id.widget_week_day_7_event_2,
+        )
+        val overflowIds = intArrayOf(
+            R.id.widget_week_day_1_overflow,
+            R.id.widget_week_day_2_overflow,
+            R.id.widget_week_day_3_overflow,
+            R.id.widget_week_day_4_overflow,
+            R.id.widget_week_day_5_overflow,
+            R.id.widget_week_day_6_overflow,
+            R.id.widget_week_day_7_overflow,
+        )
+
+        for (index in 0 until 7) {
+            val slot = index + 1
+            val rawDate = widgetData.getString("week_day_${slot}_date", null)
+            views.setTextViewText(labelIds[index], formatWeekdayLabel(rawDate, "월"))
+            views.setTextViewText(dateIds[index], formatMonthDay(rawDate, ""))
+
+            val e1Title = widgetData.getString("week_day_${slot}_event_1_title", null)
+                ?.takeIf { it.isNotBlank() }
+            val e2Title = widgetData.getString("week_day_${slot}_event_2_title", null)
+                ?.takeIf { it.isNotBlank() }
+            val e1Time = widgetData.getString("week_day_${slot}_event_1_time", null)
+            val e2Time = widgetData.getString("week_day_${slot}_event_2_time", null)
+            val e1Critical = widgetData.getBoolean("week_day_${slot}_event_1_is_critical", false)
+            val e2Critical = widgetData.getBoolean("week_day_${slot}_event_2_is_critical", false)
+
+            var overflow = 0
+            if (widgetData.contains("week_day_${slot}_overflow_count")) {
+                overflow = widgetData.getInt("week_day_${slot}_overflow_count", 0)
+            } else {
+                val totalCount = widgetData.getInt("week_day_${slot}_count", 0)
+                val hasE2 = !e2Title.isNullOrBlank()
+                val hasE1 = !e1Title.isNullOrBlank()
+                overflow = (totalCount - (if (hasE1) 1 else 0) - (if (hasE2) 1 else 0)).coerceAtLeast(0)
+            }
+
+            bindEventText(
+                views,
+                event1Ids[index],
+                e1Title,
+                e1Time,
+                e1Critical,
+                emptyText = if (e1Title == null && e2Title == null && overflow == 0) "일정 없음" else null,
+            )
+            bindEventText(
+                views,
+                event2Ids[index],
+                e2Title,
+                e2Time,
+                e2Critical,
+            )
+
+            if (overflow > 0) {
+                views.setTextViewText(overflowIds[index], "+$overflow")
+                views.setViewVisibility(overflowIds[index], View.VISIBLE)
+            } else {
+                views.setViewVisibility(overflowIds[index], View.GONE)
+            }
+        }
+
+        bindOpenApp(context, views, R.id.widget_week_container)
+        bindVoice(context, views, R.id.widget_week_voice_button)
     }
 }
 
@@ -275,120 +481,75 @@ class PlanFlowMonthlyWidgetProvider :
     ) {
         views.setTextViewText(
             R.id.widget_month_title,
-            widgetData.getString("month_title", null) ?: "이번 달",
+            widgetData.getString("month_title", null) ?: "월간 일정",
         )
 
-        val ids = intArrayOf(
-            R.id.widget_month_day_1,
-            R.id.widget_month_day_2,
-            R.id.widget_month_day_3,
-            R.id.widget_month_day_4,
-            R.id.widget_month_day_5,
-            R.id.widget_month_day_6,
-            R.id.widget_month_day_7,
-            R.id.widget_month_day_8,
-            R.id.widget_month_day_9,
-            R.id.widget_month_day_10,
-            R.id.widget_month_day_11,
-            R.id.widget_month_day_12,
-            R.id.widget_month_day_13,
-            R.id.widget_month_day_14,
-            R.id.widget_month_day_15,
-            R.id.widget_month_day_16,
-            R.id.widget_month_day_17,
-            R.id.widget_month_day_18,
-            R.id.widget_month_day_19,
-            R.id.widget_month_day_20,
-            R.id.widget_month_day_21,
-            R.id.widget_month_day_22,
-            R.id.widget_month_day_23,
-            R.id.widget_month_day_24,
-            R.id.widget_month_day_25,
-            R.id.widget_month_day_26,
-            R.id.widget_month_day_27,
-            R.id.widget_month_day_28,
-            R.id.widget_month_day_29,
-            R.id.widget_month_day_30,
-            R.id.widget_month_day_31,
-        )
+        for (slot in 1..42) {
+            val prefix = "month_cell_${slot}"
+            val dayId = findViewId(context, "${prefix}_day")
+            val inMonthId = findViewId(context, "${prefix}_in_month")
+            val overflowId = findViewId(context, "${prefix}_overflow_count")
 
-        ids.forEachIndexed { index, id ->
-            val day = index + 1
-            val count = widgetData.getInt("month_day_${day}_count", 0)
-            val hasCritical = widgetData.getBoolean("month_day_${day}_has_critical", false)
-            views.setTextViewText(
-                id,
-                if (count <= 0) {
-                    "$day"
-                } else {
-                    "$day\n${count}건${if (hasCritical) " · 중요" else ""}"
-                },
-            )
-            views.setTextColor(id, if (hasCritical) CRITICAL_TEXT_COLOR else DEFAULT_TEXT_COLOR)
+            if (dayId == 0) {
+                continue
+            }
+
+            val dayValue = widgetData.all["${prefix}_day"]?.toString()
+            val dayText = dayValue?.trim()?.takeIf { it.isNotBlank() }
+            val inMonth = if (widgetData.contains("${prefix}_in_month")) {
+                widgetData.getBoolean("${prefix}_in_month", true)
+            } else {
+                true
+            } && dayText != null
+
+            views.setTextViewText(dayId, dayText ?: "")
+            views.setViewVisibility(dayId, if (dayText == null) View.INVISIBLE else View.VISIBLE)
+            if (inMonth) {
+                views.setTextColor(dayId, DEFAULT_TEXT_COLOR)
+            } else {
+                views.setTextColor(dayId, MUTED_TEXT_COLOR)
+            }
+
+            if (inMonthId != 0) {
+                views.setTextViewText(
+                    inMonthId,
+                    "",
+                )
+                views.setTextColor(inMonthId, MUTED_TEXT_COLOR)
+                views.setViewVisibility(inMonthId, View.GONE)
+            }
+
+            var overflow = widgetData.getInt("${prefix}_overflow_count", 0)
+            if (overflow > 0) {
+                views.setTextViewText(overflowId, "+$overflow")
+                views.setViewVisibility(overflowId, if (inMonth) View.VISIBLE else View.GONE)
+            } else {
+                views.setViewVisibility(overflowId, View.GONE)
+            }
+
+            for (eventSlot in 1..3) {
+                val eventId = findViewId(context, "${prefix}_event_${eventSlot}_title")
+                val title = widgetData.getString("${prefix}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
+                val time = widgetData.getString("${prefix}_event_${eventSlot}_time", null)
+                val isCritical = widgetData.getBoolean(
+                    "${prefix}_event_${eventSlot}_is_critical",
+                    false,
+                )
+                if (eventId != 0) {
+                    bindEventText(
+                        views,
+                        eventId,
+                        if (inMonth) title else null,
+                        if (inMonth) time else null,
+                        isCritical = isCritical,
+                        isMuted = !inMonth,
+                    )
+                }
+            }
         }
 
         bindOpenApp(context, views, R.id.widget_month_container)
         bindVoice(context, views, R.id.widget_month_voice_button)
-    }
-}
-
-class PlanFlowWeeklyWidgetProvider :
-    BasePlanFlowWidgetProvider(R.layout.planflow_weekly_widget) {
-    override fun render(
-        context: Context,
-        views: RemoteViews,
-        widgetData: SharedPreferences,
-    ) {
-        views.setTextViewText(R.id.widget_week_title, "이번 주 일정")
-
-        val labelIds = intArrayOf(
-            R.id.widget_week_day_1_label,
-            R.id.widget_week_day_2_label,
-            R.id.widget_week_day_3_label,
-            R.id.widget_week_day_4_label,
-            R.id.widget_week_day_5_label,
-            R.id.widget_week_day_6_label,
-            R.id.widget_week_day_7_label,
-        )
-        val summaryIds = intArrayOf(
-            R.id.widget_week_day_1_summary,
-            R.id.widget_week_day_2_summary,
-            R.id.widget_week_day_3_summary,
-            R.id.widget_week_day_4_summary,
-            R.id.widget_week_day_5_summary,
-            R.id.widget_week_day_6_summary,
-            R.id.widget_week_day_7_summary,
-        )
-
-        labelIds.indices.forEach { index ->
-            val slot = index + 1
-            views.setTextViewText(
-                labelIds[index],
-                formatWeekday(widgetData.getString("week_day_${slot}_date", null), "${slot}일"),
-            )
-            val summary = formatWeekSummary(widgetData, slot)
-            views.setTextViewText(summaryIds[index], summary)
-            val isCritical = widgetData.getBoolean("week_day_${slot}_has_critical", false)
-            views.setTextColor(summaryIds[index], if (isCritical) CRITICAL_TEXT_COLOR else DEFAULT_TEXT_COLOR)
-        }
-
-        bindOpenApp(context, views, R.id.widget_week_container)
-        bindVoice(context, views, R.id.widget_week_voice_button)
-    }
-
-    private fun formatWeekSummary(widgetData: SharedPreferences, slot: Int): String {
-        val firstEvent = widgetData.getString("week_day_${slot}_event_1_title", null)
-            ?.takeIf { it.isNotBlank() }
-        val explicitSummary = widgetData.getString("week_day_${slot}_summary", null)
-            ?.takeIf { it.isNotBlank() }
-        val count = widgetData.getInt("week_day_${slot}_count", 0)
-        val isCritical = widgetData.getBoolean("week_day_${slot}_has_critical", false)
-        if (firstEvent == null && (explicitSummary == null || explicitSummary == "일정 없음") && count <= 0) {
-            return "일정 없음"
-        }
-        val title = firstEvent ?: explicitSummary ?: "일정 없음"
-        val criticalLabel = if (isCritical) " · 중요" else ""
-        return "$title · ${count}건$criticalLabel"
     }
 }
 

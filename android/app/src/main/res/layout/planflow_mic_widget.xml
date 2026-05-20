@@ -8,25 +8,25 @@
     android:orientation="vertical"
     android:padding="8dp">
 
-    <TextView
+    <FrameLayout
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:background="@drawable/widget_mic_button_background"
-        android:gravity="center"
-        android:text="MIC"
-        android:textColor="#FFFFFF"
-        android:textSize="13sp"
-        android:textStyle="bold" />
+        android:padding="8dp">
+
+        <ImageView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="음성 입력"
+            android:src="@drawable/widget_mic_icon" />
+    </FrameLayout>
 
     <TextView
+        style="@style/PlanFlowWidgetHintText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="5dp"
-        android:ellipsize="end"
         android:gravity="center"
-        android:maxLines="1"
         android:text="음성 입력"
-        android:textColor="#1F4168"
-        android:textSize="11sp"
-        android:textStyle="bold" />
+        android:textColor="#1F4168" />
 </LinearLayout>

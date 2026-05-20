@@ -20,14 +20,56 @@
         <item name="android:windowBackground">#EEF5FB</item>
     </style>
 
+    <style name="PlanFlowWidgetTitleText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#142A44</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PlanFlowWidgetHintText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#1F4168</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="PlanFlowWidgetVoiceChip">
+        <item name="android:background">@drawable/widget_voice_chip_background</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#1F4168</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PlanFlowWidgetSectionText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">6dp</item>
+        <item name="android:textColor">#59789A</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PlanFlowWidgetSubtleText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">#9AADC0</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
     <style name="PlanFlowWidgetListText">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">3dp</item>
+        <item name="android:layout_marginTop">2dp</item>
         <item name="android:ellipsize">end</item>
         <item name="android:maxLines">1</item>
         <item name="android:textColor">#203A57</item>
-        <item name="android:textSize">12sp</item>
+        <item name="android:textSize">11sp</item>
     </style>
 
     <style name="PlanFlowWidgetMetaText">
@@ -37,6 +79,80 @@
         <item name="android:maxLines">1</item>
         <item name="android:textColor">#59789A</item>
         <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="PlanFlowWidgetMonthHeader">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">2dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#59789A</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PlanFlowWidgetWeekHeader">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#59789A</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PlanFlowWidgetWeekDate">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#8DA0B5</item>
+        <item name="android:textSize">10sp</item>
+    </style>
+
+    <style name="PlanFlowWidgetOverflowText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:gravity">start</item>
+        <item name="android:textColor">#8FA2B8</item>
+        <item name="android:textSize">10sp</item>
+    </style>
+
+    <style name="PlanFlowWidgetMonthCell">
+        <item name="android:background">@drawable/widget_panel_background</item>
+    </style>
+
+    <style name="PlanFlowWidgetMonthCellDay">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">start</item>
+        <item name="android:textColor">#203A57</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PlanFlowWidgetMonthCellMeta">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">1sp</item>
+    </style>
+
+    <style name="PlanFlowWidgetMonthCellEvent">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">#203A57</item>
+        <item name="android:textSize">9sp</item>
+    </style>
+
+    <style name="PlanFlowWidgetMonthCellOverflow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">1dp</item>
+        <item name="android:gravity">end</item>
+        <item name="android:textColor">#8FA2B8</item>
+        <item name="android:textSize">8sp</item>
     </style>
 
     <style name="PlanFlowWidgetMonthCellText">

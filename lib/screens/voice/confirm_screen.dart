@@ -1143,22 +1143,23 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     EventModel fallbackEvent,
   ) async {
     try {
-      final nextEvent = await _resolveNextEvent(repository) ?? fallbackEvent;
-      final upcomingEvents = await _resolveUpcomingEvents(repository);
-      await widget.homeWidgetService.updateScheduleData(
-        nextEvent: HomeWidgetNextEventData(
-          title: nextEvent.title,
-          eventId: nextEvent.id,
-          startAt: nextEvent.startAt,
-          location: nextEvent.location,
-          isCritical: nextEvent.isCritical,
-          travelBufferMinutes:
+      final userId = _resolveUserId();
+      if (userId == null) {
+        return;
+      }
+      final now = DateTime.now();
+      final events = await repository.listEvents(userId: userId);
+      final nextEvent = _nextFutureEvent(events, now) ?? fallbackEvent;
+      await widget.homeWidgetService.updateSchedulePayload(
+        HomeWidgetSchedulePayloadBuilder.fromEvents(
+          events: events,
+          now: now,
+          emptyTitle: fallbackEvent.startAt == null
+              ? '예정된 일정이 없어요'
+              : fallbackEvent.title,
+          nextTravelBufferMinutes:
               await _resolveTravelBufferMinutesForWidget(nextEvent),
         ),
-        todayEvents: _todayWidgetEvents(upcomingEvents),
-        month: DateTime.now(),
-        monthDays: _monthWidgetDays(upcomingEvents),
-        weekDays: _weekWidgetDays(upcomingEvents),
       );
     } catch (_) {}
   }
@@ -1173,114 +1174,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     );
   }
 
-  List<HomeWidgetListEventData> _todayWidgetEvents(List<EventModel> events) {
-    final now = DateTime.now();
-    return events
-        .where((event) {
-          final startAt = event.startAt;
-          return startAt != null && planflowIsSameLocalDay(startAt, now);
-        })
-        .take(6)
-        .map(_homeWidgetListEvent)
-        .toList(growable: false);
-  }
-
-  List<HomeWidgetMonthDayData> _monthWidgetDays(List<EventModel> events) {
-    final now = DateTime.now();
-    final counts = <int, int>{};
-    final criticalDays = <int>{};
-    for (final event in events) {
-      final startAt = event.startAt;
-      final localStart = startAt == null ? null : planflowLocal(startAt);
-      if (localStart == null ||
-          localStart.year != now.year ||
-          localStart.month != now.month) {
-        continue;
-      }
-      counts[localStart.day] = (counts[localStart.day] ?? 0) + 1;
-      if (event.isCritical) {
-        criticalDays.add(localStart.day);
-      }
-    }
-    return counts.entries
-        .map(
-          (entry) => HomeWidgetMonthDayData(
-            day: entry.key,
-            summary: '일정 ${entry.value}',
-            eventCount: entry.value,
-            hasCritical: criticalDays.contains(entry.key),
-          ),
-        )
-        .toList(growable: false);
-  }
-
-  List<HomeWidgetWeekDayData> _weekWidgetDays(List<EventModel> events) {
-    final now = DateTime.now();
-    final weekStart = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
-    return List<HomeWidgetWeekDayData>.generate(7, (index) {
-      final day = weekStart.add(Duration(days: index));
-      final dayEvents = events.where((event) {
-        final startAt = event.startAt;
-        return startAt != null && planflowIsSameLocalDay(startAt, day);
-      }).toList(growable: false);
-      return HomeWidgetWeekDayData(
-        date: day,
-        summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}건',
-        eventCount: dayEvents.length,
-        hasCritical: dayEvents.any((event) => event.isCritical),
-        events: dayEvents.map(_homeWidgetListEvent).toList(growable: false),
-      );
-    });
-  }
-
-  HomeWidgetListEventData _homeWidgetListEvent(EventModel event) {
-    return HomeWidgetListEventData(
-      title: event.title,
-      startAt: event.startAt,
-      location: event.location,
-      isCritical: event.isCritical,
-    );
-  }
-
-  Future<EventModel?> _resolveNextEvent(EventRepository repository) async {
-    final userId = _resolveUserId();
-    if (userId == null) {
-      return null;
-    }
-
-    final now = DateTime.now();
-    final events = await repository.listEvents(userId: userId);
-    final remainingToday = events.where((event) {
+  EventModel? _nextFutureEvent(List<EventModel> events, DateTime now) {
+    final futureEvents = events.where((event) {
       final startAt = event.startAt;
       if (startAt == null) {
         return false;
       }
-      return planflowIsSameLocalDay(startAt, now) && !startAt.isBefore(now);
+      return !startAt.isBefore(now);
     }).toList(growable: false)
       ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
-
-    if (remainingToday.isEmpty) {
-      return null;
-    }
-    return remainingToday.first;
-  }
-
-  Future<List<EventModel>> _resolveUpcomingEvents(
-    EventRepository repository,
-  ) async {
-    final userId = _resolveUserId();
-    if (userId == null) {
-      return const <EventModel>[];
-    }
-
-    final now = DateTime.now();
-    final events = await repository.listEvents(userId: userId);
-    return events.where((event) {
-      final startAt = event.startAt;
-      return startAt != null && !startAt.isBefore(now);
-    }).toList(growable: false)
-      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+    return futureEvents.isEmpty ? null : futureEvents.first;
   }
 
   String? _resolveTravelOrigin() {

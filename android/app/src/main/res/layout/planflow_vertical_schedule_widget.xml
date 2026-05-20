@@ -16,66 +16,76 @@
 
         <TextView
             android:id="@+id/widget_vertical_title"
+            style="@style/PlanFlowWidgetTitleText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="#142A44"
-            android:textSize="17sp"
-            android:textStyle="bold"
-            tools:text="오늘 남은 일정" />
+            tools:text="오늘 일정" />
 
         <TextView
             android:id="@+id/widget_vertical_voice_button"
+            style="@style/PlanFlowWidgetVoiceChip"
             android:layout_width="44dp"
             android:layout_height="24dp"
-            android:background="@drawable/widget_voice_chip_background"
-            android:gravity="center"
-            android:text="입력"
-            android:textColor="#1F4168"
-            android:textSize="10sp"
-            android:textStyle="bold" />
+            android:text="입력" />
     </LinearLayout>
 
     <TextView
-        android:id="@+id/widget_vertical_subtitle"
-        style="@style/PlanFlowWidgetMetaText"
-        android:layout_marginTop="2dp"
-        tools:text="현재 다음: 주간 회의" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
+        style="@style/PlanFlowWidgetSectionText"
         android:layout_marginTop="8dp"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:text="최근 지난 일정" />
 
-        <TextView
-            android:id="@+id/widget_today_item_1"
-            android:background="@drawable/widget_today_highlight_background"
-            android:padding="7dp"
-            style="@style/PlanFlowWidgetListText"
-            tools:text="09:00  주간 회의" />
+    <TextView
+        android:id="@+id/widget_last_past_event_1_title"
+        style="@style/PlanFlowWidgetListText"
+        tools:text="10:00 회의" />
 
-        <TextView
-            android:id="@+id/widget_today_item_2"
-            style="@style/PlanFlowWidgetListText"
-            tools:text="11:00  팀 미팅" />
+    <TextView
+        android:id="@+id/widget_last_past_event_2_title"
+        style="@style/PlanFlowWidgetListText"
+        tools:text="14:00 병원" />
 
-        <TextView
-            android:id="@+id/widget_today_item_3"
-            style="@style/PlanFlowWidgetListText"
-            tools:text="12:00  점심" />
+    <TextView
+        style="@style/PlanFlowWidgetSectionText"
+        android:layout_marginTop="10dp"
+        android:text="오늘 남은 일정" />
 
-        <TextView
-            android:id="@+id/widget_today_item_4"
-            style="@style/PlanFlowWidgetListText" />
+    <TextView
+        android:id="@+id/widget_today_upcoming_event_1_title"
+        style="@style/PlanFlowWidgetListText"
+        tools:text="16:20 회의실 이동" />
 
-        <TextView
-            android:id="@+id/widget_today_item_5"
-            style="@style/PlanFlowWidgetListText" />
+    <TextView
+        android:id="@+id/widget_today_upcoming_event_2_title"
+        style="@style/PlanFlowWidgetListText"
+        tools:text="18:00 저녁 식사" />
 
-        <TextView
-            android:id="@+id/widget_today_item_6"
-            style="@style/PlanFlowWidgetListText" />
-    </LinearLayout>
+    <TextView
+        android:id="@+id/widget_today_upcoming_event_3_title"
+        style="@style/PlanFlowWidgetListText" />
+
+    <TextView
+        android:id="@+id/widget_today_upcoming_event_4_title"
+        style="@style/PlanFlowWidgetListText" />
+
+    <TextView
+        android:id="@+id/widget_today_upcoming_empty_message"
+        style="@style/PlanFlowWidgetSubtleText"
+        android:visibility="gone"
+        android:text="오늘 남은 일정은 없어요" />
+
+    <TextView
+        style="@style/PlanFlowWidgetSectionText"
+        android:layout_marginTop="10dp"
+        android:text="내일 일정" />
+
+    <TextView
+        android:id="@+id/widget_tomorrow_event_1_title"
+        style="@style/PlanFlowWidgetListText"
+        tools:text="09:00 방문 미팅" />
+
+    <TextView
+        android:id="@+id/widget_tomorrow_event_2_title"
+        style="@style/PlanFlowWidgetListText"
+        tools:text="11:30 약속" />
 </LinearLayout>

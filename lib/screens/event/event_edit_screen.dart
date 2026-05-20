@@ -717,24 +717,14 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
       final now = DateTime.now();
       final events = await repository.listEvents(userId: user.id);
-      final nextEvents = events.where((event) {
-        final startAt = event.startAt;
-        return startAt != null && !startAt.isBefore(now);
-      }).toList(growable: false)
-        ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
-      final nextEvent = nextEvents.isEmpty ? fallbackEvent : nextEvents.first;
-      return widget.homeWidgetService.updateScheduleData(
-        nextEvent: HomeWidgetNextEventData(
-          title: nextEvent.title,
-          eventId: nextEvent.id,
-          startAt: nextEvent.startAt,
-          location: nextEvent.location,
-          isCritical: nextEvent.isCritical,
+      return widget.homeWidgetService.updateSchedulePayload(
+        HomeWidgetSchedulePayloadBuilder.fromEvents(
+          events: events,
+          now: now,
+          emptyTitle: fallbackEvent.startAt == null
+              ? '예정된 일정이 없어요'
+              : fallbackEvent.title,
         ),
-        todayEvents: _todayWidgetEvents(nextEvents, now),
-        month: now,
-        monthDays: _monthWidgetDays(nextEvents, now),
-        weekDays: _weekWidgetDays(nextEvents, now),
       );
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen widget refresh failed: $error');
@@ -837,82 +827,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  List<HomeWidgetListEventData> _todayWidgetEvents(
-    List<EventModel> events,
-    DateTime now,
-  ) {
-    return events
-        .where((event) {
-          final startAt = event.startAt;
-          return startAt != null && planflowIsSameLocalDay(startAt, now);
-        })
-        .take(6)
-        .map(_homeWidgetListEvent)
-        .toList(growable: false);
-  }
-
-  List<HomeWidgetMonthDayData> _monthWidgetDays(
-    List<EventModel> events,
-    DateTime now,
-  ) {
-    final counts = <int, int>{};
-    final criticalDays = <int>{};
-    for (final event in events) {
-      final startAt = event.startAt;
-      final localStart = startAt == null ? null : planflowLocal(startAt);
-      if (localStart == null ||
-          localStart.year != now.year ||
-          localStart.month != now.month) {
-        continue;
-      }
-      counts[localStart.day] = (counts[localStart.day] ?? 0) + 1;
-      if (event.isCritical) {
-        criticalDays.add(localStart.day);
-      }
-    }
-    return counts.entries
-        .map(
-          (entry) => HomeWidgetMonthDayData(
-            day: entry.key,
-            summary: '일정 ${entry.value}',
-            eventCount: entry.value,
-            hasCritical: criticalDays.contains(entry.key),
-          ),
-        )
-        .toList(growable: false);
-  }
-
-  List<HomeWidgetWeekDayData> _weekWidgetDays(
-    List<EventModel> events,
-    DateTime now,
-  ) {
-    final weekStart = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
-    return List<HomeWidgetWeekDayData>.generate(7, (index) {
-      final day = weekStart.add(Duration(days: index));
-      final dayEvents = events.where((event) {
-        final startAt = event.startAt;
-        return startAt != null && planflowIsSameLocalDay(startAt, day);
-      }).toList(growable: false);
-      return HomeWidgetWeekDayData(
-        date: day,
-        summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}건',
-        eventCount: dayEvents.length,
-        hasCritical: dayEvents.any((event) => event.isCritical),
-        events: dayEvents.map(_homeWidgetListEvent).toList(growable: false),
-      );
-    });
-  }
-
-  HomeWidgetListEventData _homeWidgetListEvent(EventModel event) {
-    return HomeWidgetListEventData(
-      title: event.title,
-      startAt: event.startAt,
-      location: event.location,
-      isCritical: event.isCritical,
     );
   }
 

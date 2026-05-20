@@ -1,3 +1,5 @@
+import '../core/local_time.dart';
+import '../data/models/event_model.dart';
 import 'home_widget_platform.dart';
 import 'travel_time_buffer_service.dart';
 
@@ -61,6 +63,223 @@ class HomeWidgetWeekDayData {
   final List<HomeWidgetListEventData> events;
   final int? eventCount;
   final bool hasCritical;
+}
+
+class HomeWidgetMonthCellData {
+  const HomeWidgetMonthCellData({
+    required this.cellIndex,
+    this.day,
+    this.inMonth = false,
+    this.events = const <HomeWidgetListEventData>[],
+    this.overflowCount = 0,
+  });
+
+  final int cellIndex;
+  final int? day;
+  final bool inMonth;
+  final List<HomeWidgetListEventData> events;
+  final int overflowCount;
+}
+
+class HomeWidgetSchedulePayload {
+  const HomeWidgetSchedulePayload({
+    required this.nextEvent,
+    required this.month,
+    this.lastPastEvent,
+    this.todayUpcomingEvents = const <HomeWidgetListEventData>[],
+    this.tomorrowEvents = const <HomeWidgetListEventData>[],
+    this.monthDays = const <HomeWidgetMonthDayData>[],
+    this.monthCells = const <HomeWidgetMonthCellData>[],
+    this.weekDays = const <HomeWidgetWeekDayData>[],
+  });
+
+  final HomeWidgetNextEventData nextEvent;
+  final DateTime month;
+  final HomeWidgetListEventData? lastPastEvent;
+  final List<HomeWidgetListEventData> todayUpcomingEvents;
+  final List<HomeWidgetListEventData> tomorrowEvents;
+  final List<HomeWidgetMonthDayData> monthDays;
+  final List<HomeWidgetMonthCellData> monthCells;
+  final List<HomeWidgetWeekDayData> weekDays;
+}
+
+class HomeWidgetSchedulePayloadBuilder {
+  const HomeWidgetSchedulePayloadBuilder._();
+
+  static HomeWidgetSchedulePayload fromEvents({
+    required List<EventModel> events,
+    required DateTime now,
+    String emptyTitle = '예정된 일정이 없어요',
+    int? nextTravelBufferMinutes,
+  }) {
+    final sortedEvents = events
+        .where((event) => event.startAt != null)
+        .toList(growable: false)
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+    final futureEvents = sortedEvents
+        .where((event) => !event.startAt!.isBefore(now))
+        .toList(growable: false);
+    final nextEvent = futureEvents.isEmpty ? null : futureEvents.first;
+    final todayEvents = _eventsForDay(
+      sortedEvents,
+      DateTime(
+        planflowLocal(now).year,
+        planflowLocal(now).month,
+        planflowLocal(now).day,
+      ),
+    );
+    final todayPast = todayEvents
+        .where((event) => _effectiveEndAt(event).isBefore(now))
+        .toList(growable: false);
+    final todayUpcoming = todayEvents
+        .where((event) => !_effectiveEndAt(event).isBefore(now))
+        .map(_listEvent)
+        .take(4)
+        .toList(growable: false);
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final tomorrowEvents = futureEvents
+        .where((event) => planflowIsSameLocalDay(event.startAt!, tomorrow))
+        .map(_listEvent)
+        .take(2)
+        .toList(growable: false);
+    final month = DateTime(now.year, now.month);
+
+    return HomeWidgetSchedulePayload(
+      nextEvent: nextEvent == null
+          ? HomeWidgetNextEventData(title: emptyTitle)
+          : HomeWidgetNextEventData(
+              title: nextEvent.title,
+              eventId: nextEvent.id,
+              startAt: nextEvent.startAt,
+              location: nextEvent.location,
+              travelBufferMinutes: nextTravelBufferMinutes,
+              isCritical: nextEvent.isCritical,
+            ),
+      month: month,
+      lastPastEvent: todayPast.isEmpty ? null : _listEvent(todayPast.last),
+      todayUpcomingEvents: todayUpcoming,
+      tomorrowEvents: todayUpcoming.isEmpty
+          ? tomorrowEvents
+          : const <HomeWidgetListEventData>[],
+      monthDays: _monthDays(sortedEvents, month),
+      monthCells: _monthCells(sortedEvents, month),
+      weekDays: _weekDays(sortedEvents, now),
+    );
+  }
+
+  static List<HomeWidgetMonthDayData> _monthDays(
+    List<EventModel> events,
+    DateTime month,
+  ) {
+    final counts = <int, int>{};
+    final criticalDays = <int>{};
+    for (final event in events) {
+      final startAt = event.startAt;
+      final localStart = startAt == null ? null : planflowLocal(startAt);
+      if (localStart == null ||
+          localStart.year != month.year ||
+          localStart.month != month.month) {
+        continue;
+      }
+      counts[localStart.day] = (counts[localStart.day] ?? 0) + 1;
+      if (event.isCritical) {
+        criticalDays.add(localStart.day);
+      }
+    }
+    return counts.entries
+        .map(
+          (entry) => HomeWidgetMonthDayData(
+            day: entry.key,
+            summary: '일정 ${entry.value}',
+            eventCount: entry.value,
+            hasCritical: criticalDays.contains(entry.key),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  static List<HomeWidgetMonthCellData> _monthCells(
+    List<EventModel> events,
+    DateTime month,
+  ) {
+    final firstDay = DateTime(month.year, month.month);
+    final startOffset = firstDay.weekday % 7;
+    final firstCellDay = firstDay.subtract(Duration(days: startOffset));
+    return List<HomeWidgetMonthCellData>.generate(42, (index) {
+      final day = firstCellDay.add(Duration(days: index));
+      final inMonth = day.year == month.year && day.month == month.month;
+      final dayEvents = inMonth ? _eventsForDay(events, day) : <EventModel>[];
+      return HomeWidgetMonthCellData(
+        cellIndex: index + 1,
+        day: inMonth ? day.day : null,
+        inMonth: inMonth,
+        events: dayEvents.map(_listEvent).take(3).toList(growable: false),
+        overflowCount: dayEvents.length > 3 ? dayEvents.length - 3 : 0,
+      );
+    });
+  }
+
+  static List<HomeWidgetWeekDayData> _weekDays(
+    List<EventModel> events,
+    DateTime now,
+  ) {
+    final localNow = planflowLocal(now);
+    final weekStart = DateTime(localNow.year, localNow.month, localNow.day)
+        .subtract(Duration(days: localNow.weekday - 1));
+    return List<HomeWidgetWeekDayData>.generate(7, (index) {
+      final day = weekStart.add(Duration(days: index));
+      final dayEvents = _eventsForDay(events, day);
+      return HomeWidgetWeekDayData(
+        date: day,
+        summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}건',
+        eventCount: dayEvents.length,
+        hasCritical: dayEvents.any((event) => event.isCritical),
+        events: dayEvents.map(_listEvent).take(2).toList(growable: false),
+      );
+    });
+  }
+
+  static List<EventModel> _eventsForDay(List<EventModel> events, DateTime day) {
+    final dayEvents = events
+        .where(
+          (event) => planflowEventIntersectsLocalDay(
+            startAt: event.startAt,
+            endAt: event.endAt,
+            day: day,
+          ),
+        )
+        .toList(growable: false)
+      ..sort((a, b) {
+        final aStart = a.startAt;
+        final bStart = b.startAt;
+        if (aStart == null && bStart == null) {
+          return a.title.compareTo(b.title);
+        }
+        if (aStart == null) {
+          return 1;
+        }
+        if (bStart == null) {
+          return -1;
+        }
+        return aStart.compareTo(bStart);
+      });
+    return dayEvents;
+  }
+
+  static DateTime _effectiveEndAt(EventModel event) {
+    return event.endAt ??
+        event.startAt ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  static HomeWidgetListEventData _listEvent(EventModel event) {
+    return HomeWidgetListEventData(
+      title: event.title,
+      startAt: event.startAt,
+      location: event.location,
+      isCritical: event.isCritical,
+    );
+  }
 }
 
 class HomeWidgetService {
@@ -179,8 +398,15 @@ class HomeWidgetService {
     required HomeWidgetNextEventData nextEvent,
     List<HomeWidgetListEventData> todayEvents =
         const <HomeWidgetListEventData>[],
+    HomeWidgetListEventData? lastPastEvent,
+    List<HomeWidgetListEventData> todayUpcomingEvents =
+        const <HomeWidgetListEventData>[],
+    List<HomeWidgetListEventData> tomorrowEvents =
+        const <HomeWidgetListEventData>[],
     DateTime? month,
     List<HomeWidgetMonthDayData> monthDays = const <HomeWidgetMonthDayData>[],
+    List<HomeWidgetMonthCellData> monthCells =
+        const <HomeWidgetMonthCellData>[],
     List<HomeWidgetWeekDayData> weekDays = const <HomeWidgetWeekDayData>[],
     String widgetName = defaultWidgetName,
     String? androidName,
@@ -219,7 +445,15 @@ class HomeWidgetService {
         ) &&
         success;
     success = await _saveTodayEvents(todayEvents) && success;
+    success = await _saveTodayScheduleData(
+          lastPastEvent: lastPastEvent,
+          todayUpcomingEvents:
+              todayUpcomingEvents.isEmpty ? todayEvents : todayUpcomingEvents,
+          tomorrowEvents: tomorrowEvents,
+        ) &&
+        success;
     success = await _saveMonthData(month: month, days: monthDays) && success;
+    success = await _saveMonthCalendarData(monthCells) && success;
     success = await _saveWeekData(weekDays) && success;
 
     final refreshed = await _refreshWidgets(
@@ -230,6 +464,30 @@ class HomeWidgetService {
     );
 
     return success && refreshed;
+  }
+
+  Future<bool> updateSchedulePayload(
+    HomeWidgetSchedulePayload payload, {
+    String widgetName = defaultWidgetName,
+    String? androidName,
+    String? iOSName,
+    String? qualifiedAndroidName,
+  }) {
+    return updateScheduleData(
+      nextEvent: payload.nextEvent,
+      todayEvents: payload.todayUpcomingEvents,
+      lastPastEvent: payload.lastPastEvent,
+      todayUpcomingEvents: payload.todayUpcomingEvents,
+      tomorrowEvents: payload.tomorrowEvents,
+      month: payload.month,
+      monthDays: payload.monthDays,
+      monthCells: payload.monthCells,
+      weekDays: payload.weekDays,
+      widgetName: widgetName,
+      androidName: androidName,
+      iOSName: iOSName,
+      qualifiedAndroidName: qualifiedAndroidName,
+    );
   }
 
   Future<int> _resolveTravelBufferMinutes({
@@ -291,6 +549,36 @@ class HomeWidgetService {
     return success;
   }
 
+  Future<bool> _saveTodayScheduleData({
+    required HomeWidgetListEventData? lastPastEvent,
+    required List<HomeWidgetListEventData> todayUpcomingEvents,
+    required List<HomeWidgetListEventData> tomorrowEvents,
+  }) async {
+    var success = true;
+    success = await _saveListEvent('last_past_event', lastPastEvent) && success;
+    final todaySlots = todayUpcomingEvents.take(4).toList(growable: false);
+    final tomorrowSlots = tomorrowEvents.take(2).toList(growable: false);
+    success =
+        await _saveValue('today_upcoming_count', todaySlots.length) && success;
+    success = await _saveValue('tomorrow_event_count', tomorrowSlots.length) &&
+        success;
+    for (var index = 0; index < 4; index += 1) {
+      success = await _saveListEvent(
+            'today_upcoming_${index + 1}',
+            index < todaySlots.length ? todaySlots[index] : null,
+          ) &&
+          success;
+    }
+    for (var index = 0; index < 2; index += 1) {
+      success = await _saveListEvent(
+            'tomorrow_event_${index + 1}',
+            index < tomorrowSlots.length ? tomorrowSlots[index] : null,
+          ) &&
+          success;
+    }
+    return success;
+  }
+
   Future<bool> _saveMonthData({
     required DateTime? month,
     required List<HomeWidgetMonthDayData> days,
@@ -338,6 +626,51 @@ class HomeWidgetService {
     return success;
   }
 
+  Future<bool> _saveMonthCalendarData(
+    List<HomeWidgetMonthCellData> cells,
+  ) async {
+    var success = true;
+    final byCell = <int, HomeWidgetMonthCellData>{
+      for (final cell in cells)
+        if (cell.cellIndex >= 1 && cell.cellIndex <= 42) cell.cellIndex: cell,
+    };
+    for (var cellIndex = 1; cellIndex <= 42; cellIndex += 1) {
+      final cell = byCell[cellIndex];
+      success = await _saveOptionalValue(
+            'month_cell_${cellIndex}_day',
+            cell?.day,
+          ) &&
+          success;
+      success = await _saveValue(
+            'month_cell_${cellIndex}_in_month',
+            cell?.inMonth ?? false,
+          ) &&
+          success;
+      success = await _saveValue(
+            'month_cell_${cellIndex}_overflow_count',
+            cell?.overflowCount ?? 0,
+          ) &&
+          success;
+      final events = cell?.events.take(3).toList(growable: false) ??
+          const <HomeWidgetListEventData>[];
+      for (var eventIndex = 0; eventIndex < 3; eventIndex += 1) {
+        final event = eventIndex < events.length ? events[eventIndex] : null;
+        final eventSlot = eventIndex + 1;
+        success = await _saveOptionalValue(
+              'month_cell_${cellIndex}_event_${eventSlot}_title',
+              event?.title,
+            ) &&
+            success;
+        success = await _saveValue(
+              'month_cell_${cellIndex}_event_${eventSlot}_is_critical',
+              event?.isCritical ?? false,
+            ) &&
+            success;
+      }
+    }
+    return success;
+  }
+
   Future<bool> _saveWeekData(List<HomeWidgetWeekDayData> days) async {
     var success = true;
     final slots = days.take(7).toList(growable: false);
@@ -362,12 +695,20 @@ class HomeWidgetService {
           success;
       success = await _saveValue(
             'week_day_${slot}_has_critical',
-            day?.hasCritical ?? day?.events.any((event) => event.isCritical) ?? false,
+            day?.hasCritical ??
+                day?.events.any((event) => event.isCritical) ??
+                false,
           ) &&
           success;
 
       final events = day?.events.take(2).toList(growable: false) ??
           const <HomeWidgetListEventData>[];
+      final eventCount = day?.eventCount ?? day?.events.length ?? 0;
+      success = await _saveValue(
+            'week_day_${slot}_overflow_count',
+            eventCount > events.length ? eventCount - events.length : 0,
+          ) &&
+          success;
       for (var eventIndex = 0; eventIndex < 2; eventIndex += 1) {
         final event = eventIndex < events.length ? events[eventIndex] : null;
         final eventSlot = eventIndex + 1;
@@ -424,6 +765,28 @@ class HomeWidgetService {
     }
 
     return _platform.setAppGroupId(iOSAppGroupId!.trim());
+  }
+
+  Future<bool> _saveListEvent(
+    String prefix,
+    HomeWidgetListEventData? event,
+  ) async {
+    var success = true;
+    success =
+        await _saveOptionalValue('${prefix}_title', event?.title) && success;
+    success = await _saveOptionalValue(
+          '${prefix}_time',
+          event?.startAt?.toUtc().toIso8601String(),
+        ) &&
+        success;
+    success = await _saveOptionalValue('${prefix}_location', event?.location) &&
+        success;
+    success = await _saveValue(
+          '${prefix}_is_critical',
+          event?.isCritical ?? false,
+        ) &&
+        success;
+    return success;
   }
 
   Future<bool> _saveValue(String key, Object? value) async {

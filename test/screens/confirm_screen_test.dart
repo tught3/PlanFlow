@@ -92,8 +92,7 @@ void main() {
     );
   });
 
-  testWidgets(
-      'ConfirmScreen shows login guidance when save session is missing',
+  testWidgets('ConfirmScreen shows login guidance when save session is missing',
       (tester) async {
     await tester.pumpWidget(
       _testApp(
@@ -622,8 +621,15 @@ class _FakeHomeWidgetService extends HomeWidgetService {
     required HomeWidgetNextEventData nextEvent,
     List<HomeWidgetListEventData> todayEvents =
         const <HomeWidgetListEventData>[],
+    HomeWidgetListEventData? lastPastEvent,
+    List<HomeWidgetListEventData> todayUpcomingEvents =
+        const <HomeWidgetListEventData>[],
+    List<HomeWidgetListEventData> tomorrowEvents =
+        const <HomeWidgetListEventData>[],
     DateTime? month,
     List<HomeWidgetMonthDayData> monthDays = const <HomeWidgetMonthDayData>[],
+    List<HomeWidgetMonthCellData> monthCells =
+        const <HomeWidgetMonthCellData>[],
     List<HomeWidgetWeekDayData> weekDays = const <HomeWidgetWeekDayData>[],
     String widgetName = HomeWidgetService.defaultWidgetName,
     String? androidName,

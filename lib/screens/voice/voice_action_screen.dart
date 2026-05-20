@@ -1713,37 +1713,12 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     try {
       final now = DateTime.now();
       final events = await _repository.listEvents(userId: userId);
-      final nextEvents = events.where((event) {
-        final startAt = event.startAt;
-        return startAt != null && !startAt.isBefore(now);
-      }).toList(growable: false)
-        ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
-
-      if (nextEvents.isEmpty) {
-        await widget.homeWidgetService.updateNextEventData(
-          const HomeWidgetNextEventData(title: '다가올 일정이 없어요'),
-        );
-        return;
-      }
-
-      final nextEvent = nextEvents.first;
-      await widget.homeWidgetService.updateNextEvent(
-        title: nextEvent.title,
-        eventId: nextEvent.id,
-        startAt: nextEvent.startAt,
-        location: nextEvent.location,
-        isCritical: nextEvent.isCritical,
-        upcomingEvents: nextEvents
-            .take(3)
-            .map(
-              (event) => HomeWidgetListEventData(
-                title: event.title,
-                startAt: event.startAt,
-                location: event.location,
-                isCritical: event.isCritical,
-              ),
-            )
-            .toList(growable: false),
+      await widget.homeWidgetService.updateSchedulePayload(
+        HomeWidgetSchedulePayloadBuilder.fromEvents(
+          events: events,
+          now: now,
+          emptyTitle: '다가올 일정이 없어요',
+        ),
       );
     } catch (error, stackTrace) {
       debugPrint('VoiceActionScreen widget refresh failed: $error');
