@@ -887,3 +887,9 @@
 - Added ignored local config path `env/db-backup.local.json` plus `env/db-backup.example.json`; database URLs and passwords stay out of Git.
 - Confirmed the PlanFlow Supabase project `xqvvfnvmytjlblcngipn` is active and read the current `auth`, `public`, and `storage` table list without changing DB schema/RLS.
 - Verification passed: PowerShell syntax checks for both backup scripts and `git diff --check`. Actual backup execution is blocked until `env/db-backup.local.json` contains production and backup DB connection strings plus PostgreSQL client tools are installed.
+
+## 2026-05-20 In-Project Supabase Backup Checkpoint
+- Added and applied `supabase/in_project_backup.sql`, creating the `backup` schema, `backup.daily_snapshots`, snapshot/prune/restore helper functions, and a Supabase `pg_cron` job named `planflow-daily-in-project-backup`.
+- The cron schedule is `30 18 * * *` UTC, which runs at 03:30 KST daily. A first `manual_initial` snapshot and today's `automatic` snapshot were created successfully.
+- Current automatic snapshot counts confirmed: users 4, events 474, reminders 61, pre_actions 42, voice_logs 31, location_history 14, user_settings 3, calendar_connections 4, user_backups 18, feedback_reports 2, early_bird_emails 0, user_behavior_logs 0.
+- Updated `supabase/schema.sql` and `docs/database-backup-runbook.md` so the in-project backup path is the active backup method, with external `pg_dump` backups documented as an optional later layer.
