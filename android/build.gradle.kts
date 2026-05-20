@@ -3,6 +3,10 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    configurations.configureEach {
+        resolutionStrategy.force("androidx.glance:glance-appwidget:1.0.0")
+    }
 }
 
 val newBuildDir = rootProject.layout.projectDirectory.dir("../build")

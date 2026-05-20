@@ -24,6 +24,11 @@
 - Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, focused `test/screens/confirm_screen_test.dart` login-guidance regression, and `test/screens/event_edit_screen_test.dart`. Full `scripts/flutter-local.ps1 build apk --debug --no-pub` still fails on existing Android compileSdk 36 vs `glance-appwidget`/`remote-creation-android` SDK 37 requirements, and no ADB device was connected for a run check.
 
 
+## 2026-05-20 Android Build Unblock Checkpoint
+- Pinned `androidx.glance:glance-appwidget` to `1.0.0` in the Android root Gradle configuration so `home_widget` no longer resolves the alpha Glance dependency that required compileSdk 37 / AGP 9.1.0.
+- Re-ran `scripts/flutter-local.ps1 build apk --debug --no-pub` successfully, then installed the APK with `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk` and launched `com.planflow.app` with PID confirmation on the connected device `192.168.0.102:5555`.
+
+
 ## 2026-05-19 Post-save Background Follow-ups Checkpoint
 - Voice confirm and event edit saves now return to the user immediately after the event row is written, while follow-up work such as pre_actions, reminders, departure alarms, location history, voice logs, external prep resync, calendar auto-sync, and home-widget refresh runs in the background.
 - ConfirmScreen and EventEditScreen both keep the save path focused on the event payload first, so users do not sit through the slower side-effect chain before navigation.
