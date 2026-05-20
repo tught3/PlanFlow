@@ -122,26 +122,26 @@ void main() {
 
     final success = await service.updateScheduleData(
       nextEvent: HomeWidgetNextEventData(
-        title: '주간 회의',
+        title: 'Morning sync',
         startAt: DateTime.parse('2026-05-04T01:00:00Z'),
       ),
       todayEvents: List<HomeWidgetListEventData>.generate(
         7,
-        (index) => HomeWidgetListEventData(title: '오늘 일정 ${index + 1}'),
+        (index) => HomeWidgetListEventData(title: 'Today event ${index + 1}'),
       ),
       lastPastEvent: HomeWidgetListEventData(
-        title: '지난 일정',
+        title: 'Past event',
         startAt: DateTime.parse('2026-05-04T00:00:00Z'),
       ),
       todayUpcomingEvents: <HomeWidgetListEventData>[
         HomeWidgetListEventData(
-          title: '남은 일정',
+          title: 'Upcoming event',
           startAt: DateTime.parse('2026-05-04T03:00:00Z'),
         ),
       ],
       tomorrowEvents: <HomeWidgetListEventData>[
         HomeWidgetListEventData(
-          title: '내일 일정',
+          title: 'Tomorrow event',
           startAt: DateTime.parse('2026-05-05T01:00:00Z'),
         ),
       ],
@@ -149,11 +149,11 @@ void main() {
       monthDays: const <HomeWidgetMonthDayData>[
         HomeWidgetMonthDayData(
           day: 1,
-          summary: '회의 2',
+          summary: '2 events',
           eventCount: 2,
           hasCritical: true,
         ),
-        HomeWidgetMonthDayData(day: 32, summary: '저장 안 됨'),
+        HomeWidgetMonthDayData(day: 32, summary: 'ignored'),
       ],
       monthCells: <HomeWidgetMonthCellData>[
         HomeWidgetMonthCellData(
@@ -162,11 +162,11 @@ void main() {
           inMonth: true,
           events: <HomeWidgetListEventData>[
             const HomeWidgetListEventData(
-              title: '월간 첫 일정',
+              title: 'Cell event 1',
               isCritical: true,
             ),
-            const HomeWidgetListEventData(title: '월간 둘째 일정'),
-            const HomeWidgetListEventData(title: '월간 셋째 일정'),
+            const HomeWidgetListEventData(title: 'Cell event 2'),
+            const HomeWidgetListEventData(title: 'Cell event 3'),
           ],
           overflowCount: 2,
         ),
@@ -174,60 +174,59 @@ void main() {
       weekDays: <HomeWidgetWeekDayData>[
         HomeWidgetWeekDayData(
           date: DateTime.parse('2026-05-04T00:00:00Z'),
-          summary: '2건',
+          summary: '2 events',
           eventCount: 2,
           hasCritical: true,
           events: <HomeWidgetListEventData>[
             HomeWidgetListEventData(
-              title: '아침 회의',
+              title: 'Week event 1',
               startAt: DateTime.parse('2026-05-04T01:00:00Z'),
               isCritical: true,
             ),
-            HomeWidgetListEventData(title: '점심 미팅'),
-            HomeWidgetListEventData(title: '저장 안 됨'),
+            HomeWidgetListEventData(title: 'Week event 2'),
+            HomeWidgetListEventData(title: 'Week event 3'),
           ],
         ),
       ],
     );
 
     expect(success, isTrue);
-    expect(platform.savedValues['next_event_title'], '주간 회의');
-    expect(platform.savedValues['event_list_6_title'], '오늘 일정 6');
+    expect(platform.savedValues['next_event_title'], 'Morning sync');
+    expect(platform.savedValues['event_list_6_title'], 'Today event 6');
     expect(platform.savedValues['event_list_7_title'], isNull);
-    expect(platform.savedValues['last_past_event_title'], '지난 일정');
+    expect(platform.savedValues['last_past_event_title'], 'Past event');
     expect(
       platform.savedValues['last_past_event_time'],
       '2026-05-04T00:00:00.000Z',
     );
     expect(platform.savedValues['today_upcoming_count'], 1);
-    expect(platform.savedValues['today_upcoming_1_title'], '남은 일정');
+    expect(platform.savedValues['today_upcoming_1_title'], 'Upcoming event');
     expect(platform.savedValues['today_upcoming_2_title'], isNull);
     expect(platform.savedValues['tomorrow_event_count'], 1);
-    expect(platform.savedValues['tomorrow_event_1_title'], '내일 일정');
-    expect(platform.savedValues['month_title'], '2026년 5월');
-    expect(platform.savedValues['month_day_1_summary'], '회의 2');
+    expect(platform.savedValues['tomorrow_event_1_title'], 'Tomorrow event');
+    expect(platform.savedValues['month_day_1_summary'], '2 events');
     expect(platform.savedValues['month_day_1_count'], 2);
     expect(platform.savedValues['month_day_1_has_critical'], isTrue);
     expect(platform.savedValues['month_day_31_summary'], isNull);
     expect(platform.savedValues['month_day_31_has_critical'], isFalse);
     expect(platform.savedValues['month_cell_1_day'], 1);
     expect(platform.savedValues['month_cell_1_in_month'], isTrue);
-    expect(platform.savedValues['month_cell_1_event_1_title'], '월간 첫 일정');
+    expect(platform.savedValues['month_cell_1_event_1_title'], 'Cell event 1');
     expect(platform.savedValues['month_cell_1_event_1_is_critical'], isTrue);
-    expect(platform.savedValues['month_cell_1_event_3_title'], '월간 셋째 일정');
+    expect(platform.savedValues['month_cell_1_event_3_title'], 'Cell event 3');
     expect(platform.savedValues['month_cell_1_overflow_count'], 2);
     expect(platform.savedValues['month_cell_42_day'], isNull);
     expect(platform.savedValues['month_cell_42_in_month'], isFalse);
     expect(platform.savedValues['week_day_1_date'], '2026-05-04T00:00:00.000Z');
-    expect(platform.savedValues['week_day_1_summary'], '2건');
+    expect(platform.savedValues['week_day_1_summary'], '2 events');
     expect(platform.savedValues['week_day_1_count'], 2);
     expect(platform.savedValues['week_day_1_has_critical'], isTrue);
     expect(platform.savedValues['week_day_1_overflow_count'], 0);
-    expect(platform.savedValues['week_day_1_event_1_title'], '아침 회의');
+    expect(platform.savedValues['week_day_1_event_1_title'], 'Week event 1');
     expect(platform.savedValues['week_day_1_event_1_time'],
         '2026-05-04T01:00:00.000Z');
     expect(platform.savedValues['week_day_1_event_1_is_critical'], isTrue);
-    expect(platform.savedValues['week_day_1_event_2_title'], '점심 미팅');
+    expect(platform.savedValues['week_day_1_event_2_title'], 'Week event 2');
     expect(platform.savedValues['week_day_1_event_3_title'], isNull);
     expect(
         platform.updatedWidgets, HomeWidgetService.defaultAndroidWidgetNames);
@@ -241,48 +240,48 @@ void main() {
         EventModel(
           id: 'past',
           userId: 'user-1',
-          title: '최근 지난 일정',
+          title: 'Past event',
           startAt: DateTime.parse('2026-05-20T01:00:00Z'),
         ),
         EventModel(
           id: 'next',
           userId: 'user-1',
-          title: '오늘 남은 일정',
+          title: 'Next event',
           startAt: DateTime.parse('2026-05-20T06:00:00Z'),
           isCritical: true,
         ),
         EventModel(
           id: 'tomorrow',
           userId: 'user-1',
-          title: '내일 일정',
+          title: 'Tomorrow event',
           startAt: DateTime.parse('2026-05-21T00:00:00Z'),
         ),
         EventModel(
           id: 'overflow-1',
           userId: 'user-1',
-          title: '추가 일정 1',
+          title: 'Overflow 1',
           startAt: DateTime.parse('2026-05-20T07:00:00Z'),
         ),
         EventModel(
           id: 'overflow-2',
           userId: 'user-1',
-          title: '추가 일정 2',
+          title: 'Overflow 2',
           startAt: DateTime.parse('2026-05-20T08:00:00Z'),
         ),
         EventModel(
           id: 'overflow-3',
           userId: 'user-1',
-          title: '추가 일정 3',
+          title: 'Overflow 3',
           startAt: DateTime.parse('2026-05-20T09:00:00Z'),
         ),
       ],
     );
 
-    expect(payload.nextEvent.title, '오늘 남은 일정');
+    expect(payload.nextEvent.title, 'Next event');
     expect(payload.nextEvent.isCritical, isTrue);
-    expect(payload.lastPastEvent?.title, '최근 지난 일정');
+    expect(payload.lastPastEvent?.title, 'Past event');
     expect(payload.todayUpcomingEvents.map((event) => event.title),
-        contains('오늘 남은 일정'));
+        contains('Next event'));
     expect(payload.tomorrowEvents, isEmpty);
     final may20Cell = payload.monthCells.firstWhere((cell) => cell.day == 20);
     expect(may20Cell.inMonth, isTrue);
@@ -303,7 +302,7 @@ void main() {
         EventModel(
           id: 'ongoing',
           userId: 'user-1',
-          title: '야간 당직',
+          title: 'Ongoing event',
           startAt: DateTime.parse('2026-05-19T15:00:00Z'),
           endAt: DateTime.parse('2026-05-20T05:00:00Z'),
           isMultiDay: true,
@@ -311,15 +310,45 @@ void main() {
         EventModel(
           id: 'tomorrow',
           userId: 'user-1',
-          title: '내일 미팅',
+          title: 'Tomorrow preview',
           startAt: DateTime.parse('2026-05-21T00:00:00Z'),
         ),
       ],
     );
 
     expect(payload.lastPastEvent, isNull);
-    expect(payload.todayUpcomingEvents.single.title, '야간 당직');
+    expect(payload.todayUpcomingEvents.single.title, 'Ongoing event');
     expect(payload.tomorrowEvents, isEmpty);
+  });
+
+  test('HomeWidgetService refreshScheduleFromEvents delegates payload build',
+      () async {
+    final platform = _FakeHomeWidgetPlatform();
+    final service = HomeWidgetService(platform: platform);
+
+    final success = await service.refreshScheduleFromEvents(
+      <EventModel>[
+        EventModel(
+          id: 'past',
+          userId: 'user-1',
+          title: 'Past event',
+          startAt: DateTime.parse('2026-05-20T01:00:00Z'),
+        ),
+        EventModel(
+          id: 'next',
+          userId: 'user-1',
+          title: 'Next event',
+          startAt: DateTime.parse('2026-05-20T06:00:00Z'),
+        ),
+      ],
+      now: DateTime.parse('2026-05-20T04:00:00Z'),
+      widgetName: 'schedule_widget',
+    );
+
+    expect(success, isTrue);
+    expect(platform.savedValues['next_event_title'], 'Next event');
+    expect(platform.savedValues['last_past_event_title'], 'Past event');
+    expect(platform.updatedWidgets.single, 'schedule_widget');
   });
 }
 

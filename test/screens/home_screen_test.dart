@@ -7,6 +7,8 @@ import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/home/home_screen.dart';
 import 'package:planflow/services/event_prefetch_service.dart';
+import 'package:planflow/services/home_widget_platform.dart';
+import 'package:planflow/services/home_widget_service.dart';
 import 'package:planflow/services/smart_preparation_alarm_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -28,20 +30,24 @@ void main() {
           () => secondLoad.future,
         ],
       );
+      final homeWidgetService = _RecordingHomeWidgetService();
+      final now = DateTime.now();
+      final firstStart = DateTime(now.year, now.month, now.day, 9);
+      final secondStart = firstStart.add(const Duration(hours: 1));
       final initialEvents = <EventModel>[
         EventModel(
           id: 'event-1',
           userId: 'user-1',
-          title: '첫 일정',
-          startAt: DateTime(2026, 5, 16, 9),
+          title: 'First event',
+          startAt: firstStart,
         ),
       ];
       final refreshedEvents = <EventModel>[
         EventModel(
           id: 'event-2',
           userId: 'user-1',
-          title: '갱신 일정',
-          startAt: DateTime(2026, 5, 16, 10),
+          title: 'Updated event',
+          startAt: secondStart,
         ),
       ];
 
@@ -52,6 +58,7 @@ void main() {
             eventRepository: repository,
             smartPreparationAlarmService:
                 const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: homeWidgetService,
             loadHeaderSummary: false,
           ),
         ),
@@ -59,28 +66,85 @@ void main() {
 
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsWidgets);
-      expect(find.text('첫 일정'), findsNothing);
+      expect(find.text('First event'), findsNothing);
 
       firstLoad.complete(initialEvents);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 1));
 
-      expect(find.text('첫 일정'), findsOneWidget);
+      expect(find.text('First event'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(repository.listEventsCallCount, greaterThanOrEqualTo(1));
+      expect(homeWidgetService.refreshCallCount, greaterThanOrEqualTo(1));
+      expect(homeWidgetService.refreshEventTitles.single, <String>[
+        'First event',
+      ]);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
 
-      expect(find.text('첫 일정'), findsOneWidget);
+      expect(find.text('First event'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(repository.listEventsCallCount, 2);
+      expect(repository.listEventsCallCount, greaterThanOrEqualTo(2));
 
       secondLoad.complete(refreshedEvents);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 1));
 
-      expect(find.text('갱신 일정'), findsOneWidget);
-      expect(find.text('첫 일정'), findsNothing);
+      expect(find.text('Updated event'), findsOneWidget);
+      expect(find.text('First event'), findsNothing);
+      expect(homeWidgetService.refreshCallCount, greaterThanOrEqualTo(2));
+      expect(homeWidgetService.refreshEventTitles.last, <String>[
+        'Updated event',
+      ]);
+    },
+  );
+
+  testWidgets(
+    'HomeScreen writes the widget payload from fresh events after cached UI',
+    (tester) async {
+      final now = DateTime.now();
+      final cachedEvent = EventModel(
+        id: 'cached',
+        userId: 'user-1',
+        title: 'Cached event',
+        startAt: DateTime(now.year, now.month, now.day, 9),
+      );
+      final freshEvent = EventModel(
+        id: 'fresh',
+        userId: 'user-1',
+        title: 'Fresh event',
+        startAt: DateTime(now.year, now.month, now.day, 10),
+      );
+      EventPrefetchService().store('user-1', <EventModel>[cachedEvent]);
+      final repository = _QueuedEventRepository(
+        responses: <Future<List<EventModel>> Function()>[
+          () async => <EventModel>[freshEvent],
+        ],
+      );
+      final homeWidgetService = _RecordingHomeWidgetService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: repository,
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: homeWidgetService,
+            loadHeaderSummary: false,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Fresh event'), findsOneWidget);
+      expect(homeWidgetService.refreshCallCount, 1);
+      expect(homeWidgetService.refreshEventTitles.single, <String>[
+        'Fresh event',
+      ]);
     },
   );
 }
@@ -94,6 +158,55 @@ class _FakeSmartPreparationAlarmService extends SmartPreparationAlarmService {
     required Iterable<String> eventIds,
   }) async {
     return const <String>{};
+  }
+}
+
+class _RecordingHomeWidgetService extends HomeWidgetService {
+  _RecordingHomeWidgetService()
+      : super(platform: const _FakeHomeWidgetPlatformForHomeScreen());
+
+  int refreshCallCount = 0;
+  final List<List<String>> refreshEventTitles = <List<String>>[];
+
+  @override
+  Future<bool> refreshScheduleFromEvents(
+    List<EventModel> events, {
+    DateTime? now,
+    String emptyTitle = 'No upcoming events',
+    int? nextTravelBufferMinutes,
+    String widgetName = HomeWidgetService.defaultWidgetName,
+    String? androidName,
+    String? iOSName,
+    String? qualifiedAndroidName,
+  }) async {
+    refreshCallCount += 1;
+    refreshEventTitles.add(
+      events.map((event) => event.title).toList(growable: false),
+    );
+    return true;
+  }
+}
+
+class _FakeHomeWidgetPlatformForHomeScreen extends HomeWidgetPlatform {
+  const _FakeHomeWidgetPlatformForHomeScreen();
+
+  @override
+  bool get isSupported => false;
+
+  @override
+  Future<bool> saveWidgetData(String id, Object? data) async => false;
+
+  @override
+  Future<bool> setAppGroupId(String groupId) async => false;
+
+  @override
+  Future<bool> updateWidget({
+    String? name,
+    String? androidName,
+    String? iOSName,
+    String? qualifiedAndroidName,
+  }) async {
+    return false;
   }
 }
 

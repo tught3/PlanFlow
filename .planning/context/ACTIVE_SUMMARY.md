@@ -922,3 +922,10 @@
 - 주간 위젯은 7열 레이아웃은 유지하면서 `appwidget` 최소 높이와 패딩/상단 마진을 줄여 전체 높이 피트를 축소했습니다.
 - 월간 위젯 바인딩에서 Flutter가 월 데이터(payload)를 저장하기 전에도 42칸 달력을 구성하도록 Kotlin fallback 로직을 추가했습니다. 현재 월 기준(서울 타임존) 첫 날 정렬 기준으로 날짜와 inMonth를 계산해 `month_cell_1~42_day/in_month` 를 채우고, 이벤트 텍스트는 payload 없을 때 숨기고 기본 제목도 날짜 기준으로 구성합니다.
 - 검증: `node scripts/gsd-context-hygiene.mjs`, `.\gradlew :app:processDebugResources`(android), `git diff --check`.
+
+## 2026-05-21 Home Widget Live Refresh Follow-up
+- Made the 1x1 mic widget more recognizable by using a clear white microphone vector in a larger blue circular button.
+- Reduced the weekly widget default height to keep the horizontal 7-day board compact.
+- Added a monthly-widget Kotlin fallback so dates are visible even before Flutter has saved month-cell payload data.
+- Added a HomeScreen-driven widget refresh path so real app events are written to home widgets on fresh app load/resume/event refresh, while cached UI data is not allowed to overwrite widget payloads.
+- Verification passed: focused home widget and home screen tests, analyze, git diff check, debug APK build, reviewer PASS, and install/launch/PID check on 192.168.0.102:5555.

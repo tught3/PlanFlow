@@ -17,6 +17,7 @@ import '../../services/briefing_scheduler_service.dart';
 import '../../services/event_prefetch_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_header_summary_service.dart';
+import '../../services/home_widget_service.dart';
 import '../../services/remote_config_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../widgets/planflow_logo.dart';
@@ -37,6 +38,7 @@ class HomeScreen extends StatefulWidget {
     this.userIdOverride,
     this.eventRepository,
     this.smartPreparationAlarmService = const SmartPreparationAlarmService(),
+    this.homeWidgetService,
     this.loadHeaderSummary = true,
     BriefingSchedulerService? briefingSchedulerService,
   }) : _briefingSchedulerService = briefingSchedulerService;
@@ -45,6 +47,7 @@ class HomeScreen extends StatefulWidget {
   final String? userIdOverride;
   final EventRepository? eventRepository;
   final SmartPreparationAlarmService smartPreparationAlarmService;
+  final HomeWidgetService? homeWidgetService;
   final bool loadHeaderSummary;
   final BriefingSchedulerService? _briefingSchedulerService;
 
@@ -56,6 +59,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final HomeHeaderSummaryService _headerSummaryService =
       HomeHeaderSummaryService();
   late final BriefingSchedulerService _briefingSchedulerService;
+  late final HomeWidgetService _homeWidgetService;
   EventModel? _pastTodayEvent;
   List<EventModel> _recentPastEvents = const <EventModel>[];
   List<EventModel> _todayEvents = const <EventModel>[];
@@ -68,12 +72,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _headerSummaryLoading = true;
   bool _isPlayingMorningBriefing = false;
   bool _isPlayingEveningBriefing = false;
+  int _homeWidgetRefreshGeneration = 0;
+  Future<void> _homeWidgetRefreshQueue = Future<void>.value();
 
   @override
   void initState() {
     super.initState();
     _briefingSchedulerService =
         widget._briefingSchedulerService ?? BriefingSchedulerService();
+    _homeWidgetService = widget.homeWidgetService ?? HomeWidgetService();
     WidgetsBinding.instance.addObserver(this);
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _loadTodayEvents();
@@ -84,6 +91,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _homeWidgetRefreshGeneration += 1;
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -183,7 +191,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final prefetchService = EventPrefetchService();
     final cachedEvents = prefetchService.getCached(resolvedUserId);
     if (cachedEvents != null) {
-      await _applyHomeEvents(resolvedUserId, cachedEvents);
+      await _applyHomeEvents(
+        resolvedUserId,
+        cachedEvents,
+        refreshHomeWidget: false,
+      );
       unawaited(
         _refreshHomeEvents(
           userId: resolvedUserId,
@@ -233,8 +245,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _applyHomeEvents(
     String userId,
-    List<EventModel> allEvents,
-  ) async {
+    List<EventModel> allEvents, {
+    bool refreshHomeWidget = true,
+  }) async {
     final now = DateTime.now();
     final todayEvents = allEvents.where((event) {
       return _eventIntersectsDay(event, now);
@@ -287,6 +300,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _hasRenderedContent = true;
       });
     }
+
+    if (refreshHomeWidget) {
+      _scheduleHomeWidgetRefresh(allEvents, now: now);
+    }
+  }
+
+  void _scheduleHomeWidgetRefresh(
+    List<EventModel> allEvents, {
+    required DateTime now,
+  }) {
+    final generation = ++_homeWidgetRefreshGeneration;
+    final eventsSnapshot = List<EventModel>.of(allEvents, growable: false);
+    final previous = _homeWidgetRefreshQueue.catchError(
+      (Object error, StackTrace stackTrace) {
+        debugPrint('Home widget refresh queue recovered: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      },
+    );
+
+    final next = previous.then((_) async {
+      if (generation != _homeWidgetRefreshGeneration) {
+        return;
+      }
+      await _homeWidgetService.refreshScheduleFromEvents(
+        eventsSnapshot,
+        now: now,
+      );
+    }).catchError((Object error, StackTrace stackTrace) {
+      debugPrint('Home widget refresh failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    });
+
+    _homeWidgetRefreshQueue = next;
+    unawaited(next);
   }
 
   void _clearHomeContent() {

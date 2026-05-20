@@ -306,6 +306,30 @@ class HomeWidgetService {
 
   bool get isSupported => _platform.isSupported;
 
+  Future<bool> refreshScheduleFromEvents(
+    List<EventModel> events, {
+    DateTime? now,
+    String emptyTitle = '예정된 일정이 없어요',
+    int? nextTravelBufferMinutes,
+    String widgetName = defaultWidgetName,
+    String? androidName,
+    String? iOSName,
+    String? qualifiedAndroidName,
+  }) {
+    return updateSchedulePayload(
+      HomeWidgetSchedulePayloadBuilder.fromEvents(
+        events: events,
+        now: now ?? DateTime.now(),
+        emptyTitle: emptyTitle,
+        nextTravelBufferMinutes: nextTravelBufferMinutes,
+      ),
+      widgetName: widgetName,
+      androidName: androidName,
+      iOSName: iOSName,
+      qualifiedAndroidName: qualifiedAndroidName,
+    );
+  }
+
   Future<bool> updateNextEvent({
     required String title,
     String? eventId,
