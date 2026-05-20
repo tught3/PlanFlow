@@ -881,3 +881,9 @@
 - Hardened external import syncing so device-calendar relinks and external metadata attachment keep `participants` and `targets` from the existing PlanFlow event instead of letting blank incoming arrays silently clear them.
 - Added a regression test proving a reflected device-calendar duplicate preserves `participants` and `targets` when it relinks to an existing manual event.
 - Verification passed: `scripts/flutter-local.ps1 test test/data/repositories/event_repository_external_import_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/device_calendar_service_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/manual_event_side_effect_service_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/event_preparation_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `scripts/adb-install-update.ps1`, `adb shell am start -n com.planflow.app/.MainActivity`, and `adb shell pidof com.planflow.app`.
+
+## 2026-05-20 Database Backup Automation Checkpoint
+- Added an operations runbook and PowerShell scripts for whole-database backups: `scripts/planflow-db-backup.ps1` creates compressed Postgres dumps and optionally restores them into a separate backup DB; `scripts/register-planflow-db-backup-task.ps1` registers a daily Windows scheduled task.
+- Added ignored local config path `env/db-backup.local.json` plus `env/db-backup.example.json`; database URLs and passwords stay out of Git.
+- Confirmed the PlanFlow Supabase project `xqvvfnvmytjlblcngipn` is active and read the current `auth`, `public`, and `storage` table list without changing DB schema/RLS.
+- Verification passed: PowerShell syntax checks for both backup scripts and `git diff --check`. Actual backup execution is blocked until `env/db-backup.local.json` contains production and backup DB connection strings plus PostgreSQL client tools are installed.

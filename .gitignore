@@ -7,6 +7,8 @@ chat.txt
 .env
 .env.local
 env/local.json
+env/db-backup.local.json
+database-backups/
 supabase/.temp/
 android/key.properties
 android/app/planflow-release.jks

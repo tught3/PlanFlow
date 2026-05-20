@@ -1,0 +1,13 @@
+{
+  "SourceDatabaseUrl": "postgresql://postgres.xqvvfnvmytjlblcngipn:[SOURCE_DB_PASSWORD]@db.xqvvfnvmytjlblcngipn.supabase.co:5432/postgres?sslmode=require",
+  "BackupDatabaseUrl": "postgresql://backup_user:[BACKUP_DB_PASSWORD]@backup-db-host:5432/postgres?sslmode=require",
+  "DumpDirectory": "C:\\Users\\tught\\OneDrive\\PlanFlow Database Backups",
+  "Schemas": [
+    "auth",
+    "public",
+    "storage"
+  ],
+  "RetentionDays": 35,
+  "MonthlyRetentionMonths": 12,
+  "PgBin": ""
+}
