@@ -72,6 +72,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
   static const String selectColumns =
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
       'prep_time_min, prep_pre_alarm_offset, depart_pre_alarm_offset, '
+      'departure_safety_margin_min, '
       'travel_mode, voice_auto_start, preferred_map_provider, country_code, locale_code, time_zone_id, '
       'google_calendar_token, naver_calendar_token, created_at';
   static const String legacySelectColumns =
@@ -190,6 +191,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
         text.contains('prep_time_min') ||
         text.contains('prep_pre_alarm_offset') ||
         text.contains('depart_pre_alarm_offset') ||
+        text.contains('departure_safety_margin_min') ||
         text.contains('schema cache') && text.contains('user_settings');
   }
 }

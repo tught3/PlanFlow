@@ -138,7 +138,8 @@ class BackupService {
     if (table == 'user_settings') {
       return 'id, user_id, morning_briefing_at, evening_briefing_at, '
           'default_reminder_min, prep_time_min, prep_pre_alarm_offset, '
-          'depart_pre_alarm_offset, travel_mode, voice_auto_start, '
+          'depart_pre_alarm_offset, departure_safety_margin_min, '
+          'travel_mode, voice_auto_start, '
           'preferred_map_provider, country_code, locale_code, time_zone_id, '
           'created_at';
     }
@@ -149,7 +150,8 @@ class BackupService {
     if (table == 'user_settings') {
       return 'id, user_id, morning_briefing_at, evening_briefing_at, '
           'default_reminder_min, prep_time_min, prep_pre_alarm_offset, '
-          'depart_pre_alarm_offset, travel_mode, voice_auto_start, '
+          'depart_pre_alarm_offset, departure_safety_margin_min, '
+          'travel_mode, voice_auto_start, '
           'country_code, locale_code, time_zone_id, created_at';
     }
     return _selectColumnsFor(table);

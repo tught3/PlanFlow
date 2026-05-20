@@ -4,6 +4,7 @@ import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/event_preparation_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
+import 'package:planflow/services/map_service.dart';
 import 'package:planflow/services/travel_time_buffer_service.dart';
 
 void main() {
@@ -42,6 +43,38 @@ void main() {
     expect(repository.updatedEvents, hasLength(1));
     expect(repository.updatedEvents.single.locationLat, 37.3421);
     expect(repository.updatedEvents.single.locationLng, 127.9421);
+  });
+
+  test('prepareAfterSave forwards safety margin override to departure alarm',
+      () async {
+    final repository = _FakeEventRepository();
+    final lookup = _FakeLocationLookupService(
+      result: const LocationLookupResult(
+        name: 'Wonju Severance Christian Hospital',
+        address: 'Gangwon-do Wonju-si',
+        latitude: 37.3421,
+        longitude: 127.9421,
+      ),
+    );
+    final departure = _FakeDepartureAlarmService();
+    final service = EventPreparationService(
+      eventRepository: repository,
+      locationLookupService: lookup,
+      departureAlarmService: departure,
+      travelTimeBufferService: _FakeTravelTimeBufferService(),
+    );
+
+    await service.prepareAfterSave(
+      EventModel(
+        id: 'title-only-event',
+        userId: 'user-1',
+        title: 'Wonju Severance Christian Hospital visit',
+        startAt: DateTime(2026, 5, 8, 10),
+      ),
+      departureSafetyMargin: const Duration(minutes: 27),
+    );
+
+    expect(departure.lastSafetyMarginOverride, const Duration(minutes: 27));
   });
 }
 
@@ -85,11 +118,16 @@ class _FakeEventRepository extends EventRepository {
 class _FakeTravelTimeBufferService extends TravelTimeBufferService {}
 
 class _FakeDepartureAlarmService extends DepartureAlarmService {
+  Duration? lastSafetyMarginOverride;
+
   @override
   Future<DepartureAlarmScheduleResult> scheduleForEvent(
     EventModel event, {
     bool rescheduleMonitor = true,
+    Duration? safetyMarginOverride,
+    MapTravelMode? travelModeOverride,
   }) async {
+    lastSafetyMarginOverride = safetyMarginOverride;
     return DepartureAlarmScheduleResult.scheduled(
       notifyAt: DateTime(2026, 5, 8, 8),
       travelMinutes: 30,

@@ -31,7 +31,10 @@ class EventPreparationService {
   DepartureAlarmService get _departureAlarms =>
       _departureAlarmService ?? const DepartureAlarmService();
 
-  Future<EventPreparationResult> prepareAfterSave(EventModel event) async {
+  Future<EventPreparationResult> prepareAfterSave(
+    EventModel event, {
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
+  }) async {
     var preparedEvent = event;
     var locationResolved = false;
     var travelEstimateCount = 0;
@@ -46,8 +49,10 @@ class EventPreparationService {
     }
 
     try {
-      final departureResult =
-          await _departureAlarms.scheduleForEvent(preparedEvent);
+      final departureResult = await _departureAlarms.scheduleForEvent(
+        preparedEvent,
+        safetyMarginOverride: departureSafetyMargin,
+      );
       debugPrint(
         'Event preparation departure alarm: event=${preparedEvent.id} '
         'scheduled=${departureResult.isScheduled} '

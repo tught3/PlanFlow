@@ -96,6 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _prepTimeMin = 30;
   int _prepPreAlarmOffset = 30;
   int _departPreAlarmOffset = 30;
+  int _departureSafetyMarginMin = 20;
   String _travelMode = 'car';
   bool _voiceAutoStart = false;
   String _preferredMapProvider = 'naver';
@@ -1514,6 +1515,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         prepTimeMin: _prepTimeMin,
         prepPreAlarmOffset: _prepPreAlarmOffset,
         departPreAlarmOffset: _departPreAlarmOffset,
+        departureSafetyMarginMin: _departureSafetyMarginMin,
         travelMode: _travelMode,
         voiceAutoStart: _voiceAutoStart,
         preferredMapProvider: _preferredMapProvider,
@@ -1532,6 +1534,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         prepTimeMin: draft.prepTimeMin,
         prepPreAlarmOffset: draft.prepPreAlarmOffset,
         departPreAlarmOffset: draft.departPreAlarmOffset,
+        departureSafetyMarginMin: draft.departureSafetyMarginMin,
         travelMode: draft.travelMode,
         voiceAutoStart: draft.voiceAutoStart,
         preferredMapProvider: draft.preferredMapProvider,
@@ -1875,6 +1878,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _prepTimeMin = 30;
       _prepPreAlarmOffset = 30;
       _departPreAlarmOffset = 30;
+      _departureSafetyMarginMin = 20;
       _travelMode = 'car';
       _voiceAutoStart = false;
       _preferredMapProvider = 'naver';
@@ -1893,6 +1897,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _prepTimeMin = settings.prepTimeMin;
     _prepPreAlarmOffset = settings.prepPreAlarmOffset;
     _departPreAlarmOffset = settings.departPreAlarmOffset;
+    _departureSafetyMarginMin = settings.departureSafetyMarginMin;
     _travelMode = settings.travelMode;
     _voiceAutoStart = settings.voiceAutoStart;
     _preferredMapProvider = settings.preferredMapProvider;
@@ -1914,22 +1919,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
-  }
-
-  Future<void> _pickCustomPrepTime() async {
-    final value = await showDialog<int>(
-      context: context,
-      builder: (context) => _PrepTimeInputDialog(
-        initialValue: _prepTimeMin,
-      ),
-    );
-    if (value == null) {
-      return;
-    }
-    setState(() {
-      _prepTimeMin = value;
-    });
-    unawaited(_persistSettings());
   }
 
   Widget _buildRegionSettings() {
@@ -1989,55 +1978,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildSmartAlarmSettings() {
-    final prepSelection =
-        <int>{15, 30, 45, 60}.contains(_prepTimeMin) ? _prepTimeMin : -1;
-
     return _SectionCard(
-      title: '스마트 준비 알람 설정',
-      subtitle: '첫 외부 일정의 준비 시작과 모든 외부 일정의 출발 알림 기준을 정합니다.',
+      title: '스마트 출발 알림 설정',
+      subtitle: '외부 일정마다 현재 위치와 이동시간을 다시 계산해 출발 시각을 알려줍니다.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SmartAlarmControl(
-            title: '하루 평균 준비 시간',
-            helperText: '첫 외부 일정에만 적용돼요.',
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SegmentedButton<int>(
-                key: const ValueKey('settings-prep-time-selector'),
-                showSelectedIcon: false,
-                segments: const <ButtonSegment<int>>[
-                  ButtonSegment<int>(value: 15, label: Text('15분')),
-                  ButtonSegment<int>(value: 30, label: Text('30분')),
-                  ButtonSegment<int>(value: 45, label: Text('45분')),
-                  ButtonSegment<int>(value: 60, label: Text('1시간')),
-                  ButtonSegment<int>(value: -1, label: Text('직접입력')),
-                ],
-                selected: <int>{prepSelection},
-                onSelectionChanged: (selected) {
-                  final value = selected.first;
-                  if (value == -1) {
-                    unawaited(_pickCustomPrepTime());
-                    return;
-                  }
-                  setState(() {
-                    _prepTimeMin = value;
-                  });
-                  unawaited(_persistSettings());
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          _SmartAlarmControl(
-            title: '준비 시작 사전 알림',
-            helperText: '“둘 다”는 10분 전과 30분 전 알림을 모두 받아요.',
-            child: _buildOffsetSelector(
-              key: const ValueKey('settings-prep-pre-alarm-selector'),
-              value: _prepPreAlarmOffset,
+            title: '출발 여유 시간',
+            helperText: '이동시간에 더해 늦지 않도록 미리 출발할 여유를 둡니다.',
+            child: _buildSafetyMarginSelector(
+              key: const ValueKey('settings-departure-safety-margin-selector'),
+              value: _departureSafetyMarginMin,
               onChanged: (value) {
                 setState(() {
-                  _prepPreAlarmOffset = value;
+                  _departureSafetyMarginMin = value;
                 });
                 unawaited(_persistSettings());
               },
@@ -2060,7 +2015,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            '준비 시간은 하루 첫 외부 일정에만 적용돼요.',
+            '앱은 24시간 이내 일정을 백그라운드로 다시 확인하고, 6시간 이내 일정은 더 자주 갱신해요.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: PlanFlowColors.textSecondary,
                   fontWeight: FontWeight.w600,
@@ -2095,6 +2050,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ButtonSegment<int>(value: 10, label: Text('10분 전')),
           ButtonSegment<int>(value: 30, label: Text('30분 전')),
           ButtonSegment<int>(value: 31, label: Text('둘 다')),
+        ],
+        selected: <int>{selected},
+        onSelectionChanged: (selected) => onChanged(selected.first),
+      ),
+    );
+  }
+
+  Widget _buildSafetyMarginSelector({
+    required Key key,
+    required int value,
+    required ValueChanged<int> onChanged,
+  }) {
+    final selected = value == 10 || value == 20 || value == 30 ? value : 20;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SegmentedButton<int>(
+        key: key,
+        showSelectedIcon: false,
+        segments: const <ButtonSegment<int>>[
+          ButtonSegment<int>(value: 10, label: Text('10분')),
+          ButtonSegment<int>(value: 20, label: Text('20분')),
+          ButtonSegment<int>(value: 30, label: Text('30분')),
         ],
         selected: <int>{selected},
         onSelectionChanged: (selected) => onChanged(selected.first),

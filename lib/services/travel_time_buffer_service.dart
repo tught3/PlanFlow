@@ -227,6 +227,28 @@ class TravelTimeBufferService {
     MapTravelMode mode = MapTravelMode.car,
     String? locationText,
   }) async {
+    final mapEstimate = await (_mapService ?? MapService()).getTravelMinutes(
+      originLat: originLat,
+      originLng: originLng,
+      destinationLat: destinationLat,
+      destinationLng: destinationLng,
+      mode: mode,
+    );
+
+    if (mapEstimate != null) {
+      return TravelTimeBufferEstimate(
+        buffer: Duration(minutes: mapEstimate.minutes),
+        source: switch (mapEstimate.provider) {
+          MapTravelProvider.tmap => TravelTimeBufferSource.tmap,
+          MapTravelProvider.naver => TravelTimeBufferSource.naverMap,
+        },
+        reason: switch (mapEstimate.provider) {
+          MapTravelProvider.tmap => 'Tmap route API response.',
+          MapTravelProvider.naver => 'Naver Map directions API response.',
+        },
+      );
+    }
+
     final googleEstimate = await estimateWithGoogleMaps(
       origin: '$originLat,$originLng',
       destination: '$destinationLat,$destinationLng',
@@ -240,32 +262,10 @@ class TravelTimeBufferService {
       return googleEstimate;
     }
 
-    final mapEstimate = await (_mapService ?? MapService()).getTravelMinutes(
-      originLat: originLat,
-      originLng: originLng,
-      destinationLat: destinationLat,
-      destinationLng: destinationLng,
-      mode: mode,
-    );
-
-    if (mapEstimate == null) {
-      return estimate(
-        latitude: destinationLat,
-        longitude: destinationLng,
-        locationText: locationText,
-      );
-    }
-
-    return TravelTimeBufferEstimate(
-      buffer: Duration(minutes: mapEstimate.minutes),
-      source: switch (mapEstimate.provider) {
-        MapTravelProvider.tmap => TravelTimeBufferSource.tmap,
-        MapTravelProvider.naver => TravelTimeBufferSource.naverMap,
-      },
-      reason: switch (mapEstimate.provider) {
-        MapTravelProvider.tmap => 'Tmap route API response.',
-        MapTravelProvider.naver => 'Naver Map directions API response.',
-      },
+    return estimate(
+      latitude: destinationLat,
+      longitude: destinationLng,
+      locationText: locationText,
     );
   }
 

@@ -8,6 +8,7 @@ class UserSettingsModel {
     this.prepTimeMin = 30,
     this.prepPreAlarmOffset = 30,
     this.departPreAlarmOffset = 30,
+    this.departureSafetyMarginMin = 20,
     this.travelMode = 'car',
     this.voiceAutoStart = false,
     this.preferredMapProvider = 'naver',
@@ -33,6 +34,7 @@ class UserSettingsModel {
       prepTimeMin: 30,
       prepPreAlarmOffset: 30,
       departPreAlarmOffset: 30,
+      departureSafetyMarginMin: 20,
       voiceAutoStart: false,
       preferredMapProvider: 'naver',
       countryCode: 'KR',
@@ -52,6 +54,8 @@ class UserSettingsModel {
       prepTimeMin: _intValue(json['prep_time_min'], 30),
       prepPreAlarmOffset: _intValue(json['prep_pre_alarm_offset'], 30),
       departPreAlarmOffset: _intValue(json['depart_pre_alarm_offset'], 30),
+      departureSafetyMarginMin:
+          _intValue(json['departure_safety_margin_min'], 20),
       travelMode: _travelModeValue(json['travel_mode']),
       voiceAutoStart: _boolValue(json['voice_auto_start'], false),
       preferredMapProvider:
@@ -79,6 +83,7 @@ class UserSettingsModel {
   final int prepTimeMin;
   final int prepPreAlarmOffset;
   final int departPreAlarmOffset;
+  final int departureSafetyMarginMin;
   final String travelMode;
   final bool voiceAutoStart;
   final String preferredMapProvider;
@@ -98,6 +103,7 @@ class UserSettingsModel {
     int? prepTimeMin,
     int? prepPreAlarmOffset,
     int? departPreAlarmOffset,
+    int? departureSafetyMarginMin,
     String? travelMode,
     bool? voiceAutoStart,
     String? preferredMapProvider,
@@ -120,6 +126,8 @@ class UserSettingsModel {
       prepTimeMin: prepTimeMin ?? this.prepTimeMin,
       prepPreAlarmOffset: prepPreAlarmOffset ?? this.prepPreAlarmOffset,
       departPreAlarmOffset: departPreAlarmOffset ?? this.departPreAlarmOffset,
+      departureSafetyMarginMin:
+          departureSafetyMarginMin ?? this.departureSafetyMarginMin,
       travelMode: travelMode ?? this.travelMode,
       voiceAutoStart: voiceAutoStart ?? this.voiceAutoStart,
       preferredMapProvider: preferredMapProvider ?? this.preferredMapProvider,
@@ -146,6 +154,7 @@ class UserSettingsModel {
       'prep_time_min': prepTimeMin,
       'prep_pre_alarm_offset': prepPreAlarmOffset,
       'depart_pre_alarm_offset': departPreAlarmOffset,
+      'departure_safety_margin_min': departureSafetyMarginMin,
       'travel_mode': _travelModeValue(travelMode),
       'voice_auto_start': voiceAutoStart,
       'preferred_map_provider':

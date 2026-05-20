@@ -19,6 +19,7 @@ import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
+import '../../services/departure_alarm_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/voice_command_router.dart';
 import '../../services/voice_text_cleanup_service.dart';
@@ -1080,12 +1081,19 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final editedEvent = _eventWithRequestedVoiceChanges(event);
     final previousStartAt = event.startAt;
     setState(() => _isSaving = true);
+    var departureSafetyMargin = Duration(
+      minutes: DepartureAlarmService.safetyMargin.inMinutes,
+    );
     try {
       final savedEvent = await _repository.updateEvent(editedEvent);
       final userId = _resolveUserId();
       if (userId != null && AppEnv.isSupabaseReady) {
         final settings = await SettingsRepository.supabase().fetchSettings(
           userId,
+        );
+        departureSafetyMargin = Duration(
+          minutes: settings?.departureSafetyMarginMin ??
+              DepartureAlarmService.safetyMargin.inMinutes,
         );
         await widget.sideEffectService.syncAfterSave(
           event: savedEvent,
@@ -1096,6 +1104,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
               SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
           departPreAlarmOffset: settings?.departPreAlarmOffset ??
               SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+          departureSafetyMargin: departureSafetyMargin,
           travelMode: settings?.travelMode ?? 'car',
           isFirstExternalEventOfDay: await _isFirstExternalEventOfDay(
             userId: userId,
@@ -1121,8 +1130,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       }
       unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
       unawaited(
-        EventPreparationService(eventRepository: _repository)
-            .prepareAfterSave(savedEvent),
+        EventPreparationService(eventRepository: _repository).prepareAfterSave(
+          savedEvent,
+          departureSafetyMargin: departureSafetyMargin,
+        ),
       );
       await _recordVoiceLog(
         action: 'edit',
@@ -1760,6 +1771,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
         departPreAlarmOffset: settings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        departureSafetyMargin: Duration(
+          minutes: settings?.departureSafetyMarginMin ??
+              DepartureAlarmService.safetyMargin.inMinutes,
+        ),
         travelMode: settings?.travelMode ?? 'car',
       );
     } catch (error, stackTrace) {
@@ -1826,6 +1841,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
         departPreAlarmOffset: settings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        departureSafetyMargin: Duration(
+          minutes: settings?.departureSafetyMarginMin ??
+              DepartureAlarmService.safetyMargin.inMinutes,
+        ),
         travelMode: settings?.travelMode ?? 'car',
       );
     } catch (error, stackTrace) {

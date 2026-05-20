@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/core/env.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
@@ -19,6 +20,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues({});
+    try {
+      Supabase.instance;
+    } catch (_) {
+      await Supabase.initialize(
+        url: 'https://example.com',
+        anonKey: 'public-anon-key',
+        authOptions: const FlutterAuthClientOptions(
+          detectSessionInUri: false,
+          autoRefreshToken: false,
+        ),
+      );
+    }
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
@@ -343,7 +361,8 @@ void main() {
     expect(settingsRepository.savedSettings!.preferredMapProvider, 'tmap');
   });
 
-  testWidgets('SettingsScreen saves smart prep alarm settings', (tester) async {
+  testWidgets('SettingsScreen saves smart departure alarm settings',
+      (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -351,9 +370,8 @@ void main() {
       fetched: const UserSettingsModel(
         id: 'settings-1',
         userId: 'user-1',
-        prepTimeMin: 30,
-        prepPreAlarmOffset: 30,
         departPreAlarmOffset: 30,
+        departureSafetyMarginMin: 20,
       ),
     );
 
@@ -378,41 +396,26 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final section = find.text('스마트 준비 알람 설정');
+    final section = find.text('스마트 출발 알림 설정');
     await _scrollUntilHitTestable(tester, section);
     expect(section, findsOneWidget);
-    expect(find.text('하루 평균 준비 시간'), findsOneWidget);
-    expect(find.text('준비 시작 사전 알림'), findsOneWidget);
+    expect(find.text('출발 여유 시간'), findsOneWidget);
     expect(find.text('출발 사전 알림'), findsOneWidget);
 
-    final prepTimeSelector =
-        find.byKey(const ValueKey('settings-prep-time-selector'));
-    await _scrollUntilHitTestable(tester, prepTimeSelector);
+    final safetyMarginSelector =
+        find.byKey(const ValueKey('settings-departure-safety-margin-selector'));
+    await _scrollUntilHitTestable(tester, safetyMarginSelector);
     await tester.tap(
       find.descendant(
-        of: prepTimeSelector,
-        matching: find.text('45분'),
+        of: safetyMarginSelector,
+        matching: find.text('30분'),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(settingsRepository.savedSettings, isNotNull);
-    expect(settingsRepository.savedSettings!.prepTimeMin, 45);
-    expect(settingsRepository.savedSettings!.prepPreAlarmOffset, 30);
+    expect(settingsRepository.savedSettings!.departureSafetyMarginMin, 30);
     expect(settingsRepository.savedSettings!.departPreAlarmOffset, 30);
-
-    final prepPreAlarmSelector =
-        find.byKey(const ValueKey('settings-prep-pre-alarm-selector'));
-    await _scrollUntilHitTestable(tester, prepPreAlarmSelector);
-    await tester.tap(
-      find.descendant(
-        of: prepPreAlarmSelector,
-        matching: find.text('둘 다'),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(settingsRepository.savedSettings!.prepPreAlarmOffset, 31);
 
     final departPreAlarmSelector =
         find.byKey(const ValueKey('settings-depart-pre-alarm-selector'));
@@ -577,6 +580,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => authProvider.setUser(null));
 
+    AppEnv.markSupabaseInitialized();
     authProvider.setUser('user-1');
 
     final authService = _FakeAuthService();
@@ -621,7 +625,7 @@ void main() {
     await _scrollUntilHitTestable(
       tester,
       find.text('로그아웃'),
-      maxScrolls: 16,
+      maxScrolls: 24,
     );
     await tester.tap(find.text('로그아웃').hitTestable().first);
     await tester.pumpAndSettle();
@@ -894,7 +898,7 @@ class _FakeNaverCalDavService extends NaverCalDavService {
       success: true,
       message: '네이버 CalDAV 연결은 성공했지만 가져올 일정이 없습니다.',
     ),
-  });
+  }) : super(credentialStore: const _FakeNaverCalDavCredentialStore());
 
   final bool initialHasCredentials;
   final Duration syncDelay;
@@ -953,6 +957,22 @@ class _FakeNaverCalDavService extends NaverCalDavService {
 
   @override
   Future<void> dispose() async {}
+}
+
+class _FakeNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
+  const _FakeNaverCalDavCredentialStore();
+
+  @override
+  Future<void> clearCredentials() async {}
+
+  @override
+  Future<NaverCalDavCredentials?> readCredentials() async => null;
+
+  @override
+  Future<void> saveCredentials({
+    required String naverId,
+    required String appPassword,
+  }) async {}
 }
 
 class _FakeAuthService extends AuthService {

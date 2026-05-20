@@ -91,8 +91,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       unawaited(_calendarAutoSyncService.syncConnectedCalendars(
         reason: 'app_start',
       ));
-      unawaited(_departureAlarmService.refreshUpcoming());
-      unawaited(_departureAlarmService.scheduleNextMonitor());
+      unawaited(_refreshDepartureAlarmsAndMonitor());
       unawaited(_ensureBriefingsScheduled(reason: 'app_start'));
     });
   }
@@ -112,7 +111,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       unawaited(_calendarAutoSyncService.syncConnectedCalendars(
         reason: 'app_resumed',
       ));
-      unawaited(_departureAlarmService.refreshUpcoming());
+      unawaited(_refreshDepartureAlarmsAndMonitor());
     }
   }
 
@@ -139,11 +138,17 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           reason: 'auth_changed',
           force: true,
         ));
-        unawaited(_departureAlarmService.refreshUpcoming());
-        unawaited(_departureAlarmService.scheduleNextMonitor());
+        unawaited(_refreshDepartureAlarmsAndMonitor());
         unawaited(_ensureBriefingsScheduled(reason: 'auth_changed'));
       }
     });
+  }
+
+  Future<void> _refreshDepartureAlarmsAndMonitor() async {
+    final result = await _departureAlarmService.refreshUpcoming();
+    await _departureAlarmService.scheduleNextMonitor(
+      interval: result.nextMonitorInterval,
+    );
   }
 
   @override

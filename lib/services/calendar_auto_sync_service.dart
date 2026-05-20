@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/env.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
+import '../data/repositories/settings_repository.dart';
 import '../providers/auth_provider.dart';
 import 'calendar_sync_service.dart';
 import 'device_calendar_service.dart';
@@ -335,6 +336,21 @@ class CalendarAutoSyncService {
 
     try {
       final now = _now();
+      var departureSafetyMargin = DepartureAlarmService.safetyMargin;
+      var travelMode = 'car';
+      try {
+        final settings =
+            await SettingsRepository.supabase().fetchSettings(userId);
+        departureSafetyMargin = Duration(
+          minutes: settings?.departureSafetyMarginMin ??
+              DepartureAlarmService.safetyMargin.inMinutes,
+        );
+        travelMode = settings?.travelMode ?? 'car';
+      } catch (error, stackTrace) {
+        debugPrint('Calendar auto sync settings lookup skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+
       final events = await _events.listEvents(userId: userId);
       final upcomingEvents = events.where((event) {
         final startAt = event.startAt;
@@ -359,6 +375,8 @@ class CalendarAutoSyncService {
         until: now.add(const Duration(days: 7)),
         extraDepartureEventIdsToCancel:
             events.map((event) => event.id).where((id) => id.isNotEmpty),
+        departureSafetyMargin: departureSafetyMargin,
+        travelMode: travelMode,
       );
 
       final upcomingLocationEvents = upcomingEvents.where((event) {
@@ -369,7 +387,10 @@ class CalendarAutoSyncService {
       }).toList(growable: false);
 
       for (final event in upcomingLocationEvents) {
-        await _eventPreparation.prepareAfterSave(event);
+        await _eventPreparation.prepareAfterSave(
+          event,
+          departureSafetyMargin: departureSafetyMargin,
+        );
       }
 
       debugPrint(

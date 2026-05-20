@@ -15,6 +15,7 @@ void main() {
       travelMode: 'transit',
       voiceAutoStart: false,
       preferredMapProvider: 'google',
+      departureSafetyMarginMin: 20,
       googleCalendarToken: 'google-token',
       naverCalendarToken: 'naver-token',
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
@@ -34,6 +35,7 @@ void main() {
     expect(restored.prepTimeMin, 45);
     expect(restored.prepPreAlarmOffset, 10);
     expect(restored.departPreAlarmOffset, 0);
+    expect(restored.departureSafetyMarginMin, 20);
     expect(restored.travelMode, 'transit');
     expect(restored.voiceAutoStart, isFalse);
     expect(restored.toJson()['voice_auto_start'], isFalse);
@@ -56,6 +58,7 @@ void main() {
     expect(restored.prepTimeMin, 30);
     expect(restored.prepPreAlarmOffset, 30);
     expect(restored.departPreAlarmOffset, 30);
+    expect(restored.departureSafetyMarginMin, 20);
     expect(restored.toJson()['travel_mode'], 'car');
   });
 

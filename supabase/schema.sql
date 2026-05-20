@@ -224,6 +224,7 @@ create table if not exists public.user_settings (
   prep_time_min integer not null default 30,
   prep_pre_alarm_offset integer not null default 30,
   depart_pre_alarm_offset integer not null default 30,
+  departure_safety_margin_min integer not null default 20,
   travel_mode text not null default 'car',
   voice_auto_start boolean not null default false,
   preferred_map_provider text not null default 'naver'
@@ -262,6 +263,9 @@ create table if not exists public.user_settings (
 
   alter table public.user_settings
   add column if not exists depart_pre_alarm_offset integer not null default 30;
+
+  alter table public.user_settings
+  add column if not exists departure_safety_margin_min integer not null default 20;
 
   alter table public.user_settings
   add column if not exists naver_calendar_token text;
@@ -1010,7 +1014,8 @@ begin
     insert into public.user_settings (
       id, user_id, morning_briefing_at, evening_briefing_at,
       default_reminder_min, prep_time_min, prep_pre_alarm_offset,
-      depart_pre_alarm_offset, travel_mode, voice_auto_start,
+      depart_pre_alarm_offset, departure_safety_margin_min, travel_mode,
+      voice_auto_start,
       preferred_map_provider,
       country_code, locale_code, time_zone_id, created_at
     )
@@ -1023,6 +1028,7 @@ begin
       coalesce(nullif(item ->> 'prep_time_min', '')::integer, 30),
       coalesce(nullif(item ->> 'prep_pre_alarm_offset', '')::integer, 30),
       coalesce(nullif(item ->> 'depart_pre_alarm_offset', '')::integer, 30),
+      coalesce(nullif(item ->> 'departure_safety_margin_min', '')::integer, 20),
       case
         when lower(coalesce(item ->> 'travel_mode', '')) = 'transit'
           then 'transit'
@@ -1046,6 +1052,7 @@ begin
           prep_time_min = excluded.prep_time_min,
           prep_pre_alarm_offset = excluded.prep_pre_alarm_offset,
           depart_pre_alarm_offset = excluded.depart_pre_alarm_offset,
+          departure_safety_margin_min = excluded.departure_safety_margin_min,
           travel_mode = excluded.travel_mode,
           voice_auto_start = excluded.voice_auto_start,
           preferred_map_provider = excluded.preferred_map_provider,

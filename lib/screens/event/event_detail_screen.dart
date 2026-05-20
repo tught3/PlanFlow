@@ -16,6 +16,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
+import '../../services/departure_alarm_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 
@@ -266,6 +267,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
           departPreAlarmOffset: settings?.departPreAlarmOffset ??
               SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+          departureSafetyMargin: Duration(
+            minutes: settings?.departureSafetyMarginMin ??
+                DepartureAlarmService.safetyMargin.inMinutes,
+          ),
           travelMode: settings?.travelMode ?? 'car',
         );
         await _resyncExternalPreparationAfterDelete(event);
@@ -364,6 +369,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
         departPreAlarmOffset: settings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        departureSafetyMargin: Duration(
+          minutes: settings?.departureSafetyMarginMin ??
+              DepartureAlarmService.safetyMargin.inMinutes,
+        ),
         travelMode: settings?.travelMode ?? 'car',
       );
     } catch (error, stackTrace) {

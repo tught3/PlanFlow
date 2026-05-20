@@ -133,8 +133,7 @@ void main() {
     );
   });
 
-  test('buildExternalEventPayloads creates four-stage prep and departure flow',
-      () {
+  test('buildExternalEventPayloads creates departure-only external flow', () {
     final service = SmartPreparationAlarmService();
     final payloads = service.buildExternalEventPayloads(
       eventId: 'event-2',
@@ -146,20 +145,17 @@ void main() {
       prepTimeMin: 60,
       prepPreAlarmOffset: 30,
       departPreAlarmOffset: 30,
+      departureSafetyMarginMin: 20,
       now: DateTime(2026, 5, 8, 7),
     );
 
     expect(payloads.map((row) => row['title']), <String>[
-      '30분 뒤부터 준비 시작하세요 🔔',
-      '지금 준비 시작하세요 🚿',
       '30분 뒤 출발해야 해요 🔔',
       '지금 출발하세요 🚗 (이동 약 90분)',
     ]);
     expect(payloads.map((row) => row['notify_at']), <String>[
-      DateTime(2026, 5, 8, 8, 30).toIso8601String(),
-      DateTime(2026, 5, 8, 9).toIso8601String(),
-      DateTime(2026, 5, 8, 9, 30).toIso8601String(),
-      DateTime(2026, 5, 8, 10).toIso8601String(),
+      DateTime(2026, 5, 8, 9, 40).toIso8601String(),
+      DateTime(2026, 5, 8, 10, 10).toIso8601String(),
     ]);
     expect(
       payloads.map((row) => row['source']).toSet(),
@@ -179,13 +175,14 @@ void main() {
       prepTimeMin: 30,
       prepPreAlarmOffset: 31,
       departPreAlarmOffset: 31,
+      departureSafetyMarginMin: 20,
       now: DateTime(2026, 5, 8, 7),
     );
 
     final titles = payloads.map((row) => row['title'].toString()).toList();
-    expect(titles, contains('30분 뒤부터 준비 시작하세요 🔔'));
-    expect(titles, contains('10분 뒤부터 준비 시작하세요 🔔'));
-    expect(titles.join('\n'), contains('30분 뒤 출발해야 해요 🔔'));
+    expect(titles, isNot(contains('30분 뒤부터 준비 시작하세요 🔔')));
+    expect(titles, isNot(contains('10분 뒤부터 준비 시작하세요 🔔')));
+    expect(titles, contains('30분 뒤 출발해야 해요 🔔'));
     expect(titles, contains('10분 뒤 출발해야 해요 🔔'));
     expect(titles, contains('지금 출발하세요 🚗 (이동 약 60분)'));
   });

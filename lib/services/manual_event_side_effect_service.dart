@@ -174,6 +174,7 @@ class ManualEventSideEffectService {
     int departPreAlarmOffset =
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
     int travelMinutes = SmartPreparationAlarmService.defaultTravelBufferMin,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
     bool isFirstExternalEventOfDay = true,
   }) async {
@@ -218,6 +219,7 @@ class ManualEventSideEffectService {
         prepPreAlarmOffset: prepPreAlarmOffset,
         departPreAlarmOffset: departPreAlarmOffset,
         travelMinutes: resolvedTravelMinutes,
+        departureSafetyMarginMin: departureSafetyMargin.inMinutes,
         isFirstExternalEventOfDay: isFirstExternalEventOfDay,
         now: effectiveNow,
       );
@@ -254,6 +256,7 @@ class ManualEventSideEffectService {
           prepPreAlarmOffset: prepPreAlarmOffset,
           departPreAlarmOffset: departPreAlarmOffset,
           travelMinutes: resolvedTravelMinutes,
+          departureSafetyMarginMin: departureSafetyMargin.inMinutes,
           isFirstExternalEventOfDay: isFirstExternalEventOfDay,
           now: effectiveNow,
         ),
@@ -267,6 +270,7 @@ class ManualEventSideEffectService {
       userId: userId,
       seedEvents: <EventModel>[event],
       travelMode: travelMode,
+      departureSafetyMargin: departureSafetyMargin,
     );
 
     return ManualEventSideEffectResult(
@@ -284,6 +288,7 @@ class ManualEventSideEffectService {
         SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
     int departPreAlarmOffset =
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
   }) async {
     await _notifications.cancelEventNotifications(eventId);
@@ -296,6 +301,7 @@ class ManualEventSideEffectService {
       prepTimeMin: prepTimeMin,
       prepPreAlarmOffset: prepPreAlarmOffset,
       departPreAlarmOffset: departPreAlarmOffset,
+      departureSafetyMargin: departureSafetyMargin,
       travelMode: travelMode,
     );
   }
@@ -310,6 +316,7 @@ class ManualEventSideEffectService {
         SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
     int departPreAlarmOffset =
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
   }) async {
     final effectiveNow = now ?? _currentTime;
@@ -341,6 +348,7 @@ class ManualEventSideEffectService {
       prepTimeMin: prepTimeMin,
       prepPreAlarmOffset: prepPreAlarmOffset,
       departPreAlarmOffset: departPreAlarmOffset,
+      departureSafetyMargin: departureSafetyMargin,
       travelMode: travelMode,
     );
   }
@@ -357,6 +365,7 @@ class ManualEventSideEffectService {
         SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
     int departPreAlarmOffset =
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
   }) async {
     final effectiveNow = now ?? _currentTime;
@@ -408,6 +417,7 @@ class ManualEventSideEffectService {
     if (resyncDepartureAlarms) {
       final departureUntil =
           effectiveNow.add(DepartureAlarmService.monitorLookAhead);
+      var hasUrgentDepartureMonitorEvent = false;
       final cancelledDepartureEventIds = extraDepartureEventIdsToCancel
           .where((id) => id.trim().isNotEmpty)
           .toSet();
@@ -430,9 +440,16 @@ class ManualEventSideEffectService {
           departureSkipped += 1;
           continue;
         }
+        if (event.startAt != null &&
+            event.startAt!.isBefore(
+              effectiveNow.add(DepartureAlarmService.monitorUrgentWindow),
+            )) {
+          hasUrgentDepartureMonitorEvent = true;
+        }
         final result = await _departureAlarms.scheduleForEvent(
           event,
           rescheduleMonitor: false,
+          safetyMarginOverride: departureSafetyMargin,
         );
         if (result.isScheduled) {
           departureScheduled += 1;
@@ -441,7 +458,11 @@ class ManualEventSideEffectService {
         }
       }
       if (departureScheduled > 0 || departureSkipped > 0) {
-        await _departureAlarms.scheduleNextMonitor();
+        await _departureAlarms.scheduleNextMonitor(
+          interval: hasUrgentDepartureMonitorEvent
+              ? DepartureAlarmService.monitorUrgentInterval
+              : DepartureAlarmService.monitorInterval,
+        );
       }
     }
 
@@ -528,6 +549,7 @@ class ManualEventSideEffectService {
     int departPreAlarmOffset =
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
     int travelMinutes = SmartPreparationAlarmService.defaultTravelBufferMin,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
     DateTime? now,
   }) async {
@@ -546,6 +568,7 @@ class ManualEventSideEffectService {
       prepPreAlarmOffset: prepPreAlarmOffset,
       departPreAlarmOffset: departPreAlarmOffset,
       travelMinutes: travelMinutes,
+      departureSafetyMargin: departureSafetyMargin,
       travelMode: travelMode,
       now: now,
     );
@@ -567,6 +590,7 @@ class ManualEventSideEffectService {
     required int prepPreAlarmOffset,
     required int departPreAlarmOffset,
     required int travelMinutes,
+    required Duration departureSafetyMargin,
     required String travelMode,
     DateTime? now,
   }) async {
@@ -611,6 +635,7 @@ class ManualEventSideEffectService {
         prepPreAlarmOffset: prepPreAlarmOffset,
         departPreAlarmOffset: departPreAlarmOffset,
         travelMinutes: resolvedTravelMinutes,
+        departureSafetyMarginMin: departureSafetyMargin.inMinutes,
         isFirstExternalEventOfDay: event.id == firstExternalEventId,
         now: now,
       );

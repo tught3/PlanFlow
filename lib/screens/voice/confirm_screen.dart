@@ -24,6 +24,7 @@ import '../../services/event_preparation_service.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
+import '../../data/models/user_settings_model.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/notification_service.dart';
@@ -533,8 +534,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   String? _resolveUserId() {
-    final userId =
-        widget.userId ??
+    final userId = widget.userId ??
         authProvider.userId ??
         Supabase.instance.client.auth.currentUser?.id;
     if (userId == null || userId.trim().isEmpty) {
@@ -678,12 +678,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     try {
       final savedEvent = await repository.createEvent(draftEvent);
+      final settings = !AppEnv.isSupabaseReady
+          ? null
+          : await SettingsRepository.supabase().fetchSettings(userId);
 
       unawaited(
         _runPostSaveFollowUps(
           userId: userId,
           event: savedEvent,
           repository: repository,
+          settings: settings,
         ),
       );
 
@@ -762,6 +766,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   Future<void> _saveRelatedRecords({
     required String userId,
     required EventModel event,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
   }) async {
     final eventStartAt = event.startAt ?? _startAt;
     final preActionPayloads = _buildPreActionPayloads(
@@ -810,6 +815,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       () async {
         final result = await const DepartureAlarmService().scheduleForEvent(
           event,
+          safetyMarginOverride: departureSafetyMargin,
         );
         if (!result.isScheduled) {
           debugPrint(
@@ -917,15 +923,30 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     required String userId,
     required EventModel event,
     required EventRepository repository,
+    required UserSettingsModel? settings,
   }) async {
-    await _saveRelatedRecords(userId: userId, event: event);
+    final departureSafetyMargin = Duration(
+      minutes: settings?.departureSafetyMarginMin ??
+          DepartureAlarmService.safetyMargin.inMinutes,
+    );
+    await _saveRelatedRecords(
+      userId: userId,
+      event: event,
+      departureSafetyMargin: departureSafetyMargin,
+    );
     await _resyncExternalPreparationForDay(
       userId: userId,
       event: event,
+      settings: settings,
     );
     await _updateHomeWidget(repository, event);
     unawaited(CalendarAutoSyncService().syncAfterEventSave(event));
-    unawaited(EventPreparationService().prepareAfterSave(event));
+    unawaited(
+      EventPreparationService().prepareAfterSave(
+        event,
+        departureSafetyMargin: departureSafetyMargin,
+      ),
+    );
   }
 
   List<Map<String, dynamic>> _buildPreActionPayloads({
@@ -961,6 +982,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   Future<void> _resyncExternalPreparationForDay({
     required String userId,
     required EventModel event,
+    UserSettingsModel? settings,
   }) async {
     final eventStartAt = event.startAt;
     final repository = _resolveEventRepository();
@@ -968,8 +990,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return;
     }
     try {
-      final settings =
-          await SettingsRepository.supabase().fetchSettings(userId);
+      final resolvedSettings =
+          settings ?? await SettingsRepository.supabase().fetchSettings(userId);
       final events = await repository.listEvents(userId: userId);
       final updatedEvents = <EventModel>[
         for (final candidate in events)
@@ -984,13 +1006,17 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         dayEvents: updatedEvents,
         userId: userId,
         dayReference: eventStartAt,
-        prepTimeMin: settings?.prepTimeMin ??
+        prepTimeMin: resolvedSettings?.prepTimeMin ??
             SmartPreparationAlarmService.defaultPrepTimeMin,
-        prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+        prepPreAlarmOffset: resolvedSettings?.prepPreAlarmOffset ??
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
-        departPreAlarmOffset: settings?.departPreAlarmOffset ??
+        departPreAlarmOffset: resolvedSettings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
-        travelMode: settings?.travelMode ?? 'car',
+        departureSafetyMargin: Duration(
+          minutes: resolvedSettings?.departureSafetyMarginMin ??
+              DepartureAlarmService.safetyMargin.inMinutes,
+        ),
+        travelMode: resolvedSettings?.travelMode ?? 'car',
       );
     } catch (error, stackTrace) {
       debugPrint('ConfirmScreen external prep resync skipped: $error');

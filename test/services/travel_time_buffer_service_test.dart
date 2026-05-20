@@ -85,44 +85,13 @@ void main() {
     expect(estimate.minutes, 32);
   });
 
-  test('TravelTimeBufferService prefers Google Maps before map APIs', () async {
-    final service = TravelTimeBufferService(
-      googleMapsApiKey: 'test-key',
-      httpClientFactory: () => MockClient((request) async {
-        return http.Response(
-          '{"status":"OK","rows":[{"elements":[{"status":"OK","duration":{"value":1920}}]}]}',
-          200,
-        );
-      }),
-      mapService: MapService(
-        tmapApiKey: 'tmap-key',
-        httpClientFactory: () => MockClient((request) async {
-          return http.Response(
-            '{"features":[{"properties":{"totalTime":9999}}]}',
-            200,
-          );
-        }),
-      ),
-    );
-
-    final estimate = await service.estimateWithMapApis(
-      originLat: 37.5665,
-      originLng: 126.978,
-      destinationLat: 37.4979,
-      destinationLng: 127.0276,
-    );
-
-    expect(estimate.source, TravelTimeBufferSource.googleMaps);
-    expect(estimate.minutes, 32);
-  });
-
-  test('TravelTimeBufferService falls back to map APIs when Google fails',
+  test('TravelTimeBufferService prefers Tmap before Google for car travel',
       () async {
     final service = TravelTimeBufferService(
       googleMapsApiKey: 'test-key',
       httpClientFactory: () => MockClient((request) async {
         return http.Response(
-          '{"status":"ZERO_RESULTS"}',
+          '{"status":"OK","rows":[{"elements":[{"status":"OK","duration":{"value":1920}}]}]}',
           200,
         );
       }),
@@ -146,6 +115,30 @@ void main() {
 
     expect(estimate.source, TravelTimeBufferSource.tmap);
     expect(estimate.minutes, 35);
+  });
+
+  test('TravelTimeBufferService falls back to Google when map APIs fail',
+      () async {
+    final service = TravelTimeBufferService(
+      googleMapsApiKey: 'test-key',
+      httpClientFactory: () => MockClient((request) async {
+        return http.Response(
+          '{"status":"OK","rows":[{"elements":[{"status":"OK","duration":{"value":1920}}]}]}',
+          200,
+        );
+      }),
+      mapService: _NullMapService(),
+    );
+
+    final estimate = await service.estimateWithMapApis(
+      originLat: 37.5665,
+      originLng: 126.978,
+      destinationLat: 37.4979,
+      destinationLng: 127.0276,
+    );
+
+    expect(estimate.source, TravelTimeBufferSource.googleMaps);
+    expect(estimate.minutes, 32);
   });
 
   test(

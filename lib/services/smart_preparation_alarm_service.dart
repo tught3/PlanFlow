@@ -250,6 +250,8 @@ class SmartPreparationAlarmService {
     int prepPreAlarmOffset = defaultPrepPreAlarmOffset,
     int departPreAlarmOffset = defaultDepartPreAlarmOffset,
     int travelMinutes = defaultTravelBufferMin,
+    int departureSafetyMarginMin = externalScheduleSlackMin,
+    bool includePreparationAlarms = false,
     bool isFirstExternalEventOfDay = true,
     DateTime? now,
   }) {
@@ -260,12 +262,13 @@ class SmartPreparationAlarmService {
     final safeNow = now ?? DateTime.now();
     final safePrepMin = prepTimeMin.clamp(5, 240).toInt();
     final safeTravelMin = travelMinutes.clamp(0, 360).toInt();
+    final safeSafetyMarginMin = departureSafetyMarginMin.clamp(0, 120).toInt();
     final departureAt = eventStartAt.subtract(
-      Duration(minutes: safeTravelMin + externalScheduleSlackMin),
+      Duration(minutes: safeTravelMin + safeSafetyMarginMin),
     );
     final specs = <_ExternalAlarmSpec>[];
 
-    if (isFirstExternalEventOfDay) {
+    if (isFirstExternalEventOfDay && includePreparationAlarms) {
       final prepStartAt = departureAt.subtract(Duration(minutes: safePrepMin));
       for (final offset in _expandedPreAlarmOffsets(prepPreAlarmOffset)) {
         specs.add(

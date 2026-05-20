@@ -12,10 +12,11 @@ final AuthProvider authProvider = AuthProvider();
 class AuthProvider extends ChangeNotifier {
   AuthProvider({
     AuthSessionClient? authService,
-  }) : _authService = authService ?? AuthService();
+  }) : _providedAuthService = authService;
 
   StreamSubscription<AuthState>? _subscription;
-  final AuthSessionClient _authService;
+  final AuthSessionClient? _providedAuthService;
+  AuthSessionClient? _authService;
   String? _userId;
   String? _email;
   bool _isPasswordRecovery = false;
@@ -29,6 +30,9 @@ class AuthProvider extends ChangeNotifier {
   bool get hasResolvedInitialSession =>
       !AppEnv.isSupabaseReady || _hasResolvedInitialSession;
 
+  AuthSessionClient get _service =>
+      _authService ??= _providedAuthService ?? AuthService();
+
   void start() {
     if (_started) {
       return;
@@ -39,7 +43,8 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _subscription = _authService.authStateChanges.listen((authState) async {
+    final service = _service;
+    _subscription = service.authStateChanges.listen((authState) async {
       debugPrint(
         'Auth state changed: ${authState.event} '
         'user=${authState.session?.user.id ?? '<none>'}',
@@ -50,7 +55,7 @@ class AuthProvider extends ChangeNotifier {
           NaverCalendarPermissionService().captureCurrentProviderToken(),
         );
       }
-      await _syncProfileAndApplyUser(_authService, authState.session?.user);
+      await _syncProfileAndApplyUser(service, authState.session?.user);
     }, onError: (Object error, StackTrace stackTrace) {
       debugPrint('Auth state listener error: $error');
     });
@@ -61,7 +66,7 @@ class AuthProvider extends ChangeNotifier {
     if (!AppEnv.isSupabaseReady) {
       return false;
     }
-    final service = _authService;
+    final service = _service;
     final snapshotUser = service.currentSession?.user ?? service.currentUser;
     final hadSignedInUser = isSignedIn;
     unawaited(
@@ -145,10 +150,10 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _bootstrapInitialSession() async {
-    final snapshotUser =
-        _authService.currentSession?.user ?? _authService.currentUser;
+    final service = _service;
+    final snapshotUser = service.currentSession?.user ?? service.currentUser;
     await _syncProfileAndApplyUser(
-      _authService,
+      service,
       snapshotUser,
       resolvesInitialSession: true,
     );

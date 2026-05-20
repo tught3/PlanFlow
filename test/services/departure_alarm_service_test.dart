@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/env.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/map_service.dart';
@@ -45,7 +47,7 @@ void main() {
 
     expect(result.isScheduled, isTrue);
     expect(result.travelMinutes, 90);
-    expect(result.notifyAt, DateTime(2026, 5, 8, 10));
+    expect(result.notifyAt, DateTime(2026, 5, 8, 10, 10));
     expect(notifications.criticalTitles.single, '지금 출발해야 해요');
     expect(notifications.criticalBodies.single, contains('대전 성심당'));
     expect(notifications.criticalBodies.single, contains('90분'));
@@ -55,8 +57,45 @@ void main() {
     expect(status.lastEventId, 'event-1');
     expect(status.lastEventTitle, '성심당');
     expect(status.lastStatus, 'scheduled');
-    expect(status.lastNotifyAt, DateTime(2026, 5, 8, 10));
+    expect(status.lastNotifyAt, DateTime(2026, 5, 8, 10, 10));
     expect(status.lastTravelMinutes, 90);
+  });
+
+  test('uses caller-supplied safety margin when computing departure time',
+      () async {
+    final now = DateTime(2026, 5, 8, 9);
+    final notifications = _FakeNotificationService();
+    final service = DepartureAlarmService(
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127),
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 90),
+          source: TravelTimeBufferSource.tmap,
+          reason: 'test',
+        ),
+      ),
+      notificationService: notifications,
+      now: () => now,
+    );
+
+    final result = await service.scheduleForEvent(
+      EventModel(
+        id: 'event-2',
+        userId: 'user-1',
+        title: '테스트 일정',
+        startAt: DateTime(2026, 5, 8, 12),
+        location: '테스트 위치',
+        locationLat: 36.327,
+        locationLng: 127.427,
+      ),
+      rescheduleMonitor: false,
+      safetyMarginOverride: const Duration(minutes: 20),
+    );
+
+    expect(result.isScheduled, isTrue);
+    expect(result.notifyAt, DateTime(2026, 5, 8, 10, 10));
+    expect(notifications.criticalBodies.single, contains('20분'));
   });
 
   test('skips events without geocoded destination', () async {
@@ -137,6 +176,78 @@ void main() {
     expect(status.lastMonitorAt, DateTime(2026, 5, 8, 9));
     expect(status.lastMonitorSkippedReason, 'signed_out');
   });
+
+  test('refreshUpcoming uses urgent interval when event is within six hours',
+      () async {
+    AppEnv.markSupabaseInitialized();
+    final service = DepartureAlarmService(
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-3',
+            userId: 'user-1',
+            title: '긴급 일정',
+            startAt: DateTime(2026, 5, 8, 14),
+            location: '회사',
+            locationLat: 36.327,
+            locationLng: 127.427,
+          ),
+        ],
+      ),
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127),
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 30),
+          source: TravelTimeBufferSource.tmap,
+          reason: 'test',
+        ),
+      ),
+      now: () => DateTime(2026, 5, 8, 9),
+    );
+
+    final result = await service.refreshUpcoming(userId: 'user-1');
+
+    expect(result.nextMonitorInterval,
+        DepartureAlarmService.monitorUrgentInterval);
+    expect(result.scheduled, 1);
+  });
+
+  test(
+      'refreshUpcoming uses default interval when events are farther than six hours',
+      () async {
+    AppEnv.markSupabaseInitialized();
+    final service = DepartureAlarmService(
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-4',
+            userId: 'user-1',
+            title: '여유 일정',
+            startAt: DateTime(2026, 5, 9, 9),
+            location: '회사',
+            locationLat: 36.327,
+            locationLng: 127.427,
+          ),
+        ],
+      ),
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127),
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 30),
+          source: TravelTimeBufferSource.tmap,
+          reason: 'test',
+        ),
+      ),
+      now: () => DateTime(2026, 5, 8, 9),
+    );
+
+    final result = await service.refreshUpcoming(userId: 'user-1');
+
+    expect(result.nextMonitorInterval, DepartureAlarmService.monitorInterval);
+    expect(result.scheduled, 1);
+  });
 }
 
 class _FakeTravelTimeBufferService extends TravelTimeBufferService {
@@ -155,6 +266,32 @@ class _FakeTravelTimeBufferService extends TravelTimeBufferService {
   }) async {
     return routeEstimate;
   }
+}
+
+class _FakeEventRepository extends EventRepository {
+  _FakeEventRepository({required this.events});
+
+  final List<EventModel> events;
+
+  @override
+  Future<EventModel> createEvent(EventModel event) async => event;
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) async {}
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async =>
+      null;
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    return events
+        .where((event) => userId == null || event.userId == userId)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<EventModel> updateEvent(EventModel event) async => event;
 }
 
 class _FakeNotificationService extends NotificationService {

@@ -19,6 +19,7 @@ import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/event_preparation_service.dart';
+import '../../services/departure_alarm_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
@@ -649,6 +650,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
       final settings = await SettingsRepository.supabase().fetchSettings(
         userId,
       );
+      final departureSafetyMargin = Duration(
+        minutes: settings?.departureSafetyMarginMin ??
+            DepartureAlarmService.safetyMargin.inMinutes,
+      );
       final sideEffectResult = await widget.sideEffectService.syncAfterSave(
         event: savedEvent,
         userId: userId,
@@ -660,6 +665,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
         departPreAlarmOffset: settings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        departureSafetyMargin: departureSafetyMargin,
         travelMode: settings?.travelMode ?? 'car',
         isFirstExternalEventOfDay: await _isFirstExternalEventOfDay(
           userId: userId,
@@ -682,7 +688,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
         );
       }
       unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
-      unawaited(EventPreparationService().prepareAfterSave(savedEvent));
+      unawaited(
+        EventPreparationService().prepareAfterSave(
+          savedEvent,
+          departureSafetyMargin: departureSafetyMargin,
+        ),
+      );
       final widgetRefreshed = await _refreshHomeWidget(_repository, savedEvent);
       debugPrint(
         'EventEditScreen post-save side effects finished: '
@@ -779,6 +790,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
             SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
         departPreAlarmOffset: settings?.departPreAlarmOffset ??
             SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+        departureSafetyMargin: Duration(
+          minutes: settings?.departureSafetyMarginMin ??
+              DepartureAlarmService.safetyMargin.inMinutes,
+        ),
         travelMode: settings?.travelMode ?? 'car',
       );
     } catch (error, stackTrace) {

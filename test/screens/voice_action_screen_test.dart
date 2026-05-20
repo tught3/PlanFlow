@@ -5,6 +5,7 @@ import 'package:planflow/core/constants.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/voice/voice_action_screen.dart';
+import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/home_widget_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
@@ -1526,6 +1527,7 @@ class _NoopSideEffectService extends ManualEventSideEffectService {
     int prepTimeMin = 30,
     int prepPreAlarmOffset = 30,
     int departPreAlarmOffset = 30,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
   }) async {}
 }
@@ -1541,6 +1543,7 @@ class _RecordingSideEffectService extends ManualEventSideEffectService {
     int prepTimeMin = 30,
     int prepPreAlarmOffset = 30,
     int departPreAlarmOffset = 30,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
   }) async {
     cleanedUpEventIds.add(eventId);

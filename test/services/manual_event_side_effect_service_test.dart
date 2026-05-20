@@ -142,14 +142,8 @@ void main() {
       final tenTitles = gateway.insertedPreActions
           .where((row) => row['event_id'] == 'ten-place')
           .map((row) => row['title'].toString());
-      expect(
-        nineTitles.any((title) => title.contains('지금 준비 시작하세요')),
-        true,
-      );
-      expect(
-        tenTitles.any((title) => title.contains('지금 준비 시작하세요')),
-        false,
-      );
+      expect(nineTitles.any(_isDepartureExternalAlarmTitle), true);
+      expect(tenTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(
         notifications.cancelledNotificationIds,
         containsAll(<int>[
@@ -158,12 +152,53 @@ void main() {
         ]),
       );
       expect(
-          departure.scheduledEventIds,
-          containsAll(<String>[
-            'nine-place',
-            'ten-place',
-          ]));
+        departure.scheduledEventIds,
+        containsAll(<String>[
+          'nine-place',
+          'ten-place',
+        ]),
+      );
       expect(departure.scheduleNextMonitorCallCount, 1);
+    });
+
+    test('syncAfterSave passes custom departure safety margin to alarms',
+        () async {
+      final departure = _FakeDepartureAlarmService();
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(
+          events: <EventModel>[
+            EventModel(
+              id: 'target-place',
+              userId: 'user-1',
+              title: '10시 거래처 방문',
+              startAt: DateTime(2026, 5, 8, 10),
+              location: '강릉아산병원',
+              locationLat: 37.7563,
+              locationLng: 128.8758,
+            ),
+          ],
+        ),
+        departureAlarmService: departure,
+        notificationService: _FakeNotificationService(),
+        now: () => DateTime(2026, 5, 8, 6),
+      );
+
+      await service.syncAfterSave(
+        event: EventModel(
+          id: 'target-place',
+          userId: 'user-1',
+          title: '10시 거래처 방문',
+          startAt: DateTime(2026, 5, 8, 10),
+          location: '강릉아산병원',
+          locationLat: 37.7563,
+          locationLng: 128.8758,
+        ),
+        userId: 'user-1',
+        departureSafetyMargin: const Duration(minutes: 17),
+      );
+
+      expect(departure.lastSafetyMarginOverride, const Duration(minutes: 17));
     });
 
     test('delete cleanup recalculates remaining alarms for the signed-in user',
@@ -195,10 +230,7 @@ void main() {
       final remainingTitles = gateway.insertedPreActions
           .where((row) => row['event_id'] == 'remaining-place')
           .map((row) => row['title'].toString());
-      expect(
-        remainingTitles.any((title) => title.contains('지금 준비 시작하세요')),
-        true,
-      );
+      expect(remainingTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(
         notifications.cancelledNotificationIds,
         contains(notifications.notificationIdFor('remaining-place:departure')),
@@ -261,7 +293,7 @@ void main() {
       );
       expect(
         departureRow['notify_at'],
-        DateTime(2026, 5, 8, 8).toIso8601String(),
+        DateTime(2026, 5, 8, 8, 10).toIso8601String(),
       );
     });
 
@@ -564,7 +596,7 @@ void main() {
       expect(fakeTravelTime.lastMode, MapTravelMode.transit);
       expect(
         departureRow['notify_at'],
-        DateTime(2026, 5, 8, 8).toIso8601String(),
+        DateTime(2026, 5, 8, 8, 10).toIso8601String(),
       );
     });
 
@@ -618,14 +650,8 @@ void main() {
       final meetingTitles = gateway.insertedPreActions
           .where((row) => row['event_id'] == 'meeting')
           .map((row) => row['title']);
-      expect(
-        tripTitles.any((title) => title.toString().contains('지금 준비 시작하세요')),
-        true,
-      );
-      expect(
-        meetingTitles.any((title) => title.toString().contains('지금 준비 시작하세요')),
-        false,
-      );
+      expect(tripTitles.any(_isDepartureExternalAlarmTitle), true);
+      expect(meetingTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(meetingTitles, contains('지금 출발하세요 🚗 (이동 약 30분)'));
     });
 
@@ -677,14 +703,8 @@ void main() {
       final tenTitles = gateway.insertedPreActions
           .where((row) => row['event_id'] == 'ten-place')
           .map((row) => row['title']);
-      expect(
-        nineTitles.any((title) => title.toString().contains('지금 준비 시작하세요')),
-        true,
-      );
-      expect(
-        tenTitles.any((title) => title.toString().contains('지금 준비 시작하세요')),
-        false,
-      );
+      expect(nineTitles.any(_isDepartureExternalAlarmTitle), true);
+      expect(tenTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(tenTitles, contains('지금 출발하세요 🚗 (이동 약 30분)'));
     });
 
@@ -730,12 +750,14 @@ void main() {
           .where((row) => row['event_id'] == 'ten-place')
           .map((row) => row['title']);
       expect(noPlaceTitles, isEmpty);
-      expect(
-        placeTitles.any((title) => title.toString().contains('지금 준비 시작하세요')),
-        true,
-      );
+      expect(placeTitles.any(_isDepartureExternalAlarmTitle), true);
     });
   });
+}
+
+bool _isDepartureExternalAlarmTitle(Object? title) {
+  final text = title?.toString() ?? '';
+  return text.contains('지금 출발하세요') || text.contains('출발 알림');
 }
 
 class _FakeManualEventGateway extends ManualEventSideEffectGateway {
@@ -934,14 +956,18 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   int scheduleForEventCallCount = 0;
   int scheduleNextMonitorCallCount = 0;
   final scheduledEventIds = <String>[];
+  Duration? lastSafetyMarginOverride;
 
   @override
   Future<DepartureAlarmScheduleResult> scheduleForEvent(
     EventModel event, {
     bool rescheduleMonitor = true,
+    Duration? safetyMarginOverride,
+    MapTravelMode? travelModeOverride,
   }) async {
     scheduleForEventCallCount += 1;
     scheduledEventIds.add(event.id);
+    lastSafetyMarginOverride = safetyMarginOverride;
     return DepartureAlarmScheduleResult.scheduled(
       notifyAt: DateTime(2026, 5, 8, 8),
       travelMinutes: 30,
@@ -949,7 +975,9 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   }
 
   @override
-  Future<bool> scheduleNextMonitor() async {
+  Future<bool> scheduleNextMonitor({
+    Duration? interval,
+  }) async {
     scheduleNextMonitorCallCount += 1;
     return true;
   }

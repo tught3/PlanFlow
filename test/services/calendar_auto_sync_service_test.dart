@@ -7,6 +7,7 @@ import 'package:planflow/services/calendar_auto_sync_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
 import 'package:planflow/services/event_preparation_service.dart';
+import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
@@ -695,6 +696,7 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     int prepTimeMin = 30,
     int prepPreAlarmOffset = 30,
     int departPreAlarmOffset = 30,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     int travelMinutes = 30,
     String travelMode = 'car',
     DateTime? now,
@@ -719,6 +721,7 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     int prepTimeMin = 30,
     int prepPreAlarmOffset = 30,
     int departPreAlarmOffset = 30,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
   }) async {
     alarmRecalculateCallCount += 1;
@@ -759,7 +762,10 @@ class _FakeEventPreparationService extends EventPreparationService {
   final List<String> preparedEventIds = <String>[];
 
   @override
-  Future<EventPreparationResult> prepareAfterSave(EventModel event) async {
+  Future<EventPreparationResult> prepareAfterSave(
+    EventModel event, {
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
+  }) async {
     preparedEventIds.add(event.id);
     return EventPreparationResult(
       event: event,

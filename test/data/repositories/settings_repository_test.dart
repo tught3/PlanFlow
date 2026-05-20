@@ -14,6 +14,7 @@ void main() {
         'prep_time_min': 60,
         'prep_pre_alarm_offset': 10,
         'depart_pre_alarm_offset': 0,
+        'departure_safety_margin_min': 20,
         'travel_mode': 'transit',
         'voice_auto_start': false,
         'preferred_map_provider': 'google',
@@ -35,6 +36,7 @@ void main() {
     expect(settings.prepTimeMin, 60);
     expect(settings.prepPreAlarmOffset, 10);
     expect(settings.departPreAlarmOffset, 0);
+    expect(settings.departureSafetyMarginMin, 20);
     expect(settings.travelMode, 'transit');
     expect(settings.voiceAutoStart, isFalse);
     expect(settings.preferredMapProvider, 'google');
@@ -56,6 +58,7 @@ void main() {
         'prep_time_min': 45,
         'prep_pre_alarm_offset': 10,
         'depart_pre_alarm_offset': 30,
+        'departure_safety_margin_min': 20,
         'travel_mode': 'transit',
         'voice_auto_start': false,
         'preferred_map_provider': 'tmap',
@@ -74,6 +77,7 @@ void main() {
         prepTimeMin: 45,
         prepPreAlarmOffset: 10,
         departPreAlarmOffset: 30,
+        departureSafetyMarginMin: 20,
         travelMode: 'transit',
         voiceAutoStart: false,
         preferredMapProvider: 'tmap',
@@ -90,6 +94,7 @@ void main() {
     expect(gateway.upsertPayloads.single['prep_time_min'], 45);
     expect(gateway.upsertPayloads.single['prep_pre_alarm_offset'], 10);
     expect(gateway.upsertPayloads.single['depart_pre_alarm_offset'], 30);
+    expect(gateway.upsertPayloads.single['departure_safety_margin_min'], 20);
     expect(gateway.upsertPayloads.single['travel_mode'], 'transit');
     expect(gateway.upsertPayloads.single['voice_auto_start'], isFalse);
     expect(gateway.upsertPayloads.single['preferred_map_provider'], 'tmap');
@@ -99,6 +104,7 @@ void main() {
     expect(saved.prepTimeMin, 45);
     expect(saved.prepPreAlarmOffset, 10);
     expect(saved.departPreAlarmOffset, 30);
+    expect(saved.departureSafetyMarginMin, 20);
   });
 }
 

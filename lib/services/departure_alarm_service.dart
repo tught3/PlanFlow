@@ -7,7 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
 import '../data/models/event_model.dart';
+import '../data/models/user_settings_model.dart';
 import '../data/repositories/event_repository.dart';
+import '../data/repositories/settings_repository.dart';
 import 'app_permission_service.dart';
 import 'map_service.dart';
 import 'notification_service.dart';
@@ -20,17 +22,24 @@ class DepartureAlarmService {
     TravelTimeBufferService? travelTimeBufferService,
     NotificationService? notificationService,
     EventRepository? eventRepository,
+    SettingsRepository? settingsRepository,
     DateTime Function()? now,
   })  : _permissionService = permissionService,
         _currentLocationProvider = currentLocationProvider,
         _travelTimeBufferService = travelTimeBufferService,
         _notificationService = notificationService,
         _eventRepository = eventRepository,
+        _settingsRepository = settingsRepository,
         _now = now;
 
   static const String label = '출발 알림';
-  static const Duration safetyMargin = Duration(minutes: 30);
+  static const int defaultSafetyMarginMin = 20;
+  static const Duration safetyMargin = Duration(
+    minutes: defaultSafetyMarginMin,
+  );
   static const Duration monitorInterval = Duration(minutes: 30);
+  static const Duration monitorUrgentInterval = Duration(minutes: 15);
+  static const Duration monitorUrgentWindow = Duration(hours: 6);
   static const Duration monitorLookAhead = Duration(hours: 24);
   static const String _monitorAlarmId = 'departure_alarm:monitor';
   static const String _lastEventIdKey = 'departure_alarm:last_event_id';
@@ -58,6 +67,7 @@ class DepartureAlarmService {
   final TravelTimeBufferService? _travelTimeBufferService;
   final NotificationService? _notificationService;
   final EventRepository? _eventRepository;
+  final SettingsRepository? _settingsRepository;
   final DateTime Function()? _now;
 
   AppPermissionService get _permissions =>
@@ -71,11 +81,16 @@ class DepartureAlarmService {
 
   EventRepository get _events => _eventRepository ?? EventRepository.supabase();
 
+  SettingsRepository get _settings =>
+      _settingsRepository ?? SettingsRepository.supabase();
+
   DateTime get _currentTime => (_now ?? DateTime.now)();
 
   Future<DepartureAlarmScheduleResult> scheduleForEvent(
     EventModel event, {
     bool rescheduleMonitor = true,
+    Duration? safetyMarginOverride,
+    MapTravelMode? travelModeOverride,
   }) async {
     final startAt = event.startAt;
     final destinationLat = event.locationLat;
@@ -107,10 +122,12 @@ class DepartureAlarmService {
       originLng: origin.longitude,
       destinationLat: destinationLat,
       destinationLng: destinationLng,
-      mode: _travelModeFromEvent(event),
+      mode: travelModeOverride ?? _travelModeFromEvent(event),
       locationText: event.location,
     );
-    final departAt = startAt.subtract(estimate.buffer + safetyMargin);
+    final resolvedSafetyMargin =
+        safetyMarginOverride ?? const Duration(minutes: defaultSafetyMarginMin);
+    final departAt = startAt.subtract(estimate.buffer + resolvedSafetyMargin);
     final notifyAt = _notifyAtFor(departAt);
     if (notifyAt == null) {
       return _recordAndReturnScheduleResult(
@@ -125,7 +142,11 @@ class DepartureAlarmService {
     final notificationId = _notifications.notificationIdFor(
       '${event.id}:departure',
     );
-    final body = _bodyFor(event, estimate.minutes);
+    final body = _bodyFor(
+      event,
+      estimate.minutes,
+      safetyMargin: resolvedSafetyMargin,
+    );
     final criticalResult = await _notifications.scheduleCriticalAlarmWithResult(
       id: notificationId,
       title: '지금 출발해야 해요',
@@ -147,7 +168,7 @@ class DepartureAlarmService {
     }
 
     if (rescheduleMonitor) {
-      unawaited(scheduleNextMonitor());
+      unawaited(scheduleNextMonitor(interval: _monitorIntervalForEvent(event)));
     }
 
     return _recordAndReturnScheduleResult(
@@ -177,19 +198,32 @@ class DepartureAlarmService {
     final now = _currentTime;
     final until = now.add(monitorLookAhead);
     final events = await _events.listEvents(userId: resolvedUserId);
+    final settings = await _loadSettings(resolvedUserId);
+    final safetyMargin = Duration(
+      minutes: _settingsSafetyMarginMinutes(settings?.departureSafetyMarginMin),
+    );
+    final travelMode = _travelModeFromSettings(settings?.travelMode);
     var scheduled = 0;
     var skipped = 0;
+    var hasUrgentEvent = false;
     for (final event in events) {
       final startAt = event.startAt;
-      if (startAt == null ||
-          startAt.isBefore(now) ||
-          startAt.isAfter(until) ||
-          event.locationLat == null ||
-          event.locationLng == null) {
+      if (startAt == null || startAt.isBefore(now) || startAt.isAfter(until)) {
         continue;
       }
-      final result = await scheduleForEvent(event, rescheduleMonitor: false);
-      if (result.isScheduled) {
+      if (startAt.isBefore(now.add(monitorUrgentWindow))) {
+        hasUrgentEvent = true;
+      }
+      if (event.locationLat == null || event.locationLng == null) {
+        continue;
+      }
+      final eventResult = await scheduleForEvent(
+        event,
+        rescheduleMonitor: false,
+        safetyMarginOverride: safetyMargin,
+        travelModeOverride: travelMode,
+      );
+      if (eventResult.isScheduled) {
         scheduled += 1;
       } else {
         skipped += 1;
@@ -198,13 +232,18 @@ class DepartureAlarmService {
     final result = DepartureAlarmMonitorResult(
       scheduled: scheduled,
       skipped: skipped,
+      nextMonitorInterval:
+          hasUrgentEvent ? monitorUrgentInterval : monitorInterval,
     );
     await _recordMonitorStatus(result);
     return result;
   }
 
-  Future<bool> scheduleNextMonitor() async {
-    final nextMonitorAt = _currentTime.add(monitorInterval);
+  Future<bool> scheduleNextMonitor({
+    Duration? interval,
+  }) async {
+    final nextMonitorInterval = _resolveMonitorInterval(interval);
+    final nextMonitorAt = _currentTime.add(nextMonitorInterval);
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       await _recordNextMonitorStatus(nextMonitorAt, scheduled: false);
       return false;
@@ -224,6 +263,19 @@ class DepartureAlarmService {
     );
     await _recordNextMonitorStatus(nextMonitorAt, scheduled: scheduled);
     return scheduled;
+  }
+
+  Duration _monitorIntervalForEvent(EventModel event) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return monitorInterval;
+    }
+    final now = _currentTime;
+    if (startAt.isAfter(now) &&
+        startAt.isBefore(now.add(monitorUrgentWindow))) {
+      return monitorUrgentInterval;
+    }
+    return monitorInterval;
   }
 
   Future<DepartureAlarmRuntimeStatus> loadRuntimeStatus() async {
@@ -270,14 +322,45 @@ class DepartureAlarmService {
     return MapTravelMode.car;
   }
 
-  String _bodyFor(EventModel event, int travelMinutes) {
+  String _bodyFor(
+    EventModel event,
+    int travelMinutes, {
+    required Duration safetyMargin,
+  }) {
     final location = event.location?.trim();
     final destination =
         location == null || location.isEmpty ? event.title : location;
+    final safetyMarginMinutes = safetyMargin.inMinutes;
     return '$destination까지 이동시간이 약 $travelMinutes분이에요. 여유 $safetyMarginMinutes분을 보고 지금 출발 준비를 해 주세요.';
   }
 
-  int get safetyMarginMinutes => safetyMargin.inMinutes;
+  MapTravelMode _travelModeFromSettings(String? travelMode) {
+    return travelMode == 'transit' ? MapTravelMode.transit : MapTravelMode.car;
+  }
+
+  Future<UserSettingsModel?> _loadSettings(String userId) async {
+    try {
+      return await _settings.fetchSettings(userId);
+    } catch (error, stackTrace) {
+      debugPrint('Departure alarm settings fallback: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
+    }
+  }
+
+  int _settingsSafetyMarginMinutes(int? value) {
+    if (value == 10 || value == 20 || value == 30) {
+      return value!;
+    }
+    return defaultSafetyMarginMin;
+  }
+
+  Duration _resolveMonitorInterval(Duration? interval) {
+    if (interval == null || interval <= Duration.zero) {
+      return monitorInterval;
+    }
+    return interval;
+  }
 
   String? _currentSupabaseUserId() {
     try {
@@ -397,11 +480,13 @@ class DepartureAlarmMonitorResult {
     this.scheduled = 0,
     this.skipped = 0,
     this.skippedReason,
+    this.nextMonitorInterval,
   });
 
   final int scheduled;
   final int skipped;
   final String? skippedReason;
+  final Duration? nextMonitorInterval;
 }
 
 class DepartureAlarmRuntimeStatus {
@@ -438,6 +523,7 @@ class DepartureAlarmRuntimeStatus {
 
 @pragma('vm:entry-point')
 Future<void> _departureAlarmMonitorCallback() async {
+  Duration? scheduledInterval;
   try {
     if (!AppEnv.isSupabaseReady && AppEnv.hasValidSupabaseConfig) {
       await Supabase.initialize(
@@ -446,11 +532,13 @@ Future<void> _departureAlarmMonitorCallback() async {
       );
       AppEnv.markSupabaseInitialized();
     }
-    await const DepartureAlarmService().refreshUpcoming();
+    final refreshResult = await const DepartureAlarmService().refreshUpcoming();
+    scheduledInterval = refreshResult.nextMonitorInterval;
   } catch (error, stackTrace) {
     debugPrint('Departure alarm monitor skipped: $error');
     debugPrintStack(stackTrace: stackTrace);
   } finally {
-    await const DepartureAlarmService().scheduleNextMonitor();
+    await const DepartureAlarmService()
+        .scheduleNextMonitor(interval: scheduledInterval);
   }
 }

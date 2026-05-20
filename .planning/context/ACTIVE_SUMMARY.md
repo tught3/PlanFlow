@@ -899,3 +899,9 @@
 - Updated local feedback SQL sources so status updates also grant `updated_at`, matching the `feedback_reports_set_updated_at` trigger that runs during status changes.
 - Added `supabase/feedback_reports_admin_policy_fix.sql` and a schema regression test to keep future feedback SQL patches aligned with the app admin list.
 - Verification passed: Supabase policy and column privilege queries, `scripts/flutter-local.ps1 test test/supabase/feedback_reports_schema_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/feedback_report_sheet_test.dart --no-pub`, and `scripts/flutter-local.ps1 analyze --no-pub`.
+
+## 2026-05-20 Dynamic Departure Alarm Checkpoint
+- Changed smart preparation behavior for external/place events to departure-only scheduling with a user setting `departure_safety_margin_min` (10/20/30 minutes, default 20) and applied the live Supabase `public.user_settings` column patch.
+- Departure alarms now refresh from the current/last known location on app start, resume, auth changes, save/delete resyncs, and periodic monitor runs; monitor cadence is 30 minutes normally and 15 minutes when an event is within 6 hours.
+- Travel-time routing now uses `MapService` first, so car mode prefers Tmap, transit mode prefers Naver, and Google/heuristic estimates are fallback paths.
+- Verification passed: focused settings, voice action, departure alarm, smart preparation, travel time, manual side-effect, event preparation, calendar auto-sync, model/repository/schema tests; `scripts/flutter-local.ps1 analyze --no-pub`; live Supabase column query; debug APK build; install/run on `192.168.0.102:5555`; release AAB build at `build/app/outputs/bundle/release/app-release.aab`.
