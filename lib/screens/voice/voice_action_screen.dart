@@ -1740,6 +1740,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
                 title: event.title,
                 startAt: event.startAt,
                 location: event.location,
+                isCritical: event.isCritical,
               ),
             )
             .toList(growable: false),

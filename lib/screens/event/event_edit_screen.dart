@@ -859,6 +859,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     DateTime now,
   ) {
     final counts = <int, int>{};
+    final criticalDays = <int>{};
     for (final event in events) {
       final startAt = event.startAt;
       final localStart = startAt == null ? null : planflowLocal(startAt);
@@ -868,12 +869,17 @@ class _EventEditScreenState extends State<EventEditScreen> {
         continue;
       }
       counts[localStart.day] = (counts[localStart.day] ?? 0) + 1;
+      if (event.isCritical) {
+        criticalDays.add(localStart.day);
+      }
     }
     return counts.entries
         .map(
           (entry) => HomeWidgetMonthDayData(
             day: entry.key,
             summary: '일정 ${entry.value}',
+            eventCount: entry.value,
+            hasCritical: criticalDays.contains(entry.key),
           ),
         )
         .toList(growable: false);
@@ -893,7 +899,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }).toList(growable: false);
       return HomeWidgetWeekDayData(
         date: day,
-        summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}개',
+        summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}건',
+        eventCount: dayEvents.length,
+        hasCritical: dayEvents.any((event) => event.isCritical),
         events: dayEvents.map(_homeWidgetListEvent).toList(growable: false),
       );
     });
@@ -904,6 +912,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       title: event.title,
       startAt: event.startAt,
       location: event.location,
+      isCritical: event.isCritical,
     );
   }
 

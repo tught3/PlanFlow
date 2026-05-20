@@ -6,16 +6,35 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:padding="12dp">
 
-    <TextView
-        android:id="@+id/widget_week_title"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="#1F2A24"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        tools:text="이번 주 일정" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/widget_week_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#142A44"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            tools:text="이번 주 일정" />
+
+        <TextView
+            android:id="@+id/widget_week_voice_button"
+            android:layout_width="44dp"
+            android:layout_height="24dp"
+            android:background="@drawable/widget_voice_chip_background"
+            android:gravity="center"
+            android:text="입력"
+            android:textColor="#1F4168"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -24,30 +43,59 @@
         android:layout_weight="1"
         android:orientation="vertical">
 
-        <TextView android:id="@+id/widget_week_day_1_label" style="@style/PlanFlowWidgetListText" tools:text="월 5/4" />
-        <TextView android:id="@+id/widget_week_day_1_summary" style="@style/PlanFlowWidgetListText" tools:text="아침 회의 · 병원" />
-        <TextView android:id="@+id/widget_week_day_2_label" style="@style/PlanFlowWidgetListText" tools:text="화 5/5" />
-        <TextView android:id="@+id/widget_week_day_2_summary" style="@style/PlanFlowWidgetListText" tools:text="일정 없음" />
-        <TextView android:id="@+id/widget_week_day_3_label" style="@style/PlanFlowWidgetListText" tools:text="수 5/6" />
-        <TextView android:id="@+id/widget_week_day_3_summary" style="@style/PlanFlowWidgetListText" tools:text="공임나라" />
-        <TextView android:id="@+id/widget_week_day_4_label" style="@style/PlanFlowWidgetListText" />
-        <TextView android:id="@+id/widget_week_day_4_summary" style="@style/PlanFlowWidgetListText" />
-        <TextView android:id="@+id/widget_week_day_5_label" style="@style/PlanFlowWidgetListText" />
-        <TextView android:id="@+id/widget_week_day_5_summary" style="@style/PlanFlowWidgetListText" />
-        <TextView android:id="@+id/widget_week_day_6_label" style="@style/PlanFlowWidgetListText" />
-        <TextView android:id="@+id/widget_week_day_6_summary" style="@style/PlanFlowWidgetListText" />
-        <TextView android:id="@+id/widget_week_day_7_label" style="@style/PlanFlowWidgetListText" />
-        <TextView android:id="@+id/widget_week_day_7_summary" style="@style/PlanFlowWidgetListText" />
-    </LinearLayout>
+        <TextView
+            android:id="@+id/widget_week_day_1_label"
+            style="@style/PlanFlowWidgetListText"
+            tools:text="월 5/18" />
+        <TextView
+            android:id="@+id/widget_week_day_1_summary"
+            style="@style/PlanFlowWidgetMetaText"
+            tools:text="주간 미팅 · 2건" />
 
-    <TextView
-        android:id="@+id/widget_week_voice_button"
-        android:layout_width="match_parent"
-        android:layout_height="36dp"
-        android:background="#5D61A8"
-        android:gravity="center"
-        android:text="마이크로 일정 관리"
-        android:textColor="#FFFFFF"
-        android:textSize="13sp"
-        android:textStyle="bold" />
+        <TextView
+            android:id="@+id/widget_week_day_2_label"
+            style="@style/PlanFlowWidgetListText"
+            tools:text="화 5/19" />
+        <TextView
+            android:id="@+id/widget_week_day_2_summary"
+            style="@style/PlanFlowWidgetMetaText"
+            tools:text="일정 없음 · 0건" />
+
+        <TextView
+            android:id="@+id/widget_week_day_3_label"
+            style="@style/PlanFlowWidgetListText"
+            tools:text="수 5/20" />
+        <TextView
+            android:id="@+id/widget_week_day_3_summary"
+            style="@style/PlanFlowWidgetMetaText"
+            tools:text="점심 미팅 · 1건" />
+
+        <TextView
+            android:id="@+id/widget_week_day_4_label"
+            style="@style/PlanFlowWidgetListText" />
+        <TextView
+            android:id="@+id/widget_week_day_4_summary"
+            style="@style/PlanFlowWidgetMetaText" />
+
+        <TextView
+            android:id="@+id/widget_week_day_5_label"
+            style="@style/PlanFlowWidgetListText" />
+        <TextView
+            android:id="@+id/widget_week_day_5_summary"
+            style="@style/PlanFlowWidgetMetaText" />
+
+        <TextView
+            android:id="@+id/widget_week_day_6_label"
+            style="@style/PlanFlowWidgetListText" />
+        <TextView
+            android:id="@+id/widget_week_day_6_summary"
+            style="@style/PlanFlowWidgetMetaText" />
+
+        <TextView
+            android:id="@+id/widget_week_day_7_label"
+            style="@style/PlanFlowWidgetListText" />
+        <TextView
+            android:id="@+id/widget_week_day_7_summary"
+            style="@style/PlanFlowWidgetMetaText" />
+    </LinearLayout>
 </LinearLayout>

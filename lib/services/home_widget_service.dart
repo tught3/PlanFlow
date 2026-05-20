@@ -24,21 +24,27 @@ class HomeWidgetListEventData {
     required this.title,
     this.startAt,
     this.location,
+    this.isCritical = false,
   });
 
   final String title;
   final DateTime? startAt;
   final String? location;
+  final bool isCritical;
 }
 
 class HomeWidgetMonthDayData {
   const HomeWidgetMonthDayData({
     required this.day,
     required this.summary,
+    this.eventCount,
+    this.hasCritical = false,
   });
 
   final int day;
   final String summary;
+  final int? eventCount;
+  final bool hasCritical;
 }
 
 class HomeWidgetWeekDayData {
@@ -46,11 +52,15 @@ class HomeWidgetWeekDayData {
     required this.date,
     this.summary,
     this.events = const <HomeWidgetListEventData>[],
+    this.eventCount,
+    this.hasCritical = false,
   });
 
   final DateTime date;
   final String? summary;
   final List<HomeWidgetListEventData> events;
+  final int? eventCount;
+  final bool hasCritical;
 }
 
 class HomeWidgetService {
@@ -271,6 +281,11 @@ class HomeWidgetService {
             event?.location,
           ) &&
           success;
+      success = await _saveValue(
+            'event_list_${slot}_is_critical',
+            event?.isCritical ?? false,
+          ) &&
+          success;
     }
 
     return success;
@@ -296,9 +311,26 @@ class HomeWidgetService {
     }
 
     for (var day = 1; day <= 31; day += 1) {
+      HomeWidgetMonthDayData? sourceDay;
+      for (final candidate in days) {
+        if (candidate.day == day) {
+          sourceDay = candidate;
+          break;
+        }
+      }
       success = await _saveOptionalValue(
             'month_day_${day}_summary',
             summaries[day],
+          ) &&
+          success;
+      success = await _saveOptionalValue(
+            'month_day_${day}_count',
+            sourceDay?.eventCount,
+          ) &&
+          success;
+      success = await _saveValue(
+            'month_day_${day}_has_critical',
+            sourceDay?.hasCritical ?? false,
           ) &&
           success;
     }
@@ -323,6 +355,16 @@ class HomeWidgetService {
             day?.summary,
           ) &&
           success;
+      success = await _saveOptionalValue(
+            'week_day_${slot}_count',
+            day?.eventCount ?? day?.events.length,
+          ) &&
+          success;
+      success = await _saveValue(
+            'week_day_${slot}_has_critical',
+            day?.hasCritical ?? day?.events.any((event) => event.isCritical) ?? false,
+          ) &&
+          success;
 
       final events = day?.events.take(2).toList(growable: false) ??
           const <HomeWidgetListEventData>[];
@@ -337,6 +379,11 @@ class HomeWidgetService {
         success = await _saveOptionalValue(
               'week_day_${slot}_event_${eventSlot}_time',
               event?.startAt?.toUtc().toIso8601String(),
+            ) &&
+            success;
+        success = await _saveValue(
+              'week_day_${slot}_event_${eventSlot}_is_critical',
+              event?.isCritical ?? false,
             ) &&
             success;
       }

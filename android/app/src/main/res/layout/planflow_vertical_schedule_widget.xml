@@ -6,49 +6,65 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:padding="12dp">
 
-    <TextView
-        android:id="@+id/widget_vertical_title"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="#1F2A24"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        tools:text="오늘 남은 일정" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/widget_vertical_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#142A44"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            tools:text="오늘 남은 일정" />
+
+        <TextView
+            android:id="@+id/widget_vertical_voice_button"
+            android:layout_width="44dp"
+            android:layout_height="24dp"
+            android:background="@drawable/widget_voice_chip_background"
+            android:gravity="center"
+            android:text="입력"
+            android:textColor="#1F4168"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/widget_vertical_subtitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="#5F6B62"
-        android:textSize="12sp"
-        tools:text="지금 다음: JW제약 미팅" />
+        style="@style/PlanFlowWidgetMetaText"
+        android:layout_marginTop="2dp"
+        tools:text="현재 다음: 주간 회의" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="8dp"
         android:layout_weight="1"
         android:orientation="vertical">
 
         <TextView
             android:id="@+id/widget_today_item_1"
+            android:background="@drawable/widget_today_highlight_background"
+            android:padding="7dp"
             style="@style/PlanFlowWidgetListText"
-            tools:text="10:00 공임나라 방문" />
+            tools:text="09:00  주간 회의" />
 
         <TextView
             android:id="@+id/widget_today_item_2"
             style="@style/PlanFlowWidgetListText"
-            tools:text="14:00 미팅" />
+            tools:text="11:00  팀 미팅" />
 
         <TextView
             android:id="@+id/widget_today_item_3"
             style="@style/PlanFlowWidgetListText"
-            tools:text="16:00 병원" />
+            tools:text="12:00  점심" />
 
         <TextView
             android:id="@+id/widget_today_item_4"
@@ -62,15 +78,4 @@
             android:id="@+id/widget_today_item_6"
             style="@style/PlanFlowWidgetListText" />
     </LinearLayout>
-
-    <TextView
-        android:id="@+id/widget_vertical_voice_button"
-        android:layout_width="match_parent"
-        android:layout_height="38dp"
-        android:background="#5D61A8"
-        android:gravity="center"
-        android:text="마이크로 일정 관리"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
-        android:textStyle="bold" />
 </LinearLayout>

@@ -19,6 +19,7 @@ void main() {
           title: 'Team sync',
           startAt: DateTime.parse('2026-05-01T09:00:00Z'),
           location: 'Seoul Station',
+          isCritical: true,
         ),
         HomeWidgetListEventData(
           title: 'Design review',
@@ -60,7 +61,9 @@ void main() {
     expect(
         platform.savedValues['event_list_1_time'], '2026-05-01T09:00:00.000Z');
     expect(platform.savedValues['event_list_1_location'], 'Seoul Station');
+    expect(platform.savedValues['event_list_1_is_critical'], isTrue);
     expect(platform.savedValues['event_list_2_title'], 'Design review');
+    expect(platform.savedValues['event_list_2_is_critical'], isFalse);
     expect(platform.savedValues['event_list_6_title'], 'Wrap up');
     expect(platform.savedValues['event_list_7_title'], isNull);
     expect(platform.savedValues['today_event_count'], 6);
@@ -127,17 +130,25 @@ void main() {
       ),
       month: DateTime(2026, 5),
       monthDays: const <HomeWidgetMonthDayData>[
-        HomeWidgetMonthDayData(day: 1, summary: '회의 2'),
+        HomeWidgetMonthDayData(
+          day: 1,
+          summary: '회의 2',
+          eventCount: 2,
+          hasCritical: true,
+        ),
         HomeWidgetMonthDayData(day: 32, summary: '저장 안 됨'),
       ],
       weekDays: <HomeWidgetWeekDayData>[
         HomeWidgetWeekDayData(
           date: DateTime.parse('2026-05-04T00:00:00Z'),
-          summary: '2개',
+          summary: '2건',
+          eventCount: 2,
+          hasCritical: true,
           events: <HomeWidgetListEventData>[
             HomeWidgetListEventData(
               title: '아침 회의',
               startAt: DateTime.parse('2026-05-04T01:00:00Z'),
+              isCritical: true,
             ),
             HomeWidgetListEventData(title: '점심 미팅'),
             HomeWidgetListEventData(title: '저장 안 됨'),
@@ -152,12 +163,18 @@ void main() {
     expect(platform.savedValues['event_list_7_title'], isNull);
     expect(platform.savedValues['month_title'], '2026년 5월');
     expect(platform.savedValues['month_day_1_summary'], '회의 2');
+    expect(platform.savedValues['month_day_1_count'], 2);
+    expect(platform.savedValues['month_day_1_has_critical'], isTrue);
     expect(platform.savedValues['month_day_31_summary'], isNull);
+    expect(platform.savedValues['month_day_31_has_critical'], isFalse);
     expect(platform.savedValues['week_day_1_date'], '2026-05-04T00:00:00.000Z');
-    expect(platform.savedValues['week_day_1_summary'], '2개');
+    expect(platform.savedValues['week_day_1_summary'], '2건');
+    expect(platform.savedValues['week_day_1_count'], 2);
+    expect(platform.savedValues['week_day_1_has_critical'], isTrue);
     expect(platform.savedValues['week_day_1_event_1_title'], '아침 회의');
     expect(platform.savedValues['week_day_1_event_1_time'],
         '2026-05-04T01:00:00.000Z');
+    expect(platform.savedValues['week_day_1_event_1_is_critical'], isTrue);
     expect(platform.savedValues['week_day_1_event_2_title'], '점심 미팅');
     expect(platform.savedValues['week_day_1_event_3_title'], isNull);
     expect(

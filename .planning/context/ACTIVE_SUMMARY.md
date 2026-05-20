@@ -905,3 +905,9 @@
 - Departure alarms now refresh from the current/last known location on app start, resume, auth changes, save/delete resyncs, and periodic monitor runs; monitor cadence is 30 minutes normally and 15 minutes when an event is within 6 hours.
 - Travel-time routing now uses `MapService` first, so car mode prefers Tmap, transit mode prefers Naver, and Google/heuristic estimates are fallback paths.
 - Verification passed: focused settings, voice action, departure alarm, smart preparation, travel time, manual side-effect, event preparation, calendar auto-sync, model/repository/schema tests; `scripts/flutter-local.ps1 analyze --no-pub`; live Supabase column query; debug APK build; install/run on `192.168.0.102:5555`; release AAB build at `build/app/outputs/bundle/release/app-release.aab`.
+
+## 2026-05-20 Home Widget UX Checkpoint
+- Reworked the five Android home widgets around clearer roles: next action, today's timeline, monthly density, weekly summary, and a compact 1x1 voice entry widget.
+- Updated widget styling to the PlanFlow blue/white tone, added small voice chips, distinct critical-event badges/colors, departure/travel/countdown labels, and monthly/weekly count/critical metadata.
+- Extended `HomeWidgetService` and event/voice update paths so widget data includes critical flags, monthly counts, weekly counts, and stale optional widget values are cleared.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/home_widget_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:5555 install -r -t --user 0 build\app\outputs\flutter-apk\app-debug.apk`, `adb -s 192.168.0.102:5555 shell am start -n com.planflow.app/.MainActivity`, and `adb -s 192.168.0.102:5555 shell pidof com.planflow.app`.
