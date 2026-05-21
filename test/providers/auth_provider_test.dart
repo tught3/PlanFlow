@@ -89,16 +89,42 @@ void main() {
     provider.dispose();
     await service.dispose();
   });
+
+  test('shows provider label when social account has no email', () async {
+    final service = _FakeAuthService(
+      currentSession: _session(
+        userId: 'naver-user',
+        email: null,
+        provider: 'custom:naver',
+        userMetadata: const <String, dynamic>{},
+      ),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.email, isNull);
+    expect(provider.displayName, isNull);
+    expect(provider.provider, 'custom:naver');
+    expect(provider.providerLabel, '네이버 로그인됨');
+
+    provider.dispose();
+  });
 }
 
 Session _session({
   required String userId,
-  required String email,
+  required String? email,
+  String provider = 'email',
+  Map<String, dynamic> userMetadata = const <String, dynamic>{
+    'name': 'Test User',
+  },
 }) {
   final user = User(
     id: userId,
-    appMetadata: const <String, dynamic>{'provider': 'email'},
-    userMetadata: const <String, dynamic>{'name': 'Test User'},
+    appMetadata: <String, dynamic>{'provider': provider},
+    userMetadata: userMetadata,
     aud: 'authenticated',
     email: email,
     createdAt: '2026-05-19T00:00:00Z',

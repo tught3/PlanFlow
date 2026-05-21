@@ -1042,3 +1042,10 @@
 - All collapsible event-edit sections now auto-scroll into view after expansion: `방문 목표 · 반복 설정`, `설명 · 준비물`, and `알림 옵션`.
 - Voice input and AI conversation flows now stop active STT before navigating into event edit/confirm routes, so editing starts without background listening or keep-listening restarts.
 - Verification passed: focused event edit, voice conversation, and voice input screen tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-21 Auth Persistence And Social Login Cleanup
+- Supabase auth initialization now uses a PlanFlow-owned local storage key with secure-storage backup and legacy Supabase key migration, so newly saved sessions survive app restart/update paths consistently.
+- Background isolate Supabase initialization now uses the same auth options as the main app, avoiding mismatched session storage between alarms/sync jobs and the foreground app.
+- Naver calendar missing-permission guidance now routes to Settings for CalDAV ID/app-password setup instead of relaunching OAuth, and settings shows a provider label such as 네이버 로그인됨 when a social account has no email.
+- Kakao OAuth scopes now use comma-separated OIDC/profile-only scopes and still avoid account_email; Kakao/Supabase console must also allow emailless Kakao users or enable the Kakao email consent item.
+- Verification passed: focused auth/storage/settings tests, scripts/flutter-local.ps1 analyze --no-pub, git diff --check, debug APK build, install -r and launch/PID check on 192.168.0.102:5555.

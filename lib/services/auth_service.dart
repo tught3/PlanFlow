@@ -228,7 +228,7 @@ class AuthService implements AuthSessionClient {
       // Kakao returns KOE205 when the app asks for consent items that are not
       // enabled in Kakao Developers. Keep login on profile-only scopes; email
       // can be added later only after the Kakao consent item is approved.
-      PlanFlowOAuthProvider.kakao => 'profile_nickname profile_image',
+      PlanFlowOAuthProvider.kakao => 'openid,profile_nickname,profile_image',
       PlanFlowOAuthProvider.naver => 'email',
     };
   }

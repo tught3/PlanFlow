@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
+import '../core/supabase_auth_options.dart';
 import '../data/models/event_model.dart';
 import '../data/models/user_settings_model.dart';
 import '../data/repositories/event_repository.dart';
@@ -529,6 +530,10 @@ Future<void> _departureAlarmMonitorCallback() async {
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,
         anonKey: AppEnv.supabaseAnonKey,
+        authOptions: buildPlanFlowAuthOptions(
+          supabaseUrl: AppEnv.supabaseUrl,
+          detectSessionInUri: false,
+        ),
       );
       AppEnv.markSupabaseInitialized();
     }

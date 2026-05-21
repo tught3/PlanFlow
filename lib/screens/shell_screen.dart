@@ -11,7 +11,6 @@ import '../data/models/user_settings_model.dart';
 import '../data/repositories/settings_repository.dart';
 import '../providers/auth_provider.dart';
 import '../services/app_permission_service.dart';
-import '../services/auth_service.dart';
 import '../services/briefing_scheduler_service.dart';
 import '../services/calendar_auto_sync_service.dart';
 import '../services/departure_alarm_service.dart';
@@ -77,7 +76,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       const DepartureAlarmService();
   final BriefingSchedulerService _briefingSchedulerService =
       BriefingSchedulerService();
-  final AuthService _authService = AuthService();
   bool _checkedPermissionOnboarding = false;
   bool _checkedNaverCalendarPermission = false;
   bool _showedNaverCalendarDialog = false;
@@ -296,8 +294,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           title: const Text('네이버 캘린더 연결이 필요합니다'),
           content: Text(
             '$reason\n\n'
-            '네이버 동의 화면에서 선택 권한인 캘린더 일정담기를 체크해야 '
-            'PlanFlow 일정을 네이버 캘린더에 보낼 수 있습니다.',
+            '네이버 로그인과 네이버 일정 가져오기는 별도입니다. '
+            '기존 네이버 일정을 가져오려면 설정에서 네이버 ID와 앱 비밀번호로 '
+            'CalDAV 연결을 완료해 주세요.',
           ),
           actions: [
             TextButton(
@@ -306,7 +305,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('네이버 권한 다시 동의하기'),
+              child: const Text('설정에서 연결하기'),
             ),
           ],
         );
@@ -318,8 +317,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       if (!mounted) {
         return;
       }
-      _showSnack('네이버 동의 화면에서 캘린더 일정담기를 체크해 주세요.');
-      await _authService.reconnectNaverCalendar();
+      _showSnack('설정 탭의 네이버 일정 동기화에서 ID와 앱 비밀번호를 입력해 주세요.');
+      context.go(AppRoutes.settings);
     }
   }
 

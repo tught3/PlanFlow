@@ -8,6 +8,7 @@ void main() {
 
       expect(scopes, isNotNull);
       expect(scopes, isNot(contains('account_email')));
+      expect(scopes, contains('openid'));
       expect(scopes, contains('profile_nickname'));
     });
 

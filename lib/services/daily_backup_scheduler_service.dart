@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
+import '../core/supabase_auth_options.dart';
 import 'backup_service.dart';
 
 class DailyBackupSchedulerService {
@@ -51,6 +52,10 @@ Future<void> _dailyBackupCallback() async {
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,
         anonKey: AppEnv.supabaseAnonKey,
+        authOptions: buildPlanFlowAuthOptions(
+          supabaseUrl: AppEnv.supabaseUrl,
+          detectSessionInUri: false,
+        ),
       );
       AppEnv.markSupabaseInitialized();
     }

@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/env.dart';
+import 'core/supabase_auth_options.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'services/remote_config_service.dart';
@@ -61,7 +62,8 @@ Future<void> main() async {
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,
         anonKey: AppEnv.supabaseAnonKey,
-        authOptions: const FlutterAuthClientOptions(
+        authOptions: buildPlanFlowAuthOptions(
+          supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
         ),
       ).timeout(const Duration(seconds: 10));

@@ -2,6 +2,7 @@ import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
+import '../core/supabase_auth_options.dart';
 import 'briefing_scheduler_service.dart';
 
 class AlarmService {
@@ -118,6 +119,10 @@ Future<void> _briefingAlarmCallback(
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,
         anonKey: AppEnv.supabaseAnonKey,
+        authOptions: buildPlanFlowAuthOptions(
+          supabaseUrl: AppEnv.supabaseUrl,
+          detectSessionInUri: false,
+        ),
       );
       AppEnv.markSupabaseInitialized();
     }

@@ -2840,7 +2840,11 @@ class _AccountSection extends StatelessWidget {
             children: [
               _StatusRow(
                 label: '로그인 상태',
-                value: signedIn ? authProvider.email ?? '로그인됨' : '로그아웃됨',
+                value: signedIn
+                    ? authProvider.email ??
+                        authProvider.displayName ??
+                        authProvider.providerLabel
+                    : '로그아웃됨',
                 icon: Icons.account_circle_outlined,
                 isConfigured: signedIn,
               ),

@@ -20,12 +20,26 @@ class AuthProvider extends ChangeNotifier {
   Completer<AuthState>? _firstAuthEventCompleter;
   String? _userId;
   String? _email;
+  String? _displayName;
+  String? _provider;
   bool _isPasswordRecovery = false;
   bool _started = false;
   bool _hasResolvedInitialSession = false;
 
   String? get userId => _userId;
   String? get email => _email;
+  String? get displayName => _displayName;
+  String? get provider => _provider;
+  String get providerLabel {
+    return switch (_provider?.toLowerCase()) {
+      'google' => 'Google 로그인됨',
+      'kakao' => '카카오 로그인됨',
+      'naver' || 'custom:naver' => '네이버 로그인됨',
+      'email' => '이메일 로그인됨',
+      _ => '로그인됨',
+    };
+  }
+
   bool get isSignedIn => _userId != null;
   bool get isPasswordRecovery => _isPasswordRecovery;
   bool get hasResolvedInitialSession =>
@@ -120,7 +134,36 @@ class AuthProvider extends ChangeNotifier {
   void _applyUser(User? user) {
     _userId = user?.id;
     _email = user?.email;
+    _displayName = _displayNameFrom(user);
+    _provider = _providerFrom(user);
     notifyListeners();
+  }
+
+  String? _displayNameFrom(User? user) {
+    final metadata = user?.userMetadata ?? const <String, dynamic>{};
+    for (final key in const ['name', 'full_name', 'user_name', 'nickname']) {
+      final value = metadata[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  String? _providerFrom(User? user) {
+    final metadata = user?.appMetadata ?? const <String, dynamic>{};
+    final provider = metadata['provider']?.toString().trim();
+    if (provider != null && provider.isNotEmpty) {
+      return provider;
+    }
+    final providers = metadata['providers'];
+    if (providers is Iterable && providers.isNotEmpty) {
+      final first = providers.first.toString().trim();
+      if (first.isNotEmpty) {
+        return first;
+      }
+    }
+    return null;
   }
 
   void _markInitialSessionResolved() {
