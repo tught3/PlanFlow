@@ -177,6 +177,19 @@ abstract class BasePlanFlowWidgetProvider(
         }
     }
 
+    protected fun formatHourOnly(raw: String?): String {
+        if (raw.isNullOrBlank()) {
+            return ""
+        }
+
+        return try {
+            val dateTime = Instant.parse(raw).atZone(planFlowZone)
+            "${dateTime.hour}시"
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
     protected fun formatWeekdayLabel(raw: String?, fallback: String): String {
         if (raw.isNullOrBlank()) {
             return fallback
@@ -263,6 +276,7 @@ abstract class BasePlanFlowWidgetProvider(
         isCritical: Boolean,
         isMuted: Boolean = false,
         emptyText: String? = null,
+        hourOnly: Boolean = false,
     ) {
         val text = title?.trim()?.takeIf { it.isNotBlank() }
         if (text.isNullOrBlank()) {
@@ -276,7 +290,7 @@ abstract class BasePlanFlowWidgetProvider(
             return
         }
 
-        val formattedTime = formatShortTime(time)
+        val formattedTime = if (hourOnly) formatHourOnly(time) else formatShortTime(time)
         val content = if (formattedTime.isBlank()) text else "$formattedTime  $text"
         views.setTextViewText(id, content)
         views.setTextColor(
@@ -686,6 +700,7 @@ class PlanFlowWeeklyWidgetProvider :
                 e1Time,
                 e1Critical,
                 emptyText = if (e1Title == null && e2Title == null && overflow == 0) "일정 없음" else null,
+                hourOnly = true,
             )
             bindEventText(
                 views,
@@ -693,6 +708,7 @@ class PlanFlowWeeklyWidgetProvider :
                 e2Title,
                 e2Time,
                 e2Critical,
+                hourOnly = true,
             )
             bindEventText(
                 views,
@@ -700,6 +716,7 @@ class PlanFlowWeeklyWidgetProvider :
                 e3Title,
                 e3Time,
                 e3Critical,
+                hourOnly = true,
             )
             bindEventText(
                 views,
@@ -707,6 +724,7 @@ class PlanFlowWeeklyWidgetProvider :
                 e4Title,
                 e4Time,
                 e4Critical,
+                hourOnly = true,
             )
             bindEventLinkIfAvailable(
                 context,
@@ -744,6 +762,85 @@ class PlanFlowWeeklyWidgetProvider :
         bindCalendarLink(context, views, R.id.widget_week_container, todayDate())
         bindCalendarLink(context, views, R.id.widget_week_title, todayDate())
         bindVoice(context, views, R.id.widget_week_voice_button)
+    }
+}
+
+class PlanFlowWeeklyListWidgetProvider :
+    BasePlanFlowWidgetProvider(R.layout.planflow_weekly_list_widget) {
+    override fun render(
+        context: Context,
+        views: RemoteViews,
+        widgetData: SharedPreferences,
+    ) {
+        views.setTextViewText(R.id.widget_week_list_title, "주간 일정")
+        val weekStart = todayDate().minusDays((todayDate().dayOfWeek.value - 1).toLong())
+
+        for (index in 0 until 7) {
+            val slot = index + 1
+            val rawDate = widgetData.getString("week_day_${slot}_date", null)
+            val fallbackDate = weekStart.plusDays(index.toLong())
+            val targetDate = parseLocalDate(rawDate) ?: fallbackDate
+
+            val rowId = findViewId(context, "widget_week_list_day_${slot}_row")
+            val labelId = findViewId(context, "widget_week_list_day_${slot}_label")
+            val overflowId = findViewId(context, "widget_week_list_day_${slot}_overflow")
+            if (rowId == 0 || labelId == 0 || overflowId == 0) {
+                continue
+            }
+
+            views.setTextViewText(
+                labelId,
+                DateTimeFormatter.ofPattern("E M/d", Locale.KOREA).format(targetDate),
+            )
+            bindCalendarLink(context, views, rowId, targetDate)
+
+            var shownCount = 0
+            for (eventSlot in 1..4) {
+                val eventId = findViewId(context, "widget_week_list_day_${slot}_event_${eventSlot}")
+                if (eventId == 0) {
+                    continue
+                }
+                val title = widgetData.getString("week_day_${slot}_event_${eventSlot}_title", null)
+                    ?.takeIf { it.isNotBlank() }
+                val time = widgetData.getString("week_day_${slot}_event_${eventSlot}_time", null)
+                val isCritical =
+                    widgetData.getBoolean("week_day_${slot}_event_${eventSlot}_is_critical", false)
+                if (!title.isNullOrBlank()) {
+                    shownCount += 1
+                }
+                bindEventText(
+                    views,
+                    eventId,
+                    title,
+                    time,
+                    isCritical,
+                    emptyText = if (eventSlot == 1) "일정 없음" else null,
+                    hourOnly = true,
+                )
+                bindEventLinkIfAvailable(
+                    context,
+                    views,
+                    eventId,
+                    widgetData.getString("week_day_${slot}_event_${eventSlot}_id", null),
+                )
+            }
+
+            val overflow = if (widgetData.contains("week_day_${slot}_overflow_count")) {
+                widgetData.getInt("week_day_${slot}_overflow_count", 0)
+            } else {
+                (widgetData.getInt("week_day_${slot}_count", 0) - shownCount).coerceAtLeast(0)
+            }
+            if (overflow > 0) {
+                views.setTextViewText(overflowId, "+$overflow")
+                views.setViewVisibility(overflowId, View.VISIBLE)
+            } else {
+                views.setViewVisibility(overflowId, View.GONE)
+            }
+        }
+
+        bindCalendarLink(context, views, R.id.widget_week_list_container, todayDate())
+        bindCalendarLink(context, views, R.id.widget_week_list_title, todayDate())
+        bindVoice(context, views, R.id.widget_week_list_voice_button)
     }
 }
 

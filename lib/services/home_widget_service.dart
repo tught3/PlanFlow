@@ -345,6 +345,7 @@ class HomeWidgetService {
     'PlanFlowMonthlyWidgetProvider',
     'PlanFlowVerticalScheduleWidgetProvider',
     'PlanFlowWeeklyWidgetProvider',
+    'PlanFlowWeeklyListWidgetProvider',
     'PlanFlowMicWidgetProvider',
   ];
 

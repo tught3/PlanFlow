@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/widget_week_list_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/widget_week_list_title"
+            style="@style/PlanFlowWidgetTitleText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="주간 일정" />
+
+        <TextView
+            android:id="@+id/widget_week_list_voice_button"
+            style="@style/PlanFlowWidgetVoiceChip"
+            android:layout_width="58dp"
+            android:layout_height="30dp"
+            android:text="입력" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_week_list_day_1_row"
+        style="@style/PlanFlowWeeklyListDayRow">
+        <TextView
+            android:id="@+id/widget_week_list_day_1_label"
+            style="@style/PlanFlowWeeklyListDayLabel"
+            tools:text="월 5/18" />
+        <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
+            <TextView android:id="@+id/widget_week_list_day_1_event_1" style="@style/PlanFlowWidgetListText" tools:text="9시 이영현 만남" />
+            <TextView android:id="@+id/widget_week_list_day_1_event_2" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_1_event_3" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_1_event_4" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_1_overflow" style="@style/PlanFlowWidgetSubtleText" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_week_list_day_2_row"
+        style="@style/PlanFlowWeeklyListDayRow">
+        <TextView android:id="@+id/widget_week_list_day_2_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="화 5/19" />
+        <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
+            <TextView android:id="@+id/widget_week_list_day_2_event_1" style="@style/PlanFlowWidgetListText" tools:text="21시 대전 상담" />
+            <TextView android:id="@+id/widget_week_list_day_2_event_2" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_2_event_3" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_2_event_4" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_2_overflow" style="@style/PlanFlowWidgetSubtleText" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_week_list_day_3_row"
+        style="@style/PlanFlowWeeklyListDayRow">
+        <TextView android:id="@+id/widget_week_list_day_3_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="수 5/20" />
+        <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
+            <TextView android:id="@+id/widget_week_list_day_3_event_1" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_3_event_2" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_3_event_3" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_3_event_4" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_3_overflow" style="@style/PlanFlowWidgetSubtleText" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_week_list_day_4_row"
+        style="@style/PlanFlowWeeklyListDayRow">
+        <TextView android:id="@+id/widget_week_list_day_4_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="목 5/21" />
+        <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
+            <TextView android:id="@+id/widget_week_list_day_4_event_1" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_4_event_2" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_4_event_3" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_4_event_4" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_4_overflow" style="@style/PlanFlowWidgetSubtleText" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_week_list_day_5_row"
+        style="@style/PlanFlowWeeklyListDayRow">
+        <TextView android:id="@+id/widget_week_list_day_5_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="금 5/22" />
+        <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
+            <TextView android:id="@+id/widget_week_list_day_5_event_1" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_5_event_2" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_5_event_3" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_5_event_4" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_5_overflow" style="@style/PlanFlowWidgetSubtleText" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_week_list_day_6_row"
+        style="@style/PlanFlowWeeklyListDayRow">
+        <TextView android:id="@+id/widget_week_list_day_6_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="토 5/23" />
+        <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
+            <TextView android:id="@+id/widget_week_list_day_6_event_1" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_6_event_2" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_6_event_3" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_6_event_4" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_6_overflow" style="@style/PlanFlowWidgetSubtleText" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_week_list_day_7_row"
+        style="@style/PlanFlowWeeklyListDayRow">
+        <TextView android:id="@+id/widget_week_list_day_7_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="일 5/24" />
+        <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
+            <TextView android:id="@+id/widget_week_list_day_7_event_1" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_7_event_2" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_7_event_3" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_7_event_4" style="@style/PlanFlowWidgetListText" />
+            <TextView android:id="@+id/widget_week_list_day_7_overflow" style="@style/PlanFlowWidgetSubtleText" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

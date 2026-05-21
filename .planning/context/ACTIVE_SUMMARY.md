@@ -4,6 +4,11 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-21 Weekly Widget Time Compact And Vertical List Checkpoint
+- Weekly home-widget event rows now render times as hour-only Korean labels such as `9시` and `15시`, while underlying event timestamps remain unchanged.
+- Added a new `PlanFlowWeeklyListWidgetProvider` / `planflow_weekly_list_widget` that shows the week vertically by weekday/date with up to four schedule rows per day, using the same live weekly payload and calendar/event deep links.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/home_widget_service_test.dart --no-pub`, Android resource/Kotlin compile, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-21 Location Coordinate Status And Overlap Dialog Checkpoint
 - Event confirm/edit/detail surfaces now distinguish location text-only events from map-coordinate-resolved events with persistent `지도 위치 미지정` / `지도 위치 연결됨` status cards, and manual location text changes clear stale coordinates.
 - Schedule overlap dialogs now list the conflicting event titles, times, and locations, with `중단` and `계속 저장` placed side-by-side in one row.

@@ -59,7 +59,7 @@
             <TextView
                 android:id="@+id/widget_week_day_1_event_1"
                 style="@style/PlanFlowWidgetListText"
-                tools:text="09:00 회의" />
+                tools:text="9시 회의" />
 
             <TextView
                 android:id="@+id/widget_week_day_1_event_2"
@@ -143,7 +143,7 @@
             <TextView
                 android:id="@+id/widget_week_day_3_event_1"
                 style="@style/PlanFlowWidgetListText"
-                tools:text="07:00 산책" />
+                tools:text="7시 산책" />
 
             <TextView
                 android:id="@+id/widget_week_day_3_event_2"
