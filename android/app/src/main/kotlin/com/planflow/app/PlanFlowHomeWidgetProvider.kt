@@ -404,6 +404,8 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
             widgetData.getString("next_event_id", null),
             Uri.Builder().scheme(PLANFLOW_SCHEME).authority(PLANFLOW_CALENDAR_HOST).build(),
         )
+        bindCalendarLink(context, views, R.id.widget_brand, todayDate())
+        bindCalendarLink(context, views, R.id.widget_next_panel, todayDate())
         bindEventLinkIfAvailable(
             context,
             views,
@@ -486,6 +488,8 @@ class PlanFlowVerticalScheduleWidgetProvider :
             R.id.widget_vertical_container,
             todayDate(),
         )
+        bindCalendarLink(context, views, R.id.widget_vertical_title, todayDate())
+        bindCalendarLink(context, views, R.id.widget_tomorrow_section_label, todayDate())
         bindEventLinkIfAvailable(
             context,
             views,
@@ -599,6 +603,24 @@ class PlanFlowWeeklyWidgetProvider :
             R.id.widget_week_day_6_event_2,
             R.id.widget_week_day_7_event_2,
         )
+        val event3Ids = intArrayOf(
+            R.id.widget_week_day_1_event_3,
+            R.id.widget_week_day_2_event_3,
+            R.id.widget_week_day_3_event_3,
+            R.id.widget_week_day_4_event_3,
+            R.id.widget_week_day_5_event_3,
+            R.id.widget_week_day_6_event_3,
+            R.id.widget_week_day_7_event_3,
+        )
+        val event4Ids = intArrayOf(
+            R.id.widget_week_day_1_event_4,
+            R.id.widget_week_day_2_event_4,
+            R.id.widget_week_day_3_event_4,
+            R.id.widget_week_day_4_event_4,
+            R.id.widget_week_day_5_event_4,
+            R.id.widget_week_day_6_event_4,
+            R.id.widget_week_day_7_event_4,
+        )
         val overflowIds = intArrayOf(
             R.id.widget_week_day_1_overflow,
             R.id.widget_week_day_2_overflow,
@@ -626,19 +648,35 @@ class PlanFlowWeeklyWidgetProvider :
                 ?.takeIf { it.isNotBlank() }
             val e2Title = widgetData.getString("week_day_${slot}_event_2_title", null)
                 ?.takeIf { it.isNotBlank() }
+            val e3Title = widgetData.getString("week_day_${slot}_event_3_title", null)
+                ?.takeIf { it.isNotBlank() }
+            val e4Title = widgetData.getString("week_day_${slot}_event_4_title", null)
+                ?.takeIf { it.isNotBlank() }
             val e1Time = widgetData.getString("week_day_${slot}_event_1_time", null)
             val e2Time = widgetData.getString("week_day_${slot}_event_2_time", null)
+            val e3Time = widgetData.getString("week_day_${slot}_event_3_time", null)
+            val e4Time = widgetData.getString("week_day_${slot}_event_4_time", null)
             val e1Critical = widgetData.getBoolean("week_day_${slot}_event_1_is_critical", false)
             val e2Critical = widgetData.getBoolean("week_day_${slot}_event_2_is_critical", false)
+            val e3Critical = widgetData.getBoolean("week_day_${slot}_event_3_is_critical", false)
+            val e4Critical = widgetData.getBoolean("week_day_${slot}_event_4_is_critical", false)
 
             var overflow = 0
             if (widgetData.contains("week_day_${slot}_overflow_count")) {
                 overflow = widgetData.getInt("week_day_${slot}_overflow_count", 0)
             } else {
                 val totalCount = widgetData.getInt("week_day_${slot}_count", 0)
-                val hasE2 = !e2Title.isNullOrBlank()
                 val hasE1 = !e1Title.isNullOrBlank()
-                overflow = (totalCount - (if (hasE1) 1 else 0) - (if (hasE2) 1 else 0)).coerceAtLeast(0)
+                val hasE2 = !e2Title.isNullOrBlank()
+                val hasE3 = !e3Title.isNullOrBlank()
+                val hasE4 = !e4Title.isNullOrBlank()
+                overflow = (
+                    totalCount -
+                        (if (hasE1) 1 else 0) -
+                        (if (hasE2) 1 else 0) -
+                        (if (hasE3) 1 else 0) -
+                        (if (hasE4) 1 else 0)
+                    ).coerceAtLeast(0)
             }
 
             bindEventText(
@@ -656,6 +694,20 @@ class PlanFlowWeeklyWidgetProvider :
                 e2Time,
                 e2Critical,
             )
+            bindEventText(
+                views,
+                event3Ids[index],
+                e3Title,
+                e3Time,
+                e3Critical,
+            )
+            bindEventText(
+                views,
+                event4Ids[index],
+                e4Title,
+                e4Time,
+                e4Critical,
+            )
             bindEventLinkIfAvailable(
                 context,
                 views,
@@ -668,6 +720,18 @@ class PlanFlowWeeklyWidgetProvider :
                 event2Ids[index],
                 widgetData.getString("week_day_${slot}_event_2_id", null),
             )
+            bindEventLinkIfAvailable(
+                context,
+                views,
+                event3Ids[index],
+                widgetData.getString("week_day_${slot}_event_3_id", null),
+            )
+            bindEventLinkIfAvailable(
+                context,
+                views,
+                event4Ids[index],
+                widgetData.getString("week_day_${slot}_event_4_id", null),
+            )
 
             if (overflow > 0) {
                 views.setTextViewText(overflowIds[index], "+$overflow")
@@ -678,6 +742,7 @@ class PlanFlowWeeklyWidgetProvider :
         }
 
         bindCalendarLink(context, views, R.id.widget_week_container, todayDate())
+        bindCalendarLink(context, views, R.id.widget_week_title, todayDate())
         bindVoice(context, views, R.id.widget_week_voice_button)
     }
 }
@@ -801,6 +866,7 @@ class PlanFlowMonthlyWidgetProvider :
         }
 
         bindCalendarLink(context, views, R.id.widget_month_container, todayDate())
+        bindCalendarLink(context, views, R.id.widget_month_title, todayDate())
         bindVoice(context, views, R.id.widget_month_voice_button)
     }
 

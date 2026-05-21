@@ -26,13 +26,13 @@
 
         <TextView
             android:id="@+id/widget_voice_button"
-            android:layout_width="44dp"
-            android:layout_height="24dp"
+            android:layout_width="58dp"
+            android:layout_height="30dp"
             android:background="@drawable/widget_voice_chip_background"
             android:gravity="center"
             android:text="입력"
             android:textColor="#1F4168"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:textStyle="bold" />
     </LinearLayout>
 

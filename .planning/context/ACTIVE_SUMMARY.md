@@ -15,6 +15,11 @@
 - Background task failures now keep the foreground save/delete result intact while surfacing targeted Korean messages such as calendar sync, widget refresh, preparation alarm recalculation, voice log, or delete cleanup failure.
 - Verification passed: `scripts/flutter-local.ps1 test test/services/background_task_service_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_action_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
 
+## 2026-05-21 Weekly Widget Capacity And Deeplink Checkpoint
+- Weekly widget payload and Android layout now show up to 4 events per day before falling back to `+N`, so empty vertical space is used for actual schedule rows first.
+- Enlarged the top-right input chips across schedule widgets and ensured widget title/body surfaces deep-link to the calendar tab while the input chip still opens voice entry.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/home_widget_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-19 PlanFlow Release Bootstrap Checkpoint
 - Added `scripts/planflow-release-bootstrap.ps1` as the single-command setup helper for new PCs. It auto-discovers the signing archive from OneDrive first, falls back to the repo-local signing backup, restores signing only when needed, builds the debug APK and release appbundle through `scripts/flutter-local.ps1`, verifies the PlanFlow release APK fingerprint, and optionally runs `scripts/adb-install-update.ps1` with `-AllowOneTimeTransition` for the rare old-debug-install case.
 - Updated `docs/planflow-signing.md` to recommend the new bootstrap path and document the optional archive/password flags.

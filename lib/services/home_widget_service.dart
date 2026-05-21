@@ -112,6 +112,7 @@ class HomeWidgetSchedulePayloadBuilder {
 
   static const int todayWidgetRowCapacity = 6;
   static const int tomorrowWidgetMaxRows = 2;
+  static const int weeklyWidgetEventRows = 4;
 
   static HomeWidgetSchedulePayload fromEvents({
     required List<EventModel> events,
@@ -245,7 +246,10 @@ class HomeWidgetSchedulePayloadBuilder {
         summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}건',
         eventCount: dayEvents.length,
         hasCritical: dayEvents.any((event) => event.isCritical),
-        events: dayEvents.map(_listEvent).take(2).toList(growable: false),
+        events: dayEvents
+            .map(_listEvent)
+            .take(weeklyWidgetEventRows)
+            .toList(growable: false),
       );
     });
   }
@@ -804,7 +808,9 @@ class HomeWidgetService {
           ) &&
           success;
 
-      final events = day?.events.take(2).toList(growable: false) ??
+      final events = day?.events
+              .take(HomeWidgetSchedulePayloadBuilder.weeklyWidgetEventRows)
+              .toList(growable: false) ??
           const <HomeWidgetListEventData>[];
       final eventCount = day?.eventCount ?? day?.events.length ?? 0;
       success = await _saveValue(
@@ -812,7 +818,9 @@ class HomeWidgetService {
             eventCount > events.length ? eventCount - events.length : 0,
           ) &&
           success;
-      for (var eventIndex = 0; eventIndex < 2; eventIndex += 1) {
+      for (var eventIndex = 0;
+          eventIndex < HomeWidgetSchedulePayloadBuilder.weeklyWidgetEventRows;
+          eventIndex += 1) {
         final event = eventIndex < events.length ? events[eventIndex] : null;
         final eventSlot = eventIndex + 1;
         success = await _saveOptionalValue(

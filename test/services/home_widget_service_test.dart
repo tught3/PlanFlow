@@ -181,8 +181,8 @@ void main() {
       weekDays: <HomeWidgetWeekDayData>[
         HomeWidgetWeekDayData(
           date: DateTime.parse('2026-05-04T00:00:00Z'),
-          summary: '2 events',
-          eventCount: 2,
+          summary: '3 events',
+          eventCount: 3,
           hasCritical: true,
           events: <HomeWidgetListEventData>[
             HomeWidgetListEventData(
@@ -231,8 +231,8 @@ void main() {
     expect(platform.savedValues['month_cell_42_day'], isNull);
     expect(platform.savedValues['month_cell_42_in_month'], isFalse);
     expect(platform.savedValues['week_day_1_date'], '2026-05-04T00:00:00.000Z');
-    expect(platform.savedValues['week_day_1_summary'], '2 events');
-    expect(platform.savedValues['week_day_1_count'], 2);
+    expect(platform.savedValues['week_day_1_summary'], '3 events');
+    expect(platform.savedValues['week_day_1_count'], 3);
     expect(platform.savedValues['week_day_1_has_critical'], isTrue);
     expect(platform.savedValues['week_day_1_overflow_count'], 0);
     expect(platform.savedValues['week_day_1_event_1_title'], 'Week event 1');
@@ -241,7 +241,8 @@ void main() {
         '2026-05-04T01:00:00.000Z');
     expect(platform.savedValues['week_day_1_event_1_is_critical'], isTrue);
     expect(platform.savedValues['week_day_1_event_2_title'], 'Week event 2');
-    expect(platform.savedValues['week_day_1_event_3_title'], isNull);
+    expect(platform.savedValues['week_day_1_event_3_title'], 'Week event 3');
+    expect(platform.savedValues['week_day_1_event_4_title'], isNull);
     expect(
         platform.updatedWidgets, HomeWidgetService.defaultAndroidWidgetNames);
   });
@@ -306,7 +307,7 @@ void main() {
     expect(may20Cell.overflowCount, 2);
     final wednesday = payload.weekDays[2];
     expect(wednesday.eventCount, 5);
-    expect(wednesday.events.length, 2);
+    expect(wednesday.events.length, 4);
     expect(wednesday.hasCritical, isTrue);
   });
 
