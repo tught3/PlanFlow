@@ -14,6 +14,7 @@ import '../../data/models/pre_action_model.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../services/background_task_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/departure_alarm_service.dart';
@@ -254,30 +255,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     try {
       if (AppEnv.isSupabaseReady) {
-        final user = Supabase.instance.client.auth.currentUser;
-        final settings =
-            user == null ? null : await _fetchSettingsOrNull(user.id);
         await _repository.deleteEvent(event.id);
-        await widget.sideEffectService.cleanupAfterDelete(
-          event.id,
-          userId: user?.id,
-          prepTimeMin: settings?.prepTimeMin ??
-              SmartPreparationAlarmService.defaultPrepTimeMin,
-          prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
-              SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
-          departPreAlarmOffset: settings?.departPreAlarmOffset ??
-              SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
-          departureSafetyMargin: Duration(
-            minutes: settings?.departureSafetyMarginMin ??
-                DepartureAlarmService.safetyMargin.inMinutes,
-          ),
-          travelMode: settings?.travelMode ?? 'car',
-        );
-        await _resyncExternalPreparationAfterDelete(event);
-        unawaited(_refreshHomeWidget(_repository));
+        unawaited(_runDeleteFollowUps(event));
       }
 
       if (mounted) {
+        setState(() {
+          _isDeleting = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('일정을 삭제했습니다.')),
         );
@@ -300,6 +285,56 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           _isDeleting = false;
         });
       }
+    }
+  }
+
+  Future<void> _runDeleteFollowUps(EventModel event) {
+    return BackgroundTaskService.run(
+      () async {
+        final user = Supabase.instance.client.auth.currentUser;
+        final settings =
+            user == null ? null : await _fetchSettingsOrNull(user.id);
+        await _runFollowUpStep(
+          'cleanup_after_delete',
+          () => widget.sideEffectService.cleanupAfterDelete(
+            event.id,
+            userId: user?.id,
+            prepTimeMin: settings?.prepTimeMin ??
+                SmartPreparationAlarmService.defaultPrepTimeMin,
+            prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+                SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+            departPreAlarmOffset: settings?.departPreAlarmOffset ??
+                SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+            departureSafetyMargin: Duration(
+              minutes: settings?.departureSafetyMarginMin ??
+                  DepartureAlarmService.safetyMargin.inMinutes,
+            ),
+            travelMode: settings?.travelMode ?? 'car',
+          ),
+        );
+        await _runFollowUpStep(
+          'resync_external_preparation_after_delete',
+          () => _resyncExternalPreparationAfterDelete(event),
+        );
+        await _runFollowUpStep(
+          'refresh_home_widget_after_delete',
+          () => _refreshHomeWidget(_repository),
+        );
+      },
+      owner: 'EventDetailScreen',
+      label: 'delete_follow_ups',
+    );
+  }
+
+  Future<void> _runFollowUpStep(
+    String label,
+    Future<void> Function() task,
+  ) async {
+    try {
+      await task();
+    } catch (error, stackTrace) {
+      debugPrint('EventDetailScreen follow-up failed ($label): $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -362,6 +397,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<UserSettingsModel?> _fetchSettingsOrNull(String userId) async {
+    if (!AppEnv.isSupabaseReady) {
+      return null;
+    }
     try {
       return await SettingsRepository.supabase().fetchSettings(userId);
     } catch (error, stackTrace) {

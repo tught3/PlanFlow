@@ -13,6 +13,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/background_task_service.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/event_preparation_service.dart';
 import '../../services/gpt_service.dart';
@@ -1081,64 +1082,15 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final editedEvent = _eventWithRequestedVoiceChanges(event);
     final previousStartAt = event.startAt;
     setState(() => _isSaving = true);
-    var departureSafetyMargin = Duration(
-      minutes: DepartureAlarmService.safetyMargin.inMinutes,
-    );
     try {
       final savedEvent = await _repository.updateEvent(editedEvent);
       final userId = _resolveUserId();
-      if (userId != null && AppEnv.isSupabaseReady) {
-        final settings = await SettingsRepository.supabase().fetchSettings(
-          userId,
-        );
-        departureSafetyMargin = Duration(
-          minutes: settings?.departureSafetyMarginMin ??
-              DepartureAlarmService.safetyMargin.inMinutes,
-        );
-        await widget.sideEffectService.syncAfterSave(
-          event: savedEvent,
-          userId: userId,
-          prepTimeMin: settings?.prepTimeMin ??
-              SmartPreparationAlarmService.defaultPrepTimeMin,
-          prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
-              SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
-          departPreAlarmOffset: settings?.departPreAlarmOffset ??
-              SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
-          departureSafetyMargin: departureSafetyMargin,
-          travelMode: settings?.travelMode ?? 'car',
-          isFirstExternalEventOfDay: await _isFirstExternalEventOfDay(
-            userId: userId,
-            event: savedEvent,
-          ),
-        );
-        await _resyncExternalPreparationForDay(
-          userId: userId,
-          event: savedEvent,
-          settings: settings,
-        );
-        if (previousStartAt != null &&
-            savedEvent.startAt != null &&
-            !planflowIsSameLocalDay(previousStartAt, savedEvent.startAt!)) {
-          await _resyncExternalPreparationForDay(
-            userId: userId,
-            event: savedEvent,
-            settings: settings,
-            dayReference: previousStartAt,
-          );
-        }
-        await _refreshHomeWidget(userId);
-      }
-      unawaited(CalendarAutoSyncService().syncAfterEventSave(savedEvent));
       unawaited(
-        EventPreparationService(eventRepository: _repository).prepareAfterSave(
-          savedEvent,
-          departureSafetyMargin: departureSafetyMargin,
+        _runDirectSaveFollowUps(
+          userId: userId,
+          savedEvent: savedEvent,
+          previousStartAt: previousStartAt,
         ),
-      );
-      await _recordVoiceLog(
-        action: 'edit',
-        targetEventId: savedEvent.id,
-        result: 'applied_directly',
       );
       EventRefreshBus.instance.notifyChanged(
         reason: 'voice_direct_apply',
@@ -1146,8 +1098,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         startAt: savedEvent.startAt,
       );
       if (!mounted) return;
+      setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('일정이 변경되었어요.')),
+        const SnackBar(content: Text('저장했어요. 알림과 위젯은 백그라운드에서 정리 중입니다.')),
       );
       context.go(AppRoutes.calendar);
     } catch (error, stackTrace) {
@@ -1159,6 +1112,114 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _runDirectSaveFollowUps({
+    required String? userId,
+    required EventModel savedEvent,
+    DateTime? previousStartAt,
+  }) {
+    return BackgroundTaskService.run(
+      () async {
+        var departureSafetyMargin = Duration(
+          minutes: DepartureAlarmService.safetyMargin.inMinutes,
+        );
+        UserSettingsModel? settings;
+        if (userId != null && AppEnv.isSupabaseReady) {
+          settings = await _fetchSettingsOrNull(userId);
+          departureSafetyMargin = Duration(
+            minutes: settings?.departureSafetyMarginMin ??
+                DepartureAlarmService.safetyMargin.inMinutes,
+          );
+          await _runFollowUpStep(
+            'sync_after_save',
+            () async {
+              await widget.sideEffectService.syncAfterSave(
+                event: savedEvent,
+                userId: userId,
+                prepTimeMin: settings?.prepTimeMin ??
+                    SmartPreparationAlarmService.defaultPrepTimeMin,
+                prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+                    SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+                departPreAlarmOffset: settings?.departPreAlarmOffset ??
+                    SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+                departureSafetyMargin: departureSafetyMargin,
+                travelMode: settings?.travelMode ?? 'car',
+                isFirstExternalEventOfDay: await _isFirstExternalEventOfDay(
+                  userId: userId,
+                  event: savedEvent,
+                ),
+              );
+            },
+          );
+          await _runFollowUpStep(
+            'resync_external_preparation',
+            () => _resyncExternalPreparationForDay(
+              userId: userId,
+              event: savedEvent,
+              settings: settings,
+            ),
+          );
+          if (previousStartAt != null &&
+              savedEvent.startAt != null &&
+              !planflowIsSameLocalDay(previousStartAt, savedEvent.startAt!)) {
+            await _runFollowUpStep(
+              'resync_previous_day_external_preparation',
+              () => _resyncExternalPreparationForDay(
+                userId: userId,
+                event: savedEvent,
+                settings: settings,
+                dayReference: previousStartAt,
+              ),
+            );
+          }
+          await _runFollowUpStep('refresh_home_widget', () {
+            return _refreshHomeWidget(userId);
+          });
+        }
+        unawaited(
+          BackgroundTaskService.run(
+            () => CalendarAutoSyncService().syncAfterEventSave(savedEvent),
+            owner: 'VoiceActionScreen',
+            label: 'calendar_auto_sync_after_direct_save',
+          ),
+        );
+        unawaited(
+          BackgroundTaskService.run(
+            () => EventPreparationService(
+              eventRepository: _repository,
+            ).prepareAfterSave(
+              savedEvent,
+              departureSafetyMargin: departureSafetyMargin,
+            ),
+            owner: 'VoiceActionScreen',
+            label: 'event_preparation_after_direct_save',
+          ),
+        );
+        await _runFollowUpStep(
+          'voice_log_direct_save',
+          () => _recordVoiceLog(
+            action: 'edit',
+            targetEventId: savedEvent.id,
+            result: 'applied_directly',
+          ),
+        );
+      },
+      owner: 'VoiceActionScreen',
+      label: 'direct_save_follow_ups',
+    );
+  }
+
+  Future<void> _runFollowUpStep(
+    String label,
+    Future<void> Function() task,
+  ) async {
+    try {
+      await task();
+    } catch (error, stackTrace) {
+      debugPrint('VoiceActionScreen follow-up failed ($label): $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 
@@ -1651,32 +1712,14 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     });
 
     try {
-      final settings = await _fetchSettingsOrNull(userId);
       for (final event in events) {
         await _repository.deleteEvent(event.id, userId: userId);
-        await widget.sideEffectService.cleanupAfterDelete(
-          event.id,
-          userId: userId,
-          prepTimeMin: settings?.prepTimeMin ??
-              SmartPreparationAlarmService.defaultPrepTimeMin,
-          prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
-              SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
-          departPreAlarmOffset: settings?.departPreAlarmOffset ??
-              SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
-          travelMode: settings?.travelMode ?? 'car',
-        );
-        await _resyncExternalPreparationAfterDelete(event, userId: userId);
       }
-      await _refreshHomeWidget(userId);
+      unawaited(_runDeleteFollowUps(userId: userId, events: List.of(events)));
       if (!mounted) {
         return;
       }
       final deletedIds = events.map((event) => event.id).toSet();
-      await _recordVoiceLog(
-        action: 'delete',
-        targetEventId: events.length == 1 ? events.single.id : null,
-        result: events.length == 1 ? 'deleted' : 'selected_deleted',
-      );
       for (final event in events) {
         EventRefreshBus.instance.notifyChanged(
           reason: 'voice_event_deleted',
@@ -1689,6 +1732,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       }
       setState(() {
         _selectedDeleteEventIds.removeAll(deletedIds);
+        _isDeleting = false;
       });
       _showMessage(
         events.length == 1 ? '일정을 삭제했습니다.' : '${events.length}개 일정을 삭제했습니다.',
@@ -1707,6 +1751,55 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         });
       }
     }
+  }
+
+  Future<void> _runDeleteFollowUps({
+    required String userId,
+    required List<EventModel> events,
+  }) {
+    return BackgroundTaskService.run(
+      () async {
+        final settings = await _fetchSettingsOrNull(userId);
+        for (final event in events) {
+          await _runFollowUpStep(
+            'cleanup_after_delete',
+            () => widget.sideEffectService.cleanupAfterDelete(
+              event.id,
+              userId: userId,
+              prepTimeMin: settings?.prepTimeMin ??
+                  SmartPreparationAlarmService.defaultPrepTimeMin,
+              prepPreAlarmOffset: settings?.prepPreAlarmOffset ??
+                  SmartPreparationAlarmService.defaultPrepPreAlarmOffset,
+              departPreAlarmOffset: settings?.departPreAlarmOffset ??
+                  SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
+              departureSafetyMargin: Duration(
+                minutes: settings?.departureSafetyMarginMin ??
+                    DepartureAlarmService.safetyMargin.inMinutes,
+              ),
+              travelMode: settings?.travelMode ?? 'car',
+            ),
+          );
+          await _runFollowUpStep(
+            'resync_external_preparation_after_delete',
+            () => _resyncExternalPreparationAfterDelete(event, userId: userId),
+          );
+        }
+        await _runFollowUpStep(
+          'refresh_home_widget_after_delete',
+          () => _refreshHomeWidget(userId),
+        );
+        await _runFollowUpStep(
+          'voice_log_delete',
+          () => _recordVoiceLog(
+            action: 'delete',
+            targetEventId: events.length == 1 ? events.single.id : null,
+            result: events.length == 1 ? 'deleted' : 'selected_deleted',
+          ),
+        );
+      },
+      owner: 'VoiceActionScreen',
+      label: 'delete_follow_ups',
+    );
   }
 
   Future<void> _refreshHomeWidget(String userId) async {
@@ -1779,6 +1872,9 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   Future<UserSettingsModel?> _fetchSettingsOrNull(String userId) async {
+    if (!AppEnv.isSupabaseReady) {
+      return null;
+    }
     try {
       return await SettingsRepository.supabase().fetchSettings(userId);
     } catch (error, stackTrace) {

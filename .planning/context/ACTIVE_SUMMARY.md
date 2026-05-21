@@ -4,6 +4,12 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-21 Voice Save Background Follow-ups Checkpoint
+- VoiceActionScreen direct save now awaits only the event update, then moves reminders, smart preparation, departure alarm preparation, calendar sync, home-widget refresh, and voice-log writes into background follow-up tasks.
+- Voice delete and EventDetail delete now await only event deletion before navigation; cleanup, external preparation resync, widgets, and logs run afterward and each follow-up failure is isolated from the foreground save/delete result.
+- Added a shared `BackgroundTaskService` guard and updated the voice action test double so focused save/delete tests do not execute real side effects.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/voice_action_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-19 PlanFlow Release Bootstrap Checkpoint
 - Added `scripts/planflow-release-bootstrap.ps1` as the single-command setup helper for new PCs. It auto-discovers the signing archive from OneDrive first, falls back to the repo-local signing backup, restores signing only when needed, builds the debug APK and release appbundle through `scripts/flutter-local.ps1`, verifies the PlanFlow release APK fingerprint, and optionally runs `scripts/adb-install-update.ps1` with `-AllowOneTimeTransition` for the rare old-debug-install case.
 - Updated `docs/planflow-signing.md` to recommend the new bootstrap path and document the optional archive/password flags.

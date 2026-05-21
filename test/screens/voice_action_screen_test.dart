@@ -1521,6 +1521,29 @@ class _NoopSideEffectService extends ManualEventSideEffectService {
   const _NoopSideEffectService();
 
   @override
+  Future<ManualEventSideEffectResult> syncAfterSave({
+    required EventModel event,
+    required String userId,
+    bool clearPreActions = true,
+    Duration? reminderOffset =
+        ManualEventSideEffectService.defaultReminderOffset,
+    Duration? criticalAlarmOffset,
+    int prepTimeMin = 30,
+    int prepPreAlarmOffset = 30,
+    int departPreAlarmOffset = 30,
+    int travelMinutes = 30,
+    Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
+    String travelMode = 'car',
+    bool isFirstExternalEventOfDay = true,
+  }) async {
+    return const ManualEventSideEffectResult(
+      remindersSynced: false,
+      notificationsSynced: false,
+      preActionsCleared: false,
+    );
+  }
+
+  @override
   Future<void> cleanupAfterDelete(
     String eventId, {
     String? userId,
