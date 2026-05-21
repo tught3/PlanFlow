@@ -1056,3 +1056,9 @@
 - Settings now shows the provider separately, displays the best available social account identifier instead of only "로그인됨", and offers "네이버 계정 정보 다시 확인" for Naver sessions.
 - The Naver calendar guidance dialog keeps login and CalDAV sync separate and places `나중에` / `설정으로 이동` actions on one row.
 - Verification passed: focused auth/settings tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-21 OAuth Browser Return Loading Guard
+- LoginScreen now observes app resume while an OAuth login is pending; if the browser/Naver flow returns without a callback session, the email-login spinner is cleared and a Korean retry message points the user to the PlanFlow browser-return permission.
+- If a session is already present on resume, the login screen syncs the current Supabase session instead of staying in the pending external-browser state.
+- Settings account display now keeps a single primary login-status row and shows the social provider as secondary text, avoiding the appearance of two separate logins.
+- Verification passed: focused login/settings/auth provider/auth service tests and `scripts/flutter-local.ps1 analyze --no-pub`.

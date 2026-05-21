@@ -71,6 +71,23 @@ class OAuthCallbackHandler {
     _pendingStartedAt = null;
   }
 
+  static bool hasPendingLogin({
+    Duration maxAge = const Duration(minutes: 10),
+  }) {
+    final startedAt = _pendingStartedAt;
+    return _pendingPurpose == OAuthCallbackPurpose.login &&
+        _pendingMethod != null &&
+        startedAt != null &&
+        DateTime.now().difference(startedAt) <= maxAge;
+  }
+
+  static String? get pendingLoginMethod {
+    if (!hasPendingLogin()) {
+      return null;
+    }
+    return _pendingMethod;
+  }
+
   void start() {
     if (kIsWeb || !AppEnv.isSupabaseReady || _subscription != null) {
       return;

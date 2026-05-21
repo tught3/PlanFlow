@@ -2875,13 +2875,8 @@ class _AccountSection extends StatelessWidget {
                 isConfigured: signedIn,
               ),
               if (signedIn && authProvider.provider != null) ...[
-                const SizedBox(height: 8),
-                _StatusRow(
-                  label: '로그인 방식',
-                  value: authProvider.providerLabel,
-                  icon: Icons.verified_user_outlined,
-                  isConfigured: true,
-                ),
+                const SizedBox(height: 6),
+                _AccountDetailText('로그인 방식: ${authProvider.providerLabel}'),
               ],
               if (authProvider.socialAccountInfoIncomplete) ...[
                 const SizedBox(height: 8),
@@ -3794,6 +3789,29 @@ class _InlineNotice extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AccountDetailText extends StatelessWidget {
+  const _AccountDetailText(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 52),
+        child: Text(
+          text,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: PlanFlowColors.textSecondary,
+          ),
+        ),
       ),
     );
   }

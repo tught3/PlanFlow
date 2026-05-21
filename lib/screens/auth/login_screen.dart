@@ -29,7 +29,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -49,6 +49,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _authService = AppEnv.isSupabaseReady
         ? widget._authService ?? AuthService()
         : widget._authService;
@@ -57,6 +58,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     OAuthCallbackHandler.latestUserMessage.removeListener(_handleOAuthMessage);
     _emailController.dispose();
     _passwordController.dispose();
@@ -67,6 +69,13 @@ class _LoginScreenState extends State<LoginScreen> {
     _passwordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isLoading) {
+      unawaited(_resolvePendingOAuthOnResume());
+    }
   }
 
   void _handleOAuthMessage() {
@@ -186,6 +195,44 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  Future<void> _resolvePendingOAuthOnResume() async {
+    if (!OAuthCallbackHandler.hasPendingLogin()) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    if (!mounted || !_isLoading || !OAuthCallbackHandler.hasPendingLogin()) {
+      return;
+    }
+    if (OAuthCallbackHandler.latestUserMessage.value != null) {
+      return;
+    }
+
+    final signedIn = await authProvider.syncCurrentSession();
+    if (!mounted) {
+      return;
+    }
+    if (signedIn) {
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+
+    final method = switch (OAuthCallbackHandler.pendingLoginMethod) {
+      'naver' => '네이버',
+      'kakao' => '카카오',
+      'google' => 'Google',
+      _ => '소셜',
+    };
+    OAuthCallbackHandler.clearPendingCallback();
+    _setMessage(
+      '$method 인증이 완료되지 않았어요. 브라우저에서 PlanFlow로 돌아오기 허용을 확인한 뒤 다시 시도해 주세요.',
+    );
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   String? _validate() {
