@@ -4,6 +4,13 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-22 Naver OAuth WebView Phase Diagnostics
+- Split Naver OAuth WebView startup into prepare, OAuth URL generation, and WebView load phases so the app can distinguish setup, URL, and page-load failures.
+- Deferred the initial Naver OAuth load until after the first frame, after the WebView controller is configured and the platform view has started rendering.
+- Added safe `Naver OAuth phase=...` debug logs with only phase, host, path, forceConsent, and error type; auth code, token, verifier, and session values are not logged.
+- Updated user-facing Korean failures so WebView-internal failures stay on the WebView screen, while closing the WebView still returns a normal incomplete-auth result to the login screen.
+- Verification passed: focused Naver OAuth WebView, auth service, and login screen tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-21 Voice Conversation STT Feedback Fix
 - VoiceConversationScreen now displays live STT partial text in the input field while listening and shows clear status text such as `듣고 있어요...`, instead of dropping partial results silently.
 - STT success, silence/failure, event-load skip/failure, initial-text submission, and conversation action results now leave user-visible feedback and debug logs for troubleshooting.

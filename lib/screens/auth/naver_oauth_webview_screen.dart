@@ -33,10 +33,11 @@ class NaverOAuthWebViewScreen extends StatefulWidget {
 class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
   late final AuthService _authService;
   late final OAuthCallbackHandler _callbackHandler;
-  late final WebViewController _webViewController;
+  WebViewController? _webViewController;
 
   bool _isLoading = true;
   bool _isHandlingCallback = false;
+  bool _loadScheduled = false;
   String? _message;
 
   @override
@@ -44,11 +45,14 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
     super.initState();
     _authService = widget._authService ?? AuthService();
     _callbackHandler = widget._callbackHandler ?? OAuthCallbackHandler();
-    _webViewController =
-        widget._webViewControllerFactory?.call() ?? WebViewController();
     OAuthCallbackHandler.latestUserMessage.addListener(_handleOAuthMessage);
-    _configureWebView();
-    unawaited(_loadNaverOAuth());
+    _prepareWebView();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_loadScheduled) {
+        _loadScheduled = true;
+        unawaited(_loadNaverOAuth());
+      }
+    });
   }
 
   @override
@@ -57,8 +61,29 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
     super.dispose();
   }
 
-  void _configureWebView() {
-    _webViewController
+  void _prepareWebView() {
+    try {
+      _logOAuthPhase('prepare_start');
+      final controller =
+          widget._webViewControllerFactory?.call() ?? WebViewController();
+      _configureWebView(controller);
+      _webViewController = controller;
+      _logOAuthPhase('prepare_success');
+    } catch (error, stackTrace) {
+      _logOAuthPhase(
+        'prepare_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      setState(() {
+        _isLoading = false;
+        _message = '앱 안 로그인 화면을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.';
+      });
+    }
+  }
+
+  void _configureWebView(WebViewController controller) {
+    controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.white)
       ..setNavigationDelegate(
@@ -81,9 +106,13 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
             if (!mounted || _isHandlingCallback) {
               return;
             }
+            _logOAuthPhase(
+              'web_resource_failed',
+              error: '${error.errorCode}:${error.description}',
+            );
             setState(() {
               _isLoading = false;
-              _message = '네이버 인증 화면을 불러오지 못했어요. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.';
+              _message = '네이버 로그인 페이지를 불러오지 못했어요. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.';
             });
           },
           onNavigationRequest: (request) {
@@ -93,10 +122,14 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
               return NavigationDecision.prevent;
             }
             if (uri != null && !NaverOAuthWebViewFlow.isWebNavigation(uri)) {
+              _logOAuthPhase(
+                'blocked_non_web_navigation',
+                uri: uri,
+              );
               setState(() {
                 _isLoading = false;
                 _message =
-                    '네이버 앱 간편로그인은 기기 보안 설정에 막힐 수 있어요. 이 화면에서 네이버 아이디로 로그인해 주세요.';
+                    '네이버 앱 버튼 대신 이 화면에서 네이버 아이디로 로그인해 주세요.';
               });
               return NavigationDecision.prevent;
             }
@@ -107,31 +140,67 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
   }
 
   Future<void> _loadNaverOAuth() async {
+    final controller = _webViewController;
+    if (controller == null) {
+      _logOAuthPhase('load_skipped_no_controller');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+        _message = '앱 안 로그인 화면을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _message = null;
     });
+    late final Uri uri;
     try {
+      _logOAuthPhase('url_start');
       OAuthCallbackHandler.markPendingLogin(PlanFlowOAuthProvider.naver);
-      final uri = await _authService.buildOAuthSignInUri(
+      uri = await _authService.buildOAuthSignInUri(
         PlanFlowOAuthProvider.naver,
         forceConsent: widget.forceConsent,
       );
-      debugPrint(
-        'Naver OAuth WebView load: host=${uri.host} path=${uri.path} '
-        'forceConsent=${widget.forceConsent}',
-      );
-      await _webViewController.loadRequest(uri);
+      _logOAuthPhase('url_success', uri: uri);
     } catch (error, stackTrace) {
-      debugPrint('Naver OAuth WebView load failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      _logOAuthPhase(
+        'url_failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
       OAuthCallbackHandler.clearPendingCallback();
       if (!mounted) {
         return;
       }
       setState(() {
         _isLoading = false;
-        _message = '네이버 인증 화면을 열지 못했어요. 잠시 후 다시 시도해 주세요.';
+        _message = '네이버 로그인 주소를 만들지 못했어요. 잠시 후 다시 시도해 주세요.';
+      });
+      return;
+    }
+
+    try {
+      _logOAuthPhase('load_start', uri: uri);
+      await controller.loadRequest(uri);
+      _logOAuthPhase('load_requested', uri: uri);
+    } catch (error, stackTrace) {
+      _logOAuthPhase(
+        'load_failed',
+        uri: uri,
+        error: error,
+        stackTrace: stackTrace,
+      );
+      OAuthCallbackHandler.clearPendingCallback();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isLoading = false;
+        _message = '네이버 로그인 페이지를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.';
       });
     }
   }
@@ -216,12 +285,35 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
                 ),
               ),
             Expanded(
-              child: WebViewWidget(controller: _webViewController),
+              child: _webViewController == null
+                  ? const SizedBox.shrink()
+                  : WebViewWidget(controller: _webViewController!),
             ),
           ],
         ),
       ),
     );
+  }
+
+  void _logOAuthPhase(
+    String phase, {
+    Uri? uri,
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    debugPrint(
+      'Naver OAuth phase=$phase '
+      'host=${uri?.host ?? 'none'} '
+      'path=${uri?.path ?? 'none'} '
+      'forceConsent=${widget.forceConsent} '
+      'errorType=${error == null ? 'none' : error.runtimeType}',
+    );
+    if (error != null) {
+      debugPrint('Naver OAuth phase=$phase error=$error');
+    }
+    if (stackTrace != null) {
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 }
 
