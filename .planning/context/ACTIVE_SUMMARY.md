@@ -4,6 +4,12 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-21 Voice Conversation STT Feedback Fix
+- VoiceConversationScreen now displays live STT partial text in the input field while listening and shows clear status text such as `듣고 있어요...`, instead of dropping partial results silently.
+- STT success, silence/failure, event-load skip/failure, initial-text submission, and conversation action results now leave user-visible feedback and debug logs for troubleshooting.
+- Initial query text no longer races with auto-start listening; auto-start only begins immediately when there is no initial text to submit first.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub`, focused voice/input/route tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-21 Voice STT Duplicate Transcript Guard
 - VoiceInputScreen now treats voice input after a submitted command as a fresh command, so conversational follow-up text such as `3번째 일정 삭제` does not append to the previous query text.
 - STT transcript merging now de-duplicates repeated incoming partial/final phrases before overlap merging, preventing repeated Android partial/final text from being appended two or three times.

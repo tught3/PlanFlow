@@ -59,12 +59,13 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   bool _isListening = false;
   bool _keepListening = false;
   bool _didSubmitInitialText = false;
+  String? _conversationStatus;
 
   @override
   void initState() {
     super.initState();
     unawaited(_loadEvents().then((_) => _submitInitialTextIfNeeded()));
-    if (widget.autoStart) {
+    if (widget.autoStart && (widget.initialText ?? '').trim().isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _isListening) {
           return;
@@ -83,6 +84,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     if (text == null || text.isEmpty) {
       return;
     }
+    debugPrint('VoiceConversationScreen initialText submit: $text');
     _didSubmitInitialText = true;
     await _submitText(text);
   }
@@ -96,8 +98,19 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   }
 
   Future<void> _loadEvents() async {
+    debugPrint('VoiceConversationScreen load events start');
     if (!AppEnv.isSupabaseReady || !authProvider.isSignedIn) {
-      setState(() => _isLoading = false);
+      debugPrint(
+        'VoiceConversationScreen load skipped: '
+        'supabaseReady=${AppEnv.isSupabaseReady} '
+        'signedIn=${authProvider.isSignedIn}',
+      );
+      setState(() {
+        _isLoading = false;
+        _conversationStatus = !AppEnv.isSupabaseReady
+            ? 'Supabase 설정을 확인하지 못했어요.'
+            : '로그인 상태를 확인하지 못했어요.';
+      });
       return;
     }
     setState(() => _isLoading = true);
@@ -105,15 +118,21 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       final userId = authProvider.userId;
       final events = await _repository.listEvents(userId: userId);
       if (!mounted) return;
+      debugPrint(
+        'VoiceConversationScreen load events success: ${events.length}',
+      );
       setState(() {
         _events = events;
         _conversation.replaceEvents(events);
         _isLoading = false;
+        _conversationStatus = null;
       });
     } catch (error) {
+      debugPrint('VoiceConversationScreen load events failed: $error');
       if (!mounted) return;
       setState(() {
         _isLoading = false;
+        _conversationStatus = '일정을 불러오지 못했어요.';
         _messages.add(
           _ConversationMessage.assistant(
             '일정을 불러오지 못했어요. Supabase 연결과 로그인 상태를 확인해 주세요.',
@@ -126,11 +145,16 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   Future<void> _submitText([String? overrideText]) async {
     final text = (overrideText ?? _inputController.text).trim();
     if (text.isEmpty || _isSubmitting) {
+      debugPrint(
+        'VoiceConversationScreen submit ignored: '
+        'empty=${text.isEmpty} submitting=$_isSubmitting',
+      );
       return;
     }
     _inputController.clear();
     setState(() {
       _isSubmitting = true;
+      _conversationStatus = '처리 중이에요...';
       _messages.add(_ConversationMessage.user(text));
     });
 
@@ -142,6 +166,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       }
       _conversation.replaceEvents(_events);
       final result = _conversation.handle(text);
+      debugPrint(
+        'VoiceConversationScreen result: '
+        'action=${result.action.name} visible=${result.visibleEvents.length}',
+      );
 
       if (result.deleteConfirmed && result.targetEvent != null) {
         await _deleteEvent(result.targetEvent!);
@@ -153,6 +181,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
 
       if (!mounted) return;
       setState(() {
+        _conversationStatus = null;
         _messages.add(
           _ConversationMessage.assistant(
             _messageForResult(result),
@@ -163,8 +192,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         );
       });
     } catch (error) {
+      debugPrint('VoiceConversationScreen submit failed: $error');
       if (!mounted) return;
       setState(() {
+        _conversationStatus = '처리 중 문제가 생겼어요.';
         _messages.add(
           const _ConversationMessage.assistant(
             '처리 중 문제가 생겼어요. 잠시 후 다시 말해 주세요.',
@@ -181,27 +212,68 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
 
   Future<void> _listenOnce() async {
     if (_isListening) {
+      debugPrint('VoiceConversationScreen listen ignored: already listening');
       return;
     }
-    setState(() => _isListening = true);
+    debugPrint('VoiceConversationScreen STT start');
+    setState(() {
+      _isListening = true;
+      _conversationStatus = '듣고 있어요...';
+      _inputController.clear();
+    });
     try {
       final result = await widget.sttService.listen(
-        onPartialResult: (_) {},
+        onPartialResult: (text) {
+          final normalized = SttService.normalizeVoiceTranscript(text);
+          debugPrint('VoiceConversationScreen STT partial: $normalized');
+          if (!mounted || normalized.isEmpty) {
+            return;
+          }
+          setState(() {
+            _inputController.value = TextEditingValue(
+              text: normalized,
+              selection: TextSelection.collapsed(offset: normalized.length),
+            );
+            _conversationStatus = '듣고 있어요...';
+          });
+        },
       );
       if (!mounted) {
         return;
       }
-      if (result.hasText) {
-        await _submitText(result.text);
+      final finalText = SttService.normalizeVoiceTranscript(result.text ?? '');
+      debugPrint(
+        'VoiceConversationScreen STT final: '
+        'success=${result.isSuccess} hasText=${result.hasText} text=$finalText',
+      );
+      if (result.isSuccess && finalText.isNotEmpty) {
+        _inputController.value = TextEditingValue(
+          text: finalText,
+          selection: TextSelection.collapsed(offset: finalText.length),
+        );
+        await _submitText(finalText);
       } else if (mounted) {
+        final message = result.message ?? '음성을 알아듣지 못했어요. 다시 말해 주세요.';
         setState(() {
+          _conversationStatus = message;
           _messages.add(
             _ConversationMessage.assistant(
-              result.message ?? '음성을 알아듣지 못했어요. 다시 말해 주세요.',
+              message,
             ),
           );
         });
       }
+    } catch (error) {
+      debugPrint('VoiceConversationScreen STT failed: $error');
+      if (!mounted) return;
+      setState(() {
+        _conversationStatus = '음성 입력을 시작하지 못했어요.';
+        _messages.add(
+          const _ConversationMessage.assistant(
+            '음성 입력을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.',
+          ),
+        );
+      });
     } finally {
       if (mounted) {
         setState(() => _isListening = false);
@@ -358,6 +430,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
               isSubmitting: _isSubmitting,
               isListening: _isListening,
               keepListening: _keepListening,
+              statusText: _conversationStatus,
               onKeepListeningChanged: (value) {
                 setState(() => _keepListening = value);
                 if (value) {
@@ -534,6 +607,7 @@ class _ConversationInputBar extends StatelessWidget {
     required this.isSubmitting,
     required this.isListening,
     required this.keepListening,
+    required this.statusText,
     required this.onKeepListeningChanged,
     required this.onListen,
     required this.onSubmit,
@@ -543,6 +617,7 @@ class _ConversationInputBar extends StatelessWidget {
   final bool isSubmitting;
   final bool isListening;
   final bool keepListening;
+  final String? statusText;
   final ValueChanged<bool> onKeepListeningChanged;
   final VoidCallback onListen;
   final VoidCallback onSubmit;
@@ -567,6 +642,19 @@ class _ConversationInputBar extends StatelessWidget {
               title: const Text('계속 듣기'),
               subtitle: const Text('답변 후에도 다음 말을 이어서 받을게요.'),
             ),
+            if ((statusText ?? '').trim().isNotEmpty) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  statusText!.trim(),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             Row(
               children: [
                 IconButton.filledTonal(
