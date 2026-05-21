@@ -99,7 +99,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
 
   Future<void> _loadEvents() async {
     debugPrint('VoiceConversationScreen load events start');
-    if (!AppEnv.isSupabaseReady || !authProvider.isSignedIn) {
+    final usesInjectedRepository = widget.repository != null;
+    if (!usesInjectedRepository &&
+        (!AppEnv.isSupabaseReady || !authProvider.isSignedIn)) {
       debugPrint(
         'VoiceConversationScreen load skipped: '
         'supabaseReady=${AppEnv.isSupabaseReady} '
@@ -115,7 +117,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     }
     setState(() => _isLoading = true);
     try {
-      final userId = authProvider.userId;
+      final userId = usesInjectedRepository ? null : authProvider.userId;
       final events = await _repository.listEvents(userId: userId);
       if (!mounted) return;
       debugPrint(
@@ -159,10 +161,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     });
 
     try {
-      if (_events.isEmpty &&
-          AppEnv.isSupabaseReady &&
-          authProvider.isSignedIn) {
-        _events = await _repository.listEvents(userId: authProvider.userId);
+      final canLoadEvents = widget.repository != null ||
+          (AppEnv.isSupabaseReady && authProvider.isSignedIn);
+      if (_events.isEmpty && canLoadEvents) {
+        _events = await _repository.listEvents(
+          userId: widget.repository == null ? authProvider.userId : null,
+        );
       }
       _conversation.replaceEvents(_events);
       final result = _conversation.handle(text);
@@ -401,8 +405,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         ],
       ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
+            if (_isLoading) const LinearProgressIndicator(minHeight: 2),
             Expanded(
               child: ListView.separated(
                 controller: _scrollController,
@@ -424,23 +430,25 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
                 itemCount: _messages.length,
               ),
             ),
-            if (_isLoading) const LinearProgressIndicator(minHeight: 2),
-            _ConversationInputBar(
-              controller: _inputController,
-              isSubmitting: _isSubmitting,
-              isListening: _isListening,
-              keepListening: _keepListening,
-              statusText: _conversationStatus,
-              onKeepListeningChanged: (value) {
-                setState(() => _keepListening = value);
-                if (value) {
-                  unawaited(_listenOnce());
-                }
-              },
-              onListen: _listenOnce,
-              onSubmit: _submitText,
-            ),
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: _ConversationInputBar(
+          controller: _inputController,
+          isSubmitting: _isSubmitting,
+          isListening: _isListening,
+          keepListening: _keepListening,
+          statusText: _conversationStatus,
+          onKeepListeningChanged: (value) {
+            setState(() => _keepListening = value);
+            if (value) {
+              unawaited(_listenOnce());
+            }
+          },
+          onListen: _listenOnce,
+          onSubmit: _submitText,
         ),
       ),
     );
@@ -634,13 +642,35 @@ class _ConversationInputBar extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SwitchListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              value: keepListening,
-              onChanged: onKeepListeningChanged,
-              title: const Text('계속 듣기'),
-              subtitle: const Text('답변 후에도 다음 말을 이어서 받을게요.'),
+            Row(
+              children: [
+                Switch(
+                  value: keepListening,
+                  onChanged: onKeepListeningChanged,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '계속 듣기',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              color: PlanFlowColors.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                      Text(
+                        '답변 후에도 다음 말을 이어서 받을게요.',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             if ((statusText ?? '').trim().isNotEmpty) ...[
               Align(
@@ -656,6 +686,7 @@ class _ConversationInputBar extends StatelessWidget {
               const SizedBox(height: 8),
             ],
             Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 IconButton.filledTonal(
                   tooltip: '음성으로 말하기',
@@ -678,6 +709,10 @@ class _ConversationInputBar extends StatelessWidget {
                 const SizedBox(width: 8),
                 FilledButton(
                   onPressed: isSubmitting ? null : onSubmit,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(64, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                  ),
                   child: const Text('전송'),
                 ),
               ],

@@ -25,9 +25,15 @@ Future<void> main() async {
   );
   await RemoteConfigService.initialize();
   FirebaseAnalytics.instance;
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    unawaited(FirebaseCrashlytics.instance.recordFlutterFatalError(details));
+  };
   PlatformDispatcher.instance.onError = (error, stack) {
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    debugPrint('Uncaught platform error: $error\n$stack');
+    unawaited(
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true),
+    );
     return true;
   };
 

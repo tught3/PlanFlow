@@ -1027,3 +1027,8 @@
 - Added Android today rows 5 and 6, hides the tomorrow section when no tomorrow rows are shown, and preserves event deep links for all six today rows.
 - Added regression coverage for 0/1/4/5/6/8 today-event scenarios, including the `오늘 일정 N개 더` overflow row.
 - Verification passed: `scripts/flutter-local.ps1 test test/services/home_widget_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+## 2026-05-21 Voice Conversation Blank Screen Fix
+- Restored Flutter render-error visibility by calling `FlutterError.presentError` before Crashlytics recording and logging uncaught platform errors to `debugPrint`.
+- Stabilized `VoiceConversationScreen` layout by moving the conversation input bar into `Scaffold.bottomNavigationBar`, keeping the message list in the body, and replacing the constrained `SwitchListTile` input header with a finite `Row` layout.
+- Added mobile-size widget coverage for the base conversation UI and initialText schedule-card rendering with an injected repository, while preserving the production Supabase/auth guard for live data.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/run on `192.168.0.102:5555`, PID check, and logcat check for Flutter/render errors.
