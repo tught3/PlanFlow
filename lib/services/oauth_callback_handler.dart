@@ -103,6 +103,10 @@ class OAuthCallbackHandler {
     );
   }
 
+  Future<void> handleAuthCallbackUri(Uri uri) {
+    return _handleUri(uri);
+  }
+
   Future<void> _handleInitialLinkOnce() async {
     if (_initialLinkHandled) {
       return;

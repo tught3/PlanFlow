@@ -89,24 +89,40 @@ class AuthService implements AuthSessionClient {
     PlanFlowOAuthProvider provider, {
     bool forceConsent = false,
   }) async {
+    final uri = await buildOAuthSignInUri(
+      provider,
+      forceConsent: forceConsent,
+    );
+    final queryParams = oauthQueryParamsFor(
+      provider,
+      forceConsent: forceConsent,
+    );
+    return _launchOAuthUrl(
+      uri: uri,
+      appProvider: provider,
+      supabaseProvider: _oauthProvider(provider),
+      queryParams: queryParams,
+      purpose: 'sign-in',
+    );
+  }
+
+  Future<Uri> buildOAuthSignInUri(
+    PlanFlowOAuthProvider provider, {
+    bool forceConsent = false,
+  }) async {
     final oauthProvider = _oauthProvider(provider);
     final scopes = oauthScopesFor(provider);
     final queryParams = oauthQueryParamsFor(
       provider,
       forceConsent: forceConsent,
     );
-    return _launchOAuthUrl(
-      appProvider: provider,
-      supabaseProvider: oauthProvider,
-      urlFactory: () => _client.auth.getOAuthSignInUrl(
-        provider: oauthProvider,
-        redirectTo: AppEnv.authRedirectUrl,
-        scopes: scopes,
-        queryParams: queryParams,
-      ),
+    final response = await _client.auth.getOAuthSignInUrl(
+      provider: oauthProvider,
+      redirectTo: AppEnv.authRedirectUrl,
+      scopes: scopes,
       queryParams: queryParams,
-      purpose: 'sign-in',
     );
+    return Uri.parse(response.url);
   }
 
   Future<bool> recheckNaverAccountConsent() {
@@ -120,15 +136,16 @@ class AuthService implements AuthSessionClient {
     }
 
     final queryParams = oauthQueryParamsFor(provider);
+    final response = await _client.auth.getLinkIdentityUrl(
+      oauthProvider,
+      redirectTo: AppEnv.authRedirectUrl,
+      scopes: oauthScopesFor(provider),
+      queryParams: queryParams,
+    );
     return _launchOAuthUrl(
+      uri: Uri.parse(response.url),
       appProvider: provider,
       supabaseProvider: oauthProvider,
-      urlFactory: () => _client.auth.getLinkIdentityUrl(
-        oauthProvider,
-        redirectTo: AppEnv.authRedirectUrl,
-        scopes: oauthScopesFor(provider),
-        queryParams: queryParams,
-      ),
       queryParams: queryParams,
       purpose: 'calendar-link',
     );
@@ -169,18 +186,20 @@ class AuthService implements AuthSessionClient {
   }
 
   Future<bool> _launchOAuthUrl({
+    required Uri uri,
     required PlanFlowOAuthProvider appProvider,
     required OAuthProvider supabaseProvider,
-    required Future<OAuthResponse> Function() urlFactory,
     required Map<String, String>? queryParams,
     required String purpose,
   }) async {
-    final launchMode = LaunchMode.inAppBrowserView;
-    final response = await urlFactory();
-    final uri = Uri.parse(response.url);
+    final launchMode = switch (appProvider) {
+      PlanFlowOAuthProvider.google => LaunchMode.externalApplication,
+      PlanFlowOAuthProvider.kakao => LaunchMode.inAppBrowserView,
+      PlanFlowOAuthProvider.naver => LaunchMode.inAppBrowserView,
+    };
     debugPrint(
       'OAuth launch: purpose=$purpose appProvider=$appProvider '
-      'supabaseProvider=${response.provider} host=${uri.host} path=${uri.path} '
+      'supabaseProvider=$supabaseProvider host=${uri.host} path=${uri.path} '
       'scopes=${oauthScopesFor(appProvider) ?? 'default'} '
       'queryParams=${queryParams?.keys.join(',') ?? 'none'}',
     );

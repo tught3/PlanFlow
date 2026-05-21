@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/analytics_service.dart';
@@ -167,6 +168,19 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     final authService = _authService;
     if (!AppEnv.isSupabaseReady || authService == null) {
       _setMessage(l10n.supabaseSocialMissing);
+      return;
+    }
+
+    if (provider == PlanFlowOAuthProvider.naver) {
+      setState(() {
+        _isLoading = false;
+        _message = null;
+      });
+      final completed = await context.push<bool>(AppRoutes.naverOAuth);
+      if (!mounted || completed == true || authProvider.isSignedIn) {
+        return;
+      }
+      _setMessage('네이버 인증을 완료하지 않았어요. 다시 시도해 주세요.');
       return;
     }
 

@@ -1068,3 +1068,9 @@
 - Lengthened the OAuth resume guard delay so PlanFlow does not show the incomplete-auth warning while the browser permission/interstitial handoff is still settling.
 - Confirmed on `192.168.0.102:5555` that `planflow://auth-callback` resolves to `com.planflow.app.MainActivity`.
 - Verification passed: focused auth service and login screen tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install on `192.168.0.102:5555`, app launch, and PID check.
+
+## 2026-05-21 Naver OAuth WebView Bypass
+- Added a Naver-only OAuth WebView route so Naver login no longer launches through Samsung Browser/Custom Tabs, while Kakao and Google keep their existing OAuth launch behavior.
+- The WebView intercepts `planflow://auth-callback` internally and hands it to the shared OAuth callback/session exchange flow; non-web app-intent navigations are blocked with Korean guidance to use Naver ID login inside the page.
+- Settings' Naver account recheck path now uses the same WebView route with `forceConsent=1` instead of opening the external browser flow.
+- Verification passed: focused auth service, login screen, and Naver OAuth WebView flow tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; install/launch/PID check on `192.168.0.102:5555`; callback scheme resolution check.

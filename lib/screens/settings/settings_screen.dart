@@ -1425,8 +1425,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _recheckNaverAccountConsent() async {
-    final authService = _authService;
-    if (authService == null) {
+    if (_authService == null) {
       _showSnack('Supabase 설정 후 네이버 계정 정보를 다시 확인할 수 있습니다.');
       return;
     }
@@ -1435,11 +1434,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     try {
-      OAuthCallbackHandler.markPendingLogin(PlanFlowOAuthProvider.naver);
-      final launched = await authService.recheckNaverAccountConsent();
-      if (!launched) {
-        OAuthCallbackHandler.clearPendingCallback();
-        _showSnack('네이버 계정 정보 확인 화면을 열지 못했습니다.');
+      final completed = await context.push<bool>(
+        '${AppRoutes.naverOAuth}?forceConsent=1',
+      );
+      if (mounted && completed != true && !authProvider.isSignedIn) {
+        _showSnack('네이버 계정 정보 확인을 완료하지 않았습니다.');
       }
     } catch (error, stackTrace) {
       OAuthCallbackHandler.clearPendingCallback();
