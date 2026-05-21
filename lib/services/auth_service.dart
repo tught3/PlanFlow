@@ -87,12 +87,14 @@ class AuthService implements AuthSessionClient {
 
   Future<bool> signInWithOAuth(PlanFlowOAuthProvider provider) async {
     final oauthProvider = _oauthProvider(provider);
+    final scopes = oauthScopesFor(provider);
     return _launchOAuthUrl(
       appProvider: provider,
       supabaseProvider: oauthProvider,
       urlFactory: () => _client.auth.getOAuthSignInUrl(
         provider: oauthProvider,
         redirectTo: AppEnv.authRedirectUrl,
+        scopes: scopes,
       ),
       purpose: 'sign-in',
     );
@@ -110,6 +112,7 @@ class AuthService implements AuthSessionClient {
       urlFactory: () => _client.auth.getLinkIdentityUrl(
         oauthProvider,
         redirectTo: AppEnv.authRedirectUrl,
+        scopes: oauthScopesFor(provider),
       ),
       purpose: 'calendar-link',
     );
@@ -163,7 +166,8 @@ class AuthService implements AuthSessionClient {
     final uri = Uri.parse(response.url);
     debugPrint(
       'OAuth launch: purpose=$purpose appProvider=$appProvider '
-      'supabaseProvider=${response.provider} host=${uri.host} path=${uri.path}',
+      'supabaseProvider=${response.provider} host=${uri.host} path=${uri.path} '
+      'scopes=${oauthScopesFor(appProvider) ?? 'default'}',
     );
     return launchUrl(
       uri,
@@ -214,6 +218,18 @@ class AuthService implements AuthSessionClient {
       PlanFlowOAuthProvider.google => OAuthProvider.google,
       PlanFlowOAuthProvider.kakao => OAuthProvider.kakao,
       PlanFlowOAuthProvider.naver => const OAuthProvider('custom:naver'),
+    };
+  }
+
+  @visibleForTesting
+  static String? oauthScopesFor(PlanFlowOAuthProvider provider) {
+    return switch (provider) {
+      PlanFlowOAuthProvider.google => null,
+      // Kakao returns KOE205 when the app asks for consent items that are not
+      // enabled in Kakao Developers. Keep login on profile-only scopes; email
+      // can be added later only after the Kakao consent item is approved.
+      PlanFlowOAuthProvider.kakao => 'profile_nickname profile_image',
+      PlanFlowOAuthProvider.naver => 'email',
     };
   }
 }

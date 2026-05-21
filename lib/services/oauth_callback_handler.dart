@@ -182,33 +182,37 @@ class OAuthCallbackHandler {
 
     final combined = '$error $errorCode $description';
     if (combined.contains('access_denied')) {
-      return '네이버 동의 화면에서 권한을 취소했거나 캘린더 일정담기 동의가 완료되지 않았습니다. 다시 시도해 주세요.';
+      final method = _pendingMethod == 'kakao'
+          ? '카카오'
+          : _pendingMethod == 'naver'
+              ? '네이버'
+              : '소셜';
+      return '$method 동의 화면에서 권한을 취소했거나 필수 동의가 완료되지 않았습니다. 다시 시도해 주세요.';
     }
     if (combined.contains('manual_linking_disabled')) {
-      return 'Supabase에서 Allow manual linking을 켜야 네이버 캘린더 권한을 추가 연결할 수 있습니다.';
+      return 'Supabase에서 Allow manual linking을 켜야 기존 계정에 소셜 로그인을 연결할 수 있습니다.';
     }
     if (combined.contains('bad_oauth_callback') || combined.contains('state')) {
-      return '네이버 인증 콜백이 올바르지 않아 연결을 완료하지 못했습니다. Supabase URL 설정을 확인해 주세요.';
+      return '인증 콜백이 올바르지 않아 로그인을 완료하지 못했습니다. Supabase Redirect URL 설정을 확인해 주세요.';
     }
     if (combined.contains('identity_already_exists')) {
-      return '이 네이버 계정은 이미 다른 PlanFlow 계정에 연결되어 있습니다. 해당 네이버 계정으로 로그인하거나 Supabase Users에서 기존 연결을 정리한 뒤 다시 시도해 주세요.';
+      return '이 소셜 계정은 이미 다른 PlanFlow 계정에 연결되어 있습니다. 해당 계정으로 로그인하거나 기존 연결을 정리한 뒤 다시 시도해 주세요.';
     }
     if (combined.contains('provider_email_needs_verification') ||
         combined.contains('getting user email')) {
-      return '네이버 로그인은 이메일 확인이 필요합니다. Naver Developers와 Supabase provider 설정을 확인해 주세요.';
+      return '소셜 로그인에서 이메일 정보를 확인하지 못했습니다. Kakao/Naver 동의항목과 Supabase provider 설정을 확인해 주세요.';
     }
 
-    return '네이버 인증이 완료되지 않았습니다. Supabase/Naver 콜백 설정을 확인해 주세요.';
+    return '소셜 인증을 완료하지 못했습니다. Supabase와 provider 콜백 설정을 확인해 주세요.';
   }
 
   String _messageForAuthException(AuthException error) {
     final message = error.message.toLowerCase();
     if (message.contains('identity_already_exists')) {
-      return '이 네이버 계정은 이미 다른 PlanFlow 계정에 연결되어 있습니다. 기존 연결을 정리하거나 같은 네이버 계정으로 로그인해 주세요.';
+      return '이 소셜 계정은 이미 다른 PlanFlow 계정에 연결되어 있습니다. 기존 연결을 정리하거나 같은 소셜 계정으로 로그인해 주세요.';
     }
     if (message.contains('getting user email')) {
-      return '네이버 인증은 됐지만 이메일 정보를 받지 못해 로그인을 완료하지 못했습니다. '
-          'Naver Developers에서 이메일 제공 항목을 필수로 켜고, Supabase Userinfo URL을 naver-userinfo-proxy로 바꿔 주세요.';
+      return '소셜 인증은 되었지만 이메일 정보를 받지 못해 로그인을 완료하지 못했습니다. Kakao/Naver 동의항목과 Supabase provider 설정을 확인해 주세요.';
     }
     if (message.contains('missing provider id') ||
         message.contains('missing_provider_id')) {
@@ -217,10 +221,9 @@ class OAuthCallbackHandler {
     }
     if (error.code == 'server_error' ||
         error.statusCode == 'unexpected_failure') {
-      return '네이버 인증 처리 중 Supabase 오류가 발생했습니다. '
-          'Naver Developers와 Supabase의 콜백/Provider 설정을 확인해 주세요.';
+      return '소셜 인증 처리 중 Supabase 오류가 발생했습니다. Provider 콜백과 동의항목 설정을 확인해 주세요.';
     }
-    return '네이버 인증을 완료하지 못했습니다. Supabase/Naver 콜백 설정을 확인해 주세요.';
+    return '소셜 인증을 완료하지 못했습니다. Supabase와 provider 콜백 설정을 확인해 주세요.';
   }
 
   bool _isAuthCallback(Uri uri) {

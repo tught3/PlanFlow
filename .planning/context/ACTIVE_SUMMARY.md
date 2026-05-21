@@ -4,6 +4,12 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-21 Kakao And Naver OAuth Login Fix
+- Kakao OAuth now passes explicit profile-only scopes (`profile_nickname profile_image`) so the app no longer asks Kakao for the unconfigured `account_email` consent item that produced KOE205.
+- Naver `naver-userinfo-proxy` now falls back to a stable PlanFlow-local email when Naver does not return an email, while marking `email_verified` only when the real Naver email exists; deployed to Supabase Edge Functions as version 5 with `verify_jwt=false`.
+- OAuth callback errors now use provider-neutral Korean guidance instead of Naver-only messages for Kakao/Naver login failures.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/auth_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, Edge Function list/version check, and unauthenticated Edge Function 401 check. Device install to `192.168.0.102:5555` was blocked because ADB reported the device offline and reconnect timed out.
+
 ## 2026-05-21 Widget Weekend Toggle And Weekly List Refinement
 - Weekly horizontal widget keeps compact hour-only labels, while the vertical weekly-list widget now uses full short times such as `09:00` and date-first labels like `5/18(월)`.
 - Added a local Settings toggle under `홈 위젯 표시` to hide weekends in home widgets without changing Supabase schema; the setting is stored locally and mirrored into widget data as `widget_hide_weekends`.

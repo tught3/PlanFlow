@@ -58,19 +58,18 @@ serve(async (req) => {
 
   const naverUser = profile.response;
   const subject = naverUser?.id?.trim();
-  const email = naverUser?.email?.trim().toLowerCase();
+  const rawEmail = naverUser?.email?.trim().toLowerCase() ?? "";
   if (!subject) {
     return json({ error: "missing_provider_id" }, 502);
   }
-  if (!email) {
-    return json({ error: "missing_email" }, 403);
-  }
+  const email = rawEmail || `naver-${subject}@users.planflow.local`;
 
   return json(
     {
       sub: subject,
       id: subject,
       email,
+      email_verified: rawEmail.length > 0,
       name: naverUser?.name ?? naverUser?.nickname ?? "",
       nickname: naverUser?.nickname ?? "",
       picture: naverUser?.profile_image ?? "",
