@@ -298,7 +298,7 @@ void main() {
     expect(payload.lastPastEvent?.eventId, 'past');
     expect(payload.todayUpcomingEvents.map((event) => event.title),
         contains('Next event'));
-    expect(payload.tomorrowEvents, isEmpty);
+    expect(payload.tomorrowEvents.single.eventId, 'tomorrow');
     final may20Cell = payload.monthCells.firstWhere((cell) => cell.day == 20);
     expect(may20Cell.inMonth, isTrue);
     expect(may20Cell.date, DateTime(2026, 5, 20));
@@ -355,7 +355,7 @@ void main() {
 
     expect(payload.lastPastEvent, isNull);
     expect(payload.todayUpcomingEvents.single.title, 'Ongoing event');
-    expect(payload.tomorrowEvents, isEmpty);
+    expect(payload.tomorrowEvents.single.title, 'Tomorrow preview');
   });
 
   test('HomeWidgetService refreshScheduleFromEvents delegates payload build',

@@ -954,3 +954,7 @@
 - Extended home-widget payloads with event IDs and date keys, fixed the local-day tomorrow fallback, and added monthly-cell fallback linking so existing widgets remain clickable after update.
 - Refined widget styling around the blue/white PlanFlow tone, including a clearer 1x1 microphone widget with an `음성입력` label.
 - Verification passed: home-widget route, voice launcher, calendar deep-link, and home-widget service focused tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; install and launch/PID check on `192.168.0.102:5555`; separate reviewer pass after fixes.
+## 2026-05-21 Today Widget Tomorrow Visibility Fix
+- Fixed the today home-widget payload so tomorrow events are always saved to `tomorrow_event_1/2`, even when there are remaining events today.
+- Updated the home-widget service regression tests so tomorrow events stay visible alongside today-upcoming and ongoing multi-day events.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/home_widget_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.

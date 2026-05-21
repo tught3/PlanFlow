@@ -163,9 +163,7 @@ class HomeWidgetSchedulePayloadBuilder {
       month: month,
       lastPastEvent: todayPast.isEmpty ? null : _listEvent(todayPast.last),
       todayUpcomingEvents: todayUpcoming,
-      tomorrowEvents: todayUpcoming.isEmpty
-          ? tomorrowEvents
-          : const <HomeWidgetListEventData>[],
+      tomorrowEvents: tomorrowEvents,
       monthDays: _monthDays(sortedEvents, month),
       monthCells: _monthCells(sortedEvents, month),
       weekDays: _weekDays(sortedEvents, now),
