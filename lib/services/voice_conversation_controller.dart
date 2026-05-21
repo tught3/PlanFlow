@@ -210,6 +210,23 @@ class VoiceConversationController {
     }
 
     if (_isLocationIntent(text)) {
+      final ambiguous = _resolveAmbiguousTimeTargets(text, state);
+      if (ambiguous.length > 1) {
+        state
+          ..visibleEvents = ambiguous
+          ..focusedEvent = null
+          ..pendingDelete = null;
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.showEvents,
+            inputText: input,
+            visibleEvents: ambiguous,
+            assistantMessage: '같은 시간대 일정이 여러 개예요. 몇 번째 일정인지 골라서 다시 말해 주세요.',
+          ),
+        );
+      }
       final target = _resolveFollowUpTarget(text, state);
       final locationText = _extractLocationText(text);
       if (target != null && locationText != null) {
@@ -229,6 +246,23 @@ class VoiceConversationController {
     }
 
     if (_isDeleteIntent(text)) {
+      final ambiguous = _resolveAmbiguousTimeTargets(text, state);
+      if (ambiguous.length > 1) {
+        state
+          ..visibleEvents = ambiguous
+          ..focusedEvent = null
+          ..pendingDelete = null;
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.showEvents,
+            inputText: input,
+            visibleEvents: ambiguous,
+            assistantMessage: '같은 시간대 일정이 여러 개예요. 삭제할 일정을 번호로 다시 말해 주세요.',
+          ),
+        );
+      }
       final target = _resolveFollowUpTarget(text, state);
       if (target != null) {
         final pending = VoiceConversationDeleteAction(
@@ -474,9 +508,9 @@ class VoiceConversationController {
 
     final time = _parseTimeReference(text);
     if (time != null) {
-      final match = _matchVisibleEventByTime(time, state.visibleEvents);
-      if (match != null) {
-        return match;
+      final matches = _matchVisibleEventsByTime(time, state.visibleEvents);
+      if (matches.length == 1) {
+        return matches.single;
       }
     }
 
@@ -486,6 +520,21 @@ class VoiceConversationController {
     }
 
     return null;
+  }
+
+  List<EventModel> _resolveAmbiguousTimeTargets(
+    String text,
+    _VoiceConversationState state,
+  ) {
+    if (_parseOrdinalIndex(text) != null || _isFocusedEventReference(text)) {
+      return const <EventModel>[];
+    }
+    final time = _parseTimeReference(text);
+    if (time == null) {
+      return const <EventModel>[];
+    }
+    final matches = _matchVisibleEventsByTime(time, state.visibleEvents);
+    return matches.length > 1 ? matches : const <EventModel>[];
   }
 
   int? _parseOrdinalIndex(String text) {
@@ -544,10 +593,11 @@ class VoiceConversationController {
     return _TimeReference(hour, hasPeriod: false);
   }
 
-  EventModel? _matchVisibleEventByTime(
+  List<EventModel> _matchVisibleEventsByTime(
     _TimeReference time,
     List<EventModel> visibleEvents,
   ) {
+    final matches = <EventModel>[];
     for (final event in visibleEvents) {
       final startAt = event.startAt;
       if (startAt == null) {
@@ -555,16 +605,17 @@ class VoiceConversationController {
       }
       final local = planflowLocal(startAt);
       if (local.hour == time.hour) {
-        return event;
+        matches.add(event);
+        continue;
       }
       if (!time.hasPeriod &&
           time.hour >= 1 &&
           time.hour <= 11 &&
           local.hour == time.hour + 12) {
-        return event;
+        matches.add(event);
       }
     }
-    return null;
+    return matches;
   }
 
   bool _isFocusedEventReference(String text) {

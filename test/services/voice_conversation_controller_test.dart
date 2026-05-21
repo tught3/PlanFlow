@@ -103,6 +103,27 @@ void main() {
       expect(controller.pendingDelete?.event.id, 'afternoon');
     });
 
+    test('duplicate time follow-up asks user to choose a numbered event', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first-3pm', '첫 오후 일정', DateTime(2026, 5, 7, 15)),
+          _event('second-3pm', '둘째 오후 일정', DateTime(2026, 5, 7, 15)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result = controller.handle('오후 3시 일정 삭제해줘');
+
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.requiresDeleteConfirmation, isFalse);
+      expect(result.visibleEvents.map((event) => event.id), <String>[
+        'first-3pm',
+        'second-3pm',
+      ]);
+      expect(controller.pendingDelete, isNull);
+    });
+
     test('pending delete confirmation returns flag and clears pending action',
         () {
       final controller = VoiceConversationController(

@@ -794,6 +794,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   onTapFinish: _finishVoiceFlow,
                   onManualSubmit: _confirmManualText,
                 ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const ValueKey('voice-conversation-mode-button'),
+                  onPressed: _isListening
+                      ? null
+                      : () => context.push(AppRoutes.voiceConversation),
+                  icon: const Icon(Icons.forum_outlined),
+                  label: const Text('AI 일정 대화 모드'),
+                ),
                 if (_rawTextController.text.trim().isEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),

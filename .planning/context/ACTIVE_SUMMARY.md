@@ -935,3 +935,9 @@
 - Added safeguards so common place/work words such as hospitals, meetings, documents, and projects are not promoted into people fields; date-context STT `모래` is normalized to `모레` only when schedule wording is present.
 - Hardened voice confirm saving so successful event writes are no longer reported as failures if post-save settings lookup fails, and added legacy Supabase payload fallback for live `events` tables that do not yet expose `participants`/`targets`.
 - Verification passed: focused voice structure/analysis/GPT tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/run on `192.168.0.102:5555`, and reviewer checks.
+
+## 2026-05-21 Voice Conversation Mode Checkpoint
+- Added the first AI schedule conversation mode entry from the voice input screen, routed through `/voice/conversation`, with a chat-style screen that can query schedules, keep session-local visible events, resolve follow-up references, open edit with resolved location coordinates, and require confirmation before delete.
+- Extended `VoiceConversationController` with duplicate-time ambiguity handling so commands like “오후 3시 일정 삭제” do not pick the first event when multiple visible events match the same time.
+- Hardened the conversation screen around STT lifecycle and delete confirmation: active listening is canceled on dispose, STT completion checks `mounted`, and UI delete confirmation clears pending state before deleting.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/voice_conversation_controller_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, reviewer re-check PASS, install on `192.168.0.102:5555`, app launch, and PID check.
