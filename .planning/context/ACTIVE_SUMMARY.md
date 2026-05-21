@@ -4,6 +4,11 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-21 Voice Transcript Tap Keyboard Fix
+- VoiceInputScreen now treats tapping the transcript field during active listening as an explicit manual-edit handoff: it stops the active STT listen, prevents the completed STT result from auto-submitting, and focuses the text field for keyboard correction.
+- Added regression coverage proving that tapping the transcript while listening stops STT, keeps the recognized text in place, does not navigate to confirm, and opens the test keyboard.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/voice_input_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-21 Kakao And Naver OAuth Login Fix
 - Kakao OAuth now passes explicit profile-only scopes (`profile_nickname profile_image`) so the app no longer asks Kakao for the unconfigured `account_email` consent item that produced KOE205.
 - Naver `naver-userinfo-proxy` now falls back to a stable PlanFlow-local email when Naver does not return an email, while marking `email_verified` only when the real Naver email exists; deployed to Supabase Edge Functions as version 5 with `verify_jwt=false`.

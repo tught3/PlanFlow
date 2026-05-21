@@ -89,6 +89,7 @@ class _FakeSttService extends SttService {
   Completer<SttListenResult>? _listenCompleter;
   ValueChanged<String>? _onPartialResult;
   String _latestText = '';
+  int stopCalls = 0;
 
   @override
   Future<SttListenResult> listen({
@@ -107,6 +108,7 @@ class _FakeSttService extends SttService {
 
   @override
   Future<void> stopActiveListen() async {
+    stopCalls += 1;
     if (_listenCompleter != null && !_listenCompleter!.isCompleted) {
       _listenCompleter!.complete(SttListenResult.success(_latestText));
     }
@@ -271,7 +273,9 @@ void main() {
     await tester.pump();
     expect(find.text('준비됨'), findsNothing);
 
-    await tester.tap(find.text('완료'));
+    await tester.tap(
+      find.byKey(const ValueKey('voice-input-confirm-current-text-button')),
+    );
     await tester.pump();
     await tester.pumpAndSettle();
 
@@ -649,6 +653,57 @@ void main() {
 
     expect(find.text('일정 확인 1'), findsOneWidget);
     expect(confirmBuildCount, 1);
+  });
+
+  testWidgets('듣는 중 텍스트를 탭하면 자동 제출 대신 키보드 수정으로 전환한다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+
+    await tester.tap(find.byType(TextField));
+    await tester.pumpAndSettle();
+
+    expect(fakeStt.stopCalls, 1);
+    expect(find.text('일정 확인'), findsNothing);
+    expect(
+      find.text('음성 인식을 잠시 멈췄어요. 키보드로 수정해 주세요.'),
+      findsOneWidget,
+    );
+    expect(tester.testTextInput.isVisible, isTrue);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '내일 오전 10시 정장집 방문',
+    );
   });
 
   testWidgets('이동 표현은 후보 선택이 아니라 수정 화면으로 간다', (tester) async {

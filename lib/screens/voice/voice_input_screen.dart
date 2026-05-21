@@ -53,6 +53,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   bool _didResolveAutoStart = false;
   bool _isApplyingTranscriptProgrammatically = false;
   bool _didEditTranscriptManually = false;
+  bool _manualEditInterruptedListening = false;
   bool _isSubmittingVoiceCommand = false;
   int _partialTranscriptToken = 0;
   int _draftPreparationToken = 0;
@@ -140,6 +141,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
     setState(() {
       _isListening = true;
+      _manualEditInterruptedListening = false;
       _recognizedText = null;
       _sttRestartCount = 0;
       _statusMessage = null;
@@ -165,6 +167,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         },
       );
       if (!mounted) {
+        return;
+      }
+
+      if (_manualEditInterruptedListening) {
+        _focusManualInput();
         return;
       }
 
@@ -209,6 +216,23 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (_isListening) {
       await widget.sttService.stopActiveListen();
     }
+  }
+
+  Future<void> _activateManualTranscriptEditing() async {
+    if (_isListening) {
+      _manualEditInterruptedListening = true;
+      _didEditTranscriptManually = true;
+      _partialTranscriptToken++;
+      await widget.sttService.stopActiveListen();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isListening = false;
+        _statusMessage = '음성 인식을 잠시 멈췄어요. 키보드로 수정해 주세요.';
+      });
+    }
+    _focusManualInput();
   }
 
   Future<void> _cancelVoiceFlow() async {
@@ -784,6 +808,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   recognizedText: _recognizedText,
                   controller: _rawTextController,
                   focusNode: _rawTextFocusNode,
+                  onTapTranscript: () =>
+                      unawaited(_activateManualTranscriptEditing()),
                   onManualSubmit: _continueWithRawText,
                 ),
                 const SizedBox(height: 8),
@@ -979,6 +1005,7 @@ class _VoiceTranscriptSection extends StatelessWidget {
     required this.recognizedText,
     required this.controller,
     required this.focusNode,
+    required this.onTapTranscript,
     required this.onManualSubmit,
   });
 
@@ -986,6 +1013,7 @@ class _VoiceTranscriptSection extends StatelessWidget {
   final String? recognizedText;
   final TextEditingController controller;
   final FocusNode focusNode;
+  final VoidCallback onTapTranscript;
   final VoidCallback onManualSubmit;
 
   @override
@@ -1020,6 +1048,7 @@ class _VoiceTranscriptSection extends StatelessWidget {
               minLines: 2,
               textInputAction: TextInputAction.done,
               decoration: InputDecoration(hintText: l10n.voiceInputHint),
+              onTap: onTapTranscript,
               onSubmitted: (_) {
                 FocusScope.of(context).unfocus();
                 onManualSubmit();
