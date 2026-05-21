@@ -4,6 +4,12 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-22 Naver OAuth WebView Subresource Error Guard
+- Naver OAuth WebView now treats only main-frame `WebResourceError` callbacks as fatal page-load failures.
+- Subresource failures such as images, favicon, or auxiliary scripts are logged as `web_resource_ignored` and no longer replace the login page with the misleading `네이버 로그인 페이지를 불러오지 못했어요` error.
+- The OAuth phase logger now records whether a resource error came from the main frame while still avoiding auth code, token, verifier, and session values.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/naver_oauth_webview_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-22 Naver OAuth WebView Phase Diagnostics
 - Split Naver OAuth WebView startup into prepare, OAuth URL generation, and WebView load phases so the app can distinguish setup, URL, and page-load failures.
 - Deferred the initial Naver OAuth load until after the first frame, after the WebView controller is configured and the platform view has started rendering.

@@ -106,9 +106,21 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
             if (!mounted || _isHandlingCallback) {
               return;
             }
+            final errorUri = error.url == null ? null : Uri.tryParse(error.url!);
+            if (!NaverOAuthWebViewFlow.isMainFrameError(error)) {
+              _logOAuthPhase(
+                'web_resource_ignored',
+                uri: errorUri,
+                error: '${error.errorCode}:${error.description}',
+                isForMainFrame: error.isForMainFrame,
+              );
+              return;
+            }
             _logOAuthPhase(
               'web_resource_failed',
+              uri: errorUri,
               error: '${error.errorCode}:${error.description}',
+              isForMainFrame: error.isForMainFrame,
             );
             setState(() {
               _isLoading = false;
@@ -300,12 +312,14 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
     Uri? uri,
     Object? error,
     StackTrace? stackTrace,
+    bool? isForMainFrame,
   }) {
     debugPrint(
       'Naver OAuth phase=$phase '
       'host=${uri?.host ?? 'none'} '
       'path=${uri?.path ?? 'none'} '
       'forceConsent=${widget.forceConsent} '
+      'mainFrame=${isForMainFrame ?? 'unknown'} '
       'errorType=${error == null ? 'none' : error.runtimeType}',
     );
     if (error != null) {
@@ -361,5 +375,9 @@ class NaverOAuthWebViewFlow {
 
   static bool isWebNavigation(Uri uri) {
     return uri.scheme == 'https' || uri.scheme == 'http';
+  }
+
+  static bool isMainFrameError(WebResourceError error) {
+    return error.isForMainFrame ?? true;
   }
 }

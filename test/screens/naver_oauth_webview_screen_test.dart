@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/screens/auth/naver_oauth_webview_screen.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 void main() {
   group('NaverOAuthWebViewFlow', () {
@@ -40,6 +41,27 @@ void main() {
         ),
         isFalse,
       );
+    });
+
+    test('treats only main-frame resource errors as page load failures', () {
+      const subResourceError = WebResourceError(
+        errorCode: -2,
+        description: 'sub resource failed',
+        isForMainFrame: false,
+      );
+      const mainFrameError = WebResourceError(
+        errorCode: -2,
+        description: 'main frame failed',
+        isForMainFrame: true,
+      );
+      const unknownFrameError = WebResourceError(
+        errorCode: -2,
+        description: 'unknown frame failed',
+      );
+
+      expect(NaverOAuthWebViewFlow.isMainFrameError(subResourceError), isFalse);
+      expect(NaverOAuthWebViewFlow.isMainFrameError(mainFrameError), isTrue);
+      expect(NaverOAuthWebViewFlow.isMainFrameError(unknownFrameError), isTrue);
     });
   });
 }
