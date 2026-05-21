@@ -75,6 +75,36 @@ class _FakeEventRepository extends EventRepository {
   Future<void> deleteEvent(String eventId, {String? userId}) async {}
 }
 
+class _SlowSecondListEventRepository extends EventRepository {
+  _SlowSecondListEventRepository();
+
+  final Completer<List<EventModel>> secondListCompleter =
+      Completer<List<EventModel>>();
+  int _listCallCount = 0;
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) {
+    _listCallCount += 1;
+    if (_listCallCount == 1) {
+      return Future<List<EventModel>>.value(const <EventModel>[]);
+    }
+    return secondListCompleter.future;
+  }
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async =>
+      null;
+
+  @override
+  Future<EventModel> createEvent(EventModel event) async => event;
+
+  @override
+  Future<EventModel> updateEvent(EventModel event) async => event;
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) async {}
+}
+
 void main() {
   Future<void> pumpConversation(
     WidgetTester tester,
@@ -200,6 +230,28 @@ void main() {
         findsOneWidget);
     expect(find.text('금요일 일정 1'), findsOneWidget);
     expect(find.text('금요일 일정 4'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 전송 처리 중 문맥 분석 로더를 보여준다', (tester) async {
+    final repository = _SlowSecondListEventRepository();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(repository: repository),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '오늘 일정 알려줘');
+    await tester.tap(find.text('전송'));
+    await tester.pump();
+
+    expect(find.text('AI 문맥 분석중이에요...'), findsWidgets);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    repository.secondListCompleter.complete(const <EventModel>[]);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

@@ -156,9 +156,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     _inputController.clear();
     setState(() {
       _isSubmitting = true;
-      _conversationStatus = '처리 중이에요...';
+      _conversationStatus = 'AI 문맥 분석중이에요...';
       _messages.add(_ConversationMessage.user(text));
     });
+    _scrollToBottom();
 
     try {
       final canLoadEvents = widget.repository != null ||
@@ -414,6 +415,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
                 controller: _scrollController,
                 padding: const EdgeInsets.all(AppConstants.defaultPadding),
                 itemBuilder: (context, index) {
+                  if (index >= _messages.length) {
+                    return const _ProcessingBubble();
+                  }
                   final message = _messages[index];
                   return _MessageBubble(
                     message: message,
@@ -427,7 +431,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
                   );
                 },
                 separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemCount: _messages.length,
+                itemCount: _messages.length + (_isSubmitting ? 1 : 0),
               ),
             ),
           ],
@@ -449,6 +453,44 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
           },
           onListen: _listenOnce,
           onSubmit: _submitText,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProcessingBubble extends StatelessWidget {
+  const _ProcessingBubble();
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 520),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: PlanFlowColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: PlanFlowColors.primaryFaint),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2.4),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'AI 문맥 분석중이에요...',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          ],
         ),
       ),
     );

@@ -124,6 +124,26 @@ void main() {
       expect(controller.focusedEvent?.id, 'third');
     });
 
+    test('numeric ordinal particle is removed from extracted location text',
+        () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '첫 일정', DateTime(2026, 5, 7, 9)),
+          _event('second', '둘째 일정', DateTime(2026, 5, 7, 10)),
+          _event('third', '셋째 일정', DateTime(2026, 5, 7, 11)),
+          _event('fourth', '넷째 일정', DateTime(2026, 5, 7, 12)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result = controller.handle('4번에 강릉 건도리횟집 장소추가');
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'fourth');
+      expect(result.locationText, '강릉 건도리횟집');
+    });
+
     test('field-first location wording extracts only the new place', () {
       final controller = VoiceConversationController(
         events: <EventModel>[

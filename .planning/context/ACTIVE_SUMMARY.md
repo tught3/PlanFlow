@@ -1032,3 +1032,8 @@
 - Stabilized `VoiceConversationScreen` layout by moving the conversation input bar into `Scaffold.bottomNavigationBar`, keeping the message list in the body, and replacing the constrained `SwitchListTile` input header with a finite `Row` layout.
 - Added mobile-size widget coverage for the base conversation UI and initialText schedule-card rendering with an injected repository, while preserving the production Supabase/auth guard for live data.
 - Verification passed: `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/run on `192.168.0.102:5555`, PID check, and logcat check for Flutter/render errors.
+
+## 2026-05-21 Voice Conversation Loading And Ordinal Location Fix
+- Added a visible assistant-side loading bubble and bottom status text `AI 문맥 분석중이에요...` while a follow-up voice/text command is being interpreted and routed.
+- Fixed follow-up location parsing so ordinal target particles such as `4번에` are removed from the location payload; `4번에 강릉 건도리횟집 장소추가` now targets the 4th visible event and stores only `강릉 건도리횟집` as the location text.
+- Verification passed: focused voice conversation controller and screen tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.

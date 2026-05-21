@@ -589,6 +589,16 @@ class VoiceConversationController {
 
   String? _extractLocationText(String text) {
     var cleaned = text;
+    cleaned = cleaned.replaceFirst(
+      RegExp(r'^\s*\d+\s*(?:번째|번\s*째|번)\s*(?:일정)?(?:에|으로|을|를)?\s*'),
+      ' ',
+    );
+    cleaned = cleaned.replaceFirst(
+      RegExp(
+        r'^\s*(첫|두|둘|세|셋|네|넷|다섯|여섯|일곱|여덟|아홉|열)\s*(?:번째|째|번)\s*(?:일정)?(?:에|으로|을|를)?\s*',
+      ),
+      ' ',
+    );
     cleaned = cleaned.replaceAll(
       RegExp(r'\d+\s*(?:번째|번\s*째|번)\s*일정(?:에|으로|을|를)?'),
       ' ',
