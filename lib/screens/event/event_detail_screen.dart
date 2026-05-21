@@ -14,6 +14,7 @@ import '../../data/models/pre_action_model.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../services/app_feedback_service.dart';
 import '../../services/background_task_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
@@ -323,6 +324,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       },
       owner: 'EventDetailScreen',
       label: 'delete_follow_ups',
+      failureMessage: '삭제는 완료됐지만 알림/위젯 정리 중 문제가 생겼어요. 문제 신고에 이 문구를 함께 보내 주세요.',
     );
   }
 
@@ -335,7 +337,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     } catch (error, stackTrace) {
       debugPrint('EventDetailScreen follow-up failed ($label): $error');
       debugPrintStack(stackTrace: stackTrace);
+      AppFeedbackService.showSnackBar(_followUpFailureMessage(label));
     }
+  }
+
+  String _followUpFailureMessage(String label) {
+    final taskName = switch (label) {
+      'cleanup_after_delete' => '삭제된 일정의 알림 정리',
+      'resync_external_preparation_after_delete' => '삭제 후 준비알람 다시 계산',
+      'refresh_home_widget_after_delete' => '홈 위젯 갱신',
+      _ => '후속 작업',
+    };
+    return '삭제는 완료됐지만 $taskName 중 문제가 생겼어요. 문제 신고에 이 문구를 함께 보내 주세요.';
   }
 
   Future<void> _refreshHomeWidget(EventRepository repository) async {

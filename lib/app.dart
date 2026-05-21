@@ -14,6 +14,7 @@ import 'core/theme.dart';
 import 'data/repositories/settings_repository.dart';
 import 'providers/auth_provider.dart';
 import 'services/calendar_auto_sync_service.dart';
+import 'services/app_feedback_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
 import 'services/oauth_callback_handler.dart';
@@ -191,6 +192,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       builder: (context, _) {
         return MaterialApp.router(
           debugShowCheckedModeBanner: false,
+          scaffoldMessengerKey: AppFeedbackService.scaffoldMessengerKey,
           title: 'PlanFlow',
           theme: buildPlanFlowTheme(),
           locale: PlanFlowRegionController.instance.region.uiLocale,

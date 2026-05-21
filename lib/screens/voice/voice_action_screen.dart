@@ -12,6 +12,7 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../services/app_feedback_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/background_task_service.dart';
 import '../../services/calendar_auto_sync_service.dart';
@@ -1183,6 +1184,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
             () => CalendarAutoSyncService().syncAfterEventSave(savedEvent),
             owner: 'VoiceActionScreen',
             label: 'calendar_auto_sync_after_direct_save',
+            failureMessage:
+                '저장은 완료됐지만 캘린더 동기화 중 문제가 생겼어요. 문제 신고에 이 문구를 함께 보내 주세요.',
           ),
         );
         unawaited(
@@ -1195,6 +1198,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
             ),
             owner: 'VoiceActionScreen',
             label: 'event_preparation_after_direct_save',
+            failureMessage:
+                '저장은 완료됐지만 준비사항 계산 중 문제가 생겼어요. 문제 신고에 이 문구를 함께 보내 주세요.',
           ),
         );
         await _runFollowUpStep(
@@ -1208,6 +1213,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       },
       owner: 'VoiceActionScreen',
       label: 'direct_save_follow_ups',
+      failureMessage: '저장은 완료됐지만 알림/위젯 정리 중 문제가 생겼어요. 문제 신고에 이 문구를 함께 보내 주세요.',
     );
   }
 
@@ -1220,7 +1226,22 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     } catch (error, stackTrace) {
       debugPrint('VoiceActionScreen follow-up failed ($label): $error');
       debugPrintStack(stackTrace: stackTrace);
+      AppFeedbackService.showSnackBar(_followUpFailureMessage(label));
     }
+  }
+
+  String _followUpFailureMessage(String label) {
+    final taskName = switch (label) {
+      'sync_after_save' => '알림/스마트준비알람 정리',
+      'resync_external_preparation' => '스마트준비알람 다시 계산',
+      'resync_previous_day_external_preparation' => '이전 날짜 준비알람 정리',
+      'refresh_home_widget' || 'refresh_home_widget_after_delete' => '홈 위젯 갱신',
+      'voice_log_direct_save' || 'voice_log_delete' => '음성 처리 기록 저장',
+      'cleanup_after_delete' => '삭제된 일정의 알림 정리',
+      'resync_external_preparation_after_delete' => '삭제 후 준비알람 다시 계산',
+      _ => '후속 작업',
+    };
+    return '일정 저장/삭제는 완료됐지만 $taskName 중 문제가 생겼어요. 문제 신고에 이 문구를 함께 보내 주세요.';
   }
 
   /// 카드에 표시할 변경 미리보기 문자열을 반환한다.
@@ -1799,6 +1820,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       },
       owner: 'VoiceActionScreen',
       label: 'delete_follow_ups',
+      failureMessage: '삭제는 완료됐지만 알림/위젯 정리 중 문제가 생겼어요. 문제 신고에 이 문구를 함께 보내 주세요.',
     );
   }
 
