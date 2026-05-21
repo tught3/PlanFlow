@@ -29,6 +29,7 @@ import '../../services/daily_backup_scheduler_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/device_calendar_service.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/home_widget_service.dart';
 import '../../services/naver_caldav_service.dart';
 import '../../services/naver_calendar_permission_service.dart';
 import '../../widgets/planflow_logo.dart';
@@ -84,6 +85,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final DailyBackupSchedulerService _dailyBackupSchedulerService;
   late final DeviceCalendarService _deviceCalendarService;
   late final NaverCalDavService _naverCalDavService;
+  late final HomeWidgetService _homeWidgetService;
 
   BackupService? _backupService;
   AuthService? _authService;
@@ -99,6 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _departureSafetyMarginMin = 20;
   String _travelMode = 'car';
   bool _voiceAutoStart = false;
+  bool _hideWidgetWeekends = false;
   String _preferredMapProvider = 'naver';
   String _countryCode = PlanFlowRegions.korea.countryCode;
   String _localeCode = PlanFlowRegions.korea.localeCode;
@@ -168,6 +171,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _dailyBackupSchedulerService = const DailyBackupSchedulerService();
     _deviceCalendarService =
         widget._deviceCalendarService ?? DeviceCalendarService();
+    _homeWidgetService = HomeWidgetService();
     _ownsNaverCalDavService = widget._naverCalDavService == null;
     _naverCalDavService = widget._naverCalDavService ?? NaverCalDavService();
     _backupService = widget._backupService ??
@@ -177,6 +181,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _naverCalendarPermissionService = widget._naverCalendarPermissionService;
 
     unawaited(_loadSettings());
+    unawaited(_loadWidgetDisplaySettings());
     unawaited(_loadCalendarStatus());
     unawaited(_loadAutoSyncSnapshot());
     unawaited(_loadAlarmRuntimeStatus());
@@ -281,6 +286,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       effective,
       reason: 'settings_loaded',
     ));
+  }
+
+  Future<void> _loadWidgetDisplaySettings() async {
+    final hideWeekends = await _homeWidgetService.areWeekendsHidden();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _hideWidgetWeekends = hideWeekends;
+    });
   }
 
   Future<void> _loadCalendarStatus() async {
@@ -1881,12 +1896,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _departureSafetyMarginMin = 20;
       _travelMode = 'car';
       _voiceAutoStart = false;
+      _hideWidgetWeekends = false;
       _preferredMapProvider = 'naver';
       _countryCode = PlanFlowRegions.korea.countryCode;
       _localeCode = PlanFlowRegions.korea.localeCode;
       _timeZoneId = PlanFlowRegions.korea.timeZoneId;
       PlanFlowRegionController.instance.reset();
     });
+    unawaited(_homeWidgetService.setHideWeekends(false));
     unawaited(_persistSettings(successMessage: '설정을 기본값으로 되돌렸습니다.'));
   }
 
@@ -2238,6 +2255,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _voiceAutoStart = value;
                     });
                     unawaited(_persistSettings());
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: '홈 위젯 표시',
+                subtitle: '업무용으로 볼 때 위젯에서 주말 칸과 주말 일정을 숨길 수 있습니다.',
+                child: SwitchListTile.adaptive(
+                  key: const ValueKey('settings-widget-hide-weekends'),
+                  contentPadding: EdgeInsets.zero,
+                  value: _hideWidgetWeekends,
+                  activeThumbColor: PlanFlowColors.primary,
+                  activeTrackColor: PlanFlowColors.primaryFaint,
+                  title: const Text('주말 숨기기'),
+                  subtitle: Text(
+                    _hideWidgetWeekends
+                        ? '토·일 칸을 숨겨 평일 정보를 더 넓게 표시'
+                        : '토·일 일정도 위젯에 함께 표시',
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _hideWidgetWeekends = value;
+                    });
+                    unawaited(_homeWidgetService.setHideWeekends(value));
                   },
                 ),
               ),

@@ -151,6 +151,15 @@ abstract class BasePlanFlowWidgetProvider(
         return LocalDate.now(planFlowZone)
     }
 
+    protected fun hideWeekends(widgetData: SharedPreferences): Boolean {
+        return widgetData.getBoolean("widget_hide_weekends", false)
+    }
+
+    protected fun isWeekend(date: LocalDate?): Boolean {
+        return date?.dayOfWeek == java.time.DayOfWeek.SATURDAY ||
+            date?.dayOfWeek == java.time.DayOfWeek.SUNDAY
+    }
+
     protected fun formatTime(raw: String?): String {
         if (raw.isNullOrBlank()) {
             return "시간 미정"
@@ -214,6 +223,10 @@ abstract class BasePlanFlowWidgetProvider(
         } catch (_: Exception) {
             fallback
         }
+    }
+
+    protected fun formatMonthDayWithWeekday(date: LocalDate): String {
+        return DateTimeFormatter.ofPattern("M/d(E)", Locale.KOREA).format(date)
     }
 
     protected fun formatTravelMinutes(travelMinutes: Int?): String {
@@ -338,14 +351,18 @@ abstract class BasePlanFlowWidgetProvider(
         isFaded: Boolean,
         emptyMessageId: Int? = null,
         emptyMessage: String? = null,
+        hideWeekendEvents: Boolean = false,
     ) {
         var hasAnyEvent = false
 
         eventIds.forEachIndexed { index, id ->
             val slot = index + 1
-            val title = widgetData.getString("${prefix}_${slot}_title", null)?.takeIf { it.isNotBlank() }
+            var title = widgetData.getString("${prefix}_${slot}_title", null)?.takeIf { it.isNotBlank() }
             val time = widgetData.getString("${prefix}_${slot}_time", null)
             val isCritical = widgetData.getBoolean("${prefix}_${slot}_is_critical", false)
+            if (hideWeekendEvents && isWeekend(parseDate(time))) {
+                title = null
+            }
             if (!title.isNullOrBlank()) {
                 hasAnyEvent = true
             }
@@ -450,11 +467,16 @@ class PlanFlowVerticalScheduleWidgetProvider :
         widgetData: SharedPreferences,
     ) {
         views.setTextViewText(R.id.widget_vertical_title, "오늘 일정")
+        val hideWeekendEvents = hideWeekends(widgetData)
 
         bindEventText(
             views,
             R.id.widget_last_past_event_1_title,
-            widgetData.getString("last_past_event_title", null),
+            widgetData.getString("last_past_event_title", null)
+                ?.takeUnless {
+                    hideWeekendEvents &&
+                        isWeekend(parseDate(widgetData.getString("last_past_event_time", null)))
+                },
             widgetData.getString("last_past_event_time", null),
             widgetData.getBoolean("last_past_event_is_critical", false),
             isMuted = true,
@@ -477,6 +499,7 @@ class PlanFlowVerticalScheduleWidgetProvider :
             isFaded = false,
             emptyMessageId = R.id.widget_today_upcoming_empty_message,
             emptyMessage = "오늘 남은 일정은 없어요",
+            hideWeekendEvents = hideWeekendEvents,
         )
 
         bindSectionEvents(
@@ -489,8 +512,16 @@ class PlanFlowVerticalScheduleWidgetProvider :
                 R.id.widget_tomorrow_event_2_title,
             ),
             isFaded = false,
+            hideWeekendEvents = hideWeekendEvents,
         )
-        val tomorrowCount = widgetData.getInt("tomorrow_event_count", 0)
+        val tomorrowCount = if (hideWeekendEvents) {
+            (1..2).count { slot ->
+                !widgetData.getString("tomorrow_event_${slot}_title", null).isNullOrBlank() &&
+                    !isWeekend(parseDate(widgetData.getString("tomorrow_event_${slot}_time", null)))
+            }
+        } else {
+            widgetData.getInt("tomorrow_event_count", 0)
+        }
         views.setViewVisibility(
             R.id.widget_tomorrow_section_label,
             if (tomorrowCount > 0) View.VISIBLE else View.GONE,
@@ -570,6 +601,7 @@ class PlanFlowWeeklyWidgetProvider :
         widgetData: SharedPreferences,
     ) {
         views.setTextViewText(R.id.widget_week_title, "주간 일정")
+        val hideWeekendColumns = hideWeekends(widgetData)
         val weekStart = todayDate().minusDays((todayDate().dayOfWeek.value - 1).toLong())
         val weekColumnIds = intArrayOf(
             R.id.widget_week_day_1_column,
@@ -648,14 +680,20 @@ class PlanFlowWeeklyWidgetProvider :
         for (index in 0 until 7) {
             val slot = index + 1
             val rawDate = widgetData.getString("week_day_${slot}_date", null)
+            val fallbackDate = weekStart.plusDays(index.toLong())
+            val targetDate = parseLocalDate(rawDate) ?: fallbackDate
+            if (hideWeekendColumns && isWeekend(targetDate)) {
+                views.setViewVisibility(weekColumnIds[index], View.GONE)
+                continue
+            }
+            views.setViewVisibility(weekColumnIds[index], View.VISIBLE)
             views.setTextViewText(labelIds[index], formatWeekdayLabel(rawDate, "월"))
             views.setTextViewText(dateIds[index], formatMonthDay(rawDate, ""))
-            val fallbackDate = weekStart.plusDays(index.toLong())
             bindCalendarLink(
                 context,
                 views,
                 weekColumnIds[index],
-                parseLocalDate(rawDate) ?: fallbackDate,
+                targetDate,
             )
 
             val e1Title = widgetData.getString("week_day_${slot}_event_1_title", null)
@@ -773,6 +811,7 @@ class PlanFlowWeeklyListWidgetProvider :
         widgetData: SharedPreferences,
     ) {
         views.setTextViewText(R.id.widget_week_list_title, "주간 일정")
+        val hideWeekendRows = hideWeekends(widgetData)
         val weekStart = todayDate().minusDays((todayDate().dayOfWeek.value - 1).toLong())
 
         for (index in 0 until 7) {
@@ -787,10 +826,15 @@ class PlanFlowWeeklyListWidgetProvider :
             if (rowId == 0 || labelId == 0 || overflowId == 0) {
                 continue
             }
+            if (hideWeekendRows && isWeekend(targetDate)) {
+                views.setViewVisibility(rowId, View.GONE)
+                continue
+            }
+            views.setViewVisibility(rowId, View.VISIBLE)
 
             views.setTextViewText(
                 labelId,
-                DateTimeFormatter.ofPattern("E M/d", Locale.KOREA).format(targetDate),
+                formatMonthDayWithWeekday(targetDate),
             )
             bindCalendarLink(context, views, rowId, targetDate)
 
@@ -815,7 +859,6 @@ class PlanFlowWeeklyListWidgetProvider :
                     time,
                     isCritical,
                     emptyText = if (eventSlot == 1) "일정 없음" else null,
-                    hourOnly = true,
                 )
                 bindEventLinkIfAvailable(
                     context,
@@ -852,6 +895,7 @@ class PlanFlowMonthlyWidgetProvider :
         widgetData: SharedPreferences,
     ) {
         val hasMonthCellPayload = hasMonthCellPayload(widgetData)
+        val hideWeekendCells = hideWeekends(widgetData)
         val monthStart = LocalDate.now(ZoneId.of("Asia/Seoul")).withDayOfMonth(1)
         val fallbackCells = buildCurrentMonthFallbackCells(monthStart)
 
@@ -871,6 +915,15 @@ class PlanFlowMonthlyWidgetProvider :
             val targetDate = cellDate ?: fallbackCell?.third
 
             if (dayId == 0) {
+                continue
+            }
+            if (cellContainerId != 0) {
+                views.setViewVisibility(
+                    cellContainerId,
+                    if (hideWeekendCells && isWeekend(targetDate)) View.GONE else View.VISIBLE,
+                )
+            }
+            if (hideWeekendCells && isWeekend(targetDate)) {
                 continue
             }
 

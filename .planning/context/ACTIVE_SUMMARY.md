@@ -4,6 +4,12 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-21 Widget Weekend Toggle And Weekly List Refinement
+- Weekly horizontal widget keeps compact hour-only labels, while the vertical weekly-list widget now uses full short times such as `09:00` and date-first labels like `5/18(월)`.
+- Added a local Settings toggle under `홈 위젯 표시` to hide weekends in home widgets without changing Supabase schema; the setting is stored locally and mirrored into widget data as `widget_hide_weekends`.
+- Widget providers use the weekend flag to hide Saturday/Sunday columns or rows in weekly/monthly widgets, and HomeWidgetService can build payloads with weekend events filtered out for refreshed widget data.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/home_widget_service_test.dart --no-pub`, Android resource/Kotlin compile, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-21 Weekly Widget Time Compact And Vertical List Checkpoint
 - Weekly home-widget event rows now render times as hour-only Korean labels such as `9시` and `15시`, while underlying event timestamps remain unchanged.
 - Added a new `PlanFlowWeeklyListWidgetProvider` / `planflow_weekly_list_widget` that shows the week vertically by weekday/date with up to four schedule rows per day, using the same live weekly payload and calendar/event deep links.

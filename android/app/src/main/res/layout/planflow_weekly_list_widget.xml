@@ -36,9 +36,9 @@
         <TextView
             android:id="@+id/widget_week_list_day_1_label"
             style="@style/PlanFlowWeeklyListDayLabel"
-            tools:text="월 5/18" />
+            tools:text="5/18(월)" />
         <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
-            <TextView android:id="@+id/widget_week_list_day_1_event_1" style="@style/PlanFlowWidgetListText" tools:text="9시 이영현 만남" />
+            <TextView android:id="@+id/widget_week_list_day_1_event_1" style="@style/PlanFlowWidgetListText" tools:text="09:00 이영현 만남" />
             <TextView android:id="@+id/widget_week_list_day_1_event_2" style="@style/PlanFlowWidgetListText" />
             <TextView android:id="@+id/widget_week_list_day_1_event_3" style="@style/PlanFlowWidgetListText" />
             <TextView android:id="@+id/widget_week_list_day_1_event_4" style="@style/PlanFlowWidgetListText" />
@@ -49,9 +49,9 @@
     <LinearLayout
         android:id="@+id/widget_week_list_day_2_row"
         style="@style/PlanFlowWeeklyListDayRow">
-        <TextView android:id="@+id/widget_week_list_day_2_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="화 5/19" />
+        <TextView android:id="@+id/widget_week_list_day_2_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="5/19(화)" />
         <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
-            <TextView android:id="@+id/widget_week_list_day_2_event_1" style="@style/PlanFlowWidgetListText" tools:text="21시 대전 상담" />
+            <TextView android:id="@+id/widget_week_list_day_2_event_1" style="@style/PlanFlowWidgetListText" tools:text="21:00 대전 상담" />
             <TextView android:id="@+id/widget_week_list_day_2_event_2" style="@style/PlanFlowWidgetListText" />
             <TextView android:id="@+id/widget_week_list_day_2_event_3" style="@style/PlanFlowWidgetListText" />
             <TextView android:id="@+id/widget_week_list_day_2_event_4" style="@style/PlanFlowWidgetListText" />
@@ -62,7 +62,7 @@
     <LinearLayout
         android:id="@+id/widget_week_list_day_3_row"
         style="@style/PlanFlowWeeklyListDayRow">
-        <TextView android:id="@+id/widget_week_list_day_3_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="수 5/20" />
+        <TextView android:id="@+id/widget_week_list_day_3_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="5/20(수)" />
         <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
             <TextView android:id="@+id/widget_week_list_day_3_event_1" style="@style/PlanFlowWidgetListText" />
             <TextView android:id="@+id/widget_week_list_day_3_event_2" style="@style/PlanFlowWidgetListText" />
@@ -75,7 +75,7 @@
     <LinearLayout
         android:id="@+id/widget_week_list_day_4_row"
         style="@style/PlanFlowWeeklyListDayRow">
-        <TextView android:id="@+id/widget_week_list_day_4_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="목 5/21" />
+        <TextView android:id="@+id/widget_week_list_day_4_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="5/21(목)" />
         <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
             <TextView android:id="@+id/widget_week_list_day_4_event_1" style="@style/PlanFlowWidgetListText" />
             <TextView android:id="@+id/widget_week_list_day_4_event_2" style="@style/PlanFlowWidgetListText" />
@@ -88,7 +88,7 @@
     <LinearLayout
         android:id="@+id/widget_week_list_day_5_row"
         style="@style/PlanFlowWeeklyListDayRow">
-        <TextView android:id="@+id/widget_week_list_day_5_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="금 5/22" />
+        <TextView android:id="@+id/widget_week_list_day_5_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="5/22(금)" />
         <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
             <TextView android:id="@+id/widget_week_list_day_5_event_1" style="@style/PlanFlowWidgetListText" />
             <TextView android:id="@+id/widget_week_list_day_5_event_2" style="@style/PlanFlowWidgetListText" />
@@ -101,7 +101,7 @@
     <LinearLayout
         android:id="@+id/widget_week_list_day_6_row"
         style="@style/PlanFlowWeeklyListDayRow">
-        <TextView android:id="@+id/widget_week_list_day_6_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="토 5/23" />
+        <TextView android:id="@+id/widget_week_list_day_6_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="5/23(토)" />
         <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
             <TextView android:id="@+id/widget_week_list_day_6_event_1" style="@style/PlanFlowWidgetListText" />
             <TextView android:id="@+id/widget_week_list_day_6_event_2" style="@style/PlanFlowWidgetListText" />
@@ -114,7 +114,7 @@
     <LinearLayout
         android:id="@+id/widget_week_list_day_7_row"
         style="@style/PlanFlowWeeklyListDayRow">
-        <TextView android:id="@+id/widget_week_list_day_7_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="일 5/24" />
+        <TextView android:id="@+id/widget_week_list_day_7_label" style="@style/PlanFlowWeeklyListDayLabel" tools:text="5/24(일)" />
         <LinearLayout style="@style/PlanFlowWeeklyListEventColumn">
             <TextView android:id="@+id/widget_week_list_day_7_event_1" style="@style/PlanFlowWidgetListText" />
             <TextView android:id="@+id/widget_week_list_day_7_event_2" style="@style/PlanFlowWidgetListText" />

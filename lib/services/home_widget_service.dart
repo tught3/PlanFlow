@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import 'home_widget_platform.dart';
@@ -119,10 +121,12 @@ class HomeWidgetSchedulePayloadBuilder {
     required DateTime now,
     String emptyTitle = '예정된 일정이 없어요',
     int? nextTravelBufferMinutes,
+    bool includeWeekends = true,
   }) {
     final localNow = planflowLocal(now);
     final sortedEvents = events
         .where((event) => event.startAt != null)
+        .where((event) => includeWeekends || !_startsOnWeekend(event))
         .toList(growable: false)
       ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
     final futureEvents = sortedEvents
@@ -281,6 +285,16 @@ class HomeWidgetSchedulePayloadBuilder {
     return dayEvents;
   }
 
+  static bool _startsOnWeekend(EventModel event) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final localStart = planflowLocal(startAt);
+    return localStart.weekday == DateTime.saturday ||
+        localStart.weekday == DateTime.sunday;
+  }
+
   static DateTime _effectiveEndAt(EventModel event) {
     return event.endAt ??
         event.startAt ??
@@ -340,6 +354,9 @@ class HomeWidgetService {
             travelTimeBufferService ?? TravelTimeBufferService();
 
   static const String defaultWidgetName = 'PlanFlowHomeWidgetProvider';
+  static const String hideWeekendsKey = 'widget_hide_weekends';
+  static const String _localHideWeekendsKey =
+      'planflow.home_widget.hide_weekends';
   static const List<String> defaultAndroidWidgetNames = <String>[
     'PlanFlowHomeWidgetProvider',
     'PlanFlowMonthlyWidgetProvider',
@@ -355,6 +372,19 @@ class HomeWidgetService {
 
   bool get isSupported => _platform.isSupported;
 
+  Future<bool> areWeekendsHidden() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_localHideWeekendsKey) ?? false;
+  }
+
+  Future<bool> setHideWeekends(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_localHideWeekendsKey, value);
+    final saved = await _saveValue(hideWeekendsKey, value);
+    await _refreshWidgets(widgetName: defaultWidgetName);
+    return saved;
+  }
+
   Future<bool> refreshScheduleFromEvents(
     List<EventModel> events, {
     DateTime? now,
@@ -364,13 +394,15 @@ class HomeWidgetService {
     String? androidName,
     String? iOSName,
     String? qualifiedAndroidName,
-  }) {
+  }) async {
+    final hideWeekends = await areWeekendsHidden();
     return updateSchedulePayload(
       HomeWidgetSchedulePayloadBuilder.fromEvents(
         events: events,
         now: now ?? DateTime.now(),
         emptyTitle: emptyTitle,
         nextTravelBufferMinutes: nextTravelBufferMinutes,
+        includeWeekends: !hideWeekends,
       ),
       widgetName: widgetName,
       androidName: androidName,

@@ -2,8 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/services/home_widget_platform.dart';
 import 'package:planflow/services/home_widget_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
   test('HomeWidgetService updates next-event widget payload', () async {
     final platform = _FakeHomeWidgetPlatform();
     final service = HomeWidgetService(platform: platform);
@@ -329,6 +334,45 @@ void main() {
     expect(payload.todayUpcomingEvents, isEmpty);
     expect(payload.tomorrowEvents.single.eventId, 'kst-tomorrow');
     expect(payload.month, DateTime(2026, 5));
+  });
+
+  test('HomeWidgetSchedulePayloadBuilder can hide weekend events', () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.parse('2026-05-22T00:00:00Z'),
+      includeWeekends: false,
+      events: <EventModel>[
+        EventModel(
+          id: 'fri',
+          userId: 'user-1',
+          title: 'Friday work',
+          startAt: DateTime.parse('2026-05-22T01:00:00Z'),
+        ),
+        EventModel(
+          id: 'sat',
+          userId: 'user-1',
+          title: 'Saturday work',
+          startAt: DateTime.parse('2026-05-23T01:00:00Z'),
+        ),
+        EventModel(
+          id: 'mon',
+          userId: 'user-1',
+          title: 'Monday work',
+          startAt: DateTime.parse('2026-05-25T01:00:00Z'),
+        ),
+      ],
+    );
+
+    expect(payload.nextEvent.title, 'Friday work');
+    expect(
+      payload.weekDays.expand((day) => day.events).map((event) => event.title),
+      isNot(contains('Saturday work')),
+    );
+    expect(
+      payload.monthCells
+          .expand((cell) => cell.events)
+          .map((event) => event.title),
+      isNot(contains('Saturday work')),
+    );
   });
 
   test('HomeWidgetSchedulePayloadBuilder fills tomorrow only in empty space',
