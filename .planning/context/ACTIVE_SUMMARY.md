@@ -958,3 +958,9 @@
 - Fixed the today home-widget payload so tomorrow events are always saved to `tomorrow_event_1/2`, even when there are remaining events today.
 - Updated the home-widget service regression tests so tomorrow events stay visible alongside today-upcoming and ongoing multi-day events.
 - Verification passed: `scripts/flutter-local.ps1 test test/services/home_widget_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-21 Today Widget Shared Slot Priority Fix
+- Changed the today widget policy from fixed `today 4 + tomorrow 2` slots to a shared 6-row display: today-upcoming fills first, and tomorrow events only fill leftover rows.
+- Added Android today rows 5 and 6, hides the tomorrow section when no tomorrow rows are shown, and preserves event deep links for all six today rows.
+- Added regression coverage for 0/1/4/5/6/8 today-event scenarios, including the `오늘 일정 N개 더` overflow row.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/home_widget_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.

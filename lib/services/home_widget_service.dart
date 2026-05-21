@@ -110,6 +110,9 @@ class HomeWidgetSchedulePayload {
 class HomeWidgetSchedulePayloadBuilder {
   const HomeWidgetSchedulePayloadBuilder._();
 
+  static const int todayWidgetRowCapacity = 6;
+  static const int tomorrowWidgetMaxRows = 2;
+
   static HomeWidgetSchedulePayload fromEvents({
     required List<EventModel> events,
     required DateTime now,
@@ -136,17 +139,21 @@ class HomeWidgetSchedulePayloadBuilder {
     final todayPast = todayEvents
         .where((event) => _effectiveEndAt(event).isBefore(now))
         .toList(growable: false);
-    final todayUpcoming = todayEvents
+    final allTodayUpcoming = todayEvents
         .where((event) => !_effectiveEndAt(event).isBefore(now))
         .map(_listEvent)
-        .take(4)
         .toList(growable: false);
     final tomorrow = DateTime(localNow.year, localNow.month, localNow.day + 1);
-    final tomorrowEvents = futureEvents
+    final allTomorrowEvents = futureEvents
         .where((event) => planflowIsSameLocalDay(event.startAt!, tomorrow))
         .map(_listEvent)
-        .take(2)
         .toList(growable: false);
+    final todayUpcoming = _displayTodayRows(allTodayUpcoming);
+    final tomorrowEvents = _displayTomorrowRows(
+      todayRows: todayUpcoming,
+      sourceTodayCount: allTodayUpcoming.length,
+      sourceTomorrowEvents: allTomorrowEvents,
+    );
     final month = DateTime(localNow.year, localNow.month);
 
     return HomeWidgetSchedulePayload(
@@ -284,6 +291,38 @@ class HomeWidgetSchedulePayloadBuilder {
       location: event.location,
       isCritical: event.isCritical,
     );
+  }
+
+  static List<HomeWidgetListEventData> _displayTodayRows(
+    List<HomeWidgetListEventData> events,
+  ) {
+    if (events.length <= todayWidgetRowCapacity) {
+      return events.take(todayWidgetRowCapacity).toList(growable: false);
+    }
+
+    final hiddenCount = events.length - (todayWidgetRowCapacity - 1);
+    return <HomeWidgetListEventData>[
+      ...events.take(todayWidgetRowCapacity - 1),
+      HomeWidgetListEventData(title: '오늘 일정 $hiddenCount개 더'),
+    ];
+  }
+
+  static List<HomeWidgetListEventData> _displayTomorrowRows({
+    required List<HomeWidgetListEventData> todayRows,
+    required int sourceTodayCount,
+    required List<HomeWidgetListEventData> sourceTomorrowEvents,
+  }) {
+    if (sourceTodayCount > todayWidgetRowCapacity) {
+      return const <HomeWidgetListEventData>[];
+    }
+    final remainingCapacity = todayWidgetRowCapacity - todayRows.length;
+    if (remainingCapacity <= 0) {
+      return const <HomeWidgetListEventData>[];
+    }
+    final limit = remainingCapacity < tomorrowWidgetMaxRows
+        ? remainingCapacity
+        : tomorrowWidgetMaxRows;
+    return sourceTomorrowEvents.take(limit).toList(growable: false);
   }
 }
 
@@ -590,13 +629,26 @@ class HomeWidgetService {
   }) async {
     var success = true;
     success = await _saveListEvent('last_past_event', lastPastEvent) && success;
-    final todaySlots = todayUpcomingEvents.take(4).toList(growable: false);
-    final tomorrowSlots = tomorrowEvents.take(2).toList(growable: false);
+    final todaySlots = todayUpcomingEvents
+        .take(HomeWidgetSchedulePayloadBuilder.todayWidgetRowCapacity)
+        .toList(growable: false);
+    final remainingCapacity =
+        HomeWidgetSchedulePayloadBuilder.todayWidgetRowCapacity -
+            todaySlots.length;
+    final tomorrowLimit = remainingCapacity <
+            HomeWidgetSchedulePayloadBuilder.tomorrowWidgetMaxRows
+        ? remainingCapacity
+        : HomeWidgetSchedulePayloadBuilder.tomorrowWidgetMaxRows;
+    final tomorrowSlots = tomorrowLimit <= 0
+        ? const <HomeWidgetListEventData>[]
+        : tomorrowEvents.take(tomorrowLimit).toList(growable: false);
     success =
         await _saveValue('today_upcoming_count', todaySlots.length) && success;
     success = await _saveValue('tomorrow_event_count', tomorrowSlots.length) &&
         success;
-    for (var index = 0; index < 4; index += 1) {
+    for (var index = 0;
+        index < HomeWidgetSchedulePayloadBuilder.todayWidgetRowCapacity;
+        index += 1) {
       success = await _saveListEvent(
             'today_upcoming_${index + 1}',
             index < todaySlots.length ? todaySlots[index] : null,

@@ -31,6 +31,7 @@
     </LinearLayout>
 
     <TextView
+        android:id="@+id/widget_tomorrow_section_label"
         style="@style/PlanFlowWidgetSectionText"
         android:layout_marginTop="8dp"
         android:text="최근 지난 일정" />
@@ -66,6 +67,14 @@
 
     <TextView
         android:id="@+id/widget_today_upcoming_event_4_title"
+        style="@style/PlanFlowWidgetListText" />
+
+    <TextView
+        android:id="@+id/widget_today_upcoming_event_5_title"
+        style="@style/PlanFlowWidgetListText" />
+
+    <TextView
+        android:id="@+id/widget_today_upcoming_event_6_title"
         style="@style/PlanFlowWidgetListText" />
 
     <TextView

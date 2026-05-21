@@ -455,6 +455,8 @@ class PlanFlowVerticalScheduleWidgetProvider :
                 R.id.widget_today_upcoming_event_2_title,
                 R.id.widget_today_upcoming_event_3_title,
                 R.id.widget_today_upcoming_event_4_title,
+                R.id.widget_today_upcoming_event_5_title,
+                R.id.widget_today_upcoming_event_6_title,
             ),
             isFaded = false,
             emptyMessageId = R.id.widget_today_upcoming_empty_message,
@@ -471,6 +473,11 @@ class PlanFlowVerticalScheduleWidgetProvider :
                 R.id.widget_tomorrow_event_2_title,
             ),
             isFaded = false,
+        )
+        val tomorrowCount = widgetData.getInt("tomorrow_event_count", 0)
+        views.setViewVisibility(
+            R.id.widget_tomorrow_section_label,
+            if (tomorrowCount > 0) View.VISIBLE else View.GONE,
         )
 
         bindCalendarLink(
@@ -508,6 +515,18 @@ class PlanFlowVerticalScheduleWidgetProvider :
             views,
             R.id.widget_today_upcoming_event_4_title,
             widgetData.getString("today_upcoming_4_id", null),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_today_upcoming_event_5_title,
+            widgetData.getString("today_upcoming_5_id", null),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_today_upcoming_event_6_title,
+            widgetData.getString("today_upcoming_6_id", null),
         )
         bindEventLinkIfAvailable(
             context,

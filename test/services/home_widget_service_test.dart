@@ -330,6 +330,74 @@ void main() {
     expect(payload.month, DateTime(2026, 5));
   });
 
+  test('HomeWidgetSchedulePayloadBuilder fills tomorrow only in empty space',
+      () {
+    final now = DateTime.parse('2026-05-20T04:00:00Z');
+
+    HomeWidgetSchedulePayload build(int todayCount) {
+      return HomeWidgetSchedulePayloadBuilder.fromEvents(
+        now: now,
+        events: <EventModel>[
+          ...List<EventModel>.generate(
+            todayCount,
+            (index) => EventModel(
+              id: 'today-${index + 1}',
+              userId: 'user-1',
+              title: 'Today ${index + 1}',
+              startAt: DateTime.parse('2026-05-20T05:00:00Z')
+                  .add(Duration(hours: index)),
+            ),
+          ),
+          EventModel(
+            id: 'tomorrow-1',
+            userId: 'user-1',
+            title: 'Tomorrow 1',
+            startAt: DateTime.parse('2026-05-21T00:00:00Z'),
+          ),
+          EventModel(
+            id: 'tomorrow-2',
+            userId: 'user-1',
+            title: 'Tomorrow 2',
+            startAt: DateTime.parse('2026-05-21T01:00:00Z'),
+          ),
+        ],
+      );
+    }
+
+    final noToday = build(0);
+    expect(noToday.todayUpcomingEvents, isEmpty);
+    expect(noToday.tomorrowEvents.map((event) => event.eventId), [
+      'tomorrow-1',
+      'tomorrow-2',
+    ]);
+
+    final oneToday = build(1);
+    expect(oneToday.todayUpcomingEvents.map((event) => event.eventId), [
+      'today-1',
+    ]);
+    expect(oneToday.tomorrowEvents.map((event) => event.eventId), [
+      'tomorrow-1',
+      'tomorrow-2',
+    ]);
+
+    final fourToday = build(4);
+    expect(fourToday.todayUpcomingEvents.length, 4);
+    expect(fourToday.tomorrowEvents.length, 2);
+
+    final fiveToday = build(5);
+    expect(fiveToday.todayUpcomingEvents.length, 5);
+    expect(fiveToday.tomorrowEvents.single.eventId, 'tomorrow-1');
+
+    final sixToday = build(6);
+    expect(sixToday.todayUpcomingEvents.length, 6);
+    expect(sixToday.tomorrowEvents, isEmpty);
+
+    final eightToday = build(8);
+    expect(eightToday.todayUpcomingEvents.length, 6);
+    expect(eightToday.todayUpcomingEvents.last.title, '오늘 일정 3개 더');
+    expect(eightToday.tomorrowEvents, isEmpty);
+  });
+
   test('HomeWidgetSchedulePayloadBuilder keeps ongoing multi-day event today',
       () {
     final now = DateTime.parse('2026-05-20T04:00:00Z');
