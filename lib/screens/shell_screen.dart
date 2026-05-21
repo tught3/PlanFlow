@@ -52,9 +52,14 @@ class _ShellDestination {
 }
 
 class ShellScreen extends StatefulWidget {
-  const ShellScreen({super.key, this.initialIndex = 0});
+  const ShellScreen({
+    super.key,
+    this.initialIndex = 0,
+    this.initialCalendarDate,
+  });
 
   final int initialIndex;
+  final DateTime? initialCalendarDate;
 
   @override
   State<ShellScreen> createState() => _ShellScreenState();
@@ -158,6 +163,13 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         _currentIndex != widget.initialIndex) {
       setState(() {
         _currentIndex = widget.initialIndex;
+      });
+    }
+    if (oldWidget.initialCalendarDate != widget.initialCalendarDate &&
+        widget.initialCalendarDate != null &&
+        _currentIndex != 1) {
+      setState(() {
+        _currentIndex = 1;
       });
     }
   }
@@ -356,7 +368,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         index: _currentIndex,
         children: [
           HomeScreen(scrollController: _homeScrollController),
-          const CalendarScreen(),
+          CalendarScreen(initialDate: widget.initialCalendarDate),
           SettingsScreen(
             key: ValueKey<String?>('settings-${authProvider.userId}'),
             userId: authProvider.userId,

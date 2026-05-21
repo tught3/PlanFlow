@@ -15,6 +15,7 @@ import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
 import '../screens/voice/voice_input_screen.dart';
+import '../screens/voice/voice_launcher_screen.dart';
 import '../screens/shell_screen.dart';
 import 'constants.dart';
 import 'env.dart';
@@ -82,7 +83,12 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.calendar,
-      builder: (context, state) => const ShellScreen(initialIndex: 1),
+      builder: (context, state) => ShellScreen(
+        initialIndex: 1,
+        initialCalendarDate: _parseRouteDate(
+          state.uri.queryParameters['date'],
+        ),
+      ),
     ),
     GoRoute(
       path: AppRoutes.settings,
@@ -109,11 +115,19 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.voice,
-      builder: (context, state) => VoiceInputScreen(),
+      builder: (context, state) => VoiceInputScreen(
+        autoStartOverride: _isAutoStart(state) ? true : null,
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.voiceLauncher,
+      builder: (context, state) => const VoiceLauncherScreen(),
     ),
     GoRoute(
       path: AppRoutes.voiceConversation,
-      builder: (context, state) => const VoiceConversationScreen(),
+      builder: (context, state) => VoiceConversationScreen(
+        autoStart: _isAutoStart(state),
+      ),
     ),
     GoRoute(
       path: AppRoutes.voiceAction,
@@ -218,4 +232,18 @@ String? _resolveEventId(GoRouterState state, EventModel? event) {
   }
 
   return null;
+}
+
+bool _isAutoStart(GoRouterState state) {
+  final value = state.uri.queryParameters['autoStart'] ??
+      state.uri.queryParameters['autostart'];
+  return value == '1' || value == 'true';
+}
+
+DateTime? _parseRouteDate(String? raw) {
+  final normalized = raw?.trim();
+  if (normalized == null || normalized.isEmpty) {
+    return null;
+  }
+  return DateTime.tryParse(normalized);
 }

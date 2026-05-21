@@ -18,6 +18,7 @@ void main() {
       upcomingEvents: <HomeWidgetListEventData>[
         HomeWidgetListEventData(
           title: 'Team sync',
+          eventId: 'event-1',
           startAt: DateTime.parse('2026-05-01T09:00:00Z'),
           location: 'Seoul Station',
           isCritical: true,
@@ -59,6 +60,7 @@ void main() {
     expect(platform.savedValues['next_event_travel_buffer_minutes'], 25);
     expect(platform.savedValues['next_event_is_critical'], isTrue);
     expect(platform.savedValues['event_list_1_title'], 'Team sync');
+    expect(platform.savedValues['event_list_1_id'], 'event-1');
     expect(
         platform.savedValues['event_list_1_time'], '2026-05-01T09:00:00.000Z');
     expect(platform.savedValues['event_list_1_location'], 'Seoul Station');
@@ -131,17 +133,20 @@ void main() {
       ),
       lastPastEvent: HomeWidgetListEventData(
         title: 'Past event',
+        eventId: 'past',
         startAt: DateTime.parse('2026-05-04T00:00:00Z'),
       ),
       todayUpcomingEvents: <HomeWidgetListEventData>[
         HomeWidgetListEventData(
           title: 'Upcoming event',
+          eventId: 'upcoming',
           startAt: DateTime.parse('2026-05-04T03:00:00Z'),
         ),
       ],
       tomorrowEvents: <HomeWidgetListEventData>[
         HomeWidgetListEventData(
           title: 'Tomorrow event',
+          eventId: 'tomorrow',
           startAt: DateTime.parse('2026-05-05T01:00:00Z'),
         ),
       ],
@@ -160,9 +165,11 @@ void main() {
           cellIndex: 1,
           day: 1,
           inMonth: true,
+          date: DateTime(2026, 5, 1),
           events: <HomeWidgetListEventData>[
             const HomeWidgetListEventData(
               title: 'Cell event 1',
+              eventId: 'cell-1',
               isCritical: true,
             ),
             const HomeWidgetListEventData(title: 'Cell event 2'),
@@ -180,6 +187,7 @@ void main() {
           events: <HomeWidgetListEventData>[
             HomeWidgetListEventData(
               title: 'Week event 1',
+              eventId: 'week-1',
               startAt: DateTime.parse('2026-05-04T01:00:00Z'),
               isCritical: true,
             ),
@@ -195,23 +203,28 @@ void main() {
     expect(platform.savedValues['event_list_6_title'], 'Today event 6');
     expect(platform.savedValues['event_list_7_title'], isNull);
     expect(platform.savedValues['last_past_event_title'], 'Past event');
+    expect(platform.savedValues['last_past_event_id'], 'past');
     expect(
       platform.savedValues['last_past_event_time'],
       '2026-05-04T00:00:00.000Z',
     );
     expect(platform.savedValues['today_upcoming_count'], 1);
     expect(platform.savedValues['today_upcoming_1_title'], 'Upcoming event');
+    expect(platform.savedValues['today_upcoming_1_id'], 'upcoming');
     expect(platform.savedValues['today_upcoming_2_title'], isNull);
     expect(platform.savedValues['tomorrow_event_count'], 1);
     expect(platform.savedValues['tomorrow_event_1_title'], 'Tomorrow event');
+    expect(platform.savedValues['tomorrow_event_1_id'], 'tomorrow');
     expect(platform.savedValues['month_day_1_summary'], '2 events');
     expect(platform.savedValues['month_day_1_count'], 2);
     expect(platform.savedValues['month_day_1_has_critical'], isTrue);
     expect(platform.savedValues['month_day_31_summary'], isNull);
     expect(platform.savedValues['month_day_31_has_critical'], isFalse);
     expect(platform.savedValues['month_cell_1_day'], 1);
+    expect(platform.savedValues['month_cell_1_date'], '2026-05-01');
     expect(platform.savedValues['month_cell_1_in_month'], isTrue);
     expect(platform.savedValues['month_cell_1_event_1_title'], 'Cell event 1');
+    expect(platform.savedValues['month_cell_1_event_1_id'], 'cell-1');
     expect(platform.savedValues['month_cell_1_event_1_is_critical'], isTrue);
     expect(platform.savedValues['month_cell_1_event_3_title'], 'Cell event 3');
     expect(platform.savedValues['month_cell_1_overflow_count'], 2);
@@ -223,6 +236,7 @@ void main() {
     expect(platform.savedValues['week_day_1_has_critical'], isTrue);
     expect(platform.savedValues['week_day_1_overflow_count'], 0);
     expect(platform.savedValues['week_day_1_event_1_title'], 'Week event 1');
+    expect(platform.savedValues['week_day_1_event_1_id'], 'week-1');
     expect(platform.savedValues['week_day_1_event_1_time'],
         '2026-05-04T01:00:00.000Z');
     expect(platform.savedValues['week_day_1_event_1_is_critical'], isTrue);
@@ -278,19 +292,42 @@ void main() {
     );
 
     expect(payload.nextEvent.title, 'Next event');
+    expect(payload.nextEvent.eventId, 'next');
     expect(payload.nextEvent.isCritical, isTrue);
     expect(payload.lastPastEvent?.title, 'Past event');
+    expect(payload.lastPastEvent?.eventId, 'past');
     expect(payload.todayUpcomingEvents.map((event) => event.title),
         contains('Next event'));
     expect(payload.tomorrowEvents, isEmpty);
     final may20Cell = payload.monthCells.firstWhere((cell) => cell.day == 20);
     expect(may20Cell.inMonth, isTrue);
+    expect(may20Cell.date, DateTime(2026, 5, 20));
     expect(may20Cell.events.length, 3);
     expect(may20Cell.overflowCount, 2);
     final wednesday = payload.weekDays[2];
     expect(wednesday.eventCount, 5);
     expect(wednesday.events.length, 2);
     expect(wednesday.hasCritical, isTrue);
+  });
+
+  test('HomeWidgetSchedulePayloadBuilder uses local day for tomorrow fallback',
+      () {
+    final now = DateTime.parse('2026-05-20T16:30:00Z');
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: now,
+      events: <EventModel>[
+        EventModel(
+          id: 'kst-tomorrow',
+          userId: 'user-1',
+          title: 'KST tomorrow event',
+          startAt: DateTime.parse('2026-05-21T16:00:00Z'),
+        ),
+      ],
+    );
+
+    expect(payload.todayUpcomingEvents, isEmpty);
+    expect(payload.tomorrowEvents.single.eventId, 'kst-tomorrow');
+    expect(payload.month, DateTime(2026, 5));
   });
 
   test('HomeWidgetSchedulePayloadBuilder keeps ongoing multi-day event today',

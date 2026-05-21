@@ -947,3 +947,10 @@
 - Fixed the login flash/session-loss perception by making `AuthProvider` wait briefly for Supabase's delayed auth recovery event before marking the initial session as resolved with no user.
 - Added a provider regression proving a delayed `tokenRefreshed` auth event restores the user before the app is considered signed out.
 - Verification passed: `scripts/flutter-local.ps1 test test/providers/auth_provider_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, `adb install -r -t --user 0`, app launch, PID check, and logcat confirmation of `AuthChangeEvent.tokenRefreshed user=...`.
+
+## 2026-05-21 Home Widget Deep Link & Voice Launcher Checkpoint
+- Added `planflow://voice-launcher`, `planflow://voice?autoStart=1`, `planflow://voice-conversation?autoStart=1`, `planflow://calendar?date=YYYY-MM-DD`, and `planflow://event/{eventId}` routing from Android home widgets into the right PlanFlow screens.
+- Added a Korean voice launcher screen so the 1x1 mic widget opens a choice between schedule voice input and AI schedule conversation, then auto-starts STT in the selected flow.
+- Extended home-widget payloads with event IDs and date keys, fixed the local-day tomorrow fallback, and added monthly-cell fallback linking so existing widgets remain clickable after update.
+- Refined widget styling around the blue/white PlanFlow tone, including a clearer 1x1 microphone widget with an `음성입력` label.
+- Verification passed: home-widget route, voice launcher, calendar deep-link, and home-widget service focused tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; install and launch/PID check on `192.168.0.102:5555`; separate reviewer pass after fixes.

@@ -178,13 +178,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   void _handleHomeWidgetUri(Uri? uri) {
-    if (uri == null) {
-      return;
-    }
-
-    if (uri.scheme == 'planflow' &&
-        (uri.host == 'voice' || uri.path == '/voice')) {
-      appRouter.go(AppRoutes.voice);
+    final route = resolveHomeWidgetRoute(uri);
+    if (route != null) {
+      appRouter.go(route);
     }
   }
 
@@ -213,4 +209,44 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       },
     );
   }
+}
+
+@visibleForTesting
+String? resolveHomeWidgetRoute(Uri? uri) {
+  if (uri == null || uri.scheme != 'planflow') {
+    return null;
+  }
+
+  final query = uri.hasQuery ? '?${uri.query}' : '';
+  switch (uri.host) {
+    case 'voice-launcher':
+      return AppRoutes.voiceLauncher;
+    case 'voice':
+      return '${AppRoutes.voice}$query';
+    case 'voice-conversation':
+      return '${AppRoutes.voiceConversation}$query';
+    case 'calendar':
+      return '${AppRoutes.calendar}$query';
+    case 'event':
+      final pathId =
+          uri.pathSegments.isNotEmpty ? uri.pathSegments.first.trim() : '';
+      final queryId = uri.queryParameters['eventId']?.trim() ??
+          uri.queryParameters['event_id']?.trim() ??
+          '';
+      final eventId = pathId.isNotEmpty ? pathId : queryId;
+      return eventId.isNotEmpty
+          ? '${AppRoutes.eventDetail}/$eventId'
+          : AppRoutes.calendar;
+  }
+
+  if (uri.path == '/voice') {
+    return '${AppRoutes.voice}$query';
+  }
+  if (uri.path == '/voice-conversation') {
+    return '${AppRoutes.voiceConversation}$query';
+  }
+  if (uri.path == '/calendar') {
+    return '${AppRoutes.calendar}$query';
+  }
+  return null;
 }

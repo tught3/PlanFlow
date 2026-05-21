@@ -24,12 +24,14 @@ class HomeWidgetNextEventData {
 class HomeWidgetListEventData {
   const HomeWidgetListEventData({
     required this.title,
+    this.eventId,
     this.startAt,
     this.location,
     this.isCritical = false,
   });
 
   final String title;
+  final String? eventId;
   final DateTime? startAt;
   final String? location;
   final bool isCritical;
@@ -68,6 +70,7 @@ class HomeWidgetWeekDayData {
 class HomeWidgetMonthCellData {
   const HomeWidgetMonthCellData({
     required this.cellIndex,
+    this.date,
     this.day,
     this.inMonth = false,
     this.events = const <HomeWidgetListEventData>[],
@@ -75,6 +78,7 @@ class HomeWidgetMonthCellData {
   });
 
   final int cellIndex;
+  final DateTime? date;
   final int? day;
   final bool inMonth;
   final List<HomeWidgetListEventData> events;
@@ -112,6 +116,7 @@ class HomeWidgetSchedulePayloadBuilder {
     String emptyTitle = '예정된 일정이 없어요',
     int? nextTravelBufferMinutes,
   }) {
+    final localNow = planflowLocal(now);
     final sortedEvents = events
         .where((event) => event.startAt != null)
         .toList(growable: false)
@@ -123,9 +128,9 @@ class HomeWidgetSchedulePayloadBuilder {
     final todayEvents = _eventsForDay(
       sortedEvents,
       DateTime(
-        planflowLocal(now).year,
-        planflowLocal(now).month,
-        planflowLocal(now).day,
+        localNow.year,
+        localNow.month,
+        localNow.day,
       ),
     );
     final todayPast = todayEvents
@@ -136,13 +141,13 @@ class HomeWidgetSchedulePayloadBuilder {
         .map(_listEvent)
         .take(4)
         .toList(growable: false);
-    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final tomorrow = DateTime(localNow.year, localNow.month, localNow.day + 1);
     final tomorrowEvents = futureEvents
         .where((event) => planflowIsSameLocalDay(event.startAt!, tomorrow))
         .map(_listEvent)
         .take(2)
         .toList(growable: false);
-    final month = DateTime(now.year, now.month);
+    final month = DateTime(localNow.year, localNow.month);
 
     return HomeWidgetSchedulePayload(
       nextEvent: nextEvent == null
@@ -211,6 +216,7 @@ class HomeWidgetSchedulePayloadBuilder {
       final dayEvents = inMonth ? _eventsForDay(events, day) : <EventModel>[];
       return HomeWidgetMonthCellData(
         cellIndex: index + 1,
+        date: day,
         day: inMonth ? day.day : null,
         inMonth: inMonth,
         events: dayEvents.map(_listEvent).take(3).toList(growable: false),
@@ -275,6 +281,7 @@ class HomeWidgetSchedulePayloadBuilder {
   static HomeWidgetListEventData _listEvent(EventModel event) {
     return HomeWidgetListEventData(
       title: event.title,
+      eventId: event.id,
       startAt: event.startAt,
       location: event.location,
       isCritical: event.isCritical,
@@ -549,6 +556,11 @@ class HomeWidgetService {
       final event = index < slots.length ? slots[index] : null;
       final slot = index + 1;
       success = await _saveOptionalValue(
+            'event_list_${slot}_id',
+            event?.eventId,
+          ) &&
+          success;
+      success = await _saveOptionalValue(
             'event_list_${slot}_title',
             event?.title,
           ) &&
@@ -661,6 +673,13 @@ class HomeWidgetService {
     for (var cellIndex = 1; cellIndex <= 42; cellIndex += 1) {
       final cell = byCell[cellIndex];
       success = await _saveOptionalValue(
+            'month_cell_${cellIndex}_date',
+            cell?.date == null
+                ? null
+                : _localDateKey(planflowLocal(cell!.date!)),
+          ) &&
+          success;
+      success = await _saveOptionalValue(
             'month_cell_${cellIndex}_day',
             cell?.day,
           ) &&
@@ -681,8 +700,18 @@ class HomeWidgetService {
         final event = eventIndex < events.length ? events[eventIndex] : null;
         final eventSlot = eventIndex + 1;
         success = await _saveOptionalValue(
+              'month_cell_${cellIndex}_event_${eventSlot}_id',
+              event?.eventId,
+            ) &&
+            success;
+        success = await _saveOptionalValue(
               'month_cell_${cellIndex}_event_${eventSlot}_title',
               event?.title,
+            ) &&
+            success;
+        success = await _saveOptionalValue(
+              'month_cell_${cellIndex}_event_${eventSlot}_time',
+              event?.startAt?.toUtc().toIso8601String(),
             ) &&
             success;
         success = await _saveValue(
@@ -736,6 +765,11 @@ class HomeWidgetService {
       for (var eventIndex = 0; eventIndex < 2; eventIndex += 1) {
         final event = eventIndex < events.length ? events[eventIndex] : null;
         final eventSlot = eventIndex + 1;
+        success = await _saveOptionalValue(
+              'week_day_${slot}_event_${eventSlot}_id',
+              event?.eventId,
+            ) &&
+            success;
         success = await _saveOptionalValue(
               'week_day_${slot}_event_${eventSlot}_title',
               event?.title,
@@ -797,6 +831,8 @@ class HomeWidgetService {
   ) async {
     var success = true;
     success =
+        await _saveOptionalValue('${prefix}_id', event?.eventId) && success;
+    success =
         await _saveOptionalValue('${prefix}_title', event?.title) && success;
     success = await _saveOptionalValue(
           '${prefix}_time',
@@ -811,6 +847,12 @@ class HomeWidgetService {
         ) &&
         success;
     return success;
+  }
+
+  String _localDateKey(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
   }
 
   Future<bool> _saveValue(String key, Object? value) async {

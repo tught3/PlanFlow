@@ -21,11 +21,13 @@ class VoiceConversationScreen extends StatefulWidget {
     this.repository,
     this.sttService = const SttService(),
     this.locationLookupService,
+    this.autoStart = false,
   });
 
   final EventRepository? repository;
   final SttService sttService;
   final LocationLookupService? locationLookupService;
+  final bool autoStart;
 
   @override
   State<VoiceConversationScreen> createState() =>
@@ -59,6 +61,15 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   void initState() {
     super.initState();
     unawaited(_loadEvents());
+    if (widget.autoStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _isListening) {
+          return;
+        }
+        setState(() => _keepListening = true);
+        unawaited(_listenOnce());
+      });
+    }
   }
 
   @override

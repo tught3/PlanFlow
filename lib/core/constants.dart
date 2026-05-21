@@ -15,6 +15,7 @@ class AppRoutes {
   static const String calendar = '/calendar';
   static const String planner = calendar;
   static const String voice = '/voice';
+  static const String voiceLauncher = '/voice/launcher';
   static const String voiceConversation = '/voice/conversation';
   static const String voiceAction = '/voice/action';
   static const String confirm = '/voice/confirm';

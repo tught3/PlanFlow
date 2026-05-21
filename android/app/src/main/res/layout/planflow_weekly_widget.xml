@@ -38,9 +38,12 @@
         android:orientation="horizontal">
 
         <LinearLayout
+            android:id="@+id/widget_week_day_1_column"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
+            android:layout_marginHorizontal="1dp"
+            style="@style/PlanFlowWidgetMonthCell"
             android:orientation="vertical">
 
             <TextView
@@ -70,9 +73,12 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/widget_week_day_2_column"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
+            android:layout_marginHorizontal="1dp"
+            style="@style/PlanFlowWidgetMonthCell"
             android:orientation="vertical">
 
             <TextView
@@ -100,9 +106,12 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/widget_week_day_3_column"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
+            android:layout_marginHorizontal="1dp"
+            style="@style/PlanFlowWidgetMonthCell"
             android:orientation="vertical">
 
             <TextView
@@ -130,9 +139,12 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/widget_week_day_4_column"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
+            android:layout_marginHorizontal="1dp"
+            style="@style/PlanFlowWidgetMonthCell"
             android:orientation="vertical">
 
             <TextView
@@ -159,9 +171,12 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/widget_week_day_5_column"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
+            android:layout_marginHorizontal="1dp"
+            style="@style/PlanFlowWidgetMonthCell"
             android:orientation="vertical">
 
             <TextView
@@ -188,9 +203,12 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/widget_week_day_6_column"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
+            android:layout_marginHorizontal="1dp"
+            style="@style/PlanFlowWidgetMonthCell"
             android:orientation="vertical">
 
             <TextView
@@ -217,9 +235,12 @@
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/widget_week_day_7_column"
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
+            android:layout_marginHorizontal="1dp"
+            style="@style/PlanFlowWidgetMonthCell"
             android:orientation="vertical">
 
             <TextView

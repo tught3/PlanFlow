@@ -19,6 +19,11 @@ import java.util.Locale
 private const val DEFAULT_TEXT_COLOR = 0xFF203A57.toInt()
 private const val MUTED_TEXT_COLOR = 0xFF8FA4B7.toInt()
 private const val CRITICAL_TEXT_COLOR = 0xFFD94444.toInt()
+private const val PLANFLOW_SCHEME = "planflow"
+private const val PLANFLOW_CALENDAR_HOST = "calendar"
+private const val PLANFLOW_EVENT_HOST = "event"
+private const val PLANFLOW_VOICE_LAUNCHER_HOST = "voice-launcher"
+private val PLANFLOW_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
 abstract class BasePlanFlowWidgetProvider(
     private val layoutId: Int,
@@ -53,12 +58,97 @@ abstract class BasePlanFlowWidgetProvider(
     }
 
     protected fun bindVoice(context: Context, views: RemoteViews, id: Int) {
-        val voiceIntent = HomeWidgetLaunchIntent.getActivity(
+        bindDeepLink(
+            context,
+            views,
+            id,
+            Uri.Builder().scheme(PLANFLOW_SCHEME).authority(PLANFLOW_VOICE_LAUNCHER_HOST).build(),
+        )
+    }
+
+    protected fun bindOpenApp(context: Context, views: RemoteViews, id: Int, route: Uri) {
+        bindDeepLink(context, views, id, route)
+    }
+
+    protected fun bindDeepLink(
+        context: Context,
+        views: RemoteViews,
+        id: Int,
+        route: Uri?,
+    ) {
+        if (id == 0) {
+            return
+        }
+        if (route == null) {
+            return
+        }
+        val intent = HomeWidgetLaunchIntent.getActivity(
             context,
             MainActivity::class.java,
-            Uri.parse("planflow://voice"),
+            route,
         )
-        views.setOnClickPendingIntent(id, voiceIntent)
+        views.setOnClickPendingIntent(id, intent)
+    }
+
+    protected fun bindEventLinkIfAvailable(
+        context: Context,
+        views: RemoteViews,
+        id: Int,
+        eventId: String?,
+        fallbackRoute: Uri? = null,
+    ) {
+        val route = eventUri(eventId) ?: fallbackRoute
+        bindDeepLink(context, views, id, route)
+    }
+
+    protected fun bindCalendarLink(
+        context: Context,
+        views: RemoteViews,
+        id: Int,
+        date: LocalDate?,
+    ) {
+        bindDeepLink(context, views, id, calendarUriForDate(date))
+    }
+
+    private fun eventUri(eventId: String?): Uri? {
+        val normalized = eventId?.trim()
+        if (normalized.isNullOrBlank()) {
+            return null
+        }
+
+        return Uri.Builder().scheme(PLANFLOW_SCHEME).authority(PLANFLOW_EVENT_HOST).appendPath(normalized).build()
+    }
+
+    protected fun calendarUriForDate(localDate: LocalDate?): Uri? {
+        if (localDate == null) {
+            return null
+        }
+
+        return Uri.Builder()
+            .scheme(PLANFLOW_SCHEME)
+            .authority(PLANFLOW_CALENDAR_HOST)
+            .appendQueryParameter("date", localDate.format(PLANFLOW_DATE_FORMATTER))
+            .build()
+    }
+
+    protected fun parseDate(rawDate: String?): LocalDate? {
+        val dateTime = parseDateTime(rawDate) ?: return null
+        return dateTime.toLocalDate()
+    }
+
+    protected fun parseLocalDate(rawDate: String?): LocalDate? {
+        if (rawDate.isNullOrBlank()) {
+            return null
+        }
+        return try {
+            LocalDate.parse(rawDate, PLANFLOW_DATE_FORMATTER)
+        } catch (_: Exception) {
+            parseDate(rawDate)
+        }
+    }
+
+    protected fun todayDate(): LocalDate {
+        return LocalDate.now(planFlowZone)
     }
 
     protected fun formatTime(raw: String?): String {
@@ -307,7 +397,31 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
         bindTimelineItem(views, R.id.widget_list_item_2, 2, widgetData)
         bindTimelineItem(views, R.id.widget_list_item_3, 3, widgetData)
 
-        bindOpenApp(context, views, R.id.widget_container)
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_container,
+            widgetData.getString("next_event_id", null),
+            Uri.Builder().scheme(PLANFLOW_SCHEME).authority(PLANFLOW_CALENDAR_HOST).build(),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_list_item_1,
+            widgetData.getString("event_list_1_id", null),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_list_item_2,
+            widgetData.getString("event_list_2_id", null),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_list_item_3,
+            widgetData.getString("event_list_3_id", null),
+        )
         bindVoice(context, views, R.id.widget_voice_button)
     }
 }
@@ -359,7 +473,54 @@ class PlanFlowVerticalScheduleWidgetProvider :
             isFaded = false,
         )
 
-        bindOpenApp(context, views, R.id.widget_vertical_container)
+        bindCalendarLink(
+            context,
+            views,
+            R.id.widget_vertical_container,
+            todayDate(),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_last_past_event_1_title,
+            widgetData.getString("last_past_event_id", null),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_today_upcoming_event_1_title,
+            widgetData.getString("today_upcoming_1_id", null),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_today_upcoming_event_2_title,
+            widgetData.getString("today_upcoming_2_id", null),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_today_upcoming_event_3_title,
+            widgetData.getString("today_upcoming_3_id", null),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_today_upcoming_event_4_title,
+            widgetData.getString("today_upcoming_4_id", null),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_tomorrow_event_1_title,
+            widgetData.getString("tomorrow_event_1_id", null),
+        )
+        bindEventLinkIfAvailable(
+            context,
+            views,
+            R.id.widget_tomorrow_event_2_title,
+            widgetData.getString("tomorrow_event_2_id", null),
+        )
         bindVoice(context, views, R.id.widget_vertical_voice_button)
     }
 }
@@ -372,6 +533,16 @@ class PlanFlowWeeklyWidgetProvider :
         widgetData: SharedPreferences,
     ) {
         views.setTextViewText(R.id.widget_week_title, "주간 일정")
+        val weekStart = todayDate().minusDays((todayDate().dayOfWeek.value - 1).toLong())
+        val weekColumnIds = intArrayOf(
+            R.id.widget_week_day_1_column,
+            R.id.widget_week_day_2_column,
+            R.id.widget_week_day_3_column,
+            R.id.widget_week_day_4_column,
+            R.id.widget_week_day_5_column,
+            R.id.widget_week_day_6_column,
+            R.id.widget_week_day_7_column,
+        )
 
         val labelIds = intArrayOf(
             R.id.widget_week_day_1_label,
@@ -424,6 +595,13 @@ class PlanFlowWeeklyWidgetProvider :
             val rawDate = widgetData.getString("week_day_${slot}_date", null)
             views.setTextViewText(labelIds[index], formatWeekdayLabel(rawDate, "월"))
             views.setTextViewText(dateIds[index], formatMonthDay(rawDate, ""))
+            val fallbackDate = weekStart.plusDays(index.toLong())
+            bindCalendarLink(
+                context,
+                views,
+                weekColumnIds[index],
+                parseLocalDate(rawDate) ?: fallbackDate,
+            )
 
             val e1Title = widgetData.getString("week_day_${slot}_event_1_title", null)
                 ?.takeIf { it.isNotBlank() }
@@ -459,6 +637,18 @@ class PlanFlowWeeklyWidgetProvider :
                 e2Time,
                 e2Critical,
             )
+            bindEventLinkIfAvailable(
+                context,
+                views,
+                event1Ids[index],
+                widgetData.getString("week_day_${slot}_event_1_id", null),
+            )
+            bindEventLinkIfAvailable(
+                context,
+                views,
+                event2Ids[index],
+                widgetData.getString("week_day_${slot}_event_2_id", null),
+            )
 
             if (overflow > 0) {
                 views.setTextViewText(overflowIds[index], "+$overflow")
@@ -468,7 +658,7 @@ class PlanFlowWeeklyWidgetProvider :
             }
         }
 
-        bindOpenApp(context, views, R.id.widget_week_container)
+        bindCalendarLink(context, views, R.id.widget_week_container, todayDate())
         bindVoice(context, views, R.id.widget_week_voice_button)
     }
 }
@@ -481,11 +671,8 @@ class PlanFlowMonthlyWidgetProvider :
         widgetData: SharedPreferences,
     ) {
         val hasMonthCellPayload = hasMonthCellPayload(widgetData)
-        val fallbackCells = if (hasMonthCellPayload) {
-            null
-        } else {
-            buildCurrentMonthFallbackCells()
-        }
+        val monthStart = LocalDate.now(ZoneId.of("Asia/Seoul")).withDayOfMonth(1)
+        val fallbackCells = buildCurrentMonthFallbackCells(monthStart)
 
         views.setTextViewText(
             R.id.widget_month_title,
@@ -495,9 +682,12 @@ class PlanFlowMonthlyWidgetProvider :
         for (slot in 1..42) {
             val prefix = "month_cell_${slot}"
             val dayId = findViewId(context, "${prefix}_day")
+            val cellContainerId = findViewId(context, "${prefix}_container")
+            val cellDate = parseLocalDate(widgetData.getString("${prefix}_date", null))
             val inMonthId = findViewId(context, "${prefix}_in_month")
             val overflowId = findViewId(context, "${prefix}_overflow_count")
             val fallbackCell = fallbackCells?.getOrNull(slot - 1)
+            val targetDate = cellDate ?: fallbackCell?.third
 
             if (dayId == 0) {
                 continue
@@ -542,6 +732,8 @@ class PlanFlowMonthlyWidgetProvider :
                 views.setViewVisibility(inMonthId, View.GONE)
             }
 
+            bindCalendarLink(context, views, cellContainerId, targetDate)
+
             if (overflow > 0) {
                 views.setTextViewText(overflowId, "+$overflow")
                 views.setViewVisibility(overflowId, if (inMonth) View.VISIBLE else View.GONE)
@@ -578,11 +770,18 @@ class PlanFlowMonthlyWidgetProvider :
                         isCritical = eventCritical,
                         isMuted = !inMonth,
                     )
+                    bindEventLinkIfAvailable(
+                        context,
+                        views,
+                        eventId,
+                        widgetData.getString("${prefix}_event_${eventSlot}_id", null),
+                        if (inMonth) calendarUriForDate(targetDate) else null,
+                    )
                 }
             }
         }
 
-        bindOpenApp(context, views, R.id.widget_month_container)
+        bindCalendarLink(context, views, R.id.widget_month_container, todayDate())
         bindVoice(context, views, R.id.widget_month_voice_button)
     }
 
@@ -595,14 +794,13 @@ class PlanFlowMonthlyWidgetProvider :
         return false
     }
 
-    private fun buildCurrentMonthFallbackCells(): List<Pair<Int, Boolean>> {
-        val monthStart = LocalDate.now(ZoneId.of("Asia/Seoul")).withDayOfMonth(1)
+    private fun buildCurrentMonthFallbackCells(monthStart: LocalDate): List<Triple<Int, Boolean, LocalDate>> {
         val startOffset = monthStart.dayOfWeek.value % 7
         val firstCellDate = monthStart.minusDays(startOffset.toLong())
         return List(42) { index ->
             val day = firstCellDate.plusDays(index.toLong())
             val inMonth = day.year == monthStart.year && day.month == monthStart.month
-            Pair(day.dayOfMonth, inMonth)
+            Triple(day.dayOfMonth, inMonth, day)
         }
     }
 

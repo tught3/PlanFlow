@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -76,15 +78,17 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
 }
 
 class CalendarScreen extends StatefulWidget {
-  const CalendarScreen({super.key});
+  const CalendarScreen({super.key, this.initialDate});
+
+  final DateTime? initialDate;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  DateTime _selectedDate = DateTime.now();
-  DateTime _focusedMonth = DateTime.now();
+  late DateTime _selectedDate;
+  late DateTime _focusedMonth;
   List<EventModel> _allEvents = const <EventModel>[];
   _CalendarLoadState _loadState = _CalendarLoadState.ready;
   String? _loadMessage;
@@ -95,9 +99,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    final initialDate = widget.initialDate ?? DateTime.now();
+    _selectedDate = initialDate;
+    _focusedMonth = DateTime(initialDate.year, initialDate.month);
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _searchController.addListener(() => setState(() {}));
-    _loadEvents();
+    _loadEvents(focusDate: widget.initialDate);
+  }
+
+  @override
+  void didUpdateWidget(covariant CalendarScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextDate = widget.initialDate;
+    if (oldWidget.initialDate == nextDate) {
+      return;
+    }
+    if (nextDate == null) {
+      final today = DateTime.now();
+      setState(() {
+        _selectedDate = today;
+        _focusedMonth = DateTime(today.year, today.month);
+      });
+      return;
+    }
+    unawaited(_loadEvents(focusDate: nextDate));
   }
 
   @override
