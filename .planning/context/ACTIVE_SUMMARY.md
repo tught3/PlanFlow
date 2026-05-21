@@ -941,3 +941,9 @@
 - Extended `VoiceConversationController` with duplicate-time ambiguity handling so commands like “오후 3시 일정 삭제” do not pick the first event when multiple visible events match the same time.
 - Hardened the conversation screen around STT lifecycle and delete confirmation: active listening is canceled on dispose, STT completion checks `mounted`, and UI delete confirmation clears pending state before deleting.
 - Verification passed: `scripts/flutter-local.ps1 test test/services/voice_conversation_controller_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, reviewer re-check PASS, install on `192.168.0.102:5555`, app launch, and PID check.
+
+## 2026-05-21 Auth Update Session Restore Checkpoint
+- Confirmed on device `192.168.0.102:5555` that PlanFlow installs are true updates: `firstInstallTime` stayed `2026-05-19 21:43:41` while `lastUpdateTime` changed, so app data was not cleared by `adb install -r`.
+- Fixed the login flash/session-loss perception by making `AuthProvider` wait briefly for Supabase's delayed auth recovery event before marking the initial session as resolved with no user.
+- Added a provider regression proving a delayed `tokenRefreshed` auth event restores the user before the app is considered signed out.
+- Verification passed: `scripts/flutter-local.ps1 test test/providers/auth_provider_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, `adb install -r -t --user 0`, app launch, PID check, and logcat confirmation of `AuthChangeEvent.tokenRefreshed user=...`.

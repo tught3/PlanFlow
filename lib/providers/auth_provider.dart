@@ -17,6 +17,7 @@ class AuthProvider extends ChangeNotifier {
   StreamSubscription<AuthState>? _subscription;
   final AuthSessionClient? _providedAuthService;
   AuthSessionClient? _authService;
+  Completer<AuthState>? _firstAuthEventCompleter;
   String? _userId;
   String? _email;
   bool _isPasswordRecovery = false;
@@ -44,7 +45,13 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     final service = _service;
+    _firstAuthEventCompleter = Completer<AuthState>();
     _subscription = service.authStateChanges.listen((authState) async {
+      final firstAuthEventCompleter = _firstAuthEventCompleter;
+      if (firstAuthEventCompleter != null &&
+          !firstAuthEventCompleter.isCompleted) {
+        firstAuthEventCompleter.complete(authState);
+      }
       debugPrint(
         'Auth state changed: ${authState.event} '
         'user=${authState.session?.user.id ?? '<none>'}',
@@ -152,9 +159,16 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _bootstrapInitialSession() async {
     final service = _service;
     final snapshotUser = service.currentSession?.user ?? service.currentUser;
+    if (snapshotUser == null) {
+      try {
+        await _firstAuthEventCompleter?.future.timeout(
+          const Duration(seconds: 2),
+        );
+      } catch (_) {}
+    }
     await _syncProfileAndApplyUser(
       service,
-      snapshotUser,
+      service.currentSession?.user ?? service.currentUser ?? snapshotUser,
       resolvesInitialSession: true,
     );
   }

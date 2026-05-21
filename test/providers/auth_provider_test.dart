@@ -64,6 +64,31 @@ void main() {
 
     provider.dispose();
   });
+
+  test('waits briefly for delayed auth recovery before showing signed out',
+      () async {
+    final service = _FakeAuthService(currentSession: null);
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.hasResolvedInitialSession, isFalse);
+    expect(provider.isSignedIn, isFalse);
+
+    service.emitSession(
+      _session(userId: 'restored-user', email: 'restored@example.com'),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.hasResolvedInitialSession, isTrue);
+    expect(provider.isSignedIn, isTrue);
+    expect(provider.userId, 'restored-user');
+
+    provider.dispose();
+    await service.dispose();
+  });
 }
 
 Session _session({
@@ -127,6 +152,14 @@ class _FakeAuthService implements AuthSessionClient {
   Future<void> signOut() async {
     _currentSession = null;
     _currentUser = null;
+  }
+
+  void emitSession(Session session) {
+    _currentSession = session;
+    _currentUser = session.user;
+    _controller.add(
+      AuthState(AuthChangeEvent.tokenRefreshed, session),
+    );
   }
 
   Future<void> dispose() async {
