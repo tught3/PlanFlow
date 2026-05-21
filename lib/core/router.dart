@@ -13,9 +13,7 @@ import '../screens/settings/naver_ics_import_screen.dart';
 import '../screens/splash/splash_screen.dart';
 import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
-import '../screens/voice/voice_conversation_screen.dart';
 import '../screens/voice/voice_input_screen.dart';
-import '../screens/voice/voice_launcher_screen.dart';
 import '../screens/shell_screen.dart';
 import 'constants.dart';
 import 'env.dart';
@@ -121,13 +119,11 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.voiceLauncher,
-      builder: (context, state) => const VoiceLauncherScreen(),
+      redirect: (context, state) => '${AppRoutes.voice}?autoStart=1',
     ),
     GoRoute(
       path: AppRoutes.voiceConversation,
-      builder: (context, state) => VoiceConversationScreen(
-        autoStart: _isAutoStart(state),
-      ),
+      redirect: (context, state) => '${AppRoutes.voice}?autoStart=1',
     ),
     GoRoute(
       path: AppRoutes.voiceAction,

@@ -8,21 +8,36 @@ void main() {
 
     test('장소 추가 명령은 대상 일정과 새 장소를 분리한다', () {
       final plan = pipeline.analyze(
-        '내일 오후 1시에 실매출 확인 일정에 원주세브란스기독병원 장소 추가해줘',
-        intent: VoiceCommandPipelineIntent.edit,
+        '이번 주 금요일 6시에 있는 일정에 강릉 건도리 횟집 장소 추가',
         context: VoiceTextCleanupContext.edit,
       );
 
       expect(plan.intent, VoiceCommandPipelineIntent.edit);
-      expect(plan.targetText, contains('내일'));
-      expect(plan.targetText, contains('실매출 확인'));
-      expect(plan.targetText, isNot(contains('원주세브란스기독병원')));
-      expect(plan.changeText, contains('원주세브란스기독병원'));
+      expect(plan.targetText, contains('이번 주 금요일'));
+      expect(plan.targetText, contains('6시'));
+      expect(plan.targetText, isNot(contains('강릉 건도리 횟집')));
+      expect(plan.changeText, contains('강릉 건도리 횟집'));
       expect(plan.requestedChanges, contains('location'));
-      expect(plan.requestedFieldValues['location'], '원주세브란스기독병원');
-      expect(plan.targetQuery, contains('실매출'));
-      expect(plan.targetQuery, isNot(contains('원주세브란스기독병원')));
+      expect(plan.requestedFieldValues['location'], '강릉 건도리 횟집');
+      expect(plan.targetQuery, contains('6시'));
+      expect(plan.targetQuery, isNot(contains('강릉')));
       expect(plan.safeDirectApply, isFalse);
+    });
+
+    test('대상과 장소가 분리되지 않는 장소 추가 명령은 선택으로 남긴다', () {
+      final plan = pipeline.analyze(
+        '내일 오전 10시 일정 장소 추가',
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.intent, VoiceCommandPipelineIntent.choose);
+      expect(plan.requestedChanges, contains('location'));
+      expect(plan.requestedFieldValues, isNot(contains('location')));
+      expect(plan.requiresUserChoice, isTrue);
+
+      final noTarget = pipeline.analyze('강릉 건도리 횟집 장소 추가');
+      expect(noTarget.intent, VoiceCommandPipelineIntent.choose);
+      expect(noTarget.requiresUserChoice, isTrue);
     });
 
     test('삭제 명령은 바로 실행 가능한 명령으로 취급하지 않는다', () {

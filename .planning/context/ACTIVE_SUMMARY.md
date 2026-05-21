@@ -9,6 +9,12 @@
 - Added regression coverage proving that tapping the transcript while listening stops STT, keeps the recognized text in place, does not navigate to confirm, and opens the test keyboard.
 - Verification passed: `scripts/flutter-local.ps1 test test/screens/voice_input_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
 
+## 2026-05-21 Unified Voice Location Edit Checkpoint
+- Clear location-add voice commands such as `이번 주 금요일 6시에 있는 일정에 강릉 건도리 횟집 장소 추가` now route as existing-event edits, split target schedule text from the new location, and keep the new location out of candidate matching.
+- VoiceInputScreen now hides the separate AI conversation choice, adds `계속 이어서 말하기`, and routes legacy voice launcher/conversation deep links into the unified auto-start voice screen.
+- VoiceActionScreen now treats location-only voice edits as location edits, resolves map coordinates before opening edit, and asks before replacing an existing event location.
+- Verification passed: focused pipeline/router/voice input/voice action/deeplink tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-21 Kakao And Naver OAuth Login Fix
 - Kakao OAuth now passes explicit profile-only scopes (`profile_nickname profile_image`) so the app no longer asks Kakao for the unconfigured `account_email` consent item that produced KOE205.
 - Naver `naver-userinfo-proxy` now falls back to a stable PlanFlow-local email when Naver does not return an email, while marking `email_verified` only when the real Naver email exists; deployed to Supabase Edge Functions as version 5 with `verify_jwt=false`.

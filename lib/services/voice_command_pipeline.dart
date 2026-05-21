@@ -113,6 +113,9 @@ class VoiceCommandPipeline {
         .hasMatch(normalized)) {
       return VoiceCommandPipelineIntent.edit;
     }
+    if (_isClearLocationFieldAddition(normalized)) {
+      return VoiceCommandPipelineIntent.edit;
+    }
     if (isAmbiguousFieldAddition(normalized)) {
       return VoiceCommandPipelineIntent.choose;
     }
@@ -267,8 +270,10 @@ class VoiceCommandPipeline {
     ).hasMatch(normalized)) {
       return false;
     }
-    return _hasScheduleCue(normalized) ||
-        RegExp(r'(일정|스케줄|약속|회의|시험|방문|미팅)').hasMatch(normalized);
+    if (_isClearLocationFieldAddition(normalized)) {
+      return false;
+    }
+    return true;
   }
 
   String normalizeManagementText(String text) {
@@ -518,7 +523,40 @@ class VoiceCommandPipeline {
   bool _hasScheduleCue(String text) {
     final normalized = normalizeManagementText(text);
     return _parseDateTimeHint(normalized) != null ||
-        RegExp(r'(오늘|내일|모레|글피|이번주|다음주|이번\s*주|다음\s*주)').hasMatch(normalized);
+        RegExp(
+          r'(오늘|내일|모레|글피|이번주|다음주|이번\s*주|다음\s*주|[월화수목금토일]요일)',
+        ).hasMatch(normalized);
+  }
+
+  bool _isClearLocationFieldAddition(String text) {
+    final normalized = normalizeManagementText(text);
+    final operation = RegExp(
+      r'(?:장소|위치|주소)\s*(?:를|을|으로|로)?\s*(?:추가|넣어|입력|설정|등록).*?$',
+    ).firstMatch(normalized);
+    if (operation == null) {
+      return false;
+    }
+
+    final beforeOperation = normalized.substring(0, operation.start).trim();
+    final boundaries =
+        RegExp(r'(?:일정|스케줄|약속)에\s+').allMatches(beforeOperation).toList();
+    if (boundaries.isEmpty) {
+      return false;
+    }
+
+    final boundary = boundaries.last;
+    final target = beforeOperation.substring(0, boundary.start + 2).trim();
+    final locationPrefix = beforeOperation.substring(boundary.end).trim();
+    if (target.isEmpty || locationPrefix.isEmpty) {
+      return false;
+    }
+
+    final split = _splitLocationChange(normalized);
+    if (split == null) {
+      return false;
+    }
+    final location = _extractRequestedLocation(split.changeText);
+    return location != null && location.trim().isNotEmpty;
   }
 
   DateTime? _parseDateTimeHint(String text) {

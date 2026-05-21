@@ -92,8 +92,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   List<String> get _requestedChanges =>
       _routeResult?.requestedChanges ?? const <String>[];
   bool get _isLocationFieldAddition =>
-      _voiceCommandRouter.isAmbiguousFieldAddition(_normalizedRawText) &&
-      _requestedChanges.contains('location');
+      _isEdit && _requestedChanges.contains('location');
 
   @override
   void initState() {
@@ -1274,6 +1273,21 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   Future<void> _openEdit(EventModel event) async {
+    final requestedLocation = _inferRequestedLocation();
+    if (_isLocationFieldAddition &&
+        requestedLocation != null &&
+        _hasExistingLocation(event) &&
+        !_isSameLocationText(event.location, requestedLocation)) {
+      final shouldReplace = await _confirmReplaceExistingLocation(
+        currentLocation: event.location?.trim().isNotEmpty == true
+            ? event.location!.trim()
+            : '지도 위치',
+        nextLocation: requestedLocation,
+      );
+      if (shouldReplace != true) {
+        return;
+      }
+    }
     final editedEvent = _eventWithRequestedVoiceChanges(event);
     final locationResolution =
         await _eventWithResolvedVoiceLocation(editedEvent);
@@ -1311,6 +1325,46 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     await context.push(
       '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
       extra: locationResolution.event,
+    );
+  }
+
+  bool _hasExistingLocation(EventModel event) {
+    return (event.location?.trim().isNotEmpty ?? false) ||
+        (event.locationLat != null && event.locationLng != null);
+  }
+
+  bool _isSameLocationText(String? left, String right) {
+    final normalizedLeft =
+        (left ?? '').replaceAll(RegExp(r'\s+'), '').toLowerCase();
+    final normalizedRight = right.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+    return normalizedLeft.isNotEmpty && normalizedLeft == normalizedRight;
+  }
+
+  Future<bool?> _confirmReplaceExistingLocation({
+    required String currentLocation,
+    required String nextLocation,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('장소를 바꿀까요?'),
+          content: Text(
+            '현재 장소가 "$currentLocation"로 등록되어 있어요.\n'
+            '"$nextLocation"로 교체할까요?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('그대로 둘게요'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('교체하기'),
+            ),
+          ],
+        );
+      },
     );
   }
 

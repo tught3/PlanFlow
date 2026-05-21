@@ -60,6 +60,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   Map<String, dynamic>? _preparedDraft;
   String? _preparedDraftSourceText;
   String? _lastSubmittedSignature;
+  String _listenPrefixText = '';
 
   @override
   void initState() {
@@ -130,18 +131,24 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
   }
 
-  Future<void> _startVoiceFlow() async {
+  Future<void> _startVoiceFlow({bool continueExisting = false}) async {
     if (_isListening) {
       return;
     }
 
     unawaited(AnalyticsService.logVoiceInputStarted());
     _clearPreparedDraft();
-    _voiceAnalysisService.resetSession();
+    if (!continueExisting) {
+      _voiceAnalysisService.resetSession();
+      _listenPrefixText = '';
+    } else {
+      _listenPrefixText = _rawTextController.text.trim();
+    }
 
     setState(() {
       _isListening = true;
       _manualEditInterruptedListening = false;
+      _didEditTranscriptManually = false;
       _recognizedText = null;
       _sttRestartCount = 0;
       _statusMessage = null;
@@ -178,7 +185,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       if (result.failure == null &&
           result.hasText &&
           !_didEditTranscriptManually) {
-        _setTranscriptText(result.text ?? '');
+        _setTranscriptText(
+          _mergeVoiceTranscript(_listenPrefixText, result.text ?? ''),
+        );
       }
 
       if (result.isSuccess) {
@@ -216,6 +225,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (_isListening) {
       await widget.sttService.stopActiveListen();
     }
+  }
+
+  Future<void> _continueListeningFlow() async {
+    if (_isListening || _rawTextController.text.trim().isEmpty) {
+      return;
+    }
+    await _startVoiceFlow(continueExisting: true);
   }
 
   Future<void> _activateManualTranscriptEditing() async {
@@ -268,6 +284,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (_isListening) {
       await widget.sttService.clearActiveTranscript();
     }
+    _listenPrefixText = '';
     _clearPreparedDraft();
     _setTranscriptText('');
     if (!mounted) {
@@ -307,12 +324,14 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       if (!mounted || token != _partialTranscriptToken) {
         return;
       }
+      _listenPrefixText = '';
       _clearPreparedDraft();
       _setTranscriptText('');
       return;
     }
 
     if (shouldClearAll) {
+      _listenPrefixText = '';
       await _clearTranscript();
       if (!mounted || token != _partialTranscriptToken) {
         return;
@@ -323,7 +342,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (!_isListening || token != _partialTranscriptToken) {
       return;
     }
-    _setTranscriptText(normalizedText);
+    _setTranscriptText(
+        _mergeVoiceTranscript(_listenPrefixText, normalizedText));
   }
 
   Future<void> _continueWithRawText() async {
@@ -347,7 +367,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       preparedDraft,
       rawText,
     );
-    if (_voiceCommandRouter.isAmbiguousFieldAddition(rawText)) {
+    final commandAction =
+        preparedAction ?? await _detectCommandActionForSubmit(rawText);
+    if (!mounted) {
+      return;
+    }
+    if (commandAction == _VoiceCommandAction.choose &&
+        _voiceCommandRouter.isAmbiguousFieldAddition(rawText)) {
       final choice = await _showAmbiguousFieldAdditionSheet(rawText);
       if (!mounted) {
         return;
@@ -371,11 +397,6 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
           }
           return;
       }
-    }
-    final commandAction =
-        preparedAction ?? await _detectCommandActionForSubmit(rawText);
-    if (!mounted) {
-      return;
     }
     if (commandAction == _VoiceCommandAction.add) {
       await _openAddConfirmFromText(normalizedText, preparedDraft);
@@ -645,6 +666,39 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     _scheduleDraftPreparation(nextText);
   }
 
+  String _mergeVoiceTranscript(String prefix, String nextText) {
+    final base = prefix.trim();
+    final next = nextText.trim();
+    if (base.isEmpty) {
+      return next;
+    }
+    if (next.isEmpty || base == next) {
+      return base;
+    }
+    if (next.startsWith(base)) {
+      return next;
+    }
+    if (base.endsWith(next)) {
+      return base;
+    }
+    final baseWords = base.split(RegExp(r'\s+'));
+    final nextWords = next.split(RegExp(r'\s+'));
+    final maxOverlap = baseWords.length < nextWords.length
+        ? baseWords.length
+        : nextWords.length;
+    for (var count = maxOverlap; count > 0; count -= 1) {
+      final left = baseWords.skip(baseWords.length - count).join(' ');
+      final right = nextWords.take(count).join(' ');
+      if (left == right) {
+        return [
+          ...baseWords,
+          ...nextWords.skip(count),
+        ].join(' ');
+      }
+    }
+    return '$base $next';
+  }
+
   String _removeLastWord(String text) {
     final words = text.trim().split(RegExp(r'\s+'));
     if (words.isEmpty || words.first.isEmpty) {
@@ -820,15 +874,19 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   onTapFinish: _finishVoiceFlow,
                   onManualSubmit: _confirmManualText,
                 ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  key: const ValueKey('voice-conversation-mode-button'),
-                  onPressed: _isListening
-                      ? null
-                      : () => context.push(AppRoutes.voiceConversation),
-                  icon: const Icon(Icons.forum_outlined),
-                  label: const Text('AI 일정 대화 모드'),
-                ),
+                if (_rawTextController.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const ValueKey('voice-continue-listening-button'),
+                    onPressed: _isListening ? null : _continueListeningFlow,
+                    icon: Icon(
+                      _isListening
+                          ? Icons.hearing_outlined
+                          : Icons.record_voice_over_outlined,
+                    ),
+                    label: Text(_isListening ? '듣는 중' : '계속 이어서 말하기'),
+                  ),
+                ],
                 if (_rawTextController.text.trim().isEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),

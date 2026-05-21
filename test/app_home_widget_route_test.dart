@@ -6,7 +6,7 @@ void main() {
   test('resolveHomeWidgetRoute maps voice launcher and auto-start routes', () {
     expect(
       resolveHomeWidgetRoute(Uri.parse('planflow://voice-launcher')),
-      AppRoutes.voiceLauncher,
+      '${AppRoutes.voice}?autoStart=1',
     );
     expect(
       resolveHomeWidgetRoute(Uri.parse('planflow://voice?autoStart=1')),
@@ -16,7 +16,11 @@ void main() {
       resolveHomeWidgetRoute(
         Uri.parse('planflow://voice-conversation?autoStart=1'),
       ),
-      '${AppRoutes.voiceConversation}?autoStart=1',
+      '${AppRoutes.voice}?autoStart=1',
+    );
+    expect(
+      resolveHomeWidgetRoute(Uri.parse('planflow://voice-conversation')),
+      '${AppRoutes.voice}?autoStart=1',
     );
   });
 

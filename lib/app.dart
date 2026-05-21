@@ -222,11 +222,11 @@ String? resolveHomeWidgetRoute(Uri? uri) {
   final query = uri.hasQuery ? '?${uri.query}' : '';
   switch (uri.host) {
     case 'voice-launcher':
-      return AppRoutes.voiceLauncher;
+      return '${AppRoutes.voice}?autoStart=1';
     case 'voice':
       return '${AppRoutes.voice}$query';
     case 'voice-conversation':
-      return '${AppRoutes.voiceConversation}$query';
+      return '${AppRoutes.voice}?autoStart=1';
     case 'calendar':
       return '${AppRoutes.calendar}$query';
     case 'event':
@@ -245,7 +245,7 @@ String? resolveHomeWidgetRoute(Uri? uri) {
     return '${AppRoutes.voice}$query';
   }
   if (uri.path == '/voice-conversation') {
-    return '${AppRoutes.voiceConversation}$query';
+    return '${AppRoutes.voice}?autoStart=1';
   }
   if (uri.path == '/calendar') {
     return '${AppRoutes.calendar}$query';

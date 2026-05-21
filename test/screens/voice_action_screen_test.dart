@@ -1442,6 +1442,76 @@ void main() {
     );
     expect(repository.updatedEvents, isEmpty);
   });
+
+  testWidgets('voice location edit asks before replacing an existing location',
+      (tester) async {
+    final originalStart = DateTime.now().add(const Duration(days: 1));
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '강릉 만남',
+          startAt: originalStart,
+          location: '강릉역',
+        ),
+      ],
+    );
+    final lookupService = _FakeLocationLookupService(
+      results: const <LocationLookupResult>[
+        LocationLookupResult(
+          name: '강릉 건도리횟집',
+          address: '강원 강릉시',
+          latitude: 37.755,
+          longitude: 128.9,
+          provider: LocationLookupProvider.tmap,
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '이번 주 금요일 6시에 있는 일정에 강릉 건도리 횟집 장소 추가',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+            locationLookupService: lookupService,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            final event = state.extra as EventModel;
+            return Text(
+              'edit:${event.title}|${event.location}|${event.locationLat}|${event.locationLng}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('장소 입력'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('장소를 바꿀까요?'), findsOneWidget);
+    expect(find.textContaining('강릉역'), findsWidgets);
+    expect(lookupService.queries, isEmpty);
+
+    await tester.tap(find.text('교체하기'));
+    await tester.pumpAndSettle();
+
+    expect(lookupService.queries, ['강릉 건도리 횟집']);
+    expect(
+      find.textContaining('edit:강릉 만남|강릉 건도리횟집|37.755|128.9'),
+      findsOneWidget,
+    );
+  });
 }
 
 EventModel _event({

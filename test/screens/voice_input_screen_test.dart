@@ -89,6 +89,7 @@ class _FakeSttService extends SttService {
   Completer<SttListenResult>? _listenCompleter;
   ValueChanged<String>? _onPartialResult;
   String _latestText = '';
+  int listenCalls = 0;
   int stopCalls = 0;
 
   @override
@@ -96,6 +97,7 @@ class _FakeSttService extends SttService {
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
   }) {
+    listenCalls += 1;
     _onPartialResult = onPartialResult;
     _listenCompleter = Completer<SttListenResult>();
     return _listenCompleter!.future;
@@ -423,6 +425,75 @@ void main() {
     );
   });
 
+  testWidgets('음성 입력 화면은 AI 대화 모드 선택을 숨기고 이어 말하기 버튼을 보여준다', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: VoiceInputScreen(autoStartOverride: false),
+      ),
+    );
+
+    expect(find.text('AI 일정 대화 모드'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('voice-conversation-mode-button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('voice-continue-listening-button')),
+      findsNothing,
+    );
+
+    await tester.enterText(find.byType(TextField), '내일 오전 10시');
+    await tester.pump();
+
+    expect(find.text('계속 이어서 말하기'), findsOneWidget);
+    final continueButton = tester.widget<OutlinedButton>(
+      find.byKey(const ValueKey('voice-continue-listening-button')),
+    );
+    expect(continueButton.onPressed, isNotNull);
+  });
+
+  testWidgets('계속 이어서 말하기는 기존 텍스트를 유지하며 새 STT를 붙인다', (tester) async {
+    final fakeStt = _FakeSttService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VoiceInputScreen(
+          autoStartOverride: false,
+          sttService: fakeStt,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '내일 오전 10시');
+    await tester.pump();
+
+    await tester
+        .tap(find.byKey(const ValueKey('voice-continue-listening-button')));
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '내일 오전 10시',
+    );
+    expect(find.text('듣는 중'), findsOneWidget);
+    var continueButton = tester.widget<OutlinedButton>(
+      find.byKey(const ValueKey('voice-continue-listening-button')),
+    );
+    expect(continueButton.onPressed, isNull);
+
+    fakeStt.emitPartial('정장집 방문');
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '내일 오전 10시 정장집 방문',
+    );
+    continueButton = tester.widget<OutlinedButton>(
+      find.byKey(const ValueKey('voice-continue-listening-button')),
+    );
+    expect(continueButton.onPressed, isNull);
+  });
+
   testWidgets('부분 인식에서 전체삭제가 오면 현재 입력을 즉시 비운다', (tester) async {
     final fakeStt = _FakeSttService();
     final router = GoRouter(
@@ -554,7 +625,7 @@ void main() {
     expect(find.text('음성 관리 화면'), findsNothing);
   });
 
-  testWidgets('장소 추가처럼 애매한 추가 명령은 뜻을 먼저 묻는다', (tester) async {
+  testWidgets('대상과 장소가 분리된 장소 추가 명령은 수정 화면으로 바로 이동한다', (tester) async {
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
       routes: [
@@ -586,8 +657,52 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.enterText(
       find.byType(TextField),
-      '내일 오전 10시에 교보생명 시험 일정에 원주 교보생명빌딩으로 장소 추가',
+      '이번 주 금요일 6시에 있는 일정에 강릉 건도리 횟집 장소 추가',
     );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('voice-input-confirm-current-text-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('어떤 뜻인가요?'), findsNothing);
+    expect(find.textContaining('음성 관리: edit'), findsOneWidget);
+    expect(find.textContaining('강릉 건도리 횟집'), findsOneWidget);
+    expect(find.text('일정 확인 화면'), findsNothing);
+  });
+
+  testWidgets('대상과 장소가 분리되지 않는 장소 추가 명령은 뜻을 먼저 묻는다', (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) =>
+              const VoiceInputScreen(autoStartOverride: false),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) {
+            final extra = state.extra as Map<String, dynamic>;
+            return Text(
+              '음성 관리: ${extra['action']} / ${extra['raw_text']}',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '내일 오전 10시 일정 장소 추가');
     await tester.pumpAndSettle();
 
     await tester.tap(
@@ -601,7 +716,6 @@ void main() {
 
     await tester.tap(find.text('기존 일정에 내용 추가'));
     await tester.pumpAndSettle();
-
     expect(find.textContaining('음성 관리: edit'), findsOneWidget);
     expect(find.text('일정 확인 화면'), findsNothing);
   });
@@ -1358,5 +1472,42 @@ void main() {
 
     expect(find.textContaining('일정 확인:'), findsOneWidget);
     expect(find.textContaining('음성 관리:'), findsNothing);
+  });
+
+  testWidgets('계속 이어서 말하기는 기존 문장을 유지한 채 음성 인식을 다시 시작한다', (tester) async {
+    final fakeStt = _FakeSttService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VoiceInputScreen(
+          autoStartOverride: false,
+          sttService: fakeStt,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '이번 주 금요일 6시 일정에');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('voice-continue-listening-button')),
+        findsOneWidget);
+    await tester
+        .tap(find.byKey(const ValueKey('voice-continue-listening-button')));
+    await tester.pump();
+
+    expect(fakeStt.listenCalls, 1);
+    expect(find.text('듣는 중'), findsOneWidget);
+    final disabledButton = tester.widget<OutlinedButton>(
+      find.byKey(const ValueKey('voice-continue-listening-button')),
+    );
+    expect(disabledButton.onPressed, isNull);
+
+    fakeStt.emitPartial('강릉 건도리 횟집 장소 추가');
+    await tester.pump();
+
+    final textField = tester.widget<TextField>(find.byType(TextField));
+    expect(
+      textField.controller?.text,
+      '이번 주 금요일 6시 일정에 강릉 건도리 횟집 장소 추가',
+    );
   });
 }

@@ -42,9 +42,19 @@ void main() {
       final memoAdd = router.route('내일 병원 준비물 메모해줘');
       expect(memoAdd.intent, VoiceCommandRouteIntent.add);
 
-      final ambiguousLocationAdd = router.route(
+      final clearLocationAdd = router.route(
         '내일 오전 10시에 교보생명 시험 일정에 원주 교보생명빌딩으로 장소 추가',
       );
+      expect(clearLocationAdd.intent, VoiceCommandRouteIntent.edit);
+      expect(clearLocationAdd.requestedChanges, contains('location'));
+      expect(
+        clearLocationAdd.requestedFieldValues['location'],
+        '원주 교보생명빌딩',
+      );
+      expect(clearLocationAdd.targetQuery, contains('교보생명'));
+      expect(clearLocationAdd.targetQuery, isNot(contains('원주')));
+
+      final ambiguousLocationAdd = router.route('내일 오전 10시 일정 장소 추가');
       expect(ambiguousLocationAdd.intent, VoiceCommandRouteIntent.choose);
       expect(
         router.isAmbiguousFieldAddition(ambiguousLocationAdd.rawText),
@@ -105,6 +115,23 @@ void main() {
       expect(route.targetQuery, contains('시험'));
       expect(route.targetQuery, isNot(contains('원주')));
       expect(route.targetQuery, isNot(contains('교보생명빌딩')));
+    });
+
+    test('이번 주 시간 단서가 있는 장소 추가도 기존 일정과 새 장소를 분리한다', () {
+      const router = VoiceCommandRouter();
+      final route = router.route(
+        '이번 주 금요일 6시에 있는 일정에 강릉 건도리 횟집 장소 추가',
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(route.intent, VoiceCommandRouteIntent.edit);
+      expect(route.requestedChanges, contains('location'));
+      expect(route.requestedFieldValues['location'], '강릉 건도리 횟집');
+      expect(route.targetText, contains('이번 주 금요일'));
+      expect(route.targetText, contains('6시'));
+      expect(route.targetText, isNot(contains('강릉 건도리 횟집')));
+      expect(route.targetQuery, contains('6시'));
+      expect(route.targetQuery, isNot(contains('강릉')));
     });
 
     test('후보 힌트와 검색 토큰도 공용 라우터가 만든다', () {
