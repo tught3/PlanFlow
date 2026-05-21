@@ -452,11 +452,7 @@ class SttService {
         .split(RegExp(r'\s+'))
         .where((word) => word.isNotEmpty)
         .toList();
-    final incomingWords = incomingText
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((word) => word.isNotEmpty)
-        .toList();
+    final incomingWords = _dedupeTranscriptWords(incomingText);
     if (incomingWords.isEmpty) {
       return '';
     }
@@ -495,21 +491,20 @@ class SttService {
     );
   }
 
-  @visibleForTesting
   static String mergeTranscriptSegment(String committedText, String segment) {
     final normalizedSegment = segment.trim();
     if (normalizedSegment.isEmpty) {
       return committedText.trim();
     }
+    final incomingWords = _dedupeTranscriptWords(normalizedSegment);
+    if (incomingWords.isEmpty) {
+      return committedText.trim();
+    }
     final committed = committedText.trim();
     if (committed.isEmpty) {
-      return normalizedSegment;
+      return incomingWords.join(' ');
     }
     final committedWords = committed
-        .split(RegExp(r'\s+'))
-        .where((word) => word.isNotEmpty)
-        .toList();
-    final incomingWords = normalizedSegment
         .split(RegExp(r'\s+'))
         .where((word) => word.isNotEmpty)
         .toList();
@@ -540,7 +535,19 @@ class SttService {
       mergedWords.addAll(incomingWords.sublist(overlap));
       return mergedWords.join(' ');
     }
-    return '$committed $normalizedSegment'.trim();
+    return '$committed ${incomingWords.join(' ')}'.trim();
+  }
+
+  static List<String> _dedupeTranscriptWords(String text) {
+    final words = text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList(growable: false);
+    if (words.length < 4) {
+      return words;
+    }
+    return _collapseRepeatedSpeech(words);
   }
 
   @visibleForTesting

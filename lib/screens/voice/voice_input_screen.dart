@@ -55,6 +55,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   bool _didEditTranscriptManually = false;
   bool _manualEditInterruptedListening = false;
   bool _isSubmittingVoiceCommand = false;
+  bool _hasSubmittedVoiceCommand = false;
   int _partialTranscriptToken = 0;
   int _draftPreparationToken = 0;
   Map<String, dynamic>? _preparedDraft;
@@ -88,6 +89,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (!_isApplyingTranscriptProgrammatically &&
         _rawTextController.text.trim().isNotEmpty) {
       _didEditTranscriptManually = true;
+      _hasSubmittedVoiceCommand = false;
       _clearPreparedDraft();
     }
     if (mounted) {
@@ -141,8 +143,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (!continueExisting) {
       _voiceAnalysisService.resetSession();
       _listenPrefixText = '';
-    } else {
+    } else if (!_hasSubmittedVoiceCommand) {
       _listenPrefixText = _rawTextController.text.trim();
+    } else {
+      _listenPrefixText = '';
     }
 
     setState(() {
@@ -231,7 +235,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (_isListening || _rawTextController.text.trim().isEmpty) {
       return;
     }
-    await _startVoiceFlow(continueExisting: true);
+    await _startVoiceFlow(continueExisting: !_hasSubmittedVoiceCommand);
   }
 
   Future<void> _activateManualTranscriptEditing() async {
@@ -412,6 +416,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
     setState(() {
       _isSubmittingVoiceCommand = true;
+      _hasSubmittedVoiceCommand = true;
       _lastSubmittedSignature = signature;
     });
     return true;
@@ -480,6 +485,17 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   ) async {
     final cleanup = await _cleanupVoiceTextForRouting(normalizedText);
     if (!mounted) {
+      return;
+    }
+    if (commandAction == _VoiceCommandAction.query) {
+      await _pushVoiceRoute(
+        AppRoutes.voiceConversation,
+        extra: <String, dynamic>{
+          'initial_text': cleanup.cleanedText.isEmpty
+              ? rawText
+              : cleanup.cleanedText,
+        },
+      );
       return;
     }
     await _pushVoiceRoute(
@@ -668,7 +684,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
   String _mergeVoiceTranscript(String prefix, String nextText) {
     final base = prefix.trim();
-    final next = nextText.trim();
+    final next = SttService.normalizeVoiceTranscript(nextText).trim();
     if (base.isEmpty) {
       return next;
     }
@@ -681,22 +697,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (base.endsWith(next)) {
       return base;
     }
-    final baseWords = base.split(RegExp(r'\s+'));
-    final nextWords = next.split(RegExp(r'\s+'));
-    final maxOverlap = baseWords.length < nextWords.length
-        ? baseWords.length
-        : nextWords.length;
-    for (var count = maxOverlap; count > 0; count -= 1) {
-      final left = baseWords.skip(baseWords.length - count).join(' ');
-      final right = nextWords.take(count).join(' ');
-      if (left == right) {
-        return [
-          ...baseWords,
-          ...nextWords.skip(count),
-        ].join(' ');
-      }
-    }
-    return '$base $next';
+    return SttService.mergeTranscriptSegment(base, next);
   }
 
   String _removeLastWord(String text) {
@@ -884,7 +885,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                           ? Icons.hearing_outlined
                           : Icons.record_voice_over_outlined,
                     ),
-                    label: Text(_isListening ? '듣는 중' : '계속 이어서 말하기'),
+                    label: Text(_isListening ? '듣는 중' : '이어서 명령하기'),
                   ),
                 ],
                 if (_rawTextController.text.trim().isEmpty)

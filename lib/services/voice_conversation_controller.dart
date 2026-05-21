@@ -1,5 +1,6 @@
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
+import 'voice_date_range_parser.dart';
 
 typedef VoiceConversationNow = DateTime Function();
 
@@ -372,54 +373,14 @@ class VoiceConversationController {
   }
 
   VoiceConversationDateRange? _parseDateRange(String text) {
-    final now = (_now ?? planflowNow)();
-    final today = DateTime(now.year, now.month, now.day);
-
-    if (text.contains('이번 주') || text.contains('이번주')) {
-      final weekStart = today.subtract(Duration(days: today.weekday - 1));
-      return VoiceConversationDateRange(
-        start: weekStart,
-        end: weekStart.add(const Duration(days: 7)),
-      );
+    final parsed = VoiceDateRangeParser.parse(
+      text,
+      now: (_now ?? planflowNow)(),
+    );
+    if (parsed == null) {
+      return null;
     }
-
-    final absolute = RegExp(
-      r'(\d{1,2})\s*월\s*(\d{1,2})\s*일',
-    ).firstMatch(text);
-    if (absolute != null) {
-      final month = int.tryParse(absolute.group(1)!);
-      final day = int.tryParse(absolute.group(2)!);
-      if (month != null && day != null) {
-        final start = DateTime(now.year, month, day);
-        return VoiceConversationDateRange(
-          start: start,
-          end: start.add(const Duration(days: 1)),
-        );
-      }
-    }
-
-    if (text.contains('모레')) {
-      final start = today.add(const Duration(days: 2));
-      return VoiceConversationDateRange(
-        start: start,
-        end: start.add(const Duration(days: 1)),
-      );
-    }
-    if (text.contains('내일')) {
-      final start = today.add(const Duration(days: 1));
-      return VoiceConversationDateRange(
-        start: start,
-        end: start.add(const Duration(days: 1)),
-      );
-    }
-    if (text.contains('오늘')) {
-      return VoiceConversationDateRange(
-        start: today,
-        end: today.add(const Duration(days: 1)),
-      );
-    }
-
-    return null;
+    return VoiceConversationDateRange(start: parsed.start, end: parsed.end);
   }
 
   bool _eventIntersectsRange(

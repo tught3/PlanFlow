@@ -27,6 +27,62 @@ void main() {
       expect(controller.visibleEvents.length, 2);
     });
 
+    test('explicit weekday query wins over current or next week range', () {
+      final monday = DateTime(2026, 5, 18, 9);
+      final friday = DateTime(2026, 5, 22, 9);
+      final nextFriday = DateTime(2026, 5, 29, 9);
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('monday', '월요일 회의', monday),
+          _event('friday', '금요일 방문', friday),
+          _event('next-friday', '다음 금요일 방문', nextFriday),
+        ],
+        now: () => DateTime(2026, 5, 21, 8),
+      );
+
+      for (final text in <String>[
+        '이번주금요일 일정 알려줘',
+        '이번 주 금요일 일정 알려줘',
+        '이번주 금요일 일정 알려줘',
+      ]) {
+        final result = controller.handle(text);
+
+        expect(result.queryRange?.start, DateTime(2026, 5, 22));
+        expect(result.queryRange?.end, DateTime(2026, 5, 23));
+        expect(result.visibleEvents.map((event) => event.id), <String>[
+          'friday',
+        ]);
+      }
+
+      final nextResult = controller.handle('다음주 금요일 일정 알려줘');
+
+      expect(nextResult.queryRange?.start, DateTime(2026, 5, 29));
+      expect(nextResult.queryRange?.end, DateTime(2026, 5, 30));
+      expect(nextResult.visibleEvents.map((event) => event.id), <String>[
+        'next-friday',
+      ]);
+    });
+
+    test('weekly query remains current week range', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('monday', '월요일 회의', DateTime(2026, 5, 18, 9)),
+          _event('friday', '금요일 방문', DateTime(2026, 5, 22, 9)),
+          _event('next-friday', '다음 금요일 방문', DateTime(2026, 5, 29, 9)),
+        ],
+        now: () => DateTime(2026, 5, 21, 8),
+      );
+
+      final result = controller.handle('주간 일정 알려줘');
+
+      expect(result.queryRange?.start, DateTime(2026, 5, 18));
+      expect(result.queryRange?.end, DateTime(2026, 5, 25));
+      expect(result.visibleEvents.map((event) => event.id), <String>[
+        'monday',
+        'friday',
+      ]);
+    });
+
     test('availability query returns empty-day state without side effects', () {
       final controller = VoiceConversationController(
         events: <EventModel>[

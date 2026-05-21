@@ -4,6 +4,14 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-21 Voice STT Duplicate Transcript Guard
+- VoiceInputScreen now treats voice input after a submitted command as a fresh command, so conversational follow-up text such as `3번째 일정 삭제` does not append to the previous query text.
+- STT transcript merging now de-duplicates repeated incoming partial/final phrases before overlap merging, preventing repeated Android partial/final text from being appended two or three times.
+- Voice query date parsing now gives explicit weekdays priority over week ranges, so `이번주금요일 일정 전부다 보여줘` queries only Friday instead of the whole Monday-Sunday week.
+- Query voice input now opens the conversational voice route with the initial query text, keeping numbered result context available for follow-up commands.
+- Manual transcript tap behavior remains preserved: tapping while listening stops STT, suppresses auto-submit, and opens keyboard editing.
+- Verification passed: focused voice date/STT/input/action tests, `test/app_home_widget_route_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-21 Voice Transcript Tap Keyboard Fix
 - VoiceInputScreen now treats tapping the transcript field during active listening as an explicit manual-edit handoff: it stops the active STT listen, prevents the completed STT result from auto-submitting, and focuses the text field for keyboard correction.
 - Added regression coverage proving that tapping the transcript while listening stops STT, keeps the recognized text in place, does not navigate to confirm, and opens the test keyboard.

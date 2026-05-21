@@ -24,6 +24,7 @@ import '../../services/manual_event_side_effect_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/voice_command_router.dart';
+import '../../services/voice_date_range_parser.dart';
 import '../../services/voice_text_cleanup_service.dart';
 
 enum VoiceScheduleAction { add, edit, delete, query, choose }
@@ -763,43 +764,15 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   }
 
   _DateRange? _queryDateRange(String rawText) {
-    final normalized = rawText.replaceAll(RegExp(r'\s+'), ' ');
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    if (normalized.contains('내일')) {
-      final start = today.add(const Duration(days: 1));
-      return _DateRange(start, start.add(const Duration(days: 1)));
+    final parsed = VoiceDateRangeParser.parse(rawText);
+    if (parsed == null) {
+      return null;
     }
-    if (normalized.contains('모레')) {
-      final start = today.add(const Duration(days: 2));
-      return _DateRange(start, start.add(const Duration(days: 1)));
-    }
-    if (RegExp(r'(이번\s*주|이번주|주간)').hasMatch(normalized)) {
-      final start = today.subtract(Duration(days: today.weekday - 1));
-      return _DateRange(start, start.add(const Duration(days: 7)));
-    }
-    if (normalized.contains('오늘')) {
-      return _DateRange(today, today.add(const Duration(days: 1)));
-    }
-    return null;
+    return _DateRange(parsed.start, parsed.end);
   }
 
   String _queryRangeLabel(String rawText) {
-    final normalized = rawText.replaceAll(RegExp(r'\s+'), ' ');
-    if (normalized.contains('내일')) {
-      return '내일';
-    }
-    if (normalized.contains('모레')) {
-      return '모레';
-    }
-    if (RegExp(r'(이번\s*주|이번주|주간)').hasMatch(normalized)) {
-      return '이번 주';
-    }
-    if (normalized.contains('오늘')) {
-      return '오늘';
-    }
-    return '다가오는';
+    return VoiceDateRangeParser.parse(rawText)?.label ?? '다가오는';
   }
 
   String _querySummaryText(List<EventModel> events) {

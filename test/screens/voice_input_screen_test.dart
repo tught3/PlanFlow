@@ -147,6 +147,19 @@ class _FakeSttService extends SttService {
   }
 }
 
+GoRoute _voiceConversationTestRoute() {
+  return GoRoute(
+    path: AppRoutes.voiceConversation,
+    builder: (context, state) {
+      final extra = state.extra as Map<String, dynamic>;
+      return Text(
+        '음성 대화: ${extra['initial_text']}',
+        textDirection: TextDirection.ltr,
+      );
+    },
+  );
+}
+
 void main() {
   testWidgets('partial 결과로 준비된 draft가 완료 시 우선 전달된다', (tester) async {
     final fakeStt = _FakeSttService();
@@ -425,7 +438,7 @@ void main() {
     );
   });
 
-  testWidgets('음성 입력 화면은 AI 대화 모드 선택을 숨기고 이어 말하기 버튼을 보여준다', (tester) async {
+  testWidgets('음성 입력 화면은 AI 대화 모드 선택을 숨기고 이어 명령 버튼을 보여준다', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: VoiceInputScreen(autoStartOverride: false),
@@ -443,16 +456,16 @@ void main() {
     );
 
     await tester.enterText(find.byType(TextField), '내일 오전 10시');
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    expect(find.text('계속 이어서 말하기'), findsOneWidget);
+    expect(find.text('이어서 명령하기'), findsOneWidget);
     final continueButton = tester.widget<OutlinedButton>(
       find.byKey(const ValueKey('voice-continue-listening-button')),
     );
     expect(continueButton.onPressed, isNotNull);
   });
 
-  testWidgets('계속 이어서 말하기는 기존 텍스트를 유지하며 새 STT를 붙인다', (tester) async {
+  testWidgets('제출 전 이어서 명령하기는 기존 텍스트를 유지하며 새 STT를 붙인다', (tester) async {
     final fakeStt = _FakeSttService();
 
     await tester.pumpWidget(
@@ -492,6 +505,52 @@ void main() {
       find.byKey(const ValueKey('voice-continue-listening-button')),
     );
     expect(continueButton.onPressed, isNull);
+  });
+
+  testWidgets('제출 후 이어 말하기는 이전 조회 문장에 새 명령을 붙이지 않는다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        _voiceConversationTestRoute(),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '오늘 일정 알려줘');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('현재 내용으로 입력'));
+    await tester.pumpAndSettle();
+    expect(find.text('음성 대화: 오늘 일정 알려줘'), findsOneWidget);
+
+    router.pop();
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('voice-continue-listening-button')));
+    await tester.pump();
+
+    fakeStt.emitPartial('3번째 일정 삭제');
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '3번째 일정 삭제',
+    );
   });
 
   testWidgets('부분 인식에서 전체삭제가 오면 현재 입력을 즉시 비운다', (tester) async {
@@ -641,6 +700,7 @@ void main() {
             textDirection: TextDirection.ltr,
           ),
         ),
+        _voiceConversationTestRoute(),
         GoRoute(
           path: AppRoutes.voiceAction,
           builder: (context, state) {
@@ -1144,6 +1204,7 @@ void main() {
             textDirection: TextDirection.ltr,
           ),
         ),
+        _voiceConversationTestRoute(),
         GoRoute(
           path: AppRoutes.voiceAction,
           builder: (context, state) {
@@ -1164,7 +1225,7 @@ void main() {
     await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('음성 관리: query'), findsOneWidget);
+    expect(find.textContaining('음성 대화:'), findsOneWidget);
     expect(find.textContaining('내일 일정 확인해줘'), findsOneWidget);
     expect(find.text('일정 확인 화면'), findsNothing);
   });
@@ -1185,6 +1246,7 @@ void main() {
             textDirection: TextDirection.ltr,
           ),
         ),
+        _voiceConversationTestRoute(),
         GoRoute(
           path: AppRoutes.voiceAction,
           builder: (context, state) {
@@ -1205,7 +1267,7 @@ void main() {
     await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('음성 관리: query'), findsOneWidget);
+    expect(find.textContaining('음성 대화:'), findsOneWidget);
     expect(find.textContaining('오늘 일정 알려줘'), findsOneWidget);
     expect(find.text('일정 확인 화면'), findsNothing);
   });
@@ -1226,6 +1288,7 @@ void main() {
             textDirection: TextDirection.ltr,
           ),
         ),
+        _voiceConversationTestRoute(),
         GoRoute(
           path: AppRoutes.voiceAction,
           builder: (context, state) {
@@ -1246,7 +1309,7 @@ void main() {
     await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('음성 관리: query'), findsOneWidget);
+    expect(find.textContaining('음성 대화:'), findsOneWidget);
     expect(find.textContaining('저장된 일정 찾아줘'), findsOneWidget);
     expect(find.text('일정 확인 화면'), findsNothing);
   });
@@ -1267,6 +1330,7 @@ void main() {
             textDirection: TextDirection.ltr,
           ),
         ),
+        _voiceConversationTestRoute(),
         GoRoute(
           path: AppRoutes.voiceAction,
           builder: (context, state) {
@@ -1287,7 +1351,7 @@ void main() {
     await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('음성 관리: query'), findsOneWidget);
+    expect(find.textContaining('음성 대화:'), findsOneWidget);
     expect(find.text('일정 확인 화면'), findsNothing);
   });
 
@@ -1307,6 +1371,7 @@ void main() {
             textDirection: TextDirection.ltr,
           ),
         ),
+        _voiceConversationTestRoute(),
         GoRoute(
           path: AppRoutes.voiceAction,
           builder: (context, state) {
@@ -1327,7 +1392,7 @@ void main() {
     await tester.tap(find.text('현재 내용으로 입력'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('음성 관리: query'), findsOneWidget);
+    expect(find.textContaining('음성 대화:'), findsOneWidget);
     expect(find.text('일정 확인 화면'), findsNothing);
   });
 
@@ -1474,7 +1539,7 @@ void main() {
     expect(find.textContaining('음성 관리:'), findsNothing);
   });
 
-  testWidgets('계속 이어서 말하기는 기존 문장을 유지한 채 음성 인식을 다시 시작한다', (tester) async {
+  testWidgets('제출 전 이어서 명령하기는 기존 문장을 유지한 채 음성 인식을 다시 시작한다', (tester) async {
     final fakeStt = _FakeSttService();
     await tester.pumpWidget(
       MaterialApp(

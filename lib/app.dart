@@ -226,7 +226,7 @@ String? resolveHomeWidgetRoute(Uri? uri) {
     case 'voice':
       return '${AppRoutes.voice}$query';
     case 'voice-conversation':
-      return '${AppRoutes.voice}?autoStart=1';
+      return '${AppRoutes.voiceConversation}?autoStart=1';
     case 'calendar':
       return '${AppRoutes.calendar}$query';
     case 'event':
@@ -245,7 +245,7 @@ String? resolveHomeWidgetRoute(Uri? uri) {
     return '${AppRoutes.voice}$query';
   }
   if (uri.path == '/voice-conversation') {
-    return '${AppRoutes.voice}?autoStart=1';
+    return '${AppRoutes.voiceConversation}?autoStart=1';
   }
   if (uri.path == '/calendar') {
     return '${AppRoutes.calendar}$query';

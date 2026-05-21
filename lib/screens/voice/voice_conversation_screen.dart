@@ -22,12 +22,14 @@ class VoiceConversationScreen extends StatefulWidget {
     this.sttService = const SttService(),
     this.locationLookupService,
     this.autoStart = false,
+    this.initialText,
   });
 
   final EventRepository? repository;
   final SttService sttService;
   final LocationLookupService? locationLookupService;
   final bool autoStart;
+  final String? initialText;
 
   @override
   State<VoiceConversationScreen> createState() =>
@@ -56,11 +58,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   bool _isSubmitting = false;
   bool _isListening = false;
   bool _keepListening = false;
+  bool _didSubmitInitialText = false;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_loadEvents());
+    unawaited(_loadEvents().then((_) => _submitInitialTextIfNeeded()));
     if (widget.autoStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || _isListening) {
@@ -70,6 +73,18 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         unawaited(_listenOnce());
       });
     }
+  }
+
+  Future<void> _submitInitialTextIfNeeded() async {
+    if (!mounted || _didSubmitInitialText) {
+      return;
+    }
+    final text = widget.initialText?.trim();
+    if (text == null || text.isEmpty) {
+      return;
+    }
+    _didSubmitInitialText = true;
+    await _submitText(text);
   }
 
   @override

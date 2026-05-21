@@ -124,6 +124,49 @@ void main() {
     expect(find.text('내일 미팅'), findsNothing);
   });
 
+  testWidgets('이번 주 금요일 조회는 주간이 아니라 금요일 하루만 보여준다', (tester) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final weekStart = today.subtract(Duration(days: today.weekday - 1));
+    final friday = weekStart.add(const Duration(days: DateTime.friday - 1));
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'monday-1',
+          title: '월요일 미팅',
+          startAt: weekStart.add(const Duration(hours: 9)),
+        ),
+        _event(
+          id: 'friday-1',
+          title: '금요일 방문',
+          startAt: friday.add(const Duration(hours: 11)),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '이번주금요일 일정 알려줘',
+            action: VoiceScheduleAction.query,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('이번 주 금요일 일정 요약'), findsOneWidget);
+    expect(find.textContaining('이번 주 금요일 일정은 1개입니다'), findsOneWidget);
+    expect(find.text('금요일 방문'), findsOneWidget);
+    expect(find.text('월요일 미팅'), findsNothing);
+  });
+
   testWidgets('오늘 일정 조회 결과가 없으면 자연스러운 안내를 보여준다', (tester) async {
     final now = DateTime.now();
     final repository = _FakeEventRepository(

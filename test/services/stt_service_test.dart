@@ -173,6 +173,13 @@ void main() {
       SttService.appendOnlyNewSpeech('', '내일 오전 9시에'),
       '내일 오전 9시에',
     );
+    expect(
+      SttService.appendOnlyNewSpeech(
+        '오늘 일정 알려줘',
+        '오늘 일정 알려줘 오늘 일정 알려줘 3번째 일정 삭제',
+      ),
+      '3번째 일정 삭제',
+    );
   });
 
   test('SttService merges native restart segments without duplicating text',
@@ -190,6 +197,13 @@ void main() {
         '시험 일정에 원주 교보생명빌딩으로 장소 추가',
       ),
       '내일 오전 10시에 교보생명 시험 일정에 원주 교보생명빌딩으로 장소 추가',
+    );
+    expect(
+      SttService.mergeTranscriptSegment(
+        '오늘 일정 알려줘',
+        '오늘 일정 알려줘 오늘 일정 알려줘 3번째 일정 삭제',
+      ),
+      '오늘 일정 알려줘 3번째 일정 삭제',
     );
   });
 }

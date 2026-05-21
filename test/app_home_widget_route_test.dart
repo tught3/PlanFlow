@@ -16,11 +16,11 @@ void main() {
       resolveHomeWidgetRoute(
         Uri.parse('planflow://voice-conversation?autoStart=1'),
       ),
-      '${AppRoutes.voice}?autoStart=1',
+      '${AppRoutes.voiceConversation}?autoStart=1',
     );
     expect(
       resolveHomeWidgetRoute(Uri.parse('planflow://voice-conversation')),
-      '${AppRoutes.voice}?autoStart=1',
+      '${AppRoutes.voiceConversation}?autoStart=1',
     );
   });
 
