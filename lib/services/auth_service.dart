@@ -85,9 +85,16 @@ class AuthService implements AuthSessionClient {
     );
   }
 
-  Future<bool> signInWithOAuth(PlanFlowOAuthProvider provider) async {
+  Future<bool> signInWithOAuth(
+    PlanFlowOAuthProvider provider, {
+    bool forceConsent = false,
+  }) async {
     final oauthProvider = _oauthProvider(provider);
     final scopes = oauthScopesFor(provider);
+    final queryParams = oauthQueryParamsFor(
+      provider,
+      forceConsent: forceConsent,
+    );
     return _launchOAuthUrl(
       appProvider: provider,
       supabaseProvider: oauthProvider,
@@ -95,9 +102,15 @@ class AuthService implements AuthSessionClient {
         provider: oauthProvider,
         redirectTo: AppEnv.authRedirectUrl,
         scopes: scopes,
+        queryParams: queryParams,
       ),
+      queryParams: queryParams,
       purpose: 'sign-in',
     );
+  }
+
+  Future<bool> recheckNaverAccountConsent() {
+    return signInWithOAuth(PlanFlowOAuthProvider.naver, forceConsent: true);
   }
 
   Future<bool> connectCalendarProvider(PlanFlowOAuthProvider provider) async {
@@ -106,6 +119,7 @@ class AuthService implements AuthSessionClient {
       return signInWithOAuth(provider);
     }
 
+    final queryParams = oauthQueryParamsFor(provider);
     return _launchOAuthUrl(
       appProvider: provider,
       supabaseProvider: oauthProvider,
@@ -113,7 +127,9 @@ class AuthService implements AuthSessionClient {
         oauthProvider,
         redirectTo: AppEnv.authRedirectUrl,
         scopes: oauthScopesFor(provider),
+        queryParams: queryParams,
       ),
+      queryParams: queryParams,
       purpose: 'calendar-link',
     );
   }
@@ -156,6 +172,7 @@ class AuthService implements AuthSessionClient {
     required PlanFlowOAuthProvider appProvider,
     required OAuthProvider supabaseProvider,
     required Future<OAuthResponse> Function() urlFactory,
+    required Map<String, String>? queryParams,
     required String purpose,
   }) async {
     final launchMode =
@@ -167,7 +184,8 @@ class AuthService implements AuthSessionClient {
     debugPrint(
       'OAuth launch: purpose=$purpose appProvider=$appProvider '
       'supabaseProvider=${response.provider} host=${uri.host} path=${uri.path} '
-      'scopes=${oauthScopesFor(appProvider) ?? 'default'}',
+      'scopes=${oauthScopesFor(appProvider) ?? 'default'} '
+      'queryParams=${queryParams?.keys.join(',') ?? 'none'}',
     );
     return launchUrl(
       uri,
@@ -231,5 +249,16 @@ class AuthService implements AuthSessionClient {
       PlanFlowOAuthProvider.kakao => 'openid,profile_nickname,profile_image',
       PlanFlowOAuthProvider.naver => 'email',
     };
+  }
+
+  @visibleForTesting
+  static Map<String, String>? oauthQueryParamsFor(
+    PlanFlowOAuthProvider provider, {
+    bool forceConsent = false,
+  }) {
+    if (provider == PlanFlowOAuthProvider.naver && forceConsent) {
+      return const <String, String>{'auth_type': 'reprompt'};
+    }
+    return null;
   }
 }

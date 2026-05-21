@@ -18,5 +18,26 @@ void main() {
         'email',
       );
     });
+
+    test('Naver recheck uses reprompt without changing normal login', () {
+      expect(
+        AuthService.oauthQueryParamsFor(PlanFlowOAuthProvider.naver),
+        isNull,
+      );
+      expect(
+        AuthService.oauthQueryParamsFor(
+          PlanFlowOAuthProvider.naver,
+          forceConsent: true,
+        ),
+        const <String, String>{'auth_type': 'reprompt'},
+      );
+      expect(
+        AuthService.oauthQueryParamsFor(
+          PlanFlowOAuthProvider.kakao,
+          forceConsent: true,
+        ),
+        isNull,
+      );
+    });
   });
 }

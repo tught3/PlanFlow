@@ -1049,3 +1049,10 @@
 - Naver calendar missing-permission guidance now routes to Settings for CalDAV ID/app-password setup instead of relaunching OAuth, and settings shows a provider label such as 네이버 로그인됨 when a social account has no email.
 - Kakao OAuth scopes now use comma-separated OIDC/profile-only scopes and still avoid account_email; Kakao/Supabase console must also allow emailless Kakao users or enable the Kakao email consent item.
 - Verification passed: focused auth/storage/settings tests, scripts/flutter-local.ps1 analyze --no-pub, git diff --check, debug APK build, install -r and launch/PID check on 192.168.0.102:5555.
+
+## 2026-05-21 Naver Login Reprompt And Account Diagnostics
+- Naver OAuth now has an explicit recheck path that keeps normal login unchanged but can launch with `auth_type=reprompt` when the user needs to force the Naver consent/simple-signup screen again.
+- AuthProvider now derives social account display data from `user.email`, `userMetadata`, and `identities`, logs non-token social profile diagnostics, and flags social sessions that lack email/name/identity info.
+- Settings now shows the provider separately, displays the best available social account identifier instead of only "로그인됨", and offers "네이버 계정 정보 다시 확인" for Naver sessions.
+- The Naver calendar guidance dialog keeps login and CalDAV sync separate and places `나중에` / `설정으로 이동` actions on one row.
+- Verification passed: focused auth/settings tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.

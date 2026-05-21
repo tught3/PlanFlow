@@ -22,6 +22,8 @@ class AuthProvider extends ChangeNotifier {
   String? _email;
   String? _displayName;
   String? _provider;
+  String? _accountIdentifier;
+  bool _socialAccountInfoIncomplete = false;
   bool _isPasswordRecovery = false;
   bool _started = false;
   bool _hasResolvedInitialSession = false;
@@ -30,11 +32,16 @@ class AuthProvider extends ChangeNotifier {
   String? get email => _email;
   String? get displayName => _displayName;
   String? get provider => _provider;
+  String? get accountIdentifier => _accountIdentifier;
+  bool get socialAccountInfoIncomplete => _socialAccountInfoIncomplete;
+  bool get isNaverAccount => _providerKey == 'naver';
+  String get accountDisplayName =>
+      _email ?? _displayName ?? _accountIdentifier ?? providerLabel;
   String get providerLabel {
-    return switch (_provider?.toLowerCase()) {
+    return switch (_providerKey) {
       'google' => 'Google 로그인됨',
       'kakao' => '카카오 로그인됨',
-      'naver' || 'custom:naver' => '네이버 로그인됨',
+      'naver' => '네이버 로그인됨',
       'email' => '이메일 로그인됨',
       _ => '로그인됨',
     };
@@ -136,6 +143,9 @@ class AuthProvider extends ChangeNotifier {
     _email = user?.email;
     _displayName = _displayNameFrom(user);
     _provider = _providerFrom(user);
+    _accountIdentifier = _accountIdentifierFrom(user);
+    _socialAccountInfoIncomplete = _isSocialAccountInfoIncomplete(user);
+    _logSocialAccountDiagnostics(user);
     notifyListeners();
   }
 
@@ -163,7 +173,92 @@ class AuthProvider extends ChangeNotifier {
         return first;
       }
     }
+    final identities = user?.identities ?? const <UserIdentity>[];
+    for (final identity in identities) {
+      final provider = identity.provider.trim();
+      if (provider.isNotEmpty) {
+        return provider;
+      }
+    }
     return null;
+  }
+
+  String get _providerKey {
+    final provider = _provider?.toLowerCase().trim();
+    if (provider == null || provider.isEmpty) {
+      return '';
+    }
+    if (provider == 'custom:naver' || provider.contains('naver')) {
+      return 'naver';
+    }
+    return provider;
+  }
+
+  String? _accountIdentifierFrom(User? user) {
+    if (user == null) {
+      return null;
+    }
+    final metadata = user.userMetadata ?? const <String, dynamic>{};
+    for (final key in const ['email', 'name', 'full_name', 'user_name', 'nickname']) {
+      final value = metadata[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) {
+        return value;
+      }
+    }
+    for (final identity in user.identities ?? const <UserIdentity>[]) {
+      final data = identity.identityData ?? const <String, dynamic>{};
+      for (final key in const ['email', 'name', 'nickname', 'sub', 'id']) {
+        final value = data[key]?.toString().trim();
+        if (value != null && value.isNotEmpty) {
+          return value;
+        }
+      }
+      final identityId = identity.identityId.trim();
+      if (identityId.isNotEmpty) {
+        return identity.provider.toLowerCase().contains('naver')
+            ? '네이버 ID $identityId'
+            : identityId;
+      }
+    }
+    return null;
+  }
+
+  bool _isSocialAccountInfoIncomplete(User? user) {
+    if (user == null) {
+      return false;
+    }
+    final provider = _providerKey;
+    if (provider != 'naver' && provider != 'kakao' && provider != 'google') {
+      return false;
+    }
+    return (user.email == null || user.email!.trim().isEmpty) &&
+        (_displayName == null || _displayName!.trim().isEmpty) &&
+        (_accountIdentifier == null || _accountIdentifier!.trim().isEmpty);
+  }
+
+  void _logSocialAccountDiagnostics(User? user) {
+    if (user == null) {
+      return;
+    }
+    final provider = _providerKey;
+    if (provider != 'naver' && provider != 'kakao' && provider != 'google') {
+      return;
+    }
+    final identities = user.identities ?? const <UserIdentity>[];
+    final hasIdentityEmail = identities.any(
+      (identity) =>
+          identity.identityData?['email']?.toString().trim().isNotEmpty == true,
+    );
+    debugPrint(
+      'Social auth profile: provider=$provider '
+      'hasEmail=${user.email?.trim().isNotEmpty == true} '
+      'metadataKeys=${user.userMetadata?.keys.join(',') ?? 'none'} '
+      'appMetadataKeys=${user.appMetadata.keys.join(',')} '
+      'identityCount=${identities.length} '
+      'identityProviders=${identities.map((e) => e.provider).join(',')} '
+      'hasIdentityEmail=$hasIdentityEmail '
+      'incomplete=$_socialAccountInfoIncomplete',
+    );
   }
 
   void _markInitialSessionResolved() {

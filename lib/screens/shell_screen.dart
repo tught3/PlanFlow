@@ -299,13 +299,25 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
             'CalDAV 연결을 완료해 주세요.',
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('나중에 하기'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('설정에서 연결하기'),
+            SizedBox(
+              width: double.infinity,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('나중에'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('설정으로 이동'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         );

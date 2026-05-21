@@ -32,6 +32,7 @@ import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/naver_caldav_service.dart';
 import '../../services/naver_calendar_permission_service.dart';
+import '../../services/oauth_callback_handler.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../l10n/app_l10n.dart';
 import 'feedback_report_sheet.dart';
@@ -1423,6 +1424,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _recheckNaverAccountConsent() async {
+    final authService = _authService;
+    if (authService == null) {
+      _showSnack('Supabase 설정 후 네이버 계정 정보를 다시 확인할 수 있습니다.');
+      return;
+    }
+    if (!authProvider.isSignedIn) {
+      _showSnack('먼저 PlanFlow에 로그인해 주세요.');
+      return;
+    }
+    try {
+      OAuthCallbackHandler.markPendingLogin(PlanFlowOAuthProvider.naver);
+      final launched = await authService.recheckNaverAccountConsent();
+      if (!launched) {
+        OAuthCallbackHandler.clearPendingCallback();
+        _showSnack('네이버 계정 정보 확인 화면을 열지 못했습니다.');
+      }
+    } catch (error, stackTrace) {
+      OAuthCallbackHandler.clearPendingCallback();
+      debugPrint('Naver account recheck failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _showSnack('네이버 계정 정보 확인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+  }
+
   Future<void> _disconnectNaverCalendar() async {
     final authService = _authService;
     if (authService == null) {
@@ -2127,6 +2153,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               _AccountSection(
                 authService: _authService,
+                onRecheckNaverAccount: _recheckNaverAccountConsent,
                 onSignedOut: () {
                   if (mounted) {
                     context.go(AppRoutes.login);
@@ -2796,10 +2823,12 @@ class _NaverCalDavImportRange {
 class _AccountSection extends StatelessWidget {
   const _AccountSection({
     required this.authService,
+    required this.onRecheckNaverAccount,
     required this.onSignedOut,
   });
 
   final AuthService? authService;
+  final Future<void> Function() onRecheckNaverAccount;
   final VoidCallback onSignedOut;
 
   @override
@@ -2836,18 +2865,43 @@ class _AccountSection extends StatelessWidget {
         animation: authProvider,
         builder: (context, _) {
           final signedIn = authProvider.isSignedIn;
+          final showNaverRecheck = signedIn && authProvider.isNaverAccount;
           return Column(
             children: [
               _StatusRow(
                 label: '로그인 상태',
-                value: signedIn
-                    ? authProvider.email ??
-                        authProvider.displayName ??
-                        authProvider.providerLabel
-                    : '로그아웃됨',
+                value: signedIn ? authProvider.accountDisplayName : '로그아웃됨',
                 icon: Icons.account_circle_outlined,
                 isConfigured: signedIn,
               ),
+              if (signedIn && authProvider.provider != null) ...[
+                const SizedBox(height: 8),
+                _StatusRow(
+                  label: '로그인 방식',
+                  value: authProvider.providerLabel,
+                  icon: Icons.verified_user_outlined,
+                  isConfigured: true,
+                ),
+              ],
+              if (authProvider.socialAccountInfoIncomplete) ...[
+                const SizedBox(height: 8),
+                const _InlineNotice(
+                  icon: Icons.info_outline,
+                  text:
+                      '소셜 로그인은 되었지만 계정 이메일/이름을 확인하지 못했습니다. 제공 항목 동의나 provider 설정을 다시 확인해 주세요.',
+                ),
+              ],
+              if (showNaverRecheck) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onRecheckNaverAccount,
+                    icon: const Icon(Icons.refresh_outlined),
+                    label: const Text('네이버 계정 정보 다시 확인'),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -3702,6 +3756,45 @@ class _StatusRow extends StatelessWidget {
           color: color,
         ),
       ],
+    );
+  }
+}
+
+class _InlineNotice extends StatelessWidget {
+  const _InlineNotice({
+    required this.icon,
+    required this.text,
+  });
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF4FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFBFDDF7)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: PlanFlowColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

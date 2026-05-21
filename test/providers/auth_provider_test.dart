@@ -108,6 +108,44 @@ void main() {
     expect(provider.displayName, isNull);
     expect(provider.provider, 'custom:naver');
     expect(provider.providerLabel, '네이버 로그인됨');
+    expect(provider.accountDisplayName, '네이버 로그인됨');
+    expect(provider.socialAccountInfoIncomplete, isTrue);
+
+    provider.dispose();
+  });
+
+  test('uses social identity data when user email is empty', () async {
+    final service = _FakeAuthService(
+      currentSession: _session(
+        userId: 'naver-user',
+        email: null,
+        provider: 'custom:naver',
+        userMetadata: const <String, dynamic>{},
+        identities: const <UserIdentity>[
+          UserIdentity(
+            id: 'identity-row',
+            userId: 'naver-user',
+            identityData: <String, dynamic>{
+              'email': 'naver-user@example.com',
+              'nickname': '네이버사용자',
+            },
+            identityId: 'naver-subject',
+            provider: 'custom:naver',
+            createdAt: '2026-05-19T00:00:00Z',
+            lastSignInAt: '2026-05-19T00:00:00Z',
+          ),
+        ],
+      ),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.email, isNull);
+    expect(provider.accountIdentifier, 'naver-user@example.com');
+    expect(provider.accountDisplayName, 'naver-user@example.com');
+    expect(provider.socialAccountInfoIncomplete, isFalse);
 
     provider.dispose();
   });
@@ -120,6 +158,7 @@ Session _session({
   Map<String, dynamic> userMetadata = const <String, dynamic>{
     'name': 'Test User',
   },
+  List<UserIdentity>? identities,
 }) {
   final user = User(
     id: userId,
@@ -130,6 +169,7 @@ Session _session({
     createdAt: '2026-05-19T00:00:00Z',
     role: 'authenticated',
     updatedAt: '2026-05-19T00:00:00Z',
+    identities: identities,
   );
 
   return Session(
