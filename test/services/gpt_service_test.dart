@@ -256,6 +256,51 @@ void main() {
       expect(result['targets'], isEmpty);
     });
 
+    test('preserves name-like action target in parsed title and people fields',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '강릉아산병원 혼자 올건지 물어보기',
+                    'start_at': '2026-05-20T15:00:00.000',
+                    'location': '강릉아산병원',
+                    'participants': <String>[],
+                    'targets': <String>[],
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 19, 9),
+      );
+
+      final result = await service.parseSchedule(
+        '내일 오후3시에 경탁이 전화해서 모래 강릉아산병원 혼자 올건지 물어보기',
+      );
+
+      expect(result['title'], contains('경탁이'));
+      expect(result['title'], contains('모레'));
+      expect(result['targets'], <String>['경탁이']);
+      expect(result['participants'], isEmpty);
+    });
+
     test('fallback parsing treats text after leading time cue as title content',
         () async {
       final client = MockClient((request) async {

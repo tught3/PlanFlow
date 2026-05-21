@@ -59,5 +59,47 @@ void main() {
       expect(target.targets, <String>['원장님']);
       expect(target.participants, isEmpty);
     });
+
+    test('extracts name-like action recipients without hardcoding names', () {
+      const rawText = '내일 오후3시에 경탁이 전화해서 모래 강릉아산병원 혼자 올건지 물어보기';
+
+      final people = service.extractPeopleFields(rawText);
+      final title = service.normalizeParsedScheduleTitle(
+        '강릉아산병원 혼자 올건지 물어보기',
+        rawText: rawText,
+      );
+
+      expect(people.targets, <String>['경탁이']);
+      expect(people.participants, isEmpty);
+      expect(title, contains('경탁이'));
+      expect(title, contains('모레'));
+      expect(title, isNot(contains('모래')));
+    });
+
+    test('classifies name-like particles into target and participants', () {
+      final target = service.extractPeopleFields('민수한테 확인 전화');
+      final participant = service.extractPeopleFields('수연이랑 병원 방문');
+
+      expect(target.targets, <String>['민수']);
+      expect(target.participants, isEmpty);
+      expect(participant.participants, <String>['수연']);
+      expect(participant.targets, isEmpty);
+    });
+
+    test('does not classify place and work words as people', () {
+      final place = service.extractPeopleFields('내일 강릉아산병원 방문');
+      final project = service.extractPeopleFields('프로젝트와 회의');
+      final workCall = service.extractPeopleFields('업무 전화');
+      final document = service.extractPeopleFields('문서 확인');
+
+      expect(place.participants, isEmpty);
+      expect(place.targets, isEmpty);
+      expect(project.participants, isEmpty);
+      expect(project.targets, isEmpty);
+      expect(workCall.participants, isEmpty);
+      expect(workCall.targets, isEmpty);
+      expect(document.participants, isEmpty);
+      expect(document.targets, isEmpty);
+    });
   });
 }

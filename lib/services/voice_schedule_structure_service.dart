@@ -97,7 +97,9 @@ class VoiceScheduleStructureService {
     if (normalized == null || normalized.isEmpty) {
       return fallback?.trim() ?? '';
     }
-    return VoiceTextCleanupService.normalizeBasic(normalized);
+    return _normalizeRelativeDayMisrecognition(
+      VoiceTextCleanupService.normalizeBasic(normalized),
+    );
   }
 
   String stripExplicitMemoClause(String text) {
@@ -345,6 +347,14 @@ class VoiceScheduleStructureService {
           '([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern)).{0,12}(?:전화|보고|전달|문의|확인)',
         ),
       ),
+      ..._peopleNearPattern(
+        source,
+        RegExp(r'(?:^|\s)([가-힣]{2,3})\s*(?:께|한테|에게)'),
+      ),
+      ..._peopleNearPattern(
+        source,
+        RegExp(r'(?:^|\s)([가-힣]{2,4}이)\s*(?:전화|연락|물어보기|물어보|묻기|묻|확인|문의|보고|전달)'),
+      ),
     }.toList(growable: false);
     final allPeople = _peopleNearPattern(
       source,
@@ -352,9 +362,13 @@ class VoiceScheduleStructureService {
         '([가-힣A-Za-z0-9·]{1,}(?:$_personSuffixPattern))',
       ),
     );
-    final participants = allPeople
-        .where((person) => !targets.contains(person))
-        .toList(growable: false);
+    final participants = <String>{
+      ...allPeople.where((person) => !targets.contains(person)),
+      ..._peopleNearPattern(
+        source,
+        RegExp(r'(?:^|\s)([가-힣]{2,3}?)(?:이)?\s*(?:랑|와|과|하고|함께|동행)'),
+      ).where((person) => !targets.contains(person)),
+    }.toList(growable: false);
 
     return VoiceSchedulePeopleFields(
       participants: participants,
@@ -574,7 +588,7 @@ class VoiceScheduleStructureService {
   List<String> _peopleNearPattern(String source, RegExp pattern) {
     final people = <String>[];
     for (final match in pattern.allMatches(source)) {
-      final person = match.group(1)?.trim();
+      final person = _normalizePersonCandidate(match.group(1));
       if (person == null ||
           person.isEmpty ||
           _isProbablyNonPerson(person) ||
@@ -586,8 +600,59 @@ class VoiceScheduleStructureService {
     return people;
   }
 
+  String? _normalizePersonCandidate(String? value) {
+    final rawPerson = value?.trim();
+    if (rawPerson == null || rawPerson.isEmpty) {
+      return null;
+    }
+    var person = rawPerson;
+    for (final suffix in const <String>['한테', '에게', '께']) {
+      if (person.length > suffix.length + 1 && person.endsWith(suffix)) {
+        person = person.substring(0, person.length - suffix.length);
+        break;
+      }
+    }
+    return person;
+  }
+
   bool _isProbablyNonPerson(String text) {
     const nonPersonTerms = <String>{
+      '강릉',
+      '병원',
+      '세브란스',
+      '회의',
+      '방문',
+      '시험',
+      '일정',
+      '장소',
+      '시간',
+      '전화',
+      '연락',
+      '확인',
+      '문의',
+      '보고',
+      '전달',
+      '물어보기',
+      '업무',
+      '문서',
+      '자료',
+      '프로젝트',
+      '리포트',
+      '계약',
+      '견적',
+      '메일',
+      '문자',
+      '정형외',
+      '신경외',
+      '성형외',
+      '흉부외',
+      '일반외',
+      '혼자',
+      '같이',
+      '오늘',
+      '내일',
+      '모레',
+      '모래',
       '주차장',
       '매장',
       '출장',
@@ -596,7 +661,27 @@ class VoiceScheduleStructureService {
       '현장',
       '식장',
     };
-    return nonPersonTerms.contains(text);
+    if (nonPersonTerms.contains(text)) {
+      return true;
+    }
+    return text.endsWith('건지') ||
+        text.endsWith('는지') ||
+        text.endsWith('런지') ||
+        text.endsWith('인지') ||
+        text.endsWith('할지') ||
+        text.endsWith('올지');
+  }
+
+  String _normalizeRelativeDayMisrecognition(String text) {
+    if (!RegExp(
+      r'(오늘|내일|오전|오후|아침|점심|저녁|밤|새벽|\d{1,2}\s*시|일정|방문|전화|연락|확인|문의|물어보|묻기|올건지|오는지|오시는지)',
+    ).hasMatch(text)) {
+      return text;
+    }
+    return text.replaceAllMapped(
+      RegExp(r'(^|\s)모래(?=\s|$)'),
+      (match) => '${match.group(1) ?? ''}모레',
+    );
   }
 
   String _extractContentClause(String text) {

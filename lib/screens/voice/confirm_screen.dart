@@ -678,16 +678,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     try {
       final savedEvent = await repository.createEvent(draftEvent);
-      final settings = !AppEnv.isSupabaseReady
-          ? null
-          : await SettingsRepository.supabase().fetchSettings(userId);
 
       unawaited(
         _runPostSaveFollowUps(
           userId: userId,
           event: savedEvent,
           repository: repository,
-          settings: settings,
         ),
       );
 
@@ -923,8 +919,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     required String userId,
     required EventModel event,
     required EventRepository repository,
-    required UserSettingsModel? settings,
   }) async {
+    UserSettingsModel? settings;
+    if (AppEnv.isSupabaseReady) {
+      try {
+        settings = await SettingsRepository.supabase().fetchSettings(userId);
+      } catch (error, stackTrace) {
+        debugPrint('ConfirmScreen settings load skipped after save: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
     final departureSafetyMargin = Duration(
       minutes: settings?.departureSafetyMarginMin ??
           DepartureAlarmService.safetyMargin.inMinutes,

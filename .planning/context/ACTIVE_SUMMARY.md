@@ -929,3 +929,9 @@
 - Added a monthly-widget Kotlin fallback so dates are visible even before Flutter has saved month-cell payload data.
 - Added a HomeScreen-driven widget refresh path so real app events are written to home widgets on fresh app load/resume/event refresh, while cached UI data is not allowed to overwrite widget payloads.
 - Verification passed: focused home widget and home screen tests, analyze, git diff check, debug APK build, reviewer PASS, and install/launch/PID check on 192.168.0.102:5555.
+
+## 2026-05-21 Voice Name Target Preservation Checkpoint
+- Expanded voice people-field parsing without hardcoding specific names: name-like Korean tokens near recipient particles or contact/question verbs now become `targets`, while companion particles remain `participants`.
+- Added safeguards so common place/work words such as hospitals, meetings, documents, and projects are not promoted into people fields; date-context STT `모래` is normalized to `모레` only when schedule wording is present.
+- Hardened voice confirm saving so successful event writes are no longer reported as failures if post-save settings lookup fails, and added legacy Supabase payload fallback for live `events` tables that do not yet expose `participants`/`targets`.
+- Verification passed: focused voice structure/analysis/GPT tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/run on `192.168.0.102:5555`, and reviewer checks.

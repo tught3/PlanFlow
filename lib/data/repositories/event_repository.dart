@@ -839,6 +839,8 @@ class SupabaseEventRepository extends EventRepository {
       ..remove('external_etag')
       ..remove('external_updated_at')
       ..remove('last_synced_at')
+      ..remove('participants')
+      ..remove('targets')
       ..remove('recurrence_rule')
       ..remove('is_all_day')
       ..remove('is_multi_day')
@@ -854,6 +856,8 @@ class SupabaseEventRepository extends EventRepository {
         text.contains('external_etag') ||
         text.contains('external_updated_at') ||
         text.contains('last_synced_at') ||
+        text.contains('participants') ||
+        text.contains('targets') ||
         text.contains('recurrence_rule') ||
         text.contains('is_all_day') ||
         text.contains('is_multi_day') ||

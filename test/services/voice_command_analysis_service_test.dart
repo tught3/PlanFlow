@@ -355,6 +355,60 @@ void main() {
       expect(parsed['participants'], <String>['팀장님']);
     });
 
+    test('preserves name-like action target when ai omits it from title',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'normalized_text':
+                        '내일 오후3시에 경탁이 전화해서 모래 강릉아산병원 혼자 올건지 물어보기',
+                    'intent': 'add',
+                    'confidence': 0.9,
+                    'uncertain_fields': <String>[],
+                    'schedule_fields': <String, dynamic>{
+                      'title': '강릉아산병원 혼자 올건지 물어보기',
+                      'start_at': '2026-05-20T15:00:00.000',
+                      'location': '강릉아산병원',
+                      'participants': <String>[],
+                      'targets': <String>[],
+                      'supplies': <String>[],
+                      'pre_actions': <Map<String, dynamic>>[],
+                    },
+                    'requested_changes': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = VoiceCommandAnalysisService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 19, 9),
+      );
+
+      final result = await service.analyze(
+        '내일 오후3시에 경탁이 전화해서 모래 강릉아산병원 혼자 올건지 물어보기',
+        stage: VoiceCommandAnalysisStage.complete,
+        budget: VoiceAnalysisRequestBudget(maxAiRequests: 2),
+      );
+
+      final parsed = result.toParsedScheduleMap();
+      expect(result.scheduleFields['title'], contains('경탁이'));
+      expect(result.scheduleFields['title'], contains('모레'));
+      expect(result.scheduleFields['targets'], <String>['경탁이']);
+      expect(result.scheduleFields['participants'], isEmpty);
+      expect(parsed['targets'], <String>['경탁이']);
+    });
+
     test('falls back to local analysis when the budget is exhausted', () async {
       var requestCount = 0;
 
