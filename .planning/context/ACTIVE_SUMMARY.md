@@ -1062,3 +1062,9 @@
 - If a session is already present on resume, the login screen syncs the current Supabase session instead of staying in the pending external-browser state.
 - Settings account display now keeps a single primary login-status row and shows the social provider as secondary text, avoiding the appearance of two separate logins.
 - Verification passed: focused login/settings/auth provider/auth service tests and `scripts/flutter-local.ps1 analyze --no-pub`.
+
+## 2026-05-21 OAuth In-App Browser Launch Fix
+- Changed OAuth login launch mode from Android external browser handoff to `LaunchMode.inAppBrowserView`, reducing Samsung Browser "app opens browser blocked" interruptions during Naver/Kakao auth.
+- Lengthened the OAuth resume guard delay so PlanFlow does not show the incomplete-auth warning while the browser permission/interstitial handoff is still settling.
+- Confirmed on `192.168.0.102:5555` that `planflow://auth-callback` resolves to `com.planflow.app.MainActivity`.
+- Verification passed: focused auth service and login screen tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install on `192.168.0.102:5555`, app launch, and PID check.

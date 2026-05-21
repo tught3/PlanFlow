@@ -175,10 +175,7 @@ class AuthService implements AuthSessionClient {
     required Map<String, String>? queryParams,
     required String purpose,
   }) async {
-    final launchMode =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.android
-            ? LaunchMode.externalApplication
-            : LaunchMode.inAppBrowserView;
+    final launchMode = LaunchMode.inAppBrowserView;
     final response = await urlFactory();
     final uri = Uri.parse(response.url);
     debugPrint(

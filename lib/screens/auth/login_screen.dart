@@ -201,7 +201,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     if (!OAuthCallbackHandler.hasPendingLogin()) {
       return;
     }
-    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    await Future<void>.delayed(const Duration(seconds: 4));
     if (!mounted || !_isLoading || !OAuthCallbackHandler.hasPendingLogin()) {
       return;
     }
