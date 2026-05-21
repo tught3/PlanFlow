@@ -1037,3 +1037,8 @@
 - Added a visible assistant-side loading bubble and bottom status text `AI 문맥 분석중이에요...` while a follow-up voice/text command is being interpreted and routed.
 - Fixed follow-up location parsing so ordinal target particles such as `4번에` are removed from the location payload; `4번에 강릉 건도리횟집 장소추가` now targets the 4th visible event and stores only `강릉 건도리횟집` as the location text.
 - Verification passed: focused voice conversation controller and screen tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-21 Event Edit Expansion Scroll And Voice Stop Fix
+- All collapsible event-edit sections now auto-scroll into view after expansion: `방문 목표 · 반복 설정`, `설명 · 준비물`, and `알림 옵션`.
+- Voice input and AI conversation flows now stop active STT before navigating into event edit/confirm routes, so editing starts without background listening or keep-listening restarts.
+- Verification passed: focused event edit, voice conversation, and voice input screen tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; install/launch/PID check on `192.168.0.102:5555`.

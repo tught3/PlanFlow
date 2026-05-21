@@ -359,7 +359,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     final rawText =
         VoiceTextCleanupService.cleanLocally(normalizedText).cleanedText;
     if (rawText.isEmpty) {
-      context.push(AppRoutes.confirm, extra: const <String, dynamic>{});
+      await _pushVoiceRoute(AppRoutes.confirm,
+          extra: const <String, dynamic>{});
       return;
     }
     if (!_beginVoiceCommandSubmit(rawText)) {
@@ -435,6 +436,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   }
 
   Future<void> _pushVoiceRoute(String location, {Object? extra}) async {
+    await _finishVoiceFlow();
+    if (!mounted) {
+      return;
+    }
     unawaited(
       context.push(location, extra: extra).whenComplete(() {
         _resetVoiceCommandSubmitGuard(clearSignature: true);
@@ -491,9 +496,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       await _pushVoiceRoute(
         AppRoutes.voiceConversation,
         extra: <String, dynamic>{
-          'initial_text': cleanup.cleanedText.isEmpty
-              ? rawText
-              : cleanup.cleanedText,
+          'initial_text':
+              cleanup.cleanedText.isEmpty ? rawText : cleanup.cleanedText,
         },
       );
       return;

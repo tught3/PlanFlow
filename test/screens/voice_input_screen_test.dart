@@ -829,6 +829,48 @@ void main() {
     expect(confirmBuildCount, 1);
   });
 
+  testWidgets('음성 입력 중 화면 이동 전 STT를 종료한다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+
+    await tester.tap(find.text('완료'));
+    await tester.pumpAndSettle();
+
+    expect(fakeStt.stopCalls, greaterThanOrEqualTo(1));
+    expect(find.text('일정 확인'), findsOneWidget);
+  });
+
   testWidgets('듣는 중 텍스트를 탭하면 자동 제출 대신 키보드 수정으로 전환한다', (tester) async {
     final fakeStt = _FakeSttService();
     final router = GoRouter(

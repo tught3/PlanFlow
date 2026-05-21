@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -79,6 +81,9 @@ class CalendarStyleEventEditor extends StatefulWidget {
 }
 
 class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
+  final GlobalKey _classificationSectionKey = GlobalKey();
+  final GlobalKey _detailsSectionKey = GlobalKey();
+  final GlobalKey _alarmSectionKey = GlobalKey();
   CalendarDateTarget? _activeTarget;
   bool _classificationExpanded = false;
   bool _detailsExpanded = false;
@@ -116,6 +121,34 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
         current.hour,
         current.minute,
       ),
+    );
+  }
+
+  void _setExpandableSection({
+    required GlobalKey key,
+    required bool expanded,
+    required VoidCallback apply,
+  }) {
+    setState(apply);
+    if (expanded) {
+      unawaited(_ensureExpandedSectionVisible(key));
+    }
+  }
+
+  Future<void> _ensureExpandedSectionVisible(GlobalKey key) async {
+    await Future<void>.delayed(const Duration(milliseconds: 220));
+    if (!mounted) {
+      return;
+    }
+    final sectionContext = key.currentContext;
+    if (sectionContext == null || !sectionContext.mounted) {
+      return;
+    }
+    await Scrollable.ensureVisible(
+      sectionContext,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
     );
   }
 
@@ -258,14 +291,18 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
           ),
           const SizedBox(height: 10),
           _EditorSection(
+            key: _classificationSectionKey,
             icon: Icons.tune_outlined,
             title: '방문 목표 · 반복 설정',
             subtitle:
                 '${widget.category} · ${_recurrenceSummary(widget.recurrence)}',
             collapsible: true,
             expanded: _classificationExpanded,
-            onExpansionChanged: (value) =>
-                setState(() => _classificationExpanded = value),
+            onExpansionChanged: (value) => _setExpandableSection(
+              key: _classificationSectionKey,
+              expanded: value,
+              apply: () => _classificationExpanded = value,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -290,13 +327,17 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
           ),
           const SizedBox(height: 10),
           _EditorSection(
+            key: _detailsSectionKey,
             icon: Icons.notes_outlined,
             title: '설명 · 준비물',
             subtitle: '메모, 준비물, 스마트 준비 알림은 필요할 때만 열어 수정하세요.',
             collapsible: true,
             expanded: _detailsExpanded,
-            onExpansionChanged: (value) =>
-                setState(() => _detailsExpanded = value),
+            onExpansionChanged: (value) => _setExpandableSection(
+              key: _detailsSectionKey,
+              expanded: value,
+              apply: () => _detailsExpanded = value,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -325,6 +366,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
           ),
           const SizedBox(height: 10),
           _EditorSection(
+            key: _alarmSectionKey,
             icon: Icons.notifications_active_outlined,
             title: '알림 옵션',
             subtitle: _alarmSummary(
@@ -333,8 +375,11 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             ),
             collapsible: true,
             expanded: _alarmExpanded,
-            onExpansionChanged: (value) =>
-                setState(() => _alarmExpanded = value),
+            onExpansionChanged: (value) => _setExpandableSection(
+              key: _alarmSectionKey,
+              expanded: value,
+              apply: () => _alarmExpanded = value,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -389,6 +434,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
 
 class _EditorSection extends StatelessWidget {
   const _EditorSection({
+    super.key,
     required this.icon,
     required this.title,
     required this.child,

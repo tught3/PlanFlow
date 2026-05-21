@@ -2,15 +2,19 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/voice/voice_conversation_screen.dart';
+import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/stt_service.dart';
 
 class _FakeSttService extends SttService {
   Completer<SttListenResult>? _completer;
   ValueChanged<String>? _onPartialResult;
+  int cancelCalls = 0;
 
   @override
   Future<SttListenResult> listen({
@@ -41,6 +45,7 @@ class _FakeSttService extends SttService {
 
   @override
   Future<void> cancelActiveListen() async {
+    cancelCalls += 1;
     if (_completer != null && !_completer!.isCompleted) {
       completeFailure('취소됐어요.');
     }
@@ -103,6 +108,20 @@ class _SlowSecondListEventRepository extends EventRepository {
 
   @override
   Future<void> deleteEvent(String eventId, {String? userId}) async {}
+}
+
+class _FakeLocationLookupService extends LocationLookupService {
+  @override
+  Future<List<LocationLookupResult>> search(String query) async {
+    return <LocationLookupResult>[
+      LocationLookupResult(
+        name: query,
+        address: query,
+        latitude: 37.7519,
+        longitude: 128.8761,
+      ),
+    ];
+  }
 }
 
 void main() {
@@ -252,6 +271,57 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 편집 화면으로 이동하기 전 STT를 종료한다', (tester) async {
+    final stt = _FakeSttService();
+    final events = <EventModel>[
+      EventModel(
+        id: 'event-1',
+        userId: 'user-1',
+        title: '방문 일정',
+        startAt: DateTime(2026, 5, 22, 9).toUtc(),
+      ),
+    ];
+
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceConversation,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceConversation,
+          builder: (context, state) => VoiceConversationScreen(
+            sttService: stt,
+            repository: _FakeEventRepository(events),
+            locationLookupService: _FakeLocationLookupService(),
+            initialText: '5월 22일 일정 보여줘',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) => const Text(
+            '편집 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: buildPlanFlowTheme(),
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('음성으로 말하기'));
+    await tester.pump();
+    stt.completeSuccess('그 일정에 강릉 건도리횟집 장소추가');
+    await tester.pumpAndSettle();
+
+    expect(stt.cancelCalls, greaterThanOrEqualTo(1));
+    expect(find.text('듣고 있어요...'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

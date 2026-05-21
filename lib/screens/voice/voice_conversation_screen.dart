@@ -297,6 +297,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     EventModel event,
     String locationText,
   ) async {
+    await _stopVoiceBeforeNavigation();
     var edited = _copyEventWithLocation(event, location: locationText);
     try {
       final results = await _locations.search(locationText);
@@ -325,6 +326,20 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     );
     await context.push('${AppRoutes.eventEdit}/${edited.id}', extra: edited);
     await _loadEvents();
+  }
+
+  Future<void> _stopVoiceBeforeNavigation() async {
+    if (mounted) {
+      setState(() {
+        _keepListening = false;
+        _isListening = false;
+        _conversationStatus = null;
+      });
+    } else {
+      _keepListening = false;
+      _isListening = false;
+    }
+    await widget.sttService.cancelActiveListen();
   }
 
   Future<void> _deleteEvent(EventModel event) async {

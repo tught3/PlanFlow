@@ -95,6 +95,51 @@ void main() {
     expect(permissions.exactAlarmRequested, isTrue);
     expect(permissions.fullScreenIntentRequested, isTrue);
   });
+
+  testWidgets('EventEditScreen keeps expanded sections visible',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(430, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventEditScreen(
+          event: EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '팀장 동행방문',
+            startAt: DateTime.utc(2026, 5, 13, 0),
+            endAt: DateTime.utc(2026, 5, 13, 1),
+            category: '업무',
+          ),
+        ),
+      ),
+    );
+
+    final cases = <({String header, String revealed})>[
+      (header: '방문 목표 · 반복 설정', revealed: '반복 안 함'),
+      (header: '설명 · 준비물', revealed: '준비물'),
+      (header: '알림 옵션', revealed: '강한 알림으로 예약'),
+    ];
+
+    for (final item in cases) {
+      await tester.scrollUntilVisible(
+        find.text(item.header),
+        260,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.ensureVisible(find.text(item.header));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(item.header));
+      await tester.pumpAndSettle();
+
+      final revealedRect = tester.getRect(find.text(item.revealed).last);
+      expect(revealedRect.bottom, lessThanOrEqualTo(640));
+
+      await tester.tap(find.text(item.header));
+      await tester.pumpAndSettle();
+    }
+  });
 }
 
 class _FakePermissionService extends AppPermissionService {
