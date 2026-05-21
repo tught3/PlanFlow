@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/event_metadata.dart';
 import '../core/theme.dart';
+import 'location_resolution_status.dart';
 import 'recurrence_selector.dart';
 import 'reminder_offset_selector.dart';
 
@@ -29,8 +30,11 @@ class CalendarStyleEventEditor extends StatefulWidget {
     required this.onReminderChanged,
     required this.onCriticalChanged,
     required this.onLocationPick,
+    this.onLocationTextChanged,
     this.titleValidator,
     this.isLookingUpLocation = false,
+    this.locationLat,
+    this.locationLng,
     this.extraAfterLocation,
     this.extraAfterMemo,
     this.titleHelperText,
@@ -57,8 +61,11 @@ class CalendarStyleEventEditor extends StatefulWidget {
   final ValueChanged<Duration?> onReminderChanged;
   final ValueChanged<bool> onCriticalChanged;
   final VoidCallback onLocationPick;
+  final ValueChanged<String>? onLocationTextChanged;
   final FormFieldValidator<String>? titleValidator;
   final bool isLookingUpLocation;
+  final double? locationLat;
+  final double? locationLng;
   final Widget? extraAfterLocation;
   final Widget? extraAfterMemo;
   final String? titleHelperText;
@@ -140,8 +147,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                   controller: widget.titleController,
                   validator: widget.titleValidator,
                   textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) =>
-                      FocusScope.of(context).unfocus(),
+                  onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
                   decoration: InputDecoration(
                     labelText: '제목',
                     helperText: widget.titleHelperText,
@@ -200,33 +206,62 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             icon: Icons.place_outlined,
             title: '장소',
             subtitle: '비어 있어도 지도 버튼으로 직접 위치를 고를 수 있어요.',
-            child: TextFormField(
-              controller: widget.locationController,
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
-              decoration: InputDecoration(
-                labelText: '장소',
-                helperText: widget.locationHelperText,
-                prefixIcon: const Icon(Icons.place_outlined),
-                suffixIcon: IconButton(
-                  tooltip: '지도에서 위치 선택',
-                  onPressed:
-                      widget.isLookingUpLocation ? null : widget.onLocationPick,
-                  icon: widget.isLookingUpLocation
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.map_outlined),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextFormField(
+                  controller: widget.locationController,
+                  textInputAction: TextInputAction.done,
+                  onChanged: widget.onLocationTextChanged,
+                  onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
+                  decoration: InputDecoration(
+                    labelText: '장소',
+                    helperText: widget.locationHelperText,
+                    prefixIcon: const Icon(Icons.place_outlined),
+                    suffixIcon: IconButton(
+                      tooltip: '지도에서 위치 선택',
+                      onPressed: widget.isLookingUpLocation
+                          ? null
+                          : widget.onLocationPick,
+                      icon: widget.isLookingUpLocation
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.map_outlined),
+                    ),
+                  ),
                 ),
-              ),
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: widget.locationController,
+                  builder: (context, value, _) {
+                    final hasLocationText = value.text.trim().isNotEmpty;
+                    if (!hasLocationText) {
+                      return const SizedBox.shrink();
+                    }
+                    final isResolved = widget.locationLat != null &&
+                        widget.locationLng != null;
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: LocationResolutionStatus(
+                        hasLocationText: hasLocationText,
+                        isResolved: isResolved,
+                        onResolve: widget.isLookingUpLocation
+                            ? null
+                            : widget.onLocationPick,
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 10),
           _EditorSection(
             icon: Icons.tune_outlined,
             title: '방문 목표 · 반복 설정',
-            subtitle: '${widget.category} · ${_recurrenceSummary(widget.recurrence)}',
+            subtitle:
+                '${widget.category} · ${_recurrenceSummary(widget.recurrence)}',
             collapsible: true,
             expanded: _classificationExpanded,
             onExpansionChanged: (value) =>
@@ -268,8 +303,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                 TextFormField(
                   controller: widget.memoController,
                   textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) =>
-                      FocusScope.of(context).unfocus(),
+                  onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
                   decoration: const InputDecoration(
                     labelText: '설명',
                     prefixIcon: Icon(Icons.notes_outlined),
@@ -405,9 +439,8 @@ class _EditorSection extends StatelessWidget {
         children: [
           InkWell(
             borderRadius: BorderRadius.circular(10),
-            onTap: collapsible
-                ? () => onExpansionChanged?.call(!expanded)
-                : null,
+            onTap:
+                collapsible ? () => onExpansionChanged?.call(!expanded) : null,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [

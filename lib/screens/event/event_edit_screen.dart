@@ -27,6 +27,7 @@ import '../../services/notification_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../l10n/app_l10n.dart';
 import '../../widgets/calendar_style_event_editor.dart';
+import '../../widgets/overlap_warning_dialog.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
@@ -64,6 +65,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   DateTime? _endAt;
   double? _locationLat;
   double? _locationLng;
+  String? _resolvedLocationLabel;
   late bool _critical;
   late RecurrenceSelection _recurrenceSelection;
   bool _isAllDay = false;
@@ -104,35 +106,26 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   Future<bool> _showOverlapWarning(List<EventModel> overlappingEvents) {
-    final count = overlappingEvents.length;
-    final message = count == 1
-        ? '기존 일정 1개와 시간이 겹칩니다.\n계속 저장할까요?'
-        : '기존 일정 $count개와 시간이 겹칩니다.\n계속 저장할까요?';
-    return showDialog<bool>(
+    return showOverlapWarningDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('일정이 겹쳐요'),
-        content: Text(message),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-        actions: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('중단'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('계속 저장'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ).then((value) => value ?? false);
+      overlappingEvents: overlappingEvents,
+    );
+  }
+
+  void _handleLocationTextChanged(String value) {
+    final trimmed = value.trim();
+    if (_resolvedLocationLabel != null &&
+        trimmed == _resolvedLocationLabel!.trim()) {
+      return;
+    }
+    if (_locationLat == null && _locationLng == null) {
+      return;
+    }
+    setState(() {
+      _locationLat = null;
+      _locationLng = null;
+      _resolvedLocationLabel = null;
+    });
   }
 
   void _handleCriticalChanged(bool value) {
@@ -229,6 +222,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _endAt = event?.endAt == null ? null : planflowLocal(event!.endAt!);
     _locationLat = event?.locationLat;
     _locationLng = event?.locationLng;
+    if (_locationLat != null && _locationLng != null) {
+      _resolvedLocationLabel = _locationController.text.trim();
+    }
     _critical = event?.isCritical ?? false;
     _recurrenceSelection = RecurrenceSelection.fromRRule(event?.recurrenceRule);
     _isAllDay = event?.isAllDay ?? false;
@@ -572,6 +568,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _locationController.text = event.location ?? '';
         _locationLat = event.locationLat;
         _locationLng = event.locationLng;
+        _resolvedLocationLabel = _locationLat != null && _locationLng != null
+            ? _locationController.text.trim()
+            : null;
         _memoController.text = event.memo ?? '';
         _suppliesController.text = event.supplies.join(', ');
         _startAt =
@@ -857,6 +856,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _locationController.text = selected.label;
         _locationLat = selected.latitude;
         _locationLng = selected.longitude;
+        _resolvedLocationLabel = selected.label.trim();
       });
       _showMessage('정확한 위치를 선택했어요.');
     } catch (error, stackTrace) {
@@ -914,6 +914,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   recurrence: _recurrenceSelection,
                   reminderOffset: _reminderOffset,
                   isCritical: _critical,
+                  locationLat: _locationLat,
+                  locationLng: _locationLng,
                   memoMaxLines: 5,
                   titleValidator: (value) =>
                       (value == null || value.trim().isEmpty)
@@ -967,6 +969,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                     });
                   },
                   onCriticalChanged: _handleCriticalChanged,
+                  onLocationTextChanged: _handleLocationTextChanged,
                   onLocationPick: _pickLocationOnMap,
                   extraAfterMemo: TextFormField(
                     controller: _suppliesController,

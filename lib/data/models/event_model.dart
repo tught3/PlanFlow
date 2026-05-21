@@ -91,6 +91,13 @@ class EventModel {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  bool get hasLocationText => location?.trim().isNotEmpty == true;
+
+  bool get hasResolvedLocation =>
+      hasLocationText && locationLat != null && locationLng != null;
+
+  bool get hasUnresolvedLocation => hasLocationText && !hasResolvedLocation;
+
   Map<String, dynamic> toJson({bool includeId = true}) {
     return <String, dynamic>{
       if (includeId) 'id': id,

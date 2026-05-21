@@ -163,6 +163,36 @@ void main() {
     expect(find.text('서울 (GMT+9:00)'), findsNothing);
   });
 
+  testWidgets('location status shows unresolved map position', (tester) async {
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 5, 13, 9),
+        endAt: DateTime(2026, 5, 13, 10),
+        locationText: '원주세브란스기독병원',
+      ),
+    );
+
+    expect(find.text('지도 위치 미지정'), findsOneWidget);
+    expect(find.textContaining('스마트준비알람이 부정확'), findsOneWidget);
+    expect(find.text('지도 지정'), findsOneWidget);
+  });
+
+  testWidgets('location status shows resolved map position', (tester) async {
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 5, 13, 9),
+        endAt: DateTime(2026, 5, 13, 10),
+        locationText: '원주세브란스기독병원',
+        locationLat: 37.3495,
+        locationLng: 127.9458,
+      ),
+    );
+
+    expect(find.text('지도 위치 연결됨'), findsOneWidget);
+    expect(find.textContaining('이 좌표로 이동시간'), findsOneWidget);
+    expect(find.text('지도 지정'), findsNothing);
+  });
+
   testWidgets('less-used editor sections start collapsed and expand on tap',
       (tester) async {
     await tester.pumpWidget(
@@ -201,16 +231,22 @@ class _TestHost extends StatelessWidget {
   _TestHost({
     this.isAllDay = false,
     this.onStartChanged,
+    this.locationText = '',
+    this.locationLat,
+    this.locationLng,
     required this.startAt,
     required this.endAt,
   });
 
   final bool isAllDay;
   final ValueChanged<DateTime>? onStartChanged;
+  final String locationText;
+  final double? locationLat;
+  final double? locationLng;
   final DateTime startAt;
   final DateTime endAt;
   final titleController = TextEditingController(text: '팀장 동행방문');
-  final locationController = TextEditingController(text: '서울');
+  late final locationController = TextEditingController(text: locationText);
   final memoController = TextEditingController(text: '메모');
 
   @override
@@ -231,6 +267,8 @@ class _TestHost extends StatelessWidget {
             recurrence: const RecurrenceSelection(),
             reminderOffset: const Duration(hours: 1),
             isCritical: false,
+            locationLat: locationLat,
+            locationLng: locationLng,
             onStartChanged: onStartChanged ?? (_) {},
             onEndChanged: (_) {},
             onAllDayChanged: (_) {},

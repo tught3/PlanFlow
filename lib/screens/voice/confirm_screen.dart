@@ -31,6 +31,7 @@ import '../../services/notification_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/travel_time_buffer_service.dart';
 import '../../widgets/calendar_style_event_editor.dart';
+import '../../widgets/overlap_warning_dialog.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
@@ -179,6 +180,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   DateTime? _endAt;
   double? _locationLat;
   double? _locationLng;
+  String? _resolvedLocationLabel;
   late RecurrenceSelection _recurrenceSelection;
   bool _isAllDay = false;
   bool _isMultiDay = false;
@@ -228,6 +230,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
     _locationLat = _doubleValue(widget.parsedSchedule['location_lat']);
     _locationLng = _doubleValue(widget.parsedSchedule['location_lng']);
+    if (_locationLat != null && _locationLng != null) {
+      _resolvedLocationLabel = _locationController.text.trim();
+    }
     _recurrenceSelection = RecurrenceSelection.fromRRule(
       _stringValue(widget.parsedSchedule['recurrence_rule']),
     );
@@ -279,6 +284,25 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     if (!_isApplyingHydration) {
       _locationEditedByUser = true;
     }
+  }
+
+  void _handleLocationTextChanged(String value) {
+    if (_isApplyingHydration) {
+      return;
+    }
+    final trimmed = value.trim();
+    if (_resolvedLocationLabel != null &&
+        trimmed == _resolvedLocationLabel!.trim()) {
+      return;
+    }
+    if (_locationLat == null && _locationLng == null) {
+      return;
+    }
+    setState(() {
+      _locationLat = null;
+      _locationLng = null;
+      _resolvedLocationLabel = null;
+    });
   }
 
   void _markMemoEdited() {
@@ -367,6 +391,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         _locationController.text = selected.label;
         _locationLat = selected.latitude;
         _locationLng = selected.longitude;
+        _resolvedLocationLabel = selected.label.trim();
       });
       _showMessage('정확한 위치를 선택했어요.');
     } catch (error, stackTrace) {
@@ -405,6 +430,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       setState(() {
         _locationLat = selected.latitude;
         _locationLng = selected.longitude;
+        _resolvedLocationLabel = query;
       });
       _isApplyingHydration = false;
     } catch (error) {
@@ -474,6 +500,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         if (!_locationEditedByUser) {
           _locationLat = _doubleValue(parsed['location_lat']) ?? _locationLat;
           _locationLng = _doubleValue(parsed['location_lng']) ?? _locationLng;
+          if (_locationLat != null && _locationLng != null) {
+            _resolvedLocationLabel = _locationController.text.trim();
+          }
         }
 
         final memo = _stringValue(parsed['memo']);
@@ -564,35 +593,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   Future<bool> _showOverlapWarning(List<EventModel> overlappingEvents) {
-    final count = overlappingEvents.length;
-    final message = count == 1
-        ? '기존 일정 1개와 시간이 겹칩니다.\n계속 저장할까요?'
-        : '기존 일정 $count개와 시간이 겹칩니다.\n계속 저장할까요?';
-    return showDialog<bool>(
+    return showOverlapWarningDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('일정이 겹쳐요'),
-        content: Text(message),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-        actions: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('중단'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('계속 저장'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ).then((value) => value ?? false);
+      overlappingEvents: overlappingEvents,
+    );
   }
 
   Future<void> _save() async {
@@ -1604,7 +1608,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         reminderOffset: _reminderOffset,
                         isCritical: _isCritical,
                         isLookingUpLocation: _isLookingUpLocation,
+                        locationLat: _locationLat,
+                        locationLng: _locationLng,
                         locationHelperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
+                        onLocationTextChanged: _handleLocationTextChanged,
                         onStartChanged: (value) {
                           setState(() {
                             _startEditedByUser = true;

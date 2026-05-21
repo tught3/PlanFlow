@@ -21,6 +21,7 @@ import '../../services/home_widget_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
+import '../../widgets/location_resolution_status.dart';
 
 class EventDetailScreen extends StatefulWidget {
   EventDetailScreen({
@@ -516,6 +517,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     _InfoRow(label: '시간', value: timeLabel),
                   if (event.location != null)
                     _InfoRow(label: '장소', value: event.location!),
+                  if (event.hasLocationText)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: LocationResolutionStatus(
+                        hasLocationText: true,
+                        isResolved: event.hasResolvedLocation,
+                        onResolve: event.hasResolvedLocation
+                            ? null
+                            : () => context.push(
+                                  '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
+                                  extra: event,
+                                ),
+                      ),
+                    ),
                   _InfoRow(
                     label: '중요 상태',
                     value: event.isCritical ? '중요 일정' : '일반 일정',

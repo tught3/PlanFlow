@@ -92,6 +92,30 @@ void main() {
     expect(json['external_id'], isNull);
   });
 
+  test('EventModel exposes location coordinate resolution state', () {
+    const textOnly = EventModel(
+      id: 'event-text-only',
+      userId: 'user-1',
+      title: 'Hospital visit',
+      location: '원주세브란스기독병원',
+    );
+    const resolved = EventModel(
+      id: 'event-resolved',
+      userId: 'user-1',
+      title: 'Hospital visit',
+      location: '원주세브란스기독병원',
+      locationLat: 37.3495,
+      locationLng: 127.9458,
+    );
+
+    expect(textOnly.hasLocationText, isTrue);
+    expect(textOnly.hasResolvedLocation, isFalse);
+    expect(textOnly.hasUnresolvedLocation, isTrue);
+    expect(resolved.hasLocationText, isTrue);
+    expect(resolved.hasResolvedLocation, isTrue);
+    expect(resolved.hasUnresolvedLocation, isFalse);
+  });
+
   test('EventModel update payload excludes immutable row fields', () {
     final model = EventModel(
       id: 'event-1',

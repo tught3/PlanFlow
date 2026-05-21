@@ -125,6 +125,7 @@ void main() {
         title: '겹치는 일정',
         startAt: existingStart,
         endAt: existingStart.add(const Duration(hours: 1)),
+        location: '강남역',
       ),
     );
 
@@ -149,6 +150,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('일정이 겹쳐요'), findsOneWidget);
+    expect(find.text('겹치는 일정'), findsOneWidget);
+    expect(find.text('강남역'), findsOneWidget);
+    expect(find.textContaining('아래 기존 일정'), findsOneWidget);
     expect(find.text('계속 저장'), findsOneWidget);
 
     await tester.tap(find.text('중단'));

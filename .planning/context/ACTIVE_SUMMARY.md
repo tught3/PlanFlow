@@ -4,6 +4,11 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-21 Location Coordinate Status And Overlap Dialog Checkpoint
+- Event confirm/edit/detail surfaces now distinguish location text-only events from map-coordinate-resolved events with persistent `지도 위치 미지정` / `지도 위치 연결됨` status cards, and manual location text changes clear stale coordinates.
+- Schedule overlap dialogs now list the conflicting event titles, times, and locations, with `중단` and `계속 저장` placed side-by-side in one row.
+- Verification passed: focused calendar editor, event model, confirm overlap, and event edit tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build after Gradle daemon cache reset; install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-21 Voice Save Background Follow-ups Checkpoint
 - VoiceActionScreen direct save now awaits only the event update, then moves reminders, smart preparation, departure alarm preparation, calendar sync, home-widget refresh, and voice-log writes into background follow-up tasks.
 - Voice delete and EventDetail delete now await only event deletion before navigation; cleanup, external preparation resync, widgets, and logs run afterward and each follow-up failure is isolated from the foreground save/delete result.
