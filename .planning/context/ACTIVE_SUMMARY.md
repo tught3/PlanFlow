@@ -1093,3 +1093,8 @@
 - The preflight callback reloads the event, reads the current location, recalculates travel time/safety margin, and either fires the departure alarm immediately when due or schedules another preflight when the recalculated departure time is still in the future.
 - Existing preparation alarms and the periodic departure monitor remain intact; no Supabase schema, migration, RLS, Flow Core, or shared-core files were changed.
 - Verification passed: focused departure/event-preparation/manual-side-effect tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. Device install/run check was skipped because `adb devices` showed no connected device.
+
+## 2026-05-22 Departure Preflight Location-Failure Safety Net
+- Hardened departure preflight so a live-location failure at alarm time no longer silently skips the user-visible departure alarm.
+- When current location cannot be resolved during preflight, PlanFlow now fires a fallback departure alert with Korean guidance that the location check failed and the user should confirm departure timing.
+- Verification passed: focused departure alarm tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, `adb install -r -t` on `10.64.235.8:5555`, app launch, PID check, and focused window check.

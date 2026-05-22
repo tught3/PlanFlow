@@ -264,6 +264,43 @@ void main() {
     expect(notifications.titles, isEmpty);
   });
 
+  test('preflight still alerts when live location is unavailable', () async {
+    AppEnv.markSupabaseInitialized();
+    final now = DateTime(2026, 5, 8, 10, 10);
+    final notifications = _FakeNotificationService();
+    final service = DepartureAlarmService(
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '성심당',
+            startAt: DateTime(2026, 5, 8, 12),
+            location: '대전 성심당',
+            locationLat: 36.327,
+            locationLng: 127.427,
+          ),
+        ],
+      ),
+      currentLocationProvider: () async => null,
+      notificationService: notifications,
+      preflightScheduler: _FakeDeparturePreflightScheduler().call,
+      now: () => now,
+    );
+
+    final result = await service.runPreflightForEvent(
+      'event-1',
+      userId: 'user-1',
+    );
+
+    expect(result.isScheduled, isTrue);
+    expect(result.travelMinutes, isNull);
+    expect(result.notifyAt, now.add(const Duration(seconds: 3)));
+    expect(notifications.criticalTitles.single, '지금 출발해야 해요');
+    expect(notifications.criticalBodies.single, contains('현재 위치'));
+    expect(notifications.criticalBodies.single, contains('대전 성심당'));
+  });
+
   test('refreshUpcoming records signed-out monitor status', () async {
     final service = DepartureAlarmService(
       now: () => DateTime(2026, 5, 8, 9),

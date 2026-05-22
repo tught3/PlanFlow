@@ -124,6 +124,23 @@ class DepartureAlarmService {
     final origin = await (_currentLocationProvider?.call() ??
         _permissions.getCurrentLocation());
     if (origin == null) {
+      if (fireDueDeparture) {
+        final notifyAt = _currentTime.add(_immediateNotificationDelay);
+        await _scheduleVisibleDepartureNotification(
+          event: event,
+          notifyAt: notifyAt,
+          travelMinutes: null,
+          safetyMargin: safetyMarginOverride ??
+              const Duration(minutes: defaultSafetyMarginMin),
+        );
+        return _recordAndReturnScheduleResult(
+          event,
+          DepartureAlarmScheduleResult.scheduled(
+            notifyAt: notifyAt,
+            travelMinutes: null,
+          ),
+        );
+      }
       return _recordAndReturnScheduleResult(
         event,
         const DepartureAlarmScheduleResult.skipped('missing_origin'),
@@ -360,7 +377,7 @@ class DepartureAlarmService {
   Future<void> _scheduleVisibleDepartureNotification({
     required EventModel event,
     required DateTime notifyAt,
-    required int travelMinutes,
+    required int? travelMinutes,
     required Duration safetyMargin,
   }) async {
     final notificationId = _notifications.notificationIdFor(
@@ -453,12 +470,15 @@ class DepartureAlarmService {
 
   String _bodyFor(
     EventModel event,
-    int travelMinutes, {
+    int? travelMinutes, {
     required Duration safetyMargin,
   }) {
     final location = event.location?.trim();
     final destination =
         location == null || location.isEmpty ? event.title : location;
+    if (travelMinutes == null) {
+      return '$destination 출발 알림이에요. 현재 위치를 다시 확인하지 못했지만, 일정에 늦지 않게 지금 출발 여부를 확인해 주세요.';
+    }
     final safetyMarginMinutes = safetyMargin.inMinutes;
     return '$destination까지 이동시간이 약 $travelMinutes분이에요. 여유 $safetyMarginMinutes분을 보고 지금 출발 준비를 해 주세요.';
   }
