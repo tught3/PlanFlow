@@ -1087,3 +1087,9 @@
 - The WebView intercepts `planflow://auth-callback` internally and hands it to the shared OAuth callback/session exchange flow; non-web app-intent navigations are blocked with Korean guidance to use Naver ID login inside the page.
 - Settings' Naver account recheck path now uses the same WebView route with `forceConsent=1` instead of opening the external browser flow.
 - Verification passed: focused auth service, login screen, and Naver OAuth WebView flow tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; install/launch/PID check on `192.168.0.102:5555`; callback scheme resolution check.
+
+## 2026-05-22 Smart Departure Preflight Recalculation
+- Changed smart departure alarms so the first computed departure time schedules an Android preflight alarm rather than freezing the user-visible notification immediately.
+- The preflight callback reloads the event, reads the current location, recalculates travel time/safety margin, and either fires the departure alarm immediately when due or schedules another preflight when the recalculated departure time is still in the future.
+- Existing preparation alarms and the periodic departure monitor remain intact; no Supabase schema, migration, RLS, Flow Core, or shared-core files were changed.
+- Verification passed: focused departure/event-preparation/manual-side-effect tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. Device install/run check was skipped because `adb devices` showed no connected device.

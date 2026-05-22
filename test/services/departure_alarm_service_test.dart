@@ -18,6 +18,7 @@ void main() {
       () async {
     final now = DateTime(2026, 5, 8, 9);
     final notifications = _FakeNotificationService();
+    final preflight = _FakeDeparturePreflightScheduler();
     final service = DepartureAlarmService(
       currentLocationProvider: () async =>
           const GeoPoint(latitude: 37.5, longitude: 127),
@@ -29,6 +30,7 @@ void main() {
         ),
       ),
       notificationService: notifications,
+      preflightScheduler: preflight.call,
       now: () => now,
     );
 
@@ -48,9 +50,10 @@ void main() {
     expect(result.isScheduled, isTrue);
     expect(result.travelMinutes, 90);
     expect(result.notifyAt, DateTime(2026, 5, 8, 10, 10));
-    expect(notifications.criticalTitles.single, '지금 출발해야 해요');
-    expect(notifications.criticalBodies.single, contains('대전 성심당'));
-    expect(notifications.criticalBodies.single, contains('90분'));
+    expect(preflight.eventIds.single, 'event-1');
+    expect(preflight.preflightTimes.single, DateTime(2026, 5, 8, 10, 10));
+    expect(preflight.safetyMargins.single, const Duration(minutes: 20));
+    expect(notifications.criticalTitles, isEmpty);
     expect(notifications.payloads, isEmpty);
 
     final status = await service.loadRuntimeStatus();
@@ -65,6 +68,7 @@ void main() {
       () async {
     final now = DateTime(2026, 5, 8, 9);
     final notifications = _FakeNotificationService();
+    final preflight = _FakeDeparturePreflightScheduler();
     final service = DepartureAlarmService(
       currentLocationProvider: () async =>
           const GeoPoint(latitude: 37.5, longitude: 127),
@@ -76,6 +80,7 @@ void main() {
         ),
       ),
       notificationService: notifications,
+      preflightScheduler: preflight.call,
       now: () => now,
     );
 
@@ -95,7 +100,8 @@ void main() {
 
     expect(result.isScheduled, isTrue);
     expect(result.notifyAt, DateTime(2026, 5, 8, 10, 10));
-    expect(notifications.criticalBodies.single, contains('20분'));
+    expect(preflight.safetyMargins.single, const Duration(minutes: 20));
+    expect(notifications.criticalBodies, isEmpty);
   });
 
   test('skips events without geocoded destination', () async {
@@ -142,6 +148,8 @@ void main() {
         ),
       ),
       notificationService: notifications,
+      preflightScheduler:
+          _FakeDeparturePreflightScheduler(shouldSchedule: false).call,
       now: () => now,
     );
 
@@ -162,6 +170,98 @@ void main() {
     expect(notifications.criticalTitles.single, '지금 출발해야 해요');
     expect(notifications.titles.single, '지금 출발해야 해요');
     expect(notifications.payloads.single, 'departure:event-1');
+  });
+
+  test('preflight fires visible departure alarm when recalculated time is due',
+      () async {
+    AppEnv.markSupabaseInitialized();
+    final now = DateTime(2026, 5, 8, 10, 10);
+    final notifications = _FakeNotificationService();
+    final service = DepartureAlarmService(
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '성심당',
+            startAt: DateTime(2026, 5, 8, 12),
+            location: '대전 성심당',
+            locationLat: 36.327,
+            locationLng: 127.427,
+          ),
+        ],
+      ),
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127),
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 90),
+          source: TravelTimeBufferSource.tmap,
+          reason: 'test',
+        ),
+      ),
+      notificationService: notifications,
+      preflightScheduler: _FakeDeparturePreflightScheduler().call,
+      now: () => now,
+    );
+
+    final result = await service.runPreflightForEvent(
+      'event-1',
+      userId: 'user-1',
+    );
+
+    expect(result.isScheduled, isTrue);
+    expect(result.notifyAt, now.add(const Duration(seconds: 3)));
+    expect(notifications.criticalTitles.single, '지금 출발해야 해요');
+    expect(notifications.criticalBodies.single, contains('대전 성심당'));
+    expect(notifications.criticalBodies.single, contains('90분'));
+  });
+
+  test('preflight reschedules itself when recalculated departure is later',
+      () async {
+    AppEnv.markSupabaseInitialized();
+    final now = DateTime(2026, 5, 8, 9);
+    final notifications = _FakeNotificationService();
+    final preflight = _FakeDeparturePreflightScheduler();
+    final service = DepartureAlarmService(
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '성심당',
+            startAt: DateTime(2026, 5, 8, 12),
+            location: '대전 성심당',
+            locationLat: 36.327,
+            locationLng: 127.427,
+          ),
+        ],
+      ),
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127),
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 90),
+          source: TravelTimeBufferSource.tmap,
+          reason: 'test',
+        ),
+      ),
+      notificationService: notifications,
+      preflightScheduler: preflight.call,
+      now: () => now,
+    );
+
+    final result = await service.runPreflightForEvent(
+      'event-1',
+      userId: 'user-1',
+    );
+
+    expect(result.isScheduled, isTrue);
+    expect(result.notifyAt, DateTime(2026, 5, 8, 10, 10));
+    expect(preflight.eventIds.single, 'event-1');
+    expect(preflight.preflightTimes.single, DateTime(2026, 5, 8, 10, 10));
+    expect(notifications.criticalTitles, isEmpty);
+    expect(notifications.titles, isEmpty);
   });
 
   test('refreshUpcoming records signed-out monitor status', () async {
@@ -203,6 +303,7 @@ void main() {
           reason: 'test',
         ),
       ),
+      preflightScheduler: _FakeDeparturePreflightScheduler().call,
       now: () => DateTime(2026, 5, 8, 9),
     );
 
@@ -240,6 +341,7 @@ void main() {
           reason: 'test',
         ),
       ),
+      preflightScheduler: _FakeDeparturePreflightScheduler().call,
       now: () => DateTime(2026, 5, 8, 9),
     );
 
@@ -280,8 +382,14 @@ class _FakeEventRepository extends EventRepository {
   Future<void> deleteEvent(String eventId, {String? userId}) async {}
 
   @override
-  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async =>
-      null;
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    for (final event in events) {
+      if (event.id == eventId && (userId == null || event.userId == userId)) {
+        return event;
+      }
+    }
+    return null;
+  }
 
   @override
   Future<List<EventModel>> listEvents({String? userId}) async {
@@ -292,6 +400,29 @@ class _FakeEventRepository extends EventRepository {
 
   @override
   Future<EventModel> updateEvent(EventModel event) async => event;
+}
+
+class _FakeDeparturePreflightScheduler {
+  _FakeDeparturePreflightScheduler({this.shouldSchedule = true});
+
+  final bool shouldSchedule;
+  final eventIds = <String>[];
+  final preflightTimes = <DateTime>[];
+  final safetyMargins = <Duration>[];
+  final travelModes = <MapTravelMode>[];
+
+  Future<bool> call({
+    required EventModel event,
+    required DateTime preflightAt,
+    required Duration safetyMargin,
+    required MapTravelMode travelMode,
+  }) async {
+    eventIds.add(event.id);
+    preflightTimes.add(preflightAt);
+    safetyMargins.add(safetyMargin);
+    travelModes.add(travelMode);
+    return shouldSchedule;
+  }
 }
 
 class _FakeNotificationService extends NotificationService {
