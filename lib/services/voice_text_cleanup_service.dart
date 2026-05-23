@@ -110,10 +110,46 @@ class VoiceTextCleanupService {
   }
 
   static String normalizeBasic(String text) {
-    return text
+    final normalized = text
         .replaceAll(RegExp(r'[,\.\!\?\(\)\[\]\{\}]+'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+    return normalizeKoreanSttRepetitions(normalized);
+  }
+
+  static String normalizeKoreanSttRepetitions(String text) {
+    final words = text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList(growable: false);
+    if (words.length < 2) {
+      return text.trim();
+    }
+
+    final output = <String>[];
+    var index = 0;
+    while (index < words.length) {
+      if (index < words.length - 1) {
+        final merged = _mergeKoreanSttPair(words[index], words[index + 1]);
+        if (merged != null) {
+          output.add(merged);
+          index += 2;
+          continue;
+        }
+      }
+      output.add(words[index]);
+      index += 1;
+    }
+
+    var changed = output.join(' ');
+    // A single pass fixes adjacent pairs; a second pass catches chained cases
+    // such as "경탁이 탁이한테 전화 전화해서".
+    if (changed != text.trim()) {
+      final secondPass = normalizeKoreanSttRepetitions(changed);
+      changed = secondPass;
+    }
+    return changed.trim();
   }
 
   static String normalizeForSearch(String text) {
@@ -185,5 +221,92 @@ class VoiceTextCleanupService {
       }
     }
     return value;
+  }
+
+  static String? _mergeKoreanSttPair(String left, String right) {
+    final normalizedLeft = _normalizeKoreanSttToken(left);
+    final normalizedRight = _normalizeKoreanSttToken(right);
+    if (normalizedLeft.isEmpty || normalizedRight.isEmpty) {
+      return null;
+    }
+    if (!_containsHangul(normalizedLeft) || !_containsHangul(normalizedRight)) {
+      return null;
+    }
+
+    if (normalizedLeft == normalizedRight) {
+      return left;
+    }
+
+    if (normalizedRight.startsWith(normalizedLeft) &&
+        normalizedRight.length > normalizedLeft.length &&
+        _hasKoreanSttJoinSuffix(normalizedRight)) {
+      return right;
+    }
+
+    final overlap = _koreanSuffixPrefixOverlap(normalizedLeft, normalizedRight);
+    if (overlap <= 0) {
+      return null;
+    }
+    final shouldMerge = overlap >= 2 ||
+        (overlap == 1 &&
+            normalizedLeft.length <= 4 &&
+            _hasKoreanSttJoinSuffix(normalizedRight));
+    if (!shouldMerge) {
+      return null;
+    }
+    return '$left${right.substring(overlap)}';
+  }
+
+  static String _normalizeKoreanSttToken(String token) {
+    return token
+        .trim()
+        .replaceAll(RegExp(r'[\s\p{P}\p{S}]', unicode: true), '')
+        .toLowerCase();
+  }
+
+  static int _koreanSuffixPrefixOverlap(String left, String right) {
+    final max = left.length < right.length ? left.length : right.length;
+    for (var size = max; size >= 1; size -= 1) {
+      if (left.substring(left.length - size) == right.substring(0, size)) {
+        return size;
+      }
+    }
+    return 0;
+  }
+
+  static bool _hasKoreanSttJoinSuffix(String token) {
+    const suffixes = <String>[
+      '한테',
+      '에게',
+      '께',
+      '랑',
+      '와',
+      '과',
+      '하고',
+      '이',
+      '가',
+      '은',
+      '는',
+      '을',
+      '를',
+      '로',
+      '으로',
+      '에서',
+      '해서',
+      '하기',
+      '해줘',
+      '해주기',
+      '하는지',
+      '할지',
+      '했는지',
+      '물어보기',
+      '확인하기',
+      '전화하기',
+    ];
+    return suffixes.any(token.endsWith);
+  }
+
+  static bool _containsHangul(String text) {
+    return RegExp(r'[가-힣]').hasMatch(text);
   }
 }

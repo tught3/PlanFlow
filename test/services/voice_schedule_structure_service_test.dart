@@ -101,5 +101,41 @@ void main() {
       expect(document.participants, isEmpty);
       expect(document.targets, isEmpty);
     });
+
+    test('extracts all-day multi-day date ranges and strips title noise', () {
+      final range = service.extractDateRange(
+        '5월 26일부터 6월 1일까지 원주집 임대',
+        now: DateTime(2026, 5, 23, 12),
+      );
+
+      expect(range, isNotNull);
+      expect(range!.startAt, DateTime(2026, 5, 26));
+      expect(range.endAt, DateTime(2026, 6, 1, 23, 59, 59));
+      expect(range.isAllDay, isTrue);
+      expect(range.isMultiDay, isTrue);
+      expect(
+        service.stripDateRangeExpression(
+          '5월 26일부터 6월 1일까지 원주집 임대',
+          now: DateTime(2026, 5, 23, 12),
+        ),
+        '원주집 임대',
+      );
+      expect(
+        service.stripDateRangeExpression(
+          '부터 까지 원주집 임대',
+          now: DateTime(2026, 5, 23, 12),
+        ),
+        '원주집 임대',
+      );
+    });
+
+    test('does not treat same-day time ranges as all-day date ranges', () {
+      final range = service.extractDateRange(
+        '5월 26일 오전 9시부터 오후 3시까지 회의',
+        now: DateTime(2026, 5, 23, 12),
+      );
+
+      expect(range, isNull);
+    });
   });
 }

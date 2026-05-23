@@ -560,7 +560,7 @@ void main() {
 
       final multiDay = await service.parseSchedule('5월 1일부터 3일까지 제주 여행');
       expect(multiDay['is_multi_day'], isTrue);
-      expect(multiDay['is_all_day'], isFalse);
+      expect(multiDay['is_all_day'], isTrue);
 
       final health = await service.parseSchedule('병원 진료');
       expect(health['category'], '건강');
@@ -577,6 +577,50 @@ void main() {
 
       final monthly = await service.parseSchedule('매월 첫 번째 월요일 월간 보고');
       expect(monthly['recurrence_rule'], 'FREQ=MONTHLY;BYDAY=1MO');
+    });
+
+    test('local date range overrides incomplete GPT schedule fields', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '부터 까지 원주집 임대',
+                    'start_at': '2026-05-26T09:00:00.000',
+                    'end_at': '2026-05-26T10:00:00.000',
+                    'is_all_day': false,
+                    'is_multi_day': false,
+                    'category': '개인',
+                    'supplies': <String>[],
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 23, 12),
+      );
+
+      final result = await service.parseSchedule('5월 26일부터 6월 1일까지 원주집 임대');
+
+      expect(result['title'], '원주집 임대');
+      expect(result['start_at'], DateTime(2026, 5, 26).toIso8601String());
+      expect(
+        result['end_at'],
+        DateTime(2026, 6, 1, 23, 59, 59).toIso8601String(),
+      );
+      expect(result['is_all_day'], isTrue);
+      expect(result['is_multi_day'], isTrue);
     });
 
     test('preserves person name in delivery title and separates hospital place',

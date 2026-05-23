@@ -108,6 +108,30 @@ void main() {
 
   test('SttService normalizes voice correction phrases in transcripts', () {
     expect(
+      SttService.normalizeVoiceTranscript('경탁이 탁이한테 전화하기'),
+      '경탁이한테 전화하기',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('전화 전화해서 물어보기'),
+      '전화해서 물어보기',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('확인 확인해줘'),
+      '확인해줘',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('민수 수한테 확인 전화'),
+      '민수한테 확인 전화',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('수연이 연이랑 병원 방문'),
+      '수연이랑 병원 방문',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('월요일 일정 확인'),
+      '월요일 일정 확인',
+    );
+    expect(
       SttService.normalizeVoiceTranscript('내일 오전 9시 아니 오전 10시에 대전으로 출발'),
       '내일 오전 10시에 대전으로 출발',
     );

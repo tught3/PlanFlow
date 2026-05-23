@@ -632,5 +632,29 @@ void main() {
       expect(ambiguousLookupResult.method, VoiceCommandAnalysisMethod.local);
       expect(ambiguousLookupResult.intent, VoiceCommandIntent.choose);
     });
+
+    test('local date range wins over default one-hour end time', () async {
+      final service = VoiceCommandAnalysisService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 23, 12, 0),
+        maxAiRequests: 0,
+      );
+
+      final result = await service.analyze(
+        '5월 26일부터 6월 1일까지 원주집 임대',
+        stage: VoiceCommandAnalysisStage.complete,
+      );
+      final parsed = result.toParsedScheduleMap();
+
+      expect(result.method, VoiceCommandAnalysisMethod.local);
+      expect(parsed['title'], '원주집 임대');
+      expect(parsed['start_at'], DateTime(2026, 5, 26).toIso8601String());
+      expect(
+        parsed['end_at'],
+        DateTime(2026, 6, 1, 23, 59, 59).toIso8601String(),
+      );
+      expect(parsed['is_all_day'], isTrue);
+      expect(parsed['is_multi_day'], isTrue);
+    });
   });
 }

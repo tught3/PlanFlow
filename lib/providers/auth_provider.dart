@@ -199,7 +199,13 @@ class AuthProvider extends ChangeNotifier {
       return null;
     }
     final metadata = user.userMetadata ?? const <String, dynamic>{};
-    for (final key in const ['email', 'name', 'full_name', 'user_name', 'nickname']) {
+    for (final key in const [
+      'email',
+      'name',
+      'full_name',
+      'user_name',
+      'nickname'
+    ]) {
       final value = metadata[key]?.toString().trim();
       if (value != null && value.isNotEmpty) {
         return value;
@@ -296,13 +302,32 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _bootstrapInitialSession() async {
     final service = _service;
-    final snapshotUser = service.currentSession?.user ?? service.currentUser;
+    var snapshotUser = service.currentSession?.user ?? service.currentUser;
     if (snapshotUser == null) {
       try {
         await _firstAuthEventCompleter?.future.timeout(
           const Duration(seconds: 2),
         );
       } catch (_) {}
+      snapshotUser = service.currentSession?.user ?? service.currentUser;
+    }
+
+    try {
+      debugPrint(
+        'auth_bootstrap phase=refresh_start '
+        'hasSnapshotUser=${snapshotUser != null}',
+      );
+      await service.refreshSession();
+      debugPrint(
+        'auth_bootstrap phase=refresh_success '
+        'hasSession=${service.currentSession != null}',
+      );
+    } catch (error) {
+      debugPrint(
+        'auth_bootstrap phase=refresh_failed '
+        'hasSnapshotUser=${snapshotUser != null} '
+        'errorType=${error.runtimeType}',
+      );
     }
     await _syncProfileAndApplyUser(
       service,

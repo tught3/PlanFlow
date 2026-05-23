@@ -45,6 +45,22 @@ class VoiceSchedulePeopleFields {
       }.toList(growable: false);
 }
 
+class VoiceScheduleDateRange {
+  const VoiceScheduleDateRange({
+    required this.startAt,
+    required this.endAt,
+    required this.matchedText,
+    required this.isAllDay,
+    required this.isMultiDay,
+  });
+
+  final DateTime startAt;
+  final DateTime endAt;
+  final String matchedText;
+  final bool isAllDay;
+  final bool isMultiDay;
+}
+
 class VoiceScheduleStructureService {
   const VoiceScheduleStructureService();
 
@@ -99,6 +115,98 @@ class VoiceScheduleStructureService {
     }
     return _normalizeRelativeDayMisrecognition(
       VoiceTextCleanupService.normalizeBasic(normalized),
+    );
+  }
+
+  VoiceScheduleDateRange? extractDateRange(
+    String rawText, {
+    DateTime? now,
+  }) {
+    final source = normalizeText(rawText, '');
+    if (source.isEmpty) {
+      return null;
+    }
+    final reference = now ?? DateTime.now();
+    final patterns = <RegExp>[
+      RegExp(
+        r'(?:(?<startYear>\d{4})\s*년\s*)?(?<startMonth>\d{1,2})\s*월\s*(?<startDay>\d{1,2})\s*일?\s*(?:부터|에서|~|-)\s*(?:(?<endYear>\d{4})\s*년\s*)?(?:(?<endMonth>\d{1,2})\s*월\s*)?(?<endDay>\d{1,2})\s*일?\s*(?:까지|동안)?',
+      ),
+      RegExp(
+        r'(?:(?<startYear>\d{4})\s*년\s*)?(?<startDay>\d{1,2})\s*일?\s*(?:부터|에서|~|-)\s*(?:(?<endYear>\d{4})\s*년\s*)?(?:(?<endMonth>\d{1,2})\s*월\s*)?(?<endDay>\d{1,2})\s*일?\s*(?:까지|동안)',
+      ),
+    ];
+
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(source);
+      if (match == null) {
+        continue;
+      }
+      final matchedText = match.group(0)?.trim() ?? '';
+      if (matchedText.isEmpty || RegExp(r'\d{1,2}\s*시').hasMatch(matchedText)) {
+        continue;
+      }
+
+      final startYear =
+          int.tryParse(match.namedGroup('startYear') ?? '') ?? reference.year;
+      final startMonth =
+          int.tryParse(match.namedGroup('startMonth') ?? '') ?? reference.month;
+      final startDay = int.tryParse(match.namedGroup('startDay') ?? '');
+      final endYearText = match.namedGroup('endYear');
+      final endMonthText = match.namedGroup('endMonth');
+      final endDay = int.tryParse(match.namedGroup('endDay') ?? '');
+      if (startDay == null || endDay == null) {
+        continue;
+      }
+
+      var endYear = int.tryParse(endYearText ?? '') ?? startYear;
+      var endMonth = int.tryParse(endMonthText ?? '') ?? startMonth;
+      var start = DateTime(startYear, startMonth, startDay);
+      var endDate = DateTime(endYear, endMonth, endDay);
+      if (endDate.isBefore(start)) {
+        if (endMonthText == null || endMonthText.isEmpty) {
+          endDate = DateTime(endYear, endMonth + 1, endDay);
+        } else if (endYearText == null || endYearText.isEmpty) {
+          endYear += 1;
+          endDate = DateTime(endYear, endMonth, endDay);
+        }
+      }
+      if (start.isBefore(
+              DateTime(reference.year, reference.month, reference.day)) &&
+          match.namedGroup('startYear') == null &&
+          start.year == reference.year) {
+        start = DateTime(start.year + 1, start.month, start.day);
+        if (!endDate.isAfter(start)) {
+          endDate = DateTime(endDate.year + 1, endDate.month, endDate.day);
+        }
+      }
+
+      return VoiceScheduleDateRange(
+        startAt: DateTime(start.year, start.month, start.day),
+        endAt: DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59),
+        matchedText: matchedText,
+        isAllDay: true,
+        isMultiDay: true,
+      );
+    }
+    return null;
+  }
+
+  String stripDateRangeExpression(
+    String text, {
+    DateTime? now,
+  }) {
+    final range = extractDateRange(text, now: now);
+    if (range == null) {
+      return _stripDateRangeParticles(text);
+    }
+    return normalizeSpacingForSchedule(
+      _stripDateRangeParticles(text.replaceFirst(range.matchedText, ' ')),
+    );
+  }
+
+  String _stripDateRangeParticles(String text) {
+    return normalizeSpacingForSchedule(
+      text.replaceAll(RegExp(r'(^|\s)(?:부터|까지)(?=\s|$)'), ' '),
     );
   }
 

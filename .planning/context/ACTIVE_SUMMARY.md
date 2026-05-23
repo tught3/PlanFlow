@@ -4,6 +4,12 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-23 Auth Persistence And Voice Date-Range Normalization
+- Auth bootstrap now waits briefly for restored Supabase auth state, then attempts a session refresh before resolving startup; transient refresh errors keep the restored user instead of dropping directly to the login screen.
+- Korean STT cleanup now removes unnatural repeated/overlapped tokens such as `경탁이 탁이한테`, `전화 전화해서`, and `확인 확인해줘` while preserving person names for targets/participants.
+- Voice schedule parsing now gives local all-day date ranges priority over GPT output, so `5월 26일부터 6월 1일까지 원주집 임대` becomes title `원주집 임대` with a 5/26-6/1 all-day multi-day range.
+- Verification passed: focused auth/STT/voice-structure/GPT/voice-analysis/Supabase-auth-option tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-22 Naver OAuth WebView Subresource Error Guard
 - Naver OAuth WebView now treats only main-frame `WebResourceError` callbacks as fatal page-load failures.
 - Subresource failures such as images, favicon, or auxiliary scripts are logged as `web_resource_ignored` and no longer replace the login page with the misleading `네이버 로그인 페이지를 불러오지 못했어요` error.

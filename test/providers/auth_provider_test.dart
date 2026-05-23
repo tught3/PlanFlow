@@ -22,7 +22,7 @@ void main() {
     SharedPreferencesAsyncPlatform.instance = null;
   });
 
-  test('starts with the restored session snapshot without waiting for refresh',
+  test('refreshes the restored session snapshot before startup resolves',
       () async {
     final service = _FakeAuthService(
       currentSession: _session(userId: 'user-1', email: 'user@example.com'),
@@ -36,7 +36,7 @@ void main() {
     expect(provider.isSignedIn, isTrue);
     expect(provider.userId, 'user-1');
     expect(provider.email, 'user@example.com');
-    expect(service.refreshCount, 0);
+    expect(service.refreshCount, 1);
 
     provider.dispose();
   });
@@ -60,7 +60,7 @@ void main() {
     expect(provider.isSignedIn, isTrue);
     expect(provider.userId, 'user-2');
     expect(provider.email, 'stay@example.com');
-    expect(service.refreshCount, 1);
+    expect(service.refreshCount, 2);
 
     provider.dispose();
   });
@@ -110,6 +110,29 @@ void main() {
     expect(provider.providerLabel, '네이버 로그인됨');
     expect(provider.accountDisplayName, '네이버 로그인됨');
     expect(provider.socialAccountInfoIncomplete, isTrue);
+
+    provider.dispose();
+  });
+
+  test('keeps restored startup user when refresh has a transient failure',
+      () async {
+    final service = _FakeAuthService(
+      currentSession: _session(userId: 'user-3', email: 'keep@example.com'),
+      refreshError: const AuthException(
+        'temporary network failure',
+        statusCode: '503',
+      ),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.hasResolvedInitialSession, isTrue);
+    expect(provider.isSignedIn, isTrue);
+    expect(provider.userId, 'user-3');
+    expect(provider.email, 'keep@example.com');
+    expect(service.refreshCount, 1);
 
     provider.dispose();
   });

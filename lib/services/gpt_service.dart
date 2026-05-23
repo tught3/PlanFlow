@@ -377,6 +377,7 @@ class GptService {
         )) {
       normalized['start_at'] = inferredStartAt.toIso8601String();
     }
+    _applyLocalDateRange(rawText, normalized);
     normalized['pre_actions'] =
         const SmartPreparationAlarmService().enrichParsedSchedule(
       normalized,
@@ -426,6 +427,7 @@ class GptService {
     };
     _normalizeTitleMemoAndLocation(fallback, rawText);
     _normalizeEventTypeFromRawText(rawText, fallback);
+    _applyLocalDateRange(rawText, fallback);
     return fallback;
   }
 
@@ -433,7 +435,11 @@ class GptService {
     Map<String, dynamic> schedule,
     String rawText,
   ) {
-    final normalizedRawText = _stripExplicitMemoClause(rawText);
+    final normalizedRawText =
+        _voiceScheduleStructureService.stripDateRangeExpression(
+      _stripExplicitMemoClause(rawText),
+      now: _now(),
+    );
     final contentClause = _extractContentClause(normalizedRawText);
     final structured = _voiceScheduleStructureService
         .analyze(contentClause ?? normalizedRawText);
@@ -617,6 +623,14 @@ class GptService {
     }
 
     final now = _now();
+    final localRange = _voiceScheduleStructureService.extractDateRange(
+      normalized,
+      now: now,
+    );
+    if (localRange != null) {
+      return localRange.startAt;
+    }
+
     final dateTimeText = _stripRelativeDayWordsIfContent(normalized);
     final relative = _extractRelativeOffsetFromText(dateTimeText, now);
     if (relative != null) {
@@ -714,6 +728,14 @@ $_scheduleSystemPrompt
     Map<String, dynamic> normalized,
   ) {
     final text = _normalizeKoreanText(rawText);
+    final localRange =
+        _voiceScheduleStructureService.extractDateRange(text, now: _now());
+    if (localRange != null) {
+      normalized['is_multi_day'] = localRange.isMultiDay;
+      normalized['is_all_day'] = localRange.isAllDay;
+      return;
+    }
+
     if (RegExp(r'(부터|에서).{0,24}(까지|동안)').hasMatch(text) ||
         RegExp(r'\d{1,2}월\s*\d{1,2}일\s*[-~]\s*\d{1,2}월?\s*\d{1,2}일')
             .hasMatch(text)) {
@@ -729,6 +751,20 @@ $_scheduleSystemPrompt
       normalized['is_all_day'] = true;
       normalized['is_multi_day'] = false;
     }
+  }
+
+  void _applyLocalDateRange(String rawText, Map<String, dynamic> schedule) {
+    final range = _voiceScheduleStructureService.extractDateRange(
+      rawText,
+      now: _now(),
+    );
+    if (range == null) {
+      return;
+    }
+    schedule['start_at'] = range.startAt.toIso8601String();
+    schedule['end_at'] = range.endAt.toIso8601String();
+    schedule['is_all_day'] = range.isAllDay;
+    schedule['is_multi_day'] = range.isMultiDay;
   }
 
   String _normalizeCategoryFromRawText(String rawText, Object? parsedCategory) {

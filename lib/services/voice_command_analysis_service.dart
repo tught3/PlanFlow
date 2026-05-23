@@ -537,17 +537,37 @@ class VoiceCommandAnalysisService {
   }) {
     final source = fields ?? <String, dynamic>{};
     final gpt = GptService(now: _now);
-    final inferredStartAt = _parseDateTime(source['start_at']) ??
+    final localDateRange = _voiceScheduleStructureService.extractDateRange(
+          normalizedText,
+          now: _now(),
+        ) ??
+        _voiceScheduleStructureService.extractDateRange(
+          rawText,
+          now: _now(),
+        );
+    final inferredStartAt = localDateRange?.startAt ??
+        _parseDateTime(source['start_at']) ??
         fallbackStartAt ??
         gpt.inferStartAtFromRawText(normalizedText) ??
         gpt.inferStartAtFromRawText(rawText) ??
         _parseDateTime(fallback?.scheduleFields['start_at']);
-    final titleSource = _extractContentClause(normalizedText) ??
-        _stripExplicitMemoClause(normalizedText);
+    final rangeStrippedText =
+        _voiceScheduleStructureService.stripDateRangeExpression(
+      normalizedText,
+      now: _now(),
+    );
+    final titleSource = _extractContentClause(rangeStrippedText) ??
+        _stripExplicitMemoClause(rangeStrippedText);
     final structured = _voiceScheduleStructureService.analyze(
       titleSource,
     );
-    final sourceTitle = _normalizeText(source['title']?.toString(), null);
+    final sourceTitle = _normalizeText(
+      _voiceScheduleStructureService.stripDateRangeExpression(
+        source['title']?.toString() ?? '',
+        now: _now(),
+      ),
+      null,
+    );
     final title = sourceTitle.isNotEmpty
         ? _deriveLocalTitle(
             sourceTitle,
@@ -570,7 +590,8 @@ class VoiceCommandAnalysisService {
       'title': title.isEmpty ? titleSource : title,
       'date': source['date'],
       'start_at': inferredStartAt?.toIso8601String(),
-      'end_at': _normalizeDateTime(source['end_at'])?.toIso8601String(),
+      'end_at': (localDateRange?.endAt ?? _normalizeDateTime(source['end_at']))
+          ?.toIso8601String(),
       'location': inferredLocation == null
           ? null
           : _normalizeSpacingForSchedule(inferredLocation),
@@ -588,8 +609,9 @@ class VoiceCommandAnalysisService {
         source['recurrence_rule']?.toString(),
         _inferLocalRecurrence(normalizedText),
       ),
-      'is_all_day': source['is_all_day'] == true,
-      'is_multi_day': source['is_multi_day'] == true,
+      'is_all_day': localDateRange?.isAllDay ?? source['is_all_day'] == true,
+      'is_multi_day':
+          localDateRange?.isMultiDay ?? source['is_multi_day'] == true,
       'category': _normalizeCategory(
         _normalizeText(
           source['category']?.toString(),
