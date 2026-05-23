@@ -167,7 +167,12 @@ abstract class BasePlanFlowWidgetProvider(
 
         return try {
             val dateTime = Instant.parse(raw).atZone(planFlowZone)
-            DateTimeFormatter.ofPattern("M/d HH:mm", Locale.KOREA).format(dateTime)
+            val time = DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA).format(dateTime)
+            when (dateTime.toLocalDate()) {
+                todayDate().plusDays(1) -> "내일 $time"
+                todayDate().plusDays(2) -> "모레 $time"
+                else -> DateTimeFormatter.ofPattern("M/d HH:mm", Locale.KOREA).format(dateTime)
+            }
         } catch (_: Exception) {
             raw
         }

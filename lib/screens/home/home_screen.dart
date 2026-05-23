@@ -31,6 +31,26 @@ enum _HomeLoadState {
   error,
 }
 
+@visibleForTesting
+String formatHomeUpcomingDateTime(DateTime value, {DateTime? now}) {
+  final localNow = planflowLocal(now ?? DateTime.now());
+  final today = DateTime(localNow.year, localNow.month, localNow.day);
+  final targetDay = DateTime(value.year, value.month, value.day);
+  final time =
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+  if (targetDay == today.add(const Duration(days: 1))) {
+    return '내일 $time';
+  }
+  if (targetDay == today.add(const Duration(days: 2))) {
+    return '모레 $time';
+  }
+
+  final month = value.month.toString().padLeft(2, '0');
+  final day = value.day.toString().padLeft(2, '0');
+  return '$month/$day $time';
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -1617,7 +1637,8 @@ class _UpcomingEventCard extends StatelessWidget {
     final theme = Theme.of(context);
     final startAt =
         event.startAt == null ? null : planflowLocal(event.startAt!);
-    final dateLabel = startAt == null ? '시간 미정' : _formatDateTime(startAt);
+    final dateLabel =
+        startAt == null ? '시간 미정' : formatHomeUpcomingDateTime(startAt);
 
     return Card(
       color: PlanFlowColors.surface,
@@ -1702,14 +1723,6 @@ class _UpcomingEventCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _formatDateTime(DateTime value) {
-    final month = value.month.toString().padLeft(2, '0');
-    final day = value.day.toString().padLeft(2, '0');
-    final hour = value.hour.toString().padLeft(2, '0');
-    final minute = value.minute.toString().padLeft(2, '0');
-    return '$month/$day $hour:$minute';
   }
 }
 

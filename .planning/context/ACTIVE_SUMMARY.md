@@ -1115,3 +1115,9 @@
 - Hardened departure preflight so a live-location failure at alarm time no longer silently skips the user-visible departure alarm.
 - When current location cannot be resolved during preflight, PlanFlow now fires a fallback departure alert with Korean guidance that the location check failed and the user should confirm departure timing.
 - Verification passed: focused departure alarm tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, `adb install -r -t` on `10.64.235.8:5555`, app launch, PID check, and focused window check.
+
+## 2026-05-23 FluxStudio Dashboard Tables And Relative Date Labels
+- Added FluxStudio dashboard intake schema to live Supabase project `xqvvfnvmytjlblcngipn` and mirrored it in `supabase/schema.sql`: `admin_roles`, `contact_messages`, `product_early_birds`, and `product/source` columns on `early_bird_emails`.
+- Confirmed `tught3@naver.com` is registered in `admin_roles` as `owner`; public insert policies are available for homepage/app intake while select/update are limited to admin-role users.
+- Updated home upcoming cards and the Android next-event widget time label so events tomorrow and the day after tomorrow show `내일 HH:mm` / `모레 HH:mm`; all other dates keep the normal date label.
+- Verification passed: focused home screen and home-widget service tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch/PID check on `192.168.0.102:5555`.

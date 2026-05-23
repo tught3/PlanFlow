@@ -19,6 +19,34 @@ void main() {
     EventPrefetchService().invalidate();
   });
 
+  test(
+      'formatHomeUpcomingDateTime uses relative labels for tomorrow and day after',
+      () {
+    final now = DateTime(2026, 5, 23, 10);
+
+    expect(
+      formatHomeUpcomingDateTime(
+        DateTime(2026, 5, 24, 9, 30),
+        now: now,
+      ),
+      '내일 09:30',
+    );
+    expect(
+      formatHomeUpcomingDateTime(
+        DateTime(2026, 5, 25, 9, 30),
+        now: now,
+      ),
+      '모레 09:30',
+    );
+    expect(
+      formatHomeUpcomingDateTime(
+        DateTime(2026, 5, 26, 9, 30),
+        now: now,
+      ),
+      '05/26 09:30',
+    );
+  });
+
   testWidgets(
     'HomeScreen keeps rendered content visible during resume refresh',
     (tester) async {

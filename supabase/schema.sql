@@ -321,8 +321,14 @@ create trigger calendar_connections_set_updated_at
 create table if not exists public.early_bird_emails (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
+  product text not null default 'planflow',
+  source text not null default 'app',
   created_at timestamptz not null default now()
 );
+
+alter table public.early_bird_emails
+  add column if not exists product text not null default 'planflow',
+  add column if not exists source text not null default 'app';
 
 -- 10. user_backups
 create table if not exists public.user_backups (
@@ -378,6 +384,63 @@ create trigger feedback_reports_set_updated_at
   before update on public.feedback_reports
   for each row execute function public.set_updated_at();
 
+-- 12. FluxStudio dashboard admin and public intake tables
+create table if not exists public.admin_roles (
+  email text primary key,
+  role text not null default 'admin' check (role in ('admin', 'owner')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint admin_roles_email_format check (
+    char_length(email) <= 254
+    and email = lower(trim(email))
+    and email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+  )
+);
+
+drop trigger if exists admin_roles_set_updated_at
+  on public.admin_roles;
+create trigger admin_roles_set_updated_at
+  before update on public.admin_roles
+  for each row execute function public.set_updated_at();
+
+create table if not exists public.contact_messages (
+  id uuid primary key default gen_random_uuid(),
+  product text check (
+    product in ('planflow', 'finflow', 'valueflow', 'nexusflow', 'general')
+  ),
+  name text not null,
+  email text not null,
+  subject text not null,
+  message text not null,
+  status text not null default 'new' check (status in ('new', 'wip', 'done')),
+  source text not null default 'homepage' check (source in ('homepage', 'app')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists contact_messages_status_created_idx
+  on public.contact_messages (status, created_at desc);
+
+drop trigger if exists contact_messages_set_updated_at
+  on public.contact_messages;
+create trigger contact_messages_set_updated_at
+  before update on public.contact_messages
+  for each row execute function public.set_updated_at();
+
+create table if not exists public.product_early_birds (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  product text not null check (
+    product in ('planflow', 'finflow', 'valueflow', 'nexusflow')
+  ),
+  source text not null default 'homepage' check (source in ('homepage', 'app')),
+  created_at timestamptz not null default now(),
+  constraint product_early_birds_unique unique (email, product)
+);
+
+create index if not exists product_early_birds_product_created_idx
+  on public.product_early_birds (product, created_at desc);
+
 do $$
 begin
   if not exists (
@@ -408,10 +471,19 @@ alter table public.calendar_connections enable row level security;
 alter table public.early_bird_emails enable row level security;
 alter table public.user_backups enable row level security;
 alter table public.feedback_reports enable row level security;
+alter table public.admin_roles enable row level security;
+alter table public.contact_messages enable row level security;
+alter table public.product_early_birds enable row level security;
 
+grant usage on schema public to anon;
 grant usage on schema public to authenticated;
 grant select, insert on table public.feedback_reports to authenticated;
 grant update (status, updated_at) on table public.feedback_reports to authenticated;
+grant select on table public.admin_roles to authenticated;
+grant insert on table public.contact_messages to anon, authenticated;
+grant select, update on table public.contact_messages to authenticated;
+grant insert on table public.product_early_birds to anon, authenticated;
+grant select on table public.product_early_birds to authenticated;
 
 drop policy if exists "users_select_own" on public.users;
 drop policy if exists "users_insert_own" on public.users;
@@ -701,6 +773,82 @@ create policy "feedback_reports_update_status_admin"
     lower(coalesce(auth.jwt() ->> 'email', '')) in (
       'tught3@naver.com',
       'tught3@gmail.com'
+    )
+  );
+
+drop policy if exists "admin_roles_select_own" on public.admin_roles;
+drop policy if exists "admin_roles_update_own" on public.admin_roles;
+create policy "admin_roles_select_own"
+  on public.admin_roles
+  for select
+  to authenticated
+  using (email = lower(coalesce(auth.jwt() ->> 'email', '')));
+create policy "admin_roles_update_own"
+  on public.admin_roles
+  for update
+  to authenticated
+  using (email = lower(coalesce(auth.jwt() ->> 'email', '')))
+  with check (email = lower(coalesce(auth.jwt() ->> 'email', '')));
+
+insert into public.admin_roles (email, role)
+values ('tught3@naver.com', 'owner')
+on conflict (email) do update
+set role = excluded.role;
+
+drop policy if exists "contact_messages_insert_public" on public.contact_messages;
+drop policy if exists "contact_messages_select_admin" on public.contact_messages;
+drop policy if exists "contact_messages_update_admin" on public.contact_messages;
+create policy "contact_messages_insert_public"
+  on public.contact_messages
+  for insert
+  to anon, authenticated
+  with check (true);
+create policy "contact_messages_select_admin"
+  on public.contact_messages
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.admin_roles ar
+      where ar.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+    )
+  );
+create policy "contact_messages_update_admin"
+  on public.contact_messages
+  for update
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.admin_roles ar
+      where ar.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from public.admin_roles ar
+      where ar.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+    )
+  );
+
+drop policy if exists "product_early_birds_insert_public" on public.product_early_birds;
+drop policy if exists "product_early_birds_select_admin" on public.product_early_birds;
+create policy "product_early_birds_insert_public"
+  on public.product_early_birds
+  for insert
+  to anon, authenticated
+  with check (true);
+create policy "product_early_birds_select_admin"
+  on public.product_early_birds
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.admin_roles ar
+      where ar.email = lower(coalesce(auth.jwt() ->> 'email', ''))
     )
   );
 
@@ -1317,6 +1465,9 @@ as $$
     'public.early_bird_emails',
     'public.user_backups',
     'public.feedback_reports',
+    'public.admin_roles',
+    'public.contact_messages',
+    'public.product_early_birds',
     'public.user_behavior_logs'
   ];
 $$;
@@ -1468,23 +1619,29 @@ declare
     'public.voice_logs',
     'public.location_history',
     'public.feedback_reports',
+    'public.contact_messages',
+    'public.product_early_birds',
     'public.calendar_connections',
     'public.user_backups',
     'public.user_settings',
     'public.events',
     'public.early_bird_emails',
+    'public.admin_roles',
     'public.user_behavior_logs',
     'public.users'
   ];
   insert_order text[] := array[
     'public.users',
     'public.user_behavior_logs',
+    'public.admin_roles',
     'public.early_bird_emails',
     'public.events',
     'public.user_settings',
     'public.calendar_connections',
     'public.user_backups',
     'public.feedback_reports',
+    'public.contact_messages',
+    'public.product_early_birds',
     'public.location_history',
     'public.voice_logs',
     'public.pre_actions',
