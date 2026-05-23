@@ -1121,3 +1121,9 @@
 - Confirmed `tught3@naver.com` is registered in `admin_roles` as `owner`; public insert policies are available for homepage/app intake while select/update are limited to admin-role users.
 - Updated home upcoming cards and the Android next-event widget time label so events tomorrow and the day after tomorrow show `내일 HH:mm` / `모레 HH:mm`; all other dates keep the normal date label.
 - Verification passed: focused home screen and home-widget service tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-23 Feedback Reports Product Tag
+- Confirmed `feedback_reports` submissions did not include `product`; added `product: 'planflow'` to the app insert payload.
+- Added `product text not null default 'planflow'` with a Flow-product check constraint to live Supabase, `supabase/schema.sql`, and `supabase/feedback_reports_patch.sql`.
+- Updated `FeedbackReport` parsing so older rows without the column still read as `planflow`.
+- Verification passed: feedback repository test, feedback schema test, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch/PID check on `192.168.0.102:5555`.

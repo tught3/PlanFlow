@@ -43,6 +43,7 @@ class FeedbackReport {
   const FeedbackReport({
     required this.id,
     required this.userId,
+    required this.product,
     required this.type,
     required this.message,
     required this.expectedBehavior,
@@ -58,6 +59,7 @@ class FeedbackReport {
 
   final String id;
   final String userId;
+  final String product;
   final FeedbackReportType type;
   final String message;
   final String? expectedBehavior;
@@ -74,6 +76,7 @@ class FeedbackReport {
     return FeedbackReport(
       id: map['id'] as String,
       userId: map['user_id'] as String,
+      product: map['product'] as String? ?? 'planflow',
       type: FeedbackReportType.fromValue(map['type'] as String?),
       message: map['message'] as String? ?? '',
       expectedBehavior: map['expected_behavior'] as String?,
@@ -94,6 +97,7 @@ class FeedbackReport {
     return FeedbackReport(
       id: id,
       userId: userId,
+      product: product,
       type: type,
       message: message,
       expectedBehavior: expectedBehavior,

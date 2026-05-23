@@ -31,6 +31,7 @@ void main() {
     expect(gateway.payloads, hasLength(1));
     final payload = gateway.payloads.single;
     expect(payload['user_id'], 'user-1');
+    expect(payload['product'], 'planflow');
     expect(payload['type'], 'calendar_sync');
     expect(payload['message'], '네이버 일정 시간이 맞지 않아요');
     expect(payload['expected_behavior'], '한국 시간으로 보여야 해요');
@@ -107,6 +108,7 @@ Map<String, Object?> _adminRow({
   return <String, Object?>{
     'id': id,
     'user_id': 'user-1',
+    'product': 'planflow',
     'type': 'bug',
     'message': '문제가 있어요',
     'expected_behavior': null,

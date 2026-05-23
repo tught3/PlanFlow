@@ -347,6 +347,9 @@ create index if not exists user_backups_user_created_idx
 create table if not exists public.feedback_reports (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users (id) on delete cascade,
+  product text not null default 'planflow' check (
+    product in ('planflow', 'finflow', 'valueflow', 'nexusflow', 'general')
+  ),
   type text not null check (
     type in (
       'bug',
@@ -371,6 +374,24 @@ create table if not exists public.feedback_reports (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.feedback_reports
+  add column if not exists product text not null default 'planflow';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'feedback_reports_product_check'
+      and conrelid = 'public.feedback_reports'::regclass
+  ) then
+    alter table public.feedback_reports
+      add constraint feedback_reports_product_check
+      check (product in ('planflow', 'finflow', 'valueflow', 'nexusflow', 'general'));
+  end if;
+end;
+$$;
 
 create index if not exists feedback_reports_user_created_idx
   on public.feedback_reports (user_id, created_at desc);

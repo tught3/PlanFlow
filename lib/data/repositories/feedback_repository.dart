@@ -127,6 +127,7 @@ class FeedbackRepository {
     final diagnostics = await _diagnosticsProvider(routeOrScreen);
     final payload = <String, Object?>{
       'user_id': userId,
+      'product': 'planflow',
       'type': type.value,
       'message': trimmedMessage,
       'expected_behavior': expectedBehavior?.trim().isEmpty ?? true
