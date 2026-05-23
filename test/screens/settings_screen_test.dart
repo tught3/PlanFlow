@@ -574,6 +574,44 @@ void main() {
     expect(naverCalDavService.syncCallCount, 1);
   });
 
+  testWidgets('initial Naver CalDAV action opens connection dialog directly',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.signedOut(
+                CalendarProvider.google,
+              ),
+              naver: CalendarIntegrationResult.signedOut(
+                CalendarProvider.naver,
+              ),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          naverCalDavService:
+              _FakeNaverCalDavService(initialHasCredentials: false),
+          userId: 'user-1',
+          initialAction: SettingsInitialAction.naverCalDav,
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(find.text('네이버 캘린더 연결'), findsOneWidget);
+    expect(find.text('네이버 ID'), findsOneWidget);
+    expect(find.text('앱 비밀번호'), findsOneWidget);
+  });
+
   testWidgets('logout does not clear saved Naver CalDAV credentials',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));

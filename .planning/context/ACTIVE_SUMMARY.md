@@ -1138,3 +1138,8 @@
 - Fixed Naver login WebView startup by registering `webview_flutter_android` in the Android plugin registrant; the previous runtime failure was `plugins.flutter.io/webview` being unregistered even though the OAuth URL was generated successfully.
 - Added a regression test that keeps `WebViewFlutterPlugin` present in the Android registrant and verifies `webview_flutter_android` remains in Flutter plugin metadata.
 - Verification passed: focused WebView/auth/login tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch on `192.168.0.102:5555`, and device screenshot/logcat confirmation that the internal Naver login page loads.
+
+## 2026-05-23 External Calendar Sync Guide
+- Replaced the Naver-login-only CalDAV popup with a provider-neutral one-time external calendar sync guide for Google/Naver/Samsung calendar users.
+- The guide now routes directly to Settings with `open=naver-caldav`, and Settings can scroll to the calendar sync section and open the Naver CalDAV ID/app-password connection dialog immediately.
+- Added regression coverage for the initial Naver CalDAV settings action; verification passed for focused settings tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.

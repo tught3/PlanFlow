@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants.dart';
 import '../core/env.dart';
@@ -14,7 +15,6 @@ import '../services/app_permission_service.dart';
 import '../services/briefing_scheduler_service.dart';
 import '../services/calendar_auto_sync_service.dart';
 import '../services/departure_alarm_service.dart';
-import '../services/naver_calendar_permission_service.dart';
 import '../l10n/app_l10n.dart';
 import 'calendar/calendar_screen.dart';
 import 'home_screen.dart';
@@ -55,10 +55,12 @@ class ShellScreen extends StatefulWidget {
     super.key,
     this.initialIndex = 0,
     this.initialCalendarDate,
+    this.initialSettingsAction,
   });
 
   final int initialIndex;
   final DateTime? initialCalendarDate;
+  final SettingsInitialAction? initialSettingsAction;
 
   @override
   State<ShellScreen> createState() => _ShellScreenState();
@@ -68,8 +70,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   late int _currentIndex;
   late final ScrollController _homeScrollController;
   final AppPermissionService _permissionService = AppPermissionService();
-  final NaverCalendarPermissionService _naverCalendarPermissionService =
-      NaverCalendarPermissionService();
   final CalendarAutoSyncService _calendarAutoSyncService =
       CalendarAutoSyncService();
   final DepartureAlarmService _departureAlarmService =
@@ -77,8 +77,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   final BriefingSchedulerService _briefingSchedulerService =
       BriefingSchedulerService();
   bool _checkedPermissionOnboarding = false;
-  bool _checkedNaverCalendarPermission = false;
-  bool _showedNaverCalendarDialog = false;
+  bool _checkedExternalCalendarGuide = false;
   String? _observedUserId;
 
   @override
@@ -126,8 +125,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
     _observedUserId = currentUserId;
     _checkedPermissionOnboarding = false;
-    _checkedNaverCalendarPermission = false;
-    _showedNaverCalendarDialog = false;
+    _checkedExternalCalendarGuide = false;
 
     if (!mounted) {
       return;
@@ -238,65 +236,36 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
 
     if (mounted) {
-      await _maybeCheckNaverCalendarPermission();
+      await _maybeShowExternalCalendarSyncGuide();
     }
   }
 
-  Future<void> _maybeCheckNaverCalendarPermission() async {
-    if (_checkedNaverCalendarPermission ||
-        !mounted ||
-        !_naverCalendarPermissionService.isNaverSignedIn()) {
+  Future<void> _maybeShowExternalCalendarSyncGuide() async {
+    if (_checkedExternalCalendarGuide || !mounted) {
       return;
     }
-    _checkedNaverCalendarPermission = true;
+    _checkedExternalCalendarGuide = true;
 
-    final result = await _naverCalendarPermissionService.refreshStatus();
-    if (!mounted) {
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty) {
       return;
     }
 
-    switch (result.status) {
-      case NaverCalendarPermissionStatus.granted:
-        return;
-      case NaverCalendarPermissionStatus.denied:
-        await _showNaverCalendarPermissionRequiredDialog(result.message);
-        return;
-      case NaverCalendarPermissionStatus.networkError:
-        _logNaverCalendarStatus(
-          result,
-          fallback: '네이버 캘린더 연결 확인 중 일시적인 문제가 발생했습니다.',
-        );
-        return;
-      case NaverCalendarPermissionStatus.unknown:
-        if (result.message.contains('토큰')) {
-          await _showNaverCalendarPermissionRequiredDialog(
-            '네이버 캘린더 연결을 완료하려면 네이버 권한 동의가 한 번 더 필요합니다.',
-          );
-          return;
-        }
-        _logNaverCalendarStatus(result);
-        return;
-    }
-  }
-
-  Future<void> _showNaverCalendarPermissionRequiredDialog(
-    String reason,
-  ) async {
-    if (_showedNaverCalendarDialog || !mounted) {
+    final preferences = await SharedPreferences.getInstance();
+    final guideKey = 'external_calendar_sync_guide_seen:$userId';
+    final alreadySeen = preferences.getBool(guideKey) ?? false;
+    if (alreadySeen || !mounted) {
       return;
     }
-    _showedNaverCalendarDialog = true;
 
-    final reconnect = await showDialog<bool>(
+    final openSettings = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('네이버 캘린더 연결이 필요합니다'),
-          content: Text(
-            '$reason\n\n'
-            '네이버 로그인과 네이버 일정 가져오기는 별도입니다. '
-            '기존 네이버 일정을 가져오려면 설정에서 네이버 ID와 앱 비밀번호로 '
-            'CalDAV 연결을 완료해 주세요.',
+          title: const Text('외부 캘린더 동기화 안내'),
+          content: const Text(
+            '기존에 다른 캘린더 프로그램(구글, 네이버, 삼성)을 쓰고 계셨다면 '
+            '일정 동기화를 위해 설정탭에서 동기화를 진행해 주세요.',
           ),
           actions: [
             SizedBox(
@@ -306,14 +275,14 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
                   Expanded(
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text('나중에'),
+                      child: const Text('동기화 안 함'),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: FilledButton(
                       onPressed: () => Navigator.of(context).pop(true),
-                      child: const Text('설정으로 이동'),
+                      child: const Text('동기화 설정'),
                     ),
                   ),
                 ],
@@ -324,20 +293,14 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       },
     );
 
-    if (reconnect == true) {
-      await _naverCalendarPermissionService.clearStatus();
-      if (!mounted) {
-        return;
-      }
-      _showSnack('설정 탭의 네이버 일정 동기화에서 ID와 앱 비밀번호를 입력해 주세요.');
-      context.go(AppRoutes.settings);
+    await preferences.setBool(guideKey, true);
+    if (!mounted) {
+      return;
     }
-  }
 
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    if (openSettings == true) {
+      context.go('${AppRoutes.settings}?open=naver-caldav');
+    }
   }
 
   List<NavigationDestination> _buildNavigationBarDestinations() {
@@ -381,8 +344,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           HomeScreen(scrollController: _homeScrollController),
           CalendarScreen(initialDate: widget.initialCalendarDate),
           SettingsScreen(
-            key: ValueKey<String?>('settings-${authProvider.userId}'),
+            key: ValueKey<String?>(
+              'settings-${authProvider.userId}-'
+              '${widget.initialSettingsAction?.name ?? 'none'}',
+            ),
             userId: authProvider.userId,
+            initialAction: widget.initialSettingsAction,
           ),
         ],
       ),
@@ -454,16 +421,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       debugPrintStack(stackTrace: stackTrace);
       return UserSettingsModel.defaults(userId: userId);
     }
-  }
-
-  void _logNaverCalendarStatus(
-    NaverCalendarPermissionResult result, {
-    String? fallback,
-  }) {
-    debugPrint(
-      'Naver calendar connection skipped: status=${result.status.name} '
-      'message=${fallback ?? result.message}',
-    );
   }
 
   @override

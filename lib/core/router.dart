@@ -11,6 +11,7 @@ import '../screens/event/event_detail_screen.dart';
 import '../screens/event/event_edit_screen.dart';
 import '../screens/placeholder_screen.dart';
 import '../screens/settings/naver_ics_import_screen.dart';
+import '../screens/settings/settings_screen.dart';
 import '../screens/splash/splash_screen.dart';
 import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
@@ -99,7 +100,10 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.settings,
-      builder: (context, state) => const ShellScreen(initialIndex: 2),
+      builder: (context, state) => ShellScreen(
+        initialIndex: 2,
+        initialSettingsAction: _parseSettingsInitialAction(state),
+      ),
     ),
     GoRoute(
       path: AppRoutes.briefing,
@@ -257,6 +261,16 @@ bool _isForceConsent(GoRouterState state) {
   final value = state.uri.queryParameters['forceConsent'] ??
       state.uri.queryParameters['force_consent'];
   return value == '1' || value == 'true';
+}
+
+SettingsInitialAction? _parseSettingsInitialAction(GoRouterState state) {
+  switch (state.uri.queryParameters['open']) {
+    case 'calendar-sync':
+      return SettingsInitialAction.calendarSync;
+    case 'naver-caldav':
+      return SettingsInitialAction.naverCalDav;
+  }
+  return null;
 }
 
 DateTime? _parseRouteDate(String? raw) {
