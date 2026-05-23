@@ -1143,3 +1143,8 @@
 - Replaced the Naver-login-only CalDAV popup with a provider-neutral one-time external calendar sync guide for Google/Naver/Samsung calendar users.
 - The guide now routes directly to Settings with `open=naver-caldav`, and Settings can scroll to the calendar sync section and open the Naver CalDAV ID/app-password connection dialog immediately.
 - Added regression coverage for the initial Naver CalDAV settings action; verification passed for focused settings tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-23 Naver Account Display Fallback
+- Fixed Naver account display fallback so nested OAuth identity payloads such as `identityData.response.email` are used when Supabase `user.email` is empty.
+- Added AuthProvider regression coverage for nested Naver response email data so Settings can show the actual account identifier instead of only `네이버 로그인됨`.
+- Verification passed: focused auth provider tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.

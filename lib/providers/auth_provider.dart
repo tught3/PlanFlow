@@ -151,13 +151,10 @@ class AuthProvider extends ChangeNotifier {
 
   String? _displayNameFrom(User? user) {
     final metadata = user?.userMetadata ?? const <String, dynamic>{};
-    for (final key in const ['name', 'full_name', 'user_name', 'nickname']) {
-      final value = metadata[key]?.toString().trim();
-      if (value != null && value.isNotEmpty) {
-        return value;
-      }
-    }
-    return null;
+    return _firstStringValue(
+      metadata,
+      const ['name', 'full_name', 'user_name', 'nickname'],
+    );
   }
 
   String? _providerFrom(User? user) {
@@ -199,25 +196,19 @@ class AuthProvider extends ChangeNotifier {
       return null;
     }
     final metadata = user.userMetadata ?? const <String, dynamic>{};
-    for (final key in const [
-      'email',
-      'name',
-      'full_name',
-      'user_name',
-      'nickname'
-    ]) {
-      final value = metadata[key]?.toString().trim();
-      if (value != null && value.isNotEmpty) {
-        return value;
-      }
+    final metadataIdentifier = _firstStringValue(metadata,
+        const ['email', 'name', 'full_name', 'user_name', 'nickname']);
+    if (metadataIdentifier != null) {
+      return metadataIdentifier;
     }
     for (final identity in user.identities ?? const <UserIdentity>[]) {
       final data = identity.identityData ?? const <String, dynamic>{};
-      for (final key in const ['email', 'name', 'nickname', 'sub', 'id']) {
-        final value = data[key]?.toString().trim();
-        if (value != null && value.isNotEmpty) {
-          return value;
-        }
+      final identityIdentifier = _firstStringValue(
+        data,
+        const ['email', 'name', 'nickname', 'sub', 'id'],
+      );
+      if (identityIdentifier != null) {
+        return identityIdentifier;
       }
       final identityId = identity.identityId.trim();
       if (identityId.isNotEmpty) {
@@ -242,6 +233,31 @@ class AuthProvider extends ChangeNotifier {
         (_accountIdentifier == null || _accountIdentifier!.trim().isEmpty);
   }
 
+  String? _firstStringValue(
+    Map<String, dynamic> data,
+    List<String> preferredKeys,
+  ) {
+    for (final key in preferredKeys) {
+      final value = data[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    for (final nestedKey in const ['response', 'profile', 'user']) {
+      final nested = data[nestedKey];
+      if (nested is Map) {
+        final nestedData = Map<String, dynamic>.from(nested);
+        final value = _firstStringValue(nestedData, preferredKeys);
+        if (value != null) {
+          return value;
+        }
+      }
+    }
+
+    return null;
+  }
+
   void _logSocialAccountDiagnostics(User? user) {
     if (user == null) {
       return;
@@ -251,10 +267,10 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     final identities = user.identities ?? const <UserIdentity>[];
-    final hasIdentityEmail = identities.any(
-      (identity) =>
-          identity.identityData?['email']?.toString().trim().isNotEmpty == true,
-    );
+    final hasIdentityEmail = identities.any((identity) {
+      final data = identity.identityData ?? const <String, dynamic>{};
+      return _firstStringValue(data, const ['email']) != null;
+    });
     debugPrint(
       'Social auth profile: provider=$provider '
       'hasEmail=${user.email?.trim().isNotEmpty == true} '

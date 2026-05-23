@@ -172,6 +172,44 @@ void main() {
 
     provider.dispose();
   });
+
+  test('uses nested Naver response email when user email is empty', () async {
+    final service = _FakeAuthService(
+      currentSession: _session(
+        userId: 'naver-user',
+        email: null,
+        provider: 'custom:naver',
+        userMetadata: const <String, dynamic>{},
+        identities: const <UserIdentity>[
+          UserIdentity(
+            id: 'identity-row',
+            userId: 'naver-user',
+            identityData: <String, dynamic>{
+              'response': <String, dynamic>{
+                'email': 'nested-naver@example.com',
+                'nickname': '네이버중첩사용자',
+              },
+            },
+            identityId: 'naver-subject',
+            provider: 'custom:naver',
+            createdAt: '2026-05-19T00:00:00Z',
+            lastSignInAt: '2026-05-19T00:00:00Z',
+          ),
+        ],
+      ),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.email, isNull);
+    expect(provider.accountIdentifier, 'nested-naver@example.com');
+    expect(provider.accountDisplayName, 'nested-naver@example.com');
+    expect(provider.socialAccountInfoIncomplete, isFalse);
+
+    provider.dispose();
+  });
 }
 
 Session _session({
