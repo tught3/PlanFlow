@@ -165,7 +165,7 @@ void main() {
     provider.start();
     await Future<void>.delayed(Duration.zero);
 
-    expect(provider.email, isNull);
+    expect(provider.email, 'naver-user@example.com');
     expect(provider.accountIdentifier, 'naver-user@example.com');
     expect(provider.accountDisplayName, 'naver-user@example.com');
     expect(provider.socialAccountInfoIncomplete, isFalse);
@@ -203,9 +203,73 @@ void main() {
     provider.start();
     await Future<void>.delayed(Duration.zero);
 
-    expect(provider.email, isNull);
+    expect(provider.email, 'nested-naver@example.com');
     expect(provider.accountIdentifier, 'nested-naver@example.com');
     expect(provider.accountDisplayName, 'nested-naver@example.com');
+    expect(provider.socialAccountInfoIncomplete, isFalse);
+
+    provider.dispose();
+  });
+
+  test('uses social user metadata email when user email is empty', () async {
+    final service = _FakeAuthService(
+      currentSession: _session(
+        userId: 'naver-user',
+        email: null,
+        provider: 'custom:naver',
+        userMetadata: const <String, dynamic>{
+          'email': 'metadata-naver@example.com',
+          'name': '네이버사용자',
+        },
+      ),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.email, 'metadata-naver@example.com');
+    expect(provider.accountDisplayName, 'metadata-naver@example.com');
+    expect(provider.socialAccountInfoIncomplete, isFalse);
+
+    provider.dispose();
+  });
+
+  test('prefers deep nested identity email over identity display name',
+      () async {
+    final service = _FakeAuthService(
+      currentSession: _session(
+        userId: 'naver-user',
+        email: null,
+        provider: 'custom:naver',
+        userMetadata: const <String, dynamic>{},
+        identities: const <UserIdentity>[
+          UserIdentity(
+            id: 'identity-row',
+            userId: 'naver-user',
+            identityData: <String, dynamic>{
+              'profile': <String, dynamic>{
+                'name': '네이버사용자',
+                'user': <String, dynamic>{
+                  'email': 'deep-naver@example.com',
+                },
+              },
+            },
+            identityId: 'naver-subject',
+            provider: 'custom:naver',
+            createdAt: '2026-05-19T00:00:00Z',
+            lastSignInAt: '2026-05-19T00:00:00Z',
+          ),
+        ],
+      ),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.email, 'deep-naver@example.com');
+    expect(provider.accountDisplayName, 'deep-naver@example.com');
     expect(provider.socialAccountInfoIncomplete, isFalse);
 
     provider.dispose();

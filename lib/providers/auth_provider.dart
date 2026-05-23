@@ -140,13 +140,33 @@ class AuthProvider extends ChangeNotifier {
 
   void _applyUser(User? user) {
     _userId = user?.id;
-    _email = user?.email;
+    _email = _emailFrom(user);
     _displayName = _displayNameFrom(user);
     _provider = _providerFrom(user);
     _accountIdentifier = _accountIdentifierFrom(user);
     _socialAccountInfoIncomplete = _isSocialAccountInfoIncomplete(user);
     _logSocialAccountDiagnostics(user);
     notifyListeners();
+  }
+
+  String? _emailFrom(User? user) {
+    final directEmail = user?.email?.trim();
+    if (directEmail != null && directEmail.isNotEmpty) {
+      return directEmail;
+    }
+    final metadata = user?.userMetadata ?? const <String, dynamic>{};
+    final metadataEmail = _firstStringValue(metadata, const ['email']);
+    if (metadataEmail != null) {
+      return metadataEmail;
+    }
+    for (final identity in user?.identities ?? const <UserIdentity>[]) {
+      final data = identity.identityData ?? const <String, dynamic>{};
+      final identityEmail = _firstStringValue(data, const ['email']);
+      if (identityEmail != null) {
+        return identityEmail;
+      }
+    }
+    return null;
   }
 
   String? _displayNameFrom(User? user) {
@@ -196,8 +216,14 @@ class AuthProvider extends ChangeNotifier {
       return null;
     }
     final metadata = user.userMetadata ?? const <String, dynamic>{};
-    final metadataIdentifier = _firstStringValue(metadata,
-        const ['email', 'name', 'full_name', 'user_name', 'nickname']);
+    final resolvedEmail = _emailFrom(user);
+    if (resolvedEmail != null) {
+      return resolvedEmail;
+    }
+    final metadataIdentifier = _firstStringValue(
+      metadata,
+      const ['name', 'full_name', 'user_name', 'nickname'],
+    );
     if (metadataIdentifier != null) {
       return metadataIdentifier;
     }

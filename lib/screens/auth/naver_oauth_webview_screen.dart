@@ -106,7 +106,8 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
             if (!mounted || _isHandlingCallback) {
               return;
             }
-            final errorUri = error.url == null ? null : Uri.tryParse(error.url!);
+            final errorUri =
+                error.url == null ? null : Uri.tryParse(error.url!);
             if (!NaverOAuthWebViewFlow.isMainFrameError(error)) {
               _logOAuthPhase(
                 'web_resource_ignored',
@@ -140,8 +141,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
               );
               setState(() {
                 _isLoading = false;
-                _message =
-                    '네이버 앱 버튼 대신 이 화면에서 네이버 아이디로 로그인해 주세요.';
+                _message = '네이버 앱 버튼 대신 이 화면에서 네이버 아이디로 로그인해 주세요.';
               });
               return NavigationDecision.prevent;
             }
@@ -165,6 +165,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
       return;
     }
 
+    OAuthCallbackHandler.clearLatestUserMessage();
     setState(() {
       _isLoading = true;
       _message = null;
@@ -221,6 +222,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
     if (_isHandlingCallback) {
       return;
     }
+    OAuthCallbackHandler.clearLatestUserMessage();
     setState(() {
       _isHandlingCallback = true;
       _isLoading = true;
@@ -230,6 +232,22 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
     if (!mounted) {
       return;
     }
+    final signedIn = await _waitForSignedInSession();
+    if (!mounted) {
+      return;
+    }
+    if (signedIn) {
+      OAuthCallbackHandler.clearLatestUserMessage();
+      setState(() {
+        _isHandlingCallback = false;
+        _isLoading = false;
+        _message = null;
+      });
+      if (context.canPop()) {
+        context.pop(true);
+      }
+      return;
+    }
     if (OAuthCallbackHandler.latestUserMessage.value != null) {
       setState(() {
         _isHandlingCallback = false;
@@ -237,18 +255,24 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
       });
       return;
     }
-    if (!authProvider.isSignedIn) {
-      setState(() {
-        _isHandlingCallback = false;
-        _isLoading = false;
-        _message = '네이버 인증은 돌아왔지만 로그인 세션을 확인하지 못했어요. 다시 시도해 주세요.';
-      });
-    }
+    setState(() {
+      _isHandlingCallback = false;
+      _isLoading = false;
+      _message = '네이버 인증은 돌아왔지만 로그인 세션을 확인하지 못했어요. 다시 시도해 주세요.';
+    });
   }
 
   void _handleOAuthMessage() {
     final message = OAuthCallbackHandler.latestUserMessage.value;
-    if (message == null || message.trim().isEmpty || !mounted) {
+    if (!NaverOAuthWebViewFlow.shouldShowUserMessage(
+          message,
+          isSignedIn: authProvider.isSignedIn,
+          isHandlingCallback: _isHandlingCallback,
+        ) ||
+        !mounted) {
+      if (authProvider.isSignedIn) {
+        OAuthCallbackHandler.clearLatestUserMessage();
+      }
       return;
     }
     setState(() {
@@ -256,6 +280,23 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
       _isLoading = false;
       _isHandlingCallback = false;
     });
+  }
+
+  Future<bool> _waitForSignedInSession() async {
+    for (var attempt = 0; attempt < 4; attempt += 1) {
+      if (authProvider.isSignedIn) {
+        return true;
+      }
+      final signedIn = await authProvider.syncCurrentSession();
+      if (signedIn) {
+        return true;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      if (!mounted) {
+        return false;
+      }
+    }
+    return authProvider.isSignedIn;
   }
 
   Future<bool> _onWillPop() async {
@@ -379,5 +420,16 @@ class NaverOAuthWebViewFlow {
 
   static bool isMainFrameError(WebResourceError error) {
     return error.isForMainFrame ?? true;
+  }
+
+  static bool shouldShowUserMessage(
+    String? message, {
+    required bool isSignedIn,
+    required bool isHandlingCallback,
+  }) {
+    return message != null &&
+        message.trim().isNotEmpty &&
+        !isSignedIn &&
+        !isHandlingCallback;
   }
 }

@@ -32,6 +32,7 @@ class OAuthCallbackHandler {
   bool _initialLinkHandled = false;
 
   static void markPendingLogin(PlanFlowOAuthProvider provider) {
+    clearLatestUserMessage();
     _pendingPurpose = OAuthCallbackPurpose.login;
     _pendingMethod = switch (provider) {
       PlanFlowOAuthProvider.google => 'google',
@@ -42,6 +43,7 @@ class OAuthCallbackHandler {
   }
 
   static void markPendingCalendarLink(PlanFlowOAuthProvider provider) {
+    clearLatestUserMessage();
     _pendingPurpose = OAuthCallbackPurpose.calendarLink;
     _pendingMethod = switch (provider) {
       PlanFlowOAuthProvider.google => 'google',
@@ -69,6 +71,10 @@ class OAuthCallbackHandler {
     _pendingPurpose = null;
     _pendingMethod = null;
     _pendingStartedAt = null;
+  }
+
+  static void clearLatestUserMessage() {
+    latestUserMessage.value = null;
   }
 
   static bool hasPendingLogin({

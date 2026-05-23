@@ -1148,3 +1148,8 @@
 - Fixed Naver account display fallback so nested OAuth identity payloads such as `identityData.response.email` are used when Supabase `user.email` is empty.
 - Added AuthProvider regression coverage for nested Naver response email data so Settings can show the actual account identifier instead of only `네이버 로그인됨`.
 - Verification passed: focused auth provider tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-23 Naver OAuth Success Message Guard
+- Prevented stale or premature Naver OAuth failure banners from showing during a successful WebView callback by clearing old OAuth messages, waiting briefly for session sync, and closing the WebView quietly on success.
+- Updated Naver account display so metadata/identity email values populate `authProvider.email`; Settings now prefers real email identifiers before falling back to provider labels.
+- Verification passed: focused auth provider, Naver WebView, and login screen tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; install/launch/PID check on `192.168.0.102:5555`.

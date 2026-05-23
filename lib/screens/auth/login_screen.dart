@@ -81,6 +81,16 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
 
   void _handleOAuthMessage() {
     final message = OAuthCallbackHandler.latestUserMessage.value;
+    if (authProvider.isSignedIn) {
+      OAuthCallbackHandler.clearLatestUserMessage();
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _message = null;
+        });
+      }
+      return;
+    }
     if (message != null && message.trim().isNotEmpty) {
       if (mounted) {
         setState(() {
@@ -172,12 +182,17 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     }
 
     if (provider == PlanFlowOAuthProvider.naver) {
+      OAuthCallbackHandler.clearLatestUserMessage();
       setState(() {
         _isLoading = false;
         _message = null;
       });
       final completed = await context.push<bool>(AppRoutes.naverOAuth);
       if (!mounted || completed == true || authProvider.isSignedIn) {
+        return;
+      }
+      final signedIn = await authProvider.syncCurrentSession();
+      if (!mounted || signedIn || authProvider.isSignedIn) {
         return;
       }
       _setMessage('네이버 인증을 완료하지 않았어요. 다시 시도해 주세요.');

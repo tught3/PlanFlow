@@ -63,5 +63,32 @@ void main() {
       expect(NaverOAuthWebViewFlow.isMainFrameError(mainFrameError), isTrue);
       expect(NaverOAuthWebViewFlow.isMainFrameError(unknownFrameError), isTrue);
     });
+
+    test('hides stale user messages while signed in or handling callback', () {
+      expect(
+        NaverOAuthWebViewFlow.shouldShowUserMessage(
+          '네이버 인증을 완료하지 않았어요.',
+          isSignedIn: true,
+          isHandlingCallback: false,
+        ),
+        isFalse,
+      );
+      expect(
+        NaverOAuthWebViewFlow.shouldShowUserMessage(
+          '네이버 인증을 완료하지 않았어요.',
+          isSignedIn: false,
+          isHandlingCallback: true,
+        ),
+        isFalse,
+      );
+      expect(
+        NaverOAuthWebViewFlow.shouldShowUserMessage(
+          '네이버 인증을 완료하지 않았어요.',
+          isSignedIn: false,
+          isHandlingCallback: false,
+        ),
+        isTrue,
+      );
+    });
   });
 }
