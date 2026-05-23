@@ -438,7 +438,7 @@ void main() {
     );
   });
 
-  testWidgets('음성 입력 화면은 AI 대화 모드 선택을 숨기고 이어 명령 버튼을 보여준다', (tester) async {
+  testWidgets('음성 입력 화면은 AI 대화 모드와 별도 이어 명령 버튼을 숨긴다', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: VoiceInputScreen(autoStartOverride: false),
@@ -458,14 +458,14 @@ void main() {
     await tester.enterText(find.byType(TextField), '내일 오전 10시');
     await tester.pumpAndSettle();
 
-    expect(find.text('이어서 명령하기'), findsOneWidget);
-    final continueButton = tester.widget<OutlinedButton>(
+    expect(find.text('이어서 명령하기'), findsNothing);
+    expect(
       find.byKey(const ValueKey('voice-continue-listening-button')),
+      findsNothing,
     );
-    expect(continueButton.onPressed, isNotNull);
   });
 
-  testWidgets('제출 전 이어서 명령하기는 기존 텍스트를 유지하며 새 STT를 붙인다', (tester) async {
+  testWidgets('텍스트가 있을 때 음성 버튼은 이어말하기 선택 후 기존 텍스트에 붙인다', (tester) async {
     final fakeStt = _FakeSttService();
 
     await tester.pumpWidget(
@@ -480,19 +480,19 @@ void main() {
     await tester.enterText(find.byType(TextField), '내일 오전 10시');
     await tester.pump();
 
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('현재 입력된 내용이 있어요'), findsOneWidget);
     await tester
-        .tap(find.byKey(const ValueKey('voice-continue-listening-button')));
+        .tap(find.byKey(const ValueKey('voice-append-existing-text-button')));
     await tester.pump();
 
     expect(
       tester.widget<TextField>(find.byType(TextField)).controller?.text,
       '내일 오전 10시',
     );
-    expect(find.text('듣는 중'), findsOneWidget);
-    var continueButton = tester.widget<OutlinedButton>(
-      find.byKey(const ValueKey('voice-continue-listening-button')),
-    );
-    expect(continueButton.onPressed, isNull);
+    expect(find.text('완료'), findsOneWidget);
 
     fakeStt.emitPartial('정장집 방문');
     await tester.pump();
@@ -501,10 +501,68 @@ void main() {
       tester.widget<TextField>(find.byType(TextField)).controller?.text,
       '내일 오전 10시 정장집 방문',
     );
-    continueButton = tester.widget<OutlinedButton>(
+    expect(
       find.byKey(const ValueKey('voice-continue-listening-button')),
+      findsNothing,
     );
-    expect(continueButton.onPressed, isNull);
+  });
+
+  testWidgets('텍스트가 있을 때 지우고 다시 입력을 고르면 기존 텍스트를 비우고 새 STT를 시작한다',
+      (tester) async {
+    final fakeStt = _FakeSttService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VoiceInputScreen(
+          autoStartOverride: false,
+          sttService: fakeStt,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '내일 오전 10시');
+    await tester.pump();
+
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+        find.byKey(const ValueKey('voice-restart-with-empty-text-button')));
+    await tester.pump();
+
+    expect(fakeStt.listenCalls, 1);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      isEmpty,
+    );
+    expect(find.text('완료'), findsOneWidget);
+  });
+
+  testWidgets('텍스트가 있을 때 취소를 고르면 기존 텍스트를 보존하고 STT를 시작하지 않는다', (tester) async {
+    final fakeStt = _FakeSttService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VoiceInputScreen(
+          autoStartOverride: false,
+          sttService: fakeStt,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '내일 오전 10시');
+    await tester.pump();
+
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('voice-keep-existing-text-button')));
+    await tester.pumpAndSettle();
+
+    expect(fakeStt.listenCalls, 0);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '내일 오전 10시',
+    );
   });
 
   testWidgets('제출 후 이어 말하기는 이전 조회 문장에 새 명령을 붙이지 않는다', (tester) async {
@@ -540,8 +598,10 @@ void main() {
 
     router.pop();
     await tester.pumpAndSettle();
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pumpAndSettle();
     await tester
-        .tap(find.byKey(const ValueKey('voice-continue-listening-button')));
+        .tap(find.byKey(const ValueKey('voice-append-existing-text-button')));
     await tester.pump();
 
     fakeStt.emitPartial('3번째 일정 삭제');
@@ -1581,7 +1641,8 @@ void main() {
     expect(find.textContaining('음성 관리:'), findsNothing);
   });
 
-  testWidgets('제출 전 이어서 명령하기는 기존 문장을 유지한 채 음성 인식을 다시 시작한다', (tester) async {
+  testWidgets('기존 음성 버튼의 이어말하기 선택은 기존 문장을 유지한 채 음성 인식을 다시 시작한다',
+      (tester) async {
     final fakeStt = _FakeSttService();
     await tester.pumpWidget(
       MaterialApp(
@@ -1595,18 +1656,22 @@ void main() {
     await tester.enterText(find.byType(TextField), '이번 주 금요일 6시 일정에');
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('voice-continue-listening-button')),
-        findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('voice-continue-listening-button')),
+      findsNothing,
+    );
+    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.pumpAndSettle();
     await tester
-        .tap(find.byKey(const ValueKey('voice-continue-listening-button')));
+        .tap(find.byKey(const ValueKey('voice-append-existing-text-button')));
     await tester.pump();
 
     expect(fakeStt.listenCalls, 1);
-    expect(find.text('듣는 중'), findsOneWidget);
-    final disabledButton = tester.widget<OutlinedButton>(
+    expect(find.text('완료'), findsOneWidget);
+    expect(
       find.byKey(const ValueKey('voice-continue-listening-button')),
+      findsNothing,
     );
-    expect(disabledButton.onPressed, isNull);
 
     fakeStt.emitPartial('강릉 건도리 횟집 장소 추가');
     await tester.pump();

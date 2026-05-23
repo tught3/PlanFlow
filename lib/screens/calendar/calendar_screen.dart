@@ -31,6 +31,45 @@ Color _categoryColor(String category) {
 }
 
 @visibleForTesting
+List<EventModel> mergeCalendarEventsAfterReload({
+  required List<EventModel> previous,
+  required List<EventModel> loaded,
+}) {
+  if (previous.isEmpty || loaded.length >= previous.length) {
+    return loaded;
+  }
+
+  if (loaded.isEmpty || loaded.length == 1) {
+    return <String, EventModel>{
+      for (final event in previous)
+        if (event.id.trim().isNotEmpty) event.id: event,
+      for (final event in loaded)
+        if (event.id.trim().isNotEmpty) event.id: event,
+    }.values.toList(growable: false)
+      ..sort(compareCalendarEventsForDisplay);
+  }
+
+  return loaded;
+}
+
+@visibleForTesting
+int compareCalendarEventsForDisplay(EventModel a, EventModel b) {
+  final aStart = a.startAt;
+  final bStart = b.startAt;
+  if (aStart == null && bStart == null) {
+    return a.title.compareTo(b.title);
+  }
+  if (aStart == null) {
+    return 1;
+  }
+  if (bStart == null) {
+    return -1;
+  }
+  final byTime = aStart.compareTo(bStart);
+  return byTime == 0 ? a.title.compareTo(b.title) : byTime;
+}
+
+@visibleForTesting
 Map<int, Color> buildCalendarEventMarkerColorsByDay({
   required Iterable<EventModel> events,
   required DateTime focusedMonth,
@@ -78,9 +117,16 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
 }
 
 class CalendarScreen extends StatefulWidget {
-  const CalendarScreen({super.key, this.initialDate});
+  const CalendarScreen({
+    super.key,
+    this.initialDate,
+    this.eventRepository,
+    this.userId,
+  });
 
   final DateTime? initialDate;
+  final EventRepository? eventRepository;
+  final String? userId;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -94,6 +140,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String? _loadMessage;
   bool _isSearching = false;
   bool _isRefreshing = false;
+  bool _hasPendingRefresh = false;
+  DateTime? _pendingFocusDate;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -134,11 +182,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   void _handleEventRefresh() {
     final signal = EventRefreshBus.instance.latest.value;
-    _loadEvents(focusDate: signal?.startAt);
+    unawaited(_loadEvents(focusDate: signal?.startAt));
   }
 
   Future<void> _loadEvents({DateTime? focusDate}) async {
     if (_isRefreshing) {
+      _hasPendingRefresh = true;
+      _pendingFocusDate = focusDate ?? _pendingFocusDate;
+      debugPrint(
+        'CalendarScreen reload queued while refreshing: '
+        'focusDate=$focusDate',
+      );
       return;
     }
 
@@ -152,7 +206,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
       });
     }
 
-    if (!AppEnv.isSupabaseReady) {
+    final repositoryOverride = widget.eventRepository;
+    final explicitUserId = widget.userId?.trim();
+    final canUseInjectedRepository = repositoryOverride != null &&
+        explicitUserId != null &&
+        explicitUserId.isNotEmpty;
+
+    if (!canUseInjectedRepository && !AppEnv.isSupabaseReady) {
       if (mounted) {
         setState(() {
           _loadState = _CalendarLoadState.supabaseMissing;
@@ -166,8 +226,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
       return;
     }
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
+    final user = canUseInjectedRepository
+        ? null
+        : Supabase.instance.client.auth.currentUser;
+    final userId = canUseInjectedRepository ? explicitUserId : user?.id;
+    if (userId == null || userId.trim().isEmpty) {
       if (mounted) {
         setState(() {
           _loadState = _CalendarLoadState.signedOut;
@@ -183,11 +246,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     try {
-      final repository = EventRepository.supabase();
-      final events = await repository.listEvents(userId: user.id);
+      final repository = repositoryOverride ?? EventRepository.supabase();
+      final events = await repository.listEvents(userId: userId);
       if (mounted) {
         setState(() {
-          _allEvents = events;
+          _allEvents = _eventsForDisplayAfterReload(events);
           if (focusDate != null) {
             _selectedDate = focusDate;
             _focusedMonth = DateTime(focusDate.year, focusDate.month);
@@ -210,7 +273,44 @@ class _CalendarScreenState extends State<CalendarScreen> {
           _isRefreshing = false;
         });
       }
+      if (_hasPendingRefresh) {
+        final pendingFocusDate = _pendingFocusDate;
+        _hasPendingRefresh = false;
+        _pendingFocusDate = null;
+        debugPrint(
+          'CalendarScreen running queued reload: '
+          'focusDate=$pendingFocusDate',
+        );
+        unawaited(_loadEvents(focusDate: pendingFocusDate));
+      }
     }
+  }
+
+  List<EventModel> _eventsForDisplayAfterReload(List<EventModel> loaded) {
+    final merged = mergeCalendarEventsAfterReload(
+      previous: _allEvents,
+      loaded: loaded,
+    );
+
+    if (identical(merged, loaded)) {
+      debugPrint('CalendarScreen reload success: events=${loaded.length}');
+      return loaded;
+    }
+
+    if (loaded.isEmpty || loaded.length == 1) {
+      debugPrint(
+        'CalendarScreen preserved previous list after suspiciously small '
+        'reload: previous=${_allEvents.length} loaded=${loaded.length} '
+        'merged=${merged.length}',
+      );
+      return merged;
+    }
+
+    debugPrint(
+      'CalendarScreen reload success with smaller list: '
+      'previous=${_allEvents.length} loaded=${loaded.length}',
+    );
+    return loaded;
   }
 
   List<EventModel> get _eventsForSelectedDate {

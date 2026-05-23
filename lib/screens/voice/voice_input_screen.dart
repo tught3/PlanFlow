@@ -225,17 +225,40 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
   }
 
+  Future<void> _handleVoiceStartPressed() async {
+    if (_isListening) {
+      await _finishVoiceFlow();
+      return;
+    }
+
+    if (_rawTextController.text.trim().isEmpty) {
+      await _startVoiceFlow();
+      return;
+    }
+
+    final choice = await _showVoiceTextExistsSheet();
+    if (!mounted) {
+      return;
+    }
+    switch (choice) {
+      case _ExistingVoiceTextChoice.append:
+        await _startVoiceFlow(continueExisting: true);
+        return;
+      case _ExistingVoiceTextChoice.restart:
+        _resetTranscriptForFreshVoiceInput();
+        await _startVoiceFlow();
+        return;
+      case _ExistingVoiceTextChoice.cancel:
+      case null:
+        _focusManualInput();
+        return;
+    }
+  }
+
   Future<void> _finishVoiceFlow() async {
     if (_isListening) {
       await widget.sttService.stopActiveListen();
     }
-  }
-
-  Future<void> _continueListeningFlow() async {
-    if (_isListening || _rawTextController.text.trim().isEmpty) {
-      return;
-    }
-    await _startVoiceFlow(continueExisting: !_hasSubmittedVoiceCommand);
   }
 
   Future<void> _activateManualTranscriptEditing() async {
@@ -288,15 +311,25 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (_isListening) {
       await widget.sttService.clearActiveTranscript();
     }
-    _listenPrefixText = '';
-    _clearPreparedDraft();
-    _setTranscriptText('');
+    _resetTranscriptForFreshVoiceInput();
     if (!mounted) {
       return;
     }
     setState(() {
       _statusMessage = appL10n(context).voiceClearedAll;
     });
+  }
+
+  void _resetTranscriptForFreshVoiceInput() {
+    _listenPrefixText = '';
+    _partialTranscriptToken++;
+    _lastSubmittedSignature = null;
+    _hasSubmittedVoiceCommand = false;
+    _isSubmittingVoiceCommand = false;
+    _didEditTranscriptManually = false;
+    _manualEditInterruptedListening = false;
+    _clearPreparedDraft();
+    _setTranscriptText('');
   }
 
   Future<void> _applyNormalizedPartialTranscript(String text, int token) async {
@@ -565,6 +598,72 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                   ),
                   icon: const Icon(Icons.edit_outlined),
                   label: const Text('직접 편집'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<_ExistingVoiceTextChoice?> _showVoiceTextExistsSheet() {
+    return showModalBottomSheet<_ExistingVoiceTextChoice>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: PlanFlowColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        final theme = Theme.of(context);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '현재 입력된 내용이 있어요',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: PlanFlowColors.textPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '기존 문장 뒤에 이어서 말하거나, 내용을 지우고 처음부터 다시 입력할 수 있어요.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  key: const ValueKey('voice-append-existing-text-button'),
+                  onPressed: () => Navigator.of(context).pop(
+                    _ExistingVoiceTextChoice.append,
+                  ),
+                  icon: const Icon(Icons.record_voice_over_outlined),
+                  label: const Text('이어서 말하기'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const ValueKey('voice-restart-with-empty-text-button'),
+                  onPressed: () => Navigator.of(context).pop(
+                    _ExistingVoiceTextChoice.restart,
+                  ),
+                  icon: const Icon(Icons.refresh_outlined),
+                  label: const Text('지우고 다시 입력'),
+                ),
+                const SizedBox(height: 4),
+                TextButton(
+                  key: const ValueKey('voice-keep-existing-text-button'),
+                  onPressed: () => Navigator.of(context).pop(
+                    _ExistingVoiceTextChoice.cancel,
+                  ),
+                  child: const Text('취소하고 현재 내용 유지'),
                 ),
               ],
             ),
@@ -875,23 +974,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
                 _VoicePrimaryButton(
                   isListening: _isListening,
                   hasText: _rawTextController.text.trim().isNotEmpty,
-                  onTapStart: _startVoiceFlow,
+                  onTapStart: _handleVoiceStartPressed,
                   onTapFinish: _finishVoiceFlow,
                   onManualSubmit: _confirmManualText,
                 ),
-                if (_rawTextController.text.trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    key: const ValueKey('voice-continue-listening-button'),
-                    onPressed: _isListening ? null : _continueListeningFlow,
-                    icon: Icon(
-                      _isListening
-                          ? Icons.hearing_outlined
-                          : Icons.record_voice_over_outlined,
-                    ),
-                    label: Text(_isListening ? '듣는 중' : '이어서 명령하기'),
-                  ),
-                ],
                 if (_rawTextController.text.trim().isEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
@@ -914,6 +1000,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 enum _VoiceCommandAction { add, edit, delete, query, choose }
 
 enum _AmbiguousFieldAdditionChoice { updateExisting, createNew, editText }
+
+enum _ExistingVoiceTextChoice { append, restart, cancel }
 
 class _VoiceCommandGuide extends StatelessWidget {
   const _VoiceCommandGuide({required this.theme});

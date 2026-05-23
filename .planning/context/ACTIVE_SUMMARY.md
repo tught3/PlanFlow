@@ -10,6 +10,12 @@
 - Voice schedule parsing now gives local all-day date ranges priority over GPT output, so `5월 26일부터 6월 1일까지 원주집 임대` becomes title `원주집 임대` with a 5/26-6/1 all-day multi-day range.
 - Verification passed: focused auth/STT/voice-structure/GPT/voice-analysis/Supabase-auth-option tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch/PID check on `192.168.0.102:5555`.
 
+## 2026-05-23 Voice Input Append Sheet And Calendar Reload Guard
+- Removed the separate `이어서 명령하기` voice-input button while keeping append dictation available through the main `음성으로 일정 입력하기` button when text already exists.
+- Added a PlanFlow-styled sheet for existing transcript text with `이어서 말하기`, `지우고 다시 입력`, and `취소하고 현재 내용 유지`, preventing accidental text loss when restarting STT after manual typo edits.
+- Hardened CalendarScreen refresh handling so refresh signals arriving during a load are queued, and suspiciously empty/single-event reloads preserve the previous in-memory list instead of making older schedules disappear.
+- Verification passed: focused voice input and calendar screen tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch/PID check on `192.168.0.102:5555`. `test/screens/confirm_screen_test.dart` still has existing unrelated failures around older ConfirmScreen expectations.
+
 ## 2026-05-23 Voice FAB Highlight Refresh
 - The shared `PlanFlowVoiceFab` now renders a persistent blue outline glow so the voice entry button reads more clearly on every screen where it appears.
 - The pulse ring remains for active listening states, but the default idle state is now also visually emphasized instead of blending into the surrounding chrome.
