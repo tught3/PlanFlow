@@ -10,6 +10,11 @@
 - Voice schedule parsing now gives local all-day date ranges priority over GPT output, so `5월 26일부터 6월 1일까지 원주집 임대` becomes title `원주집 임대` with a 5/26-6/1 all-day multi-day range.
 - Verification passed: focused auth/STT/voice-structure/GPT/voice-analysis/Supabase-auth-option tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch/PID check on `192.168.0.102:5555`.
 
+## 2026-05-23 Voice FAB Highlight Refresh
+- The shared `PlanFlowVoiceFab` now renders a persistent blue outline glow so the voice entry button reads more clearly on every screen where it appears.
+- The pulse ring remains for active listening states, but the default idle state is now also visually emphasized instead of blending into the surrounding chrome.
+- Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, debug APK build, install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-22 Naver OAuth WebView Subresource Error Guard
 - Naver OAuth WebView now treats only main-frame `WebResourceError` callbacks as fatal page-load failures.
 - Subresource failures such as images, favicon, or auxiliary scripts are logged as `web_resource_ignored` and no longer replace the login page with the misleading `네이버 로그인 페이지를 불러오지 못했어요` error.

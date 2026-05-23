@@ -78,40 +78,47 @@ class _PlanFlowVoiceFabState extends State<PlanFlowVoiceFab>
       label: const Text('음성으로 일정 관리'),
     );
 
-    if (!widget.showPulse) {
-      return fab;
-    }
+    final ring = IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _pulseController,
+        builder: (context, child) {
+          final pulseOpacity = widget.showPulse ? _pulseOpacity.value : 0.16;
+          final pulseScale = widget.showPulse ? _pulseScale.value : 1.0;
+          return Opacity(
+            opacity: pulseOpacity,
+            child: Transform.scale(
+              scale: pulseScale,
+              child: child,
+            ),
+          );
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: PlanFlowColors.activeLight.withValues(alpha: 0.9),
+              width: 2,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x337AB3D4),
+                blurRadius: 18,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
 
     return Stack(
       alignment: Alignment.center,
       clipBehavior: Clip.none,
       children: [
         Positioned.fill(
-          child: IgnorePointer(
-            child: AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                return Opacity(
-                  opacity: _pulseOpacity.value,
-                  child: Transform.scale(
-                    scale: _pulseScale.value,
-                    child: child,
-                  ),
-                );
-              },
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: PlanFlowColors.fab.withValues(alpha: 0.32),
-                      width: 2,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: ring,
           ),
         ),
         fab,
