@@ -1133,3 +1133,8 @@
 - Replaced the current-text submit action with a stronger outlined/highlighted button so `현재 내용으로 입력` stands out when text is present.
 - Strengthened the shared `PlanFlowVoiceFab` border and glow so the `음성으로 일정 관리` button is visibly highlighted on all pages that use the shared FAB.
 - Verification passed: focused voice input screen tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install on `192.168.0.102:5555`, and PID check.
+
+## 2026-05-23 Naver OAuth WebView Registration Fix
+- Fixed Naver login WebView startup by registering `webview_flutter_android` in the Android plugin registrant; the previous runtime failure was `plugins.flutter.io/webview` being unregistered even though the OAuth URL was generated successfully.
+- Added a regression test that keeps `WebViewFlutterPlugin` present in the Android registrant and verifies `webview_flutter_android` remains in Flutter plugin metadata.
+- Verification passed: focused WebView/auth/login tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch on `192.168.0.102:5555`, and device screenshot/logcat confirmation that the internal Naver login page loads.
