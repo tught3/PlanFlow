@@ -14,6 +14,7 @@ import '../data/models/calendar_connection_model.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/calendar_connection_repository.dart';
 import '../data/repositories/event_repository.dart';
+import 'external_event_import_classifier.dart';
 import 'naver_calendar_permission_service.dart';
 
 enum CalendarProvider {
@@ -1372,7 +1373,14 @@ class CalendarSyncService {
       location: _googleStringValue(event.location),
       memo: _googleStringValue(event.description),
       supplies: const <String>[],
-      isCritical: false,
+      isCritical: ExternalEventImportClassifier.isCritical(
+        title: event.summary,
+        description: event.description,
+        location: event.location,
+        calendarName: externalCalendarId,
+        source: 'google',
+        status: event.status,
+      ),
       source: 'google',
       externalId: externalId,
       externalCalendarId: externalCalendarId,

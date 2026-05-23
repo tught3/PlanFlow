@@ -62,6 +62,30 @@ void main() {
       expect(planflowLocal(events.single.startAt).hour, 0);
     });
 
+    test('marks important ICS buckets as critical', () {
+      final service = NaverIcsImportService(
+        eventRepository: _FakeEventRepository(),
+      );
+
+      final events = service.parseEvents('''
+BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:important-ics
+SUMMARY:VIP 상담
+DTSTART;TZID=Asia/Seoul:20260506T110000
+DTEND;TZID=Asia/Seoul:20260506T113000
+PRIORITY:1
+CATEGORIES:Important,네이버 예약
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR
+''');
+
+      expect(events, hasLength(1));
+      expect(events.single.isCritical, isTrue);
+    });
+
     test('imports ICS events and uses UID based stable external id', () async {
       final repository = _FakeEventRepository();
       final service = NaverIcsImportService(

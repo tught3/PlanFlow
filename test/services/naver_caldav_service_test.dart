@@ -392,6 +392,44 @@ END:VCALENDAR
     expect(event.endAt, DateTime.utc(2026, 5, 1, 6));
   });
 
+  test('parseIcal keeps priority and categories for critical import', () {
+    final service = NaverCalDavService(
+      httpClient: _FakePropfindClient(responses: <int>[207]),
+      credentialStore: _FakeCredentialStore(),
+    );
+
+    final event = service.parseIcal(
+      '''
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:important-1
+SUMMARY:VIP 상담
+DTSTART;TZID=Asia/Seoul:20260501T140000
+DTEND;TZID=Asia/Seoul:20260501T150000
+PRIORITY:1
+CATEGORIES:Important,네이버 예약
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR
+''',
+      etag: '"important-etag"',
+      href: '/calendars/tught3/booking/important-1.ics',
+    );
+
+    expect(event, isNotNull);
+    expect(event!.priority, 1);
+    expect(event.categories, containsAll(<String>['Important', '네이버 예약']));
+    expect(
+        event
+            .toEventModel(
+              userId: 'user-1',
+              calendarPath: '/calendars/tught3/booking/',
+              syncedAt: DateTime.utc(2026, 5, 1),
+            )
+            .isCritical,
+        isTrue);
+  });
+
   test('parseIcal treats floating Naver times as Asia Seoul wall time', () {
     final service = NaverCalDavService(
       httpClient: _FakePropfindClient(responses: <int>[207]),

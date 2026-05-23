@@ -1159,3 +1159,9 @@
 - The guide is now skipped and marked seen when Google Calendar is already connected, Naver CalDAV credentials exist, or the auto-sync snapshot has a healthy provider such as the device/Samsung calendar import.
 - `ShellScreen` now asks the guide service whether to show the modal instead of relying only on the seen flag.
 - Verification passed: focused external calendar guide service tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-24 External Calendar Critical Import
+- Added `ExternalEventImportClassifier` so imported external calendar events can preserve important buckets without over-marking ordinary reservation text.
+- Google, Naver CalDAV, Naver ICS, and Android device/Naver calendar import now set `isCritical` when external signals indicate importance, including iCal `PRIORITY:1..3`, `Important`/`중요` categories, or Naver Booking style calendar buckets.
+- Critical import tests now cover classifier rules, device calendar Naver booking calendars, Naver CalDAV priority/categories, and Naver ICS important buckets.
+- Verification passed: focused external import tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build.

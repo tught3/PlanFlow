@@ -12,6 +12,7 @@ import '../core/env.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
+import 'external_event_import_classifier.dart';
 
 enum NaverCalDavConnectionStatus {
   success,
@@ -210,6 +211,9 @@ class NaverCalDavEvent {
     this.description,
     this.lastModifiedAt,
     this.isAllDay = false,
+    this.priority,
+    this.categories = const <String>[],
+    this.status,
   });
 
   final String uid;
@@ -223,6 +227,9 @@ class NaverCalDavEvent {
   final String? description;
   final DateTime? lastModifiedAt;
   final bool isAllDay;
+  final int? priority;
+  final List<String> categories;
+  final String? status;
 
   EventModel toEventModel({
     required String userId,
@@ -239,7 +246,16 @@ class NaverCalDavEvent {
       memo: _blankToNull(description),
       supplies: const <String>[],
       suppliesChecked: const <String>[],
-      isCritical: false,
+      isCritical: ExternalEventImportClassifier.isCritical(
+        title: title,
+        description: description,
+        location: location,
+        calendarPath: calendarPath,
+        source: 'naver_caldav',
+        priority: priority,
+        categories: categories,
+        status: status,
+      ),
       source: 'naver_caldav',
       externalId: 'naver-caldav:${_stableExternalKey(calendarPath, uid)}',
       externalCalendarId: 'naver-caldav:$calendarPath',
@@ -1774,6 +1790,16 @@ class NaverCalDavService {
       lastModifiedAt: _parseIcalDateTime(fields['LAST-MODIFIED']?.firstOrNull),
       isAllDay: startRaw.contains('VALUE=DATE') ||
           RegExp(r':\d{8}$').hasMatch(startRaw.trim()),
+      priority: int.tryParse(fields['PRIORITY']?.firstOrNull?.trim() ?? ''),
+      categories: fields['CATEGORIES']
+              ?.expand((value) => value.split(','))
+              .map(_unescapeIcalText)
+              .whereType<String>()
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toList(growable: false) ??
+          const <String>[],
+      status: _unescapeIcalText(fields['STATUS']?.firstOrNull),
     );
   }
 

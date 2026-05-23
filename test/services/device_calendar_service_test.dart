@@ -66,6 +66,36 @@ void main() {
     expect(repository.upserted.single.title, '서초 미팅');
   });
 
+  test('marks events from Naver booking calendar as critical', () async {
+    final repository = _FakeEventRepository();
+    final service = DeviceCalendarService(
+      gateway: _FakeDeviceCalendarGateway(
+        calendars: [
+          {
+            'id': '7',
+            'displayName': '네이버 예약',
+            'accountName': 'tught3@naver.com',
+          },
+        ],
+        events: [
+          {
+            'eventId': 'booking-1',
+            'calendarId': '7',
+            'title': '강릉 건도리횟집',
+            'beginMillis': DateTime(2026, 5, 6, 18).millisecondsSinceEpoch,
+          },
+        ],
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.importNaverEvents();
+
+    expect(result.status, DeviceCalendarImportStatus.imported);
+    expect(repository.upserted.single.isCritical, isTrue);
+  });
+
   test('links reflected device calendar duplicate instead of inserting',
       () async {
     final repository = _FakeEventRepository(

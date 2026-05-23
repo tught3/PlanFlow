@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
+import 'external_event_import_classifier.dart';
 
 class NaverIcsImportService {
   NaverIcsImportService({
@@ -120,6 +121,7 @@ class NaverIcsImportService {
           endAt: parsed.endAt,
           location: parsed.location,
           memo: parsed.description,
+          isCritical: parsed.isCritical,
           source: 'naver_ics',
           externalId: externalId,
           externalCalendarId: 'naver-ics',
@@ -191,6 +193,17 @@ class NaverIcsImportService {
           description: _blankToNull(
             _unescapeText(_textProperty(data, 'DESCRIPTION') ?? ''),
           ),
+          isCritical: ExternalEventImportClassifier.isCritical(
+            title: title,
+            description: _textProperty(data, 'DESCRIPTION'),
+            location: _textProperty(data, 'LOCATION'),
+            source: 'naver_ics',
+            priority: int.tryParse(
+              _textProperty(data, 'PRIORITY')?.trim() ?? '',
+            ),
+            categories: _categoriesProperty(data),
+            status: _textProperty(data, 'STATUS'),
+          ),
           lastModifiedAt: _dateTimeProperty(data, 'LAST-MODIFIED') ??
               _dateTimeProperty(data, 'DTSTAMP'),
         ),
@@ -234,6 +247,19 @@ class NaverIcsImportService {
     }
   }
 
+  List<String> _categoriesProperty(Map<String, String> data) {
+    final raw = _textProperty(data, 'CATEGORIES');
+    if (raw == null || raw.trim().isEmpty) {
+      return const <String>[];
+    }
+    return raw
+        .split(',')
+        .map(_unescapeText)
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+  }
+
   Future<int> _cleanupSuspiciousImportedEvents(String userId) async {
     final events = await _eventRepository.listEvents(userId: userId);
     var deletedCount = 0;
@@ -275,6 +301,7 @@ class NaverIcsParsedEvent {
     this.endAt,
     this.location,
     this.description,
+    this.isCritical = false,
     this.lastModifiedAt,
   });
 
@@ -284,6 +311,7 @@ class NaverIcsParsedEvent {
   final DateTime? endAt;
   final String? location;
   final String? description;
+  final bool isCritical;
   final DateTime? lastModifiedAt;
 
   String get externalId {

@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
+import 'external_event_import_classifier.dart';
 
 enum DeviceCalendarImportStatus {
   imported,
@@ -135,6 +136,7 @@ class DeviceCalendarEvent {
   EventModel toEventModel({
     required String userId,
     required DateTime importedAt,
+    DeviceCalendarInfo? calendar,
   }) {
     final normalizedTitle = title?.trim();
     return EventModel(
@@ -149,7 +151,13 @@ class DeviceCalendarEvent {
       memo: _blankToNull(description),
       supplies: const <String>[],
       suppliesChecked: const <String>[],
-      isCritical: false,
+      isCritical: ExternalEventImportClassifier.isCritical(
+        title: title,
+        description: description,
+        location: location,
+        calendarName: calendar?.label,
+        source: 'naver_device',
+      ),
       source: 'naver_device',
       externalId: 'android:$calendarId:$eventId',
       externalCalendarId: 'android:$calendarId',
@@ -386,10 +394,14 @@ class DeviceCalendarService {
 
       var imported = 0;
       var skipped = 0;
+      final calendarById = <String, DeviceCalendarInfo>{
+        for (final calendar in naverCalendars) calendar.id: calendar,
+      };
       for (final event in events) {
         final eventModel = event.toEventModel(
           userId: resolvedUserId,
           importedAt: now,
+          calendar: calendarById[event.calendarId],
         );
         final planFlowOriginId = _planFlowEventIdFromDeviceEventKey(
           event.eventKey,
