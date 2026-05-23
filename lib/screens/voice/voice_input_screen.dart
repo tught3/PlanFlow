@@ -1241,12 +1241,18 @@ class _VoicePrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = appL10n(context);
+    final voiceLabel = isListening
+        ? l10n.voiceDone
+        : hasText
+            ? '음성으로 다시 입력하기'
+            : l10n.voicePrimaryStart;
     final voiceButton = FilledButton.icon(
+      key: const ValueKey('voice-primary-button'),
       onPressed: isListening ? onTapFinish : onTapStart,
       icon: Icon(isListening ? Icons.check : Icons.mic),
       label: FittedBox(
         fit: BoxFit.scaleDown,
-        child: Text(isListening ? l10n.voiceDone : l10n.voicePrimaryStart),
+        child: Text(voiceLabel),
       ),
     );
 
@@ -1259,9 +1265,22 @@ class _VoicePrimaryButton extends StatelessWidget {
         Expanded(child: voiceButton),
         const SizedBox(width: 8),
         Expanded(
-          child: FilledButton.tonalIcon(
+          child: OutlinedButton.icon(
             key: const ValueKey('voice-input-confirm-current-text-button'),
             onPressed: hasText ? onManualSubmit : null,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: PlanFlowColors.primary,
+              backgroundColor: hasText
+                  ? PlanFlowColors.primaryFaint.withValues(alpha: 0.72)
+                  : null,
+              side: BorderSide(
+                color: hasText
+                    ? PlanFlowColors.primaryMid
+                    : PlanFlowColors.primaryFaint,
+                width: hasText ? 1.8 : 1,
+              ),
+              elevation: 0,
+            ),
             icon: const Icon(Icons.check_circle_outline),
             label: const FittedBox(
               fit: BoxFit.scaleDown,

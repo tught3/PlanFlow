@@ -207,7 +207,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pump();
 
     fakeStt.emitPartial('내일 오전 10시 정장집 방문');
@@ -275,7 +275,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pump();
 
     fakeStt.emitPartial('내일 오전 10시 정장집 방문');
@@ -331,7 +331,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pump();
 
     fakeStt.emitPartial('내일 오전 10시 정장집 방문');
@@ -407,7 +407,7 @@ void main() {
     final button = tester.widgetList(
       find.byKey(const ValueKey('voice-input-confirm-current-text-button')),
     );
-    final confirmButton = button.first as FilledButton;
+    final confirmButton = button.first as OutlinedButton;
     expect(confirmButton.onPressed, isNull);
 
     expect(
@@ -480,7 +480,8 @@ void main() {
     await tester.enterText(find.byType(TextField), '내일 오전 10시');
     await tester.pump();
 
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    expect(find.text('음성으로 다시 입력하기'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pumpAndSettle();
 
     expect(find.text('현재 입력된 내용이 있어요'), findsOneWidget);
@@ -523,7 +524,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '내일 오전 10시');
     await tester.pump();
 
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pumpAndSettle();
     await tester.tap(
         find.byKey(const ValueKey('voice-restart-with-empty-text-button')));
@@ -552,7 +553,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '내일 오전 10시');
     await tester.pump();
 
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pumpAndSettle();
     await tester
         .tap(find.byKey(const ValueKey('voice-keep-existing-text-button')));
@@ -598,7 +599,7 @@ void main() {
 
     router.pop();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pumpAndSettle();
     await tester
         .tap(find.byKey(const ValueKey('voice-append-existing-text-button')));
@@ -643,7 +644,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pump();
 
     fakeStt.emitPartial('내일 오전 10시 정장집 방문');
@@ -686,7 +687,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pump();
 
     fakeStt.emitPartial('내일 오전 10시 정장집 방문');
@@ -874,7 +875,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pump();
     fakeStt.emitPartial('내일 오전 10시 정장집 방문');
     await tester.pump();
@@ -919,7 +920,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pump();
     fakeStt.emitPartial('내일 오전 10시 정장집 방문');
     await tester.pump();
@@ -961,7 +962,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pump();
     fakeStt.emitPartial('내일 오전 10시 정장집 방문');
     await tester.pump();
@@ -1274,7 +1275,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pump();
 
     fakeStt.emitPartial('계약');
@@ -1626,7 +1627,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pump();
 
     fakeStt.emitPartial('내일 세브란스 방문해서 확인하기로 저장');
@@ -1660,7 +1661,7 @@ void main() {
       find.byKey(const ValueKey('voice-continue-listening-button')),
       findsNothing,
     );
-    await tester.tap(find.text('음성으로 일정 입력하기'));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
     await tester.pumpAndSettle();
     await tester
         .tap(find.byKey(const ValueKey('voice-append-existing-text-button')));

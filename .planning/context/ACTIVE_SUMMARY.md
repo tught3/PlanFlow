@@ -1127,3 +1127,9 @@
 - Added `product text not null default 'planflow'` with a Flow-product check constraint to live Supabase, `supabase/schema.sql`, and `supabase/feedback_reports_patch.sql`.
 - Updated `FeedbackReport` parsing so older rows without the column still read as `planflow`.
 - Verification passed: feedback repository test, feedback schema test, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-23 Voice Input Button Highlight Polish
+- Changed the voice input primary button label to `음성으로 다시 입력하기` when text already exists, while keeping the initial empty-state label as `음성으로 일정 입력하기`.
+- Replaced the current-text submit action with a stronger outlined/highlighted button so `현재 내용으로 입력` stands out when text is present.
+- Strengthened the shared `PlanFlowVoiceFab` border and glow so the `음성으로 일정 관리` button is visibly highlighted on all pages that use the shared FAB.
+- Verification passed: focused voice input screen tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, install on `192.168.0.102:5555`, and PID check.
