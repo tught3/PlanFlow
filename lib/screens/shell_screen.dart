@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants.dart';
 import '../core/env.dart';
@@ -15,6 +14,7 @@ import '../services/app_permission_service.dart';
 import '../services/briefing_scheduler_service.dart';
 import '../services/calendar_auto_sync_service.dart';
 import '../services/departure_alarm_service.dart';
+import '../services/external_calendar_sync_guide_service.dart';
 import '../l10n/app_l10n.dart';
 import 'calendar/calendar_screen.dart';
 import 'home_screen.dart';
@@ -72,6 +72,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   final AppPermissionService _permissionService = AppPermissionService();
   final CalendarAutoSyncService _calendarAutoSyncService =
       CalendarAutoSyncService();
+  late final ExternalCalendarSyncGuideService _externalCalendarGuideService =
+      ExternalCalendarSyncGuideService(
+    calendarAutoSyncService: _calendarAutoSyncService,
+  );
   final DepartureAlarmService _departureAlarmService =
       const DepartureAlarmService();
   final BriefingSchedulerService _briefingSchedulerService =
@@ -251,10 +255,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final preferences = await SharedPreferences.getInstance();
-    final guideKey = 'external_calendar_sync_guide_seen:$userId';
-    final alreadySeen = preferences.getBool(guideKey) ?? false;
-    if (alreadySeen || !mounted) {
+    final shouldShow =
+        await _externalCalendarGuideService.shouldShowForUser(userId);
+    if (!shouldShow || !mounted) {
       return;
     }
 
@@ -293,7 +296,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       },
     );
 
-    await preferences.setBool(guideKey, true);
+    await _externalCalendarGuideService.markSeen(userId);
     if (!mounted) {
       return;
     }

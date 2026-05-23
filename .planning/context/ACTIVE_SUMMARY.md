@@ -1153,3 +1153,9 @@
 - Prevented stale or premature Naver OAuth failure banners from showing during a successful WebView callback by clearing old OAuth messages, waiting briefly for session sync, and closing the WebView quietly on success.
 - Updated Naver account display so metadata/identity email values populate `authProvider.email`; Settings now prefers real email identifiers before falling back to provider labels.
 - Verification passed: focused auth provider, Naver WebView, and login screen tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-24 External Calendar Guide Connected-State Skip
+- Added `ExternalCalendarSyncGuideService` so the one-time external calendar sync guide checks existing sync state before showing.
+- The guide is now skipped and marked seen when Google Calendar is already connected, Naver CalDAV credentials exist, or the auto-sync snapshot has a healthy provider such as the device/Samsung calendar import.
+- `ShellScreen` now asks the guide service whether to show the modal instead of relying only on the seen flag.
+- Verification passed: focused external calendar guide service tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
