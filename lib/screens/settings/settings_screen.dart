@@ -26,7 +26,6 @@ import '../../services/briefing_scheduler_service.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/calendar_sync_service.dart';
 import '../../services/daily_backup_scheduler_service.dart';
-import '../../services/departure_alarm_service.dart';
 import '../../services/device_calendar_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
@@ -122,12 +121,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _timeZoneId = PlanFlowRegions.korea.timeZoneId;
 
   CalendarSyncSummary? _calendarSyncSummary;
-  BriefingRuntimeStatus? _briefingRuntimeStatus;
-  DepartureAlarmRuntimeStatus? _departureAlarmRuntimeStatus;
   List<BackupSnapshot> _backups = const <BackupSnapshot>[];
 
   bool _isLoadingCalendarStatus = true;
-  bool _isLoadingAlarmRuntimeStatus = true;
   bool _isSyncingGoogleCalendar = false;
   bool _isDisconnectingGoogleCalendar = false;
   bool _isDisconnectingNaverCalendar = false;
@@ -200,7 +196,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     unawaited(_loadWidgetDisplaySettings());
     unawaited(_loadCalendarStatus());
     unawaited(_loadAutoSyncSnapshot());
-    unawaited(_loadAlarmRuntimeStatus());
     final naverCalDavStateLoaded = _loadNaverCalDavState();
     unawaited(naverCalDavStateLoaded);
     if (widget._initialAction != null) {
@@ -336,22 +331,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadAutoSyncSnapshot() async {
     await _calendarAutoSyncService.loadSnapshot();
-  }
-
-  Future<void> _loadAlarmRuntimeStatus() async {
-    setState(() {
-      _isLoadingAlarmRuntimeStatus = true;
-    });
-    final briefing = await _briefingSchedulerService.loadRuntimeStatus();
-    final departure = await const DepartureAlarmService().loadRuntimeStatus();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _briefingRuntimeStatus = briefing;
-      _departureAlarmRuntimeStatus = departure;
-      _isLoadingAlarmRuntimeStatus = false;
-    });
   }
 
   Future<void> _openCriticalAlarmSoundSettings() async {
@@ -1718,9 +1697,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'evening=${result.evening.scheduledAt.toIso8601String()} '
         'scheduled=${result.evening.scheduled}, userId=$userId',
       );
-      if (mounted) {
-        unawaited(_loadAlarmRuntimeStatus());
-      }
       return result;
     } catch (error, stackTrace) {
       debugPrint('Briefing schedule failed ($reason): $error');
@@ -1764,9 +1740,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         userId: userId,
       );
       _showSnack(result.message);
-      if (mounted) {
-        unawaited(_loadAlarmRuntimeStatus());
-      }
     } catch (error, stackTrace) {
       debugPrint('Briefing test failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -2129,35 +2102,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
-          const SizedBox(height: 12),
-          Text(
-            '앱은 24시간 이내 일정을 백그라운드로 다시 확인하고, 6시간 이내 일정은 더 자주 갱신해요.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: PlanFlowColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          const SizedBox(height: 12),
-          _DepartureAlarmRuntimeStatusCard(
-            isLoading: _isLoadingAlarmRuntimeStatus,
-            status: _departureAlarmRuntimeStatus,
-            formatDateTime: _formatDateTime,
-            onRefresh: _loadAlarmRuntimeStatus,
-          ),
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
-            child: OutlinedButton.icon(
+            child: FilledButton.icon(
               key: const ValueKey('settings-critical-alarm-sound-button'),
               onPressed: _openCriticalAlarmSoundSettings,
               icon: const Icon(Icons.notifications_active_outlined),
               label: const Text('중요 알림 소리 바꾸기'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: PlanFlowColors.primary,
-                side: const BorderSide(
-                  color: PlanFlowColors.primary,
-                  width: 1.2,
-                ),
+              style: FilledButton.styleFrom(
+                backgroundColor: PlanFlowColors.primaryMid,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 12,
@@ -2297,13 +2252,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         tooltip: '이브닝 브리핑 테스트 재생',
                         onPressed: () => _testBriefing(isMorning: false),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    _BriefingRuntimeStatusCard(
-                      isLoading: _isLoadingAlarmRuntimeStatus,
-                      status: _briefingRuntimeStatus,
-                      formatDateTime: _formatDateTime,
-                      onRefresh: _loadAlarmRuntimeStatus,
                     ),
                   ],
                 ),
@@ -3495,319 +3443,6 @@ class _NaverDiagnosticCountTable extends StatelessWidget {
           );
         }).toList(growable: false),
       ),
-    );
-  }
-}
-
-class _BriefingRuntimeStatusCard extends StatelessWidget {
-  const _BriefingRuntimeStatusCard({
-    required this.isLoading,
-    required this.status,
-    required this.formatDateTime,
-    required this.onRefresh,
-  });
-
-  final bool isLoading;
-  final BriefingRuntimeStatus? status;
-  final String Function(DateTime value) formatDateTime;
-  final Future<void> Function() onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final current = status;
-    final lastExecutedAt = current?.lastExecutedAt;
-    final lastType = switch (current?.lastExecutedType) {
-      'morning' => '모닝',
-      'evening' => '이브닝',
-      _ => '브리핑',
-    };
-    final delivered = current?.lastExecutionDelivered;
-    final lastExecutionText = lastExecutedAt == null
-        ? '최근 재생 기록이 아직 없습니다.'
-        : '최근 재생: $lastType · ${formatDateTime(lastExecutedAt)} · '
-            '${delivered == true ? '성공' : '실패'}'
-            '${current?.lastExecutionFailureReason == null ? '' : ' · ${current!.lastExecutionFailureReason}'}';
-
-    return _RuntimeStatusContainer(
-      key: const ValueKey('settings-briefing-runtime-status-card'),
-      title: '브리핑 예약 상태',
-      icon: Icons.record_voice_over_outlined,
-      isLoading: isLoading,
-      onRefresh: onRefresh,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _RuntimeStatusLine(
-            label: '모닝',
-            value: _briefingScheduleLabel(
-              scheduled: current?.morningScheduled,
-              scheduledAt: current?.nextMorningAt,
-            ),
-          ),
-          const SizedBox(height: 6),
-          _RuntimeStatusLine(
-            label: '이브닝',
-            value: _briefingScheduleLabel(
-              scheduled: current?.eveningScheduled,
-              scheduledAt: current?.nextEveningAt,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            lastExecutionText,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: PlanFlowColors.textSecondary,
-            ),
-          ),
-          if (current?.lastExecutionMessage?.isNotEmpty == true) ...[
-            const SizedBox(height: 4),
-            Text(
-              current!.lastExecutionMessage!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  String _briefingScheduleLabel({
-    required bool? scheduled,
-    required DateTime? scheduledAt,
-  }) {
-    final state = switch (scheduled) {
-      true => '예약됨',
-      false => '예약 실패',
-      null => '기록 없음',
-    };
-    final time = scheduledAt == null ? '' : ' · ${formatDateTime(scheduledAt)}';
-    return '$state$time';
-  }
-}
-
-class _DepartureAlarmRuntimeStatusCard extends StatelessWidget {
-  const _DepartureAlarmRuntimeStatusCard({
-    required this.isLoading,
-    required this.status,
-    required this.formatDateTime,
-    required this.onRefresh,
-  });
-
-  final bool isLoading;
-  final DepartureAlarmRuntimeStatus? status;
-  final String Function(DateTime value) formatDateTime;
-  final Future<void> Function() onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final current = status;
-    final eventTitle = current?.lastEventTitle;
-    final hasScheduleRecord =
-        current?.lastStatus != null || current?.lastCheckedAt != null;
-    final scheduleText = !hasScheduleRecord
-        ? '아직 출발 알림 예약 기록이 없습니다.'
-        : _scheduleSummary(current!);
-    final monitorText = _monitorSummary(current);
-
-    return _RuntimeStatusContainer(
-      key: const ValueKey('settings-departure-alarm-runtime-status-card'),
-      title: '출발 알림 상태',
-      icon: Icons.directions_run_outlined,
-      isLoading: isLoading,
-      onRefresh: onRefresh,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (eventTitle?.isNotEmpty == true) ...[
-            Text(
-              eventTitle!,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: PlanFlowColors.textPrimary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 4),
-          ],
-          Text(
-            scheduleText,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: PlanFlowColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            monitorText,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: PlanFlowColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _scheduleSummary(DepartureAlarmRuntimeStatus current) {
-    final status = current.lastStatus == 'scheduled' ? '예약됨' : '건너뜀';
-    final checkedAt = current.lastCheckedAt == null
-        ? null
-        : formatDateTime(current.lastCheckedAt!);
-    final notifyAt = current.lastNotifyAt == null
-        ? null
-        : formatDateTime(current.lastNotifyAt!);
-    final travel = current.lastTravelMinutes == null
-        ? null
-        : '이동 ${current.lastTravelMinutes}분';
-    final reason = current.lastSkippedReason == null
-        ? null
-        : _skipReasonLabel(current.lastSkippedReason!);
-    return [
-      status,
-      if (checkedAt != null) '확인 $checkedAt',
-      if (notifyAt != null) '알림 $notifyAt',
-      if (travel != null) travel,
-      if (reason != null) reason,
-    ].join(' · ');
-  }
-
-  String _monitorSummary(DepartureAlarmRuntimeStatus? current) {
-    if (current == null || current.lastMonitorAt == null) {
-      return '모니터링 실행 기록이 아직 없습니다.';
-    }
-    final last = formatDateTime(current.lastMonitorAt!);
-    final next = current.nextMonitorAt == null
-        ? null
-        : formatDateTime(current.nextMonitorAt!);
-    final monitorState = switch (current.monitorScheduled) {
-      true => '다음 모니터 예약됨',
-      false => '다음 모니터 예약 실패',
-      null => '다음 모니터 기록 없음',
-    };
-    final skippedReason = current.lastMonitorSkippedReason == null
-        ? null
-        : _skipReasonLabel(current.lastMonitorSkippedReason!);
-    return [
-      '최근 모니터 $last',
-      '예약 ${current.lastMonitorScheduled ?? 0}개',
-      '건너뜀 ${current.lastMonitorSkipped ?? 0}개',
-      monitorState,
-      if (next != null) next,
-      if (skippedReason != null) skippedReason,
-    ].join(' · ');
-  }
-
-  String _skipReasonLabel(String reason) {
-    return switch (reason) {
-      'past_or_no_time' => '시간 없음/지난 일정',
-      'missing_destination' => '장소 좌표 없음',
-      'missing_origin' => '현재 위치 확인 필요',
-      'departure_time_passed' => '출발 기준 시간이 이미 지남',
-      'signed_out' => '로그인 필요',
-      'supabase' => '서버 설정 필요',
-      _ => reason,
-    };
-  }
-}
-
-class _RuntimeStatusContainer extends StatelessWidget {
-  const _RuntimeStatusContainer({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.isLoading,
-    required this.onRefresh,
-    required this.child,
-  });
-
-  final String title;
-  final IconData icon;
-  final bool isLoading;
-  final Future<void> Function() onRefresh;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: PlanFlowColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: PlanFlowColors.primaryFaint),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: PlanFlowColors.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: PlanFlowColors.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: '상태 새로고침',
-                onPressed: isLoading ? null : onRefresh,
-                icon: isLoading
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh),
-              ),
-            ],
-          ),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class _RuntimeStatusLine extends StatelessWidget {
-  const _RuntimeStatusLine({
-    required this.label,
-    required this.value,
-  });
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 48,
-          child: Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: PlanFlowColors.textPrimary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: PlanFlowColors.textSecondary,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -4,6 +4,11 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-24 Settings Tab Runtime Status Cleanup
+- Removed the visible briefing reservation status card and smart departure alarm status card from Settings, while keeping the underlying briefing and alarm features intact.
+- Switched the `중요 알림 소리 바꾸기` control to a filled primary-colored button to match the Morning Briefing accent style.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/settings_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and `scripts/flutter-local.ps1 build apk --debug`. No Android device was connected for an install/run check.
+
 ## 2026-05-24 Remove Critical Alarm Difference Test
 - Removed the Settings test-only `일반/중요 알림 차이 테스트` button, explanatory text, and scheduling helper/state.
 - Kept the actual normal/critical notification scheduling APIs, `critical_alarms_v5_distinct` channel, future critical alarm migration, and `중요 알림 소리 바꾸기` channel-settings entry intact.

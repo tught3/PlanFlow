@@ -206,38 +206,14 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final briefingCard =
-        find.byKey(const ValueKey('settings-briefing-runtime-status-card'));
-    await _scrollUntilHitTestable(tester, briefingCard);
-
-    expect(find.text('브리핑 예약 상태'), findsOneWidget);
-    expect(find.text('예약됨 · 2026-05-09 07:30'), findsOneWidget);
-    expect(find.text('예약 실패 · 2026-05-09 21:00'), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-briefing-runtime-status-card')),
+        findsNothing);
     expect(
-      find.text('최근 재생: 모닝 · 2026-05-09 07:31 · 성공'),
-      findsOneWidget,
-    );
-    expect(find.text('모닝 브리핑을 재생했습니다.'), findsOneWidget);
-
-    final departureCard = find.byKey(
-      const ValueKey('settings-departure-alarm-runtime-status-card'),
-    );
-    await _scrollUntilHitTestable(tester, departureCard);
-
-    expect(find.text('출발 알림 상태'), findsOneWidget);
-    expect(find.text('대전 성심당'), findsOneWidget);
-    expect(
-      find.text(
-        '예약됨 · 확인 2026-05-09 08:00 · 알림 2026-05-09 10:00 · 이동 90분',
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.text(
-        '최근 모니터 2026-05-09 08:10 · 예약 1개 · 건너뜀 2개 · 다음 모니터 예약됨 · 2026-05-09 08:40',
-      ),
-      findsOneWidget,
-    );
+        find.byKey(
+            const ValueKey('settings-departure-alarm-runtime-status-card')),
+        findsNothing);
+    expect(find.byKey(const ValueKey('settings-critical-alarm-sound-button')),
+        findsOneWidget);
   });
 
   testWidgets(
