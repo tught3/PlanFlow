@@ -204,8 +204,7 @@ class NotificationService {
       final fullScreenIntentAllowed =
           await _requestFullScreenIntentPermissionBestEffort();
       final status = await checkPermissionStatus();
-      if (status.notificationsEnabled == false ||
-          status.exactAlarmsEnabled == false) {
+      if (status.notificationsEnabled == false) {
         debugPrint(
           'Critical alarm permission blocked: '
           'notifications=${status.notificationsEnabled}, '
@@ -228,14 +227,15 @@ class NotificationService {
           title: alarmTitle,
           body: alarmBody,
         ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        androidScheduleMode: criticalAlarmScheduleModeForStatus(status),
       );
       return NotificationScheduleResult(
         status: NotificationScheduleStatus.scheduled,
         notifyAt: notifyAt,
-        message: fullScreenIntentAllowed == false
-            ? '중요 알람은 예약했지만 Android 전체 화면 알림이 꺼져 있어 잠금화면 팝업이나 폴드/플립 겉화면 노출이 제한될 수 있습니다. 휴대폰 설정에서 PlanFlow 전체 화면 알림을 허용해 주세요.'
-            : null,
+        message: _criticalAlarmScheduleWarning(
+          status: status,
+          fullScreenIntentAllowed: fullScreenIntentAllowed,
+        ),
       );
     } catch (error, stackTrace) {
       debugPrint('Critical alarm scheduling failed: $error');
@@ -370,6 +370,16 @@ class NotificationService {
 
   @visibleForTesting
   static AndroidScheduleMode reminderScheduleModeForStatus(
+    NotificationPermissionStatus status,
+  ) {
+    if (status.exactAlarmsEnabled == false) {
+      return AndroidScheduleMode.inexactAllowWhileIdle;
+    }
+    return AndroidScheduleMode.exactAllowWhileIdle;
+  }
+
+  @visibleForTesting
+  static AndroidScheduleMode criticalAlarmScheduleModeForStatus(
     NotificationPermissionStatus status,
   ) {
     if (status.exactAlarmsEnabled == false) {
@@ -683,17 +693,33 @@ class NotificationService {
     if (status.notificationsEnabled == false) {
       blockers.add('앱 알림');
     }
-    if (status.exactAlarmsEnabled == false) {
-      blockers.add('정확한 알람');
-    }
-    if (status.fullScreenIntentStatus == PermissionCheckState.denied) {
-      blockers.add('전체 화면 알림');
-    }
 
     final blockerText =
         blockers.isEmpty ? 'Android 알림 설정' : blockers.join(', ');
     return '중요 알람을 강하게 울리려면 $blockerText 권한이 필요합니다. '
         '휴대폰 설정에서 PlanFlow 알림, 알람 및 리마인더, 전체 화면 알림 허용 상태를 확인해 주세요. 폴드/플립 겉화면 노출은 기기 정책에 따라 달라질 수 있습니다.';
+  }
+
+  String? _criticalAlarmScheduleWarning({
+    required NotificationPermissionStatus status,
+    required bool? fullScreenIntentAllowed,
+  }) {
+    final warnings = <String>[];
+    if (status.exactAlarmsEnabled == false) {
+      warnings.add(
+        '중요 알람은 예약했지만 정확한 알람 권한이 꺼져 있어 Android가 조금 늦게 울릴 수 있습니다.',
+      );
+    }
+    if (fullScreenIntentAllowed == false ||
+        status.fullScreenIntentStatus == PermissionCheckState.denied) {
+      warnings.add(
+        '전체 화면 알림이 꺼져 있어 잠금화면 팝업이나 폴드/플립 겉화면 노출이 제한될 수 있습니다.',
+      );
+    }
+    if (warnings.isEmpty) {
+      return null;
+    }
+    return '${warnings.join(' ')} 휴대폰 설정에서 PlanFlow 알림, 알람 및 리마인더, 전체 화면 알림 허용 상태를 확인해 주세요.';
   }
 }
 

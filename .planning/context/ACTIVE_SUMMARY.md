@@ -1171,3 +1171,9 @@
 - Added a Settings test action labeled `일반/중요 알림 차이 테스트`; it schedules a normal reminder first and a critical alarm shortly after so the user can compare the actual device behavior.
 - The critical test alarm uses the existing critical scheduling path, including exact alarm permission handling, full-screen intent request, dedicated raw sound, max importance/priority, strong vibration pattern, and critical title/body formatting.
 - Verification passed: focused notification/settings tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-24 Critical Alarm Exact-Permission Fallback
+- Fixed an important-alarm scheduling bug where critical alarms were blocked entirely when Android exact-alarm permission was false, while normal alarms still fell back to inexact scheduling.
+- Critical alarms now only block when app notification permission itself is disabled; if exact alarms are unavailable, they still schedule with `inexactAllowWhileIdle` and return a warning message about possible Android delay.
+- Added notification service regression tests for critical alarm exact/inexact schedule-mode selection.
+- Verification passed: focused notification service tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, launcher start, focused-window check, and PID check.

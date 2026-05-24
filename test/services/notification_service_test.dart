@@ -41,6 +41,32 @@ void main() {
       expect(mode, AndroidScheduleMode.exactAllowWhileIdle);
     });
 
+    test('critical alarms fall back to inexact when exact permission is off',
+        () {
+      final mode = NotificationService.criticalAlarmScheduleModeForStatus(
+        const NotificationPermissionStatus(
+          notificationsEnabled: true,
+          exactAlarmsEnabled: false,
+          fullScreenIntentStatus: PermissionCheckState.denied,
+        ),
+      );
+
+      expect(mode, AndroidScheduleMode.inexactAllowWhileIdle);
+    });
+
+    test('critical alarms use exact scheduling when permission is available',
+        () {
+      final mode = NotificationService.criticalAlarmScheduleModeForStatus(
+        const NotificationPermissionStatus(
+          notificationsEnabled: true,
+          exactAlarmsEnabled: true,
+          fullScreenIntentStatus: PermissionCheckState.granted,
+        ),
+      );
+
+      expect(mode, AndroidScheduleMode.exactAllowWhileIdle);
+    });
+
     test('formats critical alarm title so it is visibly distinct', () {
       expect(
         NotificationService.criticalAlarmDisplayTitle('팀장 동행방문'),
