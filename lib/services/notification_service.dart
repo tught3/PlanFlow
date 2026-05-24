@@ -43,7 +43,7 @@ class NotificationService {
   static const int _maxSmartPreparationAlarmsPerEvent = 20;
 
   @visibleForTesting
-  static const String criticalAlarmChannelId = 'critical_alarms_v2';
+  static const String criticalAlarmChannelId = 'critical_alarms_v3_loud';
 
   @visibleForTesting
   static const String criticalAlarmSoundResource = 'planflow_critical_alarm';

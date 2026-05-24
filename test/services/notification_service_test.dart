@@ -76,7 +76,7 @@ void main() {
     test('uses a distinct channel and raw sound for critical alarms', () {
       expect(
         NotificationService.criticalAlarmChannelId,
-        'critical_alarms_v2',
+        'critical_alarms_v3_loud',
       );
       expect(
         NotificationService.criticalAlarmSoundResource,

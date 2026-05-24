@@ -1165,3 +1165,9 @@
 - Google, Naver CalDAV, Naver ICS, and Android device/Naver calendar import now set `isCritical` when external signals indicate importance, including iCal `PRIORITY:1..3`, `Important`/`중요` categories, or Naver Booking style calendar buckets.
 - Critical import tests now cover classifier rules, device calendar Naver booking calendars, Naver CalDAV priority/categories, and Naver ICS important buckets.
 - Verification passed: focused external import tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build.
+
+## 2026-05-24 Critical Alarm Visible Difference Test
+- Bumped the Android critical alarm channel id to `critical_alarms_v3_loud` so devices with an older immutable notification channel recreate the important-alarm channel with the dedicated sound/vibration/full-screen settings.
+- Added a Settings test action labeled `일반/중요 알림 차이 테스트`; it schedules a normal reminder first and a critical alarm shortly after so the user can compare the actual device behavior.
+- The critical test alarm uses the existing critical scheduling path, including exact alarm permission handling, full-screen intent request, dedicated raw sound, max importance/priority, strong vibration pattern, and critical title/body formatting.
+- Verification passed: focused notification/settings tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and install/launch/PID check on `192.168.0.102:5555`.

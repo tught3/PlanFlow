@@ -32,6 +32,7 @@ import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/naver_caldav_service.dart';
 import '../../services/naver_calendar_permission_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/oauth_callback_handler.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../l10n/app_l10n.dart';
@@ -49,7 +50,7 @@ class SettingsScreen extends StatefulWidget {
     BriefingSchedulerService? briefingSchedulerService,
     CalendarSyncService? calendarSyncService,
     CalendarAutoSyncService? calendarAutoSyncService,
-    Object? notificationService,
+    NotificationService? notificationService,
     BackupService? backupService,
     AuthService? authService,
     NaverCalendarPermissionService? naverCalendarPermissionService,
@@ -61,6 +62,7 @@ class SettingsScreen extends StatefulWidget {
         _briefingSchedulerService = briefingSchedulerService,
         _calendarSyncService = calendarSyncService,
         _calendarAutoSyncService = calendarAutoSyncService,
+        _notificationService = notificationService,
         _backupService = backupService,
         _authService = authService,
         _naverCalendarPermissionService = naverCalendarPermissionService,
@@ -73,6 +75,7 @@ class SettingsScreen extends StatefulWidget {
   final BriefingSchedulerService? _briefingSchedulerService;
   final CalendarSyncService? _calendarSyncService;
   final CalendarAutoSyncService? _calendarAutoSyncService;
+  final NotificationService? _notificationService;
   final BackupService? _backupService;
   final AuthService? _authService;
   final NaverCalendarPermissionService? _naverCalendarPermissionService;
@@ -95,6 +98,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final DeviceCalendarService _deviceCalendarService;
   late final NaverCalDavService _naverCalDavService;
   late final HomeWidgetService _homeWidgetService;
+  late final NotificationService _notificationService;
 
   BackupService? _backupService;
   AuthService? _authService;
@@ -123,6 +127,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _isLoadingCalendarStatus = true;
   bool _isLoadingAlarmRuntimeStatus = true;
+  bool _isTestingCriticalAlarm = false;
   bool _isSyncingGoogleCalendar = false;
   bool _isDisconnectingGoogleCalendar = false;
   bool _isDisconnectingNaverCalendar = false;
@@ -178,6 +183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
     _calendarAutoSyncService =
         widget._calendarAutoSyncService ?? CalendarAutoSyncService();
+    _notificationService = widget._notificationService ?? NotificationService();
     _dailyBackupSchedulerService = const DailyBackupSchedulerService();
     _deviceCalendarService =
         widget._deviceCalendarService ?? DeviceCalendarService();
@@ -346,6 +352,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _departureAlarmRuntimeStatus = departure;
       _isLoadingAlarmRuntimeStatus = false;
     });
+  }
+
+  Future<void> _runCriticalAlarmDifferenceTest() async {
+    if (_isTestingCriticalAlarm) {
+      return;
+    }
+    setState(() {
+      _isTestingCriticalAlarm = true;
+    });
+
+    final now = DateTime.now();
+    final normalAt = now.add(const Duration(seconds: 5));
+    final criticalAt = now.add(const Duration(seconds: 12));
+    try {
+      final normal = await _notificationService.scheduleEventReminderWithResult(
+        id: _notificationService.notificationIdFor(
+          'settings:normal_alarm_test:${now.millisecondsSinceEpoch}',
+        ),
+        title: '일반 알림 테스트',
+        body: '이건 일반 일정 알림입니다.',
+        notifyAt: normalAt,
+      );
+      final critical =
+          await _notificationService.scheduleCriticalAlarmWithResult(
+        id: _notificationService.notificationIdFor(
+          'settings:critical_alarm_test:${now.millisecondsSinceEpoch}',
+        ),
+        title: '중요 알림 테스트',
+        body: '이건 중요 일정 알림입니다. 소리, 진동, 잠금화면 표시 차이를 확인해 주세요.',
+        notifyAt: criticalAt,
+      );
+
+      if (!mounted) {
+        return;
+      }
+      if (normal.isScheduled && critical.isScheduled) {
+        _showSnack('5초 뒤 일반 알림, 12초 뒤 중요 알림을 울립니다. 잠금화면 차이는 화면을 꺼두면 더 잘 보여요.');
+      } else {
+        final message =
+            critical.message ?? normal.message ?? '알림 권한 상태를 확인해 주세요.';
+        _showSnack(message);
+      }
+    } catch (error, stackTrace) {
+      debugPrint('Critical alarm difference test failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showSnack('중요 알림 테스트를 예약하지 못했습니다. 알림 권한을 확인해 주세요.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTestingCriticalAlarm = false;
+        });
+      }
+    }
   }
 
   Future<void> _loadNaverCalDavState() async {
@@ -2126,6 +2187,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
             status: _departureAlarmRuntimeStatus,
             formatDateTime: _formatDateTime,
             onRefresh: _loadAlarmRuntimeStatus,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: const ValueKey('settings-critical-alarm-test-button'),
+              onPressed: _isTestingCriticalAlarm
+                  ? null
+                  : _runCriticalAlarmDifferenceTest,
+              icon: _isTestingCriticalAlarm
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.priority_high_rounded),
+              label: Text(
+                _isTestingCriticalAlarm ? '테스트 예약 중...' : '일반/중요 알림 차이 테스트',
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFB42318),
+                side: const BorderSide(
+                  color: Color(0xFFB42318),
+                  width: 1.4,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '일반 알림을 먼저 울리고, 잠시 뒤 중요 알림을 울려 소리·진동·잠금화면 차이를 확인합니다.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
           ),
         ],
       ),
