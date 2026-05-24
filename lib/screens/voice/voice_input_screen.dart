@@ -1268,19 +1268,6 @@ class _VoicePrimaryButton extends StatelessWidget {
           child: OutlinedButton.icon(
             key: const ValueKey('voice-input-confirm-current-text-button'),
             onPressed: hasText ? onManualSubmit : null,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: PlanFlowColors.primary,
-              backgroundColor: hasText
-                  ? PlanFlowColors.primaryFaint.withValues(alpha: 0.72)
-                  : null,
-              side: BorderSide(
-                color: hasText
-                    ? PlanFlowColors.primaryMid
-                    : PlanFlowColors.primaryFaint,
-                width: hasText ? 1.8 : 1,
-              ),
-              elevation: 0,
-            ),
             icon: const Icon(Icons.check_circle_outline),
             label: const FittedBox(
               fit: BoxFit.scaleDown,

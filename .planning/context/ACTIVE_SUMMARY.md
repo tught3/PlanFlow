@@ -1183,3 +1183,9 @@
 - Critical alarms now attach `fullScreenIntent` only when the Android permission check/request says it is actually allowed; otherwise the important notification still posts through the loud critical channel without the full-screen popup.
 - Added notification service regression coverage for the critical full-screen intent gating helper.
 - Verification passed: focused notification service tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, launcher start, and PID check.
+
+## 2026-05-24 Voice Button Visual Cleanup
+- Removed the highlighted border/glow treatment from the shared `PlanFlowVoiceFab` and made the floating voice management action use the darker PlanFlow primary color.
+- Added the same floating voice management button to the Settings tab so Home, Calendar, and Settings all expose the voice schedule management entry point.
+- Swapped the Home empty-state voice-add button to the previous FAB accent color, and removed the highlighted background/border from the Voice Input `현재 내용으로 입력` outlined button.
+- Verification passed: focused Settings and Voice Input screen tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, launcher start, and PID check.

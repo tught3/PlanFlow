@@ -35,6 +35,7 @@ import '../../services/naver_calendar_permission_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/oauth_callback_handler.dart';
 import '../../widgets/planflow_logo.dart';
+import '../../widgets/planflow_voice_fab.dart';
 import '../../l10n/app_l10n.dart';
 import 'feedback_report_sheet.dart';
 
@@ -2740,6 +2741,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ),
+      ),
+      floatingActionButton: PlanFlowVoiceFab(
+        onPressed: () => context.push(AppRoutes.voice),
       ),
     );
   }
