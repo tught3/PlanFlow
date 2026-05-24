@@ -861,6 +861,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           title: event.title,
           body: '일정 시작: ${event.title}',
           notifyAt: eventReminderNotifyAt,
+          payload: 'event:${event.id}',
         ),
         label: 'local_event_reminder',
       );
@@ -898,6 +899,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           title: event.title,
           notifyAt: notifyAt,
           body: '중요 일정이 곧 시작됩니다.',
+          payload: 'event:${event.id}',
         );
         if (!result.isScheduled) {
           throw StateError(result.message ?? '중요 알람 예약 실패');

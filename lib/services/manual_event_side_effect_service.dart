@@ -900,6 +900,7 @@ class ManualEventSideEffectService {
         title: event.title,
         body: '일정 시작: ${event.title}',
         notifyAt: reminderNotifyAt,
+        payload: 'event:${event.id}',
       );
     }
 
@@ -912,6 +913,7 @@ class ManualEventSideEffectService {
         title: event.title,
         body: '중요 일정이 곧 시작됩니다.',
         notifyAt: criticalNotifyAt,
+        payload: 'event:${event.id}',
       );
       if (!result.isScheduled) {
         throw StateError(result.message ?? '중요 알람 예약 실패');

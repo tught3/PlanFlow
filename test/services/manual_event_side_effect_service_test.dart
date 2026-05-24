@@ -931,6 +931,7 @@ class _FakeNotificationService extends NotificationService {
     required String title,
     required DateTime notifyAt,
     String? body,
+    String? payload,
   }) async {
     scheduledCriticalAlarmIds.add(id);
     scheduledCriticalNotifyAts.add(notifyAt);
@@ -942,6 +943,7 @@ class _FakeNotificationService extends NotificationService {
     required String title,
     required DateTime notifyAt,
     String? body,
+    String? payload,
   }) async {
     scheduledCriticalAlarmIds.add(id);
     scheduledCriticalNotifyAts.add(notifyAt);

@@ -393,6 +393,7 @@ class DepartureAlarmService {
       title: '지금 출발해야 해요',
       body: body,
       notifyAt: notifyAt,
+      payload: 'departure:${event.id}',
     );
     if (criticalResult.isScheduled) {
       return;

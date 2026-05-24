@@ -110,25 +110,31 @@ void main() {
           title: '팀장 동행방문',
           body: '중요 일정이 곧 시작됩니다.',
         ),
-        '중요 알람입니다. 지금 확인해야 하는 일정입니다.\n'
+        '중요 일정입니다. 지금 확인해 주세요.\n'
         '팀장 동행방문\n'
-        '중요 일정이 곧 시작됩니다.',
+        '중요 일정이 곧 시작됩니다.\n'
+        '알림을 누르면 해당 일정으로 이동합니다.',
       );
       expect(
         NotificationService.criticalAlarmDisplayBody(
           title: '성심당 출발',
           body: '대전 성심당까지 30분 걸립니다.',
         ),
-        '중요 알람입니다. 지금 확인해야 하는 일정입니다.\n'
+        '중요 일정입니다. 지금 확인해 주세요.\n'
         '성심당 출발\n'
-        '대전 성심당까지 30분 걸립니다.',
+        '대전 성심당까지 30분 걸립니다.\n'
+        '알림을 누르면 해당 일정으로 이동합니다.',
       );
     });
 
-    test('uses the safe critical alarm channel', () {
+    test('uses the distinct critical alarm channel and sound', () {
       expect(
         NotificationService.criticalAlarmChannelId,
-        'critical_alarms_v4_safe',
+        'critical_alarms_v5_distinct',
+      );
+      expect(
+        NotificationService.criticalAlarmSoundResource,
+        'planflow_critical_alarm',
       );
     });
   });

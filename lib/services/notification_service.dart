@@ -43,11 +43,14 @@ class NotificationService {
   static const int _maxSmartPreparationAlarmsPerEvent = 20;
 
   @visibleForTesting
-  static const String criticalAlarmChannelId = 'critical_alarms_v4_safe';
+  static const String criticalAlarmChannelId = 'critical_alarms_v5_distinct';
+
+  @visibleForTesting
+  static const String criticalAlarmSoundResource = 'planflow_critical_alarm';
 
   static const String _criticalAlarmChannelName = '중요 일정 알람';
   static const String _criticalAlarmChannelDescription =
-      '중요 일정 알람. 일반 알림보다 강하게 표시하되 Android 기본 알림음 경로를 사용해 안정적으로 울립니다.';
+      '중요 일정 알람. 일반 알림보다 강한 진동과 전용 알림음으로 구분합니다.';
   static const Color _criticalAlarmColor = Color(0xFFD32F2F);
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
@@ -168,12 +171,14 @@ class NotificationService {
     required String title,
     required DateTime notifyAt,
     String? body,
+    String? payload,
   }) async {
     await scheduleCriticalAlarmWithResult(
       id: id,
       title: title,
       notifyAt: notifyAt,
       body: body,
+      payload: payload,
     );
   }
 
@@ -182,6 +187,7 @@ class NotificationService {
     required String title,
     required DateTime notifyAt,
     String? body,
+    String? payload,
   }) async {
     if (!notifyAt.isAfter(DateTime.now())) {
       debugPrint('Critical alarm skipped because notifyAt is past: $notifyAt');
@@ -229,6 +235,7 @@ class NotificationService {
           ),
         ),
         androidScheduleMode: criticalAlarmScheduleModeForStatus(status),
+        payload: payload,
       );
       return NotificationScheduleResult(
         status: NotificationScheduleStatus.scheduled,
@@ -452,6 +459,24 @@ class NotificationService {
         if (payload == 'briefing:morning' || payload == 'briefing:evening') {
           final type = payload.endsWith('evening') ? 'evening' : 'morning';
           appRouter.go('${AppRoutes.briefing}?type=$type');
+          return;
+        }
+        if (payload.startsWith('event:')) {
+          final eventId = payload.substring('event:'.length).trim();
+          if (eventId.isNotEmpty) {
+            appRouter.go(
+              '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}',
+            );
+          }
+          return;
+        }
+        if (payload.startsWith('departure:')) {
+          final eventId = payload.substring('departure:'.length).trim();
+          if (eventId.isNotEmpty) {
+            appRouter.go(
+              '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}',
+            );
+          }
         }
       },
     );
@@ -490,6 +515,9 @@ class NotificationService {
         description: _criticalAlarmChannelDescription,
         importance: Importance.max,
         playSound: true,
+        sound: RawResourceAndroidNotificationSound(
+          criticalAlarmSoundResource,
+        ),
         enableVibration: true,
         vibrationPattern: Int64List.fromList(
           <int>[0, 1200, 250, 1200, 250, 1600],
@@ -644,6 +672,9 @@ class NotificationService {
         fullScreenIntent: fullScreenIntent,
         channelAction: AndroidNotificationChannelAction.update,
         playSound: true,
+        sound: RawResourceAndroidNotificationSound(
+          criticalAlarmSoundResource,
+        ),
         enableVibration: true,
         autoCancel: false,
         color: _criticalAlarmColor,
@@ -697,7 +728,7 @@ class NotificationService {
     final eventLine = trimmedTitle.isEmpty ? null : trimmedTitle;
     const defaultBody = '중요 일정이 곧 시작됩니다.';
     final bodyLines = <String>[
-      '중요 알람입니다. 지금 확인해야 하는 일정입니다.',
+      '중요 일정입니다. 지금 확인해 주세요.',
       if (eventLine != null) eventLine,
       if (trimmedBody != null &&
           trimmedBody.isNotEmpty &&
@@ -705,6 +736,7 @@ class NotificationService {
         trimmedBody
       else
         defaultBody,
+      '알림을 누르면 해당 일정으로 이동합니다.',
     ];
     return bodyLines.join('\n');
   }

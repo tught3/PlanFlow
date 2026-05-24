@@ -598,6 +598,7 @@ class _FakeNotificationService extends NotificationService {
     required String title,
     required DateTime notifyAt,
     String? body,
+    String? payload,
   }) async {
     criticalAlarmTitles.add(title);
     criticalAlarmNotifyAts.add(notifyAt);
@@ -609,6 +610,7 @@ class _FakeNotificationService extends NotificationService {
     required String title,
     required DateTime notifyAt,
     String? body,
+    String? payload,
   }) async {
     criticalAlarmTitles.add(title);
     criticalAlarmNotifyAts.add(notifyAt);

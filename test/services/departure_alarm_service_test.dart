@@ -491,6 +491,7 @@ class _FakeNotificationService extends NotificationService {
     required String title,
     required DateTime notifyAt,
     String? body,
+    String? payload,
   }) async {
     criticalTitles.add(title);
     criticalBodies.add(body);

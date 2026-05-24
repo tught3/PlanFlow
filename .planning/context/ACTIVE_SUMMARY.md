@@ -1195,3 +1195,9 @@
 - Explicitly creates the normal and important notification channels during notification initialization, so Android channel state is visible immediately after app launch.
 - Adjusted Voice Input action styling: `음성으로 다시 입력하기` now uses the briefing-style purple button, `현재 내용으로 입력` uses the default filled button, and the Home empty-state voice-add button uses the calmer `primaryMid` blue.
 - Verification passed: focused notification and voice-input tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, launcher start/PID check, and `dumpsys notification` confirmed `critical_alarms_v4_safe` with importance 5 plus default notification sound and strong vibration.
+
+## 2026-05-24 Critical Alarm Distinct UX
+- Reintroduced a distinct important-alarm sound through a new explicitly-created channel `critical_alarms_v5_distinct`, while keeping the safer notification audio usage and full-screen gating from the previous stability fix.
+- Important alarms now include clearer body text telling the user to check the important schedule and that tapping the notification opens the schedule.
+- Local event, critical, and departure notifications now pass `event:` / `departure:` payloads so notification taps route to the relevant event detail screen.
+- Verification passed: focused notification, departure, and manual side-effect tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install and launch on `192.168.0.102:5555`, and `dumpsys notification` confirmed `critical_alarms_v5_distinct` with the raw PlanFlow sound resource.
