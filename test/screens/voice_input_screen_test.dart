@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/core/theme.dart';
 import 'package:planflow/services/stt_service.dart';
 import 'package:planflow/services/voice_command_analysis_service.dart';
 import 'package:planflow/screens/voice/voice_input_screen.dart';
@@ -91,6 +92,7 @@ class _FakeSttService extends SttService {
   String _latestText = '';
   int listenCalls = 0;
   int stopCalls = 0;
+  int cancelCalls = 0;
 
   @override
   Future<SttListenResult> listen({
@@ -118,6 +120,7 @@ class _FakeSttService extends SttService {
 
   @override
   Future<void> cancelActiveListen() async {
+    cancelCalls += 1;
     if (_listenCompleter != null && !_listenCompleter!.isCompleted) {
       _listenCompleter!.complete(
         SttListenResult.failure(
@@ -566,6 +569,30 @@ void main() {
     );
   });
 
+  testWidgets('텍스트가 있을 때 다시 입력 버튼은 tertiary accent 색상을 쓴다', (tester) async {
+    final fakeStt = _FakeSttService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VoiceInputScreen(
+          autoStartOverride: false,
+          sttService: fakeStt,
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), '내일 오전 10시');
+    await tester.pump();
+
+    final button = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('voice-primary-button')),
+    );
+    expect(
+      button.style?.backgroundColor?.resolve(<WidgetState>{}),
+      PlanFlowColors.tertiaryAccent,
+    );
+  });
+
   testWidgets('제출 후 이어 말하기는 이전 조회 문장에 새 명령을 붙이지 않는다', (tester) async {
     final fakeStt = _FakeSttService();
     final router = GoRouter(
@@ -930,6 +957,101 @@ void main() {
 
     expect(fakeStt.stopCalls, greaterThanOrEqualTo(1));
     expect(find.text('일정 확인'), findsOneWidget);
+  });
+
+  testWidgets('음성 입력 중 화면을 벗어나면 STT 세션을 취소한다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (context, state) => const Text(
+            '홈',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+
+    router.go(AppRoutes.home);
+    await tester.pumpAndSettle();
+    fakeStt.emitPartial('이전 세션 늦은 결과');
+    await tester.pump();
+
+    expect(fakeStt.cancelCalls, 1);
+    expect(find.text('홈'), findsOneWidget);
+    expect(find.text('이전 세션 늦은 결과'), findsNothing);
+  });
+
+  testWidgets('직접입력 전환 후 재진입해도 새 음성 입력을 시작한다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (context, state) => const Text(
+            '홈',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => const Text(
+            '일정 확인',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+
+    await tester.tap(find.byType(TextField));
+    await tester.pumpAndSettle();
+    expect(fakeStt.stopCalls, 1);
+
+    router.go(AppRoutes.home);
+    await tester.pumpAndSettle();
+    router.go(AppRoutes.voice);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+
+    expect(fakeStt.listenCalls, 2);
   });
 
   testWidgets('듣는 중 텍스트를 탭하면 자동 제출 대신 키보드 수정으로 전환한다', (tester) async {

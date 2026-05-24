@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/env.dart';
+import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/home/home_screen.dart';
@@ -173,6 +174,45 @@ void main() {
       expect(homeWidgetService.refreshEventTitles.single, <String>[
         'Fresh event',
       ]);
+    },
+  );
+
+  testWidgets(
+    'HomeScreen empty voice CTA uses the tertiary accent color',
+    (tester) async {
+      final repository = _QueuedEventRepository(
+        responses: <Future<List<EventModel>> Function()>[
+          () async => const <EventModel>[],
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: repository,
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            loadHeaderSummary: false,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump();
+
+      final cta = find.widgetWithText(
+        FilledButton,
+        '새 일정 음성으로 추가하기',
+      );
+      expect(cta, findsOneWidget);
+
+      final button = tester.widget<FilledButton>(cta);
+      expect(
+        button.style?.backgroundColor?.resolve(<WidgetState>{}),
+        PlanFlowColors.tertiaryAccent,
+      );
     },
   );
 }

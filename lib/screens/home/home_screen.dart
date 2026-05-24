@@ -670,7 +670,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   icon: const Icon(Icons.mic, size: 18),
                                   label: const Text('새 일정 음성으로 추가하기'),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: PlanFlowColors.primaryMid,
+                                    backgroundColor:
+                                        PlanFlowColors.tertiaryAccent,
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 12,

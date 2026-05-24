@@ -56,6 +56,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   bool _manualEditInterruptedListening = false;
   bool _isSubmittingVoiceCommand = false;
   bool _hasSubmittedVoiceCommand = false;
+  bool _isDisposing = false;
   int _partialTranscriptToken = 0;
   int _draftPreparationToken = 0;
   Map<String, dynamic>? _preparedDraft;
@@ -77,7 +78,12 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
   @override
   void dispose() {
+    _isDisposing = true;
+    _partialTranscriptToken++;
     _draftPreparationDebounce?.cancel();
+    if (_isListening) {
+      unawaited(widget.sttService.cancelActiveListen());
+    }
     _rawTextController.removeListener(_handleRawTextChanged);
     _rawTextController.dispose();
     _rawTextFocusNode.dispose();
@@ -162,13 +168,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     try {
       final result = await widget.sttService.listen(
         onPartialResult: (text) {
-          if (!_didEditTranscriptManually) {
+          if (!_isDisposing && !_didEditTranscriptManually) {
             final token = ++_partialTranscriptToken;
             unawaited(_applyNormalizedPartialTranscript(text, token));
           }
         },
         onRestart: (count) {
-          if (!mounted) {
+          if (!mounted || _isDisposing) {
             return;
           }
           setState(() {
@@ -177,7 +183,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
           });
         },
       );
-      if (!mounted) {
+      if (!mounted || _isDisposing) {
         return;
       }
 
@@ -208,7 +214,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       });
       _focusManualInput();
     } catch (_) {
-      if (!mounted) {
+      if (!mounted || _isDisposing) {
         return;
       }
       unawaited(AnalyticsService.logVoiceInputFailed(reason: 'stt_exception'));
@@ -217,7 +223,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       });
       _focusManualInput();
     } finally {
-      if (mounted) {
+      if (mounted && !_isDisposing) {
         setState(() {
           _isListening = false;
         });
@@ -333,7 +339,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   }
 
   Future<void> _applyNormalizedPartialTranscript(String text, int token) async {
-    if (!_isListening || token != _partialTranscriptToken) {
+    if (_isDisposing || !_isListening || token != _partialTranscriptToken) {
       return;
     }
 
@@ -352,13 +358,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       includeCancelCommands: true,
     );
 
-    if (!mounted || token != _partialTranscriptToken) {
+    if (!mounted || _isDisposing || token != _partialTranscriptToken) {
       return;
     }
 
     if (shouldCancel) {
       await _cancelVoiceFlow();
-      if (!mounted || token != _partialTranscriptToken) {
+      if (!mounted || _isDisposing || token != _partialTranscriptToken) {
         return;
       }
       _listenPrefixText = '';
@@ -370,13 +376,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (shouldClearAll) {
       _listenPrefixText = '';
       await _clearTranscript();
-      if (!mounted || token != _partialTranscriptToken) {
+      if (!mounted || _isDisposing || token != _partialTranscriptToken) {
         return;
       }
       return;
     }
 
-    if (!_isListening || token != _partialTranscriptToken) {
+    if (_isDisposing || !_isListening || token != _partialTranscriptToken) {
       return;
     }
     _setTranscriptText(
@@ -1255,7 +1261,7 @@ class _VoicePrimaryButton extends StatelessWidget {
               fit: BoxFit.scaleDown,
               child: Text(voiceLabel),
             ),
-            style: _briefingButtonStyle(context),
+            style: _tertiaryAccentButtonStyle(context),
           )
         : FilledButton.icon(
             key: const ValueKey('voice-primary-button'),
@@ -1290,13 +1296,14 @@ class _VoicePrimaryButton extends StatelessWidget {
     );
   }
 
-  ButtonStyle _briefingButtonStyle(BuildContext context) {
+  ButtonStyle _tertiaryAccentButtonStyle(BuildContext context) {
     return FilledButton.styleFrom(
-      backgroundColor: const Color(0xFF5D61A8),
+      backgroundColor: PlanFlowColors.tertiaryAccent,
       foregroundColor: Colors.white,
-      disabledBackgroundColor: const Color(0xFFB9BDE5),
+      disabledBackgroundColor:
+          PlanFlowColors.tertiaryAccent.withValues(alpha: 0.42),
       disabledForegroundColor: Colors.white.withValues(alpha: 0.88),
-      side: const BorderSide(color: Color(0xFF8D91CF)),
+      side: const BorderSide(color: PlanFlowColors.tertiaryAccent),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       textStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
             fontWeight: FontWeight.w800,

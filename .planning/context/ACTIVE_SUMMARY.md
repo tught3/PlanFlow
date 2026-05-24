@@ -4,6 +4,11 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-24 Apricot Accent And Voice STT Exit Cleanup
+- Updated the third accent token to `#D08C60` and applied it to the Home empty-state `새 일정 음성으로 추가하기` button and the Voice Input `음성으로 다시 입력하기` button only.
+- Hardened `VoiceInputScreen` disposal so active STT is cancelled on route exit, stale partial/final callbacks are ignored, and re-entering voice input starts a fresh listen session after manual edit or back navigation.
+- Verification passed: focused voice input, home screen, and settings screen tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build. No ADB device was connected for install/run verification.
+
 ## 2026-05-24 Third Accent Color Exploration
 - Added a new muted third accent color (`PlanFlowColors.tertiaryAccent`) and applied it to the Settings `중요 알림 소리 바꾸기` button so the UI has a non-blue, non-purple primary option.
 - The current palette now keeps the existing navy/blue and lavender accents, while introducing a calmer sage/earth tone for a third button family.
