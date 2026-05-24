@@ -482,7 +482,10 @@ class BriefingSchedulerService {
         continue;
       }
 
-      var requiredMinutes = 45;
+      final previousHasLocation = _hasUsableLocation(previous);
+      final currentHasLocation = _hasUsableLocation(current);
+      final hasMovementContext = previousHasLocation && currentHasLocation;
+      var requiredMinutes = hasMovementContext ? 45 : 15;
       final previousLat = previous.locationLat;
       final previousLng = previous.locationLng;
       final currentLat = current.locationLat;
@@ -506,10 +509,18 @@ class BriefingSchedulerService {
       }
 
       if (gapMinutes < requiredMinutes) {
-        return '${previous.title} 다음 ${current.title}까지 시간이 빠듯하니 이동을 서둘러 주세요.';
+        if (hasMovementContext) {
+          return '${previous.title} 다음 ${current.title}까지 시간이 빠듯하니 이동을 서둘러 주세요.';
+        }
+        return '${previous.title} 다음 ${current.title}까지 일정 간격이 짧으니 앞 일정 마무리 시간을 확인해 주세요.';
       }
     }
     return null;
+  }
+
+  bool _hasUsableLocation(EventModel event) {
+    final location = event.location?.trim();
+    return location != null && location.isNotEmpty;
   }
 
   Future<void> _deliverBriefing(

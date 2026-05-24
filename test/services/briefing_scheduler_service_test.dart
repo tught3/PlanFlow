@@ -221,6 +221,51 @@ void main() {
     );
     expect(tts.lastText, isNot(contains('중요.')));
   });
+
+  test('local briefing does not mention movement when events have no location',
+      () async {
+    AppEnv.markSupabaseInitialized();
+    final tts = _FakeTtsService();
+    final service = BriefingSchedulerService(
+      alarmService: _FakeAlarmService(),
+      gptService: _FailingGptService(),
+      ttsService: tts,
+      notificationService: _FakeNotificationService(),
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '방명록 미리 준비',
+            startAt: DateTime.utc(2026, 5, 12, 0),
+          ),
+          EventModel(
+            id: 'event-2',
+            userId: 'user-1',
+            title: '고객 전화',
+            startAt: DateTime.utc(2026, 5, 12, 0, 10),
+          ),
+        ],
+      ),
+      settingsRepository: _FakeSettingsRepository(
+        settings: UserSettingsModel.defaults(userId: 'user-1'),
+      ),
+      now: () => DateTime(2026, 5, 12, 7),
+    );
+
+    final result = await service.executeBriefing(
+      isMorning: true,
+      userId: 'user-1',
+    );
+
+    expect(result.usedFallback, isTrue);
+    expect(
+      tts.lastText,
+      contains('일정 간격이 짧으니 앞 일정 마무리 시간을 확인해 주세요.'),
+    );
+    expect(tts.lastText, isNot(contains('이동을 서둘러')));
+    expect(tts.lastText, isNot(contains('출발')));
+  });
 }
 
 class _FakeAlarmService extends AlarmService {

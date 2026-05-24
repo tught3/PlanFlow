@@ -4,6 +4,11 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-25 Briefing Movement Context Guard
+- Local briefing fallback no longer says `이동을 서둘러` for schedules that have no usable location; very tight no-location schedules now use a non-movement wording about checking the previous schedule's wrap-up time.
+- GPT briefing prompts now explicitly say to include place/movement guidance only when event data contains a place and never invent location, departure, or movement advice without evidence.
+- Verification passed: focused briefing scheduler tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and update install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-24 Early Bird Storage Path Alignment
 - Aligned PRO early-bird storage around `planflow.early_bird_emails` while keeping `public.submit_early_bird_email` as the app-facing RPC gateway.
 - Applied the production DB patch: legacy `public.early_bird_emails` and `public.product_early_birds` PlanFlow rows were preserved/merged, direct anon/authenticated grants on `planflow.early_bird_emails` were revoked, and backup table lists now include both current and legacy early-bird tables.
