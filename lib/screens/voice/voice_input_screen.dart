@@ -1246,15 +1246,26 @@ class _VoicePrimaryButton extends StatelessWidget {
         : hasText
             ? '음성으로 다시 입력하기'
             : l10n.voicePrimaryStart;
-    final voiceButton = FilledButton.icon(
-      key: const ValueKey('voice-primary-button'),
-      onPressed: isListening ? onTapFinish : onTapStart,
-      icon: Icon(isListening ? Icons.check : Icons.mic),
-      label: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(voiceLabel),
-      ),
-    );
+    final voiceButton = hasText && !isListening
+        ? FilledButton.tonalIcon(
+            key: const ValueKey('voice-primary-button'),
+            onPressed: onTapStart,
+            icon: const Icon(Icons.mic),
+            label: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(voiceLabel),
+            ),
+            style: _briefingButtonStyle(context),
+          )
+        : FilledButton.icon(
+            key: const ValueKey('voice-primary-button'),
+            onPressed: isListening ? onTapFinish : onTapStart,
+            icon: Icon(isListening ? Icons.check : Icons.mic),
+            label: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(voiceLabel),
+            ),
+          );
 
     if (isListening) {
       return SizedBox(width: double.infinity, child: voiceButton);
@@ -1265,7 +1276,7 @@ class _VoicePrimaryButton extends StatelessWidget {
         Expanded(child: voiceButton),
         const SizedBox(width: 8),
         Expanded(
-          child: OutlinedButton.icon(
+          child: FilledButton.icon(
             key: const ValueKey('voice-input-confirm-current-text-button'),
             onPressed: hasText ? onManualSubmit : null,
             icon: const Icon(Icons.check_circle_outline),
@@ -1276,6 +1287,20 @@ class _VoicePrimaryButton extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  ButtonStyle _briefingButtonStyle(BuildContext context) {
+    return FilledButton.styleFrom(
+      backgroundColor: const Color(0xFF5D61A8),
+      foregroundColor: Colors.white,
+      disabledBackgroundColor: const Color(0xFFB9BDE5),
+      disabledForegroundColor: Colors.white.withValues(alpha: 0.88),
+      side: const BorderSide(color: Color(0xFF8D91CF)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      textStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
     );
   }
 }

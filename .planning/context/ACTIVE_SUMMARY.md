@@ -1189,3 +1189,9 @@
 - Added the same floating voice management button to the Settings tab so Home, Calendar, and Settings all expose the voice schedule management entry point.
 - Swapped the Home empty-state voice-add button to the previous FAB accent color, and removed the highlighted background/border from the Voice Input `현재 내용으로 입력` outlined button.
 - Verification passed: focused Settings and Voice Input screen tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, launcher start, and PID check.
+
+## 2026-05-24 Critical Alarm Safe Channel And Button Polish
+- Moved important alarms to a new safe Android channel `critical_alarms_v4_safe` that uses the system notification sound and strong vibration instead of depending on the previous raw alarm sound/full-screen-heavy channel path.
+- Explicitly creates the normal and important notification channels during notification initialization, so Android channel state is visible immediately after app launch.
+- Adjusted Voice Input action styling: `음성으로 다시 입력하기` now uses the briefing-style purple button, `현재 내용으로 입력` uses the default filled button, and the Home empty-state voice-add button uses the calmer `primaryMid` blue.
+- Verification passed: focused notification and voice-input tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, launcher start/PID check, and `dumpsys notification` confirmed `critical_alarms_v4_safe` with importance 5 plus default notification sound and strong vibration.

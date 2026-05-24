@@ -407,7 +407,7 @@ void main() {
     final button = tester.widgetList(
       find.byKey(const ValueKey('voice-input-confirm-current-text-button')),
     );
-    final confirmButton = button.first as OutlinedButton;
+    final confirmButton = button.first as FilledButton;
     expect(confirmButton.onPressed, isNull);
 
     expect(

@@ -43,14 +43,11 @@ class NotificationService {
   static const int _maxSmartPreparationAlarmsPerEvent = 20;
 
   @visibleForTesting
-  static const String criticalAlarmChannelId = 'critical_alarms_v3_loud';
-
-  @visibleForTesting
-  static const String criticalAlarmSoundResource = 'planflow_critical_alarm';
+  static const String criticalAlarmChannelId = 'critical_alarms_v4_safe';
 
   static const String _criticalAlarmChannelName = '중요 일정 알람';
   static const String _criticalAlarmChannelDescription =
-      '중요 일정 알람. 일반 일정 알림과 다른 전용 알림음으로 울립니다. Android 알림/정확한 알람/전체 화면 알림 권한이 꺼져 있으면 강한 알림과 잠금화면/겉화면 표시가 제한될 수 있습니다.';
+      '중요 일정 알람. 일반 알림보다 강하게 표시하되 Android 기본 알림음 경로를 사용해 안정적으로 울립니다.';
   static const Color _criticalAlarmColor = Color(0xFFD32F2F);
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
@@ -458,9 +455,46 @@ class NotificationService {
         }
       },
     );
+    await _ensureAndroidNotificationChannels();
     await _runPermissionRequestBestEffort(
       'initial notification permission',
       _requestNotificationPermissionIfNeeded,
+    );
+  }
+
+  Future<void> _ensureAndroidNotificationChannels() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) {
+      return;
+    }
+
+    await android.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _eventReminderChannelId,
+        _eventReminderChannelName,
+        description: _eventReminderChannelDescription,
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      ),
+    );
+    await android.createNotificationChannel(
+      AndroidNotificationChannel(
+        criticalAlarmChannelId,
+        _criticalAlarmChannelName,
+        description: _criticalAlarmChannelDescription,
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList(
+          <int>[0, 1200, 250, 1200, 250, 1600],
+        ),
+      ),
     );
   }
 
@@ -609,11 +643,7 @@ class NotificationService {
         category: AndroidNotificationCategory.alarm,
         fullScreenIntent: fullScreenIntent,
         channelAction: AndroidNotificationChannelAction.update,
-        audioAttributesUsage: AudioAttributesUsage.alarm,
         playSound: true,
-        sound: RawResourceAndroidNotificationSound(
-          criticalAlarmSoundResource,
-        ),
         enableVibration: true,
         autoCancel: false,
         color: _criticalAlarmColor,

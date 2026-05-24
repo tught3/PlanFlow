@@ -125,14 +125,10 @@ void main() {
       );
     });
 
-    test('uses a distinct channel and raw sound for critical alarms', () {
+    test('uses the safe critical alarm channel', () {
       expect(
         NotificationService.criticalAlarmChannelId,
-        'critical_alarms_v3_loud',
-      );
-      expect(
-        NotificationService.criticalAlarmSoundResource,
-        'planflow_critical_alarm',
+        'critical_alarms_v4_safe',
       );
     });
   });
