@@ -1031,6 +1031,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  ButtonStyle _settingsSkyButtonStyle() {
+    return FilledButton.styleFrom(
+      backgroundColor: PlanFlowColors.primaryMid,
+      foregroundColor: Colors.white,
+    );
+  }
+
+  ButtonStyle _settingsCobaltButtonStyle() {
+    return FilledButton.styleFrom(
+      backgroundColor: PlanFlowColors.tertiaryAccent,
+      foregroundColor: Colors.white,
+    );
+  }
+
   Future<_NaverCalDavImportRange?> _showNaverCalDavMoreRangeDialog() {
     Widget buildRangeButton({
       required String label,
@@ -2111,7 +2125,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: const Icon(Icons.notifications_active_outlined),
               label: const Text('중요 알림 소리 바꾸기'),
               style: FilledButton.styleFrom(
-                backgroundColor: PlanFlowColors.primaryMid,
+                backgroundColor: PlanFlowColors.tertiaryAccent,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -2436,6 +2450,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       _isDisconnectingGoogleCalendar
                                   ? null
                                   : _syncGoogleCalendar,
+                              style: _settingsSkyButtonStyle(),
                               icon: const Icon(Icons.sync),
                               label: Text(_googleCalendarActionLabel()),
                             ),
@@ -2502,6 +2517,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                               _isDisconnectingNaverCalendar
                                           ? null
                                           : _syncOrReconnectNaverCalendar,
+                                      style: _settingsSkyButtonStyle(),
                                       icon: const Icon(Icons.sync),
                                       label: Text(
                                         '네이버 일정 동기화',
@@ -2564,6 +2580,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       _isDisconnectingDeviceCalendar
                                   ? null
                                   : _importDeviceNaverCalendar,
+                              style: _settingsSkyButtonStyle(),
                               icon: const Icon(Icons.phone_android_outlined),
                               label: Text(
                                 '휴대폰 내부 캘린더 일정 가져오기',
@@ -2598,8 +2615,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         children: [
                           Expanded(
                             child: FilledButton.icon(
+                              key: const ValueKey(
+                                'settings-create-backup-button',
+                              ),
                               onPressed:
                                   _isBackupActionRunning ? null : _createBackup,
+                              style: _settingsSkyButtonStyle(),
                               icon: _isBackupActionRunning
                                   ? const SizedBox.square(
                                       dimension: 18,
@@ -2613,10 +2634,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: OutlinedButton.icon(
+                            child: FilledButton.icon(
+                              key: const ValueKey(
+                                'settings-restore-backup-button',
+                              ),
                               onPressed: _isBackupActionRunning
                                   ? null
                                   : _showBackupRestoreDialog,
+                              style: _settingsCobaltButtonStyle(),
                               icon: const Icon(Icons.restore_outlined),
                               label: const Text('복원'),
                             ),
@@ -2964,12 +2989,13 @@ class _AccountSection extends StatelessWidget {
                 width: double.infinity,
                 child: signedIn
                     ? FilledButton(
+                        key: const ValueKey('settings-logout-button'),
                         onPressed: () async {
                           await authService?.signOut();
                           onSignedOut();
                         },
                         style: FilledButton.styleFrom(
-                          backgroundColor: PlanFlowColors.primaryMid,
+                          backgroundColor: PlanFlowColors.tertiaryAccent,
                           foregroundColor: Colors.white,
                           minimumSize: const Size.fromHeight(48),
                         ),

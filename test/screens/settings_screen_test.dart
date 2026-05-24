@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/env.dart';
+import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
@@ -10,6 +11,7 @@ import 'package:planflow/data/repositories/settings_repository.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/settings/settings_screen.dart';
 import 'package:planflow/services/auth_service.dart';
+import 'package:planflow/services/backup_service.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
@@ -724,6 +726,87 @@ void main() {
     expect(find.text('알림 권한'), findsNothing);
     expect(find.text('알림 권한 요청/재확인'), findsNothing);
   });
+
+  testWidgets('SettingsScreen uses requested button colors', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => authProvider.setUser(null));
+
+    AppEnv.markSupabaseInitialized();
+    authProvider.setUser('user-1');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+            ),
+          ),
+          deviceCalendarService: _FakeDeviceCalendarService(
+            result: const DeviceCalendarImportResult(
+              status: DeviceCalendarImportStatus.imported,
+              message: '가져오기 완료',
+              importedCount: 1,
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          backupService: _FakeBackupService(),
+          naverCalDavService:
+              _FakeNaverCalDavService(initialHasCredentials: true),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    Future<void> expectButtonColor(
+      ValueKey<String> key,
+      Color expected,
+    ) async {
+      final finder = find.byKey(key);
+      await _scrollUntilHitTestable(tester, finder, maxScrolls: 80);
+      final button = tester.widget<FilledButton>(finder);
+      expect(button.style?.backgroundColor?.resolve(<WidgetState>{}), expected);
+    }
+
+    await expectButtonColor(
+      const ValueKey('settings-logout-button'),
+      PlanFlowColors.tertiaryAccent,
+    );
+    await expectButtonColor(
+      const ValueKey('settings-critical-alarm-sound-button'),
+      PlanFlowColors.tertiaryAccent,
+    );
+    await expectButtonColor(
+      const ValueKey('settings-google-calendar-sync-button'),
+      PlanFlowColors.primaryMid,
+    );
+    await expectButtonColor(
+      const ValueKey('settings-naver-calendar-sync-button'),
+      PlanFlowColors.primaryMid,
+    );
+    await expectButtonColor(
+      const ValueKey('settings-device-calendar-import-button'),
+      PlanFlowColors.primaryMid,
+    );
+    await expectButtonColor(
+      const ValueKey('settings-feedback-report-button'),
+      PlanFlowColors.primaryMid,
+    );
+    await expectButtonColor(
+      const ValueKey('settings-create-backup-button'),
+      PlanFlowColors.primaryMid,
+    );
+    await expectButtonColor(
+      const ValueKey('settings-restore-backup-button'),
+      PlanFlowColors.tertiaryAccent,
+    );
+  });
 }
 
 Future<void> _scrollUntilHitTestable(
@@ -860,6 +943,26 @@ class _FakeDeviceCalendarService extends DeviceCalendarService {
     importCallCount += 1;
     return result;
   }
+}
+
+class _FakeBackupService extends BackupService {
+  _FakeBackupService();
+
+  @override
+  Future<List<BackupSnapshot>> listBackups() async => const <BackupSnapshot>[];
+
+  @override
+  Future<BackupSnapshot> createBackup({String? label}) async {
+    return BackupSnapshot(
+      id: 'backup-1',
+      label: label ?? '수동 백업',
+      createdAt: DateTime(2026, 5, 24),
+      itemCounts: const <String, int>{},
+    );
+  }
+
+  @override
+  Future<void> restoreBackup(String backupId) async {}
 }
 
 class _FakeDeviceCalendarGateway implements DeviceCalendarGateway {

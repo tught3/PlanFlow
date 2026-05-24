@@ -1252,26 +1252,16 @@ class _VoicePrimaryButton extends StatelessWidget {
         : hasText
             ? '음성으로 다시 입력하기'
             : l10n.voicePrimaryStart;
-    final voiceButton = hasText && !isListening
-        ? FilledButton.tonalIcon(
-            key: const ValueKey('voice-primary-button'),
-            onPressed: onTapStart,
-            icon: const Icon(Icons.mic),
-            label: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(voiceLabel),
-            ),
-            style: _tertiaryAccentButtonStyle(context),
-          )
-        : FilledButton.icon(
-            key: const ValueKey('voice-primary-button'),
-            onPressed: isListening ? onTapFinish : onTapStart,
-            icon: Icon(isListening ? Icons.check : Icons.mic),
-            label: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(voiceLabel),
-            ),
-          );
+    final voiceButton = FilledButton.icon(
+      key: const ValueKey('voice-primary-button'),
+      onPressed: isListening ? onTapFinish : onTapStart,
+      icon: Icon(isListening ? Icons.check : Icons.mic),
+      label: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(voiceLabel),
+      ),
+      style: isListening ? null : _tertiaryAccentButtonStyle(),
+    );
 
     if (isListening) {
       return SizedBox(width: double.infinity, child: voiceButton);
@@ -1296,7 +1286,7 @@ class _VoicePrimaryButton extends StatelessWidget {
     );
   }
 
-  ButtonStyle _tertiaryAccentButtonStyle(BuildContext context) {
+  ButtonStyle _tertiaryAccentButtonStyle() {
     return FilledButton.styleFrom(
       backgroundColor: PlanFlowColors.tertiaryAccent,
       foregroundColor: Colors.white,
@@ -1305,9 +1295,7 @@ class _VoicePrimaryButton extends StatelessWidget {
       disabledForegroundColor: Colors.white.withValues(alpha: 0.88),
       side: const BorderSide(color: PlanFlowColors.tertiaryAccent),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      textStyle: Theme.of(context).textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
+      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
     );
   }
 }

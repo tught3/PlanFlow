@@ -593,6 +593,63 @@ void main() {
     );
   });
 
+  testWidgets('텍스트가 없어도 음성 시작 버튼은 tertiary accent 색상을 쓴다', (tester) async {
+    final fakeStt = _FakeSttService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VoiceInputScreen(
+          autoStartOverride: false,
+          sttService: fakeStt,
+        ),
+      ),
+    );
+
+    final button = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('voice-primary-button')),
+    );
+    expect(
+      button.style?.backgroundColor?.resolve(<WidgetState>{}),
+      PlanFlowColors.tertiaryAccent,
+    );
+  });
+
+  testWidgets('직접 입력을 반복해도 TextStyle 보간/GlobalKey 오류가 없다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final capturedErrors = <FlutterErrorDetails>[];
+    final previousOnError = FlutterError.onError;
+    FlutterError.onError = capturedErrors.add;
+    addTearDown(() {
+      FlutterError.onError = previousOnError;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VoiceInputScreen(
+          autoStartOverride: false,
+          sttService: fakeStt,
+        ),
+      ),
+    );
+
+    final field = find.byType(TextField);
+    for (var index = 0; index < 4; index += 1) {
+      await tester.enterText(field, '테스트 $index');
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.enterText(field, '');
+      await tester.pump(const Duration(milliseconds: 120));
+    }
+    await tester.pumpAndSettle();
+
+    final relevantErrors = capturedErrors.where((details) {
+      final text = details.exceptionAsString();
+      return text.contains('Failed to interpolate TextStyle') ||
+          text.contains('GlobalKey') ||
+          text.contains('Multiple widgets used the same GlobalKey');
+    });
+    expect(relevantErrors, isEmpty);
+  });
+
   testWidgets('제출 후 이어 말하기는 이전 조회 문장에 새 명령을 붙이지 않는다', (tester) async {
     final fakeStt = _FakeSttService();
     final router = GoRouter(

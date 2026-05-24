@@ -12,18 +12,6 @@ create table if not exists planflow.early_bird_emails (
 create index if not exists planflow_early_bird_emails_created_idx
   on planflow.early_bird_emails (created_at desc);
 
-create table if not exists public.early_bird_emails (
-  id uuid primary key default gen_random_uuid(),
-  email text not null unique,
-  product text not null default 'planflow',
-  source text not null default 'app',
-  created_at timestamptz not null default now()
-);
-
-alter table public.early_bird_emails
-  add column if not exists product text not null default 'planflow',
-  add column if not exists source text not null default 'app';
-
 do $$
 begin
   if not exists (
@@ -43,39 +31,14 @@ begin
 end;
 $$;
 
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'early_bird_emails_email_format'
-      and conrelid = 'public.early_bird_emails'::regclass
-  ) then
-    alter table public.early_bird_emails
-      add constraint early_bird_emails_email_format
-      check (
-        char_length(email) <= 254
-        and email = lower(trim(email))
-        and email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
-      );
-  end if;
-end;
-$$;
-
 alter table planflow.early_bird_emails enable row level security;
-alter table public.early_bird_emails enable row level security;
 
 revoke all on schema planflow from anon;
 revoke all on schema planflow from authenticated;
 revoke all on table planflow.early_bird_emails from anon;
 revoke all on table planflow.early_bird_emails from authenticated;
 
-insert into planflow.early_bird_emails (email, created_at)
-select lower(trim(email)), min(created_at)
-from public.early_bird_emails
-where email is not null
-group by lower(trim(email))
-on conflict (email) do nothing;
+drop table if exists public.early_bird_emails;
 
 insert into planflow.early_bird_emails (email, created_at)
 select lower(trim(email)), min(created_at)
@@ -128,7 +91,6 @@ as $$
     'public.user_settings',
     'public.calendar_connections',
     'planflow.early_bird_emails',
-    'public.early_bird_emails',
     'public.user_backups',
     'public.feedback_reports',
     'public.admin_roles',
@@ -169,7 +131,6 @@ declare
     'public.user_settings',
     'public.events',
     'planflow.early_bird_emails',
-    'public.early_bird_emails',
     'public.admin_roles',
     'public.user_behavior_logs',
     'public.users'
@@ -179,7 +140,6 @@ declare
     'public.user_behavior_logs',
     'public.admin_roles',
     'planflow.early_bird_emails',
-    'public.early_bird_emails',
     'public.events',
     'public.user_settings',
     'public.calendar_connections',

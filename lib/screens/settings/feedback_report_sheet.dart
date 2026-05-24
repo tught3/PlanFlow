@@ -347,6 +347,10 @@ class FeedbackReportSection extends StatelessWidget {
             FilledButton.icon(
               key: const ValueKey('settings-feedback-report-button'),
               onPressed: onPressed,
+              style: FilledButton.styleFrom(
+                backgroundColor: PlanFlowColors.primaryMid,
+                foregroundColor: Colors.white,
+              ),
               icon: const Icon(Icons.feedback_outlined),
               label: const Text('문제 신고하기'),
             ),

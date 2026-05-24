@@ -1234,3 +1234,9 @@
 - Added a one-time per-user/per-channel future critical alarm migration so existing upcoming critical events are rescheduled on the current `critical_alarms_v5_distinct` channel.
 - Settings now exposes a direct `중요 알림 소리 바꾸기` button that opens the exact Android notification channel settings instead of relying on notification long-press behavior.
 - Verification passed: focused critical alarm migration, notification, confirm save-time location, voice action, and event edit tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; update install and launch on `192.168.0.102:5555`; `dumpsys notification` confirmed the active critical channel.
+
+## 2026-05-24 Voice Input Cobalt Accent And Early-Bird Legacy Removal
+- Set the third accent color to cobalt blue `#1A4FD6`, applied it to the Home empty-state voice CTA and all Voice Input primary restart/start states, and changed requested Settings actions to either `primaryMid` or cobalt.
+- Stabilized the Voice Input primary button so text entry/deletion no longer swaps button classes or interpolates incompatible text styles during transcript changes.
+- Removed legacy `public.early_bird_emails` from the production DB and local schema/backup SQL, while preserving `planflow.early_bird_emails` and `public.product_early_birds`.
+- Verification passed: focused voice/home/settings tests, Supabase table/function checks, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, launcher start, focused-app check, and PID check.

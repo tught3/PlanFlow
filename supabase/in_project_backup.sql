@@ -51,7 +51,6 @@ as $$
     'public.user_settings',
     'public.calendar_connections',
     'planflow.early_bird_emails',
-    'public.early_bird_emails',
     'public.user_backups',
     'public.feedback_reports',
     'public.admin_roles',
@@ -215,7 +214,6 @@ declare
     'public.user_settings',
     'public.events',
     'planflow.early_bird_emails',
-    'public.early_bird_emails',
     'public.admin_roles',
     'public.user_behavior_logs',
     'public.users'
@@ -225,7 +223,6 @@ declare
     'public.user_behavior_logs',
     'public.admin_roles',
     'planflow.early_bird_emails',
-    'public.early_bird_emails',
     'public.events',
     'public.user_settings',
     'public.calendar_connections',
