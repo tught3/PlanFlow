@@ -4,6 +4,11 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-24 Third Accent Color Exploration
+- Added a new muted third accent color (`PlanFlowColors.tertiaryAccent`) and applied it to the Settings `중요 알림 소리 바꾸기` button so the UI has a non-blue, non-purple primary option.
+- The current palette now keeps the existing navy/blue and lavender accents, while introducing a calmer sage/earth tone for a third button family.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/settings_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, and `dart format lib/core/theme.dart lib/screens/settings/settings_screen.dart`.
+
 ## 2026-05-24 Settings Tab Runtime Status Cleanup
 - Removed the visible briefing reservation status card and smart departure alarm status card from Settings, while keeping the underlying briefing and alarm features intact.
 - Switched the `중요 알림 소리 바꾸기` control to a filled primary-colored button to match the Morning Briefing accent style.

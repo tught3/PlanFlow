@@ -2111,7 +2111,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: const Icon(Icons.notifications_active_outlined),
               label: const Text('중요 알림 소리 바꾸기'),
               style: FilledButton.styleFrom(
-                backgroundColor: PlanFlowColors.primaryMid,
+                backgroundColor: PlanFlowColors.tertiaryAccent,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
