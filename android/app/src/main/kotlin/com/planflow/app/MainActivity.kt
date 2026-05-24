@@ -55,6 +55,10 @@ class MainActivity : FlutterActivity() {
                     "openNotificationSettings" -> {
                         result.success(openNotificationSettings())
                     }
+                    "openNotificationChannelSettings" -> {
+                        val channelId = call.argument<String>("channelId")
+                        result.success(openNotificationChannelSettings(channelId))
+                    }
                     "canUseFullScreenIntent" -> {
                         result.success(canUseFullScreenIntent())
                     }
@@ -179,6 +183,23 @@ class MainActivity : FlutterActivity() {
             } catch (_: Exception) {
                 false
             }
+        }
+    }
+
+    private fun openNotificationChannelSettings(channelId: String?): Boolean {
+        if (channelId.isNullOrBlank() || android.os.Build.VERSION.SDK_INT < 26) {
+            return openNotificationSettings()
+        }
+        return try {
+            val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (_: Exception) {
+            openNotificationSettings()
         }
     }
 

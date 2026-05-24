@@ -1,9 +1,22 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/services/notification_service.dart';
 
 void main() {
   group('NotificationService', () {
+    TestWidgetsFlutterBinding.ensureInitialized();
+
+    tearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('planflow/android_settings'),
+        null,
+      );
+    });
+
     test('uses exact scheduling when exact alarm permission is available', () {
       final mode = NotificationService.reminderScheduleModeForStatus(
         const NotificationPermissionStatus(
@@ -135,6 +148,32 @@ void main() {
       expect(
         NotificationService.criticalAlarmSoundResource,
         'planflow_critical_alarm',
+      );
+    });
+
+    test('opens the exact critical alarm notification channel settings',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      MethodCall? capturedCall;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        const MethodChannel('planflow/android_settings'),
+        (call) async {
+          capturedCall = call;
+          return true;
+        },
+      );
+
+      final opened =
+          await NotificationService().openCriticalAlarmChannelSettings();
+
+      expect(opened, isTrue);
+      expect(capturedCall?.method, 'openNotificationChannelSettings');
+      expect(
+        capturedCall?.arguments,
+        <String, Object?>{
+          'channelId': NotificationService.criticalAlarmChannelId,
+        },
       );
     });
   });

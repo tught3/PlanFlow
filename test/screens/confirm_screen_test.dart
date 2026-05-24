@@ -237,6 +237,44 @@ void main() {
     expect(saved.locationLng, 127.9458);
   });
 
+  testWidgets('ConfirmScreen waits for location coordinates before saving',
+      (tester) async {
+    final repository = _FakeEventRepository();
+    final lookup = _DelayedSingleLocationLookupService();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '병원 방문',
+            location: '원주세브란스',
+            memo: null,
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: lookup,
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(repository.createdEvents, isEmpty);
+
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final saved = repository.createdEvents.single;
+    expect(saved.location, '원주세브란스');
+    expect(saved.locationLat, 37.3495);
+    expect(saved.locationLng, 127.9458);
+  });
+
   testWidgets(
       'ConfirmScreen keeps user-edited fields while hydrating and does not seed memo from raw text',
       (tester) async {
@@ -478,6 +516,14 @@ class _SingleLocationLookupService extends LocationLookupService {
         longitude: 127.9458,
       ),
     ];
+  }
+}
+
+class _DelayedSingleLocationLookupService extends _SingleLocationLookupService {
+  @override
+  Future<List<LocationLookupResult>> search(String query) async {
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    return super.search(query);
   }
 }
 

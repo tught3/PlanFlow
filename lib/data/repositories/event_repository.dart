@@ -930,7 +930,7 @@ EventModel _mergeExternalMetadata({
     suppliesChecked: incoming.suppliesChecked,
     participants: participants,
     targets: targets,
-    isCritical: incoming.isCritical,
+    isCritical: existing.isCritical || incoming.isCritical,
     recurrenceRule: incoming.recurrenceRule,
     isAllDay: incoming.isAllDay,
     isMultiDay: incoming.isMultiDay,

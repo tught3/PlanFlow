@@ -438,6 +438,35 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
   }
 
+  Future<void> _ensureLocationCoordinatesBeforeSave() async {
+    final query = _locationController.text.trim();
+    if (query.isEmpty || (_locationLat != null && _locationLng != null)) {
+      return;
+    }
+
+    try {
+      final results = await widget.locationLookupService.search(query);
+      if (!mounted ||
+          query != _locationController.text.trim() ||
+          results.isEmpty) {
+        return;
+      }
+
+      final selected = results.first;
+      _isApplyingHydration = true;
+      setState(() {
+        _locationLat = selected.latitude;
+        _locationLng = selected.longitude;
+        _resolvedLocationLabel = query;
+      });
+      _isApplyingHydration = false;
+    } catch (error) {
+      debugPrint('ConfirmScreen save-time location resolution failed: $error');
+    } finally {
+      _isApplyingHydration = false;
+    }
+  }
+
   void _maybeHydrateParsedSchedule() {
     if (widget.parsedSchedule['manual_text_confirmed'] == true &&
         widget.parsedSchedule['parse_pending'] != true) {
@@ -626,6 +655,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       if (mounted) {
         context.go(AppRoutes.home);
       }
+      return;
+    }
+
+    await _ensureLocationCoordinatesBeforeSave();
+    if (!mounted) {
       return;
     }
 

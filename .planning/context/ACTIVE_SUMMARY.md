@@ -1201,3 +1201,10 @@
 - Important alarms now include clearer body text telling the user to check the important schedule and that tapping the notification opens the schedule.
 - Local event, critical, and departure notifications now pass `event:` / `departure:` payloads so notification taps route to the relevant event detail screen.
 - Verification passed: focused notification, departure, and manual side-effect tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install and launch on `192.168.0.102:5555`, and `dumpsys notification` confirmed `critical_alarms_v5_distinct` with the raw PlanFlow sound resource.
+
+## 2026-05-24 Location Coordinate And Critical Alarm Persistence
+- Confirm, edit, and voice-action save paths now resolve missing location coordinates before writing the event row, so voice-entered location text is not saved as unresolved when lookup can find coordinates.
+- External calendar merge now preserves an existing PlanFlow `isCritical=true` value, preventing later sync imports from downgrading a user-marked important event.
+- Added a one-time per-user/per-channel future critical alarm migration so existing upcoming critical events are rescheduled on the current `critical_alarms_v5_distinct` channel.
+- Settings now exposes a direct `중요 알림 소리 바꾸기` button that opens the exact Android notification channel settings instead of relying on notification long-press behavior.
+- Verification passed: focused critical alarm migration, notification, confirm save-time location, voice action, and event edit tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; update install and launch on `192.168.0.102:5555`; `dumpsys notification` confirmed the active critical channel.

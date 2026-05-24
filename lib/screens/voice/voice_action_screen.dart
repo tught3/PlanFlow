@@ -1052,7 +1052,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
 
   /// 음성 명령으로 파악한 변경값을 편집화면 없이 바로 저장한다.
   Future<void> _applyAndSave(EventModel event) async {
-    final editedEvent = _eventWithRequestedVoiceChanges(event);
+    var editedEvent = _eventWithRequestedVoiceChanges(event);
+    if (_isLocationFieldAddition) {
+      editedEvent = (await _eventWithResolvedVoiceLocation(editedEvent)).event;
+    }
     final previousStartAt = event.startAt;
     setState(() => _isSaving = true);
     try {

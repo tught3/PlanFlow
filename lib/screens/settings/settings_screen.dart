@@ -410,6 +410,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _openCriticalAlarmSoundSettings() async {
+    final opened =
+        await _notificationService.openCriticalAlarmChannelSettings();
+    if (!mounted) {
+      return;
+    }
+    if (!opened) {
+      _showSnack('휴대폰 설정에서 PlanFlow의 중요 일정 알람 소리를 확인해 주세요.');
+    }
+  }
+
   Future<void> _loadNaverCalDavState() async {
     final hasCredentials = await _naverCalDavService.hasCredentials();
     if (!mounted) {
@@ -2226,6 +2237,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 6),
           Text(
             '일반 알림을 먼저 울리고, 잠시 뒤 중요 알림을 울려 소리·진동·잠금화면 차이를 확인합니다.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: const ValueKey('settings-critical-alarm-sound-button'),
+              onPressed: _openCriticalAlarmSoundSettings,
+              icon: const Icon(Icons.notifications_active_outlined),
+              label: const Text('중요 알림 소리 바꾸기'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: PlanFlowColors.primary,
+                side: const BorderSide(
+                  color: PlanFlowColors.primary,
+                  width: 1.2,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Android 알림 채널 설정에서 중요 일정 알람의 소리를 직접 듣고 바꿀 수 있어요.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: PlanFlowColors.textSecondary,
                   fontWeight: FontWeight.w600,

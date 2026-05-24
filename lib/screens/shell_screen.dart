@@ -13,6 +13,7 @@ import '../providers/auth_provider.dart';
 import '../services/app_permission_service.dart';
 import '../services/briefing_scheduler_service.dart';
 import '../services/calendar_auto_sync_service.dart';
+import '../services/critical_alarm_channel_migration_service.dart';
 import '../services/departure_alarm_service.dart';
 import '../services/external_calendar_sync_guide_service.dart';
 import '../l10n/app_l10n.dart';
@@ -78,6 +79,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   );
   final DepartureAlarmService _departureAlarmService =
       const DepartureAlarmService();
+  final CriticalAlarmChannelMigrationService _criticalAlarmMigrationService =
+      const CriticalAlarmChannelMigrationService();
   final BriefingSchedulerService _briefingSchedulerService =
       BriefingSchedulerService();
   bool _checkedPermissionOnboarding = false;
@@ -97,6 +100,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       unawaited(_calendarAutoSyncService.syncConnectedCalendars(
         reason: 'app_start',
       ));
+      unawaited(_migrateFutureCriticalAlarms());
       unawaited(_refreshDepartureAlarmsAndMonitor());
       unawaited(_ensureBriefingsScheduled(reason: 'app_start'));
     });
@@ -143,6 +147,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           reason: 'auth_changed',
           force: true,
         ));
+        unawaited(_migrateFutureCriticalAlarms());
         unawaited(_refreshDepartureAlarmsAndMonitor());
         unawaited(_ensureBriefingsScheduled(reason: 'auth_changed'));
       }
@@ -153,6 +158,16 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     final result = await _departureAlarmService.refreshUpcoming();
     await _departureAlarmService.scheduleNextMonitor(
       interval: result.nextMonitorInterval,
+    );
+  }
+
+  Future<void> _migrateFutureCriticalAlarms() async {
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    await _criticalAlarmMigrationService.migrateFutureCriticalAlarmsIfNeeded(
+      userId,
     );
   }
 

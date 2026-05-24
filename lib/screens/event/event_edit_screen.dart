@@ -137,6 +137,33 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
   }
 
+  Future<void> _ensureLocationCoordinatesBeforeSave() async {
+    final query = _locationController.text.trim();
+    if (query.isEmpty || (_locationLat != null && _locationLng != null)) {
+      return;
+    }
+
+    try {
+      final results = await LocationLookupService().search(query);
+      if (!mounted ||
+          query != _locationController.text.trim() ||
+          results.isEmpty) {
+        return;
+      }
+
+      final selected = results.first;
+      setState(() {
+        _locationLat = selected.latitude;
+        _locationLng = selected.longitude;
+        _resolvedLocationLabel = query;
+      });
+    } catch (error, stackTrace) {
+      debugPrint(
+          'EventEditScreen save-time location resolution failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
   Future<void> _ensureCriticalAlarmPermissions() async {
     try {
       final snapshot = await _permissionService.checkAll();
@@ -283,6 +310,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
         if (recurrenceScope == null) {
           return;
         }
+      }
+
+      await _ensureLocationCoordinatesBeforeSave();
+      if (!mounted) {
+        return;
       }
 
       final supplies = _suppliesController.text

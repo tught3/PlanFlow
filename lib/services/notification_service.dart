@@ -42,7 +42,6 @@ class NotificationService {
   static const String _eventReminderChannelDescription = '다가오는 일정 알림';
   static const int _maxSmartPreparationAlarmsPerEvent = 20;
 
-  @visibleForTesting
   static const String criticalAlarmChannelId = 'critical_alarms_v5_distinct';
 
   @visibleForTesting
@@ -419,6 +418,24 @@ class NotificationService {
       debugPrint('Open notification settings failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return false;
+    }
+  }
+
+  Future<bool> openCriticalAlarmChannelSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return false;
+    }
+
+    try {
+      return await _settingsChannel.invokeMethod<bool>(
+            'openNotificationChannelSettings',
+            <String, Object?>{'channelId': criticalAlarmChannelId},
+          ) ??
+          false;
+    } catch (error, stackTrace) {
+      debugPrint('Open critical alarm channel settings failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return openAppNotificationSettings();
     }
   }
 
