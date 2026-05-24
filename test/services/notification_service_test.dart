@@ -67,6 +67,32 @@ void main() {
       expect(mode, AndroidScheduleMode.exactAllowWhileIdle);
     });
 
+    test('critical alarms only attach full-screen intent when allowed', () {
+      expect(
+        NotificationService.shouldUseCriticalFullScreenIntent(
+          status: const NotificationPermissionStatus(
+            notificationsEnabled: true,
+            exactAlarmsEnabled: true,
+            fullScreenIntentStatus: PermissionCheckState.denied,
+          ),
+          requestResult: false,
+        ),
+        isFalse,
+      );
+
+      expect(
+        NotificationService.shouldUseCriticalFullScreenIntent(
+          status: const NotificationPermissionStatus(
+            notificationsEnabled: true,
+            exactAlarmsEnabled: true,
+            fullScreenIntentStatus: PermissionCheckState.granted,
+          ),
+          requestResult: null,
+        ),
+        isTrue,
+      );
+    });
+
     test('formats critical alarm title so it is visibly distinct', () {
       expect(
         NotificationService.criticalAlarmDisplayTitle('팀장 동행방문'),

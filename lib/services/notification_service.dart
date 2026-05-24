@@ -226,6 +226,10 @@ class NotificationService {
         details: _criticalAlarmDetails(
           title: alarmTitle,
           body: alarmBody,
+          fullScreenIntent: shouldUseCriticalFullScreenIntent(
+            status: status,
+            requestResult: fullScreenIntentAllowed,
+          ),
         ),
         androidScheduleMode: criticalAlarmScheduleModeForStatus(status),
       );
@@ -386,6 +390,15 @@ class NotificationService {
       return AndroidScheduleMode.inexactAllowWhileIdle;
     }
     return AndroidScheduleMode.exactAllowWhileIdle;
+  }
+
+  @visibleForTesting
+  static bool shouldUseCriticalFullScreenIntent({
+    required NotificationPermissionStatus status,
+    required bool? requestResult,
+  }) {
+    return requestResult == true ||
+        status.fullScreenIntentStatus == PermissionCheckState.granted;
   }
 
   Future<bool> openAppNotificationSettings() async {
@@ -579,6 +592,7 @@ class NotificationService {
   NotificationDetails _criticalAlarmDetails({
     required String title,
     required String body,
+    required bool fullScreenIntent,
   }) {
     return NotificationDetails(
       android: AndroidNotificationDetails(
@@ -593,7 +607,7 @@ class NotificationService {
           summaryText: '놓치면 안 되는 중요 알람',
         ),
         category: AndroidNotificationCategory.alarm,
-        fullScreenIntent: true,
+        fullScreenIntent: fullScreenIntent,
         channelAction: AndroidNotificationChannelAction.update,
         audioAttributesUsage: AudioAttributesUsage.alarm,
         playSound: true,

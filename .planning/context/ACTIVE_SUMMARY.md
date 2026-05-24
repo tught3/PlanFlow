@@ -1177,3 +1177,9 @@
 - Critical alarms now only block when app notification permission itself is disabled; if exact alarms are unavailable, they still schedule with `inexactAllowWhileIdle` and return a warning message about possible Android delay.
 - Added notification service regression tests for critical alarm exact/inexact schedule-mode selection.
 - Verification passed: focused notification service tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, launcher start, focused-window check, and PID check.
+
+## 2026-05-24 Critical Alarm Full-Screen Denial Fallback
+- Device evidence showed the critical alarm's scheduled receiver fired, but the notification did not post while `USE_FULL_SCREEN_INTENT` had a recent rejection on the 102 Samsung device.
+- Critical alarms now attach `fullScreenIntent` only when the Android permission check/request says it is actually allowed; otherwise the important notification still posts through the loud critical channel without the full-screen popup.
+- Added notification service regression coverage for the critical full-screen intent gating helper.
+- Verification passed: focused notification service tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, launcher start, and PID check.
