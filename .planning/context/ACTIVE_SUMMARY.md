@@ -4,6 +4,11 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-24 Remove Critical Alarm Difference Test
+- Removed the Settings test-only `일반/중요 알림 차이 테스트` button, explanatory text, and scheduling helper/state.
+- Kept the actual normal/critical notification scheduling APIs, `critical_alarms_v5_distinct` channel, future critical alarm migration, and `중요 알림 소리 바꾸기` channel-settings entry intact.
+- Verification passed: no remaining test-button references by `rg`, `scripts/flutter-local.ps1 test test/services/notification_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and update install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-23 Auth Persistence And Voice Date-Range Normalization
 - Auth bootstrap now waits briefly for restored Supabase auth state, then attempts a session refresh before resolving startup; transient refresh errors keep the restored user instead of dropping directly to the login screen.
 - Korean STT cleanup now removes unnatural repeated/overlapped tokens such as `경탁이 탁이한테`, `전화 전화해서`, and `확인 확인해줘` while preserving person names for targets/participants.
