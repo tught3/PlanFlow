@@ -39,7 +39,7 @@ returns text[]
 language sql
 stable
 security definer
-set search_path = public, backup, pg_temp
+set search_path = public, planflow, backup, pg_temp
 as $$
   select array[
     'public.users',
@@ -50,9 +50,13 @@ as $$
     'public.location_history',
     'public.user_settings',
     'public.calendar_connections',
+    'planflow.early_bird_emails',
     'public.early_bird_emails',
     'public.user_backups',
     'public.feedback_reports',
+    'public.admin_roles',
+    'public.contact_messages',
+    'public.product_early_birds',
     'public.user_behavior_logs'
   ];
 $$;
@@ -68,7 +72,7 @@ create or replace function backup.create_daily_snapshot(
 returns uuid
 language plpgsql
 security definer
-set search_path = public, backup, pg_temp
+set search_path = public, planflow, backup, pg_temp
 as $$
 declare
   table_name text;
@@ -191,7 +195,7 @@ create or replace function backup.restore_snapshot(
 returns void
 language plpgsql
 security definer
-set search_path = public, backup, pg_temp
+set search_path = public, planflow, backup, pg_temp
 as $$
 declare
   snapshot_payload jsonb;
@@ -204,23 +208,31 @@ declare
     'public.voice_logs',
     'public.location_history',
     'public.feedback_reports',
+    'public.contact_messages',
+    'public.product_early_birds',
     'public.calendar_connections',
     'public.user_backups',
     'public.user_settings',
     'public.events',
+    'planflow.early_bird_emails',
     'public.early_bird_emails',
+    'public.admin_roles',
     'public.user_behavior_logs',
     'public.users'
   ];
   insert_order text[] := array[
     'public.users',
     'public.user_behavior_logs',
+    'public.admin_roles',
+    'planflow.early_bird_emails',
     'public.early_bird_emails',
     'public.events',
     'public.user_settings',
     'public.calendar_connections',
     'public.user_backups',
     'public.feedback_reports',
+    'public.contact_messages',
+    'public.product_early_birds',
     'public.location_history',
     'public.voice_logs',
     'public.pre_actions',

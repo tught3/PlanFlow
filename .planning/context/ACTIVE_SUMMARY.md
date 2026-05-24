@@ -4,6 +4,12 @@
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12
 
+## 2026-05-24 Early Bird Storage Path Alignment
+- Aligned PRO early-bird storage around `planflow.early_bird_emails` while keeping `public.submit_early_bird_email` as the app-facing RPC gateway.
+- Applied the production DB patch: legacy `public.early_bird_emails` and `public.product_early_birds` PlanFlow rows were preserved/merged, direct anon/authenticated grants on `planflow.early_bird_emails` were revoked, and backup table lists now include both current and legacy early-bird tables.
+- Updated local schema, backup SQL, docs, and repository comments so future checks look at the correct product schema without changing NexusFlow/shared tables.
+- Verification passed: Supabase RPC/storage/grant/backup queries, focused early-bird repository and widget tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and update install/launch on `192.168.0.102:5555`.
+
 ## 2026-05-24 Apricot Accent And Voice STT Exit Cleanup
 - Updated the third accent token to `#D08C60` and applied it to the Home empty-state `새 일정 음성으로 추가하기` button and the Voice Input `음성으로 다시 입력하기` button only.
 - Hardened `VoiceInputScreen` disposal so active STT is cancelled on route exit, stale partial/final callbacks are ignored, and re-entering voice input starts a fresh listen session after manual edit or back navigation.

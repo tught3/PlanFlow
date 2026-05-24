@@ -318,6 +318,22 @@ create trigger calendar_connections_set_updated_at
   for each row execute function public.set_updated_at();
 
 -- 9. early_bird_emails
+-- PlanFlow app submissions are stored in the product schema. Keep the public
+-- RPC as the app-facing gateway so clients never insert into the table directly.
+create schema if not exists planflow;
+
+create table if not exists planflow.early_bird_emails (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists planflow_early_bird_emails_created_idx
+  on planflow.early_bird_emails (created_at desc);
+
+-- Legacy table retained for existing deployments and historical backups.
+-- New app submissions are written through public.submit_early_bird_email into
+-- planflow.early_bird_emails.
 create table if not exists public.early_bird_emails (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
@@ -389,6 +405,25 @@ begin
     alter table public.feedback_reports
       add constraint feedback_reports_product_check
       check (product in ('planflow', 'finflow', 'valueflow', 'nexusflow', 'general'));
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'early_bird_emails_email_format'
+      and conrelid = 'public.early_bird_emails'::regclass
+  ) then
+    alter table public.early_bird_emails
+      add constraint early_bird_emails_email_format
+      check (
+        char_length(email) <= 254
+        and email = lower(trim(email))
+        and email ~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+      );
   end if;
 end;
 $$;
@@ -468,9 +503,9 @@ begin
     select 1
     from pg_constraint
     where conname = 'early_bird_emails_email_format'
-      and conrelid = 'public.early_bird_emails'::regclass
+      and conrelid = 'planflow.early_bird_emails'::regclass
   ) then
-    alter table public.early_bird_emails
+    alter table planflow.early_bird_emails
       add constraint early_bird_emails_email_format
       check (
         char_length(email) <= 254
@@ -489,6 +524,7 @@ alter table public.voice_logs enable row level security;
 alter table public.location_history enable row level security;
 alter table public.user_settings enable row level security;
 alter table public.calendar_connections enable row level security;
+alter table planflow.early_bird_emails enable row level security;
 alter table public.early_bird_emails enable row level security;
 alter table public.user_backups enable row level security;
 alter table public.feedback_reports enable row level security;
@@ -498,6 +534,10 @@ alter table public.product_early_birds enable row level security;
 
 grant usage on schema public to anon;
 grant usage on schema public to authenticated;
+revoke all on schema planflow from anon;
+revoke all on schema planflow from authenticated;
+revoke all on table planflow.early_bird_emails from anon;
+revoke all on table planflow.early_bird_emails from authenticated;
 grant select, insert on table public.feedback_reports to authenticated;
 grant update (status, updated_at) on table public.feedback_reports to authenticated;
 grant select on table public.admin_roles to authenticated;
@@ -1393,7 +1433,7 @@ create or replace function public.submit_early_bird_email(input_email text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = planflow, public, pg_temp
 as $$
 declare
   normalized_email text := lower(trim(input_email));
@@ -1406,7 +1446,7 @@ begin
       using errcode = '22023';
   end if;
 
-  insert into public.early_bird_emails (email)
+  insert into planflow.early_bird_emails (email)
   values (normalized_email)
   on conflict (email) do nothing;
 end;
@@ -1472,7 +1512,7 @@ returns text[]
 language sql
 stable
 security definer
-set search_path = public, backup, pg_temp
+set search_path = public, planflow, backup, pg_temp
 as $$
   select array[
     'public.users',
@@ -1483,6 +1523,7 @@ as $$
     'public.location_history',
     'public.user_settings',
     'public.calendar_connections',
+    'planflow.early_bird_emails',
     'public.early_bird_emails',
     'public.user_backups',
     'public.feedback_reports',
@@ -1504,7 +1545,7 @@ create or replace function backup.create_daily_snapshot(
 returns uuid
 language plpgsql
 security definer
-set search_path = public, backup, pg_temp
+set search_path = public, planflow, backup, pg_temp
 as $$
 declare
   table_name text;
@@ -1627,7 +1668,7 @@ create or replace function backup.restore_snapshot(
 returns void
 language plpgsql
 security definer
-set search_path = public, backup, pg_temp
+set search_path = public, planflow, backup, pg_temp
 as $$
 declare
   snapshot_payload jsonb;
@@ -1646,6 +1687,7 @@ declare
     'public.user_backups',
     'public.user_settings',
     'public.events',
+    'planflow.early_bird_emails',
     'public.early_bird_emails',
     'public.admin_roles',
     'public.user_behavior_logs',
@@ -1655,6 +1697,7 @@ declare
     'public.users',
     'public.user_behavior_logs',
     'public.admin_roles',
+    'planflow.early_bird_emails',
     'public.early_bird_emails',
     'public.events',
     'public.user_settings',

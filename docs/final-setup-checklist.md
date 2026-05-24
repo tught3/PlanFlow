@@ -38,7 +38,7 @@
 - [x] 21. Google Maps/TMAP/Naver 기반 이동시간 버퍼와 보수적 fallback
 - [x] 22. Android Home Widget 네이티브 구성 및 Flutter service
 - [x] 23. `SettingsScreen`
-- [x] 24. `early_bird_emails` 기반 PRO 얼리버드 이메일 수집
+- [x] 24. `planflow.early_bird_emails` 기반 PRO 얼리버드 이메일 수집
 
 ### 1차 코드 보강 완료
 
@@ -78,9 +78,9 @@
 
 - [x] Supabase SQL Editor에서 `supabase/calendar_sync_patch.sql` 실행
 - [ ] Supabase SQL Editor에서 최신 `supabase/schema.sql` 전체 실행 또는 현재 DB가 동일 스키마인지 확인
-- [ ] Supabase에서 `users`, `events`, `pre_actions`, `reminders`, `voice_logs`, `location_history`, `user_settings`, `calendar_connections`, `early_bird_emails`, `user_backups` 테이블 확인
+- [ ] Supabase에서 `users`, `events`, `pre_actions`, `reminders`, `voice_logs`, `location_history`, `user_settings`, `calendar_connections`, `planflow.early_bird_emails`, `user_backups` 테이블 확인
 - [ ] Supabase에서 `submit_early_bird_email` RPC 함수 확인
-- [ ] `early_bird_emails`에 공개 insert/select policy가 없는지 확인
+- [ ] `planflow.early_bird_emails`에 공개 insert/select policy가 없는지 확인
 - [ ] Play Console 개발자 계정 인증 완료
 - [ ] Play Console 앱 생성 후 개인정보처리방침 URL 입력
 - [ ] Google Cloud에서 Calendar API, Maps SDK for Android, Directions/Distance Matrix/Geocoding API 활성화 확인

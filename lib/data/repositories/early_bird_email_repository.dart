@@ -61,7 +61,9 @@ class SupabaseEarlyBirdEmailGateway implements EarlyBirdEmailGateway {
   SupabaseEarlyBirdEmailGateway({required SupabaseClient client})
       : _client = client;
 
-  static const String tableName = 'early_bird_emails';
+  // App clients call the public RPC; the database stores rows in
+  // planflow.early_bird_emails to keep product data isolated by schema.
+  static const String tableName = 'planflow.early_bird_emails';
   static const String functionName = 'submit_early_bird_email';
 
   final SupabaseClient _client;
