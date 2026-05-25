@@ -1310,3 +1310,8 @@
 - Rebuilt debug APK, release APK, and release AAB; verified APK badging shows package `com.fluxstudio.planflow`, versionCode `3`, versionName `1.1.0`, targetSdk `36`, and the existing PlanFlow release SHA-256 certificate `b3f2289851b78881263ca939fc09181efc310152828dd700fab7c552bef9a231`.
 - Installed and launched the new package on `192.168.0.102:5555`; both old `com.planflow.app` and new `com.fluxstudio.planflow` coexist on the test device, so `planflow://auth-callback` currently opens Android's resolver until the old test package is removed.
 - Verification passed: focused update-service test, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, release APK build, release AAB build, update install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-25 Email Sign-Up Confirmation Callback Guard
+- Email sign-up confirmation callbacks such as `type=signup` are now handled separately from social OAuth callbacks, so expired/cancelled email verification links no longer show the misleading social consent failure message.
+- Successful email confirmation callbacks route through the existing session sync/home flow and log email sign-up, while email confirmation failures now show Korean email-verification-specific guidance.
+- Verification passed: focused OAuth callback handler tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install/launch/PID check on `192.168.0.102:5555`, and `planflow://auth-callback` resolves directly to `com.fluxstudio.planflow.MainActivity`.

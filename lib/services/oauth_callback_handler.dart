@@ -138,13 +138,18 @@ class OAuthCallbackHandler {
     latestUserMessage.value = null;
     final normalizedUri = _normalizeAuthCallbackUri(uri);
     final isPasswordRecovery = isPasswordRecoveryCallback(normalizedUri);
+    final isEmailConfirmation = isEmailConfirmationCallback(normalizedUri);
     debugPrint(
       'OAuth callback observed: host=${uri.host} '
       'queryKeys=${normalizedUri.queryParameters.keys.join(',')} '
-      'passwordRecovery=$isPasswordRecovery',
+      'passwordRecovery=$isPasswordRecovery '
+      'emailConfirmation=$isEmailConfirmation',
     );
 
-    final callbackErrorMessage = _messageForCallbackError(normalizedUri);
+    final callbackErrorMessage = _messageForCallbackError(
+      normalizedUri,
+      isEmailConfirmation: isEmailConfirmation,
+    );
     if (callbackErrorMessage != null) {
       debugPrint(
         'OAuth callback reported error: '
@@ -163,7 +168,12 @@ class OAuthCallbackHandler {
       debugPrint('OAuth callback already produced a Supabase session.');
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
-        await _logPendingLoginIfNeeded();
+        if (isEmailConfirmation) {
+          await AnalyticsService.logSignUp(method: 'email');
+          clearPendingCallback();
+        } else {
+          await _logPendingLoginIfNeeded();
+        }
       } else {
         clearPendingCallback();
       }
@@ -186,7 +196,12 @@ class OAuthCallbackHandler {
       }
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
-        await _logPendingLoginIfNeeded();
+        if (isEmailConfirmation) {
+          await AnalyticsService.logSignUp(method: 'email');
+          clearPendingCallback();
+        } else {
+          await _logPendingLoginIfNeeded();
+        }
       } else {
         clearPendingCallback();
       }
@@ -196,15 +211,22 @@ class OAuthCallbackHandler {
         'code=${error.code} status=${error.statusCode}',
       );
       clearPendingCallback();
-      latestUserMessage.value = _messageForAuthException(error);
+      latestUserMessage.value = isEmailConfirmation
+          ? _messageForEmailConfirmationException(error)
+          : _messageForAuthException(error);
     } catch (error) {
       debugPrint('OAuth callback exchange failed: $error');
       clearPendingCallback();
-      latestUserMessage.value = '로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      latestUserMessage.value = isEmailConfirmation
+          ? '이메일 인증을 확인하지 못했습니다. 인증 링크가 만료되었거나 이미 사용되었을 수 있습니다. 로그인으로 다시 시도해 주세요.'
+          : '로그인 세션을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
     }
   }
 
-  String? _messageForCallbackError(Uri uri) {
+  String? _messageForCallbackError(
+    Uri uri, {
+    bool isEmailConfirmation = false,
+  }) {
     final error = uri.queryParameters['error']?.toLowerCase().trim() ?? '';
     final errorCode =
         uri.queryParameters['error_code']?.toLowerCase().trim() ?? '';
@@ -216,6 +238,18 @@ class OAuthCallbackHandler {
     }
 
     final combined = '$error $errorCode $description';
+    if (isEmailConfirmation) {
+      if (combined.contains('otp_expired') ||
+          combined.contains('expired') ||
+          combined.contains('invalid')) {
+        return '이메일 인증 링크가 만료되었거나 이미 사용되었습니다. 로그인으로 다시 시도하거나 회원가입 메일을 다시 받아 주세요.';
+      }
+      if (combined.contains('access_denied')) {
+        return '이메일 인증이 완료되지 않았습니다. 메일의 인증 링크를 다시 열어 주세요.';
+      }
+      return '이메일 인증을 완료하지 못했습니다. 인증 링크를 다시 확인해 주세요.';
+    }
+
     if (combined.contains('access_denied')) {
       final method = _pendingMethod == 'kakao'
           ? '카카오'
@@ -239,6 +273,14 @@ class OAuthCallbackHandler {
     }
 
     return '소셜 인증을 완료하지 못했습니다. Supabase와 provider 콜백 설정을 확인해 주세요.';
+  }
+
+  String _messageForEmailConfirmationException(AuthException error) {
+    final message = error.message.toLowerCase();
+    if (message.contains('expired') || message.contains('invalid')) {
+      return '이메일 인증 링크가 만료되었거나 이미 사용되었습니다. 로그인으로 다시 시도하거나 회원가입 메일을 다시 받아 주세요.';
+    }
+    return '이메일 인증을 확인하지 못했습니다. 인증 링크를 다시 확인해 주세요.';
   }
 
   String _messageForAuthException(AuthException error) {
@@ -300,6 +342,27 @@ class OAuthCallbackHandler {
     final normalizedEvent = parameters['event']?.toLowerCase().trim();
     return normalizedEvent == 'password_recovery' ||
         normalizedEvent == 'passwordrecovery';
+  }
+
+  @visibleForTesting
+  static bool isEmailConfirmationCallback(Uri uri) {
+    final parameters = <String, String>{
+      ...uri.queryParameters,
+      if (uri.fragment.isNotEmpty)
+        ...Uri.splitQueryString(
+          uri.fragment.startsWith('#')
+              ? uri.fragment.substring(1)
+              : uri.fragment,
+        ),
+    };
+    final normalizedType = parameters['type']?.toLowerCase().trim();
+    final normalizedEvent = parameters['event']?.toLowerCase().trim();
+    return normalizedType == 'signup' ||
+        normalizedType == 'email' ||
+        normalizedType == 'email_change' ||
+        normalizedEvent == 'signup' ||
+        normalizedEvent == 'email_confirmed' ||
+        normalizedEvent == 'emailconfirmation';
   }
 
   Future<bool> _syncAndRouteHome() async {

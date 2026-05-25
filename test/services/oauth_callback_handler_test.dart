@@ -37,5 +37,37 @@ void main() {
         isFalse,
       );
     });
+
+    test('detects Supabase email sign-up confirmation callback type', () {
+      expect(
+        OAuthCallbackHandler.isEmailConfirmationCallback(
+          Uri.parse('planflow://auth-callback?type=signup'),
+        ),
+        isTrue,
+      );
+      expect(
+        OAuthCallbackHandler.isEmailConfirmationCallback(
+          Uri.parse(
+            'planflow://auth-callback#access_token=token&type=signup',
+          ),
+        ),
+        isTrue,
+      );
+    });
+
+    test('does not treat normal OAuth callbacks as email confirmation', () {
+      expect(
+        OAuthCallbackHandler.isEmailConfirmationCallback(
+          Uri.parse('planflow://auth-callback?code=sample'),
+        ),
+        isFalse,
+      );
+      expect(
+        OAuthCallbackHandler.isEmailConfirmationCallback(
+          Uri.parse('planflow://auth-callback?type=recovery'),
+        ),
+        isFalse,
+      );
+    });
   });
 }
