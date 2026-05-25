@@ -1,6 +1,6 @@
 param(
   [string]$ApkPath = "build/app/outputs/flutter-apk/app-debug.apk",
-  [string]$PackageName = "com.planflow.app"
+  [string]$PackageName = "com.fluxstudio.planflow"
 )
 
 $ErrorActionPreference = "Stop"

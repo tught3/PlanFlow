@@ -13,7 +13,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ExpectedCertificateSha256 = "b3f2289851b78881263ca939fc09181efc310152828dd700fab7c552bef9a231"
-$ExpectedPackageName = "com.planflow.app"
+$ExpectedPackageName = "com.fluxstudio.planflow"
 $SigningKeyFile = Join-Path $PSScriptRoot "..\android\key.properties"
 $SigningKeystoreFile = Join-Path $PSScriptRoot "..\android\app\planflow-release.jks"
 $DefaultArchiveCandidates = @(

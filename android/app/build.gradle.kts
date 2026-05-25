@@ -52,7 +52,7 @@ fun readDartDefineValue(key: String): String {
 }
 
 android {
-    namespace = "com.planflow.app"
+    namespace = "com.fluxstudio.planflow"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -67,7 +67,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.planflow.app"
+        applicationId = "com.fluxstudio.planflow"
         minSdk = maxOf(flutter.minSdkVersion, 23)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

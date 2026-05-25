@@ -16,7 +16,7 @@ void main() {
       updateFlow = FakeUpdateFlowGateway();
       metadataProvider = const FakeVersionMetadataProvider(
         buildNumber: 120,
-        packageName: 'com.planflow.app',
+        packageName: 'com.fluxstudio.planflow',
       );
       versionTracker = FakeUpdateVersionTracker();
       playStoreLauncher = FakePlayStoreLauncher();
@@ -143,7 +143,7 @@ void main() {
 
       await UpdateService.checkAndPrompt();
 
-      expect(playStoreLauncher.openedPackages, ['com.planflow.app']);
+      expect(playStoreLauncher.openedPackages, ['com.fluxstudio.planflow']);
       expect(postUpdateHook.runCount, 0);
     });
 
@@ -167,7 +167,7 @@ void main() {
 
       await UpdateService.checkAndPrompt();
 
-      expect(playStoreLauncher.openedPackages, ['com.planflow.app']);
+      expect(playStoreLauncher.openedPackages, ['com.fluxstudio.planflow']);
     });
 
     test('falls back to Play Store when forced update check throws', () async {
@@ -185,7 +185,7 @@ void main() {
 
       await UpdateService.checkAndPrompt();
 
-      expect(playStoreLauncher.openedPackages, ['com.planflow.app']);
+      expect(playStoreLauncher.openedPackages, ['com.fluxstudio.planflow']);
     });
 
     test('coalesces overlapping update checks', () async {

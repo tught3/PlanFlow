@@ -1304,3 +1304,9 @@
 - Smart departure payloads now mark fallback travel estimates in the notification title/body, while preserving the 30-minute fallback value.
 - Tightened STT cancel-command cleanup so `6월1일 취소` leaves `6월1일` instead of `6월1일 취`, without treating content such as `계약 취소 확인 전화` as a cancel command.
 - Verification passed: full `scripts/flutter-local.ps1 test --no-pub`, focused STT/voice-input tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, and PID check.
+
+## 2026-05-25 Android Package Rename To FluxStudio
+- Changed the Android package/application id from `com.planflow.app` to `com.fluxstudio.planflow`, including Gradle namespace, Kotlin package declarations, widget providers, update tests, install scripts, and release console docs.
+- Rebuilt debug APK, release APK, and release AAB; verified APK badging shows package `com.fluxstudio.planflow`, versionCode `3`, versionName `1.1.0`, targetSdk `36`, and the existing PlanFlow release SHA-256 certificate `b3f2289851b78881263ca939fc09181efc310152828dd700fab7c552bef9a231`.
+- Installed and launched the new package on `192.168.0.102:5555`; both old `com.planflow.app` and new `com.fluxstudio.planflow` coexist on the test device, so `planflow://auth-callback` currently opens Android's resolver until the old test package is removed.
+- Verification passed: focused update-service test, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, release APK build, release AAB build, update install/launch/PID check on `192.168.0.102:5555`.

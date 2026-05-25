@@ -9,7 +9,7 @@
 - 앱 또는 게임: `앱`
 - 무료/유료: `무료`
 - 카테고리 권장값: `생산성`
-- 패키지명: `com.planflow.app`
+- 패키지명: `com.fluxstudio.planflow`
 - 개인정보처리방침 URL: `https://tught3.github.io/PlanFlow/privacy-policy.html`
 - 현재 릴리즈 버전: `1.1.0`
 - 현재 내부 테스트 versionCode: `3`

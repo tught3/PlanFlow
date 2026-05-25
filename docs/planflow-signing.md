@@ -48,16 +48,16 @@ If the connected device still has the old Android Debug-signed PlanFlow installe
 .\scripts\planflow-release-bootstrap.ps1 -AllowOneTimeTransition
 ```
 
-Do not use `adb uninstall com.planflow.app`, `pm clear`, or any broad cleanup script as a normal update check. If Android reports `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, compare the installed app signature and the APK/AAB signature, then decide manually how to migrate the device.
+Do not use `adb uninstall com.fluxstudio.planflow`, `pm clear`, or any broad cleanup script as a normal update check. If Android reports `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, compare the installed app signature and the APK/AAB signature, then decide manually how to migrate the device.
 
 ## One-Time Debug To Release Transition
 
-If a development device already has `com.planflow.app` installed with the Android Debug certificate, Android cannot update it to the PlanFlow release certificate. This is expected Android signature protection, not a build bug.
+If a development device already has `com.fluxstudio.planflow` installed with the Android Debug certificate, Android cannot update it to the PlanFlow release certificate. This is expected Android signature protection, not a build bug.
 
-Use this one time only, and only for `com.planflow.app`:
+Use this one time only, and only for `com.fluxstudio.planflow`:
 
 ```powershell
-adb uninstall com.planflow.app
+adb uninstall com.fluxstudio.planflow
 .\scripts\adb-install-update.ps1
 ```
 

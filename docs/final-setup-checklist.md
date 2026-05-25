@@ -1,4 +1,4 @@
-﻿# PlanFlow 1차/2차 개발 상태 체크리스트
+# PlanFlow 1차/2차 개발 상태 체크리스트
 
 이 문서는 v3 프롬프트 기준으로 1차 개발, 2차 개발, 지금 당장 확인할 일을 분리한 최종 점검표입니다.
 
@@ -84,10 +84,10 @@
 - [ ] Play Console 개발자 계정 인증 완료
 - [ ] Play Console 앱 생성 후 개인정보처리방침 URL 입력
 - [ ] Google Cloud에서 Calendar API, Maps SDK for Android, Directions/Distance Matrix/Geocoding API 활성화 확인
-- [ ] Google OAuth Android client에 `com.planflow.app` + release SHA-1 등록
-- [ ] Google Maps API key 제한에 `com.planflow.app` + release SHA-1 등록
-- [ ] Naver Developers/Naver Cloud에 `com.planflow.app` 및 콜백/지도 제한 등록
-- [ ] Kakao Developers에 `com.planflow.app` 및 release key hash 등록
+- [ ] Google OAuth Android client에 `com.fluxstudio.planflow` + release SHA-1 등록
+- [ ] Google Maps API key 제한에 `com.fluxstudio.planflow` + release SHA-1 등록
+- [ ] Naver Developers/Naver Cloud에 `com.fluxstudio.planflow` 및 콜백/지도 제한 등록
+- [ ] Kakao Developers에 `com.fluxstudio.planflow` 및 release key hash 등록
 - [ ] OpenAI 월 사용량 제한 설정
 - [x] Android release APK 실기기 설치/실행 확인
 - [ ] 앱 알림 권한 허용 확인

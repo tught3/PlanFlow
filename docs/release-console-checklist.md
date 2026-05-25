@@ -4,7 +4,7 @@
 
 ## 공통 값
 
-- Android package: `com.planflow.app`
+- Android package: `com.fluxstudio.planflow`
 - Debug SHA-1: `D8:A5:47:45:F2:B3:FF:2E:A1:42:B5:07:2A:12:C7:F4:2F:32:5D:06`
 - Debug SHA-256: `CB:AB:1A:9F:8D:62:AA:12:2A:61:70:97:EE:94:24:78:39:57:BB:43:67:EA:30:9A:B1:EF:CC:E6:96:7D:2F:9A`
 - Release SHA-1: `5A:94:6B:45:25:44:8B:89:B9:C0:13:69:E9:21:59:A4:B3:70:16:A7`
@@ -28,27 +28,27 @@
 3. Google Calendar API, Maps SDK for Android, Directions API, Distance Matrix API, Geocoding API.
 4. APIs & Services > Credentials로 이동합니다.
 5. Android OAuth client를 만들거나 수정합니다.
-6. Package name에는 `com.planflow.app`을 입력합니다.
+6. Package name에는 `com.fluxstudio.planflow`을 입력합니다.
 7. SHA-1에는 내부 테스트/릴리스용 Android OAuth client에는 위 release SHA-1 값을 입력하고, 로컬 debug APK 테스트용 Android OAuth client에는 위 debug SHA-1 값을 입력합니다.
 8. Web OAuth client의 Authorized redirect URIs에 Supabase callback URL을 등록합니다.
 9. Web OAuth client ID는 `GOOGLE_WEB_CLIENT_ID` 또는 `GOOGLE_SERVER_CLIENT_ID`로 앱에 전달합니다.
 10. `android/app/google-services.json`의 `oauth_client`가 비어 있거나 현재 APK 서명 SHA-1이 Android OAuth client에 없으면 Google Sign-In에서 `ApiException: 10`이 날 수 있습니다.
-11. Google Maps API key 제한은 Android apps로 설정하고 `com.planflow.app` + release SHA-1을 추가합니다.
+11. Google Maps API key 제한은 Android apps로 설정하고 `com.fluxstudio.planflow` + release SHA-1을 추가합니다.
 
 ## Naver Developers / Naver Cloud
 
 1. Naver Developers에서 PlanFlow 애플리케이션을 선택합니다.
 2. Login callback URL에 Supabase callback URL을 등록합니다.
-3. Android package 입력란이 있으면 `com.planflow.app`을 등록합니다.
+3. Android package 입력란이 있으면 `com.fluxstudio.planflow`을 등록합니다.
 4. Naver Cloud Platform Console > Maps에서 PlanFlow Maps 애플리케이션을 선택합니다.
-5. Android service environment/package 제한에 `com.planflow.app`을 등록합니다.
+5. Android service environment/package 제한에 `com.fluxstudio.planflow`을 등록합니다.
 6. 앱에는 `NAVER_MAP_CLIENT_SECRET`을 넣지 않습니다. Naver geocode는 Supabase Edge Function proxy에 secret을 보관하고, 앱에는 `NAVER_MAP_CLIENT_ID`와 `NAVER_MAP_PROXY_URL`만 전달합니다.
 
 ## Kakao Developers
 
 1. Kakao Developers에서 PlanFlow 애플리케이션을 선택합니다.
 2. 앱 설정 > 플랫폼 > Android 플랫폼을 추가하거나 수정합니다.
-3. Package name에 `com.planflow.app`을 입력합니다.
+3. Package name에 `com.fluxstudio.planflow`을 입력합니다.
 4. Key hash에 `WpRrRSVEi4m5wBNp6SFZpLNwFqc=`를 입력합니다.
 5. 카카오 로그인 redirect URI가 필요하면 Supabase callback URL을 등록합니다.
 
