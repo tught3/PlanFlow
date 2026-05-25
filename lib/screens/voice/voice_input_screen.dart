@@ -14,6 +14,7 @@ import '../../services/gpt_service.dart';
 import '../../services/stt_service.dart';
 import '../../services/voice_command_router.dart';
 import '../../services/voice_command_analysis_service.dart';
+import 'voice_conversation_screen.dart';
 import '../../services/voice_text_cleanup_service.dart';
 import '../../l10n/app_l10n.dart';
 
@@ -480,10 +481,25 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       return;
     }
     unawaited(
-      context.push(location, extra: extra).whenComplete(() {
+      context.push<Object?>(location, extra: extra).then((result) {
+        if (!mounted) {
+          return;
+        }
+        if (_isVoiceConversationRoute(location) &&
+            result == voiceConversationClosedResult) {
+          _resetTranscriptForFreshVoiceInput();
+          setState(() {
+            _statusMessage = 'AI 일정 대화를 종료했어요. 새로 말하려면 음성 입력을 다시 시작해 주세요.';
+          });
+        }
         _resetVoiceCommandSubmitGuard(clearSignature: true);
       }),
     );
+  }
+
+  bool _isVoiceConversationRoute(String location) {
+    return location == AppRoutes.voiceConversation ||
+        location.startsWith('${AppRoutes.voiceConversation}?');
   }
 
   Future<void> _openAddConfirmFromText(

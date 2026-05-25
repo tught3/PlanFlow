@@ -1,5 +1,11 @@
 # ACTIVE SUMMARY
 
+## 2026-05-25 Voice Conversation Delete Session Isolation
+- AI schedule conversation now trims repeated pending-delete request text from follow-up confirmations, so `5번 일정 삭제해 줘 응 삭제해줘` is handled and displayed as `응 삭제해줘` inside the conversation.
+- Added a guarded exit sheet for AI conversation back navigation; leaving cancels STT, clears pending delete/session state, and returns an explicit `voiceConversationClosed` result to the parent voice input page.
+- VoiceInputScreen now treats that explicit close result as a fresh idle state, clearing stale transcript/guards so confirmation phrases do not leak into the old delete flow.
+- Verification passed: focused voice conversation and voice input tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and update install/launch/PID check on `192.168.0.102:5555`.
+
 - generated_at: 2026-05-09T23:29:51.354Z
 - latest_commit: c16b38a 2026-05-09 Add Naver CalDAV credential syncing
 - snapshot_keep: 12

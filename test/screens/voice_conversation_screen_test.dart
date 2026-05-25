@@ -335,6 +335,112 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('AI 일정 대화는 삭제 확인 대기 중 붙은 이전 명령을 잘라낸다', (tester) async {
+    final friday = DateTime(2026, 5, 29, 18);
+    final events = List<EventModel>.generate(
+      5,
+      (index) => EventModel(
+        id: 'event-$index',
+        userId: 'user-1',
+        title: '금요일 일정 ${index + 1}',
+        startAt: friday.add(Duration(minutes: index * 30)).toUtc(),
+      ),
+    );
+    final repository = _FakeEventRepository(events);
+
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        initialText: '이번 주 금요일 일정 다 보여 줘',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '5번 일정 삭제해 줘');
+    await tester.tap(find.text('전송'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('금요일 일정 5 일정을 삭제할까요?'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '5번 일정 삭제해 줘 응 삭제해줘');
+    await tester.tap(find.text('전송'));
+    await tester.pumpAndSettle();
+
+    expect(repository.deletedIds, contains('event-4'));
+    expect(find.text('응 삭제해줘'), findsOneWidget);
+    expect(find.text('5번 일정 삭제해 줘 응 삭제해줘'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '응 삭제해줘');
+    await tester.tap(find.text('전송'));
+    await tester.pumpAndSettle();
+
+    expect(repository.deletedIds.where((id) => id == 'event-4'), hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 뒤로가기 확인 후에만 대화 세션을 종료한다', (tester) async {
+    final stt = _FakeSttService();
+    final popResults = <Object?>[];
+    final router = GoRouter(
+      initialLocation: '/voice-host',
+      routes: [
+        GoRoute(
+          path: '/voice-host',
+          builder: (context, state) => TextButton(
+            onPressed: () {
+              unawaited(
+                context.push<Object?>(AppRoutes.voiceConversation).then(
+                      popResults.add,
+                    ),
+              );
+            },
+            child: const Text('대화 열기'),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceConversation,
+          builder: (context, state) => VoiceConversationScreen(
+            sttService: stt,
+            repository: _FakeEventRepository(const <EventModel>[]),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: buildPlanFlowTheme(),
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('대화 열기'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('뒤로가기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI 일정 대화 페이지를 나가겠습니까?'), findsOneWidget);
+
+    await tester.tap(find.text('계속 대화하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI 일정 대화'), findsOneWidget);
+    expect(popResults, isEmpty);
+
+    await tester.tap(find.byTooltip('뒤로가기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('나가기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('대화 열기'), findsOneWidget);
+    expect(popResults, contains(voiceConversationClosedResult));
+    expect(stt.cancelCalls, greaterThanOrEqualTo(1));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('AI 일정 대화는 듣는 중 정지 후 마이크로 다시 시작할 수 있다', (tester) async {
     final stt = _FakeSttService();
     await pumpConversation(

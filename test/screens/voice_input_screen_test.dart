@@ -7,6 +7,7 @@ import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/services/stt_service.dart';
 import 'package:planflow/services/voice_command_analysis_service.dart';
+import 'package:planflow/screens/voice/voice_conversation_screen.dart';
 import 'package:planflow/screens/voice/voice_input_screen.dart';
 
 class _FakeDraftAnalysisService extends VoiceCommandAnalysisService {
@@ -696,6 +697,64 @@ void main() {
       tester.widget<TextField>(find.byType(TextField)).controller?.text,
       '3번째 일정 삭제',
     );
+  });
+
+  testWidgets('AI 일정 대화 종료 결과는 부모 음성입력의 잔여 문장을 초기화한다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceConversation,
+          builder: (context, state) => TextButton(
+            onPressed: () => context.pop(voiceConversationClosedResult),
+            child: const Text('AI 대화 종료'),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '삭제 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(find.byType(TextField), '오늘 일정 알려줘');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('현재 내용으로 입력'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI 대화 종료'), findsOneWidget);
+
+    await tester.tap(find.text('AI 대화 종료'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('AI 일정 대화를 종료했어요'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '',
+    );
+
+    await tester.enterText(find.byType(TextField), '응 삭제');
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '응 삭제',
+    );
+    expect(find.text('삭제 화면'), findsNothing);
+    expect(find.textContaining('오늘 일정 알려줘 응 삭제'), findsNothing);
   });
 
   testWidgets('부분 인식에서 전체삭제가 오면 현재 입력을 즉시 비운다', (tester) async {

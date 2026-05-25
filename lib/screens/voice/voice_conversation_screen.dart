@@ -15,6 +15,8 @@ import '../../services/location_lookup_service.dart';
 import '../../services/stt_service.dart';
 import '../../services/voice_conversation_controller.dart';
 
+const String voiceConversationClosedResult = 'voiceConversationClosed';
+
 class VoiceConversationScreen extends StatefulWidget {
   const VoiceConversationScreen({
     super.key,
@@ -60,6 +62,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   bool _keepListening = false;
   bool _voicePausedByUser = false;
   bool _didSubmitInitialText = false;
+  bool _isExitingConversation = false;
   int _listenGeneration = 0;
   Timer? _restartListenTimer;
   String? _conversationStatus;
@@ -160,7 +163,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   }
 
   Future<void> _submitText([String? overrideText]) async {
-    final text = (overrideText ?? _inputController.text).trim();
+    final rawText = (overrideText ?? _inputController.text).trim();
+    final text = _normalizeSubmitTextForPendingDelete(rawText);
     if (text.isEmpty || _isSubmitting) {
       debugPrint(
         'VoiceConversationScreen submit ignored: '
@@ -192,7 +196,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       );
 
       if (result.deleteConfirmed && result.targetEvent != null) {
-        await _deleteEvent(result.targetEvent!);
+        final deleted = await _deleteEvent(result.targetEvent!);
+        if (!deleted) {
+          return;
+        }
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText != null) {
@@ -269,16 +276,17 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         return;
       }
       final finalText = SttService.normalizeVoiceTranscript(result.text ?? '');
+      final submitText = _normalizeSubmitTextForPendingDelete(finalText);
       debugPrint(
         'VoiceConversationScreen STT final: '
-        'success=${result.isSuccess} hasText=${result.hasText} text=$finalText',
+        'success=${result.isSuccess} hasText=${result.hasText} text=$submitText',
       );
-      if (result.isSuccess && finalText.isNotEmpty) {
+      if (result.isSuccess && submitText.isNotEmpty) {
         _inputController.value = TextEditingValue(
-          text: finalText,
-          selection: TextSelection.collapsed(offset: finalText.length),
+          text: submitText,
+          selection: TextSelection.collapsed(offset: submitText.length),
         );
-        await _submitText(finalText);
+        await _submitText(submitText);
       } else if (mounted) {
         final message = result.message ?? '음성을 알아듣지 못했어요. 다시 말해 주세요.';
         setState(() {
@@ -394,19 +402,37 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     await widget.sttService.cancelActiveListen();
   }
 
-  Future<void> _deleteEvent(EventModel event) async {
-    await _repository.deleteEvent(event.id, userId: authProvider.userId);
-    _deletedEventIds.add(event.id);
-    EventRefreshBus.instance.notifyChanged(
-      reason: 'voice_conversation_delete',
-      eventId: event.id,
-      startAt: event.startAt,
-    );
-    await _loadEvents();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('일정을 삭제했어요.')),
-    );
+  Future<bool> _deleteEvent(EventModel event) async {
+    try {
+      await _repository.deleteEvent(event.id, userId: authProvider.userId);
+      _deletedEventIds.add(event.id);
+      _inputController.clear();
+      _restartListenTimer?.cancel();
+      _listenGeneration += 1;
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'voice_conversation_delete',
+        eventId: event.id,
+        startAt: event.startAt,
+      );
+      await _loadEvents();
+      if (!mounted) return true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('일정을 삭제했어요.')),
+      );
+      return true;
+    } catch (error) {
+      debugPrint('VoiceConversationScreen delete failed: $error');
+      if (!mounted) return false;
+      setState(() {
+        _conversationStatus = '삭제하지 못했어요.';
+        _messages.add(
+          const _ConversationMessage.assistant(
+            '삭제하지 못했어요. 잠시 후 다시 시도해 주세요.',
+          ),
+        );
+      });
+      return false;
+    }
   }
 
   Future<void> _confirmPendingDelete(EventModel event) async {
@@ -454,7 +480,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     if (confirmed != true || !mounted) {
       return;
     }
-    await _deleteEvent(event);
+    final deleted = await _deleteEvent(event);
+    if (!deleted) {
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _messages.add(
@@ -462,6 +491,95 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       );
     });
     _scrollToBottom();
+  }
+
+  String _normalizeSubmitTextForPendingDelete(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty || _conversation.pendingDelete == null) {
+      return trimmed;
+    }
+    final pendingRequest = _conversation.pendingDelete!.requestText;
+    final withoutPendingRequest =
+        _removeCompactPrefix(trimmed, pendingRequest).trim();
+    if (withoutPendingRequest.isNotEmpty &&
+        _isDeleteConfirmationPhrase(withoutPendingRequest)) {
+      return withoutPendingRequest;
+    }
+    if (_isDeleteConfirmationPhrase(trimmed)) {
+      return trimmed;
+    }
+    return trimmed;
+  }
+
+  String _removeCompactPrefix(String text, String prefix) {
+    final compactPrefix = _compact(prefix);
+    if (compactPrefix.isEmpty) {
+      return text;
+    }
+    final compact = StringBuffer();
+    final sourceIndexes = <int>[];
+    for (var index = 0; index < text.length; index += 1) {
+      final char = text[index];
+      if (char.trim().isEmpty) {
+        continue;
+      }
+      compact.write(char);
+      sourceIndexes.add(index);
+    }
+    final compactText = compact.toString();
+    if (!compactText.startsWith(compactPrefix) ||
+        sourceIndexes.length < compactPrefix.length) {
+      return text;
+    }
+    final endIndex = sourceIndexes[compactPrefix.length - 1] + 1;
+    return text.substring(endIndex);
+  }
+
+  bool _isDeleteConfirmationPhrase(String text) {
+    final normalized = _compact(text);
+    if (normalized.contains('아니') ||
+        normalized.contains('취소') ||
+        normalized.contains('하지마')) {
+      return false;
+    }
+    final hasDelete = normalized.contains('삭제') ||
+        normalized.contains('지워') ||
+        normalized.contains('없애');
+    final hasConfirm = normalized.contains('응') ||
+        normalized.contains('그래') ||
+        normalized.contains('확인') ||
+        normalized.contains('해줘') ||
+        normalized.contains('삭제해') ||
+        normalized.contains('지워');
+    return hasDelete && hasConfirm;
+  }
+
+  String _compact(String text) => text.replaceAll(RegExp(r'\s+'), '');
+
+  Future<void> _handleConversationBack() async {
+    if (_isExitingConversation) {
+      return;
+    }
+    final shouldExit = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => const _ExitConversationSheet(),
+    );
+    if (shouldExit == true) {
+      await _exitConversation();
+    }
+  }
+
+  Future<void> _exitConversation() async {
+    if (_isExitingConversation) {
+      return;
+    }
+    _isExitingConversation = true;
+    await _stopVoiceBeforeNavigation();
+    _inputController.clear();
+    _conversation.clearSession();
+    if (!mounted) return;
+    context.pop(voiceConversationClosedResult);
   }
 
   String _messageForResult(VoiceConversationResult result) {
@@ -511,63 +629,76 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI 일정 대화'),
-        actions: [
-          IconButton(
-            tooltip: '일정 새로고침',
-            onPressed: _isLoading ? null : _loadEvents,
-            icon: const Icon(Icons.refresh),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          unawaited(_handleConversationBack());
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('AI 일정 대화'),
+          leading: IconButton(
+            tooltip: '뒤로가기',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _handleConversationBack,
           ),
-        ],
-      ),
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            if (_isLoading) const LinearProgressIndicator(minHeight: 2),
-            Expanded(
-              child: ListView.separated(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(AppConstants.defaultPadding),
-                itemBuilder: (context, index) {
-                  if (index >= _messages.length) {
-                    return const _ProcessingBubble();
-                  }
-                  final message = _messages[index];
-                  return _MessageBubble(
-                    message: message,
-                    deletedEventIds: _deletedEventIds,
-                    onEventTap: _showEventActionSheet,
-                    onConfirmDelete: message.pendingDeleteEvent == null ||
-                            _deletedEventIds
-                                .contains(message.pendingDeleteEvent!.id)
-                        ? null
-                        : () => _confirmPendingDelete(
-                              message.pendingDeleteEvent!,
-                            ),
-                  );
-                },
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemCount: _messages.length + (_isSubmitting ? 1 : 0),
-              ),
+          actions: [
+            IconButton(
+              tooltip: '일정 새로고침',
+              onPressed: _isLoading ? null : _loadEvents,
+              icon: const Icon(Icons.refresh),
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: _ConversationInputBar(
-          controller: _inputController,
-          isSubmitting: _isSubmitting,
-          isListening: _isListening,
-          keepListening: _keepListening,
-          voicePausedByUser: _voicePausedByUser,
-          statusText: _conversationStatus,
-          onListen: _listenOnce,
-          onStopListening: _pauseVoiceInput,
-          onSubmit: _submitText,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              if (_isLoading) const LinearProgressIndicator(minHeight: 2),
+              Expanded(
+                child: ListView.separated(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(AppConstants.defaultPadding),
+                  itemBuilder: (context, index) {
+                    if (index >= _messages.length) {
+                      return const _ProcessingBubble();
+                    }
+                    final message = _messages[index];
+                    return _MessageBubble(
+                      message: message,
+                      deletedEventIds: _deletedEventIds,
+                      onEventTap: _showEventActionSheet,
+                      onConfirmDelete: message.pendingDeleteEvent == null ||
+                              _deletedEventIds
+                                  .contains(message.pendingDeleteEvent!.id)
+                          ? null
+                          : () => _confirmPendingDelete(
+                                message.pendingDeleteEvent!,
+                              ),
+                    );
+                  },
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemCount: _messages.length + (_isSubmitting ? 1 : 0),
+                ),
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: _ConversationInputBar(
+            controller: _inputController,
+            isSubmitting: _isSubmitting,
+            isListening: _isListening,
+            keepListening: _keepListening,
+            voicePausedByUser: _voicePausedByUser,
+            statusText: _conversationStatus,
+            onListen: _listenOnce,
+            onStopListening: _pauseVoiceInput,
+            onSubmit: _submitText,
+          ),
         ),
       ),
     );
@@ -1063,6 +1194,58 @@ class _DeleteEventSheet extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExitConversationSheet extends StatelessWidget {
+  const _ExitConversationSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'AI 일정 대화 페이지를 나가겠습니까?',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '나가면 현재 듣기와 이어지는 명령을 모두 종료합니다.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                    height: 1.35,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('계속 대화하기'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('나가기'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
