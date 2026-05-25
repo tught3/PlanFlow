@@ -39,6 +39,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
   bool _isHandlingCallback = false;
   bool _loadScheduled = false;
   String? _message;
+  _OAuthMessageTone _messageTone = _OAuthMessageTone.error;
 
   @override
   void initState() {
@@ -77,7 +78,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
       );
       setState(() {
         _isLoading = false;
-        _message = '앱 안 로그인 화면을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.';
+        _showErrorMessage('앱 안 로그인 화면을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.');
       });
     }
   }
@@ -125,7 +126,9 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
             );
             setState(() {
               _isLoading = false;
-              _message = '네이버 로그인 페이지를 불러오지 못했어요. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.';
+              _showErrorMessage(
+                '네이버 로그인 페이지를 불러오지 못했어요. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.',
+              );
             });
           },
           onNavigationRequest: (request) {
@@ -141,7 +144,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
               );
               setState(() {
                 _isLoading = false;
-                _message = '네이버 앱 버튼 대신 이 화면에서 네이버 아이디로 로그인해 주세요.';
+                _showInfoMessage('네이버 앱 버튼 대신 이 화면에서 네이버 아이디로 로그인해 주세요.');
               });
               return NavigationDecision.prevent;
             }
@@ -160,7 +163,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
       }
       setState(() {
         _isLoading = false;
-        _message = '앱 안 로그인 화면을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.';
+        _showErrorMessage('앱 안 로그인 화면을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.');
       });
       return;
     }
@@ -169,6 +172,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
     setState(() {
       _isLoading = true;
       _message = null;
+      _messageTone = _OAuthMessageTone.error;
     });
     late final Uri uri;
     try {
@@ -191,7 +195,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
       }
       setState(() {
         _isLoading = false;
-        _message = '네이버 로그인 주소를 만들지 못했어요. 잠시 후 다시 시도해 주세요.';
+        _showErrorMessage('네이버 로그인 주소를 만들지 못했어요. 잠시 후 다시 시도해 주세요.');
       });
       return;
     }
@@ -213,7 +217,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
       }
       setState(() {
         _isLoading = false;
-        _message = '네이버 로그인 페이지를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.';
+        _showErrorMessage('네이버 로그인 페이지를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
       });
     }
   }
@@ -226,7 +230,8 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
     setState(() {
       _isHandlingCallback = true;
       _isLoading = true;
-      _message = '네이버 인증을 확인하고 있어요.';
+      _message = null;
+      _messageTone = _OAuthMessageTone.info;
     });
     await _callbackHandler.handleAuthCallbackUri(uri);
     if (!mounted) {
@@ -258,7 +263,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
     setState(() {
       _isHandlingCallback = false;
       _isLoading = false;
-      _message = '네이버 인증은 돌아왔지만 로그인 세션을 확인하지 못했어요. 다시 시도해 주세요.';
+      _showErrorMessage('네이버 인증은 돌아왔지만 로그인 세션을 확인하지 못했어요. 다시 시도해 주세요.');
     });
   }
 
@@ -276,9 +281,9 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
       return;
     }
     setState(() {
-      _message = message;
       _isLoading = false;
       _isHandlingCallback = false;
+      _showErrorMessage(message!);
     });
   }
 
@@ -334,6 +339,7 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                 child: _OAuthMessage(
                   message: _message!,
+                  tone: _messageTone,
                   onRetry: _loadNaverOAuth,
                 ),
               ),
@@ -370,36 +376,64 @@ class _NaverOAuthWebViewScreenState extends State<NaverOAuthWebViewScreen> {
       debugPrintStack(stackTrace: stackTrace);
     }
   }
+
+  void _showErrorMessage(String message) {
+    _message = message;
+    _messageTone = _OAuthMessageTone.error;
+  }
+
+  void _showInfoMessage(String message) {
+    _message = message;
+    _messageTone = _OAuthMessageTone.info;
+  }
+}
+
+enum _OAuthMessageTone {
+  info,
+  error,
 }
 
 class _OAuthMessage extends StatelessWidget {
   const _OAuthMessage({
     required this.message,
+    required this.tone,
     required this.onRetry,
   });
 
   final String message;
+  final _OAuthMessageTone tone;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
+    final isError = tone == _OAuthMessageTone.error;
+    final color = isError ? Colors.red.shade700 : PlanFlowColors.primaryMid;
+    final backgroundColor =
+        isError ? Colors.red.shade50 : PlanFlowColors.primaryFaint;
+    final borderColor =
+        isError ? Colors.red.shade100 : PlanFlowColors.primaryFaint;
+
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.red.shade50,
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.red.shade100),
+        border: Border.all(color: borderColor),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Icon(Icons.error_outline, color: Colors.red.shade700),
+            Icon(
+              isError ? Icons.error_outline : Icons.info_outline,
+              color: color,
+            ),
             const SizedBox(width: 10),
             Expanded(child: Text(message)),
-            TextButton(
-              onPressed: onRetry,
-              child: const Text('재시도'),
-            ),
+            if (isError)
+              TextButton(
+                onPressed: onRetry,
+                child: const Text('재시도'),
+              ),
           ],
         ),
       ),
@@ -431,5 +465,12 @@ class NaverOAuthWebViewFlow {
         message.trim().isNotEmpty &&
         !isSignedIn &&
         !isHandlingCallback;
+  }
+
+  static bool shouldRenderErrorMessage({
+    required bool isFailureMessage,
+    required bool isHandlingCallback,
+  }) {
+    return isFailureMessage && !isHandlingCallback;
   }
 }

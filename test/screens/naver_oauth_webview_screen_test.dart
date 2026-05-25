@@ -90,5 +90,29 @@ void main() {
         isTrue,
       );
     });
+
+    test('does not render callback progress as an error message', () {
+      expect(
+        NaverOAuthWebViewFlow.shouldRenderErrorMessage(
+          isFailureMessage: false,
+          isHandlingCallback: true,
+        ),
+        isFalse,
+      );
+      expect(
+        NaverOAuthWebViewFlow.shouldRenderErrorMessage(
+          isFailureMessage: true,
+          isHandlingCallback: true,
+        ),
+        isFalse,
+      );
+      expect(
+        NaverOAuthWebViewFlow.shouldRenderErrorMessage(
+          isFailureMessage: true,
+          isHandlingCallback: false,
+        ),
+        isTrue,
+      );
+    });
   });
 }

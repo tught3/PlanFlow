@@ -1274,3 +1274,8 @@
 - Password reset callbacks with `type=recovery` or password-recovery event markers now bypass the normal OAuth-home routing, exchange the recovery session even when an old session exists, mark password recovery locally, and route to `/reset-password`.
 - Added regression coverage for recovery callback detection, including Supabase fragment-style recovery links, while leaving normal OAuth callbacks unchanged.
 - Verification passed: `test/services/oauth_callback_handler_test.dart`, `test/providers/auth_provider_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, and PID check.
+
+## 2026-05-25 Naver OAuth Callback Status Tone
+- Naver OAuth WebView no longer renders the successful callback-processing status as a red retry/error box; callback handling clears the message and relies on the loading bar while the session is confirmed.
+- Real WebView/OAuth failures still use the red retry message, while the blocked Naver-app navigation hint now uses a neutral info tone.
+- Verification passed: focused Naver OAuth WebView test, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, and PID check.
