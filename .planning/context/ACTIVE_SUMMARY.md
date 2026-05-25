@@ -1,5 +1,10 @@
 # ACTIVE SUMMARY
 
+## 2026-05-25 Muted Cobalt Voice CTA
+- Lowered the shared tertiary/cobalt accent from `#1A4FD6` to a softer `#2D5CA8` with a matching faint tone, so all buttons using that accent are less glaring while staying in the PlanFlow blue family.
+- Changed the Home empty-state voice CTA label from `새 일정 음성으로 추가하기` to `음성으로 새 일정 추가하기`.
+- Verification passed: focused home, voice input, and settings tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; update install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-25 Voice Conversation Delete Session Isolation
 - AI schedule conversation now trims repeated pending-delete request text from follow-up confirmations, so `5번 일정 삭제해 줘 응 삭제해줘` is handled and displayed as `응 삭제해줘` inside the conversation.
 - Added a guarded exit sheet for AI conversation back navigation; leaving cancels STT, clears pending delete/session state, and returns an explicit `voiceConversationClosed` result to the parent voice input page.

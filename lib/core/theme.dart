@@ -10,8 +10,8 @@ class PlanFlowColors {
   static const primaryLight = Color(0xFF7AB3D4);
   static const primaryFaint = Color(0xFFD0E4F0);
 
-  static const tertiaryAccent = Color(0xFF1A4FD6);
-  static const tertiaryAccentFaint = Color(0xFFE4EDFF);
+  static const tertiaryAccent = Color(0xFF2D5CA8);
+  static const tertiaryAccentFaint = Color(0xFFE7EEF9);
 
   static const active = Color(0xFF1A4FD6);
   static const activeLight = Color(0xFFA8C8FF);

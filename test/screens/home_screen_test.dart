@@ -204,7 +204,7 @@ void main() {
 
       final cta = find.widgetWithText(
         FilledButton,
-        '새 일정 음성으로 추가하기',
+        '음성으로 새 일정 추가하기',
       );
       expect(cta, findsOneWidget);
 
