@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -1036,33 +1036,27 @@ class _VoiceCommandGuide extends StatelessWidget {
     final isKorean = l10n.localeName == 'ko';
     final bullets = isKorean
         ? const <String>[
-            '일정: “오늘 4시에 팀장님 내일 오시는지 확인전화하기”',
-            '기본: 앞 시간은 실행 시점, 그 뒤 말은 일정 내용',
-            '기간/반복: “5월 10일 하루종일 휴가”, “매주 화요일 팀 미팅”',
-            '장소: “내일 오후 3시 강남역 미팅”',
-            '수정: “언제 일정을 다음주로 변경해”',
-            '분류: 병원=건강, 세미나=교육',
-            '조회: “오늘 일정 알려줘”, “이번 주 일정 알려줘”',
-            '제어: 다시/처음부터/전체삭제/전체취소=전체삭제 · 아니/아니다=교정 · 마지막 삭제/방금 삭제=일부삭제 · 취소/중지 등=종료',
+            '예) "매주 화요일 오전 10시 강남역에서 팀장님 면접 준비"',
+            '기본: 앞 시간=일정 시각 · 나머지=제목 · 장소·반복도 함께',
+            '일정: "5월 10일 하루종일 휴가" / "매주 화요일 팀 미팅"',
+            '수정/조회: "그 일정 다음주로 변경해" / "오늘 일정 알려줘"',
+            '제어: 다시=전체삭제 · 아니=교정 · 마지막삭제=일부삭제 · 취소=종료',
           ]
         : const <String>[
-            'Event: “Visit the tailor tomorrow at 10 AM”',
-            'All-day: “Vacation all day on May 10”',
-            'Repeat: “Team meeting every Tuesday”',
-            'Place: “Meeting at Gangnam Station tomorrow at 3 PM”',
-            'Edit: “Move that appointment to next week”',
-            'Category: hospital=health, seminar=education',
-            'Query: “Tell me today’s schedule”, “Show this week”',
-            'Control: start over=clear · no=correct · delete last=remove word · stop=end',
+            'e.g. "Team meeting at Gangnam Station every Tuesday at 10 AM"',
+            'Basic: leading time=when · rest=title · add place & repeat freely',
+            'Event: "Vacation all day May 10" / "Team meeting every Tuesday"',
+            'Edit/Query: "Move that to next week" / "Show today\'s schedule"',
+            'Control: start over=clear · no=correct · delete last=undo · stop=exit',
           ];
     final compactBullets = isKorean
         ? const <String>[
-            '일정/수정/조회: “오늘 4시에 팀장님 내일 오시는지 확인전화하기”, “5월 10일 하루종일 휴가”, “매주 화요일 팀 미팅”, “오늘 일정 알려줘”',
-            '제어: 다시/처음부터/전체삭제/전체취소=전체삭제 · 아니/아니다=교정 · 마지막 삭제/방금 삭제=일부삭제 · 취소/중지 등=종료',
+            '예) "매주 화요일 오전 10시 강남역에서 팀장님 면접 준비"',
+            '제어: 다시=전체삭제 · 아니=교정 · 마지막삭제=일부삭제 · 취소=종료',
           ]
         : const <String>[
-            'Event/edit/query: “Visit tomorrow at 10 AM”, “Vacation on May 10”, “Team meeting every Tuesday”, “Show today”',
-            'Control: start over=clear · no=correct · delete last=remove word · stop=end',
+            'e.g. "Team meeting at Gangnam Station every Tuesday at 10 AM"',
+            'Control: start over=clear · no=correct · delete last=undo · stop=exit',
           ];
 
     return LayoutBuilder(
