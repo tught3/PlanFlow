@@ -533,7 +533,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
     if (commandAction == _VoiceCommandAction.query) {
       await _pushVoiceRoute(
-        AppRoutes.voiceConversation,
+        '${AppRoutes.voiceConversation}?autoStart=1',
         extra: <String, dynamic>{
           'initial_text':
               cleanup.cleanedText.isEmpty ? rawText : cleanup.cleanedText,

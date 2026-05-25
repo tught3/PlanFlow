@@ -58,7 +58,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   bool _isSubmitting = false;
   bool _isListening = false;
   bool _keepListening = false;
+  bool _voicePausedByUser = false;
   bool _didSubmitInitialText = false;
+  int _listenGeneration = 0;
+  Timer? _restartListenTimer;
   String? _conversationStatus;
 
   @override
@@ -87,10 +90,22 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     debugPrint('VoiceConversationScreen initialText submit: $text');
     _didSubmitInitialText = true;
     await _submitText(text);
+    if (!mounted || !widget.autoStart) {
+      return;
+    }
+    setState(() {
+      _keepListening = true;
+      _voicePausedByUser = false;
+      _conversationStatus = '계속 대화를 이어서 할 수 있습니다. 그냥 편하게 말하세요.';
+    });
+    if (!_isListening && !_isSubmitting) {
+      unawaited(_listenOnce());
+    }
   }
 
   @override
   void dispose() {
+    _restartListenTimer?.cancel();
     unawaited(widget.sttService.cancelActiveListen());
     _inputController.dispose();
     _scrollController.dispose();
@@ -220,9 +235,13 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       debugPrint('VoiceConversationScreen listen ignored: already listening');
       return;
     }
+    _restartListenTimer?.cancel();
+    final listenGeneration = ++_listenGeneration;
     debugPrint('VoiceConversationScreen STT start');
     setState(() {
       _isListening = true;
+      _keepListening = true;
+      _voicePausedByUser = false;
       _conversationStatus = '듣고 있어요...';
       _inputController.clear();
     });
@@ -244,6 +263,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         },
       );
       if (!mounted) {
+        return;
+      }
+      if (listenGeneration != _listenGeneration) {
         return;
       }
       final finalText = SttService.normalizeVoiceTranscript(result.text ?? '');
@@ -271,6 +293,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     } catch (error) {
       debugPrint('VoiceConversationScreen STT failed: $error');
       if (!mounted) return;
+      if (listenGeneration != _listenGeneration) {
+        return;
+      }
       setState(() {
         _conversationStatus = '음성 입력을 시작하지 못했어요.';
         _messages.add(
@@ -280,17 +305,40 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         );
       });
     } finally {
-      if (mounted) {
+      if (mounted && listenGeneration == _listenGeneration) {
         setState(() => _isListening = false);
       }
     }
 
-    if (_keepListening && mounted) {
-      await Future<void>.delayed(const Duration(milliseconds: 700));
-      if (_keepListening && mounted) {
-        unawaited(_listenOnce());
-      }
+    if (listenGeneration == _listenGeneration &&
+        _keepListening &&
+        !_voicePausedByUser &&
+        mounted) {
+      _restartListenTimer?.cancel();
+      _restartListenTimer = Timer(const Duration(milliseconds: 700), () {
+        if (_keepListening && !_voicePausedByUser && mounted) {
+          unawaited(_listenOnce());
+        }
+      });
     }
+  }
+
+  Future<void> _pauseVoiceInput() async {
+    _restartListenTimer?.cancel();
+    _listenGeneration += 1;
+    if (mounted) {
+      setState(() {
+        _keepListening = false;
+        _voicePausedByUser = true;
+        _isListening = false;
+        _conversationStatus = '음성입력이 중지되었습니다. 다시 음성입력하실 때 마이크 버튼을 눌러 주세요.';
+      });
+    } else {
+      _keepListening = false;
+      _voicePausedByUser = true;
+      _isListening = false;
+    }
+    await widget.sttService.cancelActiveListen();
   }
 
   Future<void> _openEditWithLocation(
@@ -329,14 +377,18 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   }
 
   Future<void> _stopVoiceBeforeNavigation() async {
+    _restartListenTimer?.cancel();
+    _listenGeneration += 1;
     if (mounted) {
       setState(() {
         _keepListening = false;
+        _voicePausedByUser = false;
         _isListening = false;
         _conversationStatus = null;
       });
     } else {
       _keepListening = false;
+      _voicePausedByUser = false;
       _isListening = false;
     }
     await widget.sttService.cancelActiveListen();
@@ -360,6 +412,56 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   Future<void> _confirmPendingDelete(EventModel event) async {
     _conversation.handle('응 삭제해');
     await _deleteEvent(event);
+  }
+
+  Future<void> _openEditEvent(EventModel event) async {
+    await _stopVoiceBeforeNavigation();
+    if (!mounted) return;
+    await context.push(
+      '${AppRoutes.eventEdit}/${Uri.encodeComponent(event.id)}',
+      extra: event,
+    );
+    await _loadEvents();
+  }
+
+  Future<void> _showEventActionSheet(EventModel event) async {
+    await _pauseVoiceInput();
+    if (!mounted) return;
+    final action = await showModalBottomSheet<_EventCardAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _EventActionSheet(event: event),
+    );
+    if (!mounted || action == null || action == _EventCardAction.close) {
+      return;
+    }
+    switch (action) {
+      case _EventCardAction.edit:
+        await _openEditEvent(event);
+      case _EventCardAction.delete:
+        await _showDeleteConfirmationSheet(event);
+      case _EventCardAction.close:
+        break;
+    }
+  }
+
+  Future<void> _showDeleteConfirmationSheet(EventModel event) async {
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => _DeleteEventSheet(event: event),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    await _deleteEvent(event);
+    if (!mounted) return;
+    setState(() {
+      _messages.add(
+        _ConversationMessage.assistant('${event.title} 일정을 삭제했어요.'),
+      );
+    });
+    _scrollToBottom();
   }
 
   String _messageForResult(VoiceConversationResult result) {
@@ -436,6 +538,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
                   final message = _messages[index];
                   return _MessageBubble(
                     message: message,
+                    deletedEventIds: _deletedEventIds,
+                    onEventTap: _showEventActionSheet,
                     onConfirmDelete: message.pendingDeleteEvent == null ||
                             _deletedEventIds
                                 .contains(message.pendingDeleteEvent!.id)
@@ -459,14 +563,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
           isSubmitting: _isSubmitting,
           isListening: _isListening,
           keepListening: _keepListening,
+          voicePausedByUser: _voicePausedByUser,
           statusText: _conversationStatus,
-          onKeepListeningChanged: (value) {
-            setState(() => _keepListening = value);
-            if (value) {
-              unawaited(_listenOnce());
-            }
-          },
           onListen: _listenOnce,
+          onStopListening: _pauseVoiceInput,
           onSubmit: _submitText,
         ),
       ),
@@ -543,10 +643,14 @@ class _ConversationMessage {
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
+    required this.deletedEventIds,
+    required this.onEventTap,
     this.onConfirmDelete,
   });
 
   final _ConversationMessage message;
+  final Set<String> deletedEventIds;
+  final ValueChanged<EventModel> onEventTap;
   final VoidCallback? onConfirmDelete;
 
   @override
@@ -577,14 +681,22 @@ class _MessageBubble extends StatelessWidget {
                 ),
           ),
         ),
-        if (message.events.isNotEmpty) ...[
+        if (message.events
+            .where((event) => !deletedEventIds.contains(event.id))
+            .isNotEmpty) ...[
           const SizedBox(height: 8),
-          ...message.events.asMap().entries.map(
+          ...message.events
+              .where((event) => !deletedEventIds.contains(event.id))
+              .toList()
+              .asMap()
+              .entries
+              .map(
                 (entry) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: _ConversationEventCard(
                     index: entry.key + 1,
                     event: entry.value,
+                    onTap: () => onEventTap(entry.value),
                   ),
                 ),
               ),
@@ -609,57 +721,69 @@ class _ConversationEventCard extends StatelessWidget {
   const _ConversationEventCard({
     required this.index,
     required this.event,
+    required this.onTap,
   });
 
   final int index;
   final EventModel event;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final local = event.startAt == null ? null : planflowLocal(event.startAt!);
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 15,
-              backgroundColor: PlanFlowColors.primaryFaint,
-              foregroundColor: PlanFlowColors.primary,
-              child: Text('$index'),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    event.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: PlanFlowColors.primary,
-                          fontWeight: FontWeight.w800,
-                        ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    [
-                      if (local != null) _formatLocalTime(local),
-                      if ((event.location ?? '').trim().isNotEmpty)
-                        event.location!.trim(),
-                    ].join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: PlanFlowColors.textSecondary,
-                        ),
-                  ),
-                ],
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 15,
+                backgroundColor: PlanFlowColors.primaryFaint,
+                foregroundColor: PlanFlowColors.primary,
+                child: Text('$index'),
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      event.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: PlanFlowColors.primary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        if (local != null) _formatLocalTime(local),
+                        if ((event.location ?? '').trim().isNotEmpty)
+                          event.location!.trim(),
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                Icons.touch_app_outlined,
+                color: PlanFlowColors.primaryLight,
+                size: 18,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -672,9 +796,10 @@ class _ConversationInputBar extends StatelessWidget {
     required this.isSubmitting,
     required this.isListening,
     required this.keepListening,
+    required this.voicePausedByUser,
     required this.statusText,
-    required this.onKeepListeningChanged,
     required this.onListen,
+    required this.onStopListening,
     required this.onSubmit,
   });
 
@@ -682,9 +807,10 @@ class _ConversationInputBar extends StatelessWidget {
   final bool isSubmitting;
   final bool isListening;
   final bool keepListening;
+  final bool voicePausedByUser;
   final String? statusText;
-  final ValueChanged<bool> onKeepListeningChanged;
   final VoidCallback onListen;
+  final VoidCallback onStopListening;
   final VoidCallback onSubmit;
 
   @override
@@ -699,58 +825,18 @@ class _ConversationInputBar extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                Switch(
-                  value: keepListening,
-                  onChanged: onKeepListeningChanged,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '계속 듣기',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: PlanFlowColors.primary,
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                      Text(
-                        '답변 후에도 다음 말을 이어서 받을게요.',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            _VoiceConversationControl(
+              isListening: isListening,
+              keepListening: keepListening,
+              voicePausedByUser: voicePausedByUser,
+              statusText: statusText,
+              onListen: onListen,
+              onStopListening: onStopListening,
             ),
-            if ((statusText ?? '').trim().isNotEmpty) ...[
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  statusText!.trim(),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
+            const SizedBox(height: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                IconButton.filledTonal(
-                  tooltip: '음성으로 말하기',
-                  onPressed: isListening ? null : onListen,
-                  icon: Icon(isListening ? Icons.hearing : Icons.mic),
-                ),
-                const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: controller,
@@ -776,6 +862,257 @@ class _ConversationInputBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _VoiceConversationControl extends StatelessWidget {
+  const _VoiceConversationControl({
+    required this.isListening,
+    required this.keepListening,
+    required this.voicePausedByUser,
+    required this.statusText,
+    required this.onListen,
+    required this.onStopListening,
+  });
+
+  final bool isListening;
+  final bool keepListening;
+  final bool voicePausedByUser;
+  final String? statusText;
+  final VoidCallback onListen;
+  final VoidCallback onStopListening;
+
+  @override
+  Widget build(BuildContext context) {
+    final isVoiceActive = isListening || (keepListening && !voicePausedByUser);
+    final label = isListening
+        ? '듣는 중...'
+        : isVoiceActive
+            ? '계속 대화를 이어서 할 수 있습니다. 그냥 편하게 말하세요.'
+            : (statusText?.trim().isNotEmpty ?? false)
+                ? statusText!.trim()
+                : '음성입력이 중지되었습니다. 다시 음성입력하실 때 마이크 버튼을 눌러 주세요.';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: isVoiceActive
+            ? PlanFlowColors.tertiaryAccentFaint
+            : PlanFlowColors.surfaceFaint,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isVoiceActive
+              ? PlanFlowColors.activeLight
+              : PlanFlowColors.primaryFaint,
+        ),
+      ),
+      child: Row(
+        children: [
+          if (isVoiceActive)
+            const Icon(
+              Icons.hearing,
+              color: PlanFlowColors.active,
+              size: 22,
+            )
+          else
+            IconButton.filledTonal(
+              tooltip: '음성 입력 다시 시작',
+              onPressed: onListen,
+              icon: const Icon(Icons.mic),
+            ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.primary,
+                    fontWeight: FontWeight.w800,
+                    height: 1.25,
+                  ),
+            ),
+          ),
+          if (isVoiceActive) ...[
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: onStopListening,
+              icon: const Icon(Icons.stop_circle_outlined, size: 18),
+              label: const Text('정지'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(76, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+enum _EventCardAction { edit, delete, close }
+
+class _EventActionSheet extends StatelessWidget {
+  const _EventActionSheet({required this.event});
+
+  final EventModel event;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '이 일정으로 무엇을 할까요?',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+              const SizedBox(height: 10),
+              _EventSheetSummary(event: event),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                onPressed: () =>
+                    Navigator.of(context).pop(_EventCardAction.edit),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('수정하기'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () =>
+                    Navigator.of(context).pop(_EventCardAction.delete),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('삭제하기'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                  side: BorderSide(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .error
+                        .withValues(alpha: 0.35),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () =>
+                    Navigator.of(context).pop(_EventCardAction.close),
+                child: const Text('닫기'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeleteEventSheet extends StatelessWidget {
+  const _DeleteEventSheet({required this.event});
+
+  final EventModel event;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '이 일정을 삭제할까요?',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+              const SizedBox(height: 10),
+              _EventSheetSummary(event: event),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('취소'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('삭제'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventSheetSummary extends StatelessWidget {
+  const _EventSheetSummary({required this.event});
+
+  final EventModel event;
+
+  @override
+  Widget build(BuildContext context) {
+    final local = event.startAt == null ? null : planflowLocal(event.startAt!);
+    final location = (event.location ?? '').trim();
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surfaceFaint,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: PlanFlowColors.primaryFaint),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            event.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: PlanFlowColors.primary,
+                  fontWeight: FontWeight.w900,
+                ),
+          ),
+          if (local != null || location.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              [
+                if (local != null) _formatLocalTime(local),
+                if (location.isNotEmpty) location,
+              ].join(' · '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ],
       ),
     );
   }

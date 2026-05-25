@@ -9,6 +9,12 @@
 - GPT briefing prompts now explicitly say to include place/movement guidance only when event data contains a place and never invent location, departure, or movement advice without evidence.
 - Verification passed: focused briefing scheduler tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and update install/launch/PID check on `192.168.0.102:5555`.
 
+## 2026-05-25 Voice Conversation Card Actions
+- AI schedule conversation result cards are now tappable and open a PlanFlow-styled action sheet with edit/delete/close choices; delete requires a second confirmation and removed events are filtered from visible result cards.
+- Replaced the old `계속 듣기` switch with a single voice control: hearing icon plus `듣는 중...` while active, a `정지` action, and a restart mic button plus stopped guidance when paused.
+- Voice query routing now opens the conversation route with `autoStart=1` so schedule query results can continue into follow-up voice commands.
+- Verification passed: focused voice conversation tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. `192.168.0.102:5555` was offline/not reachable during install/run verification.
+
 ## 2026-05-24 Early Bird Storage Path Alignment
 - Aligned PRO early-bird storage around `planflow.early_bird_emails` while keeping `public.submit_early_bird_email` as the app-facing RPC gateway.
 - Applied the production DB patch: legacy `public.early_bird_emails` and `public.product_early_birds` PlanFlow rows were preserved/merged, direct anon/authenticated grants on `planflow.early_bird_emails` were revoked, and backup table lists now include both current and legacy early-bird tables.

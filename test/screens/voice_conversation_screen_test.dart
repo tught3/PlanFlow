@@ -53,9 +53,10 @@ class _FakeSttService extends SttService {
 }
 
 class _FakeEventRepository extends EventRepository {
-  const _FakeEventRepository(this.events);
+  _FakeEventRepository(this.events);
 
   final List<EventModel> events;
+  final List<String> deletedIds = <String>[];
 
   @override
   Future<List<EventModel>> listEvents({String? userId}) async => events;
@@ -77,7 +78,9 @@ class _FakeEventRepository extends EventRepository {
   Future<EventModel> updateEvent(EventModel event) async => event;
 
   @override
-  Future<void> deleteEvent(String eventId, {String? userId}) async {}
+  Future<void> deleteEvent(String eventId, {String? userId}) async {
+    deletedIds.add(eventId);
+  }
 }
 
 class _SlowSecondListEventRepository extends EventRepository {
@@ -150,10 +153,10 @@ void main() {
       VoiceConversationScreen(sttService: stt),
     );
 
-    await tester.tap(find.byTooltip('음성으로 말하기'));
+    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
     await tester.pump();
 
-    expect(find.text('듣고 있어요...'), findsOneWidget);
+    expect(find.text('듣는 중...'), findsOneWidget);
 
     stt.emitPartial('이번주 금요일 일정');
     await tester.pump();
@@ -169,7 +172,7 @@ void main() {
       VoiceConversationScreen(sttService: stt),
     );
 
-    await tester.tap(find.byTooltip('음성으로 말하기'));
+    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
     await tester.pump();
 
     stt.completeSuccess('오늘 일정 알려줘');
@@ -186,7 +189,7 @@ void main() {
       VoiceConversationScreen(sttService: stt),
     );
 
-    await tester.tap(find.byTooltip('음성으로 말하기'));
+    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
     await tester.pump();
 
     stt.completeFailure('음성을 알아듣지 못했어요.');
@@ -215,14 +218,15 @@ void main() {
 
     expect(find.text('AI 일정 대화'), findsOneWidget);
     expect(find.textContaining('일정을 이어서 말해도 돼요'), findsOneWidget);
-    expect(find.text('계속 듣기'), findsOneWidget);
-    expect(find.byTooltip('음성으로 말하기'), findsOneWidget);
+    expect(find.text('계속 듣기'), findsNothing);
+    expect(find.text('Supabase 설정을 확인하지 못했어요.'), findsOneWidget);
+    expect(find.byTooltip('음성 입력 다시 시작'), findsOneWidget);
     expect(find.text('전송'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('AI 일정 대화는 initialText 결과 일정 카드를 렌더링한다', (tester) async {
-    final friday = DateTime(2026, 5, 22, 18);
+    final friday = DateTime(2026, 5, 29, 18);
     final events = List<EventModel>.generate(
       4,
       (index) => EventModel(
@@ -243,12 +247,113 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('이번 주 금요일 일정 다 보여 줘'), findsOneWidget);
-    expect(
-        find.text(
-            '일정 4개를 찾았어요. 이어서 “3번째 일정에 장소 추가”, “오후 6시 일정 삭제”처럼 말할 수 있어요.'),
-        findsOneWidget);
+    expect(find.textContaining('일정 4개를 찾았어요'), findsOneWidget);
     expect(find.text('금요일 일정 1'), findsOneWidget);
     expect(find.text('금요일 일정 4'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 조회 결과 카드를 눌러 수정 모달을 열고 편집으로 이동한다', (tester) async {
+    final event = EventModel(
+      id: 'event-edit',
+      userId: 'user-1',
+      title: '금요일 상담',
+      startAt: DateTime(2026, 5, 29, 18).toUtc(),
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceConversation,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceConversation,
+          builder: (context, state) => VoiceConversationScreen(
+            repository: _FakeEventRepository(<EventModel>[event]),
+            initialText: '이번 주 금요일 일정 다 보여 줘',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) => const Text(
+            '편집 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: buildPlanFlowTheme(),
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('금요일 상담'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('이 일정으로 무엇을 할까요?'), findsOneWidget);
+    expect(find.text('수정하기'), findsOneWidget);
+    expect(find.text('삭제하기'), findsOneWidget);
+
+    await tester.tap(find.text('수정하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('편집 화면'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 조회 결과 카드 삭제를 확인 후 실행한다', (tester) async {
+    final event = EventModel(
+      id: 'event-delete',
+      userId: 'user-1',
+      title: '삭제할 일정',
+      startAt: DateTime(2026, 5, 29, 18).toUtc(),
+    );
+    final repository = _FakeEventRepository(<EventModel>[event]);
+
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        initialText: '이번 주 금요일 일정 다 보여 줘',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('삭제할 일정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('삭제하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('이 일정을 삭제할까요?'), findsOneWidget);
+
+    await tester.tap(find.text('삭제').last);
+    await tester.pumpAndSettle();
+
+    expect(repository.deletedIds, contains('event-delete'));
+    expect(find.text('삭제할 일정 일정을 삭제했어요.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('AI 일정 대화는 듣는 중 정지 후 마이크로 다시 시작할 수 있다', (tester) async {
+    final stt = _FakeSttService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(sttService: stt),
+    );
+
+    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
+    await tester.pump();
+
+    expect(find.text('듣는 중...'), findsOneWidget);
+    expect(find.text('정지'), findsOneWidget);
+
+    await tester.tap(find.text('정지'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('음성입력이 중지되었습니다'), findsOneWidget);
+    expect(find.byTooltip('음성 입력 다시 시작'), findsOneWidget);
+    expect(stt.cancelCalls, greaterThanOrEqualTo(1));
     expect(tester.takeException(), isNull);
   });
 
@@ -315,7 +420,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('음성으로 말하기'));
+    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
     await tester.pump();
     stt.completeSuccess('그 일정에 강릉 건도리횟집 장소추가');
     await tester.pumpAndSettle();
