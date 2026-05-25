@@ -831,7 +831,7 @@ void main() {
     );
     await expectButtonColor(
       const ValueKey('settings-restore-backup-button'),
-      PlanFlowColors.tertiaryAccent,
+      PlanFlowColors.fab,
     );
   });
 }

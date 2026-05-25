@@ -356,6 +356,7 @@ void main() {
                     locationLookupService: lookupService,
                     appPermissionService: permissionService,
                     preferredMapProvider: 'naver',
+                    canUseInAppMapOverride: false,
                   ),
                 );
               },
@@ -424,6 +425,7 @@ void main() {
                     locationLookupService: lookupService,
                     appPermissionService: permissionService,
                     preferredMapProvider: 'naver',
+                    canUseInAppMapOverride: false,
                   ),
                 );
               },
@@ -492,6 +494,7 @@ void main() {
                     locationLookupService: _EmptyLocationLookupService(),
                     appPermissionService: permissionService,
                     preferredMapProvider: 'naver',
+                    canUseInAppMapOverride: false,
                   ),
                 );
               },
@@ -575,6 +578,16 @@ class _BlockingLocationLookupService extends LocationLookupService {
 
 class _TrackingPermissionService extends AppPermissionService {
   final Completer<void> currentStarted = Completer<void>();
+
+  @override
+  Future<bool> checkLocationPermission() async {
+    return true;
+  }
+
+  @override
+  Future<bool> requestLocationPermission() async {
+    return true;
+  }
 
   @override
   Future<GeoPoint?> getLastKnownLocation() async {

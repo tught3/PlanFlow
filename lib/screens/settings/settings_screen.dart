@@ -1038,9 +1038,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  ButtonStyle _settingsCobaltButtonStyle() {
+  ButtonStyle _settingsBriefingButtonStyle() {
     return FilledButton.styleFrom(
-      backgroundColor: PlanFlowColors.tertiaryAccent,
+      backgroundColor: PlanFlowColors.fab,
       foregroundColor: Colors.white,
     );
   }
@@ -2641,7 +2641,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               onPressed: _isBackupActionRunning
                                   ? null
                                   : _showBackupRestoreDialog,
-                              style: _settingsCobaltButtonStyle(),
+                              style: _settingsBriefingButtonStyle(),
                               icon: const Icon(Icons.restore_outlined),
                               label: const Text('복원'),
                             ),

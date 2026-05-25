@@ -1,5 +1,12 @@
 # ACTIVE SUMMARY
 
+## 2026-05-25 Release Risk Cleanup
+- Bumped the internal-test build number to `1.1.0+3` so the next Play Console upload can avoid the already-installed `versionCode=2` collision risk.
+- Fixed the `location_picker_screen_test.dart` harness timeout by fully faking location permission checks and letting `pickLocationFromQuery` disable in-app platform maps for widget tests without changing production defaults.
+- Updated the Play Console submission draft to match the actual 1st-release scope, including Naver CalDAV wording, versionCode 3, and a note that KakaoTalk/SMS automatic detection is not included in this internal test.
+- Changed the Settings backup restore button to the same light purple briefing-style color while keeping other Settings button color roles intact.
+- Verification passed: location picker screen tests; full `scripts/flutter-local.ps1 test --no-pub` suite; focused settings screen tests after the restore-button color change; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; release AAB build without the previous Kotlin daemon crash log; debug APK build; update install/launch/PID check on `192.168.0.102:5555` with installed `versionCode=3`, `versionName=1.1.0`, `targetSdk=36`.
+
 ## 2026-05-25 Release Readiness Sweep And Location Diagnostics
 - Treated placeholder `NAVER_MAP_PROXY_URL` values as unset so place lookup falls back to the direct Naver geocoding path and surfaces real auth failures instead of silently returning empty results.
 - Passed the injected `AppPermissionService` from `ConfirmScreen` into the location picker flow, keeping tests and future callers from bypassing the configured permission path.

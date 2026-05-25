@@ -15,6 +15,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   LocationLookupService? locationLookupService,
   AppPermissionService? appPermissionService,
   String? preferredMapProvider,
+  bool? canUseInAppMapOverride,
 }) async {
   final trimmed = query.trim();
 
@@ -66,6 +67,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
           initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
+          canUseInAppMapOverride: canUseInAppMapOverride,
         ),
       ),
     );
@@ -92,6 +94,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
             initialMapCenterFuture: initialMapCenterFuture,
             locationLookupService: service,
             preferredInAppMapProvider: inAppMapProvider,
+            canUseInAppMapOverride: canUseInAppMapOverride,
           ),
         ),
       );
@@ -106,6 +109,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
           initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
+          canUseInAppMapOverride: canUseInAppMapOverride,
         ),
       ),
     );
@@ -125,6 +129,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
           initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
+          canUseInAppMapOverride: canUseInAppMapOverride,
         ),
       ),
     );
@@ -144,6 +149,7 @@ Future<LocationLookupResult?> pickLocationFromQuery({
           initialMapCenterFuture: initialMapCenterFuture,
           locationLookupService: service,
           preferredInAppMapProvider: inAppMapProvider,
+          canUseInAppMapOverride: canUseInAppMapOverride,
         ),
       ),
     );
