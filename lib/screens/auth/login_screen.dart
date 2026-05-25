@@ -138,6 +138,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
           _setMessage(l10n.loginSessionFailed);
         }
       } else if (_mode == _AuthMode.signUp) {
+        OAuthCallbackHandler.markPendingEmailConfirmation();
         final response = await authService.signUpWithEmail(
           email: _emailController.text,
           password: _passwordController.text,
@@ -150,6 +151,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
           );
           _setMode(_AuthMode.login, keepMessage: true);
         } else if (mounted) {
+          OAuthCallbackHandler.clearPendingCallback();
           final signedIn = await authProvider.syncCurrentSession();
           if (mounted && signedIn) {
             keepLoadingForNavigation = true;
@@ -166,6 +168,9 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
         );
       }
     } catch (error) {
+      if (_mode == _AuthMode.signUp) {
+        OAuthCallbackHandler.clearPendingCallback();
+      }
       _setMessage(_friendlyAuthMessage(error));
     } finally {
       if (mounted && !keepLoadingForNavigation) {

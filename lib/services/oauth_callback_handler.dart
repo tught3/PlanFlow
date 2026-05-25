@@ -15,6 +15,7 @@ import 'naver_calendar_permission_service.dart';
 enum OAuthCallbackPurpose {
   login,
   calendarLink,
+  emailConfirmation,
 }
 
 class OAuthCallbackHandler {
@@ -53,6 +54,13 @@ class OAuthCallbackHandler {
     _pendingStartedAt = DateTime.now();
   }
 
+  static void markPendingEmailConfirmation() {
+    clearLatestUserMessage();
+    _pendingPurpose = OAuthCallbackPurpose.emailConfirmation;
+    _pendingMethod = 'email';
+    _pendingStartedAt = DateTime.now();
+  }
+
   static String? consumePendingLoginMethod() {
     final purpose = _pendingPurpose;
     final method = _pendingMethod;
@@ -83,6 +91,16 @@ class OAuthCallbackHandler {
     final startedAt = _pendingStartedAt;
     return _pendingPurpose == OAuthCallbackPurpose.login &&
         _pendingMethod != null &&
+        startedAt != null &&
+        DateTime.now().difference(startedAt) <= maxAge;
+  }
+
+  static bool hasPendingEmailConfirmation({
+    Duration maxAge = const Duration(hours: 24),
+  }) {
+    final startedAt = _pendingStartedAt;
+    return _pendingPurpose == OAuthCallbackPurpose.emailConfirmation &&
+        _pendingMethod == 'email' &&
         startedAt != null &&
         DateTime.now().difference(startedAt) <= maxAge;
   }
@@ -138,7 +156,8 @@ class OAuthCallbackHandler {
     latestUserMessage.value = null;
     final normalizedUri = _normalizeAuthCallbackUri(uri);
     final isPasswordRecovery = isPasswordRecoveryCallback(normalizedUri);
-    final isEmailConfirmation = isEmailConfirmationCallback(normalizedUri);
+    final isEmailConfirmation = isEmailConfirmationCallback(normalizedUri) ||
+        hasPendingEmailConfirmation();
     debugPrint(
       'OAuth callback observed: host=${uri.host} '
       'queryKeys=${normalizedUri.queryParameters.keys.join(',')} '
@@ -146,9 +165,10 @@ class OAuthCallbackHandler {
       'emailConfirmation=$isEmailConfirmation',
     );
 
-    final callbackErrorMessage = _messageForCallbackError(
+    final callbackErrorMessage = callbackErrorMessageFor(
       normalizedUri,
       isEmailConfirmation: isEmailConfirmation,
+      pendingMethod: _pendingMethod,
     );
     if (callbackErrorMessage != null) {
       debugPrint(
@@ -223,9 +243,11 @@ class OAuthCallbackHandler {
     }
   }
 
-  String? _messageForCallbackError(
+  @visibleForTesting
+  static String? callbackErrorMessageFor(
     Uri uri, {
     bool isEmailConfirmation = false,
+    String? pendingMethod,
   }) {
     final error = uri.queryParameters['error']?.toLowerCase().trim() ?? '';
     final errorCode =
@@ -251,9 +273,12 @@ class OAuthCallbackHandler {
     }
 
     if (combined.contains('access_denied')) {
-      final method = _pendingMethod == 'kakao'
+      if (pendingMethod == null || pendingMethod == 'email') {
+        return '인증이 완료되지 않았습니다. 이메일 인증 링크가 맞는지 확인하고, 기존 계정이면 로그인하거나 비밀번호 찾기를 이용해 주세요.';
+      }
+      final method = pendingMethod == 'kakao'
           ? '카카오'
-          : _pendingMethod == 'naver'
+          : pendingMethod == 'naver'
               ? '네이버'
               : '소셜';
       return '$method 동의 화면에서 권한을 취소했거나 필수 동의가 완료되지 않았습니다. 다시 시도해 주세요.';

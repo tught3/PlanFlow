@@ -106,7 +106,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get signUpEmailSent =>
-      'We sent a sign-up email. Please complete verification from your inbox.';
+      'We sent a verification email. If this email is already registered, a new email may not arrive. Please log in with the existing account or use password reset.';
 
   @override
   String get signUpSessionFailed =>

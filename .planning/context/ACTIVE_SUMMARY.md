@@ -1,5 +1,11 @@
 # ACTIVE SUMMARY
 
+## 2026-05-25 Email Verification UX And Account Deletion URL
+- Email sign-up now records a pending email-confirmation callback state, so confirmation-link failures no longer fall through to the social OAuth consent-cancel message.
+- Updated the sign-up success message to explain that already-registered emails may not receive another email and should use login or password reset.
+- Added `docs/account-deletion.html` and recorded the Play Console account deletion / partial data deletion URLs in the submission draft.
+- Verification passed: focused OAuth callback and login screen tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-25 Voice Input STT Exit And Korean Parsing Guard
 - VoiceInputScreen now routes app-bar back, system back, and bottom-tab navigation through a single exit path that cancels active STT, clears transcript/session guards, and prevents late partial callbacks from leaking into the next voice entry.
 - SttService now force-cleans stale native/speech sessions before new listens, uses a listen-generation guard for late callbacks, and can clear native state even when Android never sends a cancel callback.

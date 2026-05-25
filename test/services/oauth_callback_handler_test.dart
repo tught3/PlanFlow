@@ -69,5 +69,47 @@ void main() {
         isFalse,
       );
     });
+
+    test('maps email confirmation access denial to email guidance', () {
+      final message = OAuthCallbackHandler.callbackErrorMessageFor(
+        Uri.parse('planflow://auth-callback?error=access_denied'),
+        isEmailConfirmation: true,
+        pendingMethod: 'email',
+      );
+
+      expect(message, contains('인증 링크'));
+      expect(message, isNot(contains('소셜 동의')));
+    });
+
+    test('maps expired email confirmation links to email guidance', () {
+      final message = OAuthCallbackHandler.callbackErrorMessageFor(
+        Uri.parse(
+          'planflow://auth-callback?error=access_denied&error_code=otp_expired',
+        ),
+        isEmailConfirmation: true,
+        pendingMethod: 'email',
+      );
+
+      expect(message, contains('이메일 인증 링크가 만료'));
+      expect(message, isNot(contains('소셜')));
+    });
+
+    test('keeps social access denial guidance for social pending login', () {
+      final message = OAuthCallbackHandler.callbackErrorMessageFor(
+        Uri.parse('planflow://auth-callback?error=access_denied'),
+        pendingMethod: 'kakao',
+      );
+
+      expect(message, contains('카카오 동의 화면'));
+    });
+
+    test('uses neutral guidance when access denial has no pending method', () {
+      final message = OAuthCallbackHandler.callbackErrorMessageFor(
+        Uri.parse('planflow://auth-callback?error=access_denied'),
+      );
+
+      expect(message, contains('인증이 완료되지 않았습니다'));
+      expect(message, isNot(contains('소셜 동의')));
+    });
   });
 }

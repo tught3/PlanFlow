@@ -11,6 +11,8 @@
 - 카테고리 권장값: `생산성`
 - 패키지명: `com.fluxstudio.planflow`
 - 개인정보처리방침 URL: `https://tught3.github.io/PlanFlow/privacy-policy.html`
+- 계정 삭제 URL: `https://tught3.github.io/PlanFlow/account-deletion.html`
+- 일부 데이터 삭제 요청 URL: `https://tught3.github.io/PlanFlow/account-deletion.html#partial-data-deletion`
 - 현재 릴리즈 버전: `1.1.0`
 - 현재 내부 테스트 versionCode: `3`
 - 내부 테스트 AAB: `build/app/outputs/bundle/release/app-release.aab`
@@ -85,6 +87,7 @@ Play Console의 실제 질문 문구는 계정 상태와 정책 업데이트에 
 - 앱이 사용자 데이터를 수집하거나 공유하나요?: `예`
 - 데이터가 전송 중 암호화되나요?: `예`
 - 사용자가 데이터 삭제를 요청할 수 있나요?: `예`
+- 사용자가 계정을 삭제하지 않고 일부 또는 전체 데이터 삭제를 요청할 수 있나요?: `예`
 
 ### 수집하는 데이터 유형
 

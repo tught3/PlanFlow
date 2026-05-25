@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:planflow/core/env.dart';
 import 'package:planflow/screens/auth/login_screen.dart';
+import 'package:planflow/services/auth_service.dart';
 
 void main() {
   test('Naver social login route asks for account consent', () {
@@ -29,4 +32,62 @@ void main() {
       lessThan(tester.getTopLeft(find.text('간편 로그인')).dy),
     );
   });
+
+  testWidgets('LoginScreen shows safer email sign-up guidance', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(420, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final authService = _FakeAuthService();
+    AppEnv.markSupabaseInitialized();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginScreen(authService: authService),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.person_add_alt_1));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(EditableText);
+    await tester.enterText(fields.at(0), '홍길동');
+    await tester.enterText(fields.at(1), 'tester@example.com');
+    await tester.enterText(fields.at(2), 'password123');
+    await tester.enterText(fields.at(3), 'password123');
+    final submitButton = find.widgetWithText(FilledButton, '이메일로 회원가입');
+    await tester.ensureVisible(submitButton);
+    await tester.tap(submitButton);
+    await tester.pumpAndSettle(const Duration(seconds: 1));
+
+    expect(authService.signUpCallCount, 1);
+    expect(find.textContaining('인증 메일을 보냈습니다'), findsOneWidget);
+    expect(find.textContaining('이미 가입된 이메일이라면'), findsOneWidget);
+    expect(find.textContaining('비밀번호 찾기'), findsOneWidget);
+  });
+}
+
+class _FakeAuthService extends AuthService {
+  _FakeAuthService()
+      : super(
+          client: SupabaseClient(
+            'https://example.com',
+            'public-anon-key',
+            authOptions: const FlutterAuthClientOptions(
+              detectSessionInUri: false,
+              autoRefreshToken: false,
+            ),
+          ),
+        );
+
+  var signUpCallCount = 0;
+
+  @override
+  Future<AuthResponse> signUpWithEmail({
+    required String email,
+    required String password,
+    String? name,
+  }) async {
+    signUpCallCount += 1;
+    return AuthResponse();
+  }
 }

@@ -30,7 +30,7 @@
   "shortPassword": "Password must be at least 6 characters.",
   "passwordMismatch": "Password confirmation does not match.",
   "loginSessionFailed": "Could not verify the login session. Please try again shortly.",
-  "signUpEmailSent": "We sent a sign-up email. Please complete verification from your inbox.",
+  "signUpEmailSent": "We sent a verification email. If this email is already registered, a new email may not arrive. Please log in with the existing account or use password reset.",
   "signUpSessionFailed": "Could not verify the sign-up session. Please try logging in again.",
   "passwordResetSent": "We sent a password reset email. Please check your inbox.",
   "oauthLaunchFailed": "Could not open the login window. Please check your browser settings.",

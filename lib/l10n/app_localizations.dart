@@ -281,7 +281,7 @@ abstract class AppLocalizations {
   /// No description provided for @signUpEmailSent.
   ///
   /// In ko, this message translates to:
-  /// **'회원가입 메일을 보냈습니다. 메일함에서 인증을 완료해 주세요.'**
+  /// **'인증 메일을 보냈습니다. 이미 가입된 이메일이라면 새 메일이 오지 않을 수 있어요. 기존 계정으로 로그인하거나 비밀번호 찾기를 이용해 주세요.'**
   String get signUpEmailSent;
 
   /// No description provided for @signUpSessionFailed.
