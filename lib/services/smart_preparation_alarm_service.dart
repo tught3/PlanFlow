@@ -250,6 +250,7 @@ class SmartPreparationAlarmService {
     int prepPreAlarmOffset = defaultPrepPreAlarmOffset,
     int departPreAlarmOffset = defaultDepartPreAlarmOffset,
     int travelMinutes = defaultTravelBufferMin,
+    bool travelMinutesIsFallback = false,
     int departureSafetyMarginMin = externalScheduleSlackMin,
     bool includePreparationAlarms = false,
     bool isFirstExternalEventOfDay = true,
@@ -294,9 +295,12 @@ class SmartPreparationAlarmService {
         ),
       );
     }
+    final departureTitle = travelMinutesIsFallback
+        ? '지금 출발하세요 🚗 (이동 약 $safeTravelMin분 — 위치 확인 불가, 기본값)'
+        : '지금 출발하세요 🚗 (이동 약 $safeTravelMin분)';
     specs.add(
       _ExternalAlarmSpec(
-        title: '지금 출발하세요 🚗 (이동 약 $safeTravelMin분)',
+        title: departureTitle,
         notifyAt: departureAt,
       ),
     );

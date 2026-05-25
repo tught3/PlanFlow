@@ -220,6 +220,41 @@ void main() {
       ),
       '계약 취소 확인 전화',
     );
+    var didCancel = false;
+    expect(
+      SttService.normalizeVoiceTranscript(
+        '6월1일 취소',
+        includeCancelCommands: true,
+        onCommand: (command) {
+          if (command == SttVoiceCommand.cancel) {
+            didCancel = true;
+          }
+        },
+      ),
+      '6월1일',
+    );
+    expect(didCancel, true);
+    expect(
+      SttService.normalizeVoiceTranscript(
+        '6월1일 취',
+        includeCancelCommands: true,
+      ),
+      '6월1일',
+    );
+    didCancel = false;
+    expect(
+      SttService.normalizeVoiceTranscript(
+        '계약 취소',
+        includeCancelCommands: true,
+        onCommand: (command) {
+          if (command == SttVoiceCommand.cancel) {
+            didCancel = true;
+          }
+        },
+      ),
+      '계약 취소',
+    );
+    expect(didCancel, false);
   });
 
   test('SttService appends only new speech when Android partials overlap', () {

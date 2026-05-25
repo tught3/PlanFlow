@@ -168,8 +168,13 @@ class SttService {
       if (command != null) {
         final isWholeTranscriptCommand =
             index == 0 && command.consumedTokens == tokens.length;
+        final isTailTranscriptCommand =
+            index + command.consumedTokens == tokens.length;
         if (command.command == SttVoiceCommand.cancel &&
-            !isWholeTranscriptCommand) {
+            !isWholeTranscriptCommand &&
+            !(includeCancelCommands &&
+                isTailTranscriptCommand &&
+                _isSafeTailCancelContext(tokens.take(index)))) {
           output.add(tokens[index]);
           index += 1;
           continue;
@@ -195,6 +200,13 @@ class SttService {
       }
 
       final cleanedToken = _normalizeTranscriptToken(tokens[index]);
+      if (includeCancelCommands &&
+          index == tokens.length - 1 &&
+          _isStopCommandPrefix(cleanedToken) &&
+          _isSafeTailCancelContext(tokens.take(index))) {
+        index += 1;
+        continue;
+      }
       if (cleanedToken.isNotEmpty) {
         output.add(cleanedToken);
       }
@@ -202,6 +214,28 @@ class SttService {
     }
 
     return _normalizeCommonKoreanSttPhrases(output.join(' ')).trim();
+  }
+
+  static bool _isStopCommandPrefix(String token) {
+    if (token.isEmpty) {
+      return false;
+    }
+    return _stopCommandTokens.any(
+      (command) => command.startsWith(token) && command != token,
+    );
+  }
+
+  static bool _isSafeTailCancelContext(Iterable<String> previousTokens) {
+    final normalized = previousTokens
+        .map(_normalizeTranscriptToken)
+        .where((token) => token.isNotEmpty)
+        .join(' ');
+    if (normalized.isEmpty) {
+      return true;
+    }
+    return RegExp(
+      r'(오늘|내일|모레|글피|이번주|이번\s*주|다음주|다음\s*주|\d{1,2}월|\d{1,2}일|\d{1,2}시|오전|오후|아침|점심|저녁|밤)',
+    ).hasMatch(normalized);
   }
 
   static String _normalizeCommonKoreanSttPhrases(String text) {

@@ -187,6 +187,26 @@ void main() {
     expect(titles, contains('지금 출발하세요 🚗 (이동 약 60분)'));
   });
 
+  test('buildExternalEventPayloads marks fallback travel estimate', () {
+    final service = SmartPreparationAlarmService();
+    final payloads = service.buildExternalEventPayloads(
+      eventId: 'event-fallback',
+      userId: 'user-1',
+      title: '원주 미팅',
+      location: '원주시청',
+      eventStartAt: DateTime(2026, 5, 8, 12),
+      travelMinutes: 30,
+      travelMinutesIsFallback: true,
+      departureSafetyMarginMin: 20,
+      now: DateTime(2026, 5, 8, 7),
+    );
+
+    expect(
+      payloads.map((row) => row['title']),
+      contains('지금 출발하세요 🚗 (이동 약 30분 — 위치 확인 불가, 기본값)'),
+    );
+  });
+
   test('isExternalEvent ignores home, online, and call schedules', () {
     final service = SmartPreparationAlarmService();
 

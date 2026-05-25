@@ -13,6 +13,7 @@ import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'external_event_import_classifier.dart';
+import 'naver_caldav_remote_store.dart';
 
 enum NaverCalDavConnectionStatus {
   success,
@@ -478,43 +479,22 @@ class LocalNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
 }
 
 class SupabaseNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
-  const SupabaseNaverCalDavCredentialStore({SupabaseClient? client})
-      : _client = client;
+  SupabaseNaverCalDavCredentialStore({SupabaseClient? client})
+      : _remoteStore = NaverCalDavRemoteStore(client: client);
 
-  final SupabaseClient? _client;
-
-  SupabaseClient? get _resolvedClient {
-    final client = _client;
-    if (client != null) {
-      return client;
-    }
-    if (!AppEnv.isSupabaseReady) {
-      return null;
-    }
-    return Supabase.instance.client;
-  }
+  final NaverCalDavRemoteStore _remoteStore;
 
   @override
   Future<NaverCalDavCredentials?> readCredentials() async {
-    final client = _resolvedClient;
-    if (client == null || client.auth.currentUser == null) {
-      return null;
-    }
-
     try {
-      final response = await client.rpc('fetch_naver_caldav_credentials');
-      final rows = _asRows(response);
-      if (rows.isEmpty) {
+      final remote = await _remoteStore.read();
+      if (remote == null) {
         return null;
       }
-      final row = rows.first;
-      final id = row['naver_caldav_id']?.toString().trim() ?? '';
-      final password =
-          row['naver_caldav_app_password']?.toString().trim() ?? '';
-      if (id.isEmpty || password.isEmpty) {
-        return null;
-      }
-      return NaverCalDavCredentials(naverId: id, appPassword: password);
+      return NaverCalDavCredentials(
+        naverId: remote.naverId,
+        appPassword: remote.appPassword,
+      );
     } catch (error, stackTrace) {
       debugPrint('Naver CalDAV remote credential read failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -527,18 +507,10 @@ class SupabaseNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
     required String naverId,
     required String appPassword,
   }) async {
-    final client = _resolvedClient;
-    if (client == null || client.auth.currentUser == null) {
-      return;
-    }
-
     try {
-      await client.rpc(
-        'upsert_naver_caldav_credentials',
-        params: <String, dynamic>{
-          'naver_caldav_id': naverId,
-          'naver_caldav_app_password': appPassword,
-        },
+      await _remoteStore.save(
+        naverId: naverId,
+        appPassword: appPassword,
       );
     } catch (error, stackTrace) {
       debugPrint('Naver CalDAV remote credential save failed: $error');
@@ -548,30 +520,12 @@ class SupabaseNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
 
   @override
   Future<void> clearCredentials() async {
-    final client = _resolvedClient;
-    if (client == null || client.auth.currentUser == null) {
-      return;
-    }
-
     try {
-      await client.rpc('clear_naver_caldav_credentials');
+      await _remoteStore.clear();
     } catch (error, stackTrace) {
       debugPrint('Naver CalDAV remote credential clear failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
-  }
-
-  List<Map<String, dynamic>> _asRows(Object? value) {
-    if (value is List) {
-      return value
-          .whereType<Map>()
-          .map((row) => Map<String, dynamic>.from(row))
-          .toList(growable: false);
-    }
-    if (value is Map) {
-      return <Map<String, dynamic>>[Map<String, dynamic>.from(value)];
-    }
-    return const <Map<String, dynamic>>[];
   }
 }
 
@@ -587,25 +541,20 @@ class CompositeNaverCalDavCredentialStore
 
   @override
   Future<NaverCalDavCredentials?> readCredentials() async {
-    final remote = await remoteStore.readCredentials();
-    if (remote != null) {
-      await localStore.saveCredentials(
-        naverId: remote.naverId,
-        appPassword: remote.appPassword,
-      );
-      return remote;
+    final local = await localStore.readCredentials();
+    if (local != null) {
+      return local;
     }
 
-    final local = await localStore.readCredentials();
-    if (local == null) {
+    final remote = await remoteStore.readCredentials();
+    if (remote == null) {
       return null;
     }
-
-    await remoteStore.saveCredentials(
-      naverId: local.naverId,
-      appPassword: local.appPassword,
+    await localStore.saveCredentials(
+      naverId: remote.naverId,
+      appPassword: remote.appPassword,
     );
-    return local;
+    return remote;
   }
 
   @override
@@ -613,11 +562,11 @@ class CompositeNaverCalDavCredentialStore
     required String naverId,
     required String appPassword,
   }) async {
-    await remoteStore.saveCredentials(
+    await localStore.saveCredentials(
       naverId: naverId,
       appPassword: appPassword,
     );
-    await localStore.saveCredentials(
+    await remoteStore.saveCredentials(
       naverId: naverId,
       appPassword: appPassword,
     );
@@ -626,8 +575,8 @@ class CompositeNaverCalDavCredentialStore
   @override
   Future<void> clearCredentials() async {
     await Future.wait(<Future<void>>[
-      remoteStore.clearCredentials(),
       localStore.clearCredentials(),
+      remoteStore.clearCredentials(),
     ]);
   }
 }

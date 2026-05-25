@@ -72,10 +72,11 @@ void main() {
         expect(request.url.host, 'example.supabase.co');
         expect(request.url.queryParameters['start'], '126.978,37.5665');
         expect(request.url.queryParameters['goal'], '127.0276,37.4979');
-        expect(request.url.queryParameters['option'], 'trafast');
+        expect(request.url.queryParameters['mode'], 'transit');
+        expect(request.url.queryParameters.containsKey('option'), isFalse);
         expect(request.headers.containsKey('X-NCP-APIGW-API-KEY'), isFalse);
         return http.Response(
-          '{"route":{"trafast":[{"summary":{"duration":1920000}}]}}',
+          '{"result":{"path":[{"summary":{"duration":1920000}}]}}',
           200,
         );
       }),
@@ -102,8 +103,9 @@ void main() {
       naverClientSecret: 'naver-secret',
       httpClientFactory: () => MockClient((request) async {
         expect(request.url.host, 'naveropenapi.apigw.ntruss.com');
+        expect(request.url.path, '/map-direction-15/v1/transit');
         return http.Response(
-          '{"route":{"trafast":[{"summary":{"duration":900000}}]}}',
+          '{"result":{"path":[{"summary":{"duration":900000}}]}}',
           200,
         );
       }),
@@ -120,5 +122,42 @@ void main() {
     expect(estimate, isNotNull);
     expect(estimate!.provider, MapTravelProvider.naver);
     expect(estimate.minutes, 15);
+  });
+
+  test('MapService falls back to Naver driving when transit endpoint fails',
+      () async {
+    var calls = 0;
+    final service = MapService(
+      tmapApiKey: 'tmap-key',
+      naverProxyUrl: '',
+      naverClientId: 'naver-id',
+      naverClientSecret: 'naver-secret',
+      httpClientFactory: () => MockClient((request) async {
+        calls += 1;
+        expect(request.url.host, 'naveropenapi.apigw.ntruss.com');
+        if (calls == 1) {
+          expect(request.url.path, '/map-direction-15/v1/transit');
+          return http.Response('forbidden', 403);
+        }
+        expect(request.url.path, '/map-direction/v1/driving');
+        return http.Response(
+          '{"route":{"trafast":[{"summary":{"duration":1800000}}]}}',
+          200,
+        );
+      }),
+    );
+
+    final estimate = await service.getTravelMinutes(
+      originLat: 37.5665,
+      originLng: 126.978,
+      destinationLat: 37.4979,
+      destinationLng: 127.0276,
+      mode: MapTravelMode.transit,
+    );
+
+    expect(estimate, isNotNull);
+    expect(estimate!.provider, MapTravelProvider.naver);
+    expect(estimate.minutes, 30);
+    expect(calls, 2);
   });
 }

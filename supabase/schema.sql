@@ -234,6 +234,8 @@ create table if not exists public.user_settings (
   time_zone_id text not null default 'Asia/Seoul',
   google_calendar_token text,
   naver_calendar_token text,
+  naver_caldav_id text,
+  naver_caldav_app_password text,
   created_at timestamptz not null default now()
 );
 
@@ -269,6 +271,10 @@ create table if not exists public.user_settings (
 
   alter table public.user_settings
   add column if not exists naver_calendar_token text;
+
+  alter table public.user_settings
+  add column if not exists naver_caldav_id text,
+  add column if not exists naver_caldav_app_password text;
 
 do $$
 begin

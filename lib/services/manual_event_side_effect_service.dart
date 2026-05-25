@@ -218,7 +218,8 @@ class ManualEventSideEffectService {
         prepTimeMin: prepTimeMin,
         prepPreAlarmOffset: prepPreAlarmOffset,
         departPreAlarmOffset: departPreAlarmOffset,
-        travelMinutes: resolvedTravelMinutes,
+        travelMinutes: resolvedTravelMinutes.minutes,
+        travelMinutesIsFallback: resolvedTravelMinutes.isFallback,
         departureSafetyMarginMin: departureSafetyMargin.inMinutes,
         isFirstExternalEventOfDay: isFirstExternalEventOfDay,
         now: effectiveNow,
@@ -255,7 +256,8 @@ class ManualEventSideEffectService {
           prepTimeMin: prepTimeMin,
           prepPreAlarmOffset: prepPreAlarmOffset,
           departPreAlarmOffset: departPreAlarmOffset,
-          travelMinutes: resolvedTravelMinutes,
+          travelMinutes: resolvedTravelMinutes.minutes,
+          travelMinutesIsFallback: resolvedTravelMinutes.isFallback,
           departureSafetyMarginMin: departureSafetyMargin.inMinutes,
           isFirstExternalEventOfDay: isFirstExternalEventOfDay,
           now: effectiveNow,
@@ -634,7 +636,8 @@ class ManualEventSideEffectService {
         prepTimeMin: prepTimeMin,
         prepPreAlarmOffset: prepPreAlarmOffset,
         departPreAlarmOffset: departPreAlarmOffset,
-        travelMinutes: resolvedTravelMinutes,
+        travelMinutes: resolvedTravelMinutes.minutes,
+        travelMinutesIsFallback: resolvedTravelMinutes.isFallback,
         departureSafetyMarginMin: departureSafetyMargin.inMinutes,
         isFirstExternalEventOfDay: event.id == firstExternalEventId,
         now: now,
@@ -675,21 +678,24 @@ class ManualEventSideEffectService {
     return '$userId:$yyyy-$mm-$dd';
   }
 
-  Future<int> _resolveTravelMinutesForEvent(
+  Future<_TravelMinutesResolution> _resolveTravelMinutesForEvent(
     EventModel event, {
     required int fallbackTravelMinutes,
     required String travelMode,
   }) async {
     if (fallbackTravelMinutes !=
         SmartPreparationAlarmService.defaultTravelBufferMin) {
-      return fallbackTravelMinutes;
+      return _TravelMinutesResolution(
+        minutes: fallbackTravelMinutes,
+        isFallback: false,
+      );
     }
     final destination = await _resolveDestinationForEvent(event);
     if (destination == null) {
       debugPrint(
         'Smart preparation travel fallback: no destination coordinates for ${event.id}.',
       );
-      return fallbackTravelMinutes;
+      return _TravelMinutesResolution.fallback(fallbackTravelMinutes);
     }
 
     final origin = await _resolveOriginLocation();
@@ -697,7 +703,7 @@ class ManualEventSideEffectService {
       debugPrint(
         'Smart preparation travel fallback: no current location for ${event.id}.',
       );
-      return fallbackTravelMinutes;
+      return _TravelMinutesResolution.fallback(fallbackTravelMinutes);
     }
 
     try {
@@ -709,14 +715,17 @@ class ManualEventSideEffectService {
         mode: _travelModeFromSettings(travelMode),
         locationText: event.location,
       );
-      return estimate.minutes;
+      return _TravelMinutesResolution(
+        minutes: estimate.minutes,
+        isFallback: false,
+      );
     } catch (error, stackTrace) {
       debugPrint(
         'Smart preparation travel fallback: route estimate failed for '
         '${event.id}: $error',
       );
       debugPrintStack(stackTrace: stackTrace);
-      return fallbackTravelMinutes;
+      return _TravelMinutesResolution.fallback(fallbackTravelMinutes);
     }
   }
 
@@ -734,6 +743,11 @@ class ManualEventSideEffectService {
           continue;
         }
         final selected = searchResult.results.first;
+        await _backfillEventLocationCoordinates(
+          event: event,
+          latitude: selected.latitude,
+          longitude: selected.longitude,
+        );
         return GeoPoint(
           latitude: selected.latitude,
           longitude: selected.longitude,
@@ -748,6 +762,33 @@ class ManualEventSideEffectService {
     }
 
     return null;
+  }
+
+  Future<void> _backfillEventLocationCoordinates({
+    required EventModel event,
+    required double latitude,
+    required double longitude,
+  }) async {
+    if (event.id.trim().isEmpty ||
+        event.locationLat != null ||
+        event.locationLng != null) {
+      return;
+    }
+    try {
+      await _events.updateEvent(
+        _copyEventWithLocationCoordinates(
+          event,
+          locationLat: latitude,
+          locationLng: longitude,
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Smart preparation travel fallback: location coordinate backfill '
+        'failed for ${event.id}: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<GeoPoint?> _resolveOriginLocation() async {
@@ -947,6 +988,56 @@ class ManualEventSideEffectService {
       'is_sent': false,
     };
   }
+}
+
+class _TravelMinutesResolution {
+  const _TravelMinutesResolution({
+    required this.minutes,
+    required this.isFallback,
+  });
+
+  factory _TravelMinutesResolution.fallback(int minutes) {
+    return _TravelMinutesResolution(minutes: minutes, isFallback: true);
+  }
+
+  final int minutes;
+  final bool isFallback;
+}
+
+EventModel _copyEventWithLocationCoordinates(
+  EventModel event, {
+  required double locationLat,
+  required double locationLng,
+}) {
+  return EventModel(
+    id: event.id,
+    userId: event.userId,
+    title: event.title,
+    startAt: event.startAt,
+    endAt: event.endAt,
+    location: event.location,
+    locationLat: locationLat,
+    locationLng: locationLng,
+    memo: event.memo,
+    supplies: event.supplies,
+    suppliesChecked: event.suppliesChecked,
+    participants: event.participants,
+    targets: event.targets,
+    isCritical: event.isCritical,
+    recurrenceRule: event.recurrenceRule,
+    isAllDay: event.isAllDay,
+    isMultiDay: event.isMultiDay,
+    parentEventId: event.parentEventId,
+    category: event.category,
+    source: event.source,
+    externalId: event.externalId,
+    externalCalendarId: event.externalCalendarId,
+    externalEtag: event.externalEtag,
+    externalUpdatedAt: event.externalUpdatedAt,
+    lastSyncedAt: event.lastSyncedAt,
+    createdAt: event.createdAt,
+    updatedAt: event.updatedAt,
+  );
 }
 
 class ManualEventSideEffectResult {

@@ -652,7 +652,10 @@ void main() {
           .map((row) => row['title']);
       expect(tripTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(meetingTitles.any(_isDepartureExternalAlarmTitle), true);
-      expect(meetingTitles, contains('지금 출발하세요 🚗 (이동 약 30분)'));
+      expect(
+        meetingTitles,
+        contains('지금 출발하세요 🚗 (이동 약 30분 — 위치 확인 불가, 기본값)'),
+      );
     });
 
     test(
@@ -705,7 +708,10 @@ void main() {
           .map((row) => row['title']);
       expect(nineTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(tenTitles.any(_isDepartureExternalAlarmTitle), true);
-      expect(tenTitles, contains('지금 출발하세요 🚗 (이동 약 30분)'));
+      expect(
+        tenTitles,
+        contains('지금 출발하세요 🚗 (이동 약 30분 — 위치 확인 불가, 기본값)'),
+      );
     });
 
     test(

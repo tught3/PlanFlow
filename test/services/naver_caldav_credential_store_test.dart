@@ -2,7 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 
 void main() {
-  test('prefers remote credentials and refreshes local cache', () async {
+  test('prefers local credentials when secure storage still has them',
+      () async {
     final remote = _FakeCredentialStore(
       readValue: const NaverCalDavCredentials(
         naverId: 'remote-id',
@@ -22,25 +23,23 @@ void main() {
 
     final credentials = await store.readCredentials();
 
-    expect(credentials?.naverId, 'remote-id');
-    expect(credentials?.appPassword, 'remote-password');
-    expect(remote.readCount, 1);
-    expect(local.readCount, 0);
+    expect(credentials?.naverId, 'local-id');
+    expect(credentials?.appPassword, 'local-password');
+    expect(local.readCount, 1);
+    expect(remote.readCount, 0);
     expect(remote.saveCount, 0);
-    expect(local.saveCount, 1);
-    expect(local.savedValue?.naverId, 'remote-id');
-    expect(local.savedValue?.appPassword, 'remote-password');
+    expect(local.saveCount, 0);
   });
 
-  test('migrates local credentials back to remote when remote is empty',
+  test('restores local cache from remote when secure storage is empty',
       () async {
-    final remote = _FakeCredentialStore();
-    final local = _FakeCredentialStore(
+    final remote = _FakeCredentialStore(
       readValue: const NaverCalDavCredentials(
-        naverId: 'local-id',
-        appPassword: 'local-password',
+        naverId: 'remote-id',
+        appPassword: 'remote-password',
       ),
     );
+    final local = _FakeCredentialStore();
     final store = CompositeNaverCalDavCredentialStore(
       remoteStore: remote,
       localStore: local,
@@ -48,12 +47,14 @@ void main() {
 
     final credentials = await store.readCredentials();
 
-    expect(credentials?.naverId, 'local-id');
-    expect(credentials?.appPassword, 'local-password');
-    expect(remote.saveCount, 1);
-    expect(remote.savedValue?.naverId, 'local-id');
-    expect(remote.savedValue?.appPassword, 'local-password');
+    expect(credentials?.naverId, 'remote-id');
+    expect(credentials?.appPassword, 'remote-password');
     expect(local.readCount, 1);
+    expect(remote.readCount, 1);
+    expect(remote.saveCount, 0);
+    expect(local.saveCount, 1);
+    expect(local.savedValue?.naverId, 'remote-id');
+    expect(local.savedValue?.appPassword, 'remote-password');
   });
 
   test('saves credentials to both remote and local stores', () async {

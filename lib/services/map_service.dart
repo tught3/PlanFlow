@@ -71,6 +71,7 @@ class MapService {
             originLng: originLng,
             destinationLat: destinationLat,
             destinationLng: destinationLng,
+            mode: mode,
           ),
       };
 
@@ -154,12 +155,49 @@ class MapService {
     required double originLng,
     required double destinationLat,
     required double destinationLng,
+    required MapTravelMode mode,
+  }) async {
+    if (mode == MapTravelMode.transit) {
+      final transitMinutes = await _tryNaverDurationForMode(
+        originLat: originLat,
+        originLng: originLng,
+        destinationLat: destinationLat,
+        destinationLng: destinationLng,
+        mode: MapTravelMode.transit,
+      );
+      if (transitMinutes != null) {
+        return transitMinutes;
+      }
+      return _tryNaverDurationForMode(
+        originLat: originLat,
+        originLng: originLng,
+        destinationLat: destinationLat,
+        destinationLng: destinationLng,
+        mode: MapTravelMode.car,
+      );
+    }
+    return _tryNaverDurationForMode(
+      originLat: originLat,
+      originLng: originLng,
+      destinationLat: destinationLat,
+      destinationLng: destinationLng,
+      mode: MapTravelMode.car,
+    );
+  }
+
+  Future<int?> _tryNaverDurationForMode({
+    required double originLat,
+    required double originLng,
+    required double destinationLat,
+    required double destinationLng,
+    required MapTravelMode mode,
   }) async {
     final proxyUri = _naverDirectionProxyUri(
       originLat: originLat,
       originLng: originLng,
       destinationLat: destinationLat,
       destinationLng: destinationLng,
+      mode: mode,
     );
     if (proxyUri == null &&
         (_naverClientId.trim().isEmpty || _naverClientSecret.trim().isEmpty)) {
@@ -168,27 +206,31 @@ class MapService {
 
     final client = _httpClientFactory();
     try {
-      final response = await client.get(
-        proxyUri ??
-            Uri.https(
-              'naveropenapi.apigw.ntruss.com',
-              '/map-direction/v1/driving',
-              <String, String>{
-                'start': '$originLng,$originLat',
-                'goal': '$destinationLng,$destinationLat',
-                'option': 'trafast',
-              },
-            ),
-        headers: proxyUri == null
-            ? <String, String>{
-                'X-NCP-APIGW-API-KEY-ID': _naverClientId,
-                'X-NCP-APIGW-API-KEY': _naverClientSecret,
-                'accept': 'application/json',
-              }
-            : const <String, String>{
-                'accept': 'application/json',
-              },
-      ).timeout(const Duration(seconds: 8));
+      final response = await client
+          .get(
+            proxyUri ??
+                Uri.https(
+                  'naveropenapi.apigw.ntruss.com',
+                  mode == MapTravelMode.transit
+                      ? '/map-direction-15/v1/transit'
+                      : '/map-direction/v1/driving',
+                  <String, String>{
+                    'start': '$originLng,$originLat',
+                    'goal': '$destinationLng,$destinationLat',
+                    if (mode == MapTravelMode.car) 'option': 'trafast',
+                  },
+                ),
+            headers: proxyUri == null
+                ? <String, String>{
+                    'X-NCP-APIGW-API-KEY-ID': _naverClientId,
+                    'X-NCP-APIGW-API-KEY': _naverClientSecret,
+                    'accept': 'application/json',
+                  }
+                : const <String, String>{
+                    'accept': 'application/json',
+                  },
+          )
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;
@@ -199,32 +241,10 @@ class MapService {
         return null;
       }
 
-      final route = decoded['route'];
-      if (route is! Map<String, dynamic>) {
-        return null;
-      }
-
-      final routes = route['trafast'];
-      if (routes is! List || routes.isEmpty) {
-        return null;
-      }
-
-      final first = routes.first;
-      if (first is! Map<String, dynamic>) {
-        return null;
-      }
-
-      final summary = first['summary'];
-      if (summary is! Map<String, dynamic>) {
-        return null;
-      }
-
-      final milliseconds = _numValue(summary['duration']);
-      if (milliseconds == null || milliseconds <= 0) {
-        return null;
-      }
-
-      return math.max(1, (milliseconds / 60000).ceil());
+      return switch (mode) {
+        MapTravelMode.transit => _parseNaverTransitDuration(decoded),
+        MapTravelMode.car => _parseNaverDrivingDuration(decoded),
+      };
     } catch (_) {
       return null;
     } finally {
@@ -237,6 +257,7 @@ class MapService {
     required double originLng,
     required double destinationLat,
     required double destinationLng,
+    required MapTravelMode mode,
   }) {
     final raw = _naverProxyUrl.trim();
     if (raw.isEmpty) {
@@ -251,9 +272,68 @@ class MapService {
         ...uri.queryParameters,
         'start': '$originLng,$originLat',
         'goal': '$destinationLng,$destinationLat',
-        'option': 'trafast',
+        'mode': mode.name,
+        if (mode == MapTravelMode.car) 'option': 'trafast',
       },
     );
+  }
+
+  int? _parseNaverDrivingDuration(Map<String, dynamic> decoded) {
+    final route = decoded['route'];
+    if (route is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final routes = route['trafast'] ?? route['traoptimal'];
+    if (routes is! List || routes.isEmpty) {
+      return null;
+    }
+
+    final first = routes.first;
+    if (first is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final summary = first['summary'];
+    if (summary is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final milliseconds = _numValue(summary['duration']);
+    if (milliseconds == null || milliseconds <= 0) {
+      return null;
+    }
+
+    return math.max(1, (milliseconds / 60000).ceil());
+  }
+
+  int? _parseNaverTransitDuration(Map<String, dynamic> decoded) {
+    final result = decoded['result'];
+    if (result is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final paths = result['path'];
+    if (paths is! List || paths.isEmpty) {
+      return null;
+    }
+
+    final first = paths.first;
+    if (first is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final summary = first['summary'];
+    if (summary is! Map<String, dynamic>) {
+      return null;
+    }
+
+    final milliseconds = _numValue(summary['duration']);
+    if (milliseconds == null || milliseconds <= 0) {
+      return null;
+    }
+
+    return math.max(1, (milliseconds / 60000).ceil());
   }
 
   num? _numValue(Object? value) {

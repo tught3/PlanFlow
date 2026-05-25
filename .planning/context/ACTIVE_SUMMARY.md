@@ -1297,3 +1297,10 @@
 - The Login screen Naver button now opens the Naver OAuth WebView with `forceConsent=1`, so normal Naver login requests the same reprompt/account-confirmation path as the previous account recheck action.
 - The Settings account section now shows `네이버 계정 정보 다시 확인` only when the current signed-in Naver profile is actually missing usable account information.
 - Verification passed: focused login/settings/auth-service tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. Device install was attempted, but `192.168.0.102:5555` was offline and reconnect timed out.
+
+## 2026-05-25 Naver CalDAV Mirror And Travel Transit
+- Added a Supabase-backed Naver CalDAV credential mirror with local-first read/write semantics so secure-storage loss can be restored after the user has re-linked once.
+- Added the Naver transit endpoint path for public-transit travel estimates, with driving fallback when transit is unavailable, and backfilled missing event coordinates after successful location geocoding.
+- Smart departure payloads now mark fallback travel estimates in the notification title/body, while preserving the 30-minute fallback value.
+- Tightened STT cancel-command cleanup so `6월1일 취소` leaves `6월1일` instead of `6월1일 취`, without treating content such as `계약 취소 확인 전화` as a cancel command.
+- Verification passed: full `scripts/flutter-local.ps1 test --no-pub`, focused STT/voice-input tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, and PID check.
