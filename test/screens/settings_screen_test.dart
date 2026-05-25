@@ -43,6 +43,33 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  test('Naver account recheck is only shown for incomplete Naver profiles', () {
+    expect(
+      shouldShowNaverAccountRecheck(
+        signedIn: true,
+        isNaverAccount: true,
+        socialAccountInfoIncomplete: true,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldShowNaverAccountRecheck(
+        signedIn: true,
+        isNaverAccount: true,
+        socialAccountInfoIncomplete: false,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldShowNaverAccountRecheck(
+        signedIn: true,
+        isNaverAccount: false,
+        socialAccountInfoIncomplete: true,
+      ),
+      isFalse,
+    );
+  });
+
   testWidgets('SettingsScreen loads settings and shows Naver calendar actions',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));

@@ -2952,7 +2952,12 @@ class _AccountSection extends StatelessWidget {
         animation: authProvider,
         builder: (context, _) {
           final signedIn = authProvider.isSignedIn;
-          final showNaverRecheck = signedIn && authProvider.isNaverAccount;
+          final showNaverRecheck = shouldShowNaverAccountRecheck(
+            signedIn: signedIn,
+            isNaverAccount: authProvider.isNaverAccount,
+            socialAccountInfoIncomplete:
+                authProvider.socialAccountInfoIncomplete,
+          );
           return Column(
             children: [
               _StatusRow(
@@ -3012,6 +3017,15 @@ class _AccountSection extends StatelessWidget {
       ),
     );
   }
+}
+
+@visibleForTesting
+bool shouldShowNaverAccountRecheck({
+  required bool signedIn,
+  required bool isNaverAccount,
+  required bool socialAccountInfoIncomplete,
+}) {
+  return signedIn && isNaverAccount && socialAccountInfoIncomplete;
 }
 
 class _NaverGuideThumbnail extends StatelessWidget {

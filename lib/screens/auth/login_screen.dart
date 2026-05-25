@@ -12,6 +12,9 @@ import '../../services/auth_service.dart';
 import '../../services/oauth_callback_handler.dart';
 import '../../l10n/app_l10n.dart';
 
+@visibleForTesting
+String naverOAuthLoginRoute() => '${AppRoutes.naverOAuth}?forceConsent=1';
+
 enum _AuthMode {
   login,
   signUp,
@@ -187,7 +190,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
         _isLoading = false;
         _message = null;
       });
-      final completed = await context.push<bool>(AppRoutes.naverOAuth);
+      final completed = await context.push<bool>(naverOAuthLoginRoute());
       if (!mounted || completed == true || authProvider.isSignedIn) {
         return;
       }

@@ -1279,3 +1279,8 @@
 - Naver OAuth WebView no longer renders the successful callback-processing status as a red retry/error box; callback handling clears the message and relies on the loading bar while the session is confirmed.
 - Real WebView/OAuth failures still use the red retry message, while the blocked Naver-app navigation hint now uses a neutral info tone.
 - Verification passed: focused Naver OAuth WebView test, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, and PID check.
+
+## 2026-05-25 Naver Login Consent Route And Recheck Visibility
+- The Login screen Naver button now opens the Naver OAuth WebView with `forceConsent=1`, so normal Naver login requests the same reprompt/account-confirmation path as the previous account recheck action.
+- The Settings account section now shows `네이버 계정 정보 다시 확인` only when the current signed-in Naver profile is actually missing usable account information.
+- Verification passed: focused login/settings/auth-service tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. Device install was attempted, but `192.168.0.102:5555` was offline and reconnect timed out.
