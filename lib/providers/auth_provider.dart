@@ -138,6 +138,14 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void markPasswordRecovery() {
+    if (_isPasswordRecovery) {
+      return;
+    }
+    _isPasswordRecovery = true;
+    notifyListeners();
+  }
+
   void _applyUser(User? user) {
     _userId = user?.id;
     _email = _emailFrom(user);

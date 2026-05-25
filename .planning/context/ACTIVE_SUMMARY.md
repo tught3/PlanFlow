@@ -1269,3 +1269,8 @@
 - Stabilized the Voice Input primary button so text entry/deletion no longer swaps button classes or interpolates incompatible text styles during transcript changes.
 - Removed legacy `public.early_bird_emails` from the production DB and local schema/backup SQL, while preserving `planflow.early_bird_emails` and `public.product_early_birds`.
 - Verification passed: focused voice/home/settings tests, Supabase table/function checks, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, launcher start, focused-app check, and PID check.
+
+## 2026-05-25 Password Recovery Callback Routing
+- Password reset callbacks with `type=recovery` or password-recovery event markers now bypass the normal OAuth-home routing, exchange the recovery session even when an old session exists, mark password recovery locally, and route to `/reset-password`.
+- Added regression coverage for recovery callback detection, including Supabase fragment-style recovery links, while leaving normal OAuth callbacks unchanged.
+- Verification passed: `test/services/oauth_callback_handler_test.dart`, `test/providers/auth_provider_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, and PID check.

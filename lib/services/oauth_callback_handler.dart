@@ -137,9 +137,11 @@ class OAuthCallbackHandler {
 
     latestUserMessage.value = null;
     final normalizedUri = _normalizeAuthCallbackUri(uri);
+    final isPasswordRecovery = isPasswordRecoveryCallback(normalizedUri);
     debugPrint(
       'OAuth callback observed: host=${uri.host} '
-      'queryKeys=${normalizedUri.queryParameters.keys.join(',')}',
+      'queryKeys=${normalizedUri.queryParameters.keys.join(',')} '
+      'passwordRecovery=$isPasswordRecovery',
     );
 
     final callbackErrorMessage = _messageForCallbackError(normalizedUri);
@@ -157,7 +159,7 @@ class OAuthCallbackHandler {
 
     final client = Supabase.instance.client;
 
-    if (client.auth.currentSession != null) {
+    if (client.auth.currentSession != null && !isPasswordRecovery) {
       debugPrint('OAuth callback already produced a Supabase session.');
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
@@ -176,6 +178,12 @@ class OAuthCallbackHandler {
       unawaited(
         NaverCalendarPermissionService().captureCurrentProviderToken(),
       );
+      if (isPasswordRecovery) {
+        authProvider.markPasswordRecovery();
+        clearPendingCallback();
+        appRouter.go(AppRoutes.resetPassword);
+        return;
+      }
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
         await _logPendingLoginIfNeeded();
@@ -272,6 +280,26 @@ class OAuthCallbackHandler {
       },
       fragment: '',
     );
+  }
+
+  @visibleForTesting
+  static bool isPasswordRecoveryCallback(Uri uri) {
+    final parameters = <String, String>{
+      ...uri.queryParameters,
+      if (uri.fragment.isNotEmpty)
+        ...Uri.splitQueryString(
+          uri.fragment.startsWith('#')
+              ? uri.fragment.substring(1)
+              : uri.fragment,
+        ),
+    };
+    final normalizedType = parameters['type']?.toLowerCase().trim();
+    if (normalizedType == 'recovery') {
+      return true;
+    }
+    final normalizedEvent = parameters['event']?.toLowerCase().trim();
+    return normalizedEvent == 'password_recovery' ||
+        normalizedEvent == 'passwordrecovery';
   }
 
   Future<bool> _syncAndRouteHome() async {
