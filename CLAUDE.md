@@ -345,9 +345,10 @@
 - AI: GPT-4o-mini (비용 최적화), 필요시 GPT-4o
 
 ## FinFlow 스택
-- Frontend: React + TypeScript + Tailwind
-- Backend: Supabase + Railway
-- Deploy: Vercel (FE) + Railway (BE)
+- App: Flutter / Dart (Android-first)
+- Backend: Supabase + Railway API
+- Deploy: Android APK/AAB + Railway backend
+- 구 웹/하이브리드 구현은 현재 앱의 기준이 아니며, 마이그레이션 참고 자료로만 본다.
 
 ## PlanFlow 스택
 - Framework: Flutter (Android-first)

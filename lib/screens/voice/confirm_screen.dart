@@ -381,6 +381,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         context: context,
         query: query,
         locationLookupService: widget.locationLookupService,
+        appPermissionService: widget.permissionService,
       );
 
       if (!mounted || selected == null) {

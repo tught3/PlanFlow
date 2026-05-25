@@ -1,5 +1,12 @@
 # ACTIVE SUMMARY
 
+## 2026-05-25 Release Readiness Sweep And Location Diagnostics
+- Treated placeholder `NAVER_MAP_PROXY_URL` values as unset so place lookup falls back to the direct Naver geocoding path and surfaces real auth failures instead of silently returning empty results.
+- Passed the injected `AppPermissionService` from `ConfirmScreen` into the location picker flow, keeping tests and future callers from bypassing the configured permission path.
+- Refreshed ConfirmScreen tests for the current collapsed editor UI and future-date fixtures.
+- Verification passed: focused auth, voice, calendar sync, Naver CalDAV/ICS, device calendar, location lookup, travel time, side effect, notification, widget, backup, feedback, briefing, settings, confirm, event edit, calendar editor, home widget route tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; release AAB build; APK signature verification; update install/launch/PID check on `192.168.0.102:5555`.
+- Note: `test/screens/location_picker_screen_test.dart` still times out before emitting test output in this environment and needs a separate harness-level cleanup pass; the confirm-screen picker path is covered with injected permissions.
+
 ## 2026-05-25 Muted Cobalt Voice CTA
 - Lowered the shared tertiary/cobalt accent from `#1A4FD6` to a softer `#2D5CA8` with a matching faint tone, so all buttons using that accent are less glaring while staying in the PlanFlow blue family.
 - Changed the Home empty-state voice CTA label from `새 일정 음성으로 추가하기` to `음성으로 새 일정 추가하기`.

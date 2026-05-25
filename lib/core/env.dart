@@ -12,7 +12,8 @@ class AppEnv {
   static String get googleMapsApiKey => _envValue('GOOGLE_MAPS_API_KEY');
   static String get tmapApiKey => _envValue('TMAP_API_KEY');
   static String get naverMapClientId => _envValue('NAVER_MAP_CLIENT_ID');
-  static String get naverMapProxyUrl => _envValue('NAVER_MAP_PROXY_URL');
+  static String get naverMapProxyUrl =>
+      _nonPlaceholderEnvValue('NAVER_MAP_PROXY_URL');
   static String get googleAndroidClientId =>
       _envValue('GOOGLE_ANDROID_CLIENT_ID');
   static String get googleWebClientId {

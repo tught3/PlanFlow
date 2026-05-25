@@ -12,6 +12,7 @@ import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/voice/confirm_screen.dart';
 import 'package:planflow/services/gpt_service.dart';
 import 'package:planflow/services/home_widget_service.dart';
+import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/notification_service.dart';
 
@@ -35,6 +36,11 @@ void main() {
         ),
       ),
     );
+
+    await tester.ensureVisible(find.text('설명 · 준비물'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('설명 · 준비물'));
+    await tester.pumpAndSettle();
 
     expect(find.text('스마트 준비 알람 1'), findsOneWidget);
 
@@ -64,6 +70,7 @@ void main() {
           eventRepository: repository,
           notificationService: notifications,
           homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
         ),
       ),
     );
@@ -174,16 +181,26 @@ void main() {
           notificationService: _FakeNotificationService(),
           homeWidgetService: _FakeHomeWidgetService(),
           locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
         ),
       ),
     );
 
     await tester.ensureVisible(find.byTooltip('지도에서 위치 선택'));
     await tester.tap(find.byTooltip('지도에서 위치 선택'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
+    if (find.text('위치 권한이 필요해요').evaluate().isNotEmpty) {
+      await tester.tap(find.text('계속 선택'));
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+    for (var i = 0;
+        i < 20 && find.text('지도에서 장소 선택').evaluate().isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
 
     expect(find.text('지도에서 장소 선택'), findsOneWidget);
-    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byKey(const ValueKey('location-search-field')), findsOneWidget);
     expect(find.text('검색'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
   });
@@ -342,8 +359,8 @@ void main() {
   testWidgets('ConfirmScreen stores Korean wall time as UTC once',
       (tester) async {
     final repository = _FakeEventRepository();
-    final start = DateTime(2026, 5, 13, 10);
-    final end = DateTime(2026, 5, 14, 9);
+    final start = DateTime(2026, 6, 13, 10);
+    final end = DateTime(2026, 6, 14, 9);
 
     await tester.pumpWidget(
       _testApp(
@@ -354,6 +371,8 @@ void main() {
           eventRepository: repository,
           notificationService: _FakeNotificationService(),
           homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
         ),
       ),
     );
@@ -365,7 +384,7 @@ void main() {
     }
 
     final saved = repository.createdEvents.single;
-    expect(saved.startAt, DateTime.utc(2026, 5, 13, 1));
+    expect(saved.startAt, DateTime.utc(2026, 6, 13, 1));
     expect(planflowLocal(saved.startAt!), start);
     expect(planflowLocal(saved.endAt!), end);
     expect(saved.isMultiDay, isTrue);
@@ -387,6 +406,11 @@ void main() {
         ),
       ),
     );
+
+    await tester.ensureVisible(find.text('설명 · 준비물'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('설명 · 준비물'));
+    await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('물'));
 
@@ -413,6 +437,11 @@ void main() {
         ),
       ),
     );
+
+    await tester.ensureVisible(find.text('설명 · 준비물'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('설명 · 준비물'));
+    await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('일정 목적을 선택해 주세요'));
 
@@ -711,4 +740,15 @@ class _FakeHomeWidgetService extends HomeWidgetService {
   }) async {
     return true;
   }
+}
+
+class _DeniedPermissionService extends AppPermissionService {
+  @override
+  Future<bool> checkLocationPermission() async => false;
+
+  @override
+  Future<bool> requestLocationPermission() async => false;
+
+  @override
+  Future<bool> openAppSettings() async => true;
 }
