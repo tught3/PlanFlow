@@ -297,7 +297,8 @@ class VoiceScheduleStructureService {
       RegExp(r'\d{1,2}\s*(?:일|주|개월|달|월|년)\s*마다'),
       RegExp(r'(?:매주|매월|매년|격주|매일)'),
       RegExp(r'(?:반복|알림|리마인더|알람|reminder)'),
-      RegExp(r'(?:부터|까지|동안|정각|정도|쯤|경|예정|예약)'),
+      RegExp(r'(?:부터|까지|동안|정각|정도|쯤|예정|예약)'),
+      RegExp(r'(^|\s)경(?=\s|$)'),
       RegExp(
         r'(?:열두시반|열한시반|열시반|한시반|두시반|세시반|네시반)',
       ),
@@ -502,7 +503,9 @@ class VoiceScheduleStructureService {
     required String title,
   }) {
     final trimmed = location?.trim();
-    if (trimmed != null && trimmed.isNotEmpty) {
+    if (trimmed != null &&
+        trimmed.isNotEmpty &&
+        !_isInvalidLocationCandidate(trimmed)) {
       return normalizeSpacingForSchedule(trimmed);
     }
 
@@ -584,6 +587,7 @@ class VoiceScheduleStructureService {
     final remainder = match?.group(2)?.trim();
     if (location == null ||
         location.isEmpty ||
+        _isInvalidLocationCandidate(location) ||
         remainder == null ||
         remainder.isEmpty) {
       return null;
@@ -621,7 +625,14 @@ class VoiceScheduleStructureService {
         normalizedTokens.where((token) => !structuredTokens.contains(token));
     final structuredHasMoreMeaning =
         structuredTokens.length > normalizedTokens.length;
-    return missingFromStructured.isEmpty && structuredHasMoreMeaning;
+    if (missingFromStructured.isEmpty && structuredHasMoreMeaning) {
+      return true;
+    }
+    final compactTitle = normalizedTitle.replaceAll(RegExp(r'\s+'), '');
+    final compactStructured = structuredTitle.replaceAll(RegExp(r'\s+'), '');
+    return compactTitle.length >= 2 &&
+        compactStructured.length > compactTitle.length &&
+        compactStructured.contains(compactTitle);
   }
 
   String normalizeSpacingForSchedule(String text) {
@@ -658,6 +669,7 @@ class VoiceScheduleStructureService {
     final remainder = match.group(2)?.trim();
     if (location == null ||
         location.isEmpty ||
+        _isInvalidLocationCandidate(location) ||
         remainder == null ||
         remainder.isEmpty) {
       return null;
@@ -672,11 +684,32 @@ class VoiceScheduleStructureService {
     if (match == null) {
       return text.trim();
     }
+    final location = match.group(0)?.trim();
+    final locationHead = RegExp(r'^([가-힣A-Za-z0-9·.]{2,})')
+        .firstMatch(location ?? '')
+        ?.group(1)
+        ?.trim();
+    if (locationHead == null || _isInvalidLocationCandidate(locationHead)) {
+      return text.trim();
+    }
     final remainder = match.group(1)?.trim();
     if (remainder == null || remainder.isEmpty) {
       return text.trim();
     }
     return remainder;
+  }
+
+  bool _isInvalidLocationCandidate(String text) {
+    final normalized = normalizeText(text, '');
+    if (normalized.isEmpty) {
+      return true;
+    }
+    if (isOnlyScheduleMetadata(normalized)) {
+      return true;
+    }
+    return RegExp(
+      r'^(?:오늘|내일|모레|글피|오전|오후|아침|낮|점심|저녁|밤|새벽|오전중|오후중|오전쯤|오후쯤)$',
+    ).hasMatch(normalized.replaceAll(RegExp(r'\s+'), ''));
   }
 
   bool isOnlyScheduleMetadata(String text) {

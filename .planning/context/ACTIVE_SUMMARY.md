@@ -1,5 +1,11 @@
 # ACTIVE SUMMARY
 
+## 2026-05-25 Voice Input STT Exit And Korean Parsing Guard
+- VoiceInputScreen now routes app-bar back, system back, and bottom-tab navigation through a single exit path that cancels active STT, clears transcript/session guards, and prevents late partial callbacks from leaking into the next voice entry.
+- SttService now force-cleans stale native/speech sessions before new listens, uses a listen-generation guard for late callbacks, and can clear native state even when Android never sends a cancel callback.
+- Korean voice parsing now preserves `경조사` instead of reducing it to `조사`, rejects time-only words such as `오전` as schedule locations, and normalizes AI-provided location fields through the same structured location guard.
+- Verification passed: focused VoiceInput, STT, VoiceScheduleStructure, GPT, and VoiceCommandAnalysis tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; update install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-25 Release Risk Cleanup
 - Bumped the internal-test build number to `1.1.0+3` so the next Play Console upload can avoid the already-installed `versionCode=2` collision risk.
 - Fixed the `location_picker_screen_test.dart` harness timeout by fully faking location permission checks and letting `pickLocationFromQuery` disable in-app platform maps for widget tests without changing production defaults.

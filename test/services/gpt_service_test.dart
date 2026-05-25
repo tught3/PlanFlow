@@ -256,6 +256,49 @@ void main() {
       expect(result['targets'], isEmpty);
     });
 
+    test('keeps 경조사 title and rejects time-only location from AI result',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '조사 신청 4만원 하기',
+                    'start_at': '2026-05-20T09:00:00.000',
+                    'location': '오전',
+                    'participants': <String>[],
+                    'targets': <String>[],
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 19, 9),
+      );
+
+      final result = await service.parseSchedule(
+        '내일 오전에 경조사 신청 4만원 하기',
+      );
+
+      expect(result['title'], '경조사 신청 4만원 하기');
+      expect(result['location'], isNull);
+    });
+
     test('preserves name-like action target in parsed title and people fields',
         () async {
       final client = MockClient((request) async {

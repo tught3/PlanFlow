@@ -409,6 +409,58 @@ void main() {
       expect(parsed['targets'], <String>['경탁이']);
     });
 
+    test('keeps 경조사 title and removes time-only location from ai fields',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'normalized_text': '내일 오전에 경조사 신청 4만원 하기',
+                    'intent': 'add',
+                    'confidence': 0.9,
+                    'uncertain_fields': <String>[],
+                    'schedule_fields': <String, dynamic>{
+                      'title': '조사 신청 4만원 하기',
+                      'start_at': '2026-05-20T09:00:00.000',
+                      'location': '오전',
+                      'participants': <String>[],
+                      'targets': <String>[],
+                      'supplies': <String>[],
+                      'pre_actions': <Map<String, dynamic>>[],
+                    },
+                    'requested_changes': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = VoiceCommandAnalysisService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 19, 9),
+      );
+
+      final result = await service.analyze(
+        '내일 오전에 경조사 신청 4만원 하기',
+        stage: VoiceCommandAnalysisStage.complete,
+        budget: VoiceAnalysisRequestBudget(maxAiRequests: 2),
+      );
+
+      final parsed = result.toParsedScheduleMap();
+      expect(result.scheduleFields['title'], '경조사 신청 4만원 하기');
+      expect(result.scheduleFields['location'], isNull);
+      expect(parsed['title'], '경조사 신청 4만원 하기');
+      expect(parsed['location'], isNull);
+    });
+
     test('falls back to local analysis when the budget is exhausted', () async {
       var requestCount = 0;
 

@@ -69,6 +69,37 @@ class SttService {
   static List<String>? _activeCommittedSegments;
   static var _activeNativeSessionText = '';
   static int? _activeNativeSessionId;
+  static var _activeListenGeneration = 0;
+
+  @visibleForTesting
+  static bool get debugHasActiveListen {
+    return _activeCompleter != null ||
+        _activeSpeech != null ||
+        _activeNativeListen ||
+        _activeRecognizedText != null ||
+        _activeCommittedSegments != null ||
+        _activeNativeSessionText.isNotEmpty ||
+        _activeNativeSessionId != null;
+  }
+
+  @visibleForTesting
+  static int get debugActiveListenGeneration => _activeListenGeneration;
+
+  @visibleForTesting
+  static void debugSeedNativeListenState({String recognizedText = ''}) {
+    _activeCompleter = Completer<SttListenResult>();
+    _activeNativeListen = true;
+    _activeCommittedSegments = <String>[];
+    _activeNativeSessionText = recognizedText;
+    _activeRecognizedText = recognizedText;
+    _activeNativeSessionId = 1;
+  }
+
+  @visibleForTesting
+  static void debugResetActiveListenState() {
+    _activeListenGeneration += 1;
+    _clearActiveListenState(clearHandler: true);
+  }
 
   static String? resolveKoreanLocaleId(Iterable<String> localeIds) {
     if (localeIds.contains(_koreanLocaleId)) {
@@ -562,6 +593,7 @@ class SttService {
 
   Future<void> stopActiveListen() async {
     _userRequestedStop = true;
+    debugPrint('SttService phase=stop');
     if (_activeNativeListen) {
       try {
         await _nativeSttChannel.invokeMethod<String>('stop');
@@ -583,6 +615,50 @@ class SttService {
 
   Future<void> cancelActiveListen() async {
     _userRequestedStop = true;
+    _activeListenGeneration += 1;
+    debugPrint('SttService phase=cancel');
+    final hadActiveNativeListen = _activeNativeListen;
+    final speech = _activeSpeech;
+    if (hadActiveNativeListen) {
+      try {
+        await _nativeSttChannel.invokeMethod<String>('cancel');
+      } catch (_) {}
+    }
+    if (speech != null) {
+      try {
+        await speech.cancel();
+      } catch (_) {}
+    }
+    _completeActiveFailure(
+      failure: SttListenFailure.silence,
+      message: '음성 입력을 취소했어요.',
+    );
+    _clearActiveListenState(clearHandler: true);
+  }
+
+  static void _clearActiveListenState({required bool clearHandler}) {
+    _activeSpeech = null;
+    _activeCompleter = null;
+    _activeRecognizedText = null;
+    _activeNativeListen = false;
+    _activeCommittedSegments = null;
+    _activeNativeSessionText = '';
+    _activeNativeSessionId = null;
+    if (clearHandler) {
+      _nativeSttChannel.setMethodCallHandler(null);
+    }
+  }
+
+  Future<void> _cleanupBeforeNewListen() async {
+    if (_activeCompleter == null &&
+        _activeSpeech == null &&
+        !_activeNativeListen &&
+        _activeRecognizedText == null &&
+        _activeCommittedSegments == null &&
+        _activeNativeSessionText.isEmpty) {
+      return;
+    }
+    debugPrint('SttService phase=pre_listen_cleanup');
     if (_activeNativeListen) {
       try {
         await _nativeSttChannel.invokeMethod<String>('cancel');
@@ -591,17 +667,19 @@ class SttService {
         failure: SttListenFailure.silence,
         message: '음성 입력을 취소했어요.',
       );
-      return;
     }
     final speech = _activeSpeech;
-    if (speech == null) {
-      return;
+    if (speech != null) {
+      try {
+        await speech.cancel();
+      } catch (_) {}
     }
-    await speech.cancel();
     _completeActiveFailure(
       failure: SttListenFailure.silence,
       message: '음성 입력을 취소했어요.',
     );
+    _activeListenGeneration += 1;
+    _clearActiveListenState(clearHandler: true);
   }
 
   Future<String> undoLastSpeechSegment() async {
@@ -676,6 +754,7 @@ class SttService {
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
   }) async {
+    await _cleanupBeforeNewListen();
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       final permissionResult = await _ensureAndroidMicrophonePermission();
       if (permissionResult != null) {
@@ -697,6 +776,7 @@ class SttService {
   }) async {
     final speech = SpeechToText();
     final completer = Completer<SttListenResult>();
+    final listenGeneration = ++_activeListenGeneration;
     String? latestRecognizedText;
     _activeSpeech = speech;
     _activeCompleter = completer;
@@ -704,6 +784,9 @@ class SttService {
     _userRequestedStop = false;
 
     void completeSuccess([String? text]) {
+      if (listenGeneration != _activeListenGeneration) {
+        return;
+      }
       if (completer.isCompleted) {
         return;
       }
@@ -725,6 +808,9 @@ class SttService {
       final available = await speech.initialize(
         debugLogging: kDebugMode,
         onStatus: (status) {
+          if (listenGeneration != _activeListenGeneration) {
+            return;
+          }
           if (_userRequestedStop &&
               (status == SpeechToText.doneStatus ||
                   status == SpeechToText.notListeningStatus)) {
@@ -732,6 +818,9 @@ class SttService {
           }
         },
         onError: (error) {
+          if (listenGeneration != _activeListenGeneration) {
+            return;
+          }
           if (error.errorMsg == 'error_permission' ||
               error.errorMsg == 'error_client') {
             _completeActiveFailure(
@@ -768,6 +857,9 @@ class SttService {
         pauseFor: _pauseFor,
         listenOptions: buildListenOptions(),
         onResult: (result) {
+          if (listenGeneration != _activeListenGeneration) {
+            return;
+          }
           final text = result.recognizedWords.trim();
           if (text.isEmpty) {
             return;
@@ -924,6 +1016,7 @@ class SttService {
     ValueChanged<int>? onRestart,
   }) async {
     final completer = Completer<SttListenResult>();
+    final listenGeneration = ++_activeListenGeneration;
     final committedSegments = <String>[];
     String latestRecognizedText = '';
     var restartCount = 0;
@@ -954,15 +1047,21 @@ class SttService {
     }
 
     bool acceptsEvent(Object? arguments) {
+      if (listenGeneration != _activeListenGeneration) {
+        return false;
+      }
       final eventSession = eventSessionId(arguments);
       if (eventSession == null) {
-        return true;
+        return _activeNativeListen;
       }
       _activeNativeSessionId ??= eventSession;
       return eventSession == _activeNativeSessionId;
     }
 
     void setCommittedTranscript(String nextText) {
+      if (listenGeneration != _activeListenGeneration) {
+        return;
+      }
       final normalized = nextText.trim();
       committedSegments
         ..clear()
@@ -979,6 +1078,9 @@ class SttService {
       String text, {
       bool includeCancel = true,
     }) {
+      if (listenGeneration != _activeListenGeneration) {
+        return true;
+      }
       final command = detectVoiceCommand(text, includeCancel: includeCancel);
       if (command == SttVoiceCommand.none) {
         return false;
@@ -1006,6 +1108,9 @@ class SttService {
     }
 
     void updateRecognizedText(String incomingText) {
+      if (listenGeneration != _activeListenGeneration) {
+        return;
+      }
       final recognizedWords = incomingText.trim();
       if (recognizedWords.isEmpty) {
         return;
@@ -1032,6 +1137,9 @@ class SttService {
     }
 
     bool commitActiveSession() {
+      if (listenGeneration != _activeListenGeneration) {
+        return false;
+      }
       final text = _activeNativeSessionText.trim();
       if (text.isEmpty) {
         return false;

@@ -1,9 +1,16 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import 'package:planflow/services/stt_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  tearDown(() {
+    SttService.debugResetActiveListenState();
+  });
+
   test('SttService keeps on-device Korean listen options enabled', () {
     final options = SttService.buildListenOptions();
 
@@ -45,6 +52,33 @@ void main() {
     expect(failure.isSuccess, isFalse);
     expect(failure.hasText, isFalse);
     expect(failure.failure, SttListenFailure.silence);
+  });
+
+  test('SttService cancels and clears a stale native listen without callback',
+      () async {
+    const nativeChannel = MethodChannel('planflow/native_stt');
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(nativeChannel, (call) async {
+      calls.add(call.method);
+      return null;
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(nativeChannel, null);
+    });
+
+    SttService.debugSeedNativeListenState(recognizedText: '내일 오전 회의');
+    final previousGeneration = SttService.debugActiveListenGeneration;
+
+    await const SttService().cancelActiveListen();
+
+    expect(calls, contains('cancel'));
+    expect(SttService.debugHasActiveListen, isFalse);
+    expect(
+      SttService.debugActiveListenGeneration,
+      greaterThan(previousGeneration),
+    );
   });
 
   test('SttService detects local voice edit commands', () {
@@ -114,6 +148,10 @@ void main() {
     expect(
       SttService.normalizeVoiceTranscript('전화 전화해서 물어보기'),
       '전화해서 물어보기',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('경조사 신청 4만원 하기'),
+      '경조사 신청 4만원 하기',
     );
     expect(
       SttService.normalizeVoiceTranscript('확인 확인해줘'),

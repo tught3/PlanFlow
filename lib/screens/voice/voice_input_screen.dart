@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -58,6 +58,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   bool _isSubmittingVoiceCommand = false;
   bool _hasSubmittedVoiceCommand = false;
   bool _isDisposing = false;
+  bool _isExitingVoiceInput = false;
   int _partialTranscriptToken = 0;
   int _draftPreparationToken = 0;
   Map<String, dynamic>? _preparedDraft;
@@ -82,7 +83,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     _isDisposing = true;
     _partialTranscriptToken++;
     _draftPreparationDebounce?.cancel();
-    if (_isListening) {
+    _resetVoiceSessionState();
+    if (!_isExitingVoiceInput) {
       unawaited(widget.sttService.cancelActiveListen());
     }
     _rawTextController.removeListener(_handleRawTextChanged);
@@ -297,6 +299,48 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       _isListening = false;
       _statusMessage = appL10n(context).voiceCancelled;
     });
+  }
+
+  void _resetVoiceSessionState() {
+    _listenPrefixText = '';
+    _manualEditInterruptedListening = false;
+    _didEditTranscriptManually = false;
+    _isSubmittingVoiceCommand = false;
+    _hasSubmittedVoiceCommand = false;
+    _lastSubmittedSignature = null;
+    _recognizedText = null;
+    _isListening = false;
+  }
+
+  Future<void> _exitVoiceInput(VoidCallback navigate) async {
+    if (_isExitingVoiceInput || _isDisposing) {
+      return;
+    }
+    _isExitingVoiceInput = true;
+    debugPrint('VoiceInput lifecycle=exit');
+    _partialTranscriptToken++;
+    _draftPreparationDebounce?.cancel();
+    if (mounted) {
+      _clearPreparedDraft();
+    } else {
+      _draftPreparationToken += 1;
+      _preparedDraft = null;
+      _preparedDraftSourceText = null;
+      _analysisStatusMessage = null;
+    }
+    setState(() {
+      _statusMessage = null;
+      _resetVoiceSessionState();
+    });
+    await widget.sttService.cancelActiveListen();
+    if (!mounted) {
+      return;
+    }
+    navigate();
+  }
+
+  Future<void> _handleBackNavigation() async {
+    await _exitVoiceInput(() => context.go(AppRoutes.home));
   }
 
   Future<void> _undoLastSegment() async {
@@ -954,63 +998,84 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     final theme = Theme.of(context);
     final l10n = appL10n(context);
 
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.voiceInputTitle)),
-      bottomNavigationBar: _VoiceBottomControls(
-        isListening: _isListening,
-        hasText: _rawTextController.text.trim().isNotEmpty,
-        statusMessage: _statusMessage ?? _analysisStatusMessage,
-        onCancel: _cancelVoiceFlow,
-        onUndo: _undoLastSegment,
-        onClear: _clearTranscript,
-        onManualSubmit: _confirmManualText,
-        onHome: () => context.go(AppRoutes.home),
-        onCalendar: () => context.go(AppRoutes.calendar),
-        onSettings: () => context.go(AppRoutes.settings),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppConstants.defaultPadding),
-          child: ResponsiveContent(
-            maxWidth: 760,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: _VoiceCommandGuide(theme: theme)),
-                const SizedBox(height: 8),
-                _ListeningGuide(
-                  isListening: _isListening,
-                  restartCount: _sttRestartCount,
-                ),
-                const SizedBox(height: 10),
-                _VoiceTranscriptSection(
-                  isListening: _isListening,
-                  recognizedText: _recognizedText,
-                  controller: _rawTextController,
-                  focusNode: _rawTextFocusNode,
-                  onTapTranscript: () =>
-                      unawaited(_activateManualTranscriptEditing()),
-                  onManualSubmit: _continueWithRawText,
-                ),
-                const SizedBox(height: 8),
-                _VoicePrimaryButton(
-                  isListening: _isListening,
-                  hasText: _rawTextController.text.trim().isNotEmpty,
-                  onTapStart: _handleVoiceStartPressed,
-                  onTapFinish: _finishVoiceFlow,
-                  onManualSubmit: _confirmManualText,
-                ),
-                if (_rawTextController.text.trim().isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      '현재 내용으로 입력하려면 텍스트를 먼저 입력해 주세요.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: PlanFlowColors.textSecondary,
-                          ),
-                    ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          unawaited(_handleBackNavigation());
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(l10n.voiceInputTitle),
+          leading: IconButton(
+            tooltip: '뒤로가기',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => unawaited(_handleBackNavigation()),
+          ),
+        ),
+        bottomNavigationBar: _VoiceBottomControls(
+          isListening: _isListening,
+          hasText: _rawTextController.text.trim().isNotEmpty,
+          statusMessage: _statusMessage ?? _analysisStatusMessage,
+          onCancel: _cancelVoiceFlow,
+          onUndo: _undoLastSegment,
+          onClear: _clearTranscript,
+          onManualSubmit: _confirmManualText,
+          onHome: () => unawaited(
+            _exitVoiceInput(() => context.go(AppRoutes.home)),
+          ),
+          onCalendar: () => unawaited(
+            _exitVoiceInput(() => context.go(AppRoutes.calendar)),
+          ),
+          onSettings: () => unawaited(
+            _exitVoiceInput(() => context.go(AppRoutes.settings)),
+          ),
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            child: ResponsiveContent(
+              maxWidth: 760,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _VoiceCommandGuide(theme: theme)),
+                  const SizedBox(height: 8),
+                  _ListeningGuide(
+                    isListening: _isListening,
+                    restartCount: _sttRestartCount,
                   ),
-              ],
+                  const SizedBox(height: 10),
+                  _VoiceTranscriptSection(
+                    isListening: _isListening,
+                    recognizedText: _recognizedText,
+                    controller: _rawTextController,
+                    focusNode: _rawTextFocusNode,
+                    onTapTranscript: () =>
+                        unawaited(_activateManualTranscriptEditing()),
+                    onManualSubmit: _continueWithRawText,
+                  ),
+                  const SizedBox(height: 8),
+                  _VoicePrimaryButton(
+                    isListening: _isListening,
+                    hasText: _rawTextController.text.trim().isNotEmpty,
+                    onTapStart: _handleVoiceStartPressed,
+                    onTapFinish: _finishVoiceFlow,
+                    onManualSubmit: _confirmManualText,
+                  ),
+                  if (_rawTextController.text.trim().isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        '현재 내용으로 입력하려면 텍스트를 먼저 입력해 주세요.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.textSecondary,
+                            ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1543,16 +1608,19 @@ class _VoiceBottomNavigation extends StatelessWidget {
       },
       destinations: [
         NavigationDestination(
+          key: const ValueKey('voice-bottom-home-tab'),
           icon: const Icon(Icons.home_outlined),
           selectedIcon: const Icon(Icons.home),
           label: l10n.homeTab,
         ),
         NavigationDestination(
+          key: const ValueKey('voice-bottom-calendar-tab'),
           icon: const Icon(Icons.calendar_month_outlined),
           selectedIcon: const Icon(Icons.calendar_month),
           label: l10n.calendarTab,
         ),
         NavigationDestination(
+          key: const ValueKey('voice-bottom-settings-tab'),
           icon: const Icon(Icons.settings_outlined),
           selectedIcon: const Icon(Icons.settings),
           label: l10n.settingsTab,

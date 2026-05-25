@@ -581,10 +581,13 @@ class VoiceCommandAnalysisService {
           );
     final normalizedLocationText =
         _normalizeText(source['location']?.toString(), null);
-    final inferredLocation = normalizedLocationText.isNotEmpty
-        ? normalizedLocationText
-        : _extractLeadingLocation(titleSource) ??
-            _extractLeadingLocation(title);
+    final inferredLocation =
+        _voiceScheduleStructureService.normalizeScheduleLocation(
+      location:
+          normalizedLocationText.isNotEmpty ? normalizedLocationText : null,
+      rawText: titleSource,
+      title: title,
+    );
 
     final scheduleFields = <String, dynamic>{
       'title': title.isEmpty ? titleSource : title,
@@ -849,10 +852,6 @@ class VoiceCommandAnalysisService {
 
   String _normalizeSpacingForSchedule(String text) {
     return _voiceScheduleStructureService.normalizeSpacingForSchedule(text);
-  }
-
-  String? _extractLeadingLocation(String text) {
-    return _voiceScheduleStructureService.extractLeadingLocation(text);
   }
 
   String? _inferLocalRecurrence(String text) {

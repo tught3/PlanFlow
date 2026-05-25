@@ -430,14 +430,11 @@ void main() {
     expect(find.text('말하거나 직접 입력한 뒤 바로 확인하세요.'), findsNothing);
     expect(find.text('이렇게 말해보세요'), findsOneWidget);
     expect(
-      find.textContaining('오늘 4시에 팀장님 내일 오시는지 확인전화하기'),
+      find.textContaining('매주 화요일 오전 10시 강남역에서 팀장님 면접 준비'),
       findsOneWidget,
     );
-    expect(find.textContaining('5월 10일 하루종일 휴가'), findsOneWidget);
-    expect(find.textContaining('매주 화요일 팀 미팅'), findsOneWidget);
     expect(
-      find.textContaining(
-          '제어: 다시/처음부터/전체삭제/전체취소=전체삭제 · 아니/아니다=교정 · 마지막 삭제/방금 삭제=일부삭제 · 취소/중지 등=종료'),
+      find.textContaining('제어: 다시=전체삭제 · 아니=교정 · 마지막삭제=일부삭제 · 취소=종료'),
       findsOneWidget,
     );
   });
@@ -1117,6 +1114,95 @@ void main() {
 
     expect(fakeStt.cancelCalls, 1);
     expect(find.text('홈'), findsOneWidget);
+    expect(find.text('이전 세션 늦은 결과'), findsNothing);
+  });
+
+  testWidgets('듣는 중 앱바 뒤로가기는 stop 없이 STT를 취소하고 홈으로 나간다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (context, state) => const Text(
+            '홈',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('뒤로가기'));
+    await tester.pumpAndSettle();
+
+    expect(fakeStt.cancelCalls, 1);
+    expect(fakeStt.stopCalls, 0);
+    expect(find.text('홈'), findsOneWidget);
+  });
+
+  testWidgets('하단 탭 이동은 STT를 취소하고 늦은 partial을 다음 화면에 붙이지 않는다', (tester) async {
+    final fakeStt = _FakeSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (context, state) => const Text(
+            '홈',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.settings,
+          builder: (context, state) => const Text(
+            '설정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('voice-bottom-calendar-tab')));
+    await tester.pumpAndSettle();
+    fakeStt.emitPartial('이전 세션 늦은 결과');
+    await tester.pump();
+
+    expect(fakeStt.cancelCalls, 1);
+    expect(fakeStt.stopCalls, 0);
+    expect(find.text('일정 탭'), findsOneWidget);
     expect(find.text('이전 세션 늦은 결과'), findsNothing);
   });
 

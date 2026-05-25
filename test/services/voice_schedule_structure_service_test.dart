@@ -137,5 +137,36 @@ void main() {
 
       expect(range, isNull);
     });
+
+    test('keeps 경조사 and rejects time words as locations', () {
+      final structure = service.analyze('내일 오전에 경조사 신청 4만원 하기');
+      final title = service.normalizeLocalVoiceTitle(
+        '내일 오전에 경조사 신청 4만원 하기',
+        referenceText: '내일 오전에 경조사 신청 4만원 하기',
+        structured: structure,
+      );
+
+      expect(title, '경조사 신청 4만원 하기');
+      expect(
+        service.normalizeScheduleLocation(
+          location: '오전',
+          rawText: '내일 오전에 경조사 신청 4만원 하기',
+          title: title,
+        ),
+        isNull,
+      );
+      expect(
+        service.extractLeadingLocation('오전에 경조사 신청 4만원 하기'),
+        isNull,
+      );
+      expect(
+        service.shouldPreferStructuredTitle(
+          normalizedTitle: '조사 신청 4만원 하기',
+          structuredTitle: '경조사 신청 4만원 하기',
+          structure: structure,
+        ),
+        isTrue,
+      );
+    });
   });
 }
