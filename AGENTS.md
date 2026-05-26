@@ -1,4 +1,4 @@
-<!-- [WIKI:START] Personal Wiki Reference - 직접 수정 금지 -->
+﻿<!-- [WIKI:START] Personal Wiki Reference - 직접 수정 금지 -->
 <!-- 작업 경로: E:\FluxStudio\planflow -->
 <!-- 생성: 2026-05-24 09:48 -->
 
