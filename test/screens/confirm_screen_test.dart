@@ -102,6 +102,41 @@ void main() {
     );
   });
 
+  testWidgets('ConfirmScreen preserves parsed recurrence when saving',
+      (tester) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '태블릿 계기판 찍기',
+            recurrenceRule: 'FREQ=WEEKLY;BYDAY=MO',
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    expect(find.text('반복'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pumpAndSettle();
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(
+      repository.createdEvents.single.recurrenceRule,
+      'FREQ=WEEKLY;BYDAY=MO',
+    );
+  });
+
   testWidgets('ConfirmScreen shows login guidance when save session is missing',
       (tester) async {
     await tester.pumpWidget(
@@ -418,8 +453,6 @@ void main() {
 
     await tester.ensureVisible(find.text('설명 · 준비물'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('설명 · 준비물'));
-    await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('물'));
 
@@ -448,8 +481,6 @@ void main() {
     );
 
     await tester.ensureVisible(find.text('설명 · 준비물'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('설명 · 준비물'));
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('일정 목적을 선택해 주세요'));
@@ -510,6 +541,7 @@ Map<String, dynamic> _parsedSchedule({
   String? location,
   String? rawText,
   String? memo = '테스트 일정',
+  String? recurrenceRule,
 }) {
   return {
     'title': title ?? '성남 출발',
@@ -520,6 +552,7 @@ Map<String, dynamic> _parsedSchedule({
     'memo': memo,
     'supplies': supplies,
     'is_critical': isCritical,
+    'recurrence_rule': recurrenceRule,
     'pre_actions': <Map<String, dynamic>>[],
     'raw_text': rawText ?? '내일 오전 10시에 성남으로 출발',
   };

@@ -194,6 +194,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   List<String> _pastSupplies = const <String>[];
   List<String> _participants = const <String>[];
   List<String> _targets = const <String>[];
+  bool _detailsSectionInitiallyExpanded = false;
   Timer? _locationDebounce;
   String? _supplyErrorText;
   String? _hydrateMessage;
@@ -226,6 +227,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _participants = _stringListValue(widget.parsedSchedule['participants']);
     _targets = _stringListValue(widget.parsedSchedule['targets']);
     _preActions = _initialPreActions();
+    _detailsSectionInitiallyExpanded = _supplies.isNotEmpty ||
+        _preActionsFromValue(widget.parsedSchedule['pre_actions']).isNotEmpty;
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
     _locationLat = _doubleValue(widget.parsedSchedule['location_lat']);
@@ -568,6 +571,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         final supplies = _stringListValue(parsed['supplies']);
         if (supplies.isNotEmpty && _supplies.isEmpty) {
           _supplies.addAll(supplies.map(_SupplyDraft.new));
+          _detailsSectionInitiallyExpanded = true;
         }
 
         final participants = _stringListValue(parsed['participants']);
@@ -584,6 +588,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         );
         if (parsedPreActions.isNotEmpty && _preActions.isEmpty) {
           _preActions.addAll(parsedPreActions);
+          if (_preActionsFromValue(parsed['pre_actions']).isNotEmpty) {
+            _detailsSectionInitiallyExpanded = true;
+          }
+        }
+
+        final parsedRecurrence = RecurrenceSelection.fromRRule(
+          _stringValue(parsed['recurrence_rule']),
+        );
+        if (!parsedRecurrence.isNone) {
+          _recurrenceSelection = parsedRecurrence;
         }
 
         if (!_startEditedByUser) {
@@ -639,6 +653,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
   AppPermissionService get _permissionService =>
       widget.permissionService ?? AppPermissionService();
+
+  bool get _shouldExpandDetailsSection =>
+      _detailsSectionInitiallyExpanded || _shouldShowPurposeClarification;
 
   DateTime _eventRangeEnd(DateTime startAt, DateTime? endAt) {
     if (endAt != null && endAt.isAfter(startAt)) {
@@ -1676,6 +1693,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         locationLat: _locationLat,
                         locationLng: _locationLng,
                         locationHelperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
+                        initiallyExpandClassification:
+                            !_recurrenceSelection.isNone,
+                        initiallyExpandDetails: _shouldExpandDetailsSection,
+                        initiallyExpandAlarm: _isCritical,
                         onLocationTextChanged: _handleLocationTextChanged,
                         onStartChanged: (value) {
                           setState(() {

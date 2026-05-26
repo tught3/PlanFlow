@@ -43,6 +43,9 @@ class CalendarStyleEventEditor extends StatefulWidget {
     this.locationHelperText,
     this.memoMinLines = 3,
     this.memoMaxLines = 3,
+    this.initiallyExpandClassification = false,
+    this.initiallyExpandDetails = false,
+    this.initiallyExpandAlarm = false,
   });
 
   final TextEditingController titleController;
@@ -74,6 +77,9 @@ class CalendarStyleEventEditor extends StatefulWidget {
   final String? locationHelperText;
   final int memoMinLines;
   final int memoMaxLines;
+  final bool initiallyExpandClassification;
+  final bool initiallyExpandDetails;
+  final bool initiallyExpandAlarm;
 
   @override
   State<CalendarStyleEventEditor> createState() =>
@@ -85,9 +91,37 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
   final GlobalKey _detailsSectionKey = GlobalKey();
   final GlobalKey _alarmSectionKey = GlobalKey();
   CalendarDateTarget? _activeTarget;
-  bool _classificationExpanded = false;
-  bool _detailsExpanded = false;
-  bool _alarmExpanded = false;
+  late bool _classificationExpanded;
+  late bool _detailsExpanded;
+  late bool _alarmExpanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _classificationExpanded = widget.initiallyExpandClassification;
+    _detailsExpanded = widget.initiallyExpandDetails;
+    _alarmExpanded = widget.initiallyExpandAlarm;
+  }
+
+  @override
+  void didUpdateWidget(covariant CalendarStyleEventEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.initiallyExpandClassification &&
+        widget.initiallyExpandClassification &&
+        !_classificationExpanded) {
+      _classificationExpanded = true;
+    }
+    if (!oldWidget.initiallyExpandDetails &&
+        widget.initiallyExpandDetails &&
+        !_detailsExpanded) {
+      _detailsExpanded = true;
+    }
+    if (!oldWidget.initiallyExpandAlarm &&
+        widget.initiallyExpandAlarm &&
+        !_alarmExpanded) {
+      _alarmExpanded = true;
+    }
+  }
 
   DateTime get _activeValue {
     if (_activeTarget == CalendarDateTarget.end) {

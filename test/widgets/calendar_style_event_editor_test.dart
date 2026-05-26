@@ -225,6 +225,25 @@ void main() {
     expect(find.text('일정 알림'), findsOneWidget);
     expect(find.text('강한 알림으로 예약'), findsOneWidget);
   });
+
+  testWidgets('configured optional sections can start expanded',
+      (tester) async {
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 5, 13, 9),
+        endAt: DateTime(2026, 5, 13, 10),
+        recurrence: const RecurrenceSelection(
+          frequency: 'weekly',
+          preservedParts: <String>['BYDAY=MO'],
+        ),
+        initiallyExpandClassification: true,
+        initiallyExpandDetails: true,
+      ),
+    );
+
+    expect(find.text('반복'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, '설명'), findsOneWidget);
+  });
 }
 
 class _TestHost extends StatelessWidget {
@@ -234,6 +253,9 @@ class _TestHost extends StatelessWidget {
     this.locationText = '',
     this.locationLat,
     this.locationLng,
+    this.recurrence = const RecurrenceSelection(),
+    this.initiallyExpandClassification = false,
+    this.initiallyExpandDetails = false,
     required this.startAt,
     required this.endAt,
   });
@@ -243,6 +265,9 @@ class _TestHost extends StatelessWidget {
   final String locationText;
   final double? locationLat;
   final double? locationLng;
+  final RecurrenceSelection recurrence;
+  final bool initiallyExpandClassification;
+  final bool initiallyExpandDetails;
   final DateTime startAt;
   final DateTime endAt;
   final titleController = TextEditingController(text: '팀장 동행방문');
@@ -264,11 +289,13 @@ class _TestHost extends StatelessWidget {
             endAt: endAt,
             isAllDay: isAllDay,
             category: '업무',
-            recurrence: const RecurrenceSelection(),
+            recurrence: recurrence,
             reminderOffset: const Duration(hours: 1),
             isCritical: false,
             locationLat: locationLat,
             locationLng: locationLng,
+            initiallyExpandClassification: initiallyExpandClassification,
+            initiallyExpandDetails: initiallyExpandDetails,
             onStartChanged: onStartChanged ?? (_) {},
             onEndChanged: (_) {},
             onAllDayChanged: (_) {},

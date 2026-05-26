@@ -1328,3 +1328,9 @@
 - Voice title cleanup now removes weekday/repetition command words from recurring input while preserving the real object phrase, so `매주 월요일 오전 7시에 태블릿 계기판찍기 반복설정` becomes title `태블릿 계기판 찍기` with weekly recurrence intact.
 - Login sign-up guidance now unfocuses the keyboard and scrolls the success/error message into view after returning to login mode, so the full email confirmation notice is visible.
 - Verification passed: focused location, confirm, calendar, event edit/detail, voice action/conversation, preparation, voice-structure, GPT, and login tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build after clearing a conflicting Gradle/Flutter SDK cache state; update install/launch/PID check on `192.168.0.102:5555`.
+
+## 2026-05-26 Confirm Optional Section Expansion
+- Calendar-style event editor now accepts initial expansion hints for classification, details, and alarm sections.
+- Confirm screen opens the recurrence section when a parsed recurrence exists, opens details when parsed supplies or explicit smart-prep actions exist, and opens alarm options for important events.
+- Confirm hydration now applies a later parsed `recurrence_rule` into the screen state before saving, preventing async parsing from dropping the recurrence.
+- Verification passed: `test/widgets/calendar_style_event_editor_test.dart`, `test/screens/confirm_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, and PID check.
