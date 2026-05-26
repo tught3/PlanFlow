@@ -297,3 +297,10 @@ supabase/schema.sql      # DB schema and RLS source of truth
 - Validation details: `docs/agent-rules-validation.md`
 - Operations details: `docs/agent-rules-operations.md`
 
+## FluxOS 안전 게이트
+- 루트 FluxOS 또는 다른 세션에서 내려온 작업이라도, 코드 수정 전 `python E:\FluxStudio\.fluxos\run.py preflight --project PlanFlow` 결과를 확인한다.
+- 수정 예정 범위는 `python E:\FluxStudio\.fluxos\run.py claim PlanFlow "<file-glob>" --owner "<세션명>"`으로 잠그고, 완료/중단 시 `release <lock-id>`로 반납한다.
+- 다른 세션 잠금, 동일 파일 dirty 상태, 실행 중인 빌드/테스트가 있으면 기존 세션 작업을 우선하고 대기한다.
+- Gradle/Flutter build/test는 PlanFlow 안에서 동시에 하나만 실행한다.
+- Gradle 설정, wrapper, generated/ephemeral 파일, `.dart_tool`, `.gradle`, `build`는 명시적 목적 없이 수정/삭제/커밋하지 않는다.
+- API 키와 토큰은 명령줄, 로그, 보고에 원문 출력하지 않는다.
