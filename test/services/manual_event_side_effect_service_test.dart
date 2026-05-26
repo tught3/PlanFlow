@@ -859,7 +859,10 @@ class _FakeLocationLookupService extends LocationLookupService {
   final searchQueries = <String>[];
 
   @override
-  Future<LocationLookupSearchResult> searchWithFallback(String query) async {
+  Future<LocationLookupSearchResult> searchWithFallback(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     searchQueries.add(query);
     return LocationLookupSearchResult(
       originalQuery: query,

@@ -527,13 +527,19 @@ class _EmptyLocationLookupService extends LocationLookupService {
   int searchCallCount = 0;
 
   @override
-  Future<List<LocationLookupResult>> search(String query) async {
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     searchCallCount += 1;
     return const <LocationLookupResult>[];
   }
 
   @override
-  Future<LocationLookupSearchResult> searchWithFallback(String query) async {
+  Future<LocationLookupSearchResult> searchWithFallback(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     searchCallCount += 1;
     return LocationLookupSearchResult(
       originalQuery: query,
@@ -547,7 +553,10 @@ class _EmptyLocationLookupService extends LocationLookupService {
 
 class _ThrowingLocationLookupService extends LocationLookupService {
   @override
-  Future<LocationLookupSearchResult> searchWithFallback(String query) async {
+  Future<LocationLookupSearchResult> searchWithFallback(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     throw const LocationLookupException(
       statusCode: 401,
       message: '네이버 지도 API 인증 또는 서비스 권한을 확인해 주세요.',
@@ -562,7 +571,10 @@ class _BlockingLocationLookupService extends LocationLookupService {
       Completer<LocationLookupSearchResult>();
 
   @override
-  Future<LocationLookupSearchResult> searchWithFallback(String query) {
+  Future<LocationLookupSearchResult> searchWithFallback(
+    String query, {
+    GeoPoint? origin,
+  }) {
     if (!searchStarted.isCompleted) {
       searchStarted.complete();
     }

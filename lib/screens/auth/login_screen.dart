@@ -42,6 +42,8 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
   final _confirmPasswordFocusNode = FocusNode();
+  final _scrollController = ScrollController();
+  final _messageKey = GlobalKey();
 
   late final AuthService? _authService;
 
@@ -68,6 +70,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _nameController.dispose();
+    _scrollController.dispose();
     _nameFocusNode.dispose();
     _emailFocusNode.dispose();
     _passwordFocusNode.dispose();
@@ -107,6 +110,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   Future<void> _submit() async {
     final l10n = appL10n(context);
     final authService = _authService;
+    FocusScope.of(context).unfocus();
     if (!AppEnv.isSupabaseReady || authService == null) {
       _setMessage(l10n.supabaseLoginMissing);
       return;
@@ -310,6 +314,23 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       _message = message;
       _isError = isError;
     });
+    _ensureMessageVisible();
+  }
+
+  void _ensureMessageVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final messageContext = _messageKey.currentContext;
+      if (!mounted || messageContext == null) {
+        return;
+      }
+      Scrollable.ensureVisible(
+        messageContext,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        alignment: 0.08,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
+    });
   }
 
   String _friendlyAuthMessage(Object error) {
@@ -345,6 +366,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       backgroundColor: PlanFlowColors.background,
       body: SafeArea(
         child: ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.all(AppConstants.defaultPadding),
           children: [
             const SizedBox(height: 10),
@@ -397,7 +419,11 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
                 isError: true,
               ),
             if (_message != null) ...[
-              _MessageBox(message: _message!, isError: _isError),
+              _MessageBox(
+                key: _messageKey,
+                message: _message!,
+                isError: _isError,
+              ),
               const SizedBox(height: 10),
             ],
             _EmailLoginCard(
@@ -629,6 +655,7 @@ class _EmailLoginCard extends StatelessWidget {
 
 class _MessageBox extends StatelessWidget {
   const _MessageBox({
+    super.key,
     required this.message,
     required this.isError,
   });

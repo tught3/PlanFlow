@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/env.dart';
+import 'app_permission_service.dart';
 
 enum LocationLookupProvider {
   tmap,
@@ -55,6 +57,8 @@ class LocationLookupResult {
 
   String get label => address.isNotEmpty ? address : name;
 
+  String get bestPlaceLabel => name.trim().isNotEmpty ? name : label;
+
   String get providerLabel => provider.providerLabel;
 }
 
@@ -98,12 +102,18 @@ class LocationLookupService {
   final String _googleMapsApiKey;
   final http.Client Function() _httpClientFactory;
 
-  Future<List<LocationLookupResult>> search(String query) async {
-    final response = await searchWithFallback(query);
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+  }) async {
+    final response = await searchWithFallback(query, origin: origin);
     return response.results;
   }
 
-  Future<LocationLookupSearchResult> searchWithFallback(String query) async {
+  Future<LocationLookupSearchResult> searchWithFallback(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     final normalized = query.trim();
     if (normalized.isEmpty) {
       return LocationLookupSearchResult(
@@ -129,13 +139,14 @@ class LocationLookupService {
     LocationLookupException? authFailure;
     final fallbackQueries = buildRetryQueries(normalized);
 
-    await _searchAllProviders(normalized, results, searchedQueries, (error) {
+    await _searchAllProviders(normalized, results, searchedQueries, origin,
+        (error) {
       authFailure ??= error;
     });
 
     if (results.isEmpty && fallbackQueries.isNotEmpty) {
       for (final retryQuery in fallbackQueries) {
-        await _searchAllProviders(retryQuery, results, searchedQueries,
+        await _searchAllProviders(retryQuery, results, searchedQueries, origin,
             (error) {
           authFailure ??= error;
         });
@@ -145,7 +156,11 @@ class LocationLookupService {
       }
     }
 
-    final deduped = _dedupeResults(results);
+    final deduped = _rankResults(
+      normalized,
+      _dedupeResults(results),
+      origin: origin,
+    );
     final outcome = LocationLookupSearchResult(
       originalQuery: normalized,
       results: deduped,
@@ -269,11 +284,12 @@ class LocationLookupService {
     String query,
     List<LocationLookupResult> results,
     List<String> searchedQueries,
+    GeoPoint? origin,
     void Function(LocationLookupException error) onAuthError,
   ) async {
     searchedQueries.add(query);
     try {
-      results.addAll(await _searchTmap(query));
+      results.addAll(await _searchTmap(query, origin: origin));
     } on LocationLookupException catch (error) {
       onAuthError(error);
     }
@@ -359,7 +375,10 @@ class LocationLookupService {
     }
   }
 
-  Future<List<LocationLookupResult>> _searchTmap(String normalized) async {
+  Future<List<LocationLookupResult>> _searchTmap(
+    String normalized, {
+    GeoPoint? origin,
+  }) async {
     if (_tmapApiKey.trim().isEmpty) {
       return const <LocationLookupResult>[];
     }
@@ -377,6 +396,10 @@ class LocationLookupService {
           'searchtypCd': 'A',
           'reqCoordType': 'WGS84GEO',
           'resCoordType': 'WGS84GEO',
+          if (origin != null) ...<String, String>{
+            'centerLat': origin.latitude.toString(),
+            'centerLon': origin.longitude.toString(),
+          },
         }),
         headers: <String, String>{
           'appKey': _tmapApiKey,
@@ -588,6 +611,58 @@ class LocationLookupService {
     return deduped;
   }
 
+  List<LocationLookupResult> _rankResults(
+    String query,
+    List<LocationLookupResult> results, {
+    required GeoPoint? origin,
+  }) {
+    if (origin == null || results.length < 2 || _hasExplicitRegionHint(query)) {
+      return results;
+    }
+    final ranked = List<LocationLookupResult>.of(results);
+    ranked.sort((a, b) {
+      final distanceCompare =
+          _distanceMeters(origin, a).compareTo(_distanceMeters(origin, b));
+      if (distanceCompare != 0) {
+        return distanceCompare;
+      }
+      return results.indexOf(a).compareTo(results.indexOf(b));
+    });
+    return ranked;
+  }
+
+  double _distanceMeters(GeoPoint origin, LocationLookupResult result) {
+    const earthRadiusMeters = 6371000.0;
+    final lat1 = _degreesToRadians(origin.latitude);
+    final lat2 = _degreesToRadians(result.latitude);
+    final deltaLat = _degreesToRadians(result.latitude - origin.latitude);
+    final deltaLng = _degreesToRadians(result.longitude - origin.longitude);
+    final sinLat = math.sin(deltaLat / 2);
+    final sinLng = math.sin(deltaLng / 2);
+    final haversine =
+        sinLat * sinLat + math.cos(lat1) * math.cos(lat2) * sinLng * sinLng;
+    return earthRadiusMeters *
+        2 *
+        math.atan2(math.sqrt(haversine), math.sqrt(1 - haversine));
+  }
+
+  double _degreesToRadians(double degrees) => degrees * math.pi / 180;
+
+  bool _hasExplicitRegionHint(String query) {
+    final normalized = query.replaceAll(RegExp(r'\s+'), '');
+    if (normalized.isEmpty) {
+      return false;
+    }
+    for (final region in _koreanRegionHints) {
+      for (final alias in region.aliases) {
+        if (normalized.contains(alias)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   LocationLookupResult? _lookupKoreanRegion(String query) {
     final normalized = query.replaceAll(RegExp(r'\s+'), '');
     for (final region in _koreanRegionHints) {
@@ -779,6 +854,12 @@ const List<_KoreanRegionHint> _koreanRegionHints = <_KoreanRegionHint>[
     latitude: 37.5665,
     longitude: 126.978,
     aliases: <String>['서울', '서울시', '서울특별시'],
+  ),
+  _KoreanRegionHint(
+    displayName: '용산',
+    latitude: 37.5326,
+    longitude: 126.9900,
+    aliases: <String>['용산', '용산구'],
   ),
   _KoreanRegionHint(
     displayName: '대전',

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/screens/event/event_edit_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
@@ -139,6 +141,39 @@ void main() {
       await tester.tap(find.text(item.header));
       await tester.pumpAndSettle();
     }
+  });
+
+  testWidgets('EventEditScreen back falls back to home when opened directly',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.eventEdit,
+      routes: [
+        GoRoute(
+          path: AppRoutes.eventEdit,
+          builder: (_, __) => EventEditScreen(
+            event: EventModel(
+              id: 'event-1',
+              userId: 'user-1',
+              title: '알림으로 연 일정',
+              startAt: DateTime.utc(2026, 5, 13, 0),
+              endAt: DateTime.utc(2026, 5, 13, 1),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (_, __) => const Scaffold(body: Text('홈탭')),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    expect(find.text('홈탭'), findsOneWidget);
   });
 }
 

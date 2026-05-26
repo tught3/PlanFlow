@@ -76,8 +76,51 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.listCalls, 2);
-    expect(find.text('기존 일정'), findsOneWidget);
-    expect(find.text('새 일정'), findsOneWidget);
+    expect(find.text('기존 일정'), findsWidgets);
+    expect(find.text('새 일정'), findsWidgets);
+  });
+
+  testWidgets('CalendarScreen opens selected day sheet from initialDate',
+      (tester) async {
+    final selectedDay = DateTime(2026, 5, 15, 9);
+    final repository = _AsyncEventRepository([
+      Future.value([
+        _event('selected-1', '선택한 날짜 일정', selectedDay),
+        _event('other-1', '다른 날짜 일정', selectedDay.add(const Duration(days: 1))),
+      ]),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: selectedDay,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('calendar-day-events-draggable-sheet')),
+      findsOneWidget,
+    );
+    final dayEventsList =
+        find.byKey(const ValueKey('calendar-day-events-list'));
+    expect(
+      find.descendant(
+        of: dayEventsList,
+        matching: find.text('선택한 날짜 일정'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dayEventsList,
+        matching: find.text('다른 날짜 일정'),
+      ),
+      findsNothing,
+    );
   });
 }
 

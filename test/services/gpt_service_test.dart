@@ -615,6 +615,11 @@ void main() {
       expect(weekly['recurrence_rule'], 'FREQ=WEEKLY;BYDAY=TU');
       expect(weekly['category'], '업무');
 
+      final weeklyAction =
+          await service.parseSchedule('매주 월요일 오전 7시에 태블릿 계기판찍기 반복설정');
+      expect(weeklyAction['title'], '태블릿 계기판 찍기');
+      expect(weeklyAction['recurrence_rule'], 'FREQ=WEEKLY;BYDAY=MO');
+
       final biWeekly = await service.parseSchedule('격주 금요일 영업 미팅');
       expect(biWeekly['recurrence_rule'], 'FREQ=WEEKLY;INTERVAL=2;BYDAY=FR');
 

@@ -8,6 +8,7 @@ import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/voice/voice_conversation_screen.dart';
+import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/stt_service.dart';
 
@@ -115,7 +116,10 @@ class _SlowSecondListEventRepository extends EventRepository {
 
 class _FakeLocationLookupService extends LocationLookupService {
   @override
-  Future<List<LocationLookupResult>> search(String query) async {
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     return <LocationLookupResult>[
       LocationLookupResult(
         name: query,
@@ -124,6 +128,15 @@ class _FakeLocationLookupService extends LocationLookupService {
         longitude: 128.8761,
       ),
     ];
+  }
+}
+
+class _NoLocationPermissionService extends AppPermissionService {
+  @override
+  Future<GeoPoint?> getCurrentLocationWithPermission({
+    bool requestIfMissing = true,
+  }) async {
+    return null;
   }
 }
 
@@ -505,6 +518,7 @@ void main() {
             sttService: stt,
             repository: _FakeEventRepository(events),
             locationLookupService: _FakeLocationLookupService(),
+            permissionService: _NoLocationPermissionService(),
             initialText: '5월 22일 일정 보여줘',
           ),
         ),
@@ -529,7 +543,9 @@ void main() {
     await tester.tap(find.byTooltip('음성 입력 다시 시작'));
     await tester.pump();
     stt.completeSuccess('그 일정에 강릉 건도리횟집 장소추가');
-    await tester.pumpAndSettle();
+    for (var i = 0; i < 20 && find.text('편집 화면').evaluate().isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
 
     expect(stt.cancelCalls, greaterThanOrEqualTo(1));
     expect(find.text('듣고 있어요...'), findsNothing);

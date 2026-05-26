@@ -1321,3 +1321,10 @@
 - Email sign-up confirmation callbacks such as `type=signup` are now handled separately from social OAuth callbacks, so expired/cancelled email verification links no longer show the misleading social consent failure message.
 - Successful email confirmation callbacks route through the existing session sync/home flow and log email sign-up, while email confirmation failures now show Korean email-verification-specific guidance.
 - Verification passed: focused OAuth callback handler tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install/launch/PID check on `192.168.0.102:5555`, and `planflow://auth-callback` resolves directly to `com.fluxstudio.planflow.MainActivity`.
+
+## 2026-05-26 Location Auto-Resolve, Widget Date Deep-Link, And Voice Title Cleanup
+- Location lookup now accepts a current-location origin and ranks ambiguous multi-branch results by distance when the user has not explicitly named a region; confirm/edit/voice/AI/side-effect paths pass the origin when available and save the chosen provider label with coordinates.
+- Calendar widget/date deep-links now open the selected date's day sheet after the calendar events load, and notification/event back navigation falls back to the Home tab instead of closing the app when there is no previous route.
+- Voice title cleanup now removes weekday/repetition command words from recurring input while preserving the real object phrase, so `매주 월요일 오전 7시에 태블릿 계기판찍기 반복설정` becomes title `태블릿 계기판 찍기` with weekly recurrence intact.
+- Login sign-up guidance now unfocuses the keyboard and scrolls the success/error message into view after returning to login mode, so the full email confirmation notice is visible.
+- Verification passed: focused location, confirm, calendar, event edit/detail, voice action/conversation, preparation, voice-structure, GPT, and login tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build after clearing a conflicting Gradle/Flutter SDK cache state; update install/launch/PID check on `192.168.0.102:5555`.

@@ -5,6 +5,7 @@ import 'package:planflow/core/constants.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/voice/voice_action_screen.dart';
+import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/home_widget_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
@@ -418,6 +419,7 @@ void main() {
             userIdOverride: 'user-1',
             sideEffectService: const _NoopSideEffectService(),
             homeWidgetService: _NoopHomeWidgetService(),
+            permissionService: _NoLocationPermissionService(),
           ),
         ),
         GoRoute(
@@ -437,13 +439,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('바로 저장'), findsNothing);
-    await tester.tap(find.text('장소 입력'));
+    final firstLocationButton = find.descendant(
+      of: find.byKey(const ValueKey('voice-action-candidate-event-1')),
+      matching: find.widgetWithText(FilledButton, '장소 입력'),
+    );
+    await tester.ensureVisible(firstLocationButton);
+    await tester.tap(firstLocationButton);
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('교보생명 시험'), findsOneWidget);
     expect(
-        find.textContaining(originalStart.toIso8601String()), findsOneWidget);
-    expect(find.textContaining('원주 교보생명빌딩'), findsOneWidget);
+      find.text(
+        '편집 시작: 교보생명 시험|'
+        '${originalStart.toIso8601String()}|원주 교보생명빌딩',
+      ),
+      findsOneWidget,
+    );
     expect(repository.updatedEvents, isEmpty);
   });
 
@@ -474,6 +484,7 @@ void main() {
             eventRepository: repository,
             userIdOverride: 'user-1',
             locationLookupService: _FakeLocationLookupService.empty(),
+            permissionService: _NoLocationPermissionService(),
           ),
         ),
         GoRoute(
@@ -494,13 +505,21 @@ void main() {
 
     expect(find.text('실매출 확인'), findsWidgets);
     expect(find.text('원주 세브란스 기독병원 방문'), findsNothing);
-    await tester.tap(find.text('장소 입력'));
+    final separatedLocationButton = find.descendant(
+      of: find.byKey(const ValueKey('voice-action-candidate-event-1')),
+      matching: find.widgetWithText(FilledButton, '장소 입력'),
+    );
+    await tester.ensureVisible(separatedLocationButton);
+    await tester.tap(separatedLocationButton);
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('실매출 확인'), findsOneWidget);
     expect(
-        find.textContaining(originalStart.toIso8601String()), findsOneWidget);
-    expect(find.textContaining('원주 세브란스 기독병원'), findsOneWidget);
+      find.text(
+        '편집 시작: 실매출 확인|'
+        '${originalStart.toIso8601String()}|원주 세브란스 기독병원',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('음성 수정 명령의 새 날짜는 편집 화면에 미리 반영된다', (tester) async {
@@ -1447,6 +1466,7 @@ void main() {
             eventRepository: repository,
             userIdOverride: 'user-1',
             locationLookupService: lookupService,
+            permissionService: _NoLocationPermissionService(),
           ),
         ),
         GoRoute(
@@ -1466,14 +1486,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('실매출 확인'), findsWidgets);
-    await tester.tap(
-      find
-          .ancestor(
-            of: find.text('실매출 확인').first,
-            matching: find.byType(InkWell),
-          )
-          .first,
+    final resolvedLocationButton = find.descendant(
+      of: find.byKey(const ValueKey('voice-action-candidate-event-1')),
+      matching: find.widgetWithText(FilledButton, '장소 입력'),
     );
+    await tester.ensureVisible(resolvedLocationButton);
+    await tester.tap(resolvedLocationButton);
     await tester.pumpAndSettle();
 
     expect(lookupService.queries, ['원주세브란스기독병원']);
@@ -1521,6 +1539,7 @@ void main() {
             eventRepository: repository,
             userIdOverride: 'user-1',
             locationLookupService: lookupService,
+            permissionService: _NoLocationPermissionService(),
           ),
         ),
         GoRoute(
@@ -1539,7 +1558,12 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('장소 입력'));
+    final replaceLocationButton = find.descendant(
+      of: find.byKey(const ValueKey('voice-action-candidate-event-1')),
+      matching: find.widgetWithText(FilledButton, '장소 입력'),
+    );
+    await tester.ensureVisible(replaceLocationButton);
+    await tester.tap(replaceLocationButton);
     await tester.pumpAndSettle();
 
     expect(find.text('장소를 바꿀까요?'), findsOneWidget);
@@ -1547,6 +1571,9 @@ void main() {
     expect(lookupService.queries, isEmpty);
 
     await tester.tap(find.text('교체하기'));
+    for (var i = 0; i < 20 && lookupService.queries.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
     await tester.pumpAndSettle();
 
     expect(lookupService.queries, ['강릉 건도리 횟집']);
@@ -1624,9 +1651,21 @@ class _FakeLocationLookupService extends LocationLookupService {
   final List<String> queries = <String>[];
 
   @override
-  Future<List<LocationLookupResult>> search(String query) async {
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     queries.add(query);
     return results;
+  }
+}
+
+class _NoLocationPermissionService extends AppPermissionService {
+  @override
+  Future<GeoPoint?> getCurrentLocationWithPermission({
+    bool requestIfMissing = true,
+  }) async {
+    return null;
   }
 }
 

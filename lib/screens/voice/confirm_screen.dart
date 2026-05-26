@@ -388,11 +388,14 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         return;
       }
 
+      final resolvedLabel = selected.bestPlaceLabel.trim();
       setState(() {
-        _locationController.text = selected.label;
+        _locationController.text =
+            resolvedLabel.isNotEmpty ? resolvedLabel : selected.label;
         _locationLat = selected.latitude;
         _locationLng = selected.longitude;
-        _resolvedLocationLabel = selected.label.trim();
+        _resolvedLocationLabel =
+            resolvedLabel.isNotEmpty ? resolvedLabel : selected.label.trim();
       });
       _showMessage('정확한 위치를 선택했어요.');
     } catch (error, stackTrace) {
@@ -418,7 +421,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
 
     try {
-      final results = await widget.locationLookupService.search(query);
+      final origin = await _permissionService.getCurrentLocationWithPermission(
+        requestIfMissing: false,
+      );
+      final results = await widget.locationLookupService.search(
+        query,
+        origin: origin,
+      );
       if (!mounted ||
           _locationEditedByUser ||
           query != _locationController.text.trim() ||
@@ -427,11 +436,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       }
 
       final selected = results.first;
+      final resolvedLabel = selected.bestPlaceLabel.trim();
       _isApplyingHydration = true;
       setState(() {
+        if (resolvedLabel.isNotEmpty) {
+          _locationController.text = resolvedLabel;
+        }
         _locationLat = selected.latitude;
         _locationLng = selected.longitude;
-        _resolvedLocationLabel = query;
+        _resolvedLocationLabel =
+            resolvedLabel.isNotEmpty ? resolvedLabel : query;
       });
       _isApplyingHydration = false;
     } catch (error) {
@@ -446,7 +460,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
 
     try {
-      final results = await widget.locationLookupService.search(query);
+      final origin = await _permissionService.getCurrentLocationWithPermission(
+        requestIfMissing: false,
+      );
+      final results = await widget.locationLookupService.search(
+        query,
+        origin: origin,
+      );
       if (!mounted ||
           query != _locationController.text.trim() ||
           results.isEmpty) {
@@ -454,11 +474,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       }
 
       final selected = results.first;
+      final resolvedLabel = selected.bestPlaceLabel.trim();
       _isApplyingHydration = true;
       setState(() {
+        if (resolvedLabel.isNotEmpty) {
+          _locationController.text = resolvedLabel;
+        }
         _locationLat = selected.latitude;
         _locationLng = selected.longitude;
-        _resolvedLocationLabel = query;
+        _resolvedLocationLabel =
+            resolvedLabel.isNotEmpty ? resolvedLabel : query;
       });
       _isApplyingHydration = false;
     } catch (error) {
@@ -611,6 +636,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     }
     return EventRepository.supabase();
   }
+
+  AppPermissionService get _permissionService =>
+      widget.permissionService ?? AppPermissionService();
 
   DateTime _eventRangeEnd(DateTime startAt, DateTime? endAt) {
     if (endAt != null && endAt.isAfter(startAt)) {

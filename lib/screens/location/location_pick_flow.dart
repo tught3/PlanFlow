@@ -28,11 +28,6 @@ Future<LocationLookupResult?> pickLocationFromQuery({
     return null;
   }
   final inAppMapProvider = _inAppMapProviderFor(resolvedMapProvider);
-  final lookupFuture = trimmed.isEmpty
-      ? null
-      : service.searchWithFallback(trimmed).timeout(
-            const Duration(seconds: 12),
-          );
   final permissionMessage = await _ensureLocationPermissionForMap(
     context,
     permissionService,
@@ -40,6 +35,17 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   if (!context.mounted) {
     return null;
   }
+  final origin = permissionMessage == null
+      ? await permissionService?.getLastKnownLocation()
+      : null;
+  if (!context.mounted) {
+    return null;
+  }
+  final lookupFuture = trimmed.isEmpty
+      ? null
+      : service
+          .searchWithFallback(trimmed, origin: origin)
+          .timeout(const Duration(seconds: 12));
   final initialMapCenterFuture = permissionMessage == null
       ? _startInitialMapCenterLoad(permissionService)
       : null;

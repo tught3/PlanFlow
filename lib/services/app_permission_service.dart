@@ -184,6 +184,25 @@ class AppPermissionService {
     }
   }
 
+  Future<GeoPoint?> getCurrentLocationWithPermission({
+    bool requestIfMissing = true,
+  }) async {
+    try {
+      var granted = await checkLocationPermission();
+      if (!granted && requestIfMissing) {
+        granted = await requestLocationPermission();
+      }
+      if (!granted) {
+        return null;
+      }
+      return await getCurrentLocation() ?? await getLastKnownLocation();
+    } catch (error, stackTrace) {
+      debugPrint('Current location with permission failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
+    }
+  }
+
   Future<NotificationPermissionStatus> requestNotificationPermissions() {
     return _notificationService.requestAndCheckPermissions();
   }

@@ -73,6 +73,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
 
+  void _handleBackNavigation() {
+    if (Navigator.of(context).canPop()) {
+      context.pop();
+      return;
+    }
+    context.go(AppRoutes.home);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -431,7 +439,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     if (event == null) {
       return Scaffold(
         backgroundColor: PlanFlowColors.background,
-        appBar: AppBar(title: const Text('일정 상세')),
+        appBar: AppBar(
+          title: const Text('일정 상세'),
+          leading: BackButton(onPressed: _handleBackNavigation),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
@@ -463,6 +474,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       backgroundColor: PlanFlowColors.background,
       appBar: AppBar(
         title: const Text('일정 상세'),
+        leading: BackButton(onPressed: _handleBackNavigation),
         actions: [
           IconButton(
             tooltip: '새로고침',

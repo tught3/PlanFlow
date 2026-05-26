@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 
 void main() {
@@ -113,6 +114,76 @@ void main() {
     expect(results.single.name, '원주시청');
     expect(results.single.latitude, 37.3422);
     expect(results.single.longitude, 127.9197);
+  });
+
+  test('LocationLookupService ranks branch candidates by current location',
+      () async {
+    final service = LocationLookupService(
+      tmapApiKey: 'tmap-key',
+      clientId: '',
+      clientSecret: '',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        if (request.url.host == 'apis.openapi.sk.com') {
+          return http.Response.bytes(
+            utf8.encode(
+              '{"searchPoiInfo":{"pois":{"poi":['
+              '{"name":"삼성전자서비스 용산센터","upperAddrName":"서울","middleAddrName":"용산구","lowerAddrName":"한강로동","frontLon":"126.9640","frontLat":"37.5298"},'
+              '{"name":"삼성전자서비스 성남센터","upperAddrName":"경기도","middleAddrName":"성남시","lowerAddrName":"수정구","frontLon":"127.1260","frontLat":"37.4200"}'
+              ']}}}',
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    final results = await service.search(
+      '삼성서비스센터',
+      origin: const GeoPoint(latitude: 37.4210, longitude: 127.1250),
+    );
+
+    expect(results, hasLength(2));
+    expect(results.first.name, '삼성전자서비스 성남센터');
+  });
+
+  test('LocationLookupService preserves explicit region intent over distance',
+      () async {
+    final service = LocationLookupService(
+      tmapApiKey: 'tmap-key',
+      clientId: '',
+      clientSecret: '',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        if (request.url.host == 'apis.openapi.sk.com') {
+          return http.Response.bytes(
+            utf8.encode(
+              '{"searchPoiInfo":{"pois":{"poi":['
+              '{"name":"삼성전자서비스 용산센터","upperAddrName":"서울","middleAddrName":"용산구","lowerAddrName":"한강로동","frontLon":"126.9640","frontLat":"37.5298"},'
+              '{"name":"삼성전자서비스 성남센터","upperAddrName":"경기도","middleAddrName":"성남시","lowerAddrName":"수정구","frontLon":"127.1260","frontLat":"37.4200"}'
+              ']}}}',
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    final results = await service.search(
+      '용산 삼성서비스센터',
+      origin: const GeoPoint(latitude: 37.4210, longitude: 127.1250),
+    );
+
+    expect(results, hasLength(2));
+    expect(results.first.name, '삼성전자서비스 용산센터');
   });
 
   test(

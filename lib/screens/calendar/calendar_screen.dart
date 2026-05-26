@@ -142,6 +142,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _isRefreshing = false;
   bool _hasPendingRefresh = false;
   DateTime? _pendingFocusDate;
+  DateTime? _pendingOpenDaySheetDate;
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -150,6 +151,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final initialDate = widget.initialDate ?? DateTime.now();
     _selectedDate = initialDate;
     _focusedMonth = DateTime(initialDate.year, initialDate.month);
+    _pendingOpenDaySheetDate = widget.initialDate;
     EventRefreshBus.instance.latest.addListener(_handleEventRefresh);
     _searchController.addListener(() => setState(() {}));
     _loadEvents(focusDate: widget.initialDate);
@@ -170,6 +172,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       });
       return;
     }
+    _pendingOpenDaySheetDate = nextDate;
     unawaited(_loadEvents(focusDate: nextDate));
   }
 
@@ -248,6 +251,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     try {
       final repository = repositoryOverride ?? EventRepository.supabase();
       final events = await repository.listEvents(userId: userId);
+      var shouldOpenDaySheet = false;
+      var daySheetDate = focusDate;
       if (mounted) {
         setState(() {
           _allEvents = _eventsForDisplayAfterReload(events);
@@ -255,8 +260,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
             _selectedDate = focusDate;
             _focusedMonth = DateTime(focusDate.year, focusDate.month);
           }
+          if (focusDate != null &&
+              _isSameLocalDate(_pendingOpenDaySheetDate, focusDate)) {
+            shouldOpenDaySheet = true;
+            daySheetDate = focusDate;
+            _pendingOpenDaySheetDate = null;
+          }
           _loadState = _CalendarLoadState.ready;
           _loadMessage = null;
+        });
+      }
+      if (shouldOpenDaySheet && daySheetDate != null && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _showDayEventsSheet(daySheetDate!);
+          }
         });
       }
     } catch (error) {
@@ -284,6 +302,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
         unawaited(_loadEvents(focusDate: pendingFocusDate));
       }
     }
+  }
+
+  bool _isSameLocalDate(DateTime? a, DateTime? b) {
+    if (a == null || b == null) {
+      return false;
+    }
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
   List<EventModel> _eventsForDisplayAfterReload(List<EventModel> loaded) {

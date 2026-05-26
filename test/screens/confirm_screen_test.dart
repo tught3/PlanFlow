@@ -33,6 +33,8 @@ void main() {
           eventRepository: _FakeEventRepository(),
           notificationService: _FakeNotificationService(),
           homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
         ),
       ),
     );
@@ -71,6 +73,7 @@ void main() {
           notificationService: notifications,
           homeWidgetService: _FakeHomeWidgetService(),
           locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
         ),
       ),
     );
@@ -110,6 +113,8 @@ void main() {
           eventRepository: _ThrowingEventRepository(),
           notificationService: _FakeNotificationService(),
           homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
         ),
       ),
     );
@@ -148,6 +153,8 @@ void main() {
           eventRepository: repository,
           notificationService: _FakeNotificationService(),
           homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
         ),
       ),
     );
@@ -223,6 +230,7 @@ void main() {
           notificationService: _FakeNotificationService(),
           homeWidgetService: _FakeHomeWidgetService(),
           locationLookupService: _SingleLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
         ),
       ),
     );
@@ -231,7 +239,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       final locationField = _textFieldWithLabel('장소');
       if (tester.widget<TextFormField>(locationField).controller?.text ==
-          '원주기독') {
+          '원주세브란스기독병원') {
         break;
       }
     }
@@ -239,7 +247,7 @@ void main() {
     final locationField = _textFieldWithLabel('장소');
     expect(
       tester.widget<TextFormField>(locationField).controller?.text,
-      '원주기독',
+      '원주세브란스기독병원',
     );
 
     await tester.ensureVisible(find.text('일정 저장'));
@@ -249,7 +257,7 @@ void main() {
     }
 
     final saved = repository.createdEvents.single;
-    expect(saved.location, '원주기독');
+    expect(saved.location, '원주세브란스기독병원');
     expect(saved.locationLat, 37.3495);
     expect(saved.locationLng, 127.9458);
   });
@@ -273,6 +281,7 @@ void main() {
           notificationService: _FakeNotificationService(),
           homeWidgetService: _FakeHomeWidgetService(),
           locationLookupService: lookup,
+          permissionService: _DeniedPermissionService(),
         ),
       ),
     );
@@ -287,7 +296,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     final saved = repository.createdEvents.single;
-    expect(saved.location, '원주세브란스');
+    expect(saved.location, '원주세브란스기독병원');
     expect(saved.locationLat, 37.3495);
     expect(saved.locationLng, 127.9458);
   });
@@ -529,14 +538,20 @@ class _DeferredGptService extends GptService {
 
 class _EmptyLocationLookupService extends LocationLookupService {
   @override
-  Future<List<LocationLookupResult>> search(String query) async {
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     return const <LocationLookupResult>[];
   }
 }
 
 class _SingleLocationLookupService extends LocationLookupService {
   @override
-  Future<List<LocationLookupResult>> search(String query) async {
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     return const <LocationLookupResult>[
       LocationLookupResult(
         name: '원주세브란스기독병원',
@@ -550,9 +565,12 @@ class _SingleLocationLookupService extends LocationLookupService {
 
 class _DelayedSingleLocationLookupService extends _SingleLocationLookupService {
   @override
-  Future<List<LocationLookupResult>> search(String query) async {
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     await Future<void>.delayed(const Duration(milliseconds: 200));
-    return super.search(query);
+    return super.search(query, origin: origin);
   }
 }
 
@@ -748,6 +766,13 @@ class _DeniedPermissionService extends AppPermissionService {
 
   @override
   Future<bool> requestLocationPermission() async => false;
+
+  @override
+  Future<GeoPoint?> getCurrentLocationWithPermission({
+    bool requestIfMissing = true,
+  }) async {
+    return null;
+  }
 
   @override
   Future<bool> openAppSettings() async => true;

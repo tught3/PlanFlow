@@ -690,7 +690,9 @@ class ManualEventSideEffectService {
         isFallback: false,
       );
     }
-    final destination = await _resolveDestinationForEvent(event);
+    final origin = await _resolveOriginLocation();
+    final destination =
+        await _resolveDestinationForEvent(event, origin: origin);
     if (destination == null) {
       debugPrint(
         'Smart preparation travel fallback: no destination coordinates for ${event.id}.',
@@ -698,7 +700,6 @@ class ManualEventSideEffectService {
       return _TravelMinutesResolution.fallback(fallbackTravelMinutes);
     }
 
-    final origin = await _resolveOriginLocation();
     if (origin == null) {
       debugPrint(
         'Smart preparation travel fallback: no current location for ${event.id}.',
@@ -729,7 +730,10 @@ class ManualEventSideEffectService {
     }
   }
 
-  Future<GeoPoint?> _resolveDestinationForEvent(EventModel event) async {
+  Future<GeoPoint?> _resolveDestinationForEvent(
+    EventModel event, {
+    GeoPoint? origin,
+  }) async {
     final destinationLat = event.locationLat;
     final destinationLng = event.locationLng;
     if (destinationLat != null && destinationLng != null) {
@@ -738,7 +742,8 @@ class ManualEventSideEffectService {
 
     for (final query in _buildDestinationSearchQueries(event)) {
       try {
-        final searchResult = await _locationLookup.searchWithFallback(query);
+        final searchResult =
+            await _locationLookup.searchWithFallback(query, origin: origin);
         if (searchResult.results.isEmpty) {
           continue;
         }
@@ -747,6 +752,7 @@ class ManualEventSideEffectService {
           event: event,
           latitude: selected.latitude,
           longitude: selected.longitude,
+          location: selected.bestPlaceLabel,
         );
         return GeoPoint(
           latitude: selected.latitude,
@@ -768,6 +774,7 @@ class ManualEventSideEffectService {
     required EventModel event,
     required double latitude,
     required double longitude,
+    String? location,
   }) async {
     if (event.id.trim().isEmpty ||
         event.locationLat != null ||
@@ -780,6 +787,7 @@ class ManualEventSideEffectService {
           event,
           locationLat: latitude,
           locationLng: longitude,
+          location: location,
         ),
       );
     } catch (error, stackTrace) {
@@ -800,11 +808,9 @@ class ManualEventSideEffectService {
       return null;
     }
     final permissionService = AppPermissionService();
-    final live = await permissionService.getCurrentLocation();
-    if (live != null) {
-      return live;
-    }
-    return permissionService.getLastKnownLocation();
+    return permissionService.getCurrentLocationWithPermission(
+      requestIfMissing: false,
+    );
   }
 
   MapTravelMode _travelModeFromSettings(String travelMode) {
@@ -1008,14 +1014,18 @@ EventModel _copyEventWithLocationCoordinates(
   EventModel event, {
   required double locationLat,
   required double locationLng,
+  String? location,
 }) {
+  final normalizedLocation = location?.trim();
   return EventModel(
     id: event.id,
     userId: event.userId,
     title: event.title,
     startAt: event.startAt,
     endAt: event.endAt,
-    location: event.location,
+    location: normalizedLocation == null || normalizedLocation.isEmpty
+        ? event.location
+        : normalizedLocation,
     locationLat: locationLat,
     locationLng: locationLng,
     memo: event.memo,

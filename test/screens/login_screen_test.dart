@@ -63,6 +63,10 @@ void main() {
     expect(find.textContaining('인증 메일을 보냈습니다'), findsOneWidget);
     expect(find.textContaining('이미 가입된 이메일이라면'), findsOneWidget);
     expect(find.textContaining('비밀번호 찾기'), findsOneWidget);
+    final messageBox = find.textContaining('인증 메일을 보냈습니다');
+    expect(tester.getTopLeft(messageBox).dy, greaterThanOrEqualTo(0));
+    expect(tester.getBottomLeft(messageBox).dy, lessThan(1200));
+    expect(find.text('비밀번호를 잊으셨나요?'), findsOneWidget);
   });
 }
 

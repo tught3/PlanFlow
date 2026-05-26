@@ -144,7 +144,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
 
     try {
-      final results = await LocationLookupService().search(query);
+      final origin = await _permissionService.getCurrentLocationWithPermission(
+        requestIfMissing: false,
+      );
+      final results = await LocationLookupService().search(
+        query,
+        origin: origin,
+      );
       if (!mounted ||
           query != _locationController.text.trim() ||
           results.isEmpty) {
@@ -152,16 +158,29 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
 
       final selected = results.first;
+      final resolvedLabel = selected.bestPlaceLabel.trim();
       setState(() {
+        if (resolvedLabel.isNotEmpty) {
+          _locationController.text = resolvedLabel;
+        }
         _locationLat = selected.latitude;
         _locationLng = selected.longitude;
-        _resolvedLocationLabel = query;
+        _resolvedLocationLabel =
+            resolvedLabel.isNotEmpty ? resolvedLabel : query;
       });
     } catch (error, stackTrace) {
       debugPrint(
           'EventEditScreen save-time location resolution failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  void _handleBackNavigation() {
+    if (Navigator.of(context).canPop()) {
+      context.pop();
+      return;
+    }
+    context.go(AppRoutes.home);
   }
 
   Future<void> _ensureCriticalAlarmPermissions() async {
@@ -880,15 +899,19 @@ class _EventEditScreenState extends State<EventEditScreen> {
         context: context,
         query: query,
         locationLookupService: LocationLookupService(),
+        appPermissionService: _permissionService,
       );
       if (!mounted || selected == null) {
         return;
       }
+      final resolvedLabel = selected.bestPlaceLabel.trim();
       setState(() {
-        _locationController.text = selected.label;
+        _locationController.text =
+            resolvedLabel.isNotEmpty ? resolvedLabel : selected.label;
         _locationLat = selected.latitude;
         _locationLng = selected.longitude;
-        _resolvedLocationLabel = selected.label.trim();
+        _resolvedLocationLabel =
+            resolvedLabel.isNotEmpty ? resolvedLabel : selected.label.trim();
       });
       _showMessage('정확한 위치를 선택했어요.');
     } catch (error, stackTrace) {
@@ -911,6 +934,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       backgroundColor: PlanFlowColors.background,
       appBar: AppBar(
         title: Text(_isNewEvent ? l10n.eventCreateTitle : l10n.eventEditTitle),
+        leading: BackButton(onPressed: _handleBackNavigation),
       ),
       body: SafeArea(
         child: Form(
@@ -1027,7 +1051,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 ),
                 const SizedBox(height: 8),
                 TextButton(
-                  onPressed: () => context.pop(),
+                  onPressed: _handleBackNavigation,
                   child: Text(l10n.cancel),
                 ),
               ],

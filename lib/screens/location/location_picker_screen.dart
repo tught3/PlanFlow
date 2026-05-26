@@ -169,7 +169,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
     try {
       final searchResult =
-          await widget.locationLookupService.searchWithFallback(query);
+          await widget.locationLookupService.searchWithFallback(
+        query,
+        origin: _resolvedInitialMapCenter,
+      );
       final results = searchResult.results;
       if (!mounted) {
         return;

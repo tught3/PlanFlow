@@ -295,8 +295,9 @@ class VoiceScheduleStructureService {
       RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
       RegExp(r'\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따)'),
       RegExp(r'\d{1,2}\s*(?:일|주|개월|달|월|년)\s*마다'),
+      RegExp(r'(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]\s*요일'),
       RegExp(r'(?:매주|매월|매년|격주|매일)'),
-      RegExp(r'(?:반복|알림|리마인더|알람|reminder)'),
+      RegExp(r'(?:반복\s*설정|반복설정|반복|알림|리마인더|알람|reminder)'),
       RegExp(r'(?:부터|까지|동안|정각|정도|쯤|예정|예약)'),
       RegExp(r'(^|\s)경(?=\s|$)'),
       RegExp(
@@ -405,9 +406,11 @@ class VoiceScheduleStructureService {
         .replaceAll(RegExp(r'\d{1,3}\s*(분|시간)\s*(뒤|후|있다가|이따)'), ' ')
         .replaceAll(
           (shouldPreserveRelativeDayWords(referenceText ?? title)
-              ? RegExp(r'(이번주|다음주|격주|매주|매월|매년)')
+              ? RegExp(
+                  r'(이번주|다음주|격주|매주|매월|매년|(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]\s*요일|반복\s*설정|반복설정)',
+                )
               : RegExp(
-                  r'(오늘|내일|모레|글피|이번주|다음주|격주|매주|매월|매년)',
+                  r'(오늘|내일|모레|글피|이번주|다음주|격주|매주|매월|매년|(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]\s*요일|반복\s*설정|반복설정)',
                 )),
           ' ',
         )
@@ -434,7 +437,10 @@ class VoiceScheduleStructureService {
     final resolvedTitle = title.isEmpty
         ? normalizeText(stripExplicitMemoClause(text), '')
         : title;
-    return ensurePeopleInTitle(resolvedTitle, referenceText ?? text);
+    return ensurePeopleInTitle(
+      normalizeSpacingForSchedule(resolvedTitle),
+      referenceText ?? text,
+    );
   }
 
   VoiceSchedulePeopleFields extractPeopleFields(String rawText) {
@@ -643,7 +649,7 @@ class VoiceScheduleStructureService {
 
     final spaced = compact.replaceAllMapped(
       RegExp(
-        r'([가-힣A-Za-z0-9·.]{2,}?)(출발|도착|미팅|회의|방문|진료|검진|약속|모임|식사|수업|강의|운동|여행|병문안|상담|출근|퇴근|발표|면접|예약)$',
+        r'([가-힣A-Za-z0-9·.]{2,}?)(출발|도착|미팅|회의|방문|진료|검진|약속|모임|식사|수업|강의|운동|여행|병문안|상담|출근|퇴근|발표|면접|예약|찍기)$',
       ),
       (match) {
         final head = match.group(1);

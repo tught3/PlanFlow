@@ -10,6 +10,7 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/stt_service.dart';
@@ -23,6 +24,7 @@ class VoiceConversationScreen extends StatefulWidget {
     this.repository,
     this.sttService = const SttService(),
     this.locationLookupService,
+    this.permissionService,
     this.autoStart = false,
     this.initialText,
   });
@@ -30,6 +32,7 @@ class VoiceConversationScreen extends StatefulWidget {
   final EventRepository? repository;
   final SttService sttService;
   final LocationLookupService? locationLookupService;
+  final AppPermissionService? permissionService;
   final bool autoStart;
   final String? initialText;
 
@@ -51,6 +54,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       widget.repository ?? EventRepository.supabase();
   late final LocationLookupService _locations =
       widget.locationLookupService ?? LocationLookupService();
+  late final AppPermissionService _permissionService =
+      widget.permissionService ?? AppPermissionService();
   late final VoiceConversationController _conversation =
       VoiceConversationController(events: const <EventModel>[]);
 
@@ -356,12 +361,16 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     await _stopVoiceBeforeNavigation();
     var edited = _copyEventWithLocation(event, location: locationText);
     try {
-      final results = await _locations.search(locationText);
+      final origin = await _permissionService.getCurrentLocationWithPermission(
+        requestIfMissing: false,
+      );
+      final results = await _locations.search(locationText, origin: origin);
       if (results.isNotEmpty) {
         final picked = results.first;
+        final resolvedLabel = picked.bestPlaceLabel.trim();
         edited = _copyEventWithLocation(
           event,
-          location: picked.label,
+          location: resolvedLabel.isNotEmpty ? resolvedLabel : picked.label,
           locationLat: picked.latitude,
           locationLng: picked.longitude,
         );

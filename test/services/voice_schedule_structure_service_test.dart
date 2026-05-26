@@ -37,6 +37,20 @@ void main() {
       expect(result.explicitFieldClauses['recurrence_rule'], '매주');
     });
 
+    test('removes recurrence command words from title without dropping object',
+        () {
+      const rawText = '매주 월요일 오전 7시에 태블릿 계기판찍기 반복설정';
+      final structure = service.analyze(rawText);
+      final title = service.normalizeLocalVoiceTitle(
+        rawText,
+        referenceText: rawText,
+        structured: structure,
+      );
+
+      expect(title, '태블릿 계기판 찍기');
+      expect(structure.explicitFieldClauses['recurrence_rule'], '매주');
+    });
+
     test('keeps person words in title and extracts participants', () {
       const rawText = '내일 오전 11시 팀장님 원주세브란스방문';
 

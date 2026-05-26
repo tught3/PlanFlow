@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/event_preparation_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
@@ -85,7 +86,10 @@ class _FakeLocationLookupService extends LocationLookupService {
   final searchQueries = <String>[];
 
   @override
-  Future<List<LocationLookupResult>> search(String query) async {
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+  }) async {
     searchQueries.add(query);
     return <LocationLookupResult>[result];
   }

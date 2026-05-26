@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
+import 'app_permission_service.dart';
 import 'departure_alarm_service.dart';
 import 'location_lookup_service.dart';
 import 'travel_time_buffer_service.dart';
@@ -83,8 +84,10 @@ class EventPreparationService {
       return event;
     }
 
+    final origin = await AppPermissionService()
+        .getCurrentLocationWithPermission(requestIfMissing: false);
     for (final query in _buildDestinationSearchQueries(event)) {
-      final candidates = await _locations.search(query);
+      final candidates = await _locations.search(query, origin: origin);
       if (candidates.isEmpty) {
         continue;
       }

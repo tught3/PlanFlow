@@ -13,6 +13,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../services/app_feedback_service.dart';
+import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/background_task_service.dart';
 import '../../services/calendar_auto_sync_service.dart';
@@ -39,13 +40,15 @@ class VoiceActionScreen extends StatefulWidget {
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
     LocationLookupService? locationLookupService,
+    AppPermissionService? permissionService,
     this.forceSyncCalendars,
     this.userIdOverride,
   })  : sideEffectService =
             sideEffectService ?? const ManualEventSideEffectService(),
         homeWidgetService = homeWidgetService ?? HomeWidgetService(),
         locationLookupService =
-            locationLookupService ?? LocationLookupService();
+            locationLookupService ?? LocationLookupService(),
+        permissionService = permissionService ?? AppPermissionService();
 
   final String rawText;
   final VoiceScheduleAction action;
@@ -54,6 +57,7 @@ class VoiceActionScreen extends StatefulWidget {
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
   final LocationLookupService locationLookupService;
+  final AppPermissionService permissionService;
   final Future<void> Function({required String reason, required bool force})?
       forceSyncCalendars;
   final String? userIdOverride;
@@ -1358,8 +1362,13 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     }
 
     try {
+      final origin =
+          await widget.permissionService.getCurrentLocationWithPermission(
+        requestIfMissing: false,
+      );
       final results = await widget.locationLookupService.search(
         event.location!.trim(),
+        origin: origin,
       );
       if (results.isEmpty) {
         return _VoiceLocationResolution(
@@ -3325,7 +3334,9 @@ class _EventCandidateCard extends StatelessWidget {
     final hasDirectApply = onDirectApply != null;
 
     return Card(
-      key: isDanger ? ValueKey('voice-delete-candidate-${event.id}') : null,
+      key: isDanger
+          ? ValueKey('voice-delete-candidate-${event.id}')
+          : ValueKey('voice-action-candidate-${event.id}'),
       elevation: 0,
       color: PlanFlowColors.surface,
       shape: RoundedRectangleBorder(
