@@ -1345,3 +1345,9 @@
 - Root cause: the Android on-device speech recognizer could get stuck at capacity after leaving/re-entering voice input, while the native channel retried `startListening()` too aggressively.
 - The native STT channel now cancels any active recognizer before a fresh start, throttles restart attempts, recreates the recognizer on busy/client errors, and ignores stale delayed restarts using a generation guard.
 - Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 test test/services/stt_service_test.dart --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on the only connected device `192.168.0.103:5555`, app launch, and logcat confirmation that offline Korean STT opened the microphone without the previous capacity-full loop.
+
+## 2026-05-27 Voice Widget Routing And Multi-Day Calendar Display
+- Stabilized the 1x1 voice widget route so `planflow://voice-launcher` is received explicitly and retried after initial auth routing until `/voice?autoStart=1` is applied.
+- Calendar and monthly widget payloads now treat events spanning multiple local days as range events even when `isMultiDay` is false, and clip midnight-ended ranges to the previous display day.
+- Added a PlanFlow-styled monthly widget preview SVG at `docs/widget-previews/monthly-widget-preview.svg` without changing the Android monthly widget layout.
+- Verification passed: focused widget-route/calendar/home-widget tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. ADB install/run was skipped because no device was connected.

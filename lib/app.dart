@@ -36,6 +36,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   final NaverIcsShareStore _naverIcsShareStore = const NaverIcsShareStore();
   final NotificationService _notificationService = NotificationService();
   late final AppLifecycleListener _lifecycleListener;
+  String? _pendingHomeWidgetRoute;
+  int _homeWidgetRouteGeneration = 0;
 
   @override
   void initState() {
@@ -181,8 +183,52 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void _handleHomeWidgetUri(Uri? uri) {
     final route = resolveHomeWidgetRoute(uri);
     if (route != null) {
-      appRouter.go(route);
+      _scheduleHomeWidgetRoute(route);
     }
+  }
+
+  void _scheduleHomeWidgetRoute(String route) {
+    _pendingHomeWidgetRoute = route;
+    final generation = ++_homeWidgetRouteGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyPendingHomeWidgetRoute(generation, attempt: 0);
+    });
+  }
+
+  void _applyPendingHomeWidgetRoute(
+    int generation, {
+    required int attempt,
+  }) {
+    if (!mounted || generation != _homeWidgetRouteGeneration) {
+      return;
+    }
+    final route = _pendingHomeWidgetRoute;
+    if (route == null) {
+      return;
+    }
+    if (!authProvider.hasResolvedInitialSession && attempt < 10) {
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 120), () {
+          _applyPendingHomeWidgetRoute(generation, attempt: attempt + 1);
+        }),
+      );
+      return;
+    }
+    appRouter.go(route);
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        if (!mounted || generation != _homeWidgetRouteGeneration) {
+          return;
+        }
+        final current = appRouter.routeInformationProvider.value.uri;
+        final expected = Uri.parse(route);
+        if (current.path == expected.path && current.query == expected.query) {
+          _pendingHomeWidgetRoute = null;
+        } else if (attempt < 10) {
+          _applyPendingHomeWidgetRoute(generation, attempt: attempt + 1);
+        }
+      }),
+    );
   }
 
   @override

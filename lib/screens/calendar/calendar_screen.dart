@@ -70,6 +70,29 @@ int compareCalendarEventsForDisplay(EventModel a, EventModel b) {
 }
 
 @visibleForTesting
+bool calendarEventSpansMultipleLocalDays(EventModel event) {
+  final startAt = event.startAt;
+  final endAt = event.endAt;
+  if (startAt == null || endAt == null) {
+    return false;
+  }
+  return planflowLocalDay(startAt) != _calendarDisplayEndDay(startAt, endAt);
+}
+
+DateTime _calendarDisplayEndDay(DateTime startAt, DateTime endAt) {
+  var localEnd = planflowLocal(endAt);
+  if (endAt.isAfter(startAt) &&
+      localEnd.hour == 0 &&
+      localEnd.minute == 0 &&
+      localEnd.second == 0 &&
+      localEnd.millisecond == 0 &&
+      localEnd.microsecond == 0) {
+    localEnd = localEnd.subtract(const Duration(microseconds: 1));
+  }
+  return planflowLocalDay(localEnd);
+}
+
+@visibleForTesting
 Map<int, Color> buildCalendarEventMarkerColorsByDay({
   required Iterable<EventModel> events,
   required DateTime focusedMonth,
@@ -84,15 +107,15 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
     }
     final startAt = planflowLocal(rawStartAt);
     final rawEndAt = event.endAt ?? rawStartAt;
-    var eventEnd = planflowLocal(rawEndAt);
-    if (rawEndAt != rawStartAt &&
-        eventEnd.hour == 0 &&
-        eventEnd.minute == 0 &&
-        eventEnd.second == 0 &&
-        eventEnd.millisecond == 0 &&
-        eventEnd.microsecond == 0) {
-      eventEnd = eventEnd.subtract(const Duration(microseconds: 1));
-    }
+    final eventEndDay = _calendarDisplayEndDay(rawStartAt, rawEndAt);
+    final eventEnd = DateTime(
+      eventEndDay.year,
+      eventEndDay.month,
+      eventEndDay.day,
+      23,
+      59,
+      59,
+    );
     if (!startAt.isBefore(monthEnd) || eventEnd.isBefore(monthStart)) {
       continue;
     }
@@ -100,7 +123,7 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
         startAt.isBefore(monthStart) ? monthStart : planflowLocalDay(startAt);
     final lastDay = !eventEnd.isBefore(monthEnd)
         ? monthEnd.subtract(const Duration(days: 1))
-        : planflowLocalDay(eventEnd);
+        : eventEndDay;
     for (var day = firstDay;
         !day.isAfter(lastDay);
         day = day.add(const Duration(days: 1))) {
@@ -428,9 +451,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (startAt == null) {
         continue;
       }
-      final eventEnd = event.endAt ?? startAt;
+      final eventEndDay =
+          _calendarDisplayEndDay(startAt, event.endAt ?? startAt);
       final firstDay = planflowLocalDay(startAt);
-      final lastDay = planflowLocalDay(eventEnd);
+      final lastDay = eventEndDay;
       for (var day = firstDay;
           !day.isAfter(lastDay);
           day = day.add(const Duration(days: 1))) {
@@ -1522,7 +1546,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
         ),
       ),
       child: Text(
-        event.isMultiDay
+        (event.isMultiDay || calendarEventSpansMultipleLocalDays(event))
             ? '↔ ${event.title}'
             : event.isAllDay
                 ? '종일 ${event.title}'
@@ -1540,12 +1564,14 @@ class _CalendarMiniEventLabel extends StatelessWidget {
   }
 
   (bool, bool) _multiDaySegment(EventModel event, DateTime day) {
-    if (!event.isMultiDay || event.startAt == null || event.endAt == null) {
+    if ((!event.isMultiDay && !calendarEventSpansMultipleLocalDays(event)) ||
+        event.startAt == null ||
+        event.endAt == null) {
       return (true, true);
     }
     final current = DateTime(day.year, day.month, day.day);
     final first = planflowLocalDay(event.startAt!);
-    final last = planflowLocalDay(event.endAt!);
+    final last = _calendarDisplayEndDay(event.startAt!, event.endAt!);
     return (
       current == first || current.weekday == DateTime.monday,
       current == last || current.weekday == DateTime.sunday

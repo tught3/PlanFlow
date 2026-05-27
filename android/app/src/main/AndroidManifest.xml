@@ -49,6 +49,9 @@
                 <data
                     android:host="voice"
                     android:scheme="planflow" />
+                <data
+                    android:host="voice-launcher"
+                    android:scheme="planflow" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

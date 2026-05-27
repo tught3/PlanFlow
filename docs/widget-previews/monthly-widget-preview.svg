@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1600" viewBox="0 0 1080 1600">
+  <defs>
+    <linearGradient id="wallpaper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#151823"/>
+      <stop offset="0.55" stop-color="#30242d"/>
+      <stop offset="1" stop-color="#0f1724"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#000000" flood-opacity="0.32"/>
+    </filter>
+  </defs>
+
+  <rect width="1080" height="1600" fill="url(#wallpaper)"/>
+  <rect x="90" y="132" width="900" height="1128" rx="42" fill="#1F2025" filter="url(#shadow)"/>
+
+  <text x="130" y="205" fill="#F3F6FA" font-family="Arial, sans-serif" font-size="31" font-weight="700">오늘</text>
+  <text x="382" y="210" fill="#F3F6FA" font-family="Arial, sans-serif" font-size="45" font-weight="800">2026.05</text>
+  <text x="330" y="210" fill="#E8EDF4" font-family="Arial, sans-serif" font-size="58" font-weight="300">‹</text>
+  <text x="650" y="210" fill="#E8EDF4" font-family="Arial, sans-serif" font-size="58" font-weight="300">›</text>
+  <text x="810" y="206" fill="#DDE6F2" font-family="Arial, sans-serif" font-size="39">⚙</text>
+  <text x="900" y="207" fill="#DDE6F2" font-family="Arial, sans-serif" font-size="48" font-weight="300">＋</text>
+
+  <g font-family="Arial, sans-serif" font-size="29" font-weight="800">
+    <text x="129" y="284" fill="#EF4D6F">일</text>
+    <text x="259" y="284" fill="#DDE2EA">월</text>
+    <text x="389" y="284" fill="#DDE2EA">화</text>
+    <text x="519" y="284" fill="#DDE2EA">수</text>
+    <text x="649" y="284" fill="#DDE2EA">목</text>
+    <text x="779" y="284" fill="#DDE2EA">금</text>
+    <text x="909" y="284" fill="#5D7CFF">토</text>
+  </g>
+
+  <g stroke="#3A3C43" stroke-width="1">
+    <line x1="90" y1="430" x2="990" y2="430"/>
+    <line x1="90" y1="625" x2="990" y2="625"/>
+    <line x1="90" y1="820" x2="990" y2="820"/>
+    <line x1="90" y1="1015" x2="990" y2="1015"/>
+    <line x1="90" y1="1210" x2="990" y2="1210"/>
+  </g>
+
+  <g font-family="Arial, sans-serif" font-size="30" font-weight="800">
+    <text x="116" y="340" fill="#646872">26</text><text x="246" y="340" fill="#646872">27</text><text x="376" y="340" fill="#646872">28</text><text x="506" y="340" fill="#646872">29</text><text x="636" y="340" fill="#646872">30</text><text x="766" y="340" fill="#EF4D6F">1</text><text x="896" y="340" fill="#5D7CFF">2</text>
+    <text x="116" y="485" fill="#EF4D6F">3</text><text x="246" y="485" fill="#F4F6F9">4</text><text x="376" y="485" fill="#EF4D6F">5</text><text x="506" y="485" fill="#F4F6F9">6</text><text x="636" y="485" fill="#F4F6F9">7</text><text x="766" y="485" fill="#F4F6F9">8</text><text x="896" y="485" fill="#5D7CFF">9</text>
+    <text x="116" y="680" fill="#EF4D6F">10</text><text x="246" y="680" fill="#F4F6F9">11</text><text x="376" y="680" fill="#F4F6F9">12</text><text x="506" y="680" fill="#F4F6F9">13</text><text x="636" y="680" fill="#F4F6F9">14</text><text x="766" y="680" fill="#F4F6F9">15</text><text x="896" y="680" fill="#5D7CFF">16</text>
+    <text x="116" y="875" fill="#EF4D6F">17</text><text x="246" y="875" fill="#F4F6F9">18</text><text x="376" y="875" fill="#F4F6F9">19</text><text x="506" y="875" fill="#F4F6F9">20</text><text x="636" y="875" fill="#F4F6F9">21</text><text x="766" y="875" fill="#F4F6F9">22</text><text x="896" y="875" fill="#5D7CFF">23</text>
+    <text x="116" y="1070" fill="#EF4D6F">24</text><text x="246" y="1070" fill="#EF4D6F">25</text><text x="376" y="1070" fill="#F4F6F9">26</text>
+  </g>
+
+  <rect x="470" y="1030" width="128" height="180" fill="#34363C"/>
+  <circle cx="534" cy="1062" r="25" fill="#F4F6F9"/>
+  <text x="516" y="1073" fill="#23262D" font-family="Arial, sans-serif" font-size="28" font-weight="900">27</text>
+
+  <g font-family="Arial, sans-serif" font-size="23" font-weight="800">
+    <rect x="738" y="350" width="95" height="34" rx="5" fill="#4B222C"/><text x="746" y="375" fill="#FF6C8A">노동절</text>
+    <rect x="742" y="390" width="160" height="34" rx="5" fill="#2B2D33"/><text x="750" y="415" fill="#F5F7FB">움빠 심장사</text>
+    <rect x="96" y="510" width="118" height="32" rx="5" fill="#2C2E34"/><text x="102" y="534" fill="#F5F7FB">어버이날</text>
+    <rect x="220" y="510" width="126" height="32" rx="5" fill="#D94E6F"/><text x="229" y="534" fill="#FFFFFF">수퍼베이스</text>
+    <rect x="350" y="550" width="118" height="34" rx="5" fill="#E65A7B"/><text x="361" y="576" fill="#FFFFFF">어린이날</text>
+    <rect x="764" y="512" width="144" height="34" rx="5" fill="#5D91F4"/><text x="775" y="538" fill="#FFFFFF">순해평가사</text>
+    <rect x="220" y="708" width="116" height="31" rx="5" fill="#2C2E34"/><text x="229" y="732" fill="#F5F7FB">태블릿 계기</text>
+    <rect x="482" y="708" width="126" height="31" rx="5" fill="#2C2E34"/><text x="491" y="732" fill="#F5F7FB">팀장 동행방</text>
+    <rect x="750" y="902" width="128" height="32" rx="5" fill="#2C2E34"/><text x="760" y="926" fill="#F5F7FB">방명록 미리</text>
+    <rect x="220" y="1100" width="126" height="31" rx="5" fill="#2C2E34"/><text x="228" y="1124" fill="#F5F7FB">하나은행 급</text>
+    <rect x="615" y="1100" width="126" height="31" rx="5" fill="#2C2E34"/><text x="624" y="1124" fill="#F5F7FB">안정환 점심</text>
+  </g>
+
+  <rect x="96" y="566" width="812" height="34" rx="7" fill="#E65A7B"/>
+  <text x="116" y="592" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="23" font-weight="900">원주집방문</text>
+
+  <rect x="352" y="902" width="526" height="34" rx="7" fill="#E65A7B"/>
+  <text x="372" y="928" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="23" font-weight="900">테스트</text>
+
+  <g fill="#D6DCE5" font-family="Arial, sans-serif" font-size="20" font-weight="700">
+    <text x="226" y="790">+4</text>
+    <text x="615" y="790">+2</text>
+    <text x="746" y="985">+4</text>
+  </g>
+
+  <text x="92" y="1335" fill="#C8D4E6" font-family="Arial, sans-serif" font-size="30" font-weight="800">PlanFlow monthly widget preview</text>
+  <text x="92" y="1380" fill="#8796AA" font-family="Arial, sans-serif" font-size="23">연속 일정은 날짜 셀을 가로질러 이어지는 바 형태로 표현하는 시안</text>
+</svg>

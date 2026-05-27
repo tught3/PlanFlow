@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/calendar/calendar_screen.dart';
@@ -121,6 +122,50 @@ void main() {
       ),
       findsNothing,
     );
+  });
+
+  test('calendar marks date-range events across every local day', () {
+    final rangeEvent = EventModel(
+      id: 'range-1',
+      userId: 'user-1',
+      title: '원주집방문',
+      startAt: DateTime.utc(2026, 4, 30, 15),
+      endAt: DateTime.utc(2026, 5, 10, 15),
+      isMultiDay: false,
+    );
+
+    expect(calendarEventSpansMultipleLocalDays(rangeEvent), isTrue);
+
+    final markers = buildCalendarEventMarkerColorsByDay(
+      events: <EventModel>[rangeEvent],
+      focusedMonth: DateTime(2026, 5),
+    );
+
+    for (var day = 1; day <= 10; day += 1) {
+      expect(markers[day], PlanFlowColors.active);
+    }
+    expect(markers[11], isNull);
+  });
+
+  test('calendar treats midnight end as the previous display day', () {
+    final event = EventModel(
+      id: 'range-midnight',
+      userId: 'user-1',
+      title: '테스트',
+      startAt: DateTime.utc(2026, 5, 18, 15),
+      endAt: DateTime.utc(2026, 5, 22, 15),
+      isMultiDay: true,
+    );
+
+    final markers = buildCalendarEventMarkerColorsByDay(
+      events: <EventModel>[event],
+      focusedMonth: DateTime(2026, 5),
+    );
+
+    for (var day = 19; day <= 22; day += 1) {
+      expect(markers[day], PlanFlowColors.active);
+    }
+    expect(markers[23], isNull);
   });
 }
 

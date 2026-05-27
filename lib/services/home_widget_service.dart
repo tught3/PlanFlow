@@ -268,13 +268,7 @@ class HomeWidgetSchedulePayloadBuilder {
 
   static List<EventModel> _eventsForDay(List<EventModel> events, DateTime day) {
     final dayEvents = events
-        .where(
-          (event) => planflowEventIntersectsLocalDay(
-            startAt: event.startAt,
-            endAt: event.endAt,
-            day: day,
-          ),
-        )
+        .where((event) => _eventIntersectsDisplayDay(event, day))
         .toList(growable: false)
       ..sort((a, b) {
         final aStart = a.startAt;
@@ -291,6 +285,35 @@ class HomeWidgetSchedulePayloadBuilder {
         return aStart.compareTo(bStart);
       });
     return dayEvents;
+  }
+
+  static DateTime _displayEndDay(EventModel event) {
+    final startAt = event.startAt;
+    final endAt = event.endAt ?? startAt;
+    if (startAt == null || endAt == null) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+    var localEnd = planflowLocal(endAt);
+    if (endAt.isAfter(startAt) &&
+        localEnd.hour == 0 &&
+        localEnd.minute == 0 &&
+        localEnd.second == 0 &&
+        localEnd.millisecond == 0 &&
+        localEnd.microsecond == 0) {
+      localEnd = localEnd.subtract(const Duration(microseconds: 1));
+    }
+    return planflowLocalDay(localEnd);
+  }
+
+  static bool _eventIntersectsDisplayDay(EventModel event, DateTime day) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final firstDay = planflowLocalDay(startAt);
+    final lastDay = _displayEndDay(event);
+    final targetDay = DateTime(day.year, day.month, day.day);
+    return !targetDay.isBefore(firstDay) && !targetDay.isAfter(lastDay);
   }
 
   static bool _startsOnWeekend(EventModel event) {

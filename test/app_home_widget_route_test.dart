@@ -9,6 +9,10 @@ void main() {
       '${AppRoutes.voice}?autoStart=1',
     );
     expect(
+      resolveHomeWidgetRoute(Uri.parse('planflow://voice-launcher?source=mic')),
+      '${AppRoutes.voice}?autoStart=1',
+    );
+    expect(
       resolveHomeWidgetRoute(Uri.parse('planflow://voice?autoStart=1')),
       '${AppRoutes.voice}?autoStart=1',
     );

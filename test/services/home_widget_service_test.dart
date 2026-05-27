@@ -505,6 +505,63 @@ void main() {
     expect(payload.tomorrowEvents.single.title, 'Tomorrow preview');
   });
 
+  test('HomeWidgetSchedulePayloadBuilder expands date-range events in month',
+      () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.parse('2026-05-01T00:00:00Z'),
+      events: <EventModel>[
+        EventModel(
+          id: 'wonju-home',
+          userId: 'user-1',
+          title: '원주집방문',
+          startAt: DateTime.utc(2026, 4, 30, 15),
+          endAt: DateTime.utc(2026, 5, 10, 15),
+          isMultiDay: false,
+        ),
+      ],
+    );
+
+    for (var day = 1; day <= 10; day += 1) {
+      final cell = payload.monthCells.firstWhere(
+        (cell) => cell.inMonth && cell.day == day,
+      );
+      expect(cell.events.map((event) => event.title), contains('원주집방문'));
+    }
+    final may11Cell = payload.monthCells.firstWhere(
+      (cell) => cell.inMonth && cell.day == 11,
+    );
+    expect(
+        may11Cell.events.map((event) => event.title), isNot(contains('원주집방문')));
+  });
+
+  test('HomeWidgetSchedulePayloadBuilder clips midnight-ended ranges', () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.parse('2026-05-19T00:00:00Z'),
+      events: <EventModel>[
+        EventModel(
+          id: 'range',
+          userId: 'user-1',
+          title: '테스트',
+          startAt: DateTime.utc(2026, 5, 18, 15),
+          endAt: DateTime.utc(2026, 5, 22, 15),
+          isMultiDay: true,
+        ),
+      ],
+    );
+
+    for (var day = 19; day <= 22; day += 1) {
+      final cell = payload.monthCells.firstWhere(
+        (cell) => cell.inMonth && cell.day == day,
+      );
+      expect(cell.events.map((event) => event.title), contains('테스트'));
+    }
+    final may23Cell = payload.monthCells.firstWhere(
+      (cell) => cell.inMonth && cell.day == 23,
+    );
+    expect(
+        may23Cell.events.map((event) => event.title), isNot(contains('테스트')));
+  });
+
   test('HomeWidgetService refreshScheduleFromEvents delegates payload build',
       () async {
     final platform = _FakeHomeWidgetPlatform();
