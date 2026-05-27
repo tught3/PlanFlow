@@ -684,6 +684,8 @@ private class PlanFlowSttChannel(
     private var userRequestedStop = false
     private var latestPartialText = ""
     private var sessionId = 0
+    private var restartAttempts = 0
+    private var startGeneration = 0
 
     init {
         channel.setMethodCallHandler { call, result ->
@@ -729,10 +731,15 @@ private class PlanFlowSttChannel(
             channel.invokeMethod("error", "unavailable")
             return
         }
+        if (listening) {
+            recognizer?.cancel()
+        }
         listening = true
         userRequestedStop = false
         latestPartialText = ""
+        restartAttempts = 0
         sessionId += 1
+        startGeneration += 1
         ensureRecognizer()
         startListening()
     }
@@ -750,6 +757,9 @@ private class PlanFlowSttChannel(
     }
 
     private fun startListening() {
+        if (!listening || userRequestedStop) {
+            return
+        }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.KOREA.toLanguageTag())
@@ -763,16 +773,35 @@ private class PlanFlowSttChannel(
         recognizer?.startListening(intent)
     }
 
-    private fun restartSoon() {
+    private fun restartSoon(recreateRecognizer: Boolean = false) {
         if (!listening || userRequestedStop) {
             return
         }
+        restartAttempts += 1
+        val maxAttempts = if (recreateRecognizer) 2 else 8
+        if (restartAttempts > maxAttempts) {
+            listening = false
+            channel.invokeMethod(
+                "error",
+                mapOf("text" to latestPartialText, "sessionId" to sessionId),
+            )
+            return
+        }
+        if (recreateRecognizer) {
+            recognizer?.cancel()
+            recognizer?.destroy()
+            recognizer = null
+        } else {
+            recognizer?.cancel()
+        }
+        val generation = ++startGeneration
         channel.invokeMethod("restarted", mapOf("sessionId" to sessionId))
         activity.window.decorView.postDelayed({
-            if (listening && !userRequestedStop) {
+            if (listening && !userRequestedStop && generation == startGeneration) {
+                ensureRecognizer()
                 startListening()
             }
-        }, 150)
+        }, if (recreateRecognizer) 1200 else 900)
     }
 
     private fun publishText(results: Bundle?) {
@@ -782,6 +811,7 @@ private class PlanFlowSttChannel(
             ?.trim()
             .orEmpty()
         if (text.isNotEmpty()) {
+            restartAttempts = 0
             latestPartialText = text
             channel.invokeMethod(
                 "partial",
@@ -792,6 +822,7 @@ private class PlanFlowSttChannel(
 
     private fun cancel() {
         listening = false
+        startGeneration += 1
         recognizer?.cancel()
         channel.invokeMethod(
             "cancelled",
@@ -801,6 +832,7 @@ private class PlanFlowSttChannel(
 
     fun dispose() {
         listening = false
+        startGeneration += 1
         channel.setMethodCallHandler(null)
         recognizer?.destroy()
         recognizer = null
@@ -824,7 +856,10 @@ private class PlanFlowSttChannel(
             )
             return
         }
-        restartSoon()
+        val recreateRecognizer =
+            error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+                error == SpeechRecognizer.ERROR_CLIENT
+        restartSoon(recreateRecognizer = recreateRecognizer)
     }
 
     override fun onResults(results: Bundle?) {

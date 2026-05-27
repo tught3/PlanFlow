@@ -1340,3 +1340,8 @@
 - Monthly widget navigation now supports `오늘`, previous month, and next month actions backed by a clamped `month_widget_offset`, with Flutter saving previous/current/next month payloads for native rendering.
 - Added `docs/play-console-data-safety.md` with the requested Play Console table format, including collection/sharing flags, temporary-processing status, optional/required status, reasons, and excluded data types.
 - Verification passed: `test/services/home_widget_service_test.dart`, `test/screens/confirm_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. Device install was attempted, but `192.168.0.102:5555` was offline and reconnect timed out.
+
+## 2026-05-27 Voice Input Native STT Recovery
+- Root cause: the Android on-device speech recognizer could get stuck at capacity after leaving/re-entering voice input, while the native channel retried `startListening()` too aggressively.
+- The native STT channel now cancels any active recognizer before a fresh start, throttles restart attempts, recreates the recognizer on busy/client errors, and ignores stale delayed restarts using a generation guard.
+- Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 test test/services/stt_service_test.dart --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on the only connected device `192.168.0.103:5555`, app launch, and logcat confirmation that offline Korean STT opened the microphone without the previous capacity-full loop.
