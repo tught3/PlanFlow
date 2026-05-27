@@ -131,6 +131,121 @@ String _normalizeDuplicateTitle(String value) {
   return value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 }
 
+List<EventModel> filterDuplicateWarningEvents({
+  required EventModel draft,
+  required List<EventModel> candidates,
+}) {
+  return candidates
+      .where((candidate) => _shouldWarnAsDuplicate(draft, candidate))
+      .toList(growable: false);
+}
+
+bool _shouldWarnAsDuplicate(EventModel draft, EventModel candidate) {
+  final draftStart = draft.startAt;
+  final candidateStart = candidate.startAt;
+  if (draftStart == null || candidateStart == null) {
+    return false;
+  }
+
+  if (_hasSameLocalScheduleWindow(draft, candidate)) {
+    return true;
+  }
+
+  return _hasSimilarDuplicateContent(draft, candidate);
+}
+
+bool _hasSameLocalScheduleWindow(EventModel left, EventModel right) {
+  final leftStart = left.startAt;
+  final rightStart = right.startAt;
+  if (leftStart == null || rightStart == null) {
+    return false;
+  }
+
+  final leftLocalStart = planflowLocal(leftStart);
+  final rightLocalStart = planflowLocal(rightStart);
+  final sameStartMinute = leftLocalStart.year == rightLocalStart.year &&
+      leftLocalStart.month == rightLocalStart.month &&
+      leftLocalStart.day == rightLocalStart.day &&
+      leftLocalStart.hour == rightLocalStart.hour &&
+      leftLocalStart.minute == rightLocalStart.minute;
+  if (!sameStartMinute) {
+    return false;
+  }
+
+  return _displayEndDayForDuplicate(left) == _displayEndDayForDuplicate(right);
+}
+
+DateTime _displayEndDayForDuplicate(EventModel event) {
+  final startAt = event.startAt;
+  final endAt = event.endAt ?? startAt;
+  if (startAt == null || endAt == null) {
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+  var localEnd = planflowLocal(endAt);
+  if (endAt.isAfter(startAt) &&
+      localEnd.hour == 0 &&
+      localEnd.minute == 0 &&
+      localEnd.second == 0 &&
+      localEnd.millisecond == 0 &&
+      localEnd.microsecond == 0) {
+    localEnd = localEnd.subtract(const Duration(microseconds: 1));
+  }
+  return DateTime(localEnd.year, localEnd.month, localEnd.day);
+}
+
+bool _hasSimilarDuplicateContent(EventModel draft, EventModel candidate) {
+  final draftParts = <String>[
+    draft.title,
+    draft.location ?? '',
+    draft.memo ?? '',
+  ];
+  final candidateParts = <String>[
+    candidate.title,
+    candidate.location ?? '',
+    candidate.memo ?? '',
+  ];
+  final draftText = _normalizeDuplicateComparable(draftParts.join(' '));
+  final candidateText = _normalizeDuplicateComparable(candidateParts.join(' '));
+  if (draftText.isEmpty || candidateText.isEmpty) {
+    return false;
+  }
+  if (draftText == candidateText) {
+    return true;
+  }
+  final shorter =
+      draftText.length <= candidateText.length ? draftText : candidateText;
+  final longer =
+      draftText.length > candidateText.length ? draftText : candidateText;
+  if (shorter.length >= 4 && longer.contains(shorter)) {
+    return true;
+  }
+
+  final leftTokens = _duplicateTokens(draftParts.join(' '));
+  final rightTokens = _duplicateTokens(candidateParts.join(' '));
+  if (leftTokens.isEmpty || rightTokens.isEmpty) {
+    return false;
+  }
+  final intersection = leftTokens.intersection(rightTokens).length;
+  final union = leftTokens.union(rightTokens).length;
+  return union > 0 && intersection / union >= 0.55;
+}
+
+String _normalizeDuplicateComparable(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll(RegExp(r'[^\w가-힣]'), '');
+}
+
+Set<String> _duplicateTokens(String value) {
+  return value
+      .toLowerCase()
+      .split(RegExp(r'[\s,./·:;()]+'))
+      .map(_normalizeDuplicateComparable)
+      .where((token) => token.length >= 2)
+      .toSet();
+}
+
 bool shouldKeepExistingEventForExternalImport({
   required EventModel existing,
   required EventModel incoming,

@@ -442,7 +442,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                   ),
                   title: const Text('강한 알림으로 예약'),
                   subtitle: const Text(
-                    '정확한 알람, 강한 진동, 전체 화면 알림을 시도합니다. 무음·방해금지 우회는 Android 정책상 보장되지 않아요.',
+                    '미리알림 시간과 별개로 일정 시작 시점에 강한 진동과 전체 화면 알림을 시도합니다.',
                   ),
                   secondary: Icon(
                     widget.isCritical

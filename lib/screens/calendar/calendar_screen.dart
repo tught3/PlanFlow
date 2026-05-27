@@ -602,8 +602,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (startAt == null) {
       return false;
     }
-    final eventEnd = event.endAt ?? startAt;
-    return startAt.isBefore(rangeEnd) && !eventEnd.isBefore(rangeStart);
+    final localDisplayEnd =
+        _calendarDisplayEndDay(startAt, event.endAt ?? startAt);
+    final eventDisplayEndExclusive = DateTime(
+      localDisplayEnd.year,
+      localDisplayEnd.month,
+      localDisplayEnd.day + 1,
+    );
+    return planflowLocal(startAt).isBefore(rangeEnd) &&
+        eventDisplayEndExclusive.isAfter(rangeStart);
   }
 
   DateTime? _parseRRuleUntil(String? value) {

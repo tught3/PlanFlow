@@ -231,7 +231,7 @@ class HomeWidgetSchedulePayloadBuilder {
     return List<HomeWidgetMonthCellData>.generate(42, (index) {
       final day = firstCellDay.add(Duration(days: index));
       final inMonth = day.year == month.year && day.month == month.month;
-      final dayEvents = inMonth ? _eventsForDay(events, day) : <EventModel>[];
+      final dayEvents = _eventsForDay(events, day);
       return HomeWidgetMonthCellData(
         cellIndex: index + 1,
         date: day,

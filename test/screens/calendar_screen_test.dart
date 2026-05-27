@@ -167,6 +167,45 @@ void main() {
     }
     expect(markers[23], isNull);
   });
+
+  testWidgets('CalendarScreen shows cross-month range on selected end day',
+      (tester) async {
+    final selectedDay = DateTime(2026, 6);
+    final repository = _AsyncEventRepository([
+      Future.value([
+        EventModel(
+          id: 'wonju-home',
+          userId: 'user-1',
+          title: '원주집방문',
+          startAt: DateTime.utc(2026, 5, 25, 15),
+          endAt: DateTime.utc(2026, 6, 1, 14, 59, 59),
+          isAllDay: true,
+          isMultiDay: true,
+        ),
+      ]),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: selectedDay,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final dayEventsList =
+        find.byKey(const ValueKey('calendar-day-events-list'));
+    expect(
+      find.descendant(
+        of: dayEventsList,
+        matching: find.text('원주집방문'),
+      ),
+      findsOneWidget,
+    );
+  });
 }
 
 EventModel _event(String id, String title, DateTime startAt) {

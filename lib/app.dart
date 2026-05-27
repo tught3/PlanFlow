@@ -178,6 +178,29 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   Future<void> _routeInitialHomeWidgetLaunch() async {
     final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
     _handleHomeWidgetUri(uri);
+    if (uri == null) {
+      _retryInitialHomeWidgetLaunchProbe(attempt: 0);
+    }
+  }
+
+  void _retryInitialHomeWidgetLaunchProbe({required int attempt}) {
+    if (!mounted || _pendingHomeWidgetRoute != null || attempt >= 4) {
+      return;
+    }
+    unawaited(
+      Future<void>.delayed(Duration(milliseconds: 180 * (attempt + 1)),
+          () async {
+        if (!mounted || _pendingHomeWidgetRoute != null) {
+          return;
+        }
+        final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+        if (uri != null) {
+          _handleHomeWidgetUri(uri);
+          return;
+        }
+        _retryInitialHomeWidgetLaunchProbe(attempt: attempt + 1);
+      }),
+    );
   }
 
   void _handleHomeWidgetUri(Uri? uri) {

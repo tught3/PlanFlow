@@ -9,7 +9,7 @@ class ReminderOffsetSelector extends StatelessWidget {
     super.key,
     required this.value,
     required this.onChanged,
-    this.title = '일정 알림',
+    this.title = '미리알림',
     this.subtitle = '이 일정에서만 사용할 알림 시간을 선택하세요.',
   });
 
@@ -111,7 +111,7 @@ class ReminderOffsetSelector extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '일정 알림 선택',
+                    '미리알림 선택',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           color: PlanFlowColors.primary,
                           fontWeight: FontWeight.w800,

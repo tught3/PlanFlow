@@ -23,7 +23,7 @@ void main() {
     await tester.tap(find.text('1시간 전'));
     await tester.pumpAndSettle();
 
-    expect(find.text('일정 알림 선택'), findsOneWidget);
+    expect(find.text('미리알림 선택'), findsOneWidget);
     expect(find.text('알림 없음'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

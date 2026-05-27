@@ -52,4 +52,61 @@ void main() {
       isTrue,
     );
   });
+
+  test('filterDuplicateWarningEvents ignores unrelated overlapping events', () {
+    final draft = EventModel(
+      id: '',
+      userId: 'user-1',
+      title: '원주집방문',
+      startAt: DateTime.utc(2026, 5, 26, 0),
+      endAt: DateTime.utc(2026, 5, 26, 1),
+    );
+    final unrelated = EventModel(
+      id: 'other',
+      userId: 'user-1',
+      title: '거래처 전화',
+      startAt: DateTime.utc(2026, 5, 26, 0, 30),
+      endAt: DateTime.utc(2026, 5, 26, 1, 30),
+    );
+
+    expect(
+      filterDuplicateWarningEvents(
+        draft: draft,
+        candidates: <EventModel>[unrelated],
+      ),
+      isEmpty,
+    );
+  });
+
+  test('filterDuplicateWarningEvents keeps same start or similar content', () {
+    final draft = EventModel(
+      id: '',
+      userId: 'user-1',
+      title: '원주집방문',
+      startAt: DateTime.utc(2026, 5, 26, 0),
+      endAt: DateTime.utc(2026, 5, 26, 1),
+    );
+    final sameStart = EventModel(
+      id: 'same-start',
+      userId: 'user-1',
+      title: '다른 제목',
+      startAt: DateTime.utc(2026, 5, 26, 0),
+      endAt: DateTime.utc(2026, 5, 26, 1),
+    );
+    final similarTitle = EventModel(
+      id: 'similar',
+      userId: 'user-1',
+      title: '원주집 방문',
+      startAt: DateTime.utc(2026, 5, 26, 0, 30),
+      endAt: DateTime.utc(2026, 5, 26, 1, 30),
+    );
+
+    final filtered = filterDuplicateWarningEvents(
+      draft: draft,
+      candidates: <EventModel>[sameStart, similarTitle],
+    );
+
+    expect(filtered.map((event) => event.id),
+        containsAll(['same-start', 'similar']));
+  });
 }

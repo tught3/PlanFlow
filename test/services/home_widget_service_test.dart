@@ -562,6 +562,37 @@ void main() {
         may23Cell.events.map((event) => event.title), isNot(contains('테스트')));
   });
 
+  test(
+      'HomeWidgetSchedulePayloadBuilder keeps cross-month range in muted cells',
+      () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime.parse('2026-05-27T00:00:00Z'),
+      events: <EventModel>[
+        EventModel(
+          id: 'wonju-home',
+          userId: 'user-1',
+          title: '원주집방문',
+          startAt: DateTime.utc(2026, 5, 25, 15),
+          endAt: DateTime.utc(2026, 6, 1, 14, 59, 59),
+          isAllDay: true,
+          isMultiDay: true,
+        ),
+      ],
+    );
+
+    for (var day = 26; day <= 31; day += 1) {
+      final cell = payload.monthCells.firstWhere(
+        (cell) => cell.inMonth && cell.day == day,
+      );
+      expect(cell.events.map((event) => event.title), contains('원주집방문'));
+    }
+
+    final june1Cell = payload.monthCells.firstWhere(
+      (cell) => !cell.inMonth && cell.date == DateTime(2026, 6),
+    );
+    expect(june1Cell.events.map((event) => event.title), contains('원주집방문'));
+  });
+
   test('HomeWidgetService refreshScheduleFromEvents delegates payload build',
       () async {
     final platform = _FakeHomeWidgetPlatform();

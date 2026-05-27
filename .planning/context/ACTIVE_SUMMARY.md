@@ -1351,3 +1351,10 @@
 - Calendar and monthly widget payloads now treat events spanning multiple local days as range events even when `isMultiDay` is false, and clip midnight-ended ranges to the previous display day.
 - Added a PlanFlow-styled monthly widget preview SVG at `docs/widget-previews/monthly-widget-preview.svg` without changing the Android monthly widget layout.
 - Verification passed: focused widget-route/calendar/home-widget tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. ADB install/run was skipped because no device was connected.
+
+## 2026-05-27 Widget Deep-Link, Duplicate Guard, And Confirm Polish
+- Rechecked widget/date deep-link routing and added a startup retry for initial widget launches so first taps are less likely to be overwritten by home routing.
+- Tightened multi-day range display in the calendar tab and monthly widget, including cross-month ranges such as May 26 to June 1 and muted out-of-month cells.
+- Duplicate warnings now require the same local schedule window or genuinely similar content/location, avoiding warnings for unrelated overlapping events.
+- Confirm/edit save feedback now uses a top overlay message, resolved location phrases are stripped from voice titles after async coordinate resolution, empty details stay collapsed, and important alarms are independent from the normal `미리알림` offset.
+- Verification passed: focused route/calendar/home-widget/duplicate/confirm/location/reminder/editor tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.219.43:5555`, app launch/PID/focused-window check, and voice/calendar deep-link launch checks.

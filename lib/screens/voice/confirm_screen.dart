@@ -22,6 +22,7 @@ import '../../services/departure_alarm_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/event_preparation_service.dart';
 import '../../services/app_permission_service.dart';
+import '../../services/app_feedback_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../data/models/user_settings_model.dart';
@@ -227,8 +228,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _participants = _stringListValue(widget.parsedSchedule['participants']);
     _targets = _stringListValue(widget.parsedSchedule['targets']);
     _preActions = _initialPreActions();
-    _detailsSectionInitiallyExpanded = _supplies.isNotEmpty ||
-        _preActionsFromValue(widget.parsedSchedule['pre_actions']).isNotEmpty;
+    _detailsSectionInitiallyExpanded =
+        _supplies.isNotEmpty || _memoController.text.trim().isNotEmpty;
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
     _locationLat = _doubleValue(widget.parsedSchedule['location_lat']);
@@ -312,6 +313,58 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     if (!_isApplyingHydration) {
       _memoEditedByUser = true;
     }
+  }
+
+  void _removeResolvedLocationFromTitle({
+    required String previousLocationText,
+    required String? resolvedLocationText,
+  }) {
+    if (_titleEditedByUser) {
+      return;
+    }
+
+    final candidates = <String>{
+      previousLocationText,
+      if (resolvedLocationText != null) resolvedLocationText,
+    };
+    var title = _titleController.text.trim();
+    for (final candidate in candidates) {
+      title = _stripLocationCandidateFromTitle(title, candidate);
+    }
+
+    if (title.isEmpty || title == _titleController.text.trim()) {
+      return;
+    }
+
+    _isApplyingHydration = true;
+    _titleController.text = title;
+    _isApplyingHydration = false;
+  }
+
+  String _stripLocationCandidateFromTitle(String title, String candidate) {
+    final normalizedCandidate = candidate
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'\s*(?:에서|으로|로|에)$'), '')
+        .trim();
+    if (normalizedCandidate.length < 2) {
+      return title;
+    }
+
+    final escaped = RegExp.escape(normalizedCandidate);
+    final compactEscaped = RegExp.escape(
+      normalizedCandidate.replaceAll(RegExp(r'\s+'), ''),
+    );
+    return title
+        .replaceFirst(
+          RegExp('^\\s*$escaped\\s*(?:에서|으로|로|에)?\\s*'),
+          '',
+        )
+        .replaceFirst(
+          RegExp('^\\s*$compactEscaped\\s*(?:에서|으로|로|에)?\\s*'),
+          '',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   void _schedulePastSupplyLookup() {
@@ -400,6 +453,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         _resolvedLocationLabel =
             resolvedLabel.isNotEmpty ? resolvedLabel : selected.label.trim();
       });
+      _removeResolvedLocationFromTitle(
+        previousLocationText: query,
+        resolvedLocationText: _resolvedLocationLabel,
+      );
       _showMessage('정확한 위치를 선택했어요.');
     } catch (error, stackTrace) {
       debugPrint('ConfirmScreen location pick failed: $error');
@@ -451,6 +508,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             resolvedLabel.isNotEmpty ? resolvedLabel : query;
       });
       _isApplyingHydration = false;
+      _removeResolvedLocationFromTitle(
+        previousLocationText: query,
+        resolvedLocationText: _resolvedLocationLabel,
+      );
     } catch (error) {
       debugPrint('ConfirmScreen automatic location resolution failed: $error');
     }
@@ -489,6 +550,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             resolvedLabel.isNotEmpty ? resolvedLabel : query;
       });
       _isApplyingHydration = false;
+      _removeResolvedLocationFromTitle(
+        previousLocationText: query,
+        resolvedLocationText: _resolvedLocationLabel,
+      );
     } catch (error) {
       debugPrint('ConfirmScreen save-time location resolution failed: $error');
     } finally {
@@ -745,12 +810,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       rangeEnd: _eventRangeEnd(eventStart, draftEvent.endAt),
       userId: userId,
     );
+    final duplicateWarningEvents = filterDuplicateWarningEvents(
+      draft: draftEvent,
+      candidates: overlappingEvents,
+    );
     if (!mounted) {
       return;
     }
-    if (overlappingEvents.isNotEmpty) {
+    if (duplicateWarningEvents.isNotEmpty) {
       unawaited(AnalyticsService.logConflictDetected());
-      final shouldContinue = await _showOverlapWarning(overlappingEvents);
+      final shouldContinue = await _showOverlapWarning(duplicateWarningEvents);
       if (!shouldContinue || !mounted) {
         return;
       }
@@ -867,7 +936,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       eventId: event.id,
       eventStartAt: eventStartAt,
       reminderOffset: _reminderOffset,
-      criticalAlarmOffset: _reminderOffset,
     );
 
     await _tryFollowUp(
@@ -1176,7 +1244,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     required String eventId,
     required DateTime eventStartAt,
     required Duration? reminderOffset,
-    required Duration? criticalAlarmOffset,
   }) {
     final now = DateTime.now();
     final pushNotifyAt =
@@ -1191,12 +1258,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         ),
     ];
 
-    final criticalNotifyAt = criticalAlarmOffset == null
-        ? null
-        : _resolveCriticalNotifyAt(
-            eventStartAt: eventStartAt,
-            offset: criticalAlarmOffset,
-          );
+    final criticalNotifyAt = _resolveCriticalNotifyAt(
+      eventStartAt: eventStartAt,
+      offset: Duration.zero,
+    );
     if (_isCritical &&
         criticalNotifyAt != null &&
         criticalNotifyAt.isAfter(now)) {
@@ -1498,9 +1563,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppFeedbackService.showSnackBar(message, context: context);
   }
 
   void _showSmartPreparationAlarmInfo() {

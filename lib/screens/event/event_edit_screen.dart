@@ -16,6 +16,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/app_permission_service.dart';
+import '../../services/app_feedback_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/event_preparation_service.dart';
@@ -385,11 +386,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
         userId: user.id,
         excludedEventId: _loadedEvent?.id ?? updatedEvent.id,
       );
+      final duplicateWarningEvents = filterDuplicateWarningEvents(
+        draft: updatedEvent,
+        candidates: overlappingEvents,
+      );
       if (!mounted) {
         return;
       }
-      if (overlappingEvents.isNotEmpty) {
-        final shouldContinue = await _showOverlapWarning(overlappingEvents);
+      if (duplicateWarningEvents.isNotEmpty) {
+        final shouldContinue =
+            await _showOverlapWarning(duplicateWarningEvents);
         if (!shouldContinue || !mounted) {
           return;
         }
@@ -886,9 +892,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppFeedbackService.showSnackBar(message, context: context);
   }
 
   Future<void> _pickLocationOnMap() async {

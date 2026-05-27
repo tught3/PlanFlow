@@ -12,6 +12,7 @@ import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/voice/confirm_screen.dart';
 import 'package:planflow/services/gpt_service.dart';
 import 'package:planflow/services/home_widget_service.dart';
+import 'package:planflow/services/app_feedback_service.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/notification_service.dart';
@@ -28,7 +29,7 @@ void main() {
       _testApp(
         ConfirmScreen(
           userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
+          parsedSchedule: _parsedSchedule(memo: null),
           backend: _FakeConfirmBackend(),
           eventRepository: _FakeEventRepository(),
           notificationService: _FakeNotificationService(),
@@ -94,9 +95,7 @@ void main() {
     expect(notifications.criticalAlarmTitles, contains('성남 출발'));
     expect(
       notifications.criticalAlarmNotifyAts.single.difference(
-        repository.createdEvents.single.startAt!.subtract(
-          const Duration(minutes: 60),
-        ),
+        repository.createdEvents.single.startAt!,
       ),
       Duration.zero,
     );
@@ -181,8 +180,8 @@ void main() {
         ConfirmScreen(
           userId: 'user-1',
           parsedSchedule: _parsedSchedule(
-            startAt: existingStart.add(const Duration(minutes: 15)),
-            endAt: existingStart.add(const Duration(minutes: 45)),
+            startAt: existingStart,
+            endAt: existingStart.add(const Duration(hours: 1)),
           ),
           backend: _FakeConfirmBackend(),
           eventRepository: repository,
@@ -256,7 +255,7 @@ void main() {
         ConfirmScreen(
           userId: 'user-1',
           parsedSchedule: _parsedSchedule(
-            title: '김두섭 리바로 갖다주기',
+            title: '원주기독에서 김두섭 리바로 갖다주기',
             location: '원주기독',
             memo: null,
           ),
@@ -292,9 +291,31 @@ void main() {
     }
 
     final saved = repository.createdEvents.single;
+    expect(saved.title, '김두섭 리바로 갖다주기');
     expect(saved.location, '원주세브란스기독병원');
     expect(saved.locationLat, 37.3495);
     expect(saved.locationLng, 127.9458);
+  });
+
+  testWidgets('ConfirmScreen keeps empty details section collapsed',
+      (tester) async {
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(memo: null),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('설명 · 준비물'));
+    expect(find.widgetWithText(TextFormField, '설명'), findsNothing);
   });
 
   testWidgets('ConfirmScreen waits for location coordinates before saving',
@@ -522,7 +543,10 @@ Widget _testApp(Widget child) {
     ],
   );
 
-  return MaterialApp.router(routerConfig: router);
+  return MaterialApp.router(
+    scaffoldMessengerKey: AppFeedbackService.scaffoldMessengerKey,
+    routerConfig: router,
+  );
 }
 
 Finder _textFieldWithLabel(String label) {

@@ -1023,7 +1023,7 @@ class PlanFlowMonthlyWidgetProvider :
 
             if (overflow > 0) {
                 views.setTextViewText(overflowId, "+$overflow")
-                views.setViewVisibility(overflowId, if (inMonth) View.VISIBLE else View.GONE)
+                views.setViewVisibility(overflowId, View.VISIBLE)
             } else {
                 views.setViewVisibility(overflowId, View.GONE)
             }
@@ -1047,7 +1047,7 @@ class PlanFlowMonthlyWidgetProvider :
                     bindEventText(
                         views,
                         eventId,
-                        if (inMonth) eventTitle else null,
+                        eventTitle,
                         null,
                         isCritical = eventCritical,
                         isMuted = !inMonth,
@@ -1060,7 +1060,7 @@ class PlanFlowMonthlyWidgetProvider :
                         views,
                         eventId,
                         widgetData.getString("${prefix}_event_${eventSlot}_id", null),
-                        if (inMonth) calendarUriForDate(targetDate) else null,
+                        calendarUriForDate(targetDate),
                     )
                 }
             }

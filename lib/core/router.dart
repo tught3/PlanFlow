@@ -92,6 +92,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.calendar,
       builder: (context, state) => ShellScreen(
+        key: ValueKey<String>('calendar-${state.uri.query}'),
         initialIndex: 1,
         initialCalendarDate: _parseRouteDate(
           state.uri.queryParameters['date'],
