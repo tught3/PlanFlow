@@ -96,6 +96,8 @@ class HomeWidgetSchedulePayload {
     this.tomorrowEvents = const <HomeWidgetListEventData>[],
     this.monthDays = const <HomeWidgetMonthDayData>[],
     this.monthCells = const <HomeWidgetMonthCellData>[],
+    this.previousMonthCells = const <HomeWidgetMonthCellData>[],
+    this.nextMonthCells = const <HomeWidgetMonthCellData>[],
     this.weekDays = const <HomeWidgetWeekDayData>[],
   });
 
@@ -106,6 +108,8 @@ class HomeWidgetSchedulePayload {
   final List<HomeWidgetListEventData> tomorrowEvents;
   final List<HomeWidgetMonthDayData> monthDays;
   final List<HomeWidgetMonthCellData> monthCells;
+  final List<HomeWidgetMonthCellData> previousMonthCells;
+  final List<HomeWidgetMonthCellData> nextMonthCells;
   final List<HomeWidgetWeekDayData> weekDays;
 }
 
@@ -160,6 +164,8 @@ class HomeWidgetSchedulePayloadBuilder {
       sourceTomorrowEvents: allTomorrowEvents,
     );
     final month = DateTime(localNow.year, localNow.month);
+    final previousMonth = DateTime(month.year, month.month - 1);
+    final nextMonth = DateTime(month.year, month.month + 1);
 
     return HomeWidgetSchedulePayload(
       nextEvent: nextEvent == null
@@ -178,6 +184,8 @@ class HomeWidgetSchedulePayloadBuilder {
       tomorrowEvents: tomorrowEvents,
       monthDays: _monthDays(sortedEvents, month),
       monthCells: _monthCells(sortedEvents, month),
+      previousMonthCells: _monthCells(sortedEvents, previousMonth),
+      nextMonthCells: _monthCells(sortedEvents, nextMonth),
       weekDays: _weekDays(sortedEvents, now),
     );
   }
@@ -227,7 +235,7 @@ class HomeWidgetSchedulePayloadBuilder {
       return HomeWidgetMonthCellData(
         cellIndex: index + 1,
         date: day,
-        day: inMonth ? day.day : null,
+        day: day.day,
         inMonth: inMonth,
         events: dayEvents.map(_listEvent).take(3).toList(growable: false),
         overflowCount: dayEvents.length > 3 ? dayEvents.length - 3 : 0,
@@ -512,6 +520,10 @@ class HomeWidgetService {
     List<HomeWidgetMonthDayData> monthDays = const <HomeWidgetMonthDayData>[],
     List<HomeWidgetMonthCellData> monthCells =
         const <HomeWidgetMonthCellData>[],
+    List<HomeWidgetMonthCellData> previousMonthCells =
+        const <HomeWidgetMonthCellData>[],
+    List<HomeWidgetMonthCellData> nextMonthCells =
+        const <HomeWidgetMonthCellData>[],
     List<HomeWidgetWeekDayData> weekDays = const <HomeWidgetWeekDayData>[],
     String widgetName = defaultWidgetName,
     String? androidName,
@@ -559,6 +571,30 @@ class HomeWidgetService {
         success;
     success = await _saveMonthData(month: month, days: monthDays) && success;
     success = await _saveMonthCalendarData(monthCells) && success;
+    success = await _saveMonthCalendarData(
+          previousMonthCells,
+          keyPrefix: 'month_offset_-1_cell',
+        ) &&
+        success;
+    success = await _saveMonthCalendarData(
+          nextMonthCells,
+          keyPrefix: 'month_offset_1_cell',
+        ) &&
+        success;
+    if (month != null) {
+      success = await _saveOptionalValue(
+            'month_title_offset_-1',
+            '${DateTime(month.year, month.month - 1).year}.'
+                '${DateTime(month.year, month.month - 1).month.toString().padLeft(2, '0')}',
+          ) &&
+          success;
+      success = await _saveOptionalValue(
+            'month_title_offset_1',
+            '${DateTime(month.year, month.month + 1).year}.'
+                '${DateTime(month.year, month.month + 1).month.toString().padLeft(2, '0')}',
+          ) &&
+          success;
+    }
     success = await _saveWeekData(weekDays) && success;
 
     final refreshed = await _refreshWidgets(
@@ -587,6 +623,8 @@ class HomeWidgetService {
       month: payload.month,
       monthDays: payload.monthDays,
       monthCells: payload.monthCells,
+      previousMonthCells: payload.previousMonthCells,
+      nextMonthCells: payload.nextMonthCells,
       weekDays: payload.weekDays,
       widgetName: widgetName,
       androidName: androidName,
@@ -710,7 +748,7 @@ class HomeWidgetService {
     final resolvedMonth = month ?? DateTime.now();
     success = await _saveValue(
           'month_title',
-          '${resolvedMonth.year}년 ${resolvedMonth.month}월',
+          '${resolvedMonth.year}.${resolvedMonth.month.toString().padLeft(2, '0')}',
         ) &&
         success;
 
@@ -750,8 +788,9 @@ class HomeWidgetService {
   }
 
   Future<bool> _saveMonthCalendarData(
-    List<HomeWidgetMonthCellData> cells,
-  ) async {
+    List<HomeWidgetMonthCellData> cells, {
+    String keyPrefix = 'month_cell',
+  }) async {
     var success = true;
     final byCell = <int, HomeWidgetMonthCellData>{
       for (final cell in cells)
@@ -760,24 +799,24 @@ class HomeWidgetService {
     for (var cellIndex = 1; cellIndex <= 42; cellIndex += 1) {
       final cell = byCell[cellIndex];
       success = await _saveOptionalValue(
-            'month_cell_${cellIndex}_date',
+            '${keyPrefix}_${cellIndex}_date',
             cell?.date == null
                 ? null
                 : _localDateKey(planflowLocal(cell!.date!)),
           ) &&
           success;
       success = await _saveOptionalValue(
-            'month_cell_${cellIndex}_day',
+            '${keyPrefix}_${cellIndex}_day',
             cell?.day,
           ) &&
           success;
       success = await _saveValue(
-            'month_cell_${cellIndex}_in_month',
+            '${keyPrefix}_${cellIndex}_in_month',
             cell?.inMonth ?? false,
           ) &&
           success;
       success = await _saveValue(
-            'month_cell_${cellIndex}_overflow_count',
+            '${keyPrefix}_${cellIndex}_overflow_count',
             cell?.overflowCount ?? 0,
           ) &&
           success;
@@ -787,22 +826,22 @@ class HomeWidgetService {
         final event = eventIndex < events.length ? events[eventIndex] : null;
         final eventSlot = eventIndex + 1;
         success = await _saveOptionalValue(
-              'month_cell_${cellIndex}_event_${eventSlot}_id',
+              '${keyPrefix}_${cellIndex}_event_${eventSlot}_id',
               event?.eventId,
             ) &&
             success;
         success = await _saveOptionalValue(
-              'month_cell_${cellIndex}_event_${eventSlot}_title',
+              '${keyPrefix}_${cellIndex}_event_${eventSlot}_title',
               event?.title,
             ) &&
             success;
         success = await _saveOptionalValue(
-              'month_cell_${cellIndex}_event_${eventSlot}_time',
+              '${keyPrefix}_${cellIndex}_event_${eventSlot}_time',
               event?.startAt?.toUtc().toIso8601String(),
             ) &&
             success;
         success = await _saveValue(
-              'month_cell_${cellIndex}_event_${eventSlot}_is_critical',
+              '${keyPrefix}_${cellIndex}_event_${eventSlot}_is_critical',
               event?.isCritical ?? false,
             ) &&
             success;

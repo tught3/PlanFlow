@@ -762,6 +762,10 @@ class _FakeHomeWidgetService extends HomeWidgetService {
     List<HomeWidgetMonthDayData> monthDays = const <HomeWidgetMonthDayData>[],
     List<HomeWidgetMonthCellData> monthCells =
         const <HomeWidgetMonthCellData>[],
+    List<HomeWidgetMonthCellData> previousMonthCells =
+        const <HomeWidgetMonthCellData>[],
+    List<HomeWidgetMonthCellData> nextMonthCells =
+        const <HomeWidgetMonthCellData>[],
     List<HomeWidgetWeekDayData> weekDays = const <HomeWidgetWeekDayData>[],
     String widgetName = HomeWidgetService.defaultWidgetName,
     String? androidName,

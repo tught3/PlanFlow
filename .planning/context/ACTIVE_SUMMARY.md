@@ -1334,3 +1334,9 @@
 - Confirm screen opens the recurrence section when a parsed recurrence exists, opens details when parsed supplies or explicit smart-prep actions exist, and opens alarm options for important events.
 - Confirm hydration now applies a later parsed `recurrence_rule` into the screen state before saving, preventing async parsing from dropping the recurrence.
 - Verification passed: `test/widgets/calendar_style_event_editor_test.dart`, `test/screens/confirm_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, and PID check.
+
+## 2026-05-27 Monthly Widget Readability And Play Console Data Safety
+- Monthly home widget now renders a denser PlanFlow-style calendar: event rows hide time prefixes, day numbers are centered, today's date gets a circular highlight, and out-of-month days stay visible but muted.
+- Monthly widget navigation now supports `오늘`, previous month, and next month actions backed by a clamped `month_widget_offset`, with Flutter saving previous/current/next month payloads for native rendering.
+- Added `docs/play-console-data-safety.md` with the requested Play Console table format, including collection/sharing flags, temporary-processing status, optional/required status, reasons, and excluded data types.
+- Verification passed: `test/services/home_widget_service_test.dart`, `test/screens/confirm_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. Device install was attempted, but `192.168.0.102:5555` was offline and reconnect timed out.

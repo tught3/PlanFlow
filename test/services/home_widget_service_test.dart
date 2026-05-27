@@ -183,6 +183,28 @@ void main() {
           overflowCount: 2,
         ),
       ],
+      previousMonthCells: <HomeWidgetMonthCellData>[
+        HomeWidgetMonthCellData(
+          cellIndex: 6,
+          day: 30,
+          inMonth: true,
+          date: DateTime(2026, 4, 30),
+          events: const <HomeWidgetListEventData>[
+            HomeWidgetListEventData(title: 'Previous month event'),
+          ],
+        ),
+      ],
+      nextMonthCells: <HomeWidgetMonthCellData>[
+        HomeWidgetMonthCellData(
+          cellIndex: 2,
+          day: 1,
+          inMonth: true,
+          date: DateTime(2026, 6, 1),
+          events: const <HomeWidgetListEventData>[
+            HomeWidgetListEventData(title: 'Next month event'),
+          ],
+        ),
+      ],
       weekDays: <HomeWidgetWeekDayData>[
         HomeWidgetWeekDayData(
           date: DateTime.parse('2026-05-04T00:00:00Z'),
@@ -235,6 +257,18 @@ void main() {
     expect(platform.savedValues['month_cell_1_overflow_count'], 2);
     expect(platform.savedValues['month_cell_42_day'], isNull);
     expect(platform.savedValues['month_cell_42_in_month'], isFalse);
+    expect(platform.savedValues['month_title_offset_-1'], '2026.04');
+    expect(platform.savedValues['month_title_offset_1'], '2026.06');
+    expect(platform.savedValues['month_offset_-1_cell_6_day'], 30);
+    expect(
+      platform.savedValues['month_offset_-1_cell_6_event_1_title'],
+      'Previous month event',
+    );
+    expect(platform.savedValues['month_offset_1_cell_2_day'], 1);
+    expect(
+      platform.savedValues['month_offset_1_cell_2_event_1_title'],
+      'Next month event',
+    );
     expect(platform.savedValues['week_day_1_date'], '2026-05-04T00:00:00.000Z');
     expect(platform.savedValues['week_day_1_summary'], '3 events');
     expect(platform.savedValues['week_day_1_count'], 3);

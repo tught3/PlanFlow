@@ -1,12 +1,16 @@
-package com.fluxstudio.planflow
+﻿package com.fluxstudio.planflow
 
 import android.appwidget.AppWidgetManager
+import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
+import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
 import java.time.Duration
 import java.time.Instant
@@ -23,6 +27,10 @@ private const val PLANFLOW_SCHEME = "planflow"
 private const val PLANFLOW_CALENDAR_HOST = "calendar"
 private const val PLANFLOW_EVENT_HOST = "event"
 private const val PLANFLOW_VOICE_LAUNCHER_HOST = "voice-launcher"
+private const val ACTION_MONTH_PREVIOUS = "com.fluxstudio.planflow.widget.MONTH_PREVIOUS"
+private const val ACTION_MONTH_NEXT = "com.fluxstudio.planflow.widget.MONTH_NEXT"
+private const val ACTION_MONTH_TODAY = "com.fluxstudio.planflow.widget.MONTH_TODAY"
+private const val MONTH_WIDGET_OFFSET_KEY = "month_widget_offset"
 private val PLANFLOW_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
 abstract class BasePlanFlowWidgetProvider(
@@ -162,15 +170,15 @@ abstract class BasePlanFlowWidgetProvider(
 
     protected fun formatTime(raw: String?): String {
         if (raw.isNullOrBlank()) {
-            return "시간 미정"
+            return "\uc2dc\uac04 \ubbf8\uc815"
         }
 
         return try {
             val dateTime = Instant.parse(raw).atZone(planFlowZone)
             val time = DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA).format(dateTime)
             when (dateTime.toLocalDate()) {
-                todayDate().plusDays(1) -> "내일 $time"
-                todayDate().plusDays(2) -> "모레 $time"
+                todayDate().plusDays(1) -> "?댁씪 $time"
+                todayDate().plusDays(2) -> "紐⑤젅 $time"
                 else -> DateTimeFormatter.ofPattern("M/d HH:mm", Locale.KOREA).format(dateTime)
             }
         } catch (_: Exception) {
@@ -198,7 +206,7 @@ abstract class BasePlanFlowWidgetProvider(
 
         return try {
             val dateTime = Instant.parse(raw).atZone(planFlowZone)
-            "${dateTime.hour}시"
+            "${dateTime.hour}\uc2dc"
         } catch (_: Exception) {
             ""
         }
@@ -238,7 +246,7 @@ abstract class BasePlanFlowWidgetProvider(
         if (travelMinutes == null || travelMinutes <= 0) {
             return ""
         }
-        return "출발 ${travelMinutes}분 전"
+        return "\uc774\ub3d9 ${travelMinutes}\ubd84"
     }
 
     protected fun formatDepartureTime(startAt: String?, travelMinutes: Int?): String {
@@ -248,7 +256,7 @@ abstract class BasePlanFlowWidgetProvider(
 
         val dateTime = parseDateTime(startAt) ?: return ""
         val departureAt = dateTime.minusMinutes(travelMinutes.toLong())
-        return "알림: ${DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA).format(departureAt)}"
+        return "\ucd9c\ubc1c: ${DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA).format(departureAt)}"
     }
 
     protected fun formatCountdown(startAt: String?): String {
@@ -258,7 +266,7 @@ abstract class BasePlanFlowWidgetProvider(
         if (minutes <= 0) {
             return ""
         }
-        return "D-${minutes}분"
+        return "D-${minutes}\ubd84"
     }
 
     private fun parseDateTime(raw: String?): ZonedDateTime? {
@@ -328,7 +336,7 @@ abstract class BasePlanFlowWidgetProvider(
             ?.takeIf { it.isNotBlank() }
             ?: return when (slot) {
                 1 -> {
-                    views.setTextViewText(id, "남은 일정 없음")
+                    views.setTextViewText(id, "\ub0a8\uc740 \uc77c\uc815 \uc5c6\uc74c")
                     views.setTextColor(id, DEFAULT_TEXT_COLOR)
                     views.setViewVisibility(id, View.VISIBLE)
                 }
@@ -394,8 +402,8 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        val title = widgetData.getString("next_event_title", null) ?: "오늘 첫 일정"
-        val location = widgetData.getString("next_event_location", null) ?: "입력으로 일정 추가"
+        val title = widgetData.getString("next_event_title", null) ?: "\uc624\ub298 \uccab \uc77c\uc815"
+        val location = widgetData.getString("next_event_location", null) ?: "\uc74c\uc131\uc73c\ub85c \uc77c\uc815 \ucd94\uac00"
         val startAt = widgetData.getString("next_event_start_at", null)
         val isCritical = widgetData.getBoolean("next_event_is_critical", false)
         val travelMinutes = if (widgetData.contains("next_event_travel_buffer_minutes")) {
@@ -412,7 +420,7 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
         bindTextIfNotEmpty(views, R.id.widget_countdown, formatCountdown(startAt))
 
         if (isCritical) {
-            views.setTextViewText(R.id.widget_badge, "긴급 일정")
+            views.setTextViewText(R.id.widget_badge, "\uc911\uc694 \uc77c\uc815")
             views.setInt(
                 R.id.widget_badge,
                 "setBackgroundResource",
@@ -420,7 +428,7 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
             )
             views.setTextColor(R.id.widget_badge, CRITICAL_TEXT_COLOR)
         } else {
-            views.setTextViewText(R.id.widget_badge, "오늘 일정")
+            views.setTextViewText(R.id.widget_badge, "\uc624\ub298 \uc77c\uc815")
             views.setInt(
                 R.id.widget_badge,
                 "setBackgroundResource",
@@ -471,7 +479,7 @@ class PlanFlowVerticalScheduleWidgetProvider :
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        views.setTextViewText(R.id.widget_vertical_title, "오늘 일정")
+        views.setTextViewText(R.id.widget_vertical_title, "\uc624\ub298 \uc77c\uc815")
         val hideWeekendEvents = hideWeekends(widgetData)
 
         bindEventText(
@@ -503,7 +511,7 @@ class PlanFlowVerticalScheduleWidgetProvider :
             ),
             isFaded = false,
             emptyMessageId = R.id.widget_today_upcoming_empty_message,
-            emptyMessage = "오늘 남은 일정은 없어요",
+            emptyMessage = "\uc624\ub298 \ub0a8\uc740 \uc77c\uc815\uc740 \uc5c6\uc5b4\uc694",
             hideWeekendEvents = hideWeekendEvents,
         )
 
@@ -605,7 +613,7 @@ class PlanFlowWeeklyWidgetProvider :
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        views.setTextViewText(R.id.widget_week_title, "주간 일정")
+        views.setTextViewText(R.id.widget_week_title, "\uc8fc\uac04 \uc77c\uc815")
         val hideWeekendColumns = hideWeekends(widgetData)
         val weekStart = todayDate().minusDays((todayDate().dayOfWeek.value - 1).toLong())
         val weekColumnIds = intArrayOf(
@@ -692,7 +700,7 @@ class PlanFlowWeeklyWidgetProvider :
                 continue
             }
             views.setViewVisibility(weekColumnIds[index], View.VISIBLE)
-            views.setTextViewText(labelIds[index], formatWeekdayLabel(rawDate, "월"))
+            views.setTextViewText(labelIds[index], formatWeekdayLabel(rawDate, ""))
             views.setTextViewText(dateIds[index], formatMonthDay(rawDate, ""))
             bindCalendarLink(
                 context,
@@ -742,7 +750,7 @@ class PlanFlowWeeklyWidgetProvider :
                 e1Title,
                 e1Time,
                 e1Critical,
-                emptyText = if (e1Title == null && e2Title == null && overflow == 0) "일정 없음" else null,
+                emptyText = if (e1Title == null && e2Title == null && overflow == 0) "\uc77c\uc815 \uc5c6\uc74c" else null,
                 hourOnly = true,
             )
             bindEventText(
@@ -815,7 +823,7 @@ class PlanFlowWeeklyListWidgetProvider :
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        views.setTextViewText(R.id.widget_week_list_title, "주간 일정")
+        views.setTextViewText(R.id.widget_week_list_title, "\uc8fc\uac04 \uc77c\uc815")
         val hideWeekendRows = hideWeekends(widgetData)
         val weekStart = todayDate().minusDays((todayDate().dayOfWeek.value - 1).toLong())
 
@@ -863,7 +871,7 @@ class PlanFlowWeeklyListWidgetProvider :
                     title,
                     time,
                     isCritical,
-                    emptyText = if (eventSlot == 1) "일정 없음" else null,
+                    emptyText = if (eventSlot == 1) "\uc77c\uc815 \uc5c6\uc74c" else null,
                 )
                 bindEventLinkIfAvailable(
                     context,
@@ -894,28 +902,59 @@ class PlanFlowWeeklyListWidgetProvider :
 
 class PlanFlowMonthlyWidgetProvider :
     BasePlanFlowWidgetProvider(R.layout.planflow_monthly_widget) {
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            ACTION_MONTH_PREVIOUS, ACTION_MONTH_NEXT, ACTION_MONTH_TODAY -> {
+                val data = HomeWidgetPlugin.getData(context)
+                val nextOffset = when (intent.action) {
+                    ACTION_MONTH_PREVIOUS -> data.getInt(MONTH_WIDGET_OFFSET_KEY, 0) - 1
+                    ACTION_MONTH_NEXT -> data.getInt(MONTH_WIDGET_OFFSET_KEY, 0) + 1
+                    else -> 0
+                }.coerceIn(-1, 1)
+                data.edit().putInt(MONTH_WIDGET_OFFSET_KEY, nextOffset).apply()
+
+                val manager = AppWidgetManager.getInstance(context)
+                val ids = manager.getAppWidgetIds(
+                    ComponentName(context, PlanFlowMonthlyWidgetProvider::class.java),
+                )
+                onUpdate(context, manager, ids, data)
+                return
+            }
+        }
+        super.onReceive(context, intent)
+    }
+
     override fun render(
         context: Context,
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        val hasMonthCellPayload = hasMonthCellPayload(widgetData)
+        val monthOffset = widgetData.getInt(MONTH_WIDGET_OFFSET_KEY, 0).coerceIn(-1, 1)
+        val cellPrefix = if (monthOffset == 0) "month_cell" else "month_offset_${monthOffset}_cell"
+        val hasMonthCellPayload = hasMonthCellPayload(widgetData, cellPrefix)
         val hideWeekendCells = hideWeekends(widgetData)
-        val monthStart = LocalDate.now(ZoneId.of("Asia/Seoul")).withDayOfMonth(1)
+        val monthStart = LocalDate.now(ZoneId.of("Asia/Seoul")).plusMonths(monthOffset.toLong()).withDayOfMonth(1)
         val fallbackCells = buildCurrentMonthFallbackCells(monthStart)
 
         views.setTextViewText(
             R.id.widget_month_title,
-            widgetData.getString("month_title", null) ?: fallbackMonthTitle(),
+            widgetData.getString(monthTitleKey(monthOffset), null) ?: fallbackMonthTitle(monthStart),
         )
+        bindMonthAction(context, views, R.id.widget_month_prev_button, ACTION_MONTH_PREVIOUS)
+        bindMonthAction(context, views, R.id.widget_month_next_button, ACTION_MONTH_NEXT)
+        bindMonthAction(context, views, R.id.widget_month_today_button, ACTION_MONTH_TODAY)
 
         for (slot in 1..42) {
-            val prefix = "month_cell_${slot}"
+            val prefix = "${cellPrefix}_${slot}"
             val dayId = findViewId(context, "${prefix}_day")
+                .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_day")
             val cellContainerId = findViewId(context, "${prefix}_container")
+                .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_container")
             val cellDate = parseLocalDate(widgetData.getString("${prefix}_date", null))
             val inMonthId = findViewId(context, "${prefix}_in_month")
+                .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_in_month")
             val overflowId = findViewId(context, "${prefix}_overflow_count")
+                .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_overflow_count")
             val fallbackCell = fallbackCells?.getOrNull(slot - 1)
             val targetDate = cellDate ?: fallbackCell?.third
 
@@ -956,11 +995,20 @@ class PlanFlowMonthlyWidgetProvider :
 
             views.setTextViewText(dayId, dayText ?: "")
             views.setViewVisibility(dayId, if (dayText == null) View.INVISIBLE else View.VISIBLE)
-            if (inMonth) {
-                views.setTextColor(dayId, DEFAULT_TEXT_COLOR)
-            } else {
-                views.setTextColor(dayId, MUTED_TEXT_COLOR)
-            }
+            val isToday = targetDate == todayDate()
+            views.setTextColor(
+                dayId,
+                when {
+                    isToday -> 0xFFFFFFFF.toInt()
+                    inMonth -> DEFAULT_TEXT_COLOR
+                    else -> MUTED_TEXT_COLOR
+                },
+            )
+            views.setInt(
+                dayId,
+                "setBackgroundResource",
+                if (isToday) R.drawable.widget_month_today_day_background else android.R.color.transparent,
+            )
 
             if (inMonthId != 0) {
                 views.setTextViewText(
@@ -982,16 +1030,11 @@ class PlanFlowMonthlyWidgetProvider :
 
             for (eventSlot in 1..3) {
                 val eventId = findViewId(context, "${prefix}_event_${eventSlot}_title")
+                    .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_event_${eventSlot}_title")
                 val eventTitle =
                     if (hasMonthCellPayload) {
                         widgetData.getString("${prefix}_event_${eventSlot}_title", null)
                             ?.takeIf { it.isNotBlank() }
-                    } else {
-                        null
-                    }
-                val eventTime =
-                    if (hasMonthCellPayload) {
-                        widgetData.getString("${prefix}_event_${eventSlot}_time", null)
                     } else {
                         null
                     }
@@ -1005,10 +1048,13 @@ class PlanFlowMonthlyWidgetProvider :
                         views,
                         eventId,
                         if (inMonth) eventTitle else null,
-                        if (inMonth) eventTime else null,
+                        null,
                         isCritical = eventCritical,
                         isMuted = !inMonth,
                     )
+                    if (eventCritical && inMonth) {
+                        views.setTextColor(eventId, 0xFF9C5C71.toInt())
+                    }
                     bindEventLinkIfAvailable(
                         context,
                         views,
@@ -1025,13 +1071,30 @@ class PlanFlowMonthlyWidgetProvider :
         bindVoice(context, views, R.id.widget_month_voice_button)
     }
 
-    private fun hasMonthCellPayload(widgetData: SharedPreferences): Boolean {
+    private fun hasMonthCellPayload(widgetData: SharedPreferences, prefix: String = "month_cell"): Boolean {
         for (slot in 1..42) {
-            if (widgetData.contains("month_cell_${slot}_day")) {
+            if (widgetData.contains("${prefix}_${slot}_day")) {
                 return true
             }
         }
         return false
+    }
+
+    private fun bindMonthAction(context: Context, views: RemoteViews, viewId: Int, action: String) {
+        val intent = Intent(context, PlanFlowMonthlyWidgetProvider::class.java).apply {
+            this.action = action
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            action.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        views.setOnClickPendingIntent(viewId, pendingIntent)
+    }
+
+    private fun monthTitleKey(offset: Int): String {
+        return if (offset == 0) "month_title" else "month_title_offset_${offset}"
     }
 
     private fun buildCurrentMonthFallbackCells(monthStart: LocalDate): List<Triple<Int, Boolean, LocalDate>> {
@@ -1044,9 +1107,8 @@ class PlanFlowMonthlyWidgetProvider :
         }
     }
 
-    private fun fallbackMonthTitle(): String {
-        val now = LocalDate.now(ZoneId.of("Asia/Seoul"))
-        return "${now.year}년 ${now.monthValue}월"
+    private fun fallbackMonthTitle(monthStart: LocalDate): String {
+        return "${monthStart.year}.${monthStart.monthValue.toString().padStart(2, '0')}"
     }
 }
 
