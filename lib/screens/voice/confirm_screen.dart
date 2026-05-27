@@ -476,6 +476,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     final query = _locationController.text.trim();
     if (_locationEditedByUser ||
         query.isEmpty ||
+        _shouldSkipAutomaticLocationResolution(query) ||
         (_locationLat != null && _locationLng != null)) {
       return;
     }
@@ -519,7 +520,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
   Future<void> _ensureLocationCoordinatesBeforeSave() async {
     final query = _locationController.text.trim();
-    if (query.isEmpty || (_locationLat != null && _locationLng != null)) {
+    if (query.isEmpty ||
+        _shouldSkipAutomaticLocationResolution(query) ||
+        (_locationLat != null && _locationLng != null)) {
       return;
     }
 
@@ -559,6 +562,46 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     } finally {
       _isApplyingHydration = false;
     }
+  }
+
+  bool _shouldSkipAutomaticLocationResolution(String query) {
+    final normalized = query.replaceAll(RegExp(r'\s+'), '');
+    if (normalized.isEmpty) {
+      return true;
+    }
+    if (_looksLikePersonalPlaceAlias(normalized)) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _looksLikePersonalPlaceAlias(String normalized) {
+    const exactAliases = <String>{
+      '집',
+      '우리집',
+      '내집',
+      '자택',
+      '본가',
+      '처가',
+      '시댁',
+      '회사',
+      '사무실',
+    };
+    if (exactAliases.contains(normalized)) {
+      return true;
+    }
+    if (RegExp(r'^(우리|내|친정|부모님|엄마|아빠|할머니|할아버지).*(집|댁)$').hasMatch(normalized)) {
+      return true;
+    }
+    if (normalized.length <= 6 &&
+        (normalized.endsWith('집') ||
+            normalized.endsWith('자택') ||
+            normalized.endsWith('본가') ||
+            normalized.endsWith('회사') ||
+            normalized.endsWith('사무실'))) {
+      return true;
+    }
+    return false;
   }
 
   void _maybeHydrateParsedSchedule() {

@@ -111,6 +111,21 @@ class _FakeSttService extends SttService {
     _onPartialResult?.call(text);
   }
 
+  void completeFailure({
+    SttListenFailure failure = SttListenFailure.silence,
+    String message = 'no speech',
+  }) {
+    if (_listenCompleter != null && !_listenCompleter!.isCompleted) {
+      _listenCompleter!.complete(
+        SttListenResult.failure(
+          failure: failure,
+          message: message,
+          text: _latestText,
+        ),
+      );
+    }
+  }
+
   @override
   Future<void> stopActiveListen() async {
     stopCalls += 1;
@@ -165,6 +180,32 @@ GoRoute _voiceConversationTestRoute() {
 }
 
 void main() {
+  testWidgets('위젯 자동 시작은 초기 무음 실패 시 한 번 다시 시도한다', (tester) async {
+    final fakeStt = _FakeSttService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VoiceInputScreen(
+          autoStartOverride: true,
+          sttService: fakeStt,
+        ),
+      ),
+    );
+
+    await tester.pump(const Duration(milliseconds: 590));
+    expect(fakeStt.listenCalls, 0);
+
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(fakeStt.listenCalls, 1);
+
+    fakeStt.completeFailure();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 650));
+
+    expect(fakeStt.listenCalls, 2);
+    expect(find.text('완료'), findsOneWidget);
+  });
+
   testWidgets('partial 결과로 준비된 draft가 완료 시 우선 전달된다', (tester) async {
     final fakeStt = _FakeSttService();
     final fakeAnalysis = _FakeDraftAnalysisService(

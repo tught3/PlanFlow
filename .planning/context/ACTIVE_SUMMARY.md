@@ -1358,3 +1358,10 @@
 - Duplicate warnings now require the same local schedule window or genuinely similar content/location, avoiding warnings for unrelated overlapping events.
 - Confirm/edit save feedback now uses a top overlay message, resolved location phrases are stripped from voice titles after async coordinate resolution, empty details stay collapsed, and important alarms are independent from the normal `미리알림` offset.
 - Verification passed: focused route/calendar/home-widget/duplicate/confirm/location/reminder/editor tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.219.43:5555`, app launch/PID/focused-window check, and voice/calendar deep-link launch checks.
+
+## 2026-05-27 Voice Confirm Timeout And Personal Place Guard
+- Fixed a confirm-screen stall caused by Firebase Analytics rejecting boolean custom parameters; analytics parameters are now sanitized to Firebase-supported string/number values and analytics failures no longer interrupt UI flows.
+- Added a GPT completion timeout so schedule cleanup falls back to local parsing instead of leaving the confirm screen in `음성 내용을 정리하는 중` for several minutes.
+- Prevented automatic map resolution for personal place aliases such as `원주집`, so external search results like restaurants cannot replace the user's intended place without an explicit map pick.
+- Voice widget auto-start now waits briefly after route startup and retries once when the first STT attempt immediately returns silence/unavailable.
+- Verification passed: focused confirm/GPT/voice-input tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.219.43:5555`, app launch/PID check, and post-install log check for the prior Firebase assertion pattern.

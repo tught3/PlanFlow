@@ -1,5 +1,6 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 /// PlanFlow Analytics 이벤트 헬퍼.
 ///
@@ -14,80 +15,108 @@ class AnalyticsService {
     return FirebaseAnalytics.instance;
   }
 
+  static Future<void> _logEvent(
+    String name, {
+    Map<String, Object?>? parameters,
+  }) {
+    try {
+      final analytics = _analytics;
+      if (analytics == null) {
+        return Future.value();
+      }
+      return analytics
+          .logEvent(
+        name: name,
+        parameters: _sanitizeParameters(parameters),
+      )
+          .catchError((Object error, StackTrace stackTrace) {
+        debugPrint('Analytics event skipped ($name): $error');
+      });
+    } catch (error) {
+      debugPrint('Analytics event skipped ($name): $error');
+      return Future.value();
+    }
+  }
+
+  static Map<String, Object>? _sanitizeParameters(
+    Map<String, Object?>? parameters,
+  ) {
+    if (parameters == null || parameters.isEmpty) {
+      return null;
+    }
+    return parameters.map((key, value) {
+      final sanitizedValue = switch (value) {
+        null => '',
+        bool() => value ? 1 : 0,
+        num() => value,
+        String() => value,
+        _ => value.toString(),
+      };
+      return MapEntry(key, sanitizedValue);
+    });
+  }
+
   // ── 음성 입력 퍼널 ──────────────────────────────────────────
   static Future<void> logVoiceInputStarted() =>
-      _analytics?.logEvent(name: 'voice_input_started') ?? Future.value();
+      _logEvent('voice_input_started');
 
   static Future<void> logVoiceInputCompleted({required int textLength}) =>
-      _analytics?.logEvent(
-        name: 'voice_input_completed',
+      _logEvent(
+        'voice_input_completed',
         parameters: <String, Object>{'text_length': textLength},
-      ) ??
-      Future.value();
+      );
 
   static Future<void> logVoiceInputFailed({required String reason}) =>
-      _analytics?.logEvent(
-        name: 'voice_input_failed',
+      _logEvent(
+        'voice_input_failed',
         parameters: <String, Object>{'reason': reason},
-      ) ??
-      Future.value();
+      );
 
   static Future<void> logScheduleParsed({
     required bool hasTime,
     required bool hasLocation,
   }) =>
-      _analytics?.logEvent(
-        name: 'schedule_parsed',
+      _logEvent(
+        'schedule_parsed',
         parameters: <String, Object>{
           'has_time': hasTime,
           'has_location': hasLocation,
         },
-      ) ??
-      Future.value();
+      );
 
   static Future<void> logScheduleParseFailed({required String reason}) =>
-      _analytics?.logEvent(
-        name: 'schedule_parse_failed',
+      _logEvent(
+        'schedule_parse_failed',
         parameters: <String, Object>{'reason': reason},
-      ) ??
-      Future.value();
+      );
 
-  static Future<void> logScheduleConfirmed() =>
-      _analytics?.logEvent(name: 'schedule_confirmed') ?? Future.value();
+  static Future<void> logScheduleConfirmed() => _logEvent('schedule_confirmed');
 
-  static Future<void> logScheduleCancelled() =>
-      _analytics?.logEvent(name: 'schedule_cancelled') ?? Future.value();
+  static Future<void> logScheduleCancelled() => _logEvent('schedule_cancelled');
 
   // ── 일정 관리 ────────────────────────────────────────────────
-  static Future<void> logEventCreated({required String source}) =>
-      _analytics?.logEvent(
-        name: 'event_created',
+  static Future<void> logEventCreated({required String source}) => _logEvent(
+        'event_created',
         parameters: <String, Object>{'source': source},
-      ) ??
-      Future.value();
+      );
 
-  static Future<void> logEventEdited() =>
-      _analytics?.logEvent(name: 'event_edited') ?? Future.value();
+  static Future<void> logEventEdited() => _logEvent('event_edited');
 
-  static Future<void> logEventDeleted() =>
-      _analytics?.logEvent(name: 'event_deleted') ?? Future.value();
+  static Future<void> logEventDeleted() => _logEvent('event_deleted');
 
-  static Future<void> logConflictDetected() =>
-      _analytics?.logEvent(name: 'conflict_detected') ?? Future.value();
+  static Future<void> logConflictDetected() => _logEvent('conflict_detected');
 
   // ── 브리핑 / 알림 ────────────────────────────────────────────
-  static Future<void> logBriefingPlayed() =>
-      _analytics?.logEvent(name: 'briefing_played') ?? Future.value();
+  static Future<void> logBriefingPlayed() => _logEvent('briefing_played');
 
   static Future<void> logBriefingTestPlayed({required bool isMorning}) =>
-      _analytics?.logEvent(
-        name: 'briefing_test_played',
+      _logEvent(
+        'briefing_test_played',
         parameters: <String, Object>{'is_morning': isMorning},
-      ) ??
-      Future.value();
+      );
 
   static Future<void> logDepartureAlarmTriggered() =>
-      _analytics?.logEvent(name: 'departure_alarm_triggered') ?? Future.value();
+      _logEvent('departure_alarm_triggered');
 
   // ── 인증 ─────────────────────────────────────────────────────
   static Future<void> logLogin({required String method}) =>
@@ -98,38 +127,33 @@ class AnalyticsService {
 
   // ── 얼리버드 ─────────────────────────────────────────────────
   static Future<void> logEarlyBirdSubmitted() =>
-      _analytics?.logEvent(name: 'early_bird_submitted') ?? Future.value();
+      _logEvent('early_bird_submitted');
 
   // ── 캘린더 동기화 ────────────────────────────────────────────
   static Future<void> logCalendarSyncCompleted({
     required String type,
     required int count,
   }) =>
-      _analytics?.logEvent(
-        name: 'calendar_sync_completed',
+      _logEvent(
+        'calendar_sync_completed',
         parameters: <String, Object>{'type': type, 'count': count},
-      ) ??
-      Future.value();
+      );
 
   static Future<void> logCalendarSyncFailed({
     required String type,
     required String error,
   }) =>
-      _analytics?.logEvent(
-        name: 'calendar_sync_failed',
+      _logEvent(
+        'calendar_sync_failed',
         parameters: <String, Object>{'type': type, 'error': error},
-      ) ??
-      Future.value();
+      );
 
   // ── 홈 위젯 ─────────────────────────────────────────────────
-  static Future<void> logWidgetTapped() =>
-      _analytics?.logEvent(name: 'widget_tapped') ?? Future.value();
+  static Future<void> logWidgetTapped() => _logEvent('widget_tapped');
 
   // ── 사용자 피드백 ───────────────────────────────────────────
-  static Future<void> logFeedbackSubmitted({required String type}) =>
-      _analytics?.logEvent(
-        name: 'feedback_submitted',
+  static Future<void> logFeedbackSubmitted({required String type}) => _logEvent(
+        'feedback_submitted',
         parameters: <String, Object>{'type': type},
-      ) ??
-      Future.value();
+      );
 }

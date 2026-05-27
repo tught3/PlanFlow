@@ -138,6 +138,25 @@ void main() {
       expect(result['title'], 'meeting tomorrow at 3pm');
     });
 
+    test('returns fallback data when schedule request times out', () async {
+      final client = MockClient((request) async {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        return http.Response('late', 200);
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        completionTimeout: const Duration(milliseconds: 1),
+      );
+
+      final result = await service.parseSchedule('5월 25일부터 6월 1일까지 원주집');
+
+      expect(result['parse_failed'], isTrue);
+      expect(result['raw_text'], '5월 25일부터 6월 1일까지 원주집');
+      expect(result['title'], '원주집');
+    });
+
     test(
         'fallback parsing strips date time noise and preserves explicit memo cues',
         () async {

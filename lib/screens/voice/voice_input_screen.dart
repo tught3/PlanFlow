@@ -118,7 +118,19 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       return;
     }
 
-    await _startVoiceFlow();
+    if (widget.autoStartOverride == true) {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    }
+    if (!mounted ||
+        !shouldAutoStart ||
+        _rawTextController.text.isNotEmpty ||
+        _isListening) {
+      return;
+    }
+
+    await _startVoiceFlow(
+      autoRetryOnEarlyFailure: widget.autoStartOverride == true,
+    );
   }
 
   Future<bool> _resolveAutoStartSetting({required bool defaultValue}) async {
@@ -142,7 +154,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     }
   }
 
-  Future<void> _startVoiceFlow({bool continueExisting = false}) async {
+  Future<void> _startVoiceFlow({
+    bool continueExisting = false,
+    bool autoRetryOnEarlyFailure = false,
+  }) async {
     if (_isListening) {
       return;
     }
@@ -211,6 +226,25 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         return;
       }
 
+      if (autoRetryOnEarlyFailure &&
+          _shouldRetryAutoStartedListen(result) &&
+          !_didEditTranscriptManually &&
+          !_manualEditInterruptedListening) {
+        setState(() {
+          _isListening = false;
+          _statusMessage = '음성 입력을 다시 준비하고 있어요.';
+        });
+        await Future<void>.delayed(const Duration(milliseconds: 650));
+        if (!mounted ||
+            _isDisposing ||
+            _rawTextController.text.trim().isNotEmpty ||
+            _isListening) {
+          return;
+        }
+        await _startVoiceFlow();
+        return;
+      }
+
       unawaited(AnalyticsService.logVoiceInputFailed(reason: 'stt_no_result'));
       setState(() {
         _statusMessage = result.message ?? appL10n(context).voiceNoResult;
@@ -232,6 +266,14 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         });
       }
     }
+  }
+
+  bool _shouldRetryAutoStartedListen(SttListenResult result) {
+    if (result.hasText) {
+      return false;
+    }
+    return result.failure == SttListenFailure.silence ||
+        result.failure == SttListenFailure.unavailable;
   }
 
   Future<void> _handleVoiceStartPressed() async {

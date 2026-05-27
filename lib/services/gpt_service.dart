@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -43,14 +44,17 @@ class GptService {
     http.Client? client,
     Uri? endpoint,
     DateTime Function()? now,
+    Duration? completionTimeout,
   })  : _client = client,
         _endpoint = endpoint ??
             Uri.parse('${AppEnv.supabaseUrl}/functions/v1/openai-proxy'),
-        _now = now ?? planflowNow;
+        _now = now ?? planflowNow,
+        _completionTimeout = completionTimeout ?? const Duration(seconds: 20);
 
   final http.Client? _client;
   final Uri _endpoint;
   final DateTime Function() _now;
+  final Duration _completionTimeout;
   static const VoiceScheduleStructureService _voiceScheduleStructureService =
       VoiceScheduleStructureService();
 
@@ -175,28 +179,30 @@ class GptService {
   }) async {
     final client = _client ?? http.Client();
     try {
-      final response = await client.post(
-        _endpoint,
-        headers: <String, String>{
-          'Authorization': 'Bearer ${AppEnv.supabaseAnonKey}',
-          'apikey': AppEnv.supabaseAnonKey,
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(<String, dynamic>{
-          'model': _model,
-          'messages': <Map<String, String>>[
-            <String, String>{
-              'role': 'system',
-              'content': systemPrompt,
+      final response = await client
+          .post(
+            _endpoint,
+            headers: <String, String>{
+              'Authorization': 'Bearer ${AppEnv.supabaseAnonKey}',
+              'apikey': AppEnv.supabaseAnonKey,
+              'Content-Type': 'application/json',
             },
-            <String, String>{
-              'role': 'user',
-              'content': userPrompt,
-            },
-          ],
-          if (responseFormat != null) 'response_format': responseFormat,
-        }),
-      );
+            body: jsonEncode(<String, dynamic>{
+              'model': _model,
+              'messages': <Map<String, String>>[
+                <String, String>{
+                  'role': 'system',
+                  'content': systemPrompt,
+                },
+                <String, String>{
+                  'role': 'user',
+                  'content': userPrompt,
+                },
+              ],
+              if (responseFormat != null) 'response_format': responseFormat,
+            }),
+          )
+          .timeout(_completionTimeout);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         if (throwOnFailure) {
@@ -270,6 +276,15 @@ class GptService {
       return content;
     } on GptCompletionException {
       rethrow;
+    } on TimeoutException catch (error) {
+      if (throwOnFailure) {
+        throw GptCompletionException(
+          'timeout',
+          'OpenAI 요청 시간이 초과되었습니다.',
+          cause: error,
+        );
+      }
+      return null;
     } catch (error) {
       if (throwOnFailure) {
         throw GptCompletionException(

@@ -357,6 +357,47 @@ void main() {
     expect(saved.locationLng, 127.9458);
   });
 
+  testWidgets('ConfirmScreen does not auto-resolve personal place aliases',
+      (tester) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '단기임대 렌트',
+            location: '원주집',
+            rawText: '5월 25일부터 6월 1일까지 원주집 단기임대 렌트',
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _RestaurantLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final locationField = _textFieldWithLabel('장소');
+    expect(
+      tester.widget<TextFormField>(locationField).controller?.text,
+      '원주집',
+    );
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pumpAndSettle();
+
+    final saved = repository.createdEvents.single;
+    expect(saved.location, '원주집');
+    expect(saved.locationLat, isNull);
+    expect(saved.locationLng, isNull);
+  });
+
   testWidgets(
       'ConfirmScreen keeps user-edited fields while hydrating and does not seed memo from raw text',
       (tester) async {
@@ -628,6 +669,23 @@ class _DelayedSingleLocationLookupService extends _SingleLocationLookupService {
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 200));
     return super.search(query, origin: origin);
+  }
+}
+
+class _RestaurantLocationLookupService extends LocationLookupService {
+  @override
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+  }) async {
+    return const <LocationLookupResult>[
+      LocationLookupResult(
+        name: '원주뚝배기짬뽕 본점[중식]',
+        address: '강원특별자치도 원주시 어느길 1',
+        latitude: 37.342,
+        longitude: 127.92,
+      ),
+    ];
   }
 }
 
