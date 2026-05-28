@@ -1400,5 +1400,5 @@
 - Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, PID, and focused-window check.
 
 ## 2026-05-28 Voice Correction Learning Consent Copy
-- Reworded the settings copy for personal correction learning and anonymous common improvement so users can tell that anonymous minimum-pattern sharing happens only when the opt-in switch is enabled.
+- Reworded the settings copy for personal correction learning and anonymous common improvement so users can tell that anonymous minimum-pattern sharing happens only when the opt-in switch is enabled, and framed the feature as improving PlanFlow's AI learning ability rather than just "correction".
 - Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, PID, and focused-window check.

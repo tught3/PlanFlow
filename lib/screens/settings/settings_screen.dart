@@ -2394,8 +2394,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 16),
               _SectionCard(
                 title: '내 교정 학습 관리',
-                subtitle:
-                    '내가 고친 표현을 참고해 PlanFlow가 내 말투와 일정 입력 습관에 맞게 더 정확해집니다.',
+                subtitle: '내가 고친 표현을 바탕으로 PlanFlow의 AI 학습 능력을 높입니다.',
                 child: Column(
                   children: [
                     SwitchListTile.adaptive(
@@ -2408,7 +2407,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       activeTrackColor: PlanFlowColors.primaryFaint,
                       title: const Text('내 교정 패턴 사용'),
                       subtitle: const Text(
-                        '내가 직접 고친 표현만 내 계정에 저장해 다음 음성 입력과 일정 정리에 참고합니다.',
+                        '내가 직접 고친 표현만 내 계정에 저장해 다음 음성 입력과 일정 정리, AI 학습에 참고합니다.',
                       ),
                       onChanged: (value) {
                         setState(() {
@@ -2431,7 +2430,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       activeTrackColor: PlanFlowColors.primaryFaint,
                       title: const Text('익명 공통 개선 참여'),
                       subtitle: const Text(
-                        '이 스위치를 켠 경우에만 사람·장소·메모를 뺀 최소 교정 패턴을 익명으로 모아 전체 인식 품질 개선에 참고합니다. 끄면 내 개인 교정만 사용합니다.',
+                        '이 스위치를 켠 경우에만 사람·장소·메모를 뺀 최소 패턴을 익명으로 모아 전체 AI 학습 능력 향상에 참고합니다. 끄면 내 개인 교정에만 사용합니다.',
                       ),
                       onChanged: _voiceCorrectionLearningEnabled
                           ? (value) {
