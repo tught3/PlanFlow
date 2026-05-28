@@ -944,7 +944,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         child: Form(
           key: _formKey,
           child: ResponsiveContent(
-            maxWidth: 760,
+            maxWidth: context.planflowWindowInfo.contentMaxWidth,
             child: ListView(
               padding: const EdgeInsets.all(AppConstants.defaultPadding),
               children: [

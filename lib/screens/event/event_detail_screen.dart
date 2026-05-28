@@ -498,7 +498,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       ),
       body: SafeArea(
         child: ResponsiveContent(
-          maxWidth: 760,
+          maxWidth: context.planflowWindowInfo.contentMaxWidth,
           child: ListView(
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             children: [

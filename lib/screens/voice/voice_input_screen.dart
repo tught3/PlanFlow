@@ -1113,6 +1113,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         }
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         appBar: AppBar(
           title: Text(l10n.voiceInputTitle),
           leading: IconButton(
@@ -1143,7 +1144,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
           child: Padding(
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             child: ResponsiveContent(
-              maxWidth: 760,
+              maxWidth: context.planflowWindowInfo.contentMaxWidth,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1637,7 +1638,9 @@ class _VoiceBottomControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final mediaQuery = MediaQuery.of(context);
+    final bottomInset =
+        mediaQuery.viewInsets.bottom > 0 ? 8.0 : mediaQuery.viewPadding.bottom;
     return Material(
       color: Theme.of(context).colorScheme.surface,
       elevation: 3,

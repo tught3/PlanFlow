@@ -469,7 +469,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 96,
               ),
               child: ResponsiveContent(
-                maxWidth: 760,
+                maxWidth: context.planflowWindowInfo.contentMaxWidth,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

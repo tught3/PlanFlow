@@ -1402,3 +1402,9 @@
 ## 2026-05-28 Voice Correction Learning Consent Copy
 - Reworded the settings copy for personal correction learning and anonymous common improvement so users can tell that anonymous minimum-pattern sharing happens only when the opt-in switch is enabled, and framed the feature as improving PlanFlow's AI learning ability rather than just "correction".
 - Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, PID, and focused-window check.
+
+## 2026-05-29 Tablet And Foldable Responsive Pass
+- Added shared responsive window helpers for 600/840dp classes, large-screen two-pane thresholds, keyboard inset awareness, and foldable display-feature safe-size decisions.
+- Marked `MainActivity` resizeable for large-screen Play compatibility and routed Shell navigation rail decisions through the new safe-size logic so narrow fold states keep bottom navigation.
+- Calendar now uses a two-pane month + selected-day agenda layout on large screens, LocationPicker shows map and candidates side-by-side on tablet/fold widths, and Home/Settings/Event/Confirm/Voice screens use shared responsive content widths.
+- Verification passed: `scripts/flutter-local.ps1 test test/core/responsive_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, and PID check.

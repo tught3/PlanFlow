@@ -460,9 +460,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final layoutSize =
-              PlanFlowResponsive.sizeForWidth(constraints.maxWidth);
-          final useRail = layoutSize != PlanFlowResponsiveSize.compact;
+          final windowInfo = PlanFlowResponsive.windowInfoOf(
+            context,
+            constraints: constraints,
+          );
+          final layoutSize = windowInfo.sizeClass;
+          final useRail = windowInfo.useNavigationRail;
 
           return Scaffold(
             body: useRail

@@ -788,46 +788,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
         child: RefreshIndicator(
           onRefresh: () => _loadEvents(),
           child: ResponsiveContent(
-            maxWidth: 1080,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(AppConstants.defaultPadding),
-              children: [
-                if (_loadState == _CalendarLoadState.supabaseMissing ||
-                    _loadState == _CalendarLoadState.signedOut ||
-                    _loadState == _CalendarLoadState.error) ...[
-                  _CalendarStatusCard(
-                    state: _loadState,
-                    message: _loadMessage,
-                    onRefresh: () => _loadEvents(),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (_isSearching) ...[
-                  TextField(
-                    controller: _searchController,
-                    autofocus: true,
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: '제목, 장소, 메모로 검색',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchController.text.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: '검색어 지우기',
-                              onPressed: _searchController.clear,
-                              icon: const Icon(Icons.clear),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                GestureDetector(
+            maxWidth: context.planflowWindowInfo.wideContentMaxWidth,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final useTwoPane = constraints.maxWidth >=
+                        PlanFlowResponsive.twoPaneBreakpoint &&
+                    MediaQuery.sizeOf(context).height >=
+                        PlanFlowResponsive.minimumTwoPaneHeight;
+                final calendarPane = GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onHorizontalDragEnd: _handleMonthSwipe,
                   child: Column(
                     children: [
-                      // Month header with navigation
                       _MonthHeader(
                         monthLabel: monthLabel,
                         onPrevious: () => _changeMonth(-1),
@@ -840,8 +812,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         },
                       ),
                       const SizedBox(height: 12),
-
-                      // Mini calendar grid
                       _MiniCalendarGrid(
                         focusedMonth: _focusedMonth,
                         selectedDate: _selectedDate,
@@ -851,38 +821,94 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           setState(() {
                             _selectedDate = day;
                           });
-                          _showDayEventsSheet(day);
+                          if (!useTwoPane) {
+                            _showDayEventsSheet(day);
+                          }
                         },
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 16),
-                _CalendarSelectedDateHeader(
-                  selectedDateLabel: selectedDateLabel,
-                  eventCount: dayEvents.length,
-                  onAdd: () => context.push(AppRoutes.eventEdit),
-                  onVoice: () => context.push(AppRoutes.voice),
-                ),
-                const SizedBox(height: 12),
-                if (dayEvents.isEmpty)
-                  _EmptyAgendaCard(
-                    onVoice: () => context.push(AppRoutes.voice),
-                  )
-                else
-                  ...dayEvents.map(
-                    (event) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _EventAgendaCard(
-                        event: event,
-                        onTap: () => context.push(
-                          '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-                          extra: event,
+                );
+                final agendaPane = Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _CalendarSelectedDateHeader(
+                      selectedDateLabel: selectedDateLabel,
+                      eventCount: dayEvents.length,
+                      onAdd: () => context.push(AppRoutes.eventEdit),
+                      onVoice: () => context.push(AppRoutes.voice),
+                    ),
+                    const SizedBox(height: 12),
+                    if (dayEvents.isEmpty)
+                      _EmptyAgendaCard(
+                        onVoice: () => context.push(AppRoutes.voice),
+                      )
+                    else
+                      ...dayEvents.map(
+                        (event) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _EventAgendaCard(
+                            event: event,
+                            onTap: () => context.push(
+                              '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                              extra: event,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-              ],
+                  ],
+                );
+
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(AppConstants.defaultPadding),
+                  children: [
+                    if (_loadState == _CalendarLoadState.supabaseMissing ||
+                        _loadState == _CalendarLoadState.signedOut ||
+                        _loadState == _CalendarLoadState.error) ...[
+                      _CalendarStatusCard(
+                        state: _loadState,
+                        message: _loadMessage,
+                        onRefresh: () => _loadEvents(),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (_isSearching) ...[
+                      TextField(
+                        controller: _searchController,
+                        autofocus: true,
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          hintText: '제목, 장소, 메모로 검색',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _searchController.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: '검색어 지우기',
+                                  onPressed: _searchController.clear,
+                                  icon: const Icon(Icons.clear),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (useTwoPane)
+                      ResponsiveTwoPane(
+                        primary: calendarPane,
+                        secondary: agendaPane,
+                        breakpoint: PlanFlowResponsive.twoPaneBreakpoint,
+                        gap: 20,
+                        primaryFlex: 6,
+                        secondaryFlex: 4,
+                      )
+                    else ...[
+                      calendarPane,
+                      const SizedBox(height: 16),
+                      agendaPane,
+                    ],
+                  ],
+                );
+              },
             ),
           ),
         ),

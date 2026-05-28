@@ -2237,8 +2237,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final responsiveSize = context.planflowResponsiveSize;
-    final contentMaxWidth = responsiveSize.isCompact ? 920.0 : 980.0;
+    final contentMaxWidth = context.planflowWindowInfo.contentMaxWidth;
     final morningLabel = _formatTime(context, _morningBriefingAt);
     final eveningLabel = _formatTime(context, _eveningBriefingAt);
     final nextBriefings = _briefingSchedulerService.nextDailyTimes(

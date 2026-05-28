@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart' as google_maps;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/env.dart';
+import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/location_lookup_service.dart';
@@ -399,33 +400,53 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     // → 검색 UI는 AppBar 하단에 고정하고, bottomNavigationBar는 후보/확정만 담당.
     return PopScope(
       canPop: true,
-      child: Scaffold(
-        backgroundColor: PlanFlowColors.background,
-        appBar: AppBar(
-          title: const Text('지도에서 장소 선택'),
-          backgroundColor: PlanFlowColors.background,
-          bottom: _MapSearchHeader(
-            queryController: _queryController,
-            isSearching: _isSearching,
-            isMapLoading:
-                _mapRenderState == _MapRenderState.loading && _canUseInAppMap,
-            message: _mapLoadMessage ?? _message,
-            onSearch: _submitSearch,
-          ),
-        ),
-        body: _buildBody(),
-        bottomNavigationBar: _MapControlSheet(
-          results: _results,
-          fallbackQueries: _fallbackQueries,
-          selected: _selected,
-          candidateScrollController: _candidateScrollController,
-          showCandidateScrollControls: _results.length > 1,
-          onScrollCandidatesLeft: () => _scrollCandidates(-1),
-          onScrollCandidatesRight: () => _scrollCandidates(1),
-          onSelectFallbackQuery: _searchFallbackQuery,
-          onSelect: _selectResult,
-          onConfirm: _confirm,
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final windowInfo = PlanFlowResponsive.windowInfoOf(
+            context,
+            constraints: constraints,
+          );
+          final useSidePanel = windowInfo.useTwoPane;
+          final controls = _MapControlSheet(
+            results: _results,
+            fallbackQueries: _fallbackQueries,
+            selected: _selected,
+            candidateScrollController: _candidateScrollController,
+            showCandidateScrollControls: _results.length > 1,
+            onScrollCandidatesLeft: () => _scrollCandidates(-1),
+            onScrollCandidatesRight: () => _scrollCandidates(1),
+            onSelectFallbackQuery: _searchFallbackQuery,
+            onSelect: _selectResult,
+            onConfirm: _confirm,
+            isSidePanel: useSidePanel,
+          );
+
+          return Scaffold(
+            backgroundColor: PlanFlowColors.background,
+            appBar: AppBar(
+              title: const Text('지도에서 장소 선택'),
+              backgroundColor: PlanFlowColors.background,
+              bottom: _MapSearchHeader(
+                queryController: _queryController,
+                isSearching: _isSearching,
+                isMapLoading: _mapRenderState == _MapRenderState.loading &&
+                    _canUseInAppMap,
+                message: _mapLoadMessage ?? _message,
+                onSearch: _submitSearch,
+              ),
+            ),
+            body: useSidePanel
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: _buildBody()),
+                      SizedBox(width: 360, child: controls),
+                    ],
+                  )
+                : _buildBody(),
+            bottomNavigationBar: useSidePanel ? null : controls,
+          );
+        },
       ),
     );
   }
@@ -631,6 +652,7 @@ class _MapControlSheet extends StatelessWidget {
     required this.onSelectFallbackQuery,
     required this.onSelect,
     required this.onConfirm,
+    this.isSidePanel = false,
   });
 
   final List<LocationLookupResult> results;
@@ -643,20 +665,29 @@ class _MapControlSheet extends StatelessWidget {
   final ValueChanged<String> onSelectFallbackQuery;
   final ValueChanged<LocationLookupResult> onSelect;
   final VoidCallback onConfirm;
+  final bool isSidePanel;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final bottomPadding =
+        isSidePanel ? 0.0 : MediaQuery.of(context).padding.bottom;
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding + 12),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: PlanFlowColors.surface,
-        border: Border(top: BorderSide(color: PlanFlowColors.primaryFaint)),
+        border: Border(
+          top: isSidePanel
+              ? BorderSide.none
+              : const BorderSide(color: PlanFlowColors.primaryFaint),
+          left: isSidePanel
+              ? const BorderSide(color: PlanFlowColors.primaryFaint)
+              : BorderSide.none,
+        ),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: isSidePanel ? MainAxisSize.max : MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // 선택된 장소 정보

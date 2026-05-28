@@ -1816,7 +1816,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                 controller: _scrollController,
                 padding: const EdgeInsets.all(AppConstants.defaultPadding),
                 child: ResponsiveContent(
-                  maxWidth: 760,
+                  maxWidth: context.planflowWindowInfo.contentMaxWidth,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
