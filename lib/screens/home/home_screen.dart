@@ -80,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       HomeHeaderSummaryService();
   late final BriefingSchedulerService _briefingSchedulerService;
   late final HomeWidgetService _homeWidgetService;
-  EventModel? _pastTodayEvent;
+  List<EventModel> _pastTodayEvents = const <EventModel>[];
   List<EventModel> _recentPastEvents = const <EventModel>[];
   List<EventModel> _todayEvents = const <EventModel>[];
   List<EventModel> _upcomingEvents = const <EventModel>[];
@@ -277,6 +277,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final pastTodayEvents = todayEvents
         .where((event) => _isPastEvent(event, now))
         .toList(growable: false);
+    final visiblePastTodayEvents = homeVisiblePastTodayEvents(pastTodayEvents);
     final recentPastEvents = homeRecentPastEvents(
       allEvents,
       now: now,
@@ -292,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }).toList(growable: false)
       ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
     final visibleEventIds = <String>{
-      if (pastTodayEvents.isNotEmpty) pastTodayEvents.last.id,
+      ...visiblePastTodayEvents.map((event) => event.id),
       ...currentTodayEvents.map((event) => event.id),
       ...upcomingEvents.take(3).map((event) => event.id),
     };
@@ -310,7 +311,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (mounted) {
       setState(() {
-        _pastTodayEvent = pastTodayEvents.isEmpty ? null : pastTodayEvents.last;
+        _pastTodayEvents = visiblePastTodayEvents;
         _recentPastEvents = recentPastEvents;
         _todayEvents = currentTodayEvents;
         _upcomingEvents = upcomingEvents.take(3).toList(growable: false);
@@ -357,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _clearHomeContent() {
-    _pastTodayEvent = null;
+    _pastTodayEvents = const <EventModel>[];
     _recentPastEvents = const <EventModel>[];
     _todayEvents = const <EventModel>[];
     _upcomingEvents = const <EventModel>[];
@@ -561,7 +562,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 12),
                     ] else ...[
-                      if (_pastTodayEvent != null) ...[
+                      if (_pastTodayEvents.isNotEmpty) ...[
                         _HomeSectionHeader(
                           title: '지나간 일정',
                           actionLabel: '최근 12시간',
@@ -573,17 +574,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   ),
                         ),
                         const SizedBox(height: 8),
-                        _TodayEventCard(
-                          event: _pastTodayEvent!,
-                          isPast: true,
-                          hasSmartPrepAlarm: _smartPreparationEventIds
-                              .contains(_pastTodayEvent!.id),
-                          onTap: () => context.push(
-                            '${AppRoutes.eventDetail}/${Uri.encodeComponent(_pastTodayEvent!.id)}',
-                            extra: _pastTodayEvent,
+                        ..._pastTodayEvents.map(
+                          (event) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _TodayEventCard(
+                              event: event,
+                              isPast: true,
+                              hasSmartPrepAlarm:
+                                  _smartPreparationEventIds.contains(event.id),
+                              onTap: () => context.push(
+                                '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                                extra: event,
+                              ),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 4),
                       ],
                       Text(
                         '오늘 일정',
@@ -723,7 +729,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         showPulse: _loadState == _HomeLoadState.ready &&
             _todayEvents.isEmpty &&
             _upcomingEvents.isEmpty &&
-            _pastTodayEvent == null,
+            _pastTodayEvents.isEmpty,
       ),
     );
   }
@@ -766,6 +772,25 @@ List<EventModel> homeRecentPastEvents(
   }).toList(growable: false)
     ..sort((a, b) =>
         (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)));
+}
+
+@visibleForTesting
+List<EventModel> homeVisiblePastTodayEvents(Iterable<EventModel> pastEvents) {
+  final sorted = pastEvents.where((event) => event.startAt != null).toList()
+    ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+  if (sorted.isEmpty) {
+    return const <EventModel>[];
+  }
+
+  final latestStart = planflowLocal(sorted.last.startAt!);
+  return sorted.where((event) {
+    final localStart = planflowLocal(event.startAt!);
+    return localStart.year == latestStart.year &&
+        localStart.month == latestStart.month &&
+        localStart.day == latestStart.day &&
+        localStart.hour == latestStart.hour &&
+        localStart.minute == latestStart.minute;
+  }).toList(growable: false);
 }
 
 class _HomeSectionHeader extends StatelessWidget {

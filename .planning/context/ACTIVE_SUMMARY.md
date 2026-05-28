@@ -1371,3 +1371,8 @@
 - AuthProvider now shares an in-flight Supabase session refresh between bootstrap/startup/resume callers, reducing the `refresh_token_already_used` race that made the app appear signed out with empty data.
 - BackupService now distinguishes signed-out, schema mismatch, and general backup failures; Settings restore flow no longer reports “no backups” after a backup-list load failure.
 - Verification passed: auth provider, backup service, and settings screen focused tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; update install/launch on `192.168.219.43:5555`; log check showed no `refresh_token_already_used` after reinstall, but the device still needs a fresh login because its old refresh token was already missing.
+
+## 2026-05-28 Home Past Same-Time Events
+- Home now keeps the compact “latest past schedule” behavior but renders every past event that shares the latest local start minute, so simultaneous past schedules are all visible instead of only the final one.
+- Added focused home tests for same-minute past event selection and rendering, while older past events remain available through the recent-past sheet instead of crowding the main Home tab.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/home_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, and `git diff --check`.

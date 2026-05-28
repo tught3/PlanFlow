@@ -48,6 +48,89 @@ void main() {
     );
   });
 
+  test('homeVisiblePastTodayEvents keeps all latest same-minute past events',
+      () {
+    final older = EventModel(
+      id: 'older',
+      userId: 'user-1',
+      title: '오래전 일정',
+      startAt: DateTime(2026, 5, 28, 8, 30),
+    );
+    final latestA = EventModel(
+      id: 'latest-a',
+      userId: 'user-1',
+      title: '같은 시간 일정 A',
+      startAt: DateTime(2026, 5, 28, 9, 0, 10),
+    );
+    final latestB = EventModel(
+      id: 'latest-b',
+      userId: 'user-1',
+      title: '같은 시간 일정 B',
+      startAt: DateTime(2026, 5, 28, 9, 0, 50),
+    );
+
+    final visible = homeVisiblePastTodayEvents(<EventModel>[
+      latestB,
+      older,
+      latestA,
+    ]);
+
+    expect(
+      visible.map((event) => event.id),
+      <String>['latest-a', 'latest-b'],
+    );
+  });
+
+  testWidgets('HomeScreen shows every past event at the latest same time',
+      (tester) async {
+    final now = DateTime.now();
+    final latestStart = DateTime(now.year, now.month, now.day, 9);
+    final repository = _QueuedEventRepository(
+      responses: <Future<List<EventModel>> Function()>[
+        () async => <EventModel>[
+              EventModel(
+                id: 'older',
+                userId: 'user-1',
+                title: '오래전 일정',
+                startAt: latestStart.subtract(const Duration(hours: 1)),
+              ),
+              EventModel(
+                id: 'same-a',
+                userId: 'user-1',
+                title: '같은 시간 일정 A',
+                startAt: latestStart,
+              ),
+              EventModel(
+                id: 'same-b',
+                userId: 'user-1',
+                title: '같은 시간 일정 B',
+                startAt: latestStart.add(const Duration(seconds: 30)),
+              ),
+            ],
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          userIdOverride: 'user-1',
+          eventRepository: repository,
+          smartPreparationAlarmService:
+              const _FakeSmartPreparationAlarmService(),
+          homeWidgetService: _RecordingHomeWidgetService(),
+          loadHeaderSummary: false,
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('같은 시간 일정 A'), findsOneWidget);
+    expect(find.text('같은 시간 일정 B'), findsOneWidget);
+    expect(find.text('오래전 일정'), findsNothing);
+  });
+
   testWidgets(
     'HomeScreen keeps rendered content visible during resume refresh',
     (tester) async {
