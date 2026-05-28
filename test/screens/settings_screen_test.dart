@@ -834,6 +834,49 @@ void main() {
       PlanFlowColors.fab,
     );
   });
+
+  testWidgets('SettingsScreen shows backup load errors instead of empty backup',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => authProvider.setUser(null));
+
+    AppEnv.markSupabaseInitialized();
+    authProvider.setUser('user-1');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          backupService: _FakeBackupService(
+            listError: const BackupSchemaException('테스트 백업 스키마 오류'),
+          ),
+          naverCalDavService:
+              _FakeNaverCalDavService(initialHasCredentials: true),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    final restoreButton =
+        find.byKey(const ValueKey('settings-restore-backup-button'));
+    await _scrollUntilHitTestable(tester, restoreButton, maxScrolls: 80);
+    await tester.tap(restoreButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('테스트 백업 스키마 오류'), findsOneWidget);
+    expect(find.text('백업된 항목이 없습니다. 먼저 백업을 만들어 주세요.'), findsNothing);
+  });
 }
 
 Future<void> _scrollUntilHitTestable(
@@ -973,10 +1016,20 @@ class _FakeDeviceCalendarService extends DeviceCalendarService {
 }
 
 class _FakeBackupService extends BackupService {
-  _FakeBackupService();
+  _FakeBackupService({
+    this.listError,
+  });
+
+  final Object? listError;
 
   @override
-  Future<List<BackupSnapshot>> listBackups() async => const <BackupSnapshot>[];
+  Future<List<BackupSnapshot>> listBackups() async {
+    final error = listError;
+    if (error != null) {
+      throw error;
+    }
+    return const <BackupSnapshot>[];
+  }
 
   @override
   Future<BackupSnapshot> createBackup({String? label}) async {

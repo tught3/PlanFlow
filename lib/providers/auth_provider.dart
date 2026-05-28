@@ -27,6 +27,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isPasswordRecovery = false;
   bool _started = false;
   bool _hasResolvedInitialSession = false;
+  Future<void>? _refreshInFlight;
 
   String? get userId => _userId;
   String? get email => _email;
@@ -101,7 +102,7 @@ class AuthProvider extends ChangeNotifier {
       NaverCalendarPermissionService().captureCurrentProviderToken(),
     );
     try {
-      await service.refreshSession();
+      await _refreshSessionOnce(service);
     } catch (error) {
       debugPrint('Session refresh skipped: $error');
       if (snapshotUser != null) {
@@ -367,7 +368,7 @@ class AuthProvider extends ChangeNotifier {
         'auth_bootstrap phase=refresh_start '
         'hasSnapshotUser=${snapshotUser != null}',
       );
-      await service.refreshSession();
+      await _refreshSessionOnce(service);
       debugPrint(
         'auth_bootstrap phase=refresh_success '
         'hasSession=${service.currentSession != null}',
@@ -384,6 +385,21 @@ class AuthProvider extends ChangeNotifier {
       service.currentSession?.user ?? service.currentUser ?? snapshotUser,
       resolvesInitialSession: true,
     );
+  }
+
+  Future<void> _refreshSessionOnce(AuthSessionClient service) {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final refresh = service.refreshSession();
+    _refreshInFlight = refresh;
+    return refresh.whenComplete(() {
+      if (identical(_refreshInFlight, refresh)) {
+        _refreshInFlight = null;
+      }
+    });
   }
 
   @override

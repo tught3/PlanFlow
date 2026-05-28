@@ -204,7 +204,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
     }
     if (AppEnv.isSupabaseReady) {
-      unawaited(_loadBackups());
+      unawaited(_loadBackups(showSignedOutMessage: false));
       unawaited(_ensureAutomaticBackup());
     }
     if (AppEnv.isSupabaseReady) {
@@ -1796,10 +1796,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return current;
   }
 
-  Future<void> _loadBackups() async {
+  Future<bool> _loadBackups({bool showSignedOutMessage = true}) async {
     final backupService = _backupService;
     if (backupService == null || !authProvider.isSignedIn) {
-      return;
+      if (showSignedOutMessage && mounted) {
+        _showSnack('로그인 후 백업 목록을 불러올 수 있습니다.');
+      }
+      return false;
     }
     setState(() {
       _isLoadingBackups = true;
@@ -1807,15 +1810,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final backups = await backupService.listBackups();
       if (!mounted) {
-        return;
+        return false;
       }
       setState(() {
         _backups = backups;
       });
-    } catch (_) {
+      return true;
+    } on BackupAuthRequiredException {
       if (mounted) {
-        _showSnack('백업 목록을 불러오지 못했습니다.');
+        _showSnack('로그인 후 백업 목록을 불러올 수 있습니다.');
       }
+      return false;
+    } on BackupSchemaException catch (error) {
+      if (mounted) {
+        _showSnack(error.message);
+      }
+      return false;
+    } catch (error, stackTrace) {
+      debugPrint('Backup list failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showSnack('백업 목록을 불러오지 못했습니다. 네트워크와 Supabase 설정을 확인해 주세요.');
+      }
+      return false;
     } finally {
       if (mounted) {
         setState(() {
@@ -1857,10 +1874,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final backup = await backupService.createBackup();
       await _loadBackups();
       _showSnack('백업 완료: ${backup.totalItems}개 항목을 저장했습니다.');
+    } on BackupAuthRequiredException {
+      _showSnack('로그인 후 백업할 수 있습니다.');
+    } on BackupSchemaException catch (error) {
+      _showSnack(error.message);
     } catch (error, stackTrace) {
       debugPrint('Backup create failed: $error');
       debugPrintStack(stackTrace: stackTrace);
-      _showSnack('백업 생성에 실패했습니다. Supabase 스키마를 확인해 주세요.');
+      _showSnack('백업 생성에 실패했습니다. 네트워크와 Supabase 설정을 확인해 주세요.');
     } finally {
       if (mounted) {
         setState(() {
@@ -1900,6 +1921,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await backupService.restoreBackup(backup.id);
       _showSnack('백업을 복원했습니다.');
+    } on BackupAuthRequiredException {
+      _showSnack('로그인 후 백업을 복원할 수 있습니다.');
+    } on BackupSchemaException catch (error) {
+      _showSnack(error.message);
     } catch (error, stackTrace) {
       debugPrint('Backup restore failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -1916,10 +1941,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _showBackupRestoreDialog() async {
     final backupService = _backupService;
     if (backupService == null || !authProvider.isSignedIn) {
+      _showSnack('로그인 후 백업을 복원할 수 있습니다.');
       return;
     }
     if (!_isLoadingBackups && _backups.isEmpty) {
-      await _loadBackups();
+      final loaded = await _loadBackups();
+      if (!loaded) {
+        return;
+      }
     }
     if (!mounted) {
       return;

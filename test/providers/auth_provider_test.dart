@@ -65,6 +65,34 @@ void main() {
     provider.dispose();
   });
 
+  test('shares an in-flight refresh between bootstrap and sync calls',
+      () async {
+    final refreshGate = Completer<void>();
+    final service = _FakeAuthService(
+      currentSession: _session(userId: 'user-4', email: 'once@example.com'),
+      refreshCompleter: refreshGate,
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await service.firstRefreshStarted.future;
+    final signedInFuture = provider.syncCurrentSession();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(service.refreshCount, 1);
+
+    refreshGate.complete();
+    final signedIn = await signedInFuture;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(signedIn, isTrue);
+    expect(provider.isSignedIn, isTrue);
+    expect(provider.userId, 'user-4');
+    expect(service.refreshCount, 1);
+
+    provider.dispose();
+  });
+
   test('waits briefly for delayed auth recovery before showing signed out',
       () async {
     final service = _FakeAuthService(currentSession: null);
@@ -309,15 +337,18 @@ class _FakeAuthService implements AuthSessionClient {
   _FakeAuthService({
     required Session? currentSession,
     this.refreshError,
+    this.refreshCompleter,
   })  : _currentSession = currentSession,
         _currentUser = currentSession?.user;
 
   final AuthException? refreshError;
+  final Completer<void>? refreshCompleter;
   final StreamController<AuthState> _controller =
       StreamController<AuthState>.broadcast();
   Session? _currentSession;
   User? _currentUser;
   int refreshCount = 0;
+  final Completer<void> firstRefreshStarted = Completer<void>();
 
   @override
   Session? get currentSession => _currentSession;
@@ -331,6 +362,10 @@ class _FakeAuthService implements AuthSessionClient {
   @override
   Future<void> refreshSession() async {
     refreshCount += 1;
+    if (!firstRefreshStarted.isCompleted) {
+      firstRefreshStarted.complete();
+    }
+    await refreshCompleter?.future;
     if (refreshError != null) {
       throw refreshError!;
     }

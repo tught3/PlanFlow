@@ -1365,3 +1365,9 @@
 - Prevented automatic map resolution for personal place aliases such as `원주집`, so external search results like restaurants cannot replace the user's intended place without an explicit map pick.
 - Voice widget auto-start now waits briefly after route startup and retries once when the first STT attempt immediately returns silence/unavailable.
 - Verification passed: focused confirm/GPT/voice-input tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.219.43:5555`, app launch/PID check, and post-install log check for the prior Firebase assertion pattern.
+
+## 2026-05-28 Auth Session Recovery And Backup Schema Guard
+- Confirmed production data was still present, then patched only the approved missing `public.user_settings` region/provider columns so backup creation/restore matches `supabase/schema.sql`.
+- AuthProvider now shares an in-flight Supabase session refresh between bootstrap/startup/resume callers, reducing the `refresh_token_already_used` race that made the app appear signed out with empty data.
+- BackupService now distinguishes signed-out, schema mismatch, and general backup failures; Settings restore flow no longer reports “no backups” after a backup-list load failure.
+- Verification passed: auth provider, backup service, and settings screen focused tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; update install/launch on `192.168.219.43:5555`; log check showed no `refresh_token_already_used` after reinstall, but the device still needs a fresh login because its old refresh token was already missing.

@@ -28,6 +28,22 @@ class BackupSnapshot {
   int get totalItems => itemCounts.values.fold(0, (sum, count) => sum + count);
 }
 
+class BackupAuthRequiredException implements Exception {
+  const BackupAuthRequiredException();
+
+  @override
+  String toString() => '로그인 후 백업을 사용할 수 있습니다.';
+}
+
+class BackupSchemaException implements Exception {
+  const BackupSchemaException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class BackupService {
   BackupService({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
@@ -48,11 +64,19 @@ class BackupService {
 
   Future<List<BackupSnapshot>> listBackups() async {
     final userId = _requireUserId();
-    final rows = await _client
-        .from('user_backups')
-        .select('id, label, item_counts, created_at')
-        .eq('user_id', userId)
-        .order('created_at', ascending: false);
+    final dynamic rows;
+    try {
+      rows = await _client
+          .from('user_backups')
+          .select('id, label, item_counts, created_at')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+    } on PostgrestException catch (error) {
+      if (_isSchemaError(error)) {
+        throw BackupSchemaException(_schemaErrorMessage);
+      }
+      rethrow;
+    }
 
     final backups = (rows as List<dynamic>)
         .map((row) => BackupSnapshot.fromJson(Map<String, dynamic>.from(row)))
@@ -128,10 +152,17 @@ class BackupService {
 
   Future<void> restoreBackup(String backupId) async {
     _requireUserId();
-    await _client.rpc(
-      'restore_user_backup',
-      params: <String, dynamic>{'backup_id_input': backupId},
-    );
+    try {
+      await _client.rpc(
+        'restore_user_backup',
+        params: <String, dynamic>{'backup_id_input': backupId},
+      );
+    } on PostgrestException catch (error) {
+      if (_isSchemaError(error)) {
+        throw BackupSchemaException(_schemaErrorMessage);
+      }
+      rethrow;
+    }
   }
 
   String _selectColumnsFor(String table) {
@@ -151,8 +182,7 @@ class BackupService {
       return 'id, user_id, morning_briefing_at, evening_briefing_at, '
           'default_reminder_min, prep_time_min, prep_pre_alarm_offset, '
           'depart_pre_alarm_offset, departure_safety_margin_min, '
-          'travel_mode, voice_auto_start, '
-          'country_code, locale_code, time_zone_id, created_at';
+          'travel_mode, voice_auto_start, created_at';
     }
     return _selectColumnsFor(table);
   }
@@ -164,30 +194,59 @@ class BackupService {
           .select(_selectColumnsFor(table))
           .eq('user_id', userId);
     } on PostgrestException catch (error) {
-      if (table == 'user_settings' &&
-          _isMissingColumnError(error, 'preferred_map_provider')) {
+      if (table == 'user_settings' && _isMissingRegionColumnError(error)) {
         return _client
             .from(table)
             .select(_legacySelectColumnsFor(table))
             .eq('user_id', userId);
       }
+      if (_isSchemaError(error)) {
+        throw BackupSchemaException(_schemaErrorMessage);
+      }
       rethrow;
     }
   }
 
-  bool _isMissingColumnError(PostgrestException error, String column) {
+  bool _isMissingRegionColumnError(PostgrestException error) {
     final text =
         '${error.code} ${error.message} ${error.details}'.toLowerCase();
-    return text.contains(column.toLowerCase());
+    return isMissingRegionColumnErrorText(text);
+  }
+
+  bool _isSchemaError(PostgrestException error) {
+    final text =
+        '${error.code} ${error.message} ${error.details}'.toLowerCase();
+    return isSchemaErrorText(text);
+  }
+
+  @visibleForTesting
+  static bool isMissingRegionColumnErrorText(String text) {
+    final normalized = text.toLowerCase();
+    return normalized.contains('preferred_map_provider') ||
+        normalized.contains('country_code') ||
+        normalized.contains('locale_code') ||
+        normalized.contains('time_zone_id');
+  }
+
+  @visibleForTesting
+  static bool isSchemaErrorText(String text) {
+    final normalized = text.toLowerCase();
+    return normalized.contains('schema cache') ||
+        normalized.contains('column') &&
+            normalized.contains('does not exist') ||
+        normalized.contains('42703');
   }
 
   String _requireUserId() {
     final userId = _client.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) {
-      throw StateError('A signed-in user is required for backup and restore.');
+      throw const BackupAuthRequiredException();
     }
     return userId;
   }
+
+  static const String _schemaErrorMessage =
+      'Supabase 백업 스키마가 앱과 맞지 않습니다. schema.sql 적용 상태를 확인해 주세요.';
 
   DateTime _latestBackupBoundary(DateTime now) {
     var boundary = DateTime(now.year, now.month, now.day, 3);
