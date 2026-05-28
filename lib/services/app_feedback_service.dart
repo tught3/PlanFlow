@@ -21,7 +21,7 @@ class AppFeedbackService {
       builder: (context) {
         final mediaQuery = MediaQuery.of(context);
         return Positioned(
-          top: mediaQuery.padding.top + 12,
+          top: mediaQuery.padding.top + kToolbarHeight + 8,
           left: 16,
           right: 16,
           child: IgnorePointer(

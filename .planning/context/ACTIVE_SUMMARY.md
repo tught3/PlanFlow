@@ -1394,3 +1394,7 @@
 - App startup now calls `runApp` before Firebase/NaverMap/Supabase initialization, so the Flutter splash/loader can render immediately while platform services initialize in the background.
 - Splash screen background now uses the PlanFlow background color instead of white, reducing the visible white frame when launching from the app icon or 1x1 voice widget.
 - Verification passed: focused auth storage/provider tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, PID, and focused-window check.
+
+## 2026-05-28 App Feedback Toast Offset
+- Moved the custom top overlay feedback message below the status bar plus toolbar height so it no longer overlaps the top-left PlanFlow app title.
+- Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, PID, and focused-window check.
