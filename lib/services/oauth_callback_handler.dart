@@ -113,10 +113,14 @@ class OAuthCallbackHandler {
   }
 
   void start() {
-    if (kIsWeb || !AppEnv.isSupabaseReady || _subscription != null) {
+    if (kIsWeb || !AppEnv.hasValidSupabaseConfig || _subscription != null) {
       return;
     }
 
+    debugPrint(
+      'OAuth callback listener start: '
+      'supabaseReady=${AppEnv.isSupabaseReady}',
+    );
     unawaited(_handleInitialLinkOnce());
 
     _subscription = _appLinks.uriLinkStream.listen(
@@ -179,6 +183,15 @@ class OAuthCallbackHandler {
       );
       clearPendingCallback();
       latestUserMessage.value = callbackErrorMessage;
+      return;
+    }
+
+    final ready = await _waitForSupabaseReady();
+    if (!ready) {
+      debugPrint('OAuth callback skipped: Supabase was not ready in time.');
+      clearPendingCallback();
+      latestUserMessage.value =
+          '로그인 준비가 끝나기 전에 인증 콜백을 받았습니다. 앱을 다시 열고 로그인을 다시 시도해 주세요.';
       return;
     }
 
@@ -347,6 +360,20 @@ class OAuthCallbackHandler {
       },
       fragment: '',
     );
+  }
+
+  Future<bool> _waitForSupabaseReady({
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (AppEnv.isSupabaseReady) {
+      return true;
+    }
+
+    final deadline = DateTime.now().add(timeout);
+    while (!AppEnv.isSupabaseReady && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return AppEnv.isSupabaseReady;
   }
 
   @visibleForTesting

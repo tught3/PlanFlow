@@ -1408,3 +1408,8 @@
 - Marked `MainActivity` resizeable for large-screen Play compatibility and routed Shell navigation rail decisions through the new safe-size logic so narrow fold states keep bottom navigation.
 - Calendar now uses a two-pane month + selected-day agenda layout on large screens, LocationPicker shows map and candidates side-by-side on tablet/fold widths, and Home/Settings/Event/Confirm/Voice screens use shared responsive content widths.
 - Verification passed: `scripts/flutter-local.ps1 test test/core/responsive_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, and PID check.
+
+## 2026-05-29 Google OAuth Callback Listener Fix
+- Root cause on `192.168.0.105:5555`: Android/app_links received `planflow://auth-callback?code=...`, but `OAuthCallbackHandler.start()` had returned early before Supabase initialization, so the app never processed the Google callback.
+- OAuth callback listening now starts as soon as valid Supabase config exists, even before Supabase is fully initialized; actual callback handling waits briefly for Supabase readiness before exchanging the session.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/oauth_callback_handler_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, debug APK build, update install and launch on `192.168.0.105:5555`, and ADB Google login retry showed `OAuth callback observed`, `OAuth callback exchange completed`, and `AuthChangeEvent.signedIn`.
