@@ -8,10 +8,13 @@ import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
+import '../../data/models/voice_correction_rule.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../data/repositories/voice_correction_rule_repository.dart';
 import '../../core/analytics_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/stt_service.dart';
+import '../../services/voice_correction_learning_service.dart';
 import '../../services/voice_command_router.dart';
 import '../../services/voice_command_analysis_service.dart';
 import 'voice_conversation_screen.dart';
@@ -65,6 +68,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   String? _preparedDraftSourceText;
   String? _lastSubmittedSignature;
   String _listenPrefixText = '';
+  String? _lastProgrammaticTranscript;
+  String? _manualEditOriginalTranscript;
+  final VoiceCorrectionLearningService _voiceCorrectionLearningService =
+      const VoiceCorrectionLearningService();
 
   @override
   void initState() {
@@ -97,6 +104,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   void _handleRawTextChanged() {
     if (!_isApplyingTranscriptProgrammatically &&
         _rawTextController.text.trim().isNotEmpty) {
+      _manualEditOriginalTranscript ??= _lastProgrammaticTranscript;
       _didEditTranscriptManually = true;
       _hasSubmittedVoiceCommand = false;
       _clearPreparedDraft();
@@ -351,6 +359,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     _hasSubmittedVoiceCommand = false;
     _lastSubmittedSignature = null;
     _recognizedText = null;
+    _lastProgrammaticTranscript = null;
+    _manualEditOriginalTranscript = null;
     _isListening = false;
   }
 
@@ -421,6 +431,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     _isSubmittingVoiceCommand = false;
     _didEditTranscriptManually = false;
     _manualEditInterruptedListening = false;
+    _lastProgrammaticTranscript = null;
+    _manualEditOriginalTranscript = null;
     _clearPreparedDraft();
     _setTranscriptText('');
   }
@@ -482,8 +494,12 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (!mounted) {
       return;
     }
-    final rawText =
+    var rawText =
         VoiceTextCleanupService.cleanLocally(normalizedText).cleanedText;
+    rawText = await _applyTranscriptCorrectionRules(rawText);
+    if (!mounted) {
+      return;
+    }
     if (rawText.isEmpty) {
       await _pushVoiceRoute(AppRoutes.confirm,
           extra: const <String, dynamic>{});
@@ -534,6 +550,42 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       return;
     }
     await _openVoiceActionFromText(normalizedText, rawText, commandAction);
+  }
+
+  Future<String> _applyTranscriptCorrectionRules(String rawText) async {
+    if (!AppEnv.isSupabaseReady || rawText.trim().isEmpty) {
+      return rawText;
+    }
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null || userId.trim().isEmpty) {
+      return rawText;
+    }
+    try {
+      final settingsRepository =
+          widget.settingsRepository ?? SettingsRepository.supabase();
+      final settings = await settingsRepository.fetchSettings(userId);
+      if (settings?.voiceCorrectionLearningEnabled == false) {
+        return rawText;
+      }
+      final repository = VoiceCorrectionRuleRepository.supabase();
+      final rules = <VoiceCorrectionRule>[
+        ...await repository.fetchPersonalRules(userId),
+        if (settings?.voiceCommonLearningOptIn == true)
+          ...await repository.fetchTrustedCommonRules(),
+      ];
+      return _voiceCorrectionLearningService
+          .applyRules(
+            rawText,
+            rules: rules,
+            stage: VoiceCorrectionStage.stt,
+            field: VoiceCorrectionField.transcript,
+          )
+          .text;
+    } catch (error, stackTrace) {
+      debugPrint('VoiceInputScreen correction apply skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return rawText;
+    }
   }
 
   bool _beginVoiceCommandSubmit(String rawText) {
@@ -593,7 +645,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     Map<String, dynamic>? preparedDraft,
   ) async {
     if (preparedDraft != null) {
-      await _pushVoiceRoute(AppRoutes.confirm, extra: preparedDraft);
+      await _pushVoiceRoute(
+        AppRoutes.confirm,
+        extra: <String, dynamic>{
+          ...preparedDraft,
+          if (_manualEditOriginalTranscript?.trim().isNotEmpty == true)
+            'stt_original_text': _manualEditOriginalTranscript!.trim(),
+          if (_didEditTranscriptManually) 'manual_text_confirmed': true,
+        },
+      );
       return;
     }
 
@@ -613,6 +673,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       AppRoutes.confirm,
       extra: <String, dynamic>{
         'raw_text': cleanedText,
+        if (_manualEditOriginalTranscript?.trim().isNotEmpty == true)
+          'stt_original_text': _manualEditOriginalTranscript!.trim(),
         if (cleanup.changed) 'original_raw_text': cleanup.originalText,
         if (cleanup.changed) 'voice_cleanup_method': cleanup.method.name,
         if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
@@ -647,6 +709,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       AppRoutes.voiceAction,
       extra: <String, dynamic>{
         'raw_text': rawText,
+        if (_manualEditOriginalTranscript?.trim().isNotEmpty == true)
+          'stt_original_text': _manualEditOriginalTranscript!.trim(),
         if (cleanup.changed) 'original_raw_text': cleanup.originalText,
         if (cleanup.changed) 'voice_cleanup_method': cleanup.method.name,
         if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
@@ -889,6 +953,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         selection: TextSelection.collapsed(offset: nextText.length),
       );
     });
+    _lastProgrammaticTranscript = nextText.isEmpty ? null : nextText;
     _isApplyingTranscriptProgrammatically = false;
     _scheduleDraftPreparation(nextText);
   }

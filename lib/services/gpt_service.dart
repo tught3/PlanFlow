@@ -1,14 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
 import '../core/event_metadata.dart';
 import '../core/local_time.dart';
 import '../core/region_settings.dart';
+import '../data/models/voice_correction_rule.dart';
+import '../data/repositories/settings_repository.dart';
+import '../data/repositories/voice_correction_rule_repository.dart';
 import 'remote_config_service.dart';
 import 'smart_preparation_alarm_service.dart';
+import 'voice_correction_learning_service.dart';
 import 'voice_schedule_structure_service.dart';
 import 'voice_text_cleanup_service.dart';
 
@@ -45,16 +51,23 @@ class GptService {
     Uri? endpoint,
     DateTime Function()? now,
     Duration? completionTimeout,
+    VoiceCorrectionRuleRepository? voiceCorrectionRuleRepository,
+    VoiceCorrectionLearningService? voiceCorrectionLearningService,
   })  : _client = client,
         _endpoint = endpoint ??
             Uri.parse('${AppEnv.supabaseUrl}/functions/v1/openai-proxy'),
         _now = now ?? planflowNow,
-        _completionTimeout = completionTimeout ?? const Duration(seconds: 20);
+        _completionTimeout = completionTimeout ?? const Duration(seconds: 20),
+        _voiceCorrectionRuleRepository = voiceCorrectionRuleRepository,
+        _voiceCorrectionLearningService = voiceCorrectionLearningService ??
+            const VoiceCorrectionLearningService();
 
   final http.Client? _client;
   final Uri _endpoint;
   final DateTime Function() _now;
   final Duration _completionTimeout;
+  final VoiceCorrectionRuleRepository? _voiceCorrectionRuleRepository;
+  final VoiceCorrectionLearningService _voiceCorrectionLearningService;
   static const VoiceScheduleStructureService _voiceScheduleStructureService =
       VoiceScheduleStructureService();
 
@@ -72,13 +85,53 @@ class GptService {
 
     final parsed = _decodeJsonMap(content);
     if (parsed == null) {
-      return _fallbackSchedule(
-        rawText: rawText,
-        rawResponse: content,
+      return _applyCorrectionRulesToParsedSchedule(
+        _fallbackSchedule(
+          rawText: rawText,
+          rawResponse: content,
+        ),
       );
     }
 
-    return _normalizeSchedule(parsed, rawText);
+    final normalized = _normalizeSchedule(parsed, rawText);
+    return _applyCorrectionRulesToParsedSchedule(normalized);
+  }
+
+  Future<Map<String, dynamic>> _applyCorrectionRulesToParsedSchedule(
+    Map<String, dynamic> parsed,
+  ) async {
+    if (!AppEnv.isSupabaseReady) {
+      return parsed;
+    }
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null || userId.trim().isEmpty) {
+        return parsed;
+      }
+      final settings =
+          await SettingsRepository.supabase().fetchSettings(userId);
+      if (settings?.voiceCorrectionLearningEnabled == false) {
+        return parsed;
+      }
+      final repository = _voiceCorrectionRuleRepository ??
+          VoiceCorrectionRuleRepository.supabase();
+      final rules = <VoiceCorrectionRule>[
+        ...await repository.fetchPersonalRules(userId),
+        if (settings?.voiceCommonLearningOptIn == true)
+          ...await repository.fetchTrustedCommonRules(),
+      ];
+      if (rules.isEmpty) {
+        return parsed;
+      }
+      return _voiceCorrectionLearningService.applyParsedScheduleRules(
+        parsed,
+        rules: rules,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('GptService correction apply skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return parsed;
+    }
   }
 
   Future<VoiceTextCleanupResult> cleanupVoiceText(

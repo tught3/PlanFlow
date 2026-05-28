@@ -73,12 +73,14 @@ class SupabaseSettingsGateway implements SettingsGateway {
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
       'prep_time_min, prep_pre_alarm_offset, depart_pre_alarm_offset, '
       'departure_safety_margin_min, '
-      'travel_mode, voice_auto_start, preferred_map_provider, country_code, locale_code, time_zone_id, '
+      'travel_mode, voice_auto_start, voice_correction_learning_enabled, '
+      'voice_common_learning_opt_in, preferred_map_provider, country_code, locale_code, time_zone_id, '
       'google_calendar_token, naver_calendar_token, created_at';
   static const String legacySelectColumns =
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
       'prep_time_min, prep_pre_alarm_offset, depart_pre_alarm_offset, '
-      'travel_mode, voice_auto_start, google_calendar_token, naver_calendar_token, created_at';
+      'travel_mode, voice_auto_start, voice_correction_learning_enabled, '
+      'voice_common_learning_opt_in, google_calendar_token, naver_calendar_token, created_at';
 
   final SupabaseClient _client;
 
@@ -188,6 +190,8 @@ class SupabaseSettingsGateway implements SettingsGateway {
     final text =
         '${error.code} ${error.message} ${error.details}'.toLowerCase();
     return text.contains('voice_auto_start') ||
+        text.contains('voice_correction_learning_enabled') ||
+        text.contains('voice_common_learning_opt_in') ||
         text.contains('prep_time_min') ||
         text.contains('prep_pre_alarm_offset') ||
         text.contains('depart_pre_alarm_offset') ||

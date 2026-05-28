@@ -17,6 +17,8 @@ void main() {
         'departure_safety_margin_min': 20,
         'travel_mode': 'transit',
         'voice_auto_start': false,
+        'voice_correction_learning_enabled': false,
+        'voice_common_learning_opt_in': true,
         'preferred_map_provider': 'google',
         'google_calendar_token': 'google-token',
         'naver_calendar_token': 'naver-token',
@@ -39,6 +41,8 @@ void main() {
     expect(settings.departureSafetyMarginMin, 20);
     expect(settings.travelMode, 'transit');
     expect(settings.voiceAutoStart, isFalse);
+    expect(settings.voiceCorrectionLearningEnabled, isFalse);
+    expect(settings.voiceCommonLearningOptIn, isTrue);
     expect(settings.preferredMapProvider, 'google');
     expect(settings.googleCalendarToken, 'google-token');
     expect(settings.naverCalendarToken, 'naver-token');
@@ -61,6 +65,8 @@ void main() {
         'departure_safety_margin_min': 20,
         'travel_mode': 'transit',
         'voice_auto_start': false,
+        'voice_correction_learning_enabled': true,
+        'voice_common_learning_opt_in': false,
         'preferred_map_provider': 'tmap',
         'created_at': '2026-05-02T01:00:00Z',
       },
@@ -80,6 +86,8 @@ void main() {
         departureSafetyMarginMin: 20,
         travelMode: 'transit',
         voiceAutoStart: false,
+        voiceCorrectionLearningEnabled: true,
+        voiceCommonLearningOptIn: false,
         preferredMapProvider: 'tmap',
       ),
     );
@@ -97,9 +105,19 @@ void main() {
     expect(gateway.upsertPayloads.single['departure_safety_margin_min'], 20);
     expect(gateway.upsertPayloads.single['travel_mode'], 'transit');
     expect(gateway.upsertPayloads.single['voice_auto_start'], isFalse);
+    expect(
+      gateway.upsertPayloads.single['voice_correction_learning_enabled'],
+      isTrue,
+    );
+    expect(
+      gateway.upsertPayloads.single['voice_common_learning_opt_in'],
+      isFalse,
+    );
     expect(gateway.upsertPayloads.single['preferred_map_provider'], 'tmap');
     expect(saved.travelMode, 'transit');
     expect(saved.voiceAutoStart, isFalse);
+    expect(saved.voiceCorrectionLearningEnabled, isTrue);
+    expect(saved.voiceCommonLearningOptIn, isFalse);
     expect(saved.preferredMapProvider, 'tmap');
     expect(saved.prepTimeMin, 45);
     expect(saved.prepPreAlarmOffset, 10);

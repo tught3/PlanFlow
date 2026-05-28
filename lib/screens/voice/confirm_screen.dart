@@ -11,8 +11,10 @@ import '../../core/local_time.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
+import '../../data/models/voice_correction_rule.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../data/repositories/voice_correction_rule_repository.dart';
 import '../../core/analytics_service.dart';
 import '../../providers/auth_provider.dart';
 import '../location/location_pick_flow.dart';
@@ -25,6 +27,7 @@ import '../../services/app_permission_service.dart';
 import '../../services/app_feedback_service.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
+import '../../services/voice_correction_learning_service.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
@@ -49,6 +52,8 @@ class ConfirmScreen extends StatefulWidget {
     LocationLookupService? locationLookupService,
     SmartPreparationAlarmService? smartPreparationAlarmService,
     this.permissionService,
+    this.voiceCorrectionRuleRepository,
+    VoiceCorrectionLearningService? voiceCorrectionLearningService,
     TravelTimeBufferService? travelTimeBufferService,
   })  : backend = backend ?? const SupabaseConfirmScreenBackend(),
         gptService = gptService ?? GptService(),
@@ -60,6 +65,8 @@ class ConfirmScreen extends StatefulWidget {
             SmartPreparationAlarmService(
               notificationService: notificationService,
             ),
+        voiceCorrectionLearningService = voiceCorrectionLearningService ??
+            const VoiceCorrectionLearningService(),
         travelTimeBufferService =
             travelTimeBufferService ?? TravelTimeBufferService();
 
@@ -73,6 +80,8 @@ class ConfirmScreen extends StatefulWidget {
   final LocationLookupService locationLookupService;
   final SmartPreparationAlarmService smartPreparationAlarmService;
   final AppPermissionService? permissionService;
+  final VoiceCorrectionRuleRepository? voiceCorrectionRuleRepository;
+  final VoiceCorrectionLearningService voiceCorrectionLearningService;
   final TravelTimeBufferService travelTimeBufferService;
 
   @override
@@ -206,12 +215,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   bool _memoEditedByUser = false;
   bool _startEditedByUser = false;
   bool _endEditedByUser = false;
+  Map<String, dynamic>? _initialParsedForLearning;
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
 
   @override
   void initState() {
     super.initState();
+    _initialParsedForLearning = Map<String, dynamic>.from(
+      widget.parsedSchedule,
+    );
     _titleController = TextEditingController(
       text: _stringValue(widget.parsedSchedule['title']) ?? '',
     );
@@ -653,6 +666,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       }
 
       _isApplyingHydration = true;
+      _initialParsedForLearning = Map<String, dynamic>.from(parsed);
       setState(() {
         final title = _stringValue(parsed['title']);
         if (!_titleEditedByUser && title != null && title.isNotEmpty) {
@@ -874,6 +888,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     try {
       final savedEvent = await repository.createEvent(draftEvent);
+      unawaited(_recordVoiceCorrectionLearning(userId: userId));
 
       unawaited(
         _runPostSaveFollowUps(
@@ -953,6 +968,115 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return '일정 저장 테이블이 아직 준비되지 않았어요. Supabase 설정을 확인해 주세요.';
     }
     return '저장하지 못했어요. Supabase 연결 상태를 확인해 주세요.';
+  }
+
+  Future<void> _recordVoiceCorrectionLearning({
+    required String userId,
+  }) async {
+    if (!AppEnv.isSupabaseReady) {
+      return;
+    }
+    try {
+      final settings =
+          await SettingsRepository.supabase().fetchSettings(userId);
+      if (settings?.voiceCorrectionLearningEnabled == false) {
+        return;
+      }
+      final repository = widget.voiceCorrectionRuleRepository ??
+          VoiceCorrectionRuleRepository.supabase();
+      final rules = <VoiceCorrectionRule>[];
+
+      final originalStt =
+          _stringValue(widget.parsedSchedule['stt_original_text']);
+      final rawText = _stringValue(widget.parsedSchedule['raw_text']);
+      if (widget.parsedSchedule['manual_text_confirmed'] == true &&
+          originalStt != null &&
+          rawText != null &&
+          originalStt != rawText) {
+        rules.addAll(
+          widget.voiceCorrectionLearningService.extractRules(
+            originalText: originalStt,
+            correctedText: rawText,
+            stage: VoiceCorrectionStage.stt,
+            field: VoiceCorrectionField.transcript,
+            userId: userId,
+          ),
+        );
+      }
+
+      final initial = _initialParsedForLearning ?? widget.parsedSchedule;
+      rules.addAll(
+        _extractParseCorrectionRules(
+          userId: userId,
+          initial: initial,
+        ),
+      );
+
+      var recorded = false;
+      for (final rule in rules) {
+        if (!widget.voiceCorrectionLearningService.shouldRecordRule(rule)) {
+          continue;
+        }
+        await repository.recordPersonalRule(rule);
+        recorded = true;
+      }
+      if (recorded && mounted) {
+        _showMessage('이 수정 패턴을 다음에도 참고할게요.');
+      }
+    } catch (error, stackTrace) {
+      debugPrint('ConfirmScreen correction learning skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  List<VoiceCorrectionRule> _extractParseCorrectionRules({
+    required String userId,
+    required Map<String, dynamic> initial,
+  }) {
+    final rules = <VoiceCorrectionRule>[];
+    void addRule({
+      required VoiceCorrectionField field,
+      required String? original,
+      required String corrected,
+    }) {
+      if (original == null || original.trim() == corrected.trim()) {
+        return;
+      }
+      rules.addAll(
+        widget.voiceCorrectionLearningService.extractRules(
+          originalText: original,
+          correctedText: corrected,
+          stage: VoiceCorrectionStage.parse,
+          field: field,
+          userId: userId,
+        ),
+      );
+    }
+
+    addRule(
+      field: VoiceCorrectionField.title,
+      original: _stringValue(initial['title']),
+      corrected: _titleController.text.trim(),
+    );
+    addRule(
+      field: VoiceCorrectionField.location,
+      original: _stringValue(initial['location']),
+      corrected: _locationController.text.trim(),
+    );
+    addRule(
+      field: VoiceCorrectionField.supplies,
+      original: _stringListValue(initial['supplies']).join(', '),
+      corrected: _supplies
+          .map((draft) => draft.titleController.text.trim())
+          .where((item) => item.isNotEmpty)
+          .join(', '),
+    );
+    addRule(
+      field: VoiceCorrectionField.recurrence,
+      original: _stringValue(initial['recurrence_rule']),
+      corrected: _recurrenceSelection.toRRule() ?? '',
+    );
+    return rules;
   }
 
   Future<void> _saveRelatedRecords({

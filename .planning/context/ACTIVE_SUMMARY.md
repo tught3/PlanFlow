@@ -1376,3 +1376,9 @@
 - Home now keeps the compact “latest past schedule” behavior but renders every past event that shares the latest local start minute, so simultaneous past schedules are all visible instead of only the final one.
 - Added focused home tests for same-minute past event selection and rendering, while older past events remain available through the recent-past sheet instead of crowding the main Home tab.
 - Verification passed: `scripts/flutter-local.ps1 test test/screens/home_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, and `git diff --check`.
+
+## 2026-05-28 Voice Correction Learning Pipeline
+- Added a rule-based personal voice correction learning pipeline for STT transcript fixes and parsed schedule field corrections, with personal rules applied before trusted anonymous common rules.
+- Added Supabase schema/migration support for `voice_correction_rules`, authenticated read-only common correction rules, and user settings toggles for personal correction learning plus anonymous common improvement opt-in.
+- Voice input, confirm save, GPT schedule parsing, and settings management now connect to the correction learning service while avoiding full raw utterance storage in correction rule tables.
+- Verification passed: focused correction/repository/schema/settings/backup/voice/GPT/confirm tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. ADB install/run was skipped because no device was connected.

@@ -14,6 +14,8 @@ void main() {
       departPreAlarmOffset: 0,
       travelMode: 'transit',
       voiceAutoStart: false,
+      voiceCorrectionLearningEnabled: false,
+      voiceCommonLearningOptIn: true,
       preferredMapProvider: 'google',
       departureSafetyMarginMin: 20,
       googleCalendarToken: 'google-token',
@@ -39,6 +41,10 @@ void main() {
     expect(restored.travelMode, 'transit');
     expect(restored.voiceAutoStart, isFalse);
     expect(restored.toJson()['voice_auto_start'], isFalse);
+    expect(restored.voiceCorrectionLearningEnabled, isFalse);
+    expect(restored.toJson()['voice_correction_learning_enabled'], isFalse);
+    expect(restored.voiceCommonLearningOptIn, isTrue);
+    expect(restored.toJson()['voice_common_learning_opt_in'], isTrue);
     expect(restored.preferredMapProvider, 'google');
     expect(restored.toJson()['preferred_map_provider'], 'google');
     expect(restored.googleCalendarToken, model.googleCalendarToken);
@@ -55,6 +61,8 @@ void main() {
 
     expect(restored.travelMode, 'car');
     expect(restored.voiceAutoStart, isFalse);
+    expect(restored.voiceCorrectionLearningEnabled, isTrue);
+    expect(restored.voiceCommonLearningOptIn, isFalse);
     expect(restored.prepTimeMin, 30);
     expect(restored.prepPreAlarmOffset, 30);
     expect(restored.departPreAlarmOffset, 30);

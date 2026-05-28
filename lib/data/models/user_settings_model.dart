@@ -11,6 +11,8 @@ class UserSettingsModel {
     this.departureSafetyMarginMin = 20,
     this.travelMode = 'car',
     this.voiceAutoStart = false,
+    this.voiceCorrectionLearningEnabled = true,
+    this.voiceCommonLearningOptIn = false,
     this.preferredMapProvider = 'naver',
     this.countryCode = 'KR',
     this.localeCode = 'ko-KR',
@@ -36,6 +38,8 @@ class UserSettingsModel {
       departPreAlarmOffset: 30,
       departureSafetyMarginMin: 20,
       voiceAutoStart: false,
+      voiceCorrectionLearningEnabled: true,
+      voiceCommonLearningOptIn: false,
       preferredMapProvider: 'naver',
       countryCode: 'KR',
       localeCode: 'ko-KR',
@@ -58,6 +62,10 @@ class UserSettingsModel {
           _intValue(json['departure_safety_margin_min'], 20),
       travelMode: _travelModeValue(json['travel_mode']),
       voiceAutoStart: _boolValue(json['voice_auto_start'], false),
+      voiceCorrectionLearningEnabled:
+          _boolValue(json['voice_correction_learning_enabled'], true),
+      voiceCommonLearningOptIn:
+          _boolValue(json['voice_common_learning_opt_in'], false),
       preferredMapProvider:
           _preferredMapProviderValue(json['preferred_map_provider']),
       countryCode: _countryCodeValue(json['country_code']),
@@ -86,6 +94,8 @@ class UserSettingsModel {
   final int departureSafetyMarginMin;
   final String travelMode;
   final bool voiceAutoStart;
+  final bool voiceCorrectionLearningEnabled;
+  final bool voiceCommonLearningOptIn;
   final String preferredMapProvider;
   final String countryCode;
   final String localeCode;
@@ -106,6 +116,8 @@ class UserSettingsModel {
     int? departureSafetyMarginMin,
     String? travelMode,
     bool? voiceAutoStart,
+    bool? voiceCorrectionLearningEnabled,
+    bool? voiceCommonLearningOptIn,
     String? preferredMapProvider,
     String? countryCode,
     String? localeCode,
@@ -130,6 +142,10 @@ class UserSettingsModel {
           departureSafetyMarginMin ?? this.departureSafetyMarginMin,
       travelMode: travelMode ?? this.travelMode,
       voiceAutoStart: voiceAutoStart ?? this.voiceAutoStart,
+      voiceCorrectionLearningEnabled:
+          voiceCorrectionLearningEnabled ?? this.voiceCorrectionLearningEnabled,
+      voiceCommonLearningOptIn:
+          voiceCommonLearningOptIn ?? this.voiceCommonLearningOptIn,
       preferredMapProvider: preferredMapProvider ?? this.preferredMapProvider,
       countryCode: countryCode ?? this.countryCode,
       localeCode: localeCode ?? this.localeCode,
@@ -157,6 +173,8 @@ class UserSettingsModel {
       'departure_safety_margin_min': departureSafetyMarginMin,
       'travel_mode': _travelModeValue(travelMode),
       'voice_auto_start': voiceAutoStart,
+      'voice_correction_learning_enabled': voiceCorrectionLearningEnabled,
+      'voice_common_learning_opt_in': voiceCommonLearningOptIn,
       'preferred_map_provider':
           _preferredMapProviderValue(preferredMapProvider),
       'country_code': _countryCodeValue(countryCode),

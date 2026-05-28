@@ -114,6 +114,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _departureSafetyMarginMin = 20;
   String _travelMode = 'car';
   bool _voiceAutoStart = false;
+  bool _voiceCorrectionLearningEnabled = true;
+  bool _voiceCommonLearningOptIn = false;
   bool _hideWidgetWeekends = false;
   String _preferredMapProvider = 'naver';
   String _countryCode = PlanFlowRegions.korea.countryCode;
@@ -1625,6 +1627,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         departureSafetyMarginMin: _departureSafetyMarginMin,
         travelMode: _travelMode,
         voiceAutoStart: _voiceAutoStart,
+        voiceCorrectionLearningEnabled: _voiceCorrectionLearningEnabled,
+        voiceCommonLearningOptIn: _voiceCommonLearningOptIn,
         preferredMapProvider: _preferredMapProvider,
         countryCode: _countryCode,
         localeCode: _localeCode,
@@ -1644,6 +1648,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         departureSafetyMarginMin: draft.departureSafetyMarginMin,
         travelMode: draft.travelMode,
         voiceAutoStart: draft.voiceAutoStart,
+        voiceCorrectionLearningEnabled: draft.voiceCorrectionLearningEnabled,
+        voiceCommonLearningOptIn: draft.voiceCommonLearningOptIn,
         preferredMapProvider: draft.preferredMapProvider,
         countryCode: draft.countryCode,
         localeCode: draft.localeCode,
@@ -2011,6 +2017,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _departureSafetyMarginMin = 20;
       _travelMode = 'car';
       _voiceAutoStart = false;
+      _voiceCorrectionLearningEnabled = true;
+      _voiceCommonLearningOptIn = false;
       _hideWidgetWeekends = false;
       _preferredMapProvider = 'naver';
       _countryCode = PlanFlowRegions.korea.countryCode;
@@ -2032,6 +2040,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _departureSafetyMarginMin = settings.departureSafetyMarginMin;
     _travelMode = settings.travelMode;
     _voiceAutoStart = settings.voiceAutoStart;
+    _voiceCorrectionLearningEnabled = settings.voiceCorrectionLearningEnabled;
+    _voiceCommonLearningOptIn = settings.voiceCommonLearningOptIn;
     _preferredMapProvider = settings.preferredMapProvider;
     final region = PlanFlowRegions.byLocaleAndTimeZone(
       countryCode: settings.countryCode,
@@ -2379,6 +2389,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     });
                     unawaited(_persistSettings());
                   },
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: '내 교정 학습 관리',
+                subtitle: '음성 입력과 일정 확인에서 직접 고친 패턴을 다음 입력에 참고합니다.',
+                child: Column(
+                  children: [
+                    SwitchListTile.adaptive(
+                      key: const ValueKey(
+                        'settings-voice-correction-learning-enabled',
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                      value: _voiceCorrectionLearningEnabled,
+                      activeThumbColor: PlanFlowColors.primary,
+                      activeTrackColor: PlanFlowColors.primaryFaint,
+                      title: const Text('내 교정 패턴 사용'),
+                      subtitle: const Text('내가 직접 수정한 표현만 내 계정에 저장해 참고합니다.'),
+                      onChanged: (value) {
+                        setState(() {
+                          _voiceCorrectionLearningEnabled = value;
+                          if (!value) {
+                            _voiceCommonLearningOptIn = false;
+                          }
+                        });
+                        unawaited(_persistSettings());
+                      },
+                    ),
+                    const Divider(height: 1),
+                    SwitchListTile.adaptive(
+                      key: const ValueKey(
+                        'settings-voice-common-learning-opt-in',
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                      value: _voiceCommonLearningOptIn,
+                      activeThumbColor: PlanFlowColors.primary,
+                      activeTrackColor: PlanFlowColors.primaryFaint,
+                      title: const Text('익명 공통 개선 참여'),
+                      subtitle:
+                          const Text('사람/장소/메모를 제외한 최소 패턴만 익명 후보로 사용합니다.'),
+                      onChanged: _voiceCorrectionLearningEnabled
+                          ? (value) {
+                              setState(() {
+                                _voiceCommonLearningOptIn = value;
+                              });
+                              unawaited(_persistSettings());
+                            }
+                          : null,
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),
