@@ -20,24 +20,42 @@ import 'services/event_prefetch_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = FlutterError.presentError;
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  await RemoteConfigService.initialize();
-  FirebaseAnalytics.instance;
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-    unawaited(FirebaseCrashlytics.instance.recordFlutterFatalError(details));
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint('Uncaught platform error: $error\n$stack');
-    unawaited(
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true),
-    );
-    return true;
-  };
+  runApp(const ProviderScope(child: PlanFlowApp()));
+  unawaited(_initializePlatformServices());
+}
 
+Future<void> _initializePlatformServices() async {
+  await _initializeFirebaseServices();
+  await _initializeNaverMap();
+  await _initializeSupabase();
+}
+
+Future<void> _initializeFirebaseServices() async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).timeout(const Duration(seconds: 8));
+    await RemoteConfigService.initialize();
+    FirebaseAnalytics.instance;
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      unawaited(FirebaseCrashlytics.instance.recordFlutterFatalError(details));
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      debugPrint('Uncaught platform error: $error\n$stack');
+      unawaited(
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true),
+      );
+      return true;
+    };
+  } catch (error) {
+    debugPrint('Firebase initialization skipped: $error');
+  }
+}
+
+Future<void> _initializeNaverMap() async {
   if (AppEnv.naverMapClientId.trim().isNotEmpty) {
     var naverMapAuthFailed = false;
     try {
@@ -57,6 +75,9 @@ Future<void> main() async {
       debugPrint('Naver Map initialization skipped: $error');
     }
   }
+}
+
+Future<void> _initializeSupabase() async {
   if (AppEnv.hasValidSupabaseConfig) {
     try {
       await Supabase.initialize(
@@ -89,7 +110,9 @@ Future<void> main() async {
       unawaited(const DailyCalendarSyncSchedulerService().scheduleDaily());
     } catch (error) {
       debugPrint('Supabase initialization skipped: $error');
+      authProvider.start();
     }
+  } else {
+    authProvider.start();
   }
-  runApp(const ProviderScope(child: PlanFlowApp()));
 }

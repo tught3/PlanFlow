@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
+import '../core/supabase_auth_options.dart';
 import '../services/auth_service.dart';
 import '../services/naver_calendar_permission_service.dart';
 
@@ -50,8 +51,15 @@ class AuthProvider extends ChangeNotifier {
 
   bool get isSignedIn => _userId != null;
   bool get isPasswordRecovery => _isPasswordRecovery;
-  bool get hasResolvedInitialSession =>
-      !AppEnv.isSupabaseReady || _hasResolvedInitialSession;
+  bool get hasResolvedInitialSession {
+    if (!AppEnv.hasValidSupabaseConfig) {
+      return true;
+    }
+    if (!AppEnv.isSupabaseReady && !_started) {
+      return false;
+    }
+    return _hasResolvedInitialSession;
+  }
 
   AuthSessionClient get _service =>
       _authService ??= _providedAuthService ?? AuthService();
@@ -83,6 +91,16 @@ class AuthProvider extends ChangeNotifier {
         unawaited(
           NaverCalendarPermissionService().captureCurrentProviderToken(),
         );
+      }
+      if (authState.event == AuthChangeEvent.signedOut &&
+          authState.session == null &&
+          !PlanFlowAuthLocalStorage.isSessionRemovalAllowed &&
+          isSignedIn) {
+        debugPrint(
+          'Auth signedOut ignored: explicitSignOut=false hasUser=true',
+        );
+        _markInitialSessionResolved();
+        return;
       }
       await _syncProfileAndApplyUser(service, authState.session?.user);
     }, onError: (Object error, StackTrace stackTrace) {

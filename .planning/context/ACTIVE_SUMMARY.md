@@ -1388,3 +1388,9 @@
 - Added Supabase schema/migration support for `voice_correction_rules`, authenticated read-only common correction rules, and user settings toggles for personal correction learning plus anonymous common improvement opt-in.
 - Voice input, confirm save, GPT schedule parsing, and settings management now connect to the correction learning service while avoiding full raw utterance storage in correction rule tables.
 - Verification passed: focused correction/repository/schema/settings/backup/voice/GPT/confirm tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and debug APK build. ADB install/run was skipped because no device was connected.
+
+## 2026-05-28 Auth Persistence And First Frame Splash
+- Supabase auth local storage now suppresses persisted-session deletion unless the app is inside an explicit sign-out guard, and AuthProvider ignores non-explicit transient `signedOut` events while a user is active.
+- App startup now calls `runApp` before Firebase/NaverMap/Supabase initialization, so the Flutter splash/loader can render immediately while platform services initialize in the background.
+- Splash screen background now uses the PlanFlow background color instead of white, reducing the visible white frame when launching from the app icon or 1x1 voice widget.
+- Verification passed: focused auth storage/provider tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:5555`, app launch, PID, and focused-window check.

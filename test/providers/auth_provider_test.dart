@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/supabase_auth_options.dart';
 import 'package:planflow/core/env.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/services/auth_service.dart';
@@ -163,6 +164,51 @@ void main() {
     expect(service.refreshCount, 1);
 
     provider.dispose();
+  });
+
+  test('ignores non-explicit signed out event while a user is active',
+      () async {
+    final service = _FakeAuthService(
+      currentSession: _session(userId: 'user-5', email: 'keep@example.com'),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.isSignedIn, isTrue);
+
+    service.emitSignedOut();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.isSignedIn, isTrue);
+    expect(provider.userId, 'user-5');
+
+    provider.dispose();
+    await service.dispose();
+  });
+
+  test('applies signed out event during explicit sign out', () async {
+    final service = _FakeAuthService(
+      currentSession: _session(userId: 'user-6', email: 'out@example.com'),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.isSignedIn, isTrue);
+
+    await PlanFlowAuthLocalStorage.runWithSessionRemovalAllowed(() async {
+      service.emitSignedOut();
+      await Future<void>.delayed(Duration.zero);
+    });
+
+    expect(provider.isSignedIn, isFalse);
+    expect(provider.userId, isNull);
+
+    provider.dispose();
+    await service.dispose();
   });
 
   test('uses social identity data when user email is empty', () async {
@@ -385,6 +431,14 @@ class _FakeAuthService implements AuthSessionClient {
     _currentUser = session.user;
     _controller.add(
       AuthState(AuthChangeEvent.tokenRefreshed, session),
+    );
+  }
+
+  void emitSignedOut() {
+    _currentSession = null;
+    _currentUser = null;
+    _controller.add(
+      const AuthState(AuthChangeEvent.signedOut, null),
     );
   }
 

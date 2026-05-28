@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/env.dart';
+import '../core/supabase_auth_options.dart';
 
 enum PlanFlowOAuthProvider {
   google,
@@ -212,7 +213,9 @@ class AuthService implements AuthSessionClient {
 
   @override
   Future<void> signOut() {
-    return _client.auth.signOut();
+    return PlanFlowAuthLocalStorage.runWithSessionRemovalAllowed(
+      _client.auth.signOut,
+    );
   }
 
   @override

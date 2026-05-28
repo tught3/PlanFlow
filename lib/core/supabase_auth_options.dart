@@ -18,6 +18,7 @@ class PlanFlowAuthLocalStorage extends LocalStorage {
 
   static const persistSessionKey = 'planflow:supabase_auth_session:v1';
   static const _secureSessionKey = 'planflow_supabase_auth_session_v1';
+  static bool _allowSessionRemoval = false;
 
   final String? legacyPersistSessionKey;
   final SharedPreferences? _preferencesOverride;
@@ -25,6 +26,20 @@ class PlanFlowAuthLocalStorage extends LocalStorage {
 
   late SharedPreferences _preferences;
   bool _initialized = false;
+
+  static bool get isSessionRemovalAllowed => _allowSessionRemoval;
+
+  static Future<T> runWithSessionRemovalAllowed<T>(
+    Future<T> Function() action,
+  ) async {
+    final previous = _allowSessionRemoval;
+    _allowSessionRemoval = true;
+    try {
+      return await action();
+    } finally {
+      _allowSessionRemoval = previous;
+    }
+  }
 
   static String legacyKeyForSupabaseUrl(String supabaseUrl) {
     final host = Uri.parse(supabaseUrl).host;
@@ -76,6 +91,13 @@ class PlanFlowAuthLocalStorage extends LocalStorage {
   @override
   Future<void> removePersistedSession() async {
     await _ensureInitialized();
+    if (!_allowSessionRemoval) {
+      debugPrint(
+        'PlanFlow auth session removal suppressed: explicitSignOut=false',
+      );
+      return;
+    }
+    debugPrint('PlanFlow auth session removal allowed: explicitSignOut=true');
     await _preferences.remove(persistSessionKey);
     final legacyKey = legacyPersistSessionKey;
     if (legacyKey != null && legacyKey.isNotEmpty) {
