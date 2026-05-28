@@ -363,6 +363,45 @@ void main() {
       expect(result['participants'], isEmpty);
     });
 
+    test('keeps name and PM title in action-recipient title', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '피엠한테 날짜 괜찮냐고 물어보기',
+                    'start_at': '2026-05-20T09:00:00.000',
+                    'location': null,
+                    'participants': <String>[],
+                    'targets': <String>[],
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 19, 9),
+      );
+
+      final result = await service.parseSchedule(
+        '김태형pm한테 날짜 괜찮냐고 물어보기',
+      );
+
+      expect(result['title'], '김태형 PM한테 날짜 괜찮냐고 물어보기');
+    });
+
     test('fallback parsing treats text after leading time cue as title content',
         () async {
       final client = MockClient((request) async {

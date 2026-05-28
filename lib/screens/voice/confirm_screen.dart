@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
-import '../../core/event_metadata.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
 import '../../core/responsive.dart';
@@ -202,8 +201,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   bool _isHydratingParsedSchedule = false;
   Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
   List<String> _pastSupplies = const <String>[];
-  List<String> _participants = const <String>[];
-  List<String> _targets = const <String>[];
   bool _detailsSectionInitiallyExpanded = false;
   Timer? _locationDebounce;
   String? _supplyErrorText;
@@ -238,8 +235,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _supplies = _stringListValue(
       widget.parsedSchedule['supplies'],
     ).map(_SupplyDraft.new).toList(growable: true);
-    _participants = _stringListValue(widget.parsedSchedule['participants']);
-    _targets = _stringListValue(widget.parsedSchedule['targets']);
     _preActions = _initialPreActions();
     _detailsSectionInitiallyExpanded =
         _supplies.isNotEmpty || _memoController.text.trim().isNotEmpty;
@@ -255,7 +250,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     );
     _isAllDay = widget.parsedSchedule['is_all_day'] == true;
     _isMultiDay = widget.parsedSchedule['is_multi_day'] == true;
-    _category = _categoryValue(widget.parsedSchedule['category']);
+    _category = '기타';
     _isCritical = widget.parsedSchedule['is_critical'] == true;
     _titleController.addListener(_markTitleEdited);
     _locationController.addListener(_markLocationEdited);
@@ -696,15 +691,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           _detailsSectionInitiallyExpanded = true;
         }
 
-        final participants = _stringListValue(parsed['participants']);
-        final targets = _stringListValue(parsed['targets']);
-        if (participants.isNotEmpty) {
-          _participants = participants;
-        }
-        if (targets.isNotEmpty) {
-          _targets = targets;
-        }
-
         final parsedPreActions = _preActionsFromValue(
           _smartPreparationAlarmValues(parsed),
         );
@@ -852,8 +838,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             .map((draft) => draft.titleController.text.trim())
             .where((item) => item.isNotEmpty),
       ),
-      participants: _participants,
-      targets: _targets,
+      participants: const <String>[],
+      targets: const <String>[],
       isCritical: _isCritical,
       recurrenceRule: _recurrenceSelection.toRRule(),
       isAllDay: _isAllDay,
@@ -1654,15 +1640,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     setState(() {
       _selectedAmbiguousPurpose = purpose;
       if (purpose == 'medical') {
-        _category = '건강';
         added = _addAutoPreAction('병원 준비사항 확인', 24) || added;
         added = _addAutoPreAction('금식/복약 안내 확인', 12) || added;
         added = _addAutoPreAction('신분증과 서류 챙기기', 3) || added;
       } else if (purpose == 'work') {
-        _category = '업무';
         added = _addAutoPreAction('이동시간과 출발 시간 확인', 2) || added;
       } else if (purpose == 'visit') {
-        _category = '개인';
         added = _addAutoPreAction('꽃이나 선물 챙기기', 3) || added;
       }
     });
@@ -1927,6 +1910,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                             !_recurrenceSelection.isNone,
                         initiallyExpandDetails: _shouldExpandDetailsSection,
                         initiallyExpandAlarm: _isCritical,
+                        initiallyExpandCriticalAlarm: _isCritical,
                         onLocationTextChanged: _handleLocationTextChanged,
                         onStartChanged: (value) {
                           setState(() {
@@ -2103,10 +2087,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   String? _emptyToNull(String value) {
     final text = value.trim();
     return text.isEmpty ? null : text;
-  }
-
-  String _categoryValue(Object? value) {
-    return PlanFlowEventCategories.normalize(value);
   }
 
   List<String> _stringListValue(Object? value) {

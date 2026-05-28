@@ -81,6 +81,13 @@ void main() {
     await tester.tap(find.text('알림 옵션'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
+      find.text('강한 알림'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('강한 알림'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
       find.text('강한 알림으로 예약'),
       160,
       scrollable: find.byType(Scrollable).first,
@@ -119,9 +126,10 @@ void main() {
     );
 
     final cases = <({String header, String revealed})>[
-      (header: '방문 목표 · 반복 설정', revealed: '반복 안 함'),
+      (header: '반복 설정', revealed: '반복 안 함'),
       (header: '설명 · 준비물', revealed: '준비물'),
-      (header: '알림 옵션', revealed: '강한 알림으로 예약'),
+      (header: '알림 옵션', revealed: '미리알림'),
+      (header: '강한 알림', revealed: '강한 알림으로 예약'),
     ];
 
     for (final item in cases) {

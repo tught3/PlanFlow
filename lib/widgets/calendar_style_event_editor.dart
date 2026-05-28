@@ -46,6 +46,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
     this.initiallyExpandClassification = false,
     this.initiallyExpandDetails = false,
     this.initiallyExpandAlarm = false,
+    this.initiallyExpandCriticalAlarm = false,
   });
 
   final TextEditingController titleController;
@@ -80,6 +81,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
   final bool initiallyExpandClassification;
   final bool initiallyExpandDetails;
   final bool initiallyExpandAlarm;
+  final bool initiallyExpandCriticalAlarm;
 
   @override
   State<CalendarStyleEventEditor> createState() =>
@@ -90,10 +92,12 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
   final GlobalKey _classificationSectionKey = GlobalKey();
   final GlobalKey _detailsSectionKey = GlobalKey();
   final GlobalKey _alarmSectionKey = GlobalKey();
+  final GlobalKey _criticalAlarmSectionKey = GlobalKey();
   CalendarDateTarget? _activeTarget;
   late bool _classificationExpanded;
   late bool _detailsExpanded;
   late bool _alarmExpanded;
+  late bool _criticalAlarmExpanded;
 
   @override
   void initState() {
@@ -101,6 +105,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
     _classificationExpanded = widget.initiallyExpandClassification;
     _detailsExpanded = widget.initiallyExpandDetails;
     _alarmExpanded = widget.initiallyExpandAlarm;
+    _criticalAlarmExpanded = widget.initiallyExpandCriticalAlarm;
   }
 
   @override
@@ -120,6 +125,11 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
         widget.initiallyExpandAlarm &&
         !_alarmExpanded) {
       _alarmExpanded = true;
+    }
+    if (!oldWidget.initiallyExpandCriticalAlarm &&
+        widget.initiallyExpandCriticalAlarm &&
+        !_criticalAlarmExpanded) {
+      _criticalAlarmExpanded = true;
     }
   }
 
@@ -326,10 +336,9 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
           const SizedBox(height: 10),
           _EditorSection(
             key: _classificationSectionKey,
-            icon: Icons.tune_outlined,
-            title: '방문 목표 · 반복 설정',
-            subtitle:
-                '${widget.category} · ${_recurrenceSummary(widget.recurrence)}',
+            icon: Icons.repeat_rounded,
+            title: '반복 설정',
+            subtitle: _recurrenceSummary(widget.recurrence),
             collapsible: true,
             expanded: _classificationExpanded,
             onExpansionChanged: (value) => _setExpandableSection(
@@ -340,18 +349,6 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: PlanFlowEventCategories.values.map((category) {
-                    return ChoiceChip(
-                      label: Text(category),
-                      selected: widget.category == category,
-                      onSelected: (_) => widget.onCategoryChanged(category),
-                    );
-                  }).toList(growable: false),
-                ),
-                const SizedBox(height: 12),
                 RecurrenceSelector(
                   value: widget.recurrence,
                   onChanged: widget.onRecurrenceChanged,
@@ -403,10 +400,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             key: _alarmSectionKey,
             icon: Icons.notifications_active_outlined,
             title: '알림 옵션',
-            subtitle: _alarmSummary(
-              widget.reminderOffset,
-              isCritical: widget.isCritical,
-            ),
+            subtitle: _alarmSummary(widget.reminderOffset),
             collapsible: true,
             expanded: _alarmExpanded,
             onExpansionChanged: (value) => _setExpandableSection(
@@ -422,42 +416,55 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                   onChanged: widget.onReminderChanged,
                   subtitle: '기본은 1시간 전입니다. 이 일정만 다르게 바꿀 수 있어요.',
                 ),
-                const SizedBox(height: 12),
-                SwitchListTile.adaptive(
-                  tileColor: widget.isCritical
-                      ? const Color(0xFFFFE3DD)
-                      : PlanFlowColors.surfaceFaint,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(
-                      color: widget.isCritical
-                          ? const Color(0xFFB42318)
-                          : PlanFlowColors.primaryFaint,
-                      width: widget.isCritical ? 1.2 : 0.5,
-                    ),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  title: const Text('강한 알림으로 예약'),
-                  subtitle: const Text(
-                    '미리알림 시간과 별개로 일정 시작 시점에 강한 진동과 전체 화면 알림을 시도합니다.',
-                  ),
-                  secondary: Icon(
-                    widget.isCritical
-                        ? Icons.priority_high_rounded
-                        : Icons.notifications_active_outlined,
-                    color: widget.isCritical
-                        ? const Color(0xFFB42318)
-                        : PlanFlowColors.textSecondary,
-                  ),
-                  activeThumbColor: const Color(0xFFB42318),
-                  activeTrackColor: const Color(0xFFFFC9BE),
-                  value: widget.isCritical,
-                  onChanged: widget.onCriticalChanged,
-                ),
               ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          _EditorSection(
+            key: _criticalAlarmSectionKey,
+            icon: Icons.priority_high_rounded,
+            title: '강한 알림',
+            subtitle: _criticalAlarmSummary(widget.isCritical),
+            collapsible: true,
+            expanded: _criticalAlarmExpanded,
+            onExpansionChanged: (value) => _setExpandableSection(
+              key: _criticalAlarmSectionKey,
+              expanded: value,
+              apply: () => _criticalAlarmExpanded = value,
+            ),
+            child: SwitchListTile.adaptive(
+              tileColor: widget.isCritical
+                  ? const Color(0xFFFFE3DD)
+                  : PlanFlowColors.surfaceFaint,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(
+                  color: widget.isCritical
+                      ? const Color(0xFFB42318)
+                      : PlanFlowColors.primaryFaint,
+                  width: widget.isCritical ? 1.2 : 0.5,
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 4,
+              ),
+              title: const Text('강한 알림으로 예약'),
+              subtitle: const Text(
+                '일정 시작 시점에 더 강한 소리와 진동으로 알려줍니다. 미리알림 시간과 별도로 동작합니다.',
+              ),
+              secondary: Icon(
+                widget.isCritical
+                    ? Icons.priority_high_rounded
+                    : Icons.notifications_active_outlined,
+                color: widget.isCritical
+                    ? const Color(0xFFB42318)
+                    : PlanFlowColors.textSecondary,
+              ),
+              activeThumbColor: const Color(0xFFB42318),
+              activeTrackColor: const Color(0xFFFFC9BE),
+              value: widget.isCritical,
+              onChanged: widget.onCriticalChanged,
             ),
           ),
         ],
@@ -589,9 +596,9 @@ String _recurrenceSummary(RecurrenceSelection value) {
   };
 }
 
-String _alarmSummary(Duration? offset, {required bool isCritical}) {
+String _alarmSummary(Duration? offset) {
   final minutes = offset?.inMinutes;
-  final reminder = switch (minutes) {
+  return switch (minutes) {
     null => '알림 없음',
     0 => '정시 알림',
     10 => '10분 전',
@@ -601,7 +608,10 @@ String _alarmSummary(Duration? offset, {required bool isCritical}) {
     _ when minutes % 60 == 0 => '${minutes ~/ 60}시간 전',
     _ => '$minutes분 전',
   };
-  return isCritical ? '$reminder · 강한 알림' : reminder;
+}
+
+String _criticalAlarmSummary(bool isCritical) {
+  return isCritical ? '켜짐 · 일정 시작 시 강하게 알림' : '꺼짐';
 }
 
 class _CalendarHeader extends StatelessWidget {

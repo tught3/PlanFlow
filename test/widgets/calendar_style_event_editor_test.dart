@@ -207,9 +207,9 @@ void main() {
     expect(find.text('미리알림'), findsNothing);
     expect(find.widgetWithText(TextFormField, '설명'), findsNothing);
 
-    await tester.tap(find.text('방문 목표 · 반복 설정'));
+    await tester.tap(find.text('반복 설정'));
     await tester.pumpAndSettle();
-    expect(find.text('업무'), findsWidgets);
+    expect(find.text('업무'), findsNothing);
     expect(find.text('반복'), findsOneWidget);
 
     await tester.ensureVisible(find.text('설명 · 준비물'));
@@ -223,6 +223,12 @@ void main() {
     await tester.tap(find.text('알림 옵션'));
     await tester.pumpAndSettle();
     expect(find.text('미리알림'), findsOneWidget);
+    expect(find.text('강한 알림으로 예약'), findsNothing);
+
+    await tester.ensureVisible(find.text('강한 알림'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('강한 알림'));
+    await tester.pumpAndSettle();
     expect(find.text('강한 알림으로 예약'), findsOneWidget);
   });
 

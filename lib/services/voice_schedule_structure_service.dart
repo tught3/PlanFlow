@@ -492,15 +492,58 @@ class VoiceScheduleStructureService {
   }
 
   String ensurePeopleInTitle(String title, String rawText) {
-    final normalizedTitle = normalizeSpacingForSchedule(title);
-    final people = extractPeopleFields(rawText)
-        .all
-        .where((person) => !normalizedTitle.contains(person))
-        .toList(growable: false);
+    final normalizedTitle = _preserveRoleRecipientInTitle(
+      normalizeSpacingForSchedule(title),
+      rawText,
+    );
+    final compactTitle =
+        normalizedTitle.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+    final people = extractPeopleFields(rawText).all.where((person) {
+      final compactPerson = person.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+      return !normalizedTitle.contains(person) &&
+          !compactTitle.contains(compactPerson);
+    }).toList(growable: false);
     if (people.isEmpty) {
       return normalizedTitle;
     }
     return normalizeSpacingForSchedule('${people.join(' ')} $normalizedTitle');
+  }
+
+  String _preserveRoleRecipientInTitle(String title, String rawText) {
+    var resolved = title;
+    final source = normalizeText(rawText, '');
+    final matches = RegExp(
+      r'([가-힣]{2,5})\s*(?:p\.?\s*m|피엠)\s*(한테|에게|께)',
+      caseSensitive: false,
+    ).allMatches(source);
+    for (final match in matches) {
+      final name = match.group(1)?.trim();
+      final particle = match.group(2)?.trim();
+      if (name == null ||
+          name.isEmpty ||
+          particle == null ||
+          particle.isEmpty ||
+          _isProbablyNonPerson(name)) {
+        continue;
+      }
+      final phrase = '$name PM$particle';
+      final orphan = RegExp(
+        r'(^|\s)(?:p\.?\s*m|피엠)\s*' + RegExp.escape(particle),
+        caseSensitive: false,
+      );
+      if (orphan.hasMatch(resolved)) {
+        final replacement = resolved.contains(name) ? 'PM$particle' : phrase;
+        resolved = resolved.replaceFirstMapped(
+          orphan,
+          (orphanMatch) => '${orphanMatch.group(1) ?? ''}$replacement',
+        );
+        continue;
+      }
+      if (!resolved.contains(name)) {
+        resolved = '$phrase $resolved';
+      }
+    }
+    return normalizeSpacingForSchedule(resolved);
   }
 
   String? normalizeScheduleLocation({

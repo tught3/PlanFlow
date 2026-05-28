@@ -90,6 +90,15 @@ void main() {
       expect(title, isNot(contains('모래')));
     });
 
+    test('restores name when title only kept PM recipient marker', () {
+      final title = service.normalizeParsedScheduleTitle(
+        '피엠한테 날짜 괜찮냐고 물어보기',
+        rawText: '김태형pm한테 날짜 괜찮냐고 물어보기',
+      );
+
+      expect(title, '김태형 PM한테 날짜 괜찮냐고 물어보기');
+    });
+
     test('classifies name-like particles into target and participants', () {
       final target = service.extractPeopleFields('민수한테 확인 전화');
       final participant = service.extractPeopleFields('수연이랑 병원 방문');

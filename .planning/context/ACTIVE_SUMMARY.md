@@ -1,5 +1,11 @@
 # ACTIVE SUMMARY
 
+## 2026-05-28 Voice Title Preservation And Editor Cleanup
+- Voice schedule parsing now preserves people/job-title phrases in titles, so inputs like `김태형pm한테 날짜 괜찮냐고 물어보기` keep the recipient in the saved title instead of moving/removing it through people fields.
+- Confirm and edit screens no longer expose category/visit-goal choice UI for new schedules; recurrence stays as its own section, and critical alarm is separated from reminder options.
+- Android all-day device calendar imports normalize holiday dates locally so `현충일` and `광복절` do not shift by one day, and Android 12+ launch splash now uses the PlanFlow-toned background/icon instead of a blank white launch frame.
+- Verification passed: focused voice/GPT/analysis, device calendar, editor widget, event edit, and confirm screen tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; update install/launch/PID check on `192.168.0.102:5555`.
+
 ## 2026-05-25 Email Verification UX And Account Deletion URL
 - Email sign-up now records a pending email-confirmation callback state, so confirmation-link failures no longer fall through to the social OAuth consent-cancel message.
 - Updated the sign-up success message to explain that already-registered emails may not receive another email and should use login or password reset.

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
 import 'external_event_import_classifier.dart';
@@ -139,14 +140,23 @@ class DeviceCalendarEvent {
     DeviceCalendarInfo? calendar,
   }) {
     final normalizedTitle = title?.trim();
+    final isAllDayEvent = allDay == true;
+    final normalizedStartAt =
+        isAllDayEvent ? _allDayDateToPlanFlowUtc(begin) : begin.toUtc();
+    final normalizedEndAt = isAllDayEvent
+        ? _normalizeAllDayEnd(
+            startAt: normalizedStartAt,
+            endAt: end,
+          )
+        : end?.toUtc();
     return EventModel(
       id: '',
       userId: userId,
       title: normalizedTitle == null || normalizedTitle.isEmpty
           ? '휴대폰 내부 캘린더 일정'
           : normalizedTitle,
-      startAt: begin.toUtc(),
-      endAt: end?.toUtc(),
+      startAt: normalizedStartAt,
+      endAt: normalizedEndAt,
       location: _blankToNull(location),
       memo: _blankToNull(description),
       supplies: const <String>[],
@@ -163,8 +173,38 @@ class DeviceCalendarEvent {
       externalCalendarId: 'android:$calendarId',
       externalUpdatedAt: externalUpdatedAt?.toUtc() ?? importedAt,
       lastSyncedAt: importedAt,
+      isAllDay: isAllDayEvent,
+      isMultiDay: isAllDayEvent &&
+          normalizedEndAt != null &&
+          planflowLocalDay(
+                  normalizedEndAt.subtract(const Duration(microseconds: 1)))
+              .isAfter(planflowLocalDay(normalizedStartAt)),
     );
   }
+}
+
+DateTime _allDayDateToPlanFlowUtc(DateTime value) {
+  final utc = value.toUtc();
+  if (utc.hour == 0 && utc.minute == 0 && utc.second == 0) {
+    return planflowSeoulDateTimeToUtc(DateTime(utc.year, utc.month, utc.day));
+  }
+  final local = planflowLocal(utc);
+  return planflowSeoulDateTimeToUtc(
+      DateTime(local.year, local.month, local.day));
+}
+
+DateTime? _normalizeAllDayEnd({
+  required DateTime startAt,
+  required DateTime? endAt,
+}) {
+  if (endAt == null) {
+    return startAt.add(const Duration(days: 1));
+  }
+  final normalizedEnd = _allDayDateToPlanFlowUtc(endAt);
+  if (normalizedEnd.isAfter(startAt)) {
+    return normalizedEnd;
+  }
+  return startAt.add(const Duration(days: 1));
 }
 
 abstract class DeviceCalendarGateway {

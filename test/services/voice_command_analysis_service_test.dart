@@ -409,6 +409,53 @@ void main() {
       expect(parsed['targets'], <String>['경탁이']);
     });
 
+    test('restores omitted name before PM recipient phrase', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'normalized_text': '김태형pm한테 날짜 괜찮냐고 물어보기',
+                    'intent': 'add',
+                    'confidence': 0.9,
+                    'uncertain_fields': <String>[],
+                    'schedule_fields': <String, dynamic>{
+                      'title': '피엠한테 날짜 괜찮냐고 물어보기',
+                      'start_at': '2026-05-20T09:00:00.000',
+                      'location': null,
+                      'participants': <String>[],
+                      'targets': <String>[],
+                      'supplies': <String>[],
+                      'pre_actions': <Map<String, dynamic>>[],
+                    },
+                    'requested_changes': <String>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      final service = VoiceCommandAnalysisService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 19, 9),
+      );
+
+      final result = await service.analyze(
+        '김태형pm한테 날짜 괜찮냐고 물어보기',
+        stage: VoiceCommandAnalysisStage.complete,
+        budget: VoiceAnalysisRequestBudget(maxAiRequests: 2),
+      );
+
+      expect(result.scheduleFields['title'], '김태형 PM한테 날짜 괜찮냐고 물어보기');
+    });
+
     test('keeps 경조사 title and removes time-only location from ai fields',
         () async {
       final client = MockClient((request) async {

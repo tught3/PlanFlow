@@ -96,6 +96,54 @@ void main() {
     expect(repository.upserted.single.isCritical, isTrue);
   });
 
+  test('imports Android all-day holidays on the same local date', () async {
+    final repository = _FakeEventRepository();
+    final service = DeviceCalendarService(
+      gateway: _FakeDeviceCalendarGateway(
+        calendars: [
+          {
+            'id': '7',
+            'displayName': '네이버 캘린더',
+            'accountName': 'tught3@naver.com',
+          },
+        ],
+        events: [
+          {
+            'eventId': 'memorial-day',
+            'calendarId': '7',
+            'title': '현충일',
+            'beginMillis': DateTime.utc(2026, 6, 6).millisecondsSinceEpoch,
+            'endMillis': DateTime.utc(2026, 6, 7).millisecondsSinceEpoch,
+            'allDay': true,
+          },
+          {
+            'eventId': 'liberation-day',
+            'calendarId': '7',
+            'title': '광복절',
+            'beginMillis': DateTime.utc(2026, 8, 15).millisecondsSinceEpoch,
+            'endMillis': DateTime.utc(2026, 8, 16).millisecondsSinceEpoch,
+            'allDay': true,
+          },
+        ],
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.importNaverEvents();
+
+    expect(result.status, DeviceCalendarImportStatus.imported);
+    final byTitle = <String, EventModel>{
+      for (final event in repository.upserted) event.title: event,
+    };
+    expect(byTitle['현충일']!.isAllDay, isTrue);
+    expect(byTitle['현충일']!.startAt, DateTime.utc(2026, 6, 5, 15));
+    expect(byTitle['현충일']!.endAt, DateTime.utc(2026, 6, 6, 15));
+    expect(byTitle['광복절']!.isAllDay, isTrue);
+    expect(byTitle['광복절']!.startAt, DateTime.utc(2026, 8, 14, 15));
+    expect(byTitle['광복절']!.endAt, DateTime.utc(2026, 8, 15, 15));
+  });
+
   test('links reflected device calendar duplicate instead of inserting',
       () async {
     final repository = _FakeEventRepository(
@@ -259,7 +307,7 @@ void main() {
 
   test('Android native device export keeps event-only policy', () {
     final nativeFile = File(
-      'android/app/src/main/kotlin/com/planflow/app/MainActivity.kt',
+      'android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt',
     );
     final source = nativeFile.readAsStringSync();
     final upsertStart = source.indexOf('private fun upsertDeviceCalendarEvent');

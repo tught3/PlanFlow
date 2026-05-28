@@ -1213,11 +1213,10 @@ Rules:
   travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies,
   participants, targets, is_critical, recurrence_rule, is_all_day,
   is_multi_day, category, pre_actions.
-- Keep person words such as "팀장님", "원장님", "교수님", "고객님", or named
-  contacts in title and also classify them into people fields when clear.
-- Use participants for people attached to the schedule, including
-  "랑/와/과/하고/함께/동행" expressions. Use targets only for action recipients
-  such as "께/한테/에게/보고/전화/전달/문의/확인".
+- Keep person words, names, job titles, and recipient particles in title.
+  Do not shorten "김태형 PM한테" to "PM한테" or move the person out of title.
+- participants and targets are compatibility fields only; leave them empty
+  unless the source explicitly needs legacy export metadata.
 - Example: "내일 오전 11시 팀장님 원주세브란스방문" -> schedule_fields.title
   "팀장님 원주세브란스 방문", participants ["팀장님"], targets [].
 - For edit, delete, and query intents, use target_event_hint and

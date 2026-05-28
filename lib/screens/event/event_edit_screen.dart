@@ -977,6 +977,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   locationLat: _locationLat,
                   locationLng: _locationLng,
                   memoMaxLines: 5,
+                  initiallyExpandClassification: !_recurrenceSelection.isNone,
+                  initiallyExpandCriticalAlarm: _critical,
                   titleValidator: (value) =>
                       (value == null || value.trim().isEmpty)
                           ? '제목을 입력해 주세요.'
