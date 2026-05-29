@@ -89,7 +89,9 @@ DateTime _calendarDisplayEndDay(DateTime startAt, DateTime endAt) {
       localEnd.microsecond == 0) {
     localEnd = localEnd.subtract(const Duration(microseconds: 1));
   }
-  return planflowLocalDay(localEnd);
+  // localEnd는 이미 로컬 시간이므로 planflowLocalDay (내부에서 planflowLocal 재호출)
+  // 대신 날짜 부분만 직접 추출하여 이중 timezone 변환 방지
+  return DateTime(localEnd.year, localEnd.month, localEnd.day);
 }
 
 @visibleForTesting
@@ -119,8 +121,11 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
     if (!startAt.isBefore(monthEnd) || eventEnd.isBefore(monthStart)) {
       continue;
     }
-    final firstDay =
-        startAt.isBefore(monthStart) ? monthStart : planflowLocalDay(startAt);
+    // startAt은 이미 planflowLocal() 결과이므로 planflowLocalDay(startAt) 대신
+    // 날짜 부분만 직접 추출 (이중 timezone 변환 방지)
+    final firstDay = startAt.isBefore(monthStart)
+        ? monthStart
+        : DateTime(startAt.year, startAt.month, startAt.day);
     final lastDay = !eventEnd.isBefore(monthEnd)
         ? monthEnd.subtract(const Duration(days: 1))
         : eventEndDay;

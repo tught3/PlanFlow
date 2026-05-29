@@ -782,15 +782,20 @@ List<EventModel> homeVisiblePastTodayEvents(Iterable<EventModel> pastEvents) {
     return const <EventModel>[];
   }
 
-  final latestStart = planflowLocal(sorted.last.startAt!);
-  return sorted.where((event) {
-    final localStart = planflowLocal(event.startAt!);
-    return localStart.year == latestStart.year &&
-        localStart.month == latestStart.month &&
-        localStart.day == latestStart.day &&
-        localStart.hour == latestStart.hour &&
-        localStart.minute == latestStart.minute;
-  }).toList(growable: false);
+  // 모든 이벤트의 로컬 시간을 한 번에 변환 (루프 내 반복 호출 방지)
+  final withLocal = sorted
+      .map((e) => (event: e, local: planflowLocal(e.startAt!)))
+      .toList(growable: false);
+  final latestStart = withLocal.last.local;
+  return withLocal
+      .where((e) =>
+          e.local.year == latestStart.year &&
+          e.local.month == latestStart.month &&
+          e.local.day == latestStart.day &&
+          e.local.hour == latestStart.hour &&
+          e.local.minute == latestStart.minute)
+      .map((e) => e.event)
+      .toList(growable: false);
 }
 
 class _HomeSectionHeader extends StatelessWidget {
