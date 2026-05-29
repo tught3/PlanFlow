@@ -18,7 +18,7 @@ import '../services/departure_alarm_service.dart';
 import '../services/external_calendar_sync_guide_service.dart';
 import '../l10n/app_l10n.dart';
 import 'calendar/calendar_screen.dart';
-import 'home_screen.dart';
+import 'home/home_screen.dart';
 import 'settings/settings_screen.dart';
 
 const _shellDestinations = <_ShellDestination>[
