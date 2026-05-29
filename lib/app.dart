@@ -32,6 +32,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   StreamSubscription<Uri?>? _homeWidgetClickSubscription;
   StreamSubscription<Uri>? _planFlowLinkSubscription;
   StreamSubscription<List<SharedMediaFile>>? _sharedIcsSubscription;
+  bool _reauthSnackBarShown = false;
   final AppLinks _appLinks = AppLinks();
   final OAuthCallbackHandler _oauthCallbackHandler = OAuthCallbackHandler();
   final CalendarAutoSyncService _calendarAutoSyncService =
@@ -46,6 +47,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void initState() {
     super.initState();
     _oauthCallbackHandler.start();
+    authProvider.addListener(_onAuthProviderChange);
     _lifecycleListener = AppLifecycleListener(
       onPause: () {
         unawaited(_syncCalendarInBackground());
@@ -123,8 +125,31 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     }
   }
 
+  void _onAuthProviderChange() {
+    if (authProvider.needsReauthentication &&
+        authProvider.hasAccountSnapshot &&
+        !_reauthSnackBarShown) {
+      _reauthSnackBarShown = true;
+      // 로그인 화면으로 강제 이동하지 않고, 앱 내에서 배너로 안내
+      AppFeedbackService.scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: const Text('세션이 만료되었어요. 설정에서 다시 로그인해 주세요.'),
+          action: SnackBarAction(
+            label: '재로그인',
+            onPressed: () => appRouter.go(AppRoutes.login),
+          ),
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    } else if (authProvider.isSignedIn) {
+      // 정상 로그인 복구 시 플래그 리셋
+      _reauthSnackBarShown = false;
+    }
+  }
+
   @override
   void dispose() {
+    authProvider.removeListener(_onAuthProviderChange);
     _homeWidgetClickSubscription?.cancel();
     _planFlowLinkSubscription?.cancel();
     _sharedIcsSubscription?.cancel();

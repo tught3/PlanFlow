@@ -51,7 +51,12 @@ final GoRouter appRouter = GoRouter(
     }
 
     if (!authProvider.isSignedIn && !isAuthPath) {
-      if (authProvider.sessionStatus == AuthSessionStatus.recovering) {
+      // recovering: 세션 복구 중 → 대기
+      // reauthRequired + hasAccountSnapshot: 이전 로그인 계정 있음, 토큰만 만료
+      //   → 로그인 화면 강제 전환 금지. 앱 내 배너로 안내.
+      if (authProvider.sessionStatus == AuthSessionStatus.recovering ||
+          (authProvider.sessionStatus == AuthSessionStatus.reauthRequired &&
+              authProvider.hasAccountSnapshot)) {
         return null;
       }
       return AppRoutes.login;
