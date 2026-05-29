@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,15 +41,15 @@ void main() {
     );
 
     await tester.ensureVisible(find.text('설명 · 준비물'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.text('설명 · 준비물'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('스마트 준비 알람 1'), findsOneWidget);
 
     await tester.ensureVisible(find.widgetWithText(TextButton, '추가'));
     await tester.tap(find.widgetWithText(TextButton, '추가'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('스마트 준비 알람 2'), findsOneWidget);
   });
@@ -127,7 +127,7 @@ void main() {
 
     await tester.ensureVisible(find.text('일정 저장'));
     await tester.tap(find.text('일정 저장'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(repository.createdEvents, hasLength(1));
     expect(
@@ -155,7 +155,7 @@ void main() {
 
     await tester.ensureVisible(find.text('일정 저장'));
     await tester.tap(find.text('일정 저장'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('로그인 상태를 다시 확인해 주세요.'), findsOneWidget);
   });
@@ -195,7 +195,7 @@ void main() {
 
     await tester.ensureVisible(find.text('일정 저장'));
     await tester.tap(find.text('일정 저장'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('일정이 겹쳐요'), findsOneWidget);
     expect(find.text('겹치는 일정'), findsOneWidget);
@@ -204,7 +204,7 @@ void main() {
     expect(find.text('계속 저장'), findsOneWidget);
 
     await tester.tap(find.text('중단'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(repository.createdEvents, hasLength(1));
     expect(find.text('일정이 겹쳐요'), findsNothing);
@@ -390,7 +390,7 @@ void main() {
 
     await tester.ensureVisible(find.text('일정 저장'));
     await tester.tap(find.text('일정 저장'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     final saved = repository.createdEvents.single;
     expect(saved.location, '원주집');
@@ -452,7 +452,7 @@ void main() {
         'parse_failed': false,
       },
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(tester.widget<TextFormField>(titleField).controller?.text, '사용자 제목');
     expect(
@@ -514,7 +514,7 @@ void main() {
     );
 
     await tester.ensureVisible(find.text('설명 · 준비물'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     await tester.ensureVisible(find.text('물'));
 
@@ -543,7 +543,7 @@ void main() {
     );
 
     await tester.ensureVisible(find.text('설명 · 준비물'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     await tester.ensureVisible(find.text('일정 목적을 선택해 주세요'));
 
@@ -553,7 +553,7 @@ void main() {
     expect(find.text('병문안'), findsOneWidget);
 
     await tester.tap(find.text('병문안'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('꽃이나 선물 챙기기'), findsOneWidget);
     expect(find.text('병원 준비사항 확인'), findsNothing);

@@ -35,6 +35,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
     this.onLocationTextChanged,
     this.titleValidator,
     this.isLookingUpLocation = false,
+    this.isSearchingLocation = false,
     this.locationLat,
     this.locationLng,
     this.extraAfterLocation,
@@ -70,6 +71,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
   final ValueChanged<String>? onLocationTextChanged;
   final FormFieldValidator<String>? titleValidator;
   final bool isLookingUpLocation;
+  final bool isSearchingLocation;
   final double? locationLat;
   final double? locationLng;
   final Widget? extraAfterLocation;
@@ -323,6 +325,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                       child: LocationResolutionStatus(
                         hasLocationText: hasLocationText,
                         isResolved: isResolved,
+                        isSearching: widget.isSearchingLocation,
                         onResolve: widget.isLookingUpLocation
                             ? null
                             : widget.onLocationPick,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/widgets/calendar_style_event_editor.dart';
+import 'package:planflow/widgets/location_resolution_status.dart';
 import 'package:planflow/widgets/recurrence_selector.dart';
 
 void main() {
@@ -193,6 +194,26 @@ void main() {
     expect(find.text('지도 지정'), findsNothing);
   });
 
+  testWidgets('location status shows searching state while resolving',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LocationResolutionStatus(
+            hasLocationText: true,
+            isResolved: false,
+            isSearching: true,
+            onResolve: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('위치 찾는 중'), findsOneWidget);
+    expect(find.text('지도 위치를 검색하고 있어요.'), findsOneWidget);
+    expect(find.text('지도 지정'), findsNothing);
+  });
+
   testWidgets('less-used editor sections start collapsed and expand on tap',
       (tester) async {
     await tester.pumpWidget(
@@ -310,6 +331,7 @@ class _TestHost extends StatelessWidget {
             onReminderChanged: (_) {},
             onCriticalChanged: (_) {},
             onLocationPick: () {},
+            isSearchingLocation: false,
           ),
         ),
       ),

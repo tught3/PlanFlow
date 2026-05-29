@@ -75,6 +75,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   EventModel? _loadedEvent;
   bool _isLoading = false;
   bool _isSaving = false;
+  bool _isLookingUpLocation = false;
 
   bool get _isNewEvent => _loadedEvent == null && _resolvedEventId == null;
 
@@ -144,6 +145,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _isLookingUpLocation = true;
+      });
+    }
     try {
       final origin = await _permissionService.getCurrentLocationWithPermission(
         requestIfMissing: false,
@@ -173,6 +179,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
       debugPrint(
           'EventEditScreen save-time location resolution failed: $error');
       debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLookingUpLocation = false;
+        });
+      }
     }
   }
 
@@ -1033,6 +1045,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   onCriticalChanged: _handleCriticalChanged,
                   onLocationTextChanged: _handleLocationTextChanged,
                   onLocationPick: _pickLocationOnMap,
+                  isSearchingLocation: _isLookingUpLocation,
                   extraAfterMemo: TextFormField(
                     controller: _suppliesController,
                     textInputAction: TextInputAction.done,

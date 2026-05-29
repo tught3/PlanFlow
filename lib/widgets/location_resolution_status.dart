@@ -7,11 +7,13 @@ class LocationResolutionStatus extends StatelessWidget {
     super.key,
     required this.hasLocationText,
     required this.isResolved,
+    required this.isSearching,
     this.onResolve,
   });
 
   final bool hasLocationText;
   final bool isResolved;
+  final bool isSearching;
   final VoidCallback? onResolve;
 
   @override
@@ -21,19 +23,38 @@ class LocationResolutionStatus extends StatelessWidget {
     }
 
     final theme = Theme.of(context);
-    final statusColor =
-        isResolved ? const Color(0xFF2E7D32) : const Color(0xFFB54708);
-    final backgroundColor =
-        isResolved ? const Color(0xFFEAF7EF) : const Color(0xFFFFF4E5);
-    final borderColor =
-        isResolved ? const Color(0xFF9BD5AA) : const Color(0xFFF6C27A);
-    final icon = isResolved
-        ? Icons.check_circle_outline
-        : Icons.location_searching_outlined;
-    final title = isResolved ? '지도 위치 연결됨' : '지도 위치 미지정';
-    final body = isResolved
-        ? '스마트준비알람이 이 좌표로 이동시간을 계산합니다.'
-        : '장소명만 저장된 상태예요. 스마트준비알람이 부정확할 수 있으니 지도에서 위치를 지정해 주세요.';
+    final resolvedState = isResolved && !isSearching;
+    final searchingState = isSearching && !resolvedState;
+    final statusColor = searchingState
+        ? const Color(0xFF1565C0)
+        : resolvedState
+            ? const Color(0xFF2E7D32)
+            : const Color(0xFFB54708);
+    final backgroundColor = searchingState
+        ? const Color(0xFFE3F2FD)
+        : resolvedState
+            ? const Color(0xFFEAF7EF)
+            : const Color(0xFFFFF4E5);
+    final borderColor = searchingState
+        ? const Color(0xFF90CAF9)
+        : resolvedState
+            ? const Color(0xFF9BD5AA)
+            : const Color(0xFFF6C27A);
+    final icon = searchingState
+        ? Icons.sync_outlined
+        : resolvedState
+            ? Icons.check_circle_outline
+            : Icons.location_searching_outlined;
+    final title = searchingState
+        ? '위치 찾는 중'
+        : resolvedState
+            ? '지도 위치 연결됨'
+            : '지도 위치 미지정';
+    final body = searchingState
+        ? '지도 위치를 검색하고 있어요.'
+        : resolvedState
+            ? '스마트준비알람이 이 좌표로 이동시간을 계산합니다.'
+            : '장소명만 저장된 상태예요. 스마트준비알람이 부정확할 수 있으니 지도에서 위치를 지정해 주세요.';
 
     return Container(
       width: double.infinity,
@@ -46,7 +67,17 @@ class LocationResolutionStatus extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: statusColor),
+          if (searchingState)
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+              ),
+            )
+          else
+            Icon(icon, size: 20, color: statusColor),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -69,7 +100,7 @@ class LocationResolutionStatus extends StatelessWidget {
               ],
             ),
           ),
-          if (!isResolved && onResolve != null) ...[
+          if (!resolvedState && !searchingState && onResolve != null) ...[
             const SizedBox(width: 8),
             TextButton(
               onPressed: onResolve,

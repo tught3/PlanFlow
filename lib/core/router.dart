@@ -51,6 +51,9 @@ final GoRouter appRouter = GoRouter(
     }
 
     if (!authProvider.isSignedIn && !isAuthPath) {
+      if (authProvider.sessionStatus == AuthSessionStatus.recovering) {
+        return null;
+      }
       return AppRoutes.login;
     }
 

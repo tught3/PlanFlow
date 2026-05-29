@@ -489,6 +489,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _isLookingUpLocation = true;
+      });
+    }
     try {
       final origin = await _permissionService.getCurrentLocationWithPermission(
         requestIfMissing: false,
@@ -523,6 +528,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       );
     } catch (error) {
       debugPrint('ConfirmScreen automatic location resolution failed: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLookingUpLocation = false;
+        });
+      }
     }
   }
 
@@ -534,6 +545,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _isLookingUpLocation = true;
+      });
+    }
     try {
       final origin = await _permissionService.getCurrentLocationWithPermission(
         requestIfMissing: false,
@@ -569,6 +585,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       debugPrint('ConfirmScreen save-time location resolution failed: $error');
     } finally {
       _isApplyingHydration = false;
+      if (mounted) {
+        setState(() {
+          _isLookingUpLocation = false;
+        });
+      }
     }
   }
 
@@ -1903,6 +1924,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         reminderOffset: _reminderOffset,
                         isCritical: _isCritical,
                         isLookingUpLocation: _isLookingUpLocation,
+                        isSearchingLocation: _isLookingUpLocation,
                         locationLat: _locationLat,
                         locationLng: _locationLng,
                         locationHelperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',

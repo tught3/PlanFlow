@@ -288,22 +288,28 @@ class LocationLookupService {
     void Function(LocationLookupException error) onAuthError,
   ) async {
     searchedQueries.add(query);
-    try {
-      results.addAll(await _searchTmap(query, origin: origin));
-    } on LocationLookupException catch (error) {
-      onAuthError(error);
-    }
-
-    try {
-      results.addAll(await _searchNaver(query));
-    } on LocationLookupException catch (error) {
-      onAuthError(error);
-    }
-
-    try {
-      results.addAll(await _searchGoogle(query));
-    } on LocationLookupException catch (error) {
-      onAuthError(error);
+    final rawResults = await Future.wait<List<LocationLookupResult>>([
+      _searchTmap(query, origin: origin).catchError((Object error, _) {
+        if (error is LocationLookupException) {
+          onAuthError(error);
+        }
+        return const <LocationLookupResult>[];
+      }),
+      _searchNaver(query).catchError((Object error, _) {
+        if (error is LocationLookupException) {
+          onAuthError(error);
+        }
+        return const <LocationLookupResult>[];
+      }),
+      _searchGoogle(query).catchError((Object error, _) {
+        if (error is LocationLookupException) {
+          onAuthError(error);
+        }
+        return const <LocationLookupResult>[];
+      }),
+    ]);
+    for (final providerResults in rawResults) {
+      results.addAll(providerResults);
     }
   }
 

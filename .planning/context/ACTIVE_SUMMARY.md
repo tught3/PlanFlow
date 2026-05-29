@@ -1425,3 +1425,8 @@
 - Hardened `VoiceInputScreen` with listen-session generations and finish-state guards so partial/final callbacks from an old listen are ignored after 완료, manual edit, cancel, back navigation, tab changes, or route transitions.
 - Native Android STT now snapshots text at stop time, ignores partial/results after user-requested stop, and Dart detaches native handlers after stop fallback completion so late microphone callbacks cannot append complaint speech to the next command.
 - Verification passed: `test/screens/voice_input_screen_test.dart`, `test/services/stt_service_test.dart`, `test/app_home_widget_route_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install/launch on the only connected ADB device `emulator-5554`, and direct `planflow://voice-launcher` intent delivery to `MainActivity`.
+
+## 2026-05-29 Recovering Redirect And Location Resolution State
+- Router now treats `AuthSessionStatus.recovering` as a non-redirecting intermediate state so save-time session sync no longer bounces the user to the login screen.
+- Location lookup now queries TMap/Naver/Google in parallel and location resolution status renders three states: unresolved, searching, and resolved, with the searching state exposed in both confirm and event edit flows.
+- Verification passed: `test/widgets/calendar_style_event_editor_test.dart`, `test/screens/event_edit_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and update install/launch on `192.168.0.102:5555`. `test/screens/confirm_screen_test.dart` still has preexisting `pumpAndSettle` timeout cases unrelated to the code compiled here.

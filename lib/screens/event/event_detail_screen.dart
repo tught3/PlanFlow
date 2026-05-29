@@ -535,6 +535,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       child: LocationResolutionStatus(
                         hasLocationText: true,
                         isResolved: event.hasResolvedLocation,
+                        isSearching: false,
                         onResolve: event.hasResolvedLocation
                             ? null
                             : () => context.push(
