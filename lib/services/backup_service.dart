@@ -240,7 +240,7 @@ class BackupService {
   }
 
   String _requireUserId() {
-    final userId = _client.auth.currentUser?.id;
+    final userId = _client.auth.currentSession?.user.id;
     if (userId == null || userId.isEmpty) {
       throw const BackupAuthRequiredException();
     }

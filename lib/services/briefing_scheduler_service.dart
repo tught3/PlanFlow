@@ -252,8 +252,8 @@ class BriefingSchedulerService {
         return result;
       }
 
-      if (resolvedUserId == null) {
-        const message = 'PlanFlow 브리핑을 위해 로그인 상태 확인이 필요합니다. 앱을 한 번 열어 주세요.';
+      if (resolvedUserId == null || !_hasActiveSessionForServerQueries()) {
+        const message = '일정을 확인하려면 로그인 세션을 다시 확인해 주세요.';
         await _deliverBriefing(
           message,
           isMorning: isMorning,
@@ -261,8 +261,8 @@ class BriefingSchedulerService {
         const result = BriefingExecutionResult(
           delivered: true,
           usedFallback: true,
-          message: '로그인이 필요하다는 안내를 재생했습니다.',
-          failureReason: 'signed_out',
+          message: '로그인 세션 재확인이 필요하다는 안내를 재생했습니다.',
+          failureReason: 'session_reauth_required',
         );
         await _recordExecutionStatus(isMorning: isMorning, result: result);
         return result;
@@ -746,13 +746,24 @@ class BriefingSchedulerService {
 
     try {
       final currentUserId =
-          Supabase.instance.client.auth.currentUser?.id.trim();
+          Supabase.instance.client.auth.currentSession?.user.id.trim();
       if (currentUserId != null && currentUserId.isNotEmpty) {
         return currentUserId;
       }
     } catch (_) {}
 
     return null;
+  }
+
+  bool _hasActiveSessionForServerQueries() {
+    if (_eventRepository != null) {
+      return true;
+    }
+    try {
+      return Supabase.instance.client.auth.currentSession != null;
+    } catch (_) {
+      return false;
+    }
   }
 
   DateTime _nextOccurrence(String timeString) {

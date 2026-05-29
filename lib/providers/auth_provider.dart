@@ -10,6 +10,14 @@ import '../services/naver_calendar_permission_service.dart';
 
 final AuthProvider authProvider = AuthProvider();
 
+enum AuthSessionStatus {
+  unresolved,
+  recovering,
+  active,
+  reauthRequired,
+  signedOut,
+}
+
 class AuthProvider extends ChangeNotifier {
   AuthProvider({
     AuthSessionClient? authService,
@@ -29,12 +37,19 @@ class AuthProvider extends ChangeNotifier {
   bool _started = false;
   bool _hasResolvedInitialSession = false;
   Future<void>? _refreshInFlight;
+  AuthSessionStatus _sessionStatus = AuthSessionStatus.unresolved;
 
   String? get userId => _userId;
   String? get email => _email;
   String? get displayName => _displayName;
   String? get provider => _provider;
   String? get accountIdentifier => _accountIdentifier;
+  AuthSessionStatus get sessionStatus => _sessionStatus;
+  bool get hasAccountSnapshot => _userId != null;
+  bool get hasActiveSession =>
+      _sessionStatus == AuthSessionStatus.active && _userId != null;
+  bool get needsReauthentication =>
+      _sessionStatus == AuthSessionStatus.reauthRequired;
   bool get socialAccountInfoIncomplete => _socialAccountInfoIncomplete;
   bool get isNaverAccount => _providerKey == 'naver';
   String get accountDisplayName =>
@@ -49,7 +64,7 @@ class AuthProvider extends ChangeNotifier {
     };
   }
 
-  bool get isSignedIn => _userId != null;
+  bool get isSignedIn => hasActiveSession;
   bool get isPasswordRecovery => _isPasswordRecovery;
   bool get hasResolvedInitialSession {
     if (!AppEnv.hasValidSupabaseConfig) {
@@ -70,6 +85,7 @@ class AuthProvider extends ChangeNotifier {
     }
     _started = true;
     if (!AppEnv.isSupabaseReady) {
+      _setSessionStatus(AuthSessionStatus.signedOut, notify: false);
       _hasResolvedInitialSession = true;
       notifyListeners();
       return;
@@ -95,14 +111,21 @@ class AuthProvider extends ChangeNotifier {
       if (authState.event == AuthChangeEvent.signedOut &&
           authState.session == null &&
           !PlanFlowAuthLocalStorage.isSessionRemovalAllowed &&
-          isSignedIn) {
+          hasAccountSnapshot) {
         debugPrint(
-          'Auth signedOut ignored: explicitSignOut=false hasUser=true',
+          'Auth signedOut recover: explicitSignOut=false hasSnapshot=true',
         );
-        _markInitialSessionResolved();
+        _setSessionStatus(AuthSessionStatus.recovering);
+        unawaited(syncCurrentSession());
         return;
       }
-      await _syncProfileAndApplyUser(service, authState.session?.user);
+      await _syncProfileAndApplyUser(
+        service,
+        authState.session?.user,
+        sessionStatus: authState.session != null
+            ? AuthSessionStatus.active
+            : AuthSessionStatus.signedOut,
+      );
     }, onError: (Object error, StackTrace stackTrace) {
       debugPrint('Auth state listener error: $error');
     });
@@ -114,8 +137,10 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
     final service = _service;
-    final snapshotUser = service.currentSession?.user ?? service.currentUser;
-    final hadSignedInUser = isSignedIn;
+    final snapshotSession = service.currentSession;
+    final snapshotUser = snapshotSession?.user ?? service.currentUser;
+    final hadAccountSnapshot = hasAccountSnapshot;
+    _setSessionStatus(AuthSessionStatus.recovering);
     unawaited(
       NaverCalendarPermissionService().captureCurrentProviderToken(),
     );
@@ -123,29 +148,69 @@ class AuthProvider extends ChangeNotifier {
       await _refreshSessionOnce(service);
     } catch (error) {
       debugPrint('Session refresh skipped: $error');
-      if (snapshotUser != null) {
+      if (snapshotSession != null && snapshotUser != null) {
         await _syncProfileAndApplyUser(
           service,
           snapshotUser,
+          sessionStatus: AuthSessionStatus.active,
           resolvesInitialSession: true,
         );
         return true;
       }
-      if (hadSignedInUser) {
-        _markInitialSessionResolved();
-        return true;
+      final fallbackUser = snapshotUser;
+      if (fallbackUser != null) {
+        await _syncProfileAndApplyUser(
+          service,
+          fallbackUser,
+          sessionStatus: AuthSessionStatus.reauthRequired,
+          resolvesInitialSession: true,
+        );
+        return false;
       }
+      if (hadAccountSnapshot) {
+        _markReauthRequired(resolvesInitialSession: true);
+        return false;
+      }
+    }
+    final activeUser = service.currentSession?.user;
+    if (activeUser != null) {
+      await _syncProfileAndApplyUser(
+        service,
+        activeUser,
+        sessionStatus: AuthSessionStatus.active,
+        resolvesInitialSession: true,
+      );
+      return true;
+    }
+    final fallbackUser = service.currentUser ?? snapshotUser;
+    if (fallbackUser != null) {
+      await _syncProfileAndApplyUser(
+        service,
+        fallbackUser,
+        sessionStatus: AuthSessionStatus.reauthRequired,
+        resolvesInitialSession: true,
+      );
+      return false;
+    }
+    if (hadAccountSnapshot) {
+      _markReauthRequired(resolvesInitialSession: true);
+      return false;
     }
     await _syncProfileAndApplyUser(
       service,
-      service.currentSession?.user ?? service.currentUser ?? snapshotUser,
+      null,
+      sessionStatus: AuthSessionStatus.signedOut,
       resolvesInitialSession: true,
     );
-    return isSignedIn;
+    return false;
   }
 
   void setUser(String? userId) {
     _userId = userId;
+    _setSessionStatus(
+      userId == null ? AuthSessionStatus.signedOut : AuthSessionStatus.active,
+      notify: false,
+    );
     notifyListeners();
   }
 
@@ -173,6 +238,27 @@ class AuthProvider extends ChangeNotifier {
     _accountIdentifier = _accountIdentifierFrom(user);
     _socialAccountInfoIncomplete = _isSocialAccountInfoIncomplete(user);
     _logSocialAccountDiagnostics(user);
+    notifyListeners();
+  }
+
+  void _setSessionStatus(
+    AuthSessionStatus status, {
+    bool notify = true,
+  }) {
+    if (_sessionStatus == status) {
+      return;
+    }
+    _sessionStatus = status;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  void _markReauthRequired({bool resolvesInitialSession = false}) {
+    _setSessionStatus(AuthSessionStatus.reauthRequired, notify: false);
+    if (resolvesInitialSession) {
+      _hasResolvedInitialSession = true;
+    }
     notifyListeners();
   }
 
@@ -347,9 +433,11 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _syncProfileAndApplyUser(
     AuthSessionClient service,
     User? user, {
+    required AuthSessionStatus sessionStatus,
     bool resolvesInitialSession = false,
   }) async {
     if (user == null) {
+      _setSessionStatus(sessionStatus, notify: false);
       _applyUser(null);
       if (resolvesInitialSession) {
         _markInitialSessionResolved();
@@ -357,6 +445,7 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
 
+    _setSessionStatus(sessionStatus, notify: false);
     _applyUser(user);
     try {
       await service.ensureProfile(user);
@@ -398,9 +487,23 @@ class AuthProvider extends ChangeNotifier {
         'errorType=${error.runtimeType}',
       );
     }
+    final activeUser = service.currentSession?.user;
+    if (activeUser != null) {
+      await _syncProfileAndApplyUser(
+        service,
+        activeUser,
+        sessionStatus: AuthSessionStatus.active,
+        resolvesInitialSession: true,
+      );
+      return;
+    }
+    final fallbackUser = service.currentUser ?? snapshotUser;
     await _syncProfileAndApplyUser(
       service,
-      service.currentSession?.user ?? service.currentUser ?? snapshotUser,
+      fallbackUser,
+      sessionStatus: fallbackUser != null
+          ? AuthSessionStatus.reauthRequired
+          : AuthSessionStatus.signedOut,
       resolvesInitialSession: true,
     );
   }

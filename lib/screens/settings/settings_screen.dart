@@ -1802,11 +1802,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return current;
   }
 
+  String _backupAuthRequiredMessage({
+    bool list = false,
+    bool restore = false,
+  }) {
+    if (authProvider.needsReauthentication || authProvider.hasAccountSnapshot) {
+      if (list) {
+        return '로그인 세션을 다시 확인해야 백업 목록을 불러올 수 있습니다. 다시 로그인해 주세요.';
+      }
+      if (restore) {
+        return '로그인 세션을 다시 확인해야 백업을 복원할 수 있습니다. 다시 로그인해 주세요.';
+      }
+      return '로그인 세션을 다시 확인해야 백업할 수 있습니다. 다시 로그인해 주세요.';
+    }
+    if (list) {
+      return '로그인 후 백업 목록을 불러올 수 있습니다.';
+    }
+    if (restore) {
+      return '로그인 후 백업을 복원할 수 있습니다.';
+    }
+    return '로그인 후 백업할 수 있습니다.';
+  }
+
   Future<bool> _loadBackups({bool showSignedOutMessage = true}) async {
     final backupService = _backupService;
     if (backupService == null || !authProvider.isSignedIn) {
       if (showSignedOutMessage && mounted) {
-        _showSnack('로그인 후 백업 목록을 불러올 수 있습니다.');
+        _showSnack(_backupAuthRequiredMessage(list: true));
       }
       return false;
     }
@@ -1824,7 +1846,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return true;
     } on BackupAuthRequiredException {
       if (mounted) {
-        _showSnack('로그인 후 백업 목록을 불러올 수 있습니다.');
+        _showSnack(_backupAuthRequiredMessage(list: true));
       }
       return false;
     } on BackupSchemaException catch (error) {
@@ -1870,7 +1892,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _createBackup() async {
     final backupService = _backupService;
     if (backupService == null || !authProvider.isSignedIn) {
-      _showSnack('로그인 후 백업할 수 있습니다.');
+      _showSnack(_backupAuthRequiredMessage());
       return;
     }
     setState(() {
@@ -1881,7 +1903,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _loadBackups();
       _showSnack('백업 완료: ${backup.totalItems}개 항목을 저장했습니다.');
     } on BackupAuthRequiredException {
-      _showSnack('로그인 후 백업할 수 있습니다.');
+      _showSnack(_backupAuthRequiredMessage());
     } on BackupSchemaException catch (error) {
       _showSnack(error.message);
     } catch (error, stackTrace) {
@@ -1928,7 +1950,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await backupService.restoreBackup(backup.id);
       _showSnack('백업을 복원했습니다.');
     } on BackupAuthRequiredException {
-      _showSnack('로그인 후 백업을 복원할 수 있습니다.');
+      _showSnack(_backupAuthRequiredMessage(restore: true));
     } on BackupSchemaException catch (error) {
       _showSnack(error.message);
     } catch (error, stackTrace) {
@@ -1947,7 +1969,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _showBackupRestoreDialog() async {
     final backupService = _backupService;
     if (backupService == null || !authProvider.isSignedIn) {
-      _showSnack('로그인 후 백업을 복원할 수 있습니다.');
+      _showSnack(_backupAuthRequiredMessage(restore: true));
       return;
     }
     if (!_isLoadingBackups && _backups.isEmpty) {

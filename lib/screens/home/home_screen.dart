@@ -128,7 +128,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _handleEventRefresh() {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final userId = Supabase.instance.client.auth.currentSession?.user.id;
     EventPrefetchService().invalidate(userId: userId);
     _loadTodayEvents();
     if (widget.loadHeaderSummary) {
@@ -371,13 +371,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (overrideUserId != null && overrideUserId.isNotEmpty) {
       return overrideUserId;
     }
-    return Supabase.instance.client.auth.currentUser?.id;
+    return Supabase.instance.client.auth.currentSession?.user.id;
   }
 
   Future<void> _playBriefing({required bool isMorning}) async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = Supabase.instance.client.auth.currentSession?.user;
     if (user == null) {
-      _showSnack('로그인 후 브리핑을 들을 수 있습니다.');
+      _showSnack('일정을 확인하려면 로그인 세션을 다시 확인해 주세요.');
       return;
     }
     if (_isPlayingMorningBriefing || _isPlayingEveningBriefing) {

@@ -1413,3 +1413,9 @@
 - Root cause on `192.168.0.105:5555`: Android/app_links received `planflow://auth-callback?code=...`, but `OAuthCallbackHandler.start()` had returned early before Supabase initialization, so the app never processed the Google callback.
 - OAuth callback listening now starts as soon as valid Supabase config exists, even before Supabase is fully initialized; actual callback handling waits briefly for Supabase readiness before exchanging the session.
 - Verification passed: `scripts/flutter-local.ps1 test test/services/oauth_callback_handler_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, debug APK build, update install and launch on `192.168.0.105:5555`, and ADB Google login retry showed `OAuth callback observed`, `OAuth callback exchange completed`, and `AuthChangeEvent.signedIn`.
+
+## 2026-05-29 Active Auth Session Guard And Portrait Lock
+- AuthProvider now separates cached account snapshots from active Supabase sessions, so Settings can show account identity while server-backed features require a real `currentSession`.
+- Home, briefing, and backup flows now block server reads without an active session and show session recheck guidance instead of pretending there are no schedules or no backups.
+- MainActivity is portrait-locked with `android:screenOrientation="portrait"` so repeated build/install updates do not leave the phone orientation unlocked.
+- Verification passed: auth provider, Supabase auth storage, briefing scheduler, and settings focused tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; update install and launch on `192.168.0.102:5555`; installed package reports `versionCode=3`, `versionName=1.1.0`.

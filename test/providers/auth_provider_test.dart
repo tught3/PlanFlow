@@ -119,6 +119,31 @@ void main() {
     await service.dispose();
   });
 
+  test('marks cached user without active session as needing reauth', () async {
+    final service = _FakeAuthService(
+      currentSession: null,
+      currentUser: _user(userId: 'cached-user', email: 'cached@example.com'),
+      refreshError: const AuthException(
+        'invalid refresh token',
+        statusCode: '401',
+      ),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.hasResolvedInitialSession, isTrue);
+    expect(provider.hasAccountSnapshot, isTrue);
+    expect(provider.hasActiveSession, isFalse);
+    expect(provider.needsReauthentication, isTrue);
+    expect(provider.isSignedIn, isFalse);
+    expect(provider.accountDisplayName, 'cached@example.com');
+
+    provider.dispose();
+    await service.dispose();
+  });
+
   test('shows provider label when social account has no email', () async {
     final service = _FakeAuthService(
       currentSession: _session(
@@ -166,7 +191,8 @@ void main() {
     provider.dispose();
   });
 
-  test('ignores non-explicit signed out event while a user is active',
+  test(
+      'non-explicit signed out event requires reauth when recovery has no session',
       () async {
     final service = _FakeAuthService(
       currentSession: _session(userId: 'user-5', email: 'keep@example.com'),
@@ -181,7 +207,11 @@ void main() {
     service.emitSignedOut();
     await Future<void>.delayed(Duration.zero);
 
-    expect(provider.isSignedIn, isTrue);
+    await service.pendingRefreshCompleter?.future;
+
+    expect(provider.isSignedIn, isFalse);
+    expect(provider.hasAccountSnapshot, isTrue);
+    expect(provider.needsReauthentication, isTrue);
     expect(provider.userId, 'user-5');
 
     provider.dispose();
@@ -359,15 +389,11 @@ Session _session({
   },
   List<UserIdentity>? identities,
 }) {
-  final user = User(
-    id: userId,
-    appMetadata: <String, dynamic>{'provider': provider},
-    userMetadata: userMetadata,
-    aud: 'authenticated',
+  final user = _user(
+    userId: userId,
     email: email,
-    createdAt: '2026-05-19T00:00:00Z',
-    role: 'authenticated',
-    updatedAt: '2026-05-19T00:00:00Z',
+    provider: provider,
+    userMetadata: userMetadata,
     identities: identities,
   );
 
@@ -379,13 +405,36 @@ Session _session({
   );
 }
 
+User _user({
+  required String userId,
+  required String? email,
+  String provider = 'email',
+  Map<String, dynamic> userMetadata = const <String, dynamic>{
+    'name': 'Test User',
+  },
+  List<UserIdentity>? identities,
+}) {
+  return User(
+    id: userId,
+    appMetadata: <String, dynamic>{'provider': provider},
+    userMetadata: userMetadata,
+    aud: 'authenticated',
+    email: email,
+    createdAt: '2026-05-19T00:00:00Z',
+    role: 'authenticated',
+    updatedAt: '2026-05-19T00:00:00Z',
+    identities: identities,
+  );
+}
+
 class _FakeAuthService implements AuthSessionClient {
   _FakeAuthService({
     required Session? currentSession,
+    User? currentUser,
     this.refreshError,
     this.refreshCompleter,
   })  : _currentSession = currentSession,
-        _currentUser = currentSession?.user;
+        _currentUser = currentSession?.user ?? currentUser;
 
   final AuthException? refreshError;
   final Completer<void>? refreshCompleter;
@@ -395,6 +444,7 @@ class _FakeAuthService implements AuthSessionClient {
   User? _currentUser;
   int refreshCount = 0;
   final Completer<void> firstRefreshStarted = Completer<void>();
+  Completer<void>? pendingRefreshCompleter;
 
   @override
   Session? get currentSession => _currentSession;
@@ -411,10 +461,13 @@ class _FakeAuthService implements AuthSessionClient {
     if (!firstRefreshStarted.isCompleted) {
       firstRefreshStarted.complete();
     }
+    pendingRefreshCompleter = Completer<void>();
     await refreshCompleter?.future;
     if (refreshError != null) {
+      pendingRefreshCompleter?.complete();
       throw refreshError!;
     }
+    pendingRefreshCompleter?.complete();
   }
 
   @override
