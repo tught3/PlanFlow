@@ -261,15 +261,15 @@ Future<GeoPoint?>? _startInitialMapCenterLoad(
 Future<String> _loadPreferredMapProvider() async {
   final userId = authProvider.userId;
   if (!AppEnv.isSupabaseReady || userId == null || userId.isEmpty) {
-    return AppEnv.googleMapsApiKey.trim().isNotEmpty ? 'google' : 'naver';
+    return AppEnv.naverMapClientId.trim().isNotEmpty ? 'naver' : 'google';
   }
   try {
     final settings = await SettingsRepository.supabase().fetchSettings(userId);
     return _normalizePreferredMapProvider(settings?.preferredMapProvider) ??
-        (AppEnv.googleMapsApiKey.trim().isNotEmpty ? 'google' : 'naver');
+        (AppEnv.naverMapClientId.trim().isNotEmpty ? 'naver' : 'google');
   } catch (error) {
     debugPrint('Preferred map provider load skipped: $error');
-    return AppEnv.googleMapsApiKey.trim().isNotEmpty ? 'google' : 'naver';
+    return AppEnv.naverMapClientId.trim().isNotEmpty ? 'naver' : 'google';
   }
 }
 
@@ -284,9 +284,11 @@ String? _normalizePreferredMapProvider(String? value) {
 LocationPickerInAppMapProvider? _inAppMapProviderFor(String provider) {
   return switch (provider) {
     'google' => LocationPickerInAppMapProvider.google,
-    'naver' => AppEnv.googleMapsApiKey.trim().isNotEmpty
-        ? LocationPickerInAppMapProvider.google
-        : LocationPickerInAppMapProvider.naver,
+    'naver' => AppEnv.isNaverMapReady
+        ? LocationPickerInAppMapProvider.naver
+        : AppEnv.googleMapsApiKey.trim().isNotEmpty
+            ? LocationPickerInAppMapProvider.google
+            : LocationPickerInAppMapProvider.naver,
     _ => null,
   };
 }

@@ -1,5 +1,10 @@
 # ACTIVE SUMMARY
 
+## 2026-05-29 Naver-First Map Preference Follow-up
+- Location pick flow now prefers Naver when `NAVER_MAP_CLIENT_ID` is present, and the in-app map view falls back to Google only if Naver has not finished initializing or cannot be used.
+- The location picker guidance remains on the candidate list when map tiles are unavailable, so users can still choose a place even if the current map provider fails.
+- Verification passed: focused `test/screens/location_picker_screen_test.dart` and runtime config checks confirming `NAVER_MAP_CLIENT_ID` is present and Naver map initialization is wired in `main.dart`.
+
 ## 2026-05-28 Voice Title Preservation And Editor Cleanup
 - Voice schedule parsing now preserves people/job-title phrases in titles, so inputs like `김태형pm한테 날짜 괜찮냐고 물어보기` keep the recipient in the saved title instead of moving/removing it through people fields.
 - Confirm and edit screens no longer expose category/visit-goal choice UI for new schedules; recurrence stays as its own section, and critical alarm is separated from reminder options.
