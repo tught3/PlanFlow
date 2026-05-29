@@ -255,7 +255,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('지도 화면이 아직 열리지 않았어요.'), findsAtLeastNWidgets(1));
+    expect(find.textContaining('지도를 불러올 수 없어요.'), findsAtLeastNWidgets(1));
     expect(find.text('이 위치 사용'), findsOneWidget);
     expect(find.text('서울역'), findsWidgets);
     expect(find.text('Google 지도'), findsOneWidget);

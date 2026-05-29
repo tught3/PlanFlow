@@ -334,8 +334,8 @@ class VoiceScheduleStructureService {
       source,
       preserveRelativeDayWords: preserveRelativeDayWords,
     );
-    final titleWithoutLocation = stripLeadingLocationPhrase(cleaned);
-    final structuredTitle = stripLeadingLocationPhrase(
+    final titleWithoutLocation = preserveLeadingLocationTitle(cleaned);
+    final structuredTitle = preserveLeadingLocationTitle(
       stripScheduleNoise(
         structure.titleCandidate,
         preserveRelativeDayWords: true,
@@ -358,7 +358,7 @@ class VoiceScheduleStructureService {
       );
     }
 
-    final fallback = stripLeadingLocationPhrase(
+    final fallback = preserveLeadingLocationTitle(
       stripScheduleNoise(
         rawText,
         preserveRelativeDayWords: preserveRelativeDayWords,
@@ -416,9 +416,9 @@ class VoiceScheduleStructureService {
         )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    title = stripLeadingLocationPhrase(title);
+    title = preserveLeadingLocationTitle(title);
 
-    final structuredTitle = stripLeadingLocationPhrase(
+    final structuredTitle = preserveLeadingLocationTitle(
       stripScheduleNoise(
         structure.titleCandidate,
         preserveRelativeDayWords: true,
@@ -708,7 +708,7 @@ class VoiceScheduleStructureService {
 
   String? extractLeadingLocation(String text) {
     final match = RegExp(
-      r'^([가-힣A-Za-z0-9·.]{2,})\s*(?:에서|에|로|으로)\s+(.+)$',
+      r'^([가-힣A-Za-z0-9·.]+(?:\s+[가-힣A-Za-z0-9·.]+){0,4})\s*(?:에서|에|로|으로)\s+(.+)$',
     ).firstMatch(text.trim());
     if (match == null) {
       return null;
@@ -726,9 +726,25 @@ class VoiceScheduleStructureService {
     return location;
   }
 
+  String preserveLeadingLocationTitle(String text) {
+    final normalized = text.trim();
+    if (normalized.isEmpty) {
+      return normalized;
+    }
+    final extractedLocation = extractLeadingLocation(normalized);
+    if (extractedLocation == null || extractedLocation.isEmpty) {
+      return stripLeadingLocationPhrase(normalized);
+    }
+    final stripped = stripLeadingLocationPhrase(normalized);
+    if (stripped == normalized || stripped.isEmpty) {
+      return normalizeSpacingForSchedule(normalized);
+    }
+    return normalizeSpacingForSchedule('$extractedLocation $stripped');
+  }
+
   String stripLeadingLocationPhrase(String text) {
     final match = RegExp(
-      r'^[가-힣A-Za-z0-9·.]{2,}\s*(?:에서|에|로|으로)\s+(.+)$',
+      r'^[가-힣A-Za-z0-9·.]+(?:\s+[가-힣A-Za-z0-9·.]+){0,4}\s*(?:에서|에|로|으로)\s+(.+)$',
     ).firstMatch(text.trim());
     if (match == null) {
       return text.trim();

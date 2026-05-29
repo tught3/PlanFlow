@@ -99,6 +99,23 @@ void main() {
       expect(title, '김태형 PM한테 날짜 괜찮냐고 물어보기');
     });
 
+    test('keeps leading place name in title when it was part of the request',
+        () {
+      const rawText = '강릉 건도리횟집에서 결제 사전기안';
+
+      final parsedTitle = service.normalizeParsedScheduleTitle(
+        '강릉 건도리횟집에서 결제 사전기안',
+        rawText: rawText,
+      );
+      final localTitle = service.normalizeLocalVoiceTitle(
+        rawText,
+        referenceText: rawText,
+      );
+
+      expect(parsedTitle, '강릉 건도리횟집 결제 사전기안');
+      expect(localTitle, '강릉 건도리횟집 결제 사전기안');
+    });
+
     test('classifies name-like particles into target and participants', () {
       final target = service.extractPeopleFields('민수한테 확인 전화');
       final participant = service.extractPeopleFields('수연이랑 병원 방문');

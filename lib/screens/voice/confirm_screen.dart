@@ -495,12 +495,18 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       });
     }
     try {
-      final origin = await _permissionService.getCurrentLocationWithPermission(
+      final gpsFuture =
+          _permissionService.getCurrentLocationWithPermission(
         requestIfMissing: false,
-      );
+      ).catchError((Object error, StackTrace stackTrace) {
+        debugPrint('ConfirmScreen background GPS lookup skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        return null;
+      });
+      unawaited(gpsFuture);
       final results = await widget.locationLookupService.search(
         query,
-        origin: origin,
+        origin: null,
       );
       if (!mounted ||
           _locationEditedByUser ||
@@ -551,12 +557,18 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       });
     }
     try {
-      final origin = await _permissionService.getCurrentLocationWithPermission(
+      final gpsFuture =
+          _permissionService.getCurrentLocationWithPermission(
         requestIfMissing: false,
-      );
+      ).catchError((Object error, StackTrace stackTrace) {
+        debugPrint('ConfirmScreen save-time GPS lookup skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        return null;
+      });
+      unawaited(gpsFuture);
       final results = await widget.locationLookupService.search(
         query,
-        origin: origin,
+        origin: null,
       );
       if (!mounted ||
           query != _locationController.text.trim() ||

@@ -347,7 +347,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     if (!hasController) {
       setState(() {
         _mapLoadMessage =
-            '지도 화면이 아직 열리지 않았어요. API 키 제한을 확인하거나 아래 장소 후보를 선택해 주세요.';
+            '지도를 불러올 수 없어요. 아래 후보 목록에서 장소를 선택해 주세요.';
         _mapRenderState = _MapRenderState.unavailable;
       });
     }
@@ -870,7 +870,7 @@ const String _missingMapMessage =
     '앱 안 지도를 열 수 없습니다.\n지도 API 키, 패키지명 제한, 인증 상태를 확인해 주세요.\n아래 장소 후보를 선택하거나 외부 지도에서 먼저 확인할 수 있어요.';
 
 const String _mapUnavailableTimeoutMessage =
-    '지도 화면이 아직 열리지 않았어요. SDK/키/권한 설정을 확인하고 아래 버튼으로 계속 진행해 주세요.';
+    '지도를 불러올 수 없어요. 아래 후보 목록에서 장소를 선택해 주세요.';
 
 enum _MapRenderState {
   loading,

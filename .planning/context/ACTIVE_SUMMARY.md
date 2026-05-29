@@ -1430,3 +1430,9 @@
 - Router now treats `AuthSessionStatus.recovering` as a non-redirecting intermediate state so save-time session sync no longer bounces the user to the login screen.
 - Location lookup now queries TMap/Naver/Google in parallel and location resolution status renders three states: unresolved, searching, and resolved, with the searching state exposed in both confirm and event edit flows.
 - Verification passed: `test/widgets/calendar_style_event_editor_test.dart`, `test/screens/event_edit_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, and update install/launch on `192.168.0.102:5555`. `test/screens/confirm_screen_test.dart` still has preexisting `pumpAndSettle` timeout cases unrelated to the code compiled here.
+
+## 2026-05-29 Location Lookup And Title Preservation Follow-up
+- Confirm and event edit no longer wait for GPS before starting geocoding; GPS lookup now runs in the background while place search starts immediately with `origin: null`.
+- Voice schedule title normalization now preserves leading place names such as `강릉 건도리횟집에서 ...` instead of stripping them away.
+- Location picker timeout copy now tells users to choose from the candidate list when the map cannot load.
+- Verification passed again: `test/services/voice_schedule_structure_service_test.dart`, `test/screens/location_picker_screen_test.dart`, `test/screens/confirm_screen_test.dart`, `test/screens/event_edit_screen_test.dart`, `test/widgets/calendar_style_event_editor_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, and update install/launch on `192.168.0.102:5555`.
