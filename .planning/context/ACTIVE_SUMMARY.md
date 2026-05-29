@@ -1,5 +1,9 @@
 # ACTIVE SUMMARY
 
+## 2026-05-29 Firebase Android Package Cleanup Follow-up
+- Removed the stale `com.planflow.app` client entry from `android/app/google-services.json` so the Firebase Android config now matches the current `com.fluxstudio.planflow` package only.
+- Re-verified the current location picker flow after the Naver-first preference change: focused `location_picker_screen_test.dart`, `flutter analyze`, debug APK build, and update/install/launch on `192.168.0.102:5555` all passed.
+
 ## 2026-05-29 Naver-First Map Preference Follow-up
 - Location pick flow now prefers Naver when `NAVER_MAP_CLIENT_ID` is present, and the in-app map view falls back to Google only if Naver has not finished initializing or cannot be used.
 - The location picker guidance remains on the candidate list when map tiles are unavailable, so users can still choose a place even if the current map provider fails.
