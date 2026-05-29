@@ -514,7 +514,13 @@ class AuthProvider extends ChangeNotifier {
       return inFlight;
     }
 
-    final refresh = service.refreshSession();
+    // 네트워크 지연 시 무한 대기 방지: 타임아웃 추가.
+    // 타임아웃 발생 시 TimeoutException이 throw되어 호출부 catch 블록에서 처리됨.
+    // _bootstrapInitialSession catch → _syncProfileAndApplyUser(resolvesInitialSession: true)
+    // 로 이어져 hasResolvedInitialSession = true가 보장됨.
+    final refresh = service.refreshSession().timeout(
+      const Duration(seconds: 10),
+    );
     _refreshInFlight = refresh;
     return refresh.whenComplete(() {
       if (identical(_refreshInFlight, refresh)) {
