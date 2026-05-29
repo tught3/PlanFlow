@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:home_widget/home_widget.dart';
@@ -29,7 +30,9 @@ class PlanFlowApp extends StatefulWidget {
 
 class _PlanFlowAppState extends State<PlanFlowApp> {
   StreamSubscription<Uri?>? _homeWidgetClickSubscription;
+  StreamSubscription<Uri>? _planFlowLinkSubscription;
   StreamSubscription<List<SharedMediaFile>>? _sharedIcsSubscription;
+  final AppLinks _appLinks = AppLinks();
   final OAuthCallbackHandler _oauthCallbackHandler = OAuthCallbackHandler();
   final CalendarAutoSyncService _calendarAutoSyncService =
       CalendarAutoSyncService();
@@ -57,6 +60,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     unawaited(_listenForSharedIcsFiles());
     unawaited(_notificationService.scheduleMonthlyNaverIcsReminder());
     _routeInitialHomeWidgetLaunch();
+    _listenForPlanFlowDeepLinks();
     _homeWidgetClickSubscription = HomeWidget.widgetClicked.listen(
       _handleHomeWidgetUri,
     );
@@ -122,6 +126,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   @override
   void dispose() {
     _homeWidgetClickSubscription?.cancel();
+    _planFlowLinkSubscription?.cancel();
     _sharedIcsSubscription?.cancel();
     unawaited(_oauthCallbackHandler.dispose());
     _lifecycleListener.dispose();
@@ -201,6 +206,28 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         _retryInitialHomeWidgetLaunchProbe(attempt: attempt + 1);
       }),
     );
+  }
+
+  void _listenForPlanFlowDeepLinks() {
+    _planFlowLinkSubscription = _appLinks.uriLinkStream.listen(
+      (uri) {
+        _handlePlanFlowDeepLink(uri);
+      },
+      onError: (Object error, stackTrace) {
+        debugPrint('PlanFlow deep link stream failed: $error');
+        debugPrintStack(stackTrace: stackTrace as StackTrace?);
+      },
+    );
+    unawaited(_appLinks.getInitialLink().then(_handlePlanFlowDeepLink));
+  }
+
+  void _handlePlanFlowDeepLink(Uri? uri) {
+    if (uri == null ||
+        uri.scheme != 'planflow' ||
+        uri.host == 'auth-callback') {
+      return;
+    }
+    _handleHomeWidgetUri(uri);
   }
 
   void _handleHomeWidgetUri(Uri? uri) {

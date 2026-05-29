@@ -81,6 +81,33 @@ void main() {
     );
   });
 
+  test('SttService stops and detaches native listen without late callbacks',
+      () async {
+    const nativeChannel = MethodChannel('planflow/native_stt');
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(nativeChannel, (call) async {
+      calls.add(call.method);
+      return null;
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(nativeChannel, null);
+    });
+
+    SttService.debugSeedNativeListenState(recognizedText: '내일 오전 회의');
+    final previousGeneration = SttService.debugActiveListenGeneration;
+
+    await const SttService().stopActiveListen();
+
+    expect(calls, contains('stop'));
+    expect(SttService.debugHasActiveListen, isFalse);
+    expect(
+      SttService.debugActiveListenGeneration,
+      greaterThan(previousGeneration),
+    );
+  });
+
   test('SttService detects local voice edit commands', () {
     expect(SttService.detectVoiceCommand('아니'), SttVoiceCommand.undoLastWord);
     expect(SttService.detectVoiceCommand('아니,'), SttVoiceCommand.undoLastWord);

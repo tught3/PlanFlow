@@ -633,18 +633,18 @@ class SttService {
         await _nativeSttChannel.invokeMethod<String>('stop');
       } catch (_) {}
       await Future<void>.delayed(const Duration(milliseconds: 350));
-      _completeActiveListenFromText();
+      _completeActiveListenFromText(detach: true);
       return;
     }
     final speech = _activeSpeech;
-    if (speech == null) {
+    if (speech == null && _activeCompleter == null) {
       return;
     }
-    if (speech.isListening) {
+    if (speech != null && speech.isListening) {
       await speech.stop();
     }
     await Future<void>.delayed(const Duration(milliseconds: 250));
-    _completeActiveListenFromText();
+    _completeActiveListenFromText(detach: true);
   }
 
   Future<void> cancelActiveListen() async {
@@ -984,9 +984,13 @@ class SttService {
     }
   }
 
-  static void _completeActiveListenFromText() {
+  static void _completeActiveListenFromText({bool detach = false}) {
     final completer = _activeCompleter;
     if (completer == null || completer.isCompleted) {
+      if (detach) {
+        _activeListenGeneration += 1;
+        _clearActiveListenState(clearHandler: true);
+      }
       return;
     }
     final normalized = _activeRecognizedText?.trim();
@@ -999,6 +1003,10 @@ class SttService {
       );
     } else {
       completer.complete(SttListenResult.success(normalized));
+    }
+    if (detach) {
+      _activeListenGeneration += 1;
+      _clearActiveListenState(clearHandler: true);
     }
   }
 
@@ -1210,7 +1218,7 @@ class SttService {
         case 'stopped':
           updateRecognizedText(eventText(call.arguments));
           commitActiveSession();
-          _completeActiveListenFromText();
+          _completeActiveListenFromText(detach: true);
           break;
         case 'cancelled':
           _completeActiveFailure(

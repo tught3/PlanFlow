@@ -62,7 +62,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   bool _hasSubmittedVoiceCommand = false;
   bool _isDisposing = false;
   bool _isExitingVoiceInput = false;
+  bool _isFinishingVoiceFlow = false;
   int _partialTranscriptToken = 0;
+  int _listenSessionGeneration = 0;
   int _draftPreparationToken = 0;
   Map<String, dynamic>? _preparedDraft;
   String? _preparedDraftSourceText;
@@ -89,6 +91,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   void dispose() {
     _isDisposing = true;
     _partialTranscriptToken++;
+    _listenSessionGeneration++;
     _draftPreparationDebounce?.cancel();
     _resetVoiceSessionState();
     if (!_isExitingVoiceInput) {
@@ -170,6 +173,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       return;
     }
 
+    final listenGeneration = ++_listenSessionGeneration;
     unawaited(AnalyticsService.logVoiceInputStarted());
     _clearPreparedDraft();
     if (!continueExisting) {
@@ -183,6 +187,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
     setState(() {
       _isListening = true;
+      _isFinishingVoiceFlow = false;
       _manualEditInterruptedListening = false;
       _didEditTranscriptManually = false;
       _recognizedText = null;
@@ -194,13 +199,19 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     try {
       final result = await widget.sttService.listen(
         onPartialResult: (text) {
-          if (!_isDisposing && !_didEditTranscriptManually) {
+          if (_isCurrentListenSession(listenGeneration) &&
+              !_isFinishingVoiceFlow &&
+              !_didEditTranscriptManually) {
             final token = ++_partialTranscriptToken;
-            unawaited(_applyNormalizedPartialTranscript(text, token));
+            unawaited(_applyNormalizedPartialTranscript(
+              text,
+              token,
+              listenGeneration,
+            ));
           }
         },
         onRestart: (count) {
-          if (!mounted || _isDisposing) {
+          if (!mounted || !_isCurrentListenSession(listenGeneration)) {
             return;
           }
           setState(() {
@@ -210,6 +221,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         },
       );
       if (!mounted || _isDisposing) {
+        return;
+      }
+      if (!_isCurrentListenSession(listenGeneration)) {
         return;
       }
 
@@ -244,7 +258,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
         });
         await Future<void>.delayed(const Duration(milliseconds: 650));
         if (!mounted ||
-            _isDisposing ||
+            !_isCurrentListenSession(listenGeneration) ||
             _rawTextController.text.trim().isNotEmpty ||
             _isListening) {
           return;
@@ -259,7 +273,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       });
       _focusManualInput();
     } catch (_) {
-      if (!mounted || _isDisposing) {
+      if (!mounted || !_isCurrentListenSession(listenGeneration)) {
         return;
       }
       unawaited(AnalyticsService.logVoiceInputFailed(reason: 'stt_exception'));
@@ -268,12 +282,17 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       });
       _focusManualInput();
     } finally {
-      if (mounted && !_isDisposing) {
+      if (mounted && _isCurrentListenSession(listenGeneration)) {
         setState(() {
           _isListening = false;
+          _isFinishingVoiceFlow = false;
         });
       }
     }
+  }
+
+  bool _isCurrentListenSession(int generation) {
+    return !_isDisposing && generation == _listenSessionGeneration;
   }
 
   bool _shouldRetryAutoStartedListen(SttListenResult result) {
@@ -316,6 +335,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
 
   Future<void> _finishVoiceFlow() async {
     if (_isListening) {
+      _isFinishingVoiceFlow = true;
+      _partialTranscriptToken++;
       await widget.sttService.stopActiveListen();
     }
   }
@@ -325,6 +346,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       _manualEditInterruptedListening = true;
       _didEditTranscriptManually = true;
       _partialTranscriptToken++;
+      _listenSessionGeneration++;
+      _isFinishingVoiceFlow = false;
       await widget.sttService.stopActiveListen();
       if (!mounted) {
         return;
@@ -341,6 +364,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (!_isListening) {
       return;
     }
+    _partialTranscriptToken++;
+    _listenSessionGeneration++;
+    _isFinishingVoiceFlow = false;
     await widget.sttService.cancelActiveListen();
     if (!mounted) {
       return;
@@ -355,6 +381,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     _listenPrefixText = '';
     _manualEditInterruptedListening = false;
     _didEditTranscriptManually = false;
+    _isFinishingVoiceFlow = false;
     _isSubmittingVoiceCommand = false;
     _hasSubmittedVoiceCommand = false;
     _lastSubmittedSignature = null;
@@ -371,6 +398,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     _isExitingVoiceInput = true;
     debugPrint('VoiceInput lifecycle=exit');
     _partialTranscriptToken++;
+    _listenSessionGeneration++;
     _draftPreparationDebounce?.cancel();
     if (mounted) {
       _clearPreparedDraft();
@@ -426,6 +454,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   void _resetTranscriptForFreshVoiceInput() {
     _listenPrefixText = '';
     _partialTranscriptToken++;
+    _listenSessionGeneration++;
     _lastSubmittedSignature = null;
     _hasSubmittedVoiceCommand = false;
     _isSubmittingVoiceCommand = false;
@@ -437,8 +466,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     _setTranscriptText('');
   }
 
-  Future<void> _applyNormalizedPartialTranscript(String text, int token) async {
-    if (_isDisposing || !_isListening || token != _partialTranscriptToken) {
+  Future<void> _applyNormalizedPartialTranscript(
+    String text,
+    int token,
+    int listenGeneration,
+  ) async {
+    if (!_isCurrentListenSession(listenGeneration) ||
+        !_isListening ||
+        _isFinishingVoiceFlow ||
+        token != _partialTranscriptToken) {
       return;
     }
 
@@ -457,13 +493,16 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       includeCancelCommands: true,
     );
 
-    if (!mounted || _isDisposing || token != _partialTranscriptToken) {
+    if (!mounted ||
+        !_isCurrentListenSession(listenGeneration) ||
+        _isFinishingVoiceFlow ||
+        token != _partialTranscriptToken) {
       return;
     }
 
     if (shouldCancel) {
       await _cancelVoiceFlow();
-      if (!mounted || _isDisposing || token != _partialTranscriptToken) {
+      if (!mounted) {
         return;
       }
       _listenPrefixText = '';
@@ -475,13 +514,19 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
     if (shouldClearAll) {
       _listenPrefixText = '';
       await _clearTranscript();
-      if (!mounted || _isDisposing || token != _partialTranscriptToken) {
+      if (!mounted ||
+          !_isCurrentListenSession(listenGeneration) ||
+          _isFinishingVoiceFlow ||
+          token != _partialTranscriptToken) {
         return;
       }
       return;
     }
 
-    if (_isDisposing || !_isListening || token != _partialTranscriptToken) {
+    if (!_isCurrentListenSession(listenGeneration) ||
+        !_isListening ||
+        _isFinishingVoiceFlow ||
+        token != _partialTranscriptToken) {
       return;
     }
     _setTranscriptText(

@@ -683,6 +683,7 @@ private class PlanFlowSttChannel(
     private var listening = false
     private var userRequestedStop = false
     private var latestPartialText = ""
+    private var stopSnapshotText = ""
     private var sessionId = 0
     private var restartAttempts = 0
     private var startGeneration = 0
@@ -696,6 +697,8 @@ private class PlanFlowSttChannel(
                 }
                 "stop" -> {
                     userRequestedStop = true
+                    stopSnapshotText = latestPartialText
+                    startGeneration += 1
                     recognizer?.stopListening()
                     result.success(latestPartialText)
                 }
@@ -737,6 +740,7 @@ private class PlanFlowSttChannel(
         listening = true
         userRequestedStop = false
         latestPartialText = ""
+        stopSnapshotText = ""
         restartAttempts = 0
         sessionId += 1
         startGeneration += 1
@@ -823,6 +827,7 @@ private class PlanFlowSttChannel(
     private fun cancel() {
         listening = false
         startGeneration += 1
+        stopSnapshotText = latestPartialText
         recognizer?.cancel()
         channel.invokeMethod(
             "cancelled",
@@ -852,7 +857,7 @@ private class PlanFlowSttChannel(
             listening = false
             channel.invokeMethod(
                 "stopped",
-                mapOf("text" to latestPartialText, "sessionId" to sessionId),
+                mapOf("text" to stopSnapshotText, "sessionId" to sessionId),
             )
             return
         }
@@ -863,19 +868,22 @@ private class PlanFlowSttChannel(
     }
 
     override fun onResults(results: Bundle?) {
-        publishText(results)
         if (userRequestedStop) {
             listening = false
             channel.invokeMethod(
                 "stopped",
-                mapOf("text" to latestPartialText, "sessionId" to sessionId),
+                mapOf("text" to stopSnapshotText, "sessionId" to sessionId),
             )
             return
         }
+        publishText(results)
         restartSoon()
     }
 
     override fun onPartialResults(partialResults: Bundle?) {
+        if (userRequestedStop) {
+            return
+        }
         publishText(partialResults)
     }
 }

@@ -1419,3 +1419,9 @@
 - Home, briefing, and backup flows now block server reads without an active session and show session recheck guidance instead of pretending there are no schedules or no backups.
 - MainActivity is portrait-locked with `android:screenOrientation="portrait"` so repeated build/install updates do not leave the phone orientation unlocked.
 - Verification passed: auth provider, Supabase auth storage, briefing scheduler, and settings focused tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; debug APK build; update install and launch on `192.168.0.102:5555`; installed package reports `versionCode=3`, `versionName=1.1.0`.
+
+## 2026-05-29 Voice Widget And STT Session Boundary
+- Added a direct `app_links` listener for non-auth `planflow://` links so `planflow://voice-launcher` can still route to `/voice?autoStart=1` when the home widget plugin initial URI probe misses or app startup routing races.
+- Hardened `VoiceInputScreen` with listen-session generations and finish-state guards so partial/final callbacks from an old listen are ignored after 완료, manual edit, cancel, back navigation, tab changes, or route transitions.
+- Native Android STT now snapshots text at stop time, ignores partial/results after user-requested stop, and Dart detaches native handlers after stop fallback completion so late microphone callbacks cannot append complaint speech to the next command.
+- Verification passed: `test/screens/voice_input_screen_test.dart`, `test/services/stt_service_test.dart`, `test/app_home_widget_route_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install/launch on the only connected ADB device `emulator-5554`, and direct `planflow://voice-launcher` intent delivery to `MainActivity`.

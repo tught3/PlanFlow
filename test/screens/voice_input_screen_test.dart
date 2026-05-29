@@ -1113,6 +1113,57 @@ void main() {
     expect(find.text('일정 확인'), findsOneWidget);
   });
 
+  testWidgets('완료 이후 늦게 도착한 partial은 제출 텍스트에 붙지 않는다', (tester) async {
+    final fakeStt = _FakeSttService();
+    Object? confirmExtra;
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) {
+            confirmExtra = state.extra;
+            return const Text(
+              '일정 확인',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => const Text(
+            '음성 관리 화면',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+    fakeStt.emitPartial('내일 오전 10시 정장집 방문');
+    await tester.pump();
+
+    await tester.tap(find.text('완료'));
+    fakeStt.emitPartial('이거 왜 이래');
+    await tester.pumpAndSettle();
+
+    expect(fakeStt.stopCalls, greaterThanOrEqualTo(1));
+    expect(find.text('일정 확인'), findsOneWidget);
+    expect(confirmExtra, isA<Map<String, dynamic>>());
+    final payload = confirmExtra! as Map<String, dynamic>;
+    expect(payload['raw_text'], contains('정장집 방문'));
+    expect(payload['raw_text'], isNot(contains('이거 왜 이래')));
+  });
+
   testWidgets('음성 입력 중 화면을 벗어나면 STT 세션을 취소한다', (tester) async {
     final fakeStt = _FakeSttService();
     final router = GoRouter(
