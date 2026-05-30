@@ -840,6 +840,8 @@ class _FakeHomeWidgetService extends HomeWidgetService {
         const <HomeWidgetListEventData>[],
     List<HomeWidgetListEventData> tomorrowEvents =
         const <HomeWidgetListEventData>[],
+    List<HomeWidgetListEventData> yesterdayEvents =
+        const <HomeWidgetListEventData>[],
     DateTime? month,
     List<HomeWidgetMonthDayData> monthDays = const <HomeWidgetMonthDayData>[],
     List<HomeWidgetMonthCellData> monthCells =
@@ -849,6 +851,9 @@ class _FakeHomeWidgetService extends HomeWidgetService {
     List<HomeWidgetMonthCellData> nextMonthCells =
         const <HomeWidgetMonthCellData>[],
     List<HomeWidgetWeekDayData> weekDays = const <HomeWidgetWeekDayData>[],
+    List<HomeWidgetWeekDayData> previousWeekDays =
+        const <HomeWidgetWeekDayData>[],
+    List<HomeWidgetWeekDayData> nextWeekDays = const <HomeWidgetWeekDayData>[],
     String widgetName = HomeWidgetService.defaultWidgetName,
     String? androidName,
     String? iOSName,

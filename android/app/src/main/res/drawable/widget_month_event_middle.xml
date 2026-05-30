@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 연속 일정 중간 셀: 직각 bar (이음새) -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#331F4168" />
+    <corners android:radius="0dp" />
+</shape>

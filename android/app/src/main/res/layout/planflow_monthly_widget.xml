@@ -18,31 +18,41 @@
             android:id="@+id/widget_month_today_button"
             style="@style/PlanFlowWidgetMonthNavChip"
             android:layout_width="38dp"
-            android:layout_height="28dp"
+            android:layout_height="32dp"
             android:text="오늘" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/widget_month_prev_button"
             style="@style/PlanFlowWidgetMonthNavButton"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="36dp"
+            android:layout_height="32dp"
             android:text="‹" />
 
         <TextView
             android:id="@+id/widget_month_title"
             style="@style/PlanFlowWidgetTitleText"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:minWidth="80dp"
             android:gravity="center"
-            tools:text="2026-05" />
+            tools:text="2026.05" />
 
         <TextView
             android:id="@+id/widget_month_next_button"
             style="@style/PlanFlowWidgetMonthNavButton"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="36dp"
+            android:layout_height="32dp"
             android:text="›" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/widget_month_voice_button"

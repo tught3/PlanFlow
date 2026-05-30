@@ -31,12 +31,20 @@ private const val ACTION_MONTH_PREVIOUS = "com.fluxstudio.planflow.widget.MONTH_
 private const val ACTION_MONTH_NEXT = "com.fluxstudio.planflow.widget.MONTH_NEXT"
 private const val ACTION_MONTH_TODAY = "com.fluxstudio.planflow.widget.MONTH_TODAY"
 private const val MONTH_WIDGET_OFFSET_KEY = "month_widget_offset"
+private const val ACTION_WEEK_PREVIOUS = "com.fluxstudio.planflow.widget.WEEK_PREVIOUS"
+private const val ACTION_WEEK_NEXT = "com.fluxstudio.planflow.widget.WEEK_NEXT"
+private const val ACTION_WEEK_TODAY = "com.fluxstudio.planflow.widget.WEEK_TODAY"
+private const val WEEK_WIDGET_OFFSET_KEY = "week_widget_offset"
+private const val ACTION_DAY_PREVIOUS = "com.fluxstudio.planflow.widget.DAY_PREVIOUS"
+private const val ACTION_DAY_NEXT = "com.fluxstudio.planflow.widget.DAY_NEXT"
+private const val ACTION_DAY_TODAY = "com.fluxstudio.planflow.widget.DAY_TODAY"
+private const val DAY_WIDGET_OFFSET_KEY = "day_widget_offset"
 private val PLANFLOW_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
 abstract class BasePlanFlowWidgetProvider(
     private val layoutId: Int,
 ) : HomeWidgetProvider() {
-    private val planFlowZone: ZoneId = ZoneId.of("Asia/Seoul")
+    protected val planFlowZone: ZoneId = ZoneId.of("Asia/Seoul")
 
     override fun onUpdate(
         context: Context,
@@ -177,8 +185,8 @@ abstract class BasePlanFlowWidgetProvider(
             val dateTime = Instant.parse(raw).atZone(planFlowZone)
             val time = DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA).format(dateTime)
             when (dateTime.toLocalDate()) {
-                todayDate().plusDays(1) -> "?댁씪 $time"
-                todayDate().plusDays(2) -> "紐⑤젅 $time"
+                todayDate().plusDays(1) -> "내일 $time"
+                todayDate().plusDays(2) -> "모레 $time"
                 else -> DateTimeFormatter.ofPattern("M/d HH:mm", Locale.KOREA).format(dateTime)
             }
         } catch (_: Exception) {
@@ -263,13 +271,17 @@ abstract class BasePlanFlowWidgetProvider(
         val dateTime = parseDateTime(startAt) ?: return ""
         val now = ZonedDateTime.now(planFlowZone)
         val minutes = Duration.between(now, dateTime).toMinutes()
-        if (minutes <= 0) {
-            return ""
+        return when {
+            minutes <= 0 -> ""
+            minutes < 60 -> "${minutes}\ubd84 \ud6c4"
+            minutes < 1440 -> "${minutes / 60}\uc2dc\uac04 \ud6c4"
+            minutes < 2880 -> "\ub0b4\uc77c"
+            minutes < 4320 -> "\ubaa8\ub808"
+            else -> "D-${minutes / 1440}\uc77c"
         }
-        return "D-${minutes}\ubd84"
     }
 
-    private fun parseDateTime(raw: String?): ZonedDateTime? {
+    protected fun parseDateTime(raw: String?): ZonedDateTime? {
         if (raw.isNullOrBlank()) {
             return null
         }
@@ -394,6 +406,27 @@ abstract class BasePlanFlowWidgetProvider(
             }
         }
     }
+
+    protected fun bindWeekAction(context: Context, views: RemoteViews, viewId: Int, action: String, providerClass: Class<*>) {
+        if (viewId == 0) return
+        val intent = Intent(context, providerClass).apply { this.action = action }
+        val pendingIntent = android.app.PendingIntent.getBroadcast(
+            context, action.hashCode(), intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+        )
+        views.setOnClickPendingIntent(viewId, pendingIntent)
+    }
+
+    protected fun bindDayAction(context: Context, views: RemoteViews, viewId: Int, action: String) {
+        if (viewId == 0) return
+        val intent = Intent(context, PlanFlowVerticalScheduleWidgetProvider::class.java).apply { this.action = action }
+        val pendingIntent = android.app.PendingIntent.getBroadcast(
+            context, action.hashCode(), intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+        )
+        views.setOnClickPendingIntent(viewId, pendingIntent)
+    }
+
 }
 
 class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_home_widget) {
@@ -402,39 +435,47 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        val title = widgetData.getString("next_event_title", null) ?: "\uc624\ub298 \uccab \uc77c\uc815"
-        val location = widgetData.getString("next_event_location", null) ?: "\uc74c\uc131\uc73c\ub85c \uc77c\uc815 \ucd94\uac00"
         val startAt = widgetData.getString("next_event_start_at", null)
-        val isCritical = widgetData.getBoolean("next_event_is_critical", false)
-        val travelMinutes = if (widgetData.contains("next_event_travel_buffer_minutes")) {
-            widgetData.getInt("next_event_travel_buffer_minutes", 0)
-        } else {
-            null
-        }
+        val isPast = startAt != null &&
+            (parseDateTime(startAt)?.isBefore(ZonedDateTime.now(planFlowZone)) == true)
 
-        views.setTextViewText(R.id.widget_title, title)
-        views.setTextViewText(R.id.widget_time, formatTime(startAt))
-        views.setTextViewText(R.id.widget_location, location)
-        bindTextIfNotEmpty(views, R.id.widget_travel_minutes, formatTravelMinutes(travelMinutes))
-        bindTextIfNotEmpty(views, R.id.widget_departure, formatDepartureTime(startAt, travelMinutes))
-        bindTextIfNotEmpty(views, R.id.widget_countdown, formatCountdown(startAt))
-
-        if (isCritical) {
-            views.setTextViewText(R.id.widget_badge, "\uc911\uc694 \uc77c\uc815")
-            views.setInt(
-                R.id.widget_badge,
-                "setBackgroundResource",
-                R.drawable.widget_critical_badge_background,
-            )
-            views.setTextColor(R.id.widget_badge, CRITICAL_TEXT_COLOR)
-        } else {
-            views.setTextViewText(R.id.widget_badge, "\uc624\ub298 \uc77c\uc815")
-            views.setInt(
-                R.id.widget_badge,
-                "setBackgroundResource",
-                R.drawable.widget_normal_badge_background,
-            )
+        if (isPast) {
+            views.setTextViewText(R.id.widget_title, "\uc608\uc815\ub41c \uc77c\uc815\uc774 \uc5c6\uc5b4\uc694")
+            views.setTextViewText(R.id.widget_badge, "\ub2e4\uc74c \uc77c\uc815")
+            views.setInt(R.id.widget_badge, "setBackgroundResource", R.drawable.widget_normal_badge_background)
             views.setTextColor(R.id.widget_badge, DEFAULT_TEXT_COLOR)
+            views.setViewVisibility(R.id.widget_time, View.GONE)
+            views.setViewVisibility(R.id.widget_location, View.GONE)
+            views.setViewVisibility(R.id.widget_travel_minutes, View.GONE)
+            views.setViewVisibility(R.id.widget_departure, View.GONE)
+            views.setViewVisibility(R.id.widget_countdown, View.GONE)
+        } else {
+            val title = widgetData.getString("next_event_title", null) ?: "\uc624\ub298 \uccab \uc77c\uc815"
+            val location = widgetData.getString("next_event_location", null)
+            val isCritical = widgetData.getBoolean("next_event_is_critical", false)
+            val travelMinutes = if (widgetData.contains("next_event_travel_buffer_minutes")) {
+                widgetData.getInt("next_event_travel_buffer_minutes", 0)
+            } else {
+                null
+            }
+
+            views.setTextViewText(R.id.widget_title, title)
+            views.setTextViewText(R.id.widget_time, formatTime(startAt))
+            views.setViewVisibility(R.id.widget_time, View.VISIBLE)
+            bindTextIfNotEmpty(views, R.id.widget_location, location ?: "")
+            bindTextIfNotEmpty(views, R.id.widget_travel_minutes, formatTravelMinutes(travelMinutes))
+            bindTextIfNotEmpty(views, R.id.widget_departure, formatDepartureTime(startAt, travelMinutes))
+            bindTextIfNotEmpty(views, R.id.widget_countdown, formatCountdown(startAt))
+
+            if (isCritical) {
+                views.setTextViewText(R.id.widget_badge, "\uc911\uc694 \uc77c\uc815")
+                views.setInt(R.id.widget_badge, "setBackgroundResource", R.drawable.widget_critical_badge_background)
+                views.setTextColor(R.id.widget_badge, CRITICAL_TEXT_COLOR)
+            } else {
+                views.setTextViewText(R.id.widget_badge, "\ub2e4\uc74c \uc77c\uc815")
+                views.setInt(R.id.widget_badge, "setBackgroundResource", R.drawable.widget_normal_badge_background)
+                views.setTextColor(R.id.widget_badge, DEFAULT_TEXT_COLOR)
+            }
         }
 
         bindTimelineItem(views, R.id.widget_list_item_1, 1, widgetData)
@@ -474,146 +515,122 @@ class PlanFlowHomeWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_
 
 class PlanFlowVerticalScheduleWidgetProvider :
     BasePlanFlowWidgetProvider(R.layout.planflow_vertical_schedule_widget) {
+
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            ACTION_DAY_PREVIOUS, ACTION_DAY_NEXT, ACTION_DAY_TODAY -> {
+                val data = HomeWidgetPlugin.getData(context)
+                val nextOffset = when (intent.action) {
+                    ACTION_DAY_PREVIOUS -> data.getInt(DAY_WIDGET_OFFSET_KEY, 0) - 1
+                    ACTION_DAY_NEXT -> data.getInt(DAY_WIDGET_OFFSET_KEY, 0) + 1
+                    else -> 0
+                }.coerceIn(-1, 1)
+                data.edit().putInt(DAY_WIDGET_OFFSET_KEY, nextOffset).apply()
+
+                val manager = AppWidgetManager.getInstance(context)
+                val ids = manager.getAppWidgetIds(ComponentName(context, PlanFlowVerticalScheduleWidgetProvider::class.java))
+                onUpdate(context, manager, ids, data)
+                return
+            }
+        }
+        super.onReceive(context, intent)
+    }
+
     override fun render(
         context: Context,
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        views.setTextViewText(R.id.widget_vertical_title, "\uc624\ub298 \uc77c\uc815")
+        val dayOffset = widgetData.getInt(DAY_WIDGET_OFFSET_KEY, 0).coerceIn(-1, 1)
+        val dayPrefix = "day_offset_${dayOffset}_event"
+        val dayTitle = when (dayOffset) {
+            -1 -> "\uc5b4\uc81c \uc77c\uc815"
+            1 -> "\ub0b4\uc77c \uc77c\uc815"
+            else -> "\uc624\ub298 \uc77c\uc815"
+        }
+        val emptyMsg = when (dayOffset) {
+            -1 -> "\uc5b4\uc81c \uc77c\uc815\uc774 \uc5c6\uc2b5\ub2c8\ub2e4"
+            1 -> "\ub0b4\uc77c \uc77c\uc815\uc774 \uc5c6\uc2b5\ub2c8\ub2e4"
+            else -> "\uc624\ub298 \uc77c\uc815\uc774 \uc5c6\uc2b5\ub2c8\ub2e4"
+        }
+        val targetDate = todayDate().plusDays(dayOffset.toLong())
         val hideWeekendEvents = hideWeekends(widgetData)
 
-        bindEventText(
-            views,
-            R.id.widget_last_past_event_1_title,
-            widgetData.getString("last_past_event_title", null)
-                ?.takeUnless {
-                    hideWeekendEvents &&
-                        isWeekend(parseDate(widgetData.getString("last_past_event_time", null)))
-                },
-            widgetData.getString("last_past_event_time", null),
-            widgetData.getBoolean("last_past_event_is_critical", false),
-            isMuted = true,
-        )
-        views.setViewVisibility(R.id.widget_last_past_event_2_title, View.GONE)
+        views.setTextViewText(R.id.widget_vertical_title, dayTitle)
+        bindDayAction(context, views, R.id.widget_vertical_prev_button, ACTION_DAY_PREVIOUS)
+        bindDayAction(context, views, R.id.widget_vertical_next_button, ACTION_DAY_NEXT)
 
+        val eventIds = intArrayOf(
+            R.id.widget_today_upcoming_event_1_title,
+            R.id.widget_today_upcoming_event_2_title,
+            R.id.widget_today_upcoming_event_3_title,
+            R.id.widget_today_upcoming_event_4_title,
+            R.id.widget_today_upcoming_event_5_title,
+            R.id.widget_today_upcoming_event_6_title,
+        )
         bindSectionEvents(
-            context,
-            views,
-            widgetData,
-            "today_upcoming",
-            intArrayOf(
-                R.id.widget_today_upcoming_event_1_title,
-                R.id.widget_today_upcoming_event_2_title,
-                R.id.widget_today_upcoming_event_3_title,
-                R.id.widget_today_upcoming_event_4_title,
-                R.id.widget_today_upcoming_event_5_title,
-                R.id.widget_today_upcoming_event_6_title,
-            ),
+            context, views, widgetData, dayPrefix, eventIds,
             isFaded = false,
             emptyMessageId = R.id.widget_today_upcoming_empty_message,
-            emptyMessage = "\uc624\ub298 \ub0a8\uc740 \uc77c\uc815\uc740 \uc5c6\uc5b4\uc694",
+            emptyMessage = emptyMsg,
             hideWeekendEvents = hideWeekendEvents,
         )
 
-        bindSectionEvents(
-            context,
-            views,
-            widgetData,
-            "tomorrow_event",
-            intArrayOf(
-                R.id.widget_tomorrow_event_1_title,
-                R.id.widget_tomorrow_event_2_title,
-            ),
-            isFaded = false,
-            hideWeekendEvents = hideWeekendEvents,
-        )
-        val tomorrowCount = if (hideWeekendEvents) {
-            (1..2).count { slot ->
-                !widgetData.getString("tomorrow_event_${slot}_title", null).isNullOrBlank() &&
-                    !isWeekend(parseDate(widgetData.getString("tomorrow_event_${slot}_time", null)))
-            }
-        } else {
-            widgetData.getInt("tomorrow_event_count", 0)
+        for (slot in 1..6) {
+            bindEventLinkIfAvailable(context, views, eventIds[slot - 1],
+                widgetData.getString("${dayPrefix}_${slot}_id", null))
         }
-        views.setViewVisibility(
-            R.id.widget_tomorrow_section_label,
-            if (tomorrowCount > 0) View.VISIBLE else View.GONE,
-        )
 
-        bindCalendarLink(
-            context,
-            views,
-            R.id.widget_vertical_container,
-            todayDate(),
-        )
-        bindCalendarLink(context, views, R.id.widget_vertical_title, todayDate())
-        bindCalendarLink(context, views, R.id.widget_tomorrow_section_label, todayDate())
-        bindEventLinkIfAvailable(
-            context,
-            views,
-            R.id.widget_last_past_event_1_title,
-            widgetData.getString("last_past_event_id", null),
-        )
-        bindEventLinkIfAvailable(
-            context,
-            views,
-            R.id.widget_today_upcoming_event_1_title,
-            widgetData.getString("today_upcoming_1_id", null),
-        )
-        bindEventLinkIfAvailable(
-            context,
-            views,
-            R.id.widget_today_upcoming_event_2_title,
-            widgetData.getString("today_upcoming_2_id", null),
-        )
-        bindEventLinkIfAvailable(
-            context,
-            views,
-            R.id.widget_today_upcoming_event_3_title,
-            widgetData.getString("today_upcoming_3_id", null),
-        )
-        bindEventLinkIfAvailable(
-            context,
-            views,
-            R.id.widget_today_upcoming_event_4_title,
-            widgetData.getString("today_upcoming_4_id", null),
-        )
-        bindEventLinkIfAvailable(
-            context,
-            views,
-            R.id.widget_today_upcoming_event_5_title,
-            widgetData.getString("today_upcoming_5_id", null),
-        )
-        bindEventLinkIfAvailable(
-            context,
-            views,
-            R.id.widget_today_upcoming_event_6_title,
-            widgetData.getString("today_upcoming_6_id", null),
-        )
-        bindEventLinkIfAvailable(
-            context,
-            views,
-            R.id.widget_tomorrow_event_1_title,
-            widgetData.getString("tomorrow_event_1_id", null),
-        )
-        bindEventLinkIfAvailable(
-            context,
-            views,
-            R.id.widget_tomorrow_event_2_title,
-            widgetData.getString("tomorrow_event_2_id", null),
-        )
+        bindCalendarLink(context, views, R.id.widget_vertical_container, targetDate)
+        bindCalendarLink(context, views, R.id.widget_vertical_title, targetDate)
         bindVoice(context, views, R.id.widget_vertical_voice_button)
     }
 }
 
 class PlanFlowWeeklyWidgetProvider :
     BasePlanFlowWidgetProvider(R.layout.planflow_weekly_widget) {
+
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            ACTION_WEEK_PREVIOUS, ACTION_WEEK_NEXT, ACTION_WEEK_TODAY -> {
+                val data = HomeWidgetPlugin.getData(context)
+                val nextOffset = when (intent.action) {
+                    ACTION_WEEK_PREVIOUS -> data.getInt(WEEK_WIDGET_OFFSET_KEY, 0) - 1
+                    ACTION_WEEK_NEXT -> data.getInt(WEEK_WIDGET_OFFSET_KEY, 0) + 1
+                    else -> 0
+                }.coerceIn(-1, 1)
+                data.edit().putInt(WEEK_WIDGET_OFFSET_KEY, nextOffset).apply()
+
+                val manager = AppWidgetManager.getInstance(context)
+                val gridIds = manager.getAppWidgetIds(ComponentName(context, PlanFlowWeeklyWidgetProvider::class.java))
+                val listIds = manager.getAppWidgetIds(ComponentName(context, PlanFlowWeeklyListWidgetProvider::class.java))
+                onUpdate(context, manager, gridIds, data)
+                PlanFlowWeeklyListWidgetProvider().onUpdate(context, manager, listIds, data)
+                return
+            }
+        }
+        super.onReceive(context, intent)
+    }
+
     override fun render(
         context: Context,
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        views.setTextViewText(R.id.widget_week_title, "\uc8fc\uac04 \uc77c\uc815")
+        val weekOffset = widgetData.getInt(WEEK_WIDGET_OFFSET_KEY, 0).coerceIn(-1, 1)
+        val weekPrefix = when (weekOffset) {
+            -1 -> "week_offset_-1_day"
+            1 -> "week_offset_1_day"
+            else -> "week_day"
+        }
+        val weekTitle = when (weekOffset) {
+            -1 -> widgetData.getString("week_title_offset_-1", "\uc9c0\ub09c \uc8fc")
+            1 -> widgetData.getString("week_title_offset_1", "\ub2e4\uc74c \uc8fc")
+            else -> "\uc8fc\uac04 \uc77c\uc815"
+        }
+        views.setTextViewText(R.id.widget_week_title, weekTitle ?: "\uc8fc\uac04 \uc77c\uc815")
+        bindWeekAction(context, views, R.id.widget_week_prev_button, ACTION_WEEK_PREVIOUS, PlanFlowWeeklyWidgetProvider::class.java)
+        bindWeekAction(context, views, R.id.widget_week_next_button, ACTION_WEEK_NEXT, PlanFlowWeeklyWidgetProvider::class.java)
         val hideWeekendColumns = hideWeekends(widgetData)
         val weekStart = todayDate().minusDays((todayDate().dayOfWeek.value - 1).toLong())
         val weekColumnIds = intArrayOf(
@@ -692,7 +709,7 @@ class PlanFlowWeeklyWidgetProvider :
 
         for (index in 0 until 7) {
             val slot = index + 1
-            val rawDate = widgetData.getString("week_day_${slot}_date", null)
+            val rawDate = widgetData.getString("${weekPrefix}_${slot}_date", null)
             val fallbackDate = weekStart.plusDays(index.toLong())
             val targetDate = parseLocalDate(rawDate) ?: fallbackDate
             if (hideWeekendColumns && isWeekend(targetDate)) {
@@ -702,105 +719,34 @@ class PlanFlowWeeklyWidgetProvider :
             views.setViewVisibility(weekColumnIds[index], View.VISIBLE)
             views.setTextViewText(labelIds[index], formatWeekdayLabel(rawDate, ""))
             views.setTextViewText(dateIds[index], formatMonthDay(rawDate, ""))
-            bindCalendarLink(
-                context,
-                views,
-                weekColumnIds[index],
-                targetDate,
-            )
+            bindCalendarLink(context, views, weekColumnIds[index], targetDate)
 
-            val e1Title = widgetData.getString("week_day_${slot}_event_1_title", null)
-                ?.takeIf { it.isNotBlank() }
-            val e2Title = widgetData.getString("week_day_${slot}_event_2_title", null)
-                ?.takeIf { it.isNotBlank() }
-            val e3Title = widgetData.getString("week_day_${slot}_event_3_title", null)
-                ?.takeIf { it.isNotBlank() }
-            val e4Title = widgetData.getString("week_day_${slot}_event_4_title", null)
-                ?.takeIf { it.isNotBlank() }
-            val e1Time = widgetData.getString("week_day_${slot}_event_1_time", null)
-            val e2Time = widgetData.getString("week_day_${slot}_event_2_time", null)
-            val e3Time = widgetData.getString("week_day_${slot}_event_3_time", null)
-            val e4Time = widgetData.getString("week_day_${slot}_event_4_time", null)
-            val e1Critical = widgetData.getBoolean("week_day_${slot}_event_1_is_critical", false)
-            val e2Critical = widgetData.getBoolean("week_day_${slot}_event_2_is_critical", false)
-            val e3Critical = widgetData.getBoolean("week_day_${slot}_event_3_is_critical", false)
-            val e4Critical = widgetData.getBoolean("week_day_${slot}_event_4_is_critical", false)
+            val e1Title = widgetData.getString("${weekPrefix}_${slot}_event_1_title", null)?.takeIf { it.isNotBlank() }
+            val e2Title = widgetData.getString("${weekPrefix}_${slot}_event_2_title", null)?.takeIf { it.isNotBlank() }
+            val e3Title = widgetData.getString("${weekPrefix}_${slot}_event_3_title", null)?.takeIf { it.isNotBlank() }
+            val e4Title = widgetData.getString("${weekPrefix}_${slot}_event_4_title", null)?.takeIf { it.isNotBlank() }
+            val e1Critical = widgetData.getBoolean("${weekPrefix}_${slot}_event_1_is_critical", false)
+            val e2Critical = widgetData.getBoolean("${weekPrefix}_${slot}_event_2_is_critical", false)
+            val e3Critical = widgetData.getBoolean("${weekPrefix}_${slot}_event_3_is_critical", false)
+            val e4Critical = widgetData.getBoolean("${weekPrefix}_${slot}_event_4_is_critical", false)
 
             var overflow = 0
-            if (widgetData.contains("week_day_${slot}_overflow_count")) {
-                overflow = widgetData.getInt("week_day_${slot}_overflow_count", 0)
+            if (widgetData.contains("${weekPrefix}_${slot}_overflow_count")) {
+                overflow = widgetData.getInt("${weekPrefix}_${slot}_overflow_count", 0)
             } else {
-                val totalCount = widgetData.getInt("week_day_${slot}_count", 0)
-                val hasE1 = !e1Title.isNullOrBlank()
-                val hasE2 = !e2Title.isNullOrBlank()
-                val hasE3 = !e3Title.isNullOrBlank()
-                val hasE4 = !e4Title.isNullOrBlank()
-                overflow = (
-                    totalCount -
-                        (if (hasE1) 1 else 0) -
-                        (if (hasE2) 1 else 0) -
-                        (if (hasE3) 1 else 0) -
-                        (if (hasE4) 1 else 0)
-                    ).coerceAtLeast(0)
+                val totalCount = widgetData.getInt("${weekPrefix}_${slot}_count", 0)
+                overflow = (totalCount - listOf(e1Title, e2Title, e3Title, e4Title).count { !it.isNullOrBlank() }).coerceAtLeast(0)
             }
 
-            bindEventText(
-                views,
-                event1Ids[index],
-                e1Title,
-                e1Time,
-                e1Critical,
-                emptyText = if (e1Title == null && e2Title == null && overflow == 0) "\uc77c\uc815 \uc5c6\uc74c" else null,
-                hourOnly = true,
-            )
-            bindEventText(
-                views,
-                event2Ids[index],
-                e2Title,
-                e2Time,
-                e2Critical,
-                hourOnly = true,
-            )
-            bindEventText(
-                views,
-                event3Ids[index],
-                e3Title,
-                e3Time,
-                e3Critical,
-                hourOnly = true,
-            )
-            bindEventText(
-                views,
-                event4Ids[index],
-                e4Title,
-                e4Time,
-                e4Critical,
-                hourOnly = true,
-            )
-            bindEventLinkIfAvailable(
-                context,
-                views,
-                event1Ids[index],
-                widgetData.getString("week_day_${slot}_event_1_id", null),
-            )
-            bindEventLinkIfAvailable(
-                context,
-                views,
-                event2Ids[index],
-                widgetData.getString("week_day_${slot}_event_2_id", null),
-            )
-            bindEventLinkIfAvailable(
-                context,
-                views,
-                event3Ids[index],
-                widgetData.getString("week_day_${slot}_event_3_id", null),
-            )
-            bindEventLinkIfAvailable(
-                context,
-                views,
-                event4Ids[index],
-                widgetData.getString("week_day_${slot}_event_4_id", null),
-            )
+            bindEventText(views, event1Ids[index], e1Title, null, e1Critical,
+                emptyText = if (e1Title == null && e2Title == null && overflow == 0) "\uc77c\uc815 \uc5c6\uc74c" else null)
+            bindEventText(views, event2Ids[index], e2Title, null, e2Critical)
+            bindEventText(views, event3Ids[index], e3Title, null, e3Critical)
+            bindEventText(views, event4Ids[index], e4Title, null, e4Critical)
+            bindEventLinkIfAvailable(context, views, event1Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_1_id", null))
+            bindEventLinkIfAvailable(context, views, event2Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_2_id", null))
+            bindEventLinkIfAvailable(context, views, event3Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_3_id", null))
+            bindEventLinkIfAvailable(context, views, event4Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_4_id", null))
 
             if (overflow > 0) {
                 views.setTextViewText(overflowIds[index], "+$overflow")
@@ -818,73 +764,86 @@ class PlanFlowWeeklyWidgetProvider :
 
 class PlanFlowWeeklyListWidgetProvider :
     BasePlanFlowWidgetProvider(R.layout.planflow_weekly_list_widget) {
+
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            ACTION_WEEK_PREVIOUS, ACTION_WEEK_NEXT, ACTION_WEEK_TODAY -> {
+                val data = HomeWidgetPlugin.getData(context)
+                val nextOffset = when (intent.action) {
+                    ACTION_WEEK_PREVIOUS -> data.getInt(WEEK_WIDGET_OFFSET_KEY, 0) - 1
+                    ACTION_WEEK_NEXT -> data.getInt(WEEK_WIDGET_OFFSET_KEY, 0) + 1
+                    else -> 0
+                }.coerceIn(-1, 1)
+                data.edit().putInt(WEEK_WIDGET_OFFSET_KEY, nextOffset).apply()
+
+                val manager = AppWidgetManager.getInstance(context)
+                val gridIds = manager.getAppWidgetIds(ComponentName(context, PlanFlowWeeklyWidgetProvider::class.java))
+                val listIds = manager.getAppWidgetIds(ComponentName(context, PlanFlowWeeklyListWidgetProvider::class.java))
+                PlanFlowWeeklyWidgetProvider().onUpdate(context, manager, gridIds, data)
+                onUpdate(context, manager, listIds, data)
+                return
+            }
+        }
+        super.onReceive(context, intent)
+    }
+
     override fun render(
         context: Context,
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        views.setTextViewText(R.id.widget_week_list_title, "\uc8fc\uac04 \uc77c\uc815")
+        val weekOffset = widgetData.getInt(WEEK_WIDGET_OFFSET_KEY, 0).coerceIn(-1, 1)
+        val weekPrefix = when (weekOffset) {
+            -1 -> "week_offset_-1_day"
+            1 -> "week_offset_1_day"
+            else -> "week_day"
+        }
+        val weekTitle = when (weekOffset) {
+            -1 -> widgetData.getString("week_title_offset_-1", "\uc9c0\ub09c \uc8fc")
+            1 -> widgetData.getString("week_title_offset_1", "\ub2e4\uc74c \uc8fc")
+            else -> "\uc8fc\uac04 \uc77c\uc815"
+        }
+        views.setTextViewText(R.id.widget_week_list_title, weekTitle ?: "\uc8fc\uac04 \uc77c\uc815")
+        bindWeekAction(context, views, R.id.widget_week_list_prev_button, ACTION_WEEK_PREVIOUS, PlanFlowWeeklyListWidgetProvider::class.java)
+        bindWeekAction(context, views, R.id.widget_week_list_next_button, ACTION_WEEK_NEXT, PlanFlowWeeklyListWidgetProvider::class.java)
         val hideWeekendRows = hideWeekends(widgetData)
         val weekStart = todayDate().minusDays((todayDate().dayOfWeek.value - 1).toLong())
 
         for (index in 0 until 7) {
             val slot = index + 1
-            val rawDate = widgetData.getString("week_day_${slot}_date", null)
+            val rawDate = widgetData.getString("${weekPrefix}_${slot}_date", null)
             val fallbackDate = weekStart.plusDays(index.toLong())
             val targetDate = parseLocalDate(rawDate) ?: fallbackDate
 
             val rowId = findViewId(context, "widget_week_list_day_${slot}_row")
             val labelId = findViewId(context, "widget_week_list_day_${slot}_label")
             val overflowId = findViewId(context, "widget_week_list_day_${slot}_overflow")
-            if (rowId == 0 || labelId == 0 || overflowId == 0) {
-                continue
-            }
+            if (rowId == 0 || labelId == 0 || overflowId == 0) continue
             if (hideWeekendRows && isWeekend(targetDate)) {
                 views.setViewVisibility(rowId, View.GONE)
                 continue
             }
             views.setViewVisibility(rowId, View.VISIBLE)
-
-            views.setTextViewText(
-                labelId,
-                formatMonthDayWithWeekday(targetDate),
-            )
+            views.setTextViewText(labelId, formatMonthDayWithWeekday(targetDate))
             bindCalendarLink(context, views, rowId, targetDate)
 
             var shownCount = 0
             for (eventSlot in 1..4) {
                 val eventId = findViewId(context, "widget_week_list_day_${slot}_event_${eventSlot}")
-                if (eventId == 0) {
-                    continue
-                }
-                val title = widgetData.getString("week_day_${slot}_event_${eventSlot}_title", null)
-                    ?.takeIf { it.isNotBlank() }
-                val time = widgetData.getString("week_day_${slot}_event_${eventSlot}_time", null)
-                val isCritical =
-                    widgetData.getBoolean("week_day_${slot}_event_${eventSlot}_is_critical", false)
-                if (!title.isNullOrBlank()) {
-                    shownCount += 1
-                }
-                bindEventText(
-                    views,
-                    eventId,
-                    title,
-                    time,
-                    isCritical,
-                    emptyText = if (eventSlot == 1) "\uc77c\uc815 \uc5c6\uc74c" else null,
-                )
-                bindEventLinkIfAvailable(
-                    context,
-                    views,
-                    eventId,
-                    widgetData.getString("week_day_${slot}_event_${eventSlot}_id", null),
-                )
+                if (eventId == 0) continue
+                val title = widgetData.getString("${weekPrefix}_${slot}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
+                val isCritical = widgetData.getBoolean("${weekPrefix}_${slot}_event_${eventSlot}_is_critical", false)
+                if (!title.isNullOrBlank()) shownCount += 1
+                bindEventText(views, eventId, title, null, isCritical,
+                    emptyText = if (eventSlot == 1) "\uc77c\uc815 \uc5c6\uc74c" else null)
+                bindEventLinkIfAvailable(context, views, eventId,
+                    widgetData.getString("${weekPrefix}_${slot}_event_${eventSlot}_id", null))
             }
 
-            val overflow = if (widgetData.contains("week_day_${slot}_overflow_count")) {
-                widgetData.getInt("week_day_${slot}_overflow_count", 0)
+            val overflow = if (widgetData.contains("${weekPrefix}_${slot}_overflow_count")) {
+                widgetData.getInt("${weekPrefix}_${slot}_overflow_count", 0)
             } else {
-                (widgetData.getInt("week_day_${slot}_count", 0) - shownCount).coerceAtLeast(0)
+                (widgetData.getInt("${weekPrefix}_${slot}_count", 0) - shownCount).coerceAtLeast(0)
             }
             if (overflow > 0) {
                 views.setTextViewText(overflowId, "+$overflow")
@@ -1031,37 +990,35 @@ class PlanFlowMonthlyWidgetProvider :
             for (eventSlot in 1..3) {
                 val eventId = findViewId(context, "${prefix}_event_${eventSlot}_title")
                     .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_event_${eventSlot}_title")
-                val eventTitle =
-                    if (hasMonthCellPayload) {
-                        widgetData.getString("${prefix}_event_${eventSlot}_title", null)
-                            ?.takeIf { it.isNotBlank() }
-                    } else {
-                        null
-                    }
+                val rawTitle = if (hasMonthCellPayload) {
+                    widgetData.getString("${prefix}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
+                } else null
                 val eventCritical = if (hasMonthCellPayload) {
                     widgetData.getBoolean("${prefix}_event_${eventSlot}_is_critical", false)
-                } else {
-                    false
-                }
+                } else false
+                val segment = widgetData.getString("${prefix}_event_${eventSlot}_segment", null)
+                val showTitle = widgetData.getBoolean("${prefix}_event_${eventSlot}_show_title", true)
+
                 if (eventId != 0) {
-                    bindEventText(
-                        views,
-                        eventId,
-                        eventTitle,
-                        null,
-                        isCritical = eventCritical,
-                        isMuted = !inMonth,
-                    )
+                    // segment 배경 적용
+                    val bgRes = when (segment) {
+                        "start" -> R.drawable.widget_month_event_start
+                        "middle" -> R.drawable.widget_month_event_middle
+                        "end" -> R.drawable.widget_month_event_end
+                        "single" -> R.drawable.widget_month_event_single
+                        else -> android.R.color.transparent
+                    }
+                    views.setInt(eventId, "setBackgroundResource", bgRes)
+
+                    // middle/end 셀은 제목 숨기고 공간만 유지
+                    val displayTitle = if (showTitle) rawTitle else if (segment != null && segment != "single") " " else rawTitle
+                    bindEventText(views, eventId, displayTitle, null, isCritical = eventCritical, isMuted = !inMonth)
                     if (eventCritical && inMonth) {
                         views.setTextColor(eventId, 0xFF9C5C71.toInt())
                     }
-                    bindEventLinkIfAvailable(
-                        context,
-                        views,
-                        eventId,
+                    bindEventLinkIfAvailable(context, views, eventId,
                         widgetData.getString("${prefix}_event_${eventSlot}_id", null),
-                        calendarUriForDate(targetDate),
-                    )
+                        calendarUriForDate(targetDate))
                 }
             }
         }

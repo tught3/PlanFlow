@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 단일 날짜 일정 pill: 양쪽 모두 둥근 형태 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#331F4168" />
+    <corners android:radius="4dp" />
+</shape>
