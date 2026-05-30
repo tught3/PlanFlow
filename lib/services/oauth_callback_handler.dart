@@ -10,6 +10,7 @@ import '../core/env.dart';
 import '../core/router.dart';
 import '../providers/auth_provider.dart';
 import 'auth_service.dart';
+import 'google_calendar_permission_service.dart';
 import 'naver_calendar_permission_service.dart';
 
 enum OAuthCallbackPurpose {
@@ -220,6 +221,9 @@ class OAuthCallbackHandler {
       );
       unawaited(
         NaverCalendarPermissionService().captureCurrentProviderToken(),
+      );
+      unawaited(
+        GoogleCalendarPermissionService().captureCurrentProviderToken(),
       );
       if (isPasswordRecovery) {
         authProvider.markPasswordRecovery();

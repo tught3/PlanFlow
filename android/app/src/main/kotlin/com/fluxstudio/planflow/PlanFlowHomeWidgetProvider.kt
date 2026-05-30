@@ -888,144 +888,148 @@ class PlanFlowMonthlyWidgetProvider :
         views: RemoteViews,
         widgetData: SharedPreferences,
     ) {
-        val monthOffset = widgetData.getInt(MONTH_WIDGET_OFFSET_KEY, 0).coerceIn(-1, 1)
-        val cellPrefix = if (monthOffset == 0) "month_cell" else "month_offset_${monthOffset}_cell"
-        val hasMonthCellPayload = hasMonthCellPayload(widgetData, cellPrefix)
-        val hideWeekendCells = hideWeekends(widgetData)
-        val monthStart = LocalDate.now(ZoneId.of("Asia/Seoul")).plusMonths(monthOffset.toLong()).withDayOfMonth(1)
-        val fallbackCells = buildCurrentMonthFallbackCells(monthStart)
+        try {
+            val monthOffset = widgetData.getInt(MONTH_WIDGET_OFFSET_KEY, 0).coerceIn(-1, 1)
+            val cellPrefix = if (monthOffset == 0) "month_cell" else "month_offset_${monthOffset}_cell"
+            val hasMonthCellPayload = hasMonthCellPayload(widgetData, cellPrefix)
+            val hideWeekendCells = hideWeekends(widgetData)
+            val monthStart = LocalDate.now(ZoneId.of("Asia/Seoul")).plusMonths(monthOffset.toLong()).withDayOfMonth(1)
+            val fallbackCells = buildCurrentMonthFallbackCells(monthStart)
 
-        views.setTextViewText(
-            R.id.widget_month_title,
-            widgetData.getString(monthTitleKey(monthOffset), null) ?: fallbackMonthTitle(monthStart),
-        )
-        bindMonthAction(context, views, R.id.widget_month_prev_button, ACTION_MONTH_PREVIOUS)
-        bindMonthAction(context, views, R.id.widget_month_next_button, ACTION_MONTH_NEXT)
-        bindMonthAction(context, views, R.id.widget_month_today_button, ACTION_MONTH_TODAY)
+            views.setTextViewText(
+                R.id.widget_month_title,
+                widgetData.getString(monthTitleKey(monthOffset), null) ?: fallbackMonthTitle(monthStart),
+            )
+            bindMonthAction(context, views, R.id.widget_month_prev_button, ACTION_MONTH_PREVIOUS)
+            bindMonthAction(context, views, R.id.widget_month_next_button, ACTION_MONTH_NEXT)
+            bindMonthAction(context, views, R.id.widget_month_today_button, ACTION_MONTH_TODAY)
 
-        for (slot in 1..42) {
-            val prefix = "${cellPrefix}_${slot}"
-            val dayId = findViewId(context, "${prefix}_day")
-                .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_day")
-            val cellContainerId = findViewId(context, "${prefix}_container")
-                .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_container")
-            val cellDate = parseLocalDate(widgetData.getString("${prefix}_date", null))
-            val inMonthId = findViewId(context, "${prefix}_in_month")
-                .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_in_month")
-            val overflowId = findViewId(context, "${prefix}_overflow_count")
-                .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_overflow_count")
-            val fallbackCell = fallbackCells?.getOrNull(slot - 1)
-            val targetDate = cellDate ?: fallbackCell?.third
+            for (slot in 1..42) {
+                val prefix = "${cellPrefix}_${slot}"
+                val dayId = findViewId(context, "${prefix}_day")
+                    .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_day")
+                val cellContainerId = findViewId(context, "${prefix}_container")
+                    .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_container")
+                val cellDate = parseLocalDate(widgetData.getString("${prefix}_date", null))
+                val inMonthId = findViewId(context, "${prefix}_in_month")
+                    .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_in_month")
+                val overflowId = findViewId(context, "${prefix}_overflow_count")
+                    .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_overflow_count")
+                val fallbackCell = fallbackCells?.getOrNull(slot - 1)
+                val targetDate = cellDate ?: fallbackCell?.third ?: continue
 
-            if (dayId == 0) {
-                continue
-            }
-            if (cellContainerId != 0) {
-                views.setViewVisibility(
-                    cellContainerId,
-                    if (hideWeekendCells && isWeekend(targetDate)) View.GONE else View.VISIBLE,
-                )
-            }
-            if (hideWeekendCells && isWeekend(targetDate)) {
-                continue
-            }
+                if (dayId == 0) {
+                    continue
+                }
+                if (cellContainerId != 0) {
+                    views.setViewVisibility(
+                        cellContainerId,
+                        if (hideWeekendCells && isWeekend(targetDate)) View.GONE else View.VISIBLE,
+                    )
+                }
+                if (hideWeekendCells && isWeekend(targetDate)) {
+                    continue
+                }
 
-            val dayValue = widgetData.all["${prefix}_day"]?.toString()
-            val dayText = if (hasMonthCellPayload) {
-                dayValue?.trim()?.takeIf { it.isNotBlank() }
-            } else {
-                fallbackCell?.first?.toString()
-            }
-            val inMonth = if (hasMonthCellPayload) {
-                if (widgetData.contains("${prefix}_in_month")) {
-                    widgetData.getBoolean("${prefix}_in_month", false)
+                val dayValue = widgetData.all["${prefix}_day"]?.toString()
+                val dayText = if (hasMonthCellPayload) {
+                    dayValue?.trim()?.takeIf { it.isNotBlank() }
                 } else {
-                    false
-                } && dayText != null
-            } else {
-                fallbackCell?.second ?: false
-            }
+                    fallbackCell?.first?.toString()
+                }
+                val inMonth = if (hasMonthCellPayload) {
+                    if (widgetData.contains("${prefix}_in_month")) {
+                        widgetData.getBoolean("${prefix}_in_month", false)
+                    } else {
+                        false
+                    } && dayText != null
+                } else {
+                    fallbackCell?.second ?: false
+                }
 
-            var overflow = if (hasMonthCellPayload) {
-                widgetData.getInt("${prefix}_overflow_count", 0)
-            } else {
-                0
-            }
+                var overflow = if (hasMonthCellPayload) {
+                    widgetData.getInt("${prefix}_overflow_count", 0)
+                } else {
+                    0
+                }
 
-            views.setTextViewText(dayId, dayText ?: "")
-            views.setViewVisibility(dayId, if (dayText == null) View.INVISIBLE else View.VISIBLE)
-            val isToday = targetDate == todayDate()
-            views.setTextColor(
-                dayId,
-                when {
-                    isToday -> 0xFFFFFFFF.toInt()
-                    inMonth -> DEFAULT_TEXT_COLOR
-                    else -> MUTED_TEXT_COLOR
-                },
-            )
-            views.setInt(
-                dayId,
-                "setBackgroundResource",
-                if (isToday) R.drawable.widget_month_today_day_background else android.R.color.transparent,
-            )
-
-            if (inMonthId != 0) {
-                views.setTextViewText(
-                    inMonthId,
-                    "",
+                views.setTextViewText(dayId, dayText ?: "")
+                views.setViewVisibility(dayId, if (dayText == null) View.INVISIBLE else View.VISIBLE)
+                val isToday = targetDate == todayDate()
+                views.setTextColor(
+                    dayId,
+                    when {
+                        isToday -> 0xFFFFFFFF.toInt()
+                        inMonth -> DEFAULT_TEXT_COLOR
+                        else -> MUTED_TEXT_COLOR
+                    },
                 )
-                views.setTextColor(inMonthId, MUTED_TEXT_COLOR)
-                views.setViewVisibility(inMonthId, View.GONE)
-            }
+                views.setInt(
+                    dayId,
+                    "setBackgroundResource",
+                    if (isToday) R.drawable.widget_month_today_day_background else android.R.color.transparent,
+                )
 
-            bindCalendarLink(context, views, cellContainerId, targetDate)
+                if (inMonthId != 0) {
+                    views.setTextViewText(
+                        inMonthId,
+                        "",
+                    )
+                    views.setTextColor(inMonthId, MUTED_TEXT_COLOR)
+                    views.setViewVisibility(inMonthId, View.GONE)
+                }
 
-            if (overflow > 0) {
-                views.setTextViewText(overflowId, "+$overflow")
-                views.setViewVisibility(overflowId, View.VISIBLE)
-            } else {
-                views.setViewVisibility(overflowId, View.GONE)
-            }
+                bindCalendarLink(context, views, cellContainerId, targetDate)
 
-            for (eventSlot in 1..3) {
-                val eventId = findViewId(context, "${prefix}_event_${eventSlot}_title")
-                    .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_event_${eventSlot}_title")
-                val rawTitle = if (hasMonthCellPayload) {
-                    widgetData.getString("${prefix}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
-                } else null
-                val eventCritical = if (hasMonthCellPayload) {
-                    widgetData.getBoolean("${prefix}_event_${eventSlot}_is_critical", false)
-                } else false
-                val segment = widgetData.getString("${prefix}_event_${eventSlot}_segment", null)
-                val showTitle = widgetData.getBoolean("${prefix}_event_${eventSlot}_show_title", true)
+                if (overflow > 0) {
+                    views.setTextViewText(overflowId, "+$overflow")
+                    views.setViewVisibility(overflowId, View.VISIBLE)
+                } else {
+                    views.setViewVisibility(overflowId, View.GONE)
+                }
 
-                if (eventId != 0) {
-                    // segment 배경 적용
-                    val bgRes = when (segment) {
-                        "start" -> R.drawable.widget_month_event_start
-                        "middle" -> R.drawable.widget_month_event_middle
-                        "end" -> R.drawable.widget_month_event_end
-                        "single" -> R.drawable.widget_month_event_single
-                        else -> android.R.color.transparent
+                for (eventSlot in 1..3) {
+                    val eventId = findViewId(context, "${prefix}_event_${eventSlot}_title")
+                        .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_event_${eventSlot}_title")
+                    val rawTitle = if (hasMonthCellPayload) {
+                        widgetData.getString("${prefix}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
+                    } else null
+                    val eventCritical = if (hasMonthCellPayload) {
+                        widgetData.getBoolean("${prefix}_event_${eventSlot}_is_critical", false)
+                    } else false
+                    val segment = widgetData.getString("${prefix}_event_${eventSlot}_segment", null)
+                    val showTitle = widgetData.getBoolean("${prefix}_event_${eventSlot}_show_title", true)
+
+                    if (eventId != 0) {
+                        // segment 배경 적용
+                        val bgRes = when (segment) {
+                            "start" -> R.drawable.widget_month_event_start
+                            "middle" -> R.drawable.widget_month_event_middle
+                            "end" -> R.drawable.widget_month_event_end
+                            "single" -> R.drawable.widget_month_event_single
+                            else -> android.R.color.transparent
+                        }
+                        views.setInt(eventId, "setBackgroundResource", bgRes)
+
+                        // middle/end 셀은 제목 숨기고 공간만 유지
+                        val displayTitle = if (showTitle) rawTitle else if (segment != null && segment != "single") " " else rawTitle
+                        bindEventText(views, eventId, displayTitle, null, isCritical = eventCritical, isMuted = !inMonth)
+                        if (eventCritical && inMonth) {
+                            views.setTextColor(eventId, 0xFF9C5C71.toInt())
+                        }
+                        bindEventLinkIfAvailable(context, views, eventId,
+                            widgetData.getString("${prefix}_event_${eventSlot}_id", null),
+                            calendarUriForDate(targetDate))
                     }
-                    views.setInt(eventId, "setBackgroundResource", bgRes)
-
-                    // middle/end 셀은 제목 숨기고 공간만 유지
-                    val displayTitle = if (showTitle) rawTitle else if (segment != null && segment != "single") " " else rawTitle
-                    bindEventText(views, eventId, displayTitle, null, isCritical = eventCritical, isMuted = !inMonth)
-                    if (eventCritical && inMonth) {
-                        views.setTextColor(eventId, 0xFF9C5C71.toInt())
-                    }
-                    bindEventLinkIfAvailable(context, views, eventId,
-                        widgetData.getString("${prefix}_event_${eventSlot}_id", null),
-                        calendarUriForDate(targetDate))
                 }
             }
-        }
 
-        bindCalendarLink(context, views, R.id.widget_month_container, todayDate())
-        bindCalendarLink(context, views, R.id.widget_month_title, todayDate())
-        bindVoice(context, views, R.id.widget_month_voice_button)
+            bindCalendarLink(context, views, R.id.widget_month_container, todayDate())
+            bindCalendarLink(context, views, R.id.widget_month_title, todayDate())
+            bindVoice(context, views, R.id.widget_month_voice_button)
+        } catch (e: Exception) {
+            views.setTextViewText(R.id.widget_month_title, "일정 로드 실패 — 앱을 열어 새로고침하세요")
+        }
     }
 
     private fun hasMonthCellPayload(widgetData: SharedPreferences, prefix: String = "month_cell"): Boolean {
