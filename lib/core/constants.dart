@@ -9,7 +9,6 @@ class AppRoutes {
   static const String root = '/';
   static const String splash = root;
   static const String login = '/login';
-  static const String naverOAuth = '/auth/naver-oauth';
   static const String permissionOnboarding = '/permission-onboarding';
   static const String resetPassword = '/reset-password';
   static const String home = '/home';

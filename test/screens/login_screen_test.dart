@@ -7,10 +7,6 @@ import 'package:planflow/screens/auth/login_screen.dart';
 import 'package:planflow/services/auth_service.dart';
 
 void main() {
-  test('Naver social login route asks for account consent', () {
-    expect(naverOAuthLoginRoute(), '/auth/naver-oauth?forceConsent=1');
-  });
-
   testWidgets('LoginScreen shows the Naver social login button',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(360, 1200));

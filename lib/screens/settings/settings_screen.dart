@@ -1503,11 +1503,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
     try {
-      final completed = await context.push<bool>(
-        '${AppRoutes.naverOAuth}?forceConsent=1',
-      );
-      if (mounted && completed != true && !authProvider.isSignedIn) {
-        _showSnack('네이버 계정 정보 확인을 완료하지 않았습니다.');
+      // WebView 대신 Chrome Custom Tab으로 네이버 재인증 (auth_type=reprompt)
+      final launched = await _authService!.recheckNaverAccountConsent();
+      if (mounted && !launched) {
+        _showSnack('네이버 계정 정보 확인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } catch (error, stackTrace) {
       OAuthCallbackHandler.clearPendingCallback();

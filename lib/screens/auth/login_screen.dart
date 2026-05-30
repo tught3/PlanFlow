@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-
 import '../../core/constants.dart';
 import '../../core/analytics_service.dart';
 import '../../core/env.dart';
@@ -12,8 +10,6 @@ import '../../services/auth_service.dart';
 import '../../services/oauth_callback_handler.dart';
 import '../../l10n/app_l10n.dart';
 
-@visibleForTesting
-String naverOAuthLoginRoute() => '${AppRoutes.naverOAuth}?forceConsent=1';
 
 enum _AuthMode {
   login,
@@ -190,24 +186,6 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     final authService = _authService;
     if (!AppEnv.isSupabaseReady || authService == null) {
       _setMessage(l10n.supabaseSocialMissing);
-      return;
-    }
-
-    if (provider == PlanFlowOAuthProvider.naver) {
-      OAuthCallbackHandler.clearLatestUserMessage();
-      setState(() {
-        _isLoading = false;
-        _message = null;
-      });
-      final completed = await context.push<bool>(naverOAuthLoginRoute());
-      if (!mounted || completed == true || authProvider.isSignedIn) {
-        return;
-      }
-      final signedIn = await authProvider.syncCurrentSession();
-      if (!mounted || signedIn || authProvider.isSignedIn) {
-        return;
-      }
-      _setMessage('네이버 인증을 완료하지 않았어요. 다시 시도해 주세요.');
       return;
     }
 

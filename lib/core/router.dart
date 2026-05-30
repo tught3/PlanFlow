@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import '../screens/auth/login_screen.dart';
-import '../screens/auth/naver_oauth_webview_screen.dart';
 import '../screens/onboarding/permission_onboarding_screen.dart';
 import '../screens/auth/reset_password_screen.dart';
 import '../data/models/event_model.dart';
@@ -28,8 +27,7 @@ final GoRouter appRouter = GoRouter(
   redirect: (context, state) {
     final path = state.uri.path;
     final isAuthPath = path == AppRoutes.login ||
-        path == AppRoutes.resetPassword ||
-        path == AppRoutes.naverOAuth;
+        path == AppRoutes.resetPassword;
 
     if (path == AppRoutes.root) {
       if (!authProvider.hasResolvedInitialSession) {
@@ -78,12 +76,6 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.login,
       builder: (context, state) => const LoginScreen(),
-    ),
-    GoRoute(
-      path: AppRoutes.naverOAuth,
-      builder: (context, state) => NaverOAuthWebViewScreen(
-        forceConsent: _isForceConsent(state),
-      ),
     ),
     GoRoute(
       path: AppRoutes.permissionOnboarding,
@@ -266,11 +258,6 @@ bool _isAutoStart(GoRouterState state) {
   return value == '1' || value == 'true';
 }
 
-bool _isForceConsent(GoRouterState state) {
-  final value = state.uri.queryParameters['forceConsent'] ??
-      state.uri.queryParameters['force_consent'];
-  return value == '1' || value == 'true';
-}
 
 SettingsInitialAction? _parseSettingsInitialAction(GoRouterState state) {
   switch (state.uri.queryParameters['open']) {
