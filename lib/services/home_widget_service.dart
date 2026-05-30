@@ -262,20 +262,96 @@ class HomeWidgetSchedulePayloadBuilder {
     final firstDay = DateTime(month.year, month.month);
     final startOffset = firstDay.weekday % 7;
     final firstCellDay = firstDay.subtract(Duration(days: startOffset));
-    return List<HomeWidgetMonthCellData>.generate(42, (index) {
-      final day = firstCellDay.add(Duration(days: index));
+    final cellDays = List<DateTime>.generate(
+      42, (i) => firstCellDay.add(Duration(days: i)),
+    );
+
+    // 셀별 슬롯: slotMap[cellIndex][slot] = EventModel?
+    final slotMap = List.generate(42, (_) => List<EventModel?>.filled(3, null, growable: false));
+    final overflowCounts = List<int>.filled(42, 0);
+
+    // 1단계: 멀티데이 이벤트를 startAt 기준 정렬 후 slot 예약
+    final multiDayEvents = events.where((e) {
+      if (e.startAt == null) return false;
+      final fd = planflowLocalDay(e.startAt!);
+      final ld = _displayEndDay(e);
+      return ld.isAfter(fd);
+    }).toList()
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+
+    for (final event in multiDayEvents) {
+      final fd = planflowLocalDay(event.startAt!);
+      final ld = _displayEndDay(event);
+      // 이 이벤트가 걸치는 셀 인덱스
+      final cellIndices = [
+        for (var i = 0; i < 42; i++)
+          if (!cellDays[i].isBefore(fd) && !cellDays[i].isAfter(ld)) i,
+      ];
+      if (cellIndices.isEmpty) continue;
+      // 이 기간 전체에서 비어있는 첫 번째 slot 예약
+      var reserved = false;
+      for (var slot = 0; slot < 3; slot++) {
+        if (cellIndices.every((i) => slotMap[i][slot] == null)) {
+          for (final i in cellIndices) {
+            slotMap[i][slot] = event;
+          }
+          reserved = true;
+          break;
+        }
+      }
+      if (!reserved) {
+        // slot 없으면 overflow에 기여 (모든 해당 날짜)
+        for (final i in cellIndices) {
+          overflowCounts[i]++;
+        }
+      }
+    }
+
+    // 2단계: 단일 이벤트(같은 날 시작·종료)를 남은 slot에 채움
+    for (var i = 0; i < 42; i++) {
+      final day = cellDays[i];
+      final singleEvents = events.where((e) {
+        if (e.startAt == null) return false;
+        final fd = planflowLocalDay(e.startAt!);
+        final ld = _displayEndDay(e);
+        return !ld.isAfter(fd) && fd == day;
+      }).toList()
+        ..sort((a, b) {
+          final aStart = a.startAt;
+          final bStart = b.startAt;
+          if (aStart == null && bStart == null) return a.title.compareTo(b.title);
+          if (aStart == null) return 1;
+          if (bStart == null) return -1;
+          return aStart.compareTo(bStart);
+        });
+      for (final event in singleEvents) {
+        var placed = false;
+        for (var slot = 0; slot < 3; slot++) {
+          if (slotMap[i][slot] == null) {
+            slotMap[i][slot] = event;
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) overflowCounts[i]++;
+      }
+    }
+
+    // 3단계: HomeWidgetMonthCellData 생성
+    return List<HomeWidgetMonthCellData>.generate(42, (i) {
+      final day = cellDays[i];
       final inMonth = day.year == month.year && day.month == month.month;
-      final dayEvents = _eventsForDay(events, day);
+      final cellEvents = slotMap[i]
+          .where((e) => e != null)
+          .map((e) => _listEventForMonthCell(e!, day))
+          .toList(growable: false);
       return HomeWidgetMonthCellData(
-        cellIndex: index + 1,
+        cellIndex: i + 1,
         date: day,
         day: day.day,
         inMonth: inMonth,
-        events: dayEvents
-            .map((event) => _listEventForMonthCell(event, day))
-            .take(3)
-            .toList(growable: false),
-        overflowCount: dayEvents.length > 3 ? dayEvents.length - 3 : 0,
+        events: cellEvents,
+        overflowCount: overflowCounts[i],
       );
     });
   }
