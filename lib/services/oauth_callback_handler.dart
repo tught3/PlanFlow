@@ -309,6 +309,11 @@ class OAuthCallbackHandler {
         combined.contains('getting user email')) {
       return '소셜 로그인에서 이메일 정보를 확인하지 못했습니다. Kakao/Naver 동의항목과 Supabase provider 설정을 확인해 주세요.';
     }
+    if (combined.contains('multiple accounts with the same email')) {
+      return '네이버 계정 이메일이 기존 로그인 정보와 충돌합니다. '
+          'Supabase SQL Editor에서 custom:naver identity를 '
+          'custom:planflow-naver로 마이그레이션한 뒤 다시 시도해 주세요.';
+    }
 
     final errDetail = [
       if (error.isNotEmpty) error,
