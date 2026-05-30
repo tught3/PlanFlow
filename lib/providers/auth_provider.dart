@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/env.dart';
 import '../core/supabase_auth_options.dart';
 import '../services/auth_service.dart';
+import '../services/calendar_sync_service.dart';
 import '../services/google_calendar_permission_service.dart';
 import '../services/naver_calendar_permission_service.dart';
 
@@ -151,6 +152,10 @@ class AuthProvider extends ChangeNotifier {
     unawaited(
       GoogleCalendarPermissionService().captureCurrentProviderToken(),
     );
+    // Google 재로그인 시 Google Calendar silent sync
+    if (_providerKey == 'google') {
+      unawaited(CalendarSyncService().syncGoogleCalendar(interactive: false));
+    }
     try {
       await _refreshSessionOnce(service);
     } catch (error) {

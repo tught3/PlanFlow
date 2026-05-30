@@ -4,7 +4,6 @@
     android:initialLayout="@layout/planflow_monthly_widget"
     android:minWidth="280dp"
     android:minHeight="280dp"
-    android:previewLayout="@layout/planflow_monthly_widget"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen" />
