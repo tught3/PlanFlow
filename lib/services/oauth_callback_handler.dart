@@ -310,7 +310,14 @@ class OAuthCallbackHandler {
       return '소셜 로그인에서 이메일 정보를 확인하지 못했습니다. Kakao/Naver 동의항목과 Supabase provider 설정을 확인해 주세요.';
     }
 
-    return '소셜 인증을 완료하지 못했습니다. Supabase와 provider 콜백 설정을 확인해 주세요.';
+    final errDetail = [
+      if (error.isNotEmpty) error,
+      if (errorCode.isNotEmpty) errorCode,
+      if (description.isNotEmpty) description,
+    ].join(' / ');
+    return '소셜 인증을 완료하지 못했습니다.'
+        '${errDetail.isEmpty ? '' : ' [$errDetail]'}'
+        ' Supabase와 provider 콜백 설정을 확인해 주세요.';
   }
 
   String _messageForEmailConfirmationException(AuthException error) {
@@ -338,7 +345,9 @@ class OAuthCallbackHandler {
         error.statusCode == 'unexpected_failure') {
       return '소셜 인증 처리 중 Supabase 오류가 발생했습니다. Provider 콜백과 동의항목 설정을 확인해 주세요.';
     }
-    return '소셜 인증을 완료하지 못했습니다. Supabase와 provider 콜백 설정을 확인해 주세요.';
+    return '소셜 인증을 완료하지 못했습니다.'
+        ' [${error.message}]'
+        ' Supabase와 provider 콜백 설정을 확인해 주세요.';
   }
 
   bool _isAuthCallback(Uri uri) {
