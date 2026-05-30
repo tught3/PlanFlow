@@ -734,9 +734,15 @@ private class PlanFlowSttChannel(
             channel.invokeMethod("error", "unavailable")
             return
         }
-        if (listening) {
-            recognizer?.cancel()
-        }
+        // listening=false 먼저 설정 → cancel의 onError 콜백이 restartSoon 실행 안 함
+        listening = false
+        startGeneration += 1
+        val oldRecognizer = recognizer
+        recognizer = null
+        oldRecognizer?.setRecognitionListener(null)
+        oldRecognizer?.cancel()
+        oldRecognizer?.destroy()
+
         listening = true
         userRequestedStop = false
         latestPartialText = ""
