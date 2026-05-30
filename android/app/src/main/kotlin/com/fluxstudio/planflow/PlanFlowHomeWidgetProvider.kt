@@ -1007,21 +1007,25 @@ class PlanFlowMonthlyWidgetProvider :
                     val showTitle = widgetData.getBoolean("${prefix}_event_${eventSlot}_show_title", true)
 
                     if (eventId != 0) {
-                        // segment 배경 적용
+                        // segment 배경 적용 (single은 배경 없음)
                         val bgRes = when (segment) {
                             "start" -> R.drawable.widget_month_event_start
                             "middle" -> R.drawable.widget_month_event_middle
                             "end" -> R.drawable.widget_month_event_end
-                            "single" -> R.drawable.widget_month_event_single
                             else -> android.R.color.transparent
                         }
                         views.setInt(eventId, "setBackgroundResource", bgRes)
 
-                        // middle/end 셀은 제목 숨기고 공간만 유지
-                        val displayTitle = if (showTitle) rawTitle else if (segment != null && segment != "single") " " else rawTitle
-                        bindEventText(views, eventId, displayTitle, null, isCritical = eventCritical, isMuted = !inMonth)
-                        if (eventCritical && inMonth) {
-                            views.setTextColor(eventId, 0xFF9C5C71.toInt())
+                        // middle/end 셀: 빈 텍스트로 배경 bar만 표시 (GONE 방지)
+                        val isBarContinuation = !showTitle && (segment == "middle" || segment == "end")
+                        if (isBarContinuation && rawTitle != null) {
+                            views.setTextViewText(eventId, "")
+                            views.setViewVisibility(eventId, View.VISIBLE)
+                        } else {
+                            bindEventText(views, eventId, rawTitle, null, isCritical = eventCritical, isMuted = !inMonth)
+                            if (eventCritical && inMonth) {
+                                views.setTextColor(eventId, 0xFF9C5C71.toInt())
+                            }
                         }
                     }
                 }
