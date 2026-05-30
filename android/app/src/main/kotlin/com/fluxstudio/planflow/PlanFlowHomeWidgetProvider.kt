@@ -53,9 +53,13 @@ abstract class BasePlanFlowWidgetProvider(
         widgetData: SharedPreferences,
     ) {
         appWidgetIds.forEach { widgetId ->
-            val views = RemoteViews(context.packageName, layoutId)
-            render(context, views, widgetData)
-            appWidgetManager.updateAppWidget(widgetId, views)
+            try {
+                val views = RemoteViews(context.packageName, layoutId)
+                render(context, views, widgetData)
+                appWidgetManager.updateAppWidget(widgetId, views)
+            } catch (e: Exception) {
+                android.util.Log.e("PlanFlowWidget", "onUpdate failed for $widgetId", e)
+            }
         }
     }
 
@@ -1017,9 +1021,6 @@ class PlanFlowMonthlyWidgetProvider :
                         if (eventCritical && inMonth) {
                             views.setTextColor(eventId, 0xFF9C5C71.toInt())
                         }
-                        bindEventLinkIfAvailable(context, views, eventId,
-                            widgetData.getString("${prefix}_event_${eventSlot}_id", null),
-                            calendarUriForDate(targetDate))
                     }
                 }
             }

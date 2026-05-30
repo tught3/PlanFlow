@@ -6,8 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/env.dart';
 import '../core/supabase_auth_options.dart';
 import '../services/auth_service.dart';
-import '../services/calendar_sync_service.dart';
-import '../services/google_calendar_permission_service.dart';
 import '../services/naver_calendar_permission_service.dart';
 
 final AuthProvider authProvider = AuthProvider();
@@ -54,6 +52,7 @@ class AuthProvider extends ChangeNotifier {
       _sessionStatus == AuthSessionStatus.reauthRequired;
   bool get socialAccountInfoIncomplete => _socialAccountInfoIncomplete;
   bool get isNaverAccount => _providerKey == 'naver';
+  bool get isGoogleAccount => _providerKey == 'google';
   String get accountDisplayName =>
       _email ?? _displayName ?? _accountIdentifier ?? providerLabel;
   String get providerLabel {
@@ -109,9 +108,6 @@ class AuthProvider extends ChangeNotifier {
         unawaited(
           NaverCalendarPermissionService().captureCurrentProviderToken(),
         );
-        unawaited(
-          GoogleCalendarPermissionService().captureCurrentProviderToken(),
-        );
       }
       if (authState.event == AuthChangeEvent.signedOut &&
           authState.session == null &&
@@ -149,13 +145,6 @@ class AuthProvider extends ChangeNotifier {
     unawaited(
       NaverCalendarPermissionService().captureCurrentProviderToken(),
     );
-    unawaited(
-      GoogleCalendarPermissionService().captureCurrentProviderToken(),
-    );
-    // Google 재로그인 시 Google Calendar silent sync
-    if (_providerKey == 'google') {
-      unawaited(CalendarSyncService().syncGoogleCalendar(interactive: false));
-    }
     try {
       await _refreshSessionOnce(service);
     } catch (error) {

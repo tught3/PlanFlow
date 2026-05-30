@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../core/constants.dart';
 import '../core/env.dart';
 import '../core/responsive.dart';
@@ -13,6 +15,7 @@ import '../providers/auth_provider.dart';
 import '../services/app_permission_service.dart';
 import '../services/briefing_scheduler_service.dart';
 import '../services/calendar_auto_sync_service.dart';
+import '../services/calendar_sync_service.dart';
 import '../services/critical_alarm_channel_migration_service.dart';
 import '../services/departure_alarm_service.dart';
 import '../services/external_calendar_sync_guide_service.dart';
@@ -85,6 +88,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       BriefingSchedulerService();
   bool _checkedPermissionOnboarding = false;
   bool _checkedExternalCalendarGuide = false;
+  bool _checkedGoogleCalendarAutoPrompt = false;
   String? _observedUserId;
 
   @override
@@ -103,6 +107,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       unawaited(_migrateFutureCriticalAlarms());
       unawaited(_refreshDepartureAlarmsAndMonitor());
       unawaited(_ensureBriefingsScheduled(reason: 'app_start'));
+      unawaited(_maybeAutoConnectGoogleCalendar());
     });
   }
 
@@ -134,6 +139,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _observedUserId = currentUserId;
     _checkedPermissionOnboarding = false;
     _checkedExternalCalendarGuide = false;
+    _checkedGoogleCalendarAutoPrompt = false;
 
     if (!mounted) {
       return;
@@ -150,6 +156,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         unawaited(_migrateFutureCriticalAlarms());
         unawaited(_refreshDepartureAlarmsAndMonitor());
         unawaited(_ensureBriefingsScheduled(reason: 'auth_changed'));
+        unawaited(_maybeAutoConnectGoogleCalendar());
       }
     });
   }
@@ -319,6 +326,51 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     if (openSettings == true) {
       context.go('${AppRoutes.settings}?open=naver-caldav');
     }
+  }
+
+  /// Google 계정 로그인 사용자이고 Google Calendar가 미연동 상태이면
+  /// interactive sync를 1회 자동 호출해 팝업을 띄운다.
+  /// SharedPreferences 플래그로 앱 생애 1회만 시도한다.
+  Future<void> _maybeAutoConnectGoogleCalendar() async {
+    if (_checkedGoogleCalendarAutoPrompt || !mounted) {
+      return;
+    }
+    _checkedGoogleCalendarAutoPrompt = true;
+
+    // Google 계정이 아니면 스킵
+    if (!authProvider.isGoogleAccount) {
+      return;
+    }
+
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+
+    // 이미 프롬프트한 적이 있으면 스킵
+    final prefs = await SharedPreferences.getInstance();
+    final flagKey = 'google_calendar_autoprompt_done_$userId';
+    final alreadyPrompted = prefs.getBool(flagKey) ?? false;
+    if (alreadyPrompted) {
+      return;
+    }
+
+    // Google Calendar 연동 상태 확인
+    final status = await CalendarSyncService().getGoogleStatus();
+    final isConnected = status.status == CalendarIntegrationStatus.ready ||
+        status.status == CalendarIntegrationStatus.synced;
+    if (isConnected) {
+      // 이미 연동됐으면 플래그만 세팅하고 종료
+      await prefs.setBool(flagKey, true);
+      return;
+    }
+
+    // 미연동 상태 → interactive sync 팝업 호출 (1회)
+    await prefs.setBool(flagKey, true);
+    if (!mounted) {
+      return;
+    }
+    unawaited(CalendarSyncService().syncGoogleCalendar(interactive: true));
   }
 
   List<NavigationDestination> _buildNavigationBarDestinations() {

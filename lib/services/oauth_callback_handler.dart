@@ -11,7 +11,6 @@ import '../core/router.dart';
 import '../providers/auth_provider.dart';
 import 'auth_service.dart';
 import 'calendar_sync_service.dart';
-import 'google_calendar_permission_service.dart';
 import 'naver_calendar_permission_service.dart';
 
 enum OAuthCallbackPurpose {
@@ -223,14 +222,11 @@ class OAuthCallbackHandler {
       unawaited(
         NaverCalendarPermissionService().captureCurrentProviderToken(),
       );
-      unawaited(
-        GoogleCalendarPermissionService().captureCurrentProviderToken(),
-      );
       // Google 로그인 시 Google Calendar interactive sync
-      final _loginSession = client.auth.currentSession;
-      final _loginProvider =
-          _loginSession?.user.appMetadata['provider']?.toString() ?? '';
-      if (_loginProvider.contains('google')) {
+      final loginSession = client.auth.currentSession;
+      final loginProvider =
+          loginSession?.user.appMetadata['provider']?.toString() ?? '';
+      if (loginProvider.contains('google')) {
         unawaited(CalendarSyncService().syncGoogleCalendar(interactive: true));
       }
       if (isPasswordRecovery) {
