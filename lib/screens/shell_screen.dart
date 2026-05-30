@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../core/constants.dart';
 import '../core/env.dart';
 import '../core/responsive.dart';
@@ -107,6 +105,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       unawaited(_migrateFutureCriticalAlarms());
       unawaited(_refreshDepartureAlarmsAndMonitor());
       unawaited(_ensureBriefingsScheduled(reason: 'app_start'));
+      debugPrint('[GCAL] _maybeAutoConnect 호출 시도 (initState)');
       unawaited(_maybeAutoConnectGoogleCalendar());
     });
   }
@@ -156,6 +155,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         unawaited(_migrateFutureCriticalAlarms());
         unawaited(_refreshDepartureAlarmsAndMonitor());
         unawaited(_ensureBriefingsScheduled(reason: 'auth_changed'));
+        debugPrint('[GCAL] _maybeAutoConnect 호출 시도 (auth_changed)');
         unawaited(_maybeAutoConnectGoogleCalendar());
       }
     });
@@ -330,47 +330,49 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   /// Google 계정 로그인 사용자이고 Google Calendar가 미연동 상태이면
   /// interactive sync를 1회 자동 호출해 팝업을 띄운다.
-  /// SharedPreferences 플래그로 앱 생애 1회만 시도한다.
   Future<void> _maybeAutoConnectGoogleCalendar() async {
+    debugPrint('[GCAL] _maybeAutoConnect 진입');
     if (_checkedGoogleCalendarAutoPrompt || !mounted) {
+      debugPrint('[GCAL] return: alreadyChecked=$_checkedGoogleCalendarAutoPrompt mounted=$mounted');
       return;
     }
     _checkedGoogleCalendarAutoPrompt = true;
 
     // Google 계정이 아니면 스킵
+    debugPrint('[GCAL] isGoogleAccount=${authProvider.isGoogleAccount}');
     if (!authProvider.isGoogleAccount) {
+      debugPrint('[GCAL] return: isGoogleAccount=false');
       return;
     }
 
     final userId = authProvider.userId;
+    debugPrint('[GCAL] userId=$userId');
     if (userId == null || userId.isEmpty) {
-      return;
-    }
-
-    // 이미 프롬프트한 적이 있으면 스킵
-    final prefs = await SharedPreferences.getInstance();
-    final flagKey = 'google_calendar_autoprompt_done_$userId';
-    final alreadyPrompted = prefs.getBool(flagKey) ?? false;
-    if (alreadyPrompted) {
+      debugPrint('[GCAL] return: userId is null or empty');
       return;
     }
 
     // Google Calendar 연동 상태 확인
-    final status = await CalendarSyncService().getGoogleStatus();
+    final calendarSync = CalendarSyncService(
+      googleServerClientId: AppEnv.googleServerClientId,
+    );
+    final status = await calendarSync.getGoogleStatus();
     final isConnected = status.status == CalendarIntegrationStatus.ready ||
         status.status == CalendarIntegrationStatus.synced;
+    debugPrint('[GCAL] googleStatus=${status.status} isConnected=$isConnected');
     if (isConnected) {
-      // 이미 연동됐으면 플래그만 세팅하고 종료
-      await prefs.setBool(flagKey, true);
+      // 이미 연동됐으면 종료
+      debugPrint('[GCAL] return: already connected');
       return;
     }
 
-    // 미연동 상태 → interactive sync 팝업 호출 (1회)
-    await prefs.setBool(flagKey, true);
+    // 미연동 상태 → interactive sync 팝업 호출
     if (!mounted) {
+      debugPrint('[GCAL] return: !mounted before interactive sync');
       return;
     }
-    unawaited(CalendarSyncService().syncGoogleCalendar(interactive: true));
+    debugPrint('[GCAL] interactive sync 호출!');
+    unawaited(calendarSync.syncGoogleCalendar(interactive: true));
   }
 
   List<NavigationDestination> _buildNavigationBarDestinations() {

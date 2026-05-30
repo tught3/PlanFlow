@@ -53,12 +53,14 @@ abstract class BasePlanFlowWidgetProvider(
         widgetData: SharedPreferences,
     ) {
         appWidgetIds.forEach { widgetId ->
+            var views: RemoteViews? = null
             try {
-                val views = RemoteViews(context.packageName, layoutId)
+                views = RemoteViews(context.packageName, layoutId)
                 render(context, views, widgetData)
-                appWidgetManager.updateAppWidget(widgetId, views)
             } catch (e: Exception) {
-                android.util.Log.e("PlanFlowWidget", "onUpdate failed for $widgetId", e)
+                android.util.Log.e("PlanFlowWidget", "onUpdate failed for $widgetId: ${e.message}", e)
+            } finally {
+                views?.let { appWidgetManager.updateAppWidget(widgetId, it) }
             }
         }
     }
