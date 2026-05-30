@@ -140,7 +140,7 @@ class AuthService implements AuthSessionClient {
     final response = await _client.auth.getLinkIdentityUrl(
       oauthProvider,
       redirectTo: AppEnv.authRedirectUrl,
-      scopes: oauthScopesFor(provider),
+      scopes: oauthScopesFor(provider, forCalendar: true),
       queryParams: queryParams,
     );
     return _launchOAuthUrl(
@@ -259,14 +259,20 @@ class AuthService implements AuthSessionClient {
   }
 
   @visibleForTesting
-  static String? oauthScopesFor(PlanFlowOAuthProvider provider) {
+  static String? oauthScopesFor(
+    PlanFlowOAuthProvider provider, {
+    // forCalendar=true: connectCalendarProvider 경로에서만 사용.
+    // 로그인 흐름에는 기본 email scope만 요청.
+    bool forCalendar = false,
+  }) {
     return switch (provider) {
       PlanFlowOAuthProvider.google => null,
       // Kakao returns KOE205 when the app asks for consent items that are not
       // enabled in Kakao Developers. Keep login on profile-only scopes; email
       // can be added later only after the Kakao consent item is approved.
       PlanFlowOAuthProvider.kakao => 'openid,profile_nickname,profile_image',
-      PlanFlowOAuthProvider.naver => 'email',
+      PlanFlowOAuthProvider.naver =>
+        forCalendar ? 'email,calendar' : 'email',
     };
   }
 
