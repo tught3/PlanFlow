@@ -44,7 +44,7 @@ planflow://auth-callback
 ### Naver
 
 Supabase 대시보드에 Naver가 기본 provider로 보이지 않으면 커스텀 OAuth/OIDC 설정이 필요합니다.
-앱 코드는 Supabase custom provider ID `naver`를 기준으로 `custom:naver`를 호출하도록 준비되어 있습니다.
+앱 코드는 Supabase custom provider ID `planflow-naver`를 기준으로 `custom:planflow-naver`를 호출하도록 준비되어 있습니다.
 
 ## 5. 앱 런타임 설정값
 

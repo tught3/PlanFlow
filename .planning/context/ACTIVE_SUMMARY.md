@@ -1445,3 +1445,8 @@
 - Voice schedule title normalization now preserves leading place names such as `강릉 건도리횟집에서 ...` instead of stripping them away.
 - Location picker timeout copy now tells users to choose from the candidate list when the map cannot load.
 - Verification passed again: `test/services/voice_schedule_structure_service_test.dart`, `test/screens/location_picker_screen_test.dart`, `test/screens/confirm_screen_test.dart`, `test/screens/event_edit_screen_test.dart`, `test/widgets/calendar_style_event_editor_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, and update install/launch on `192.168.0.102:5555`.
+
+## 2026-05-30 Naver Custom Provider Cutover
+- Switched PlanFlow's Naver OAuth path from `custom:naver` to the new Supabase custom provider `custom:planflow-naver` in the auth service, supporting docs, and auth-provider test fixtures.
+- Simplified social-provider detection so any Naver-flavored provider key still resolves to the Naver label without hard-coding the old provider ID.
+- Verification passed: `scripts/flutter-local.ps1 test test/providers/auth_provider_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:5555`, and a real `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.

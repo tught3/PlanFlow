@@ -254,7 +254,7 @@ class AuthService implements AuthSessionClient {
     return switch (provider) {
       PlanFlowOAuthProvider.google => OAuthProvider.google,
       PlanFlowOAuthProvider.kakao => OAuthProvider.kakao,
-      PlanFlowOAuthProvider.naver => const OAuthProvider('custom:naver'),
+      PlanFlowOAuthProvider.naver => const OAuthProvider('custom:planflow-naver'),
     };
   }
 

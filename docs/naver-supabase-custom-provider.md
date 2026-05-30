@@ -29,7 +29,7 @@ Authentication > Sign In / Providers > Custom Auth Providers > Naver
 권장값:
 
 ```text
-Provider Identifier: custom:naver
+Provider Identifier: custom:planflow-naver
 Display Name: Naver
 Configuration Method: Manual configuration
 Issuer URL: https://nid.naver.com

@@ -318,7 +318,7 @@ class AuthProvider extends ChangeNotifier {
     if (provider == null || provider.isEmpty) {
       return '';
     }
-    if (provider == 'custom:naver' || provider.contains('naver')) {
+    if (provider.contains('naver')) {
       return 'naver';
     }
     return provider;

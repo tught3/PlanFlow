@@ -149,7 +149,7 @@ void main() {
       currentSession: _session(
         userId: 'naver-user',
         email: null,
-        provider: 'custom:naver',
+        provider: 'custom:planflow-naver',
         userMetadata: const <String, dynamic>{},
       ),
     );
@@ -160,7 +160,7 @@ void main() {
 
     expect(provider.email, isNull);
     expect(provider.displayName, isNull);
-    expect(provider.provider, 'custom:naver');
+    expect(provider.provider, 'custom:planflow-naver');
     expect(provider.providerLabel, '네이버 로그인됨');
     expect(provider.accountDisplayName, '네이버 로그인됨');
     expect(provider.socialAccountInfoIncomplete, isTrue);
@@ -246,7 +246,7 @@ void main() {
       currentSession: _session(
         userId: 'naver-user',
         email: null,
-        provider: 'custom:naver',
+        provider: 'custom:planflow-naver',
         userMetadata: const <String, dynamic>{},
         identities: const <UserIdentity>[
           UserIdentity(
@@ -257,7 +257,7 @@ void main() {
               'nickname': '네이버사용자',
             },
             identityId: 'naver-subject',
-            provider: 'custom:naver',
+            provider: 'custom:planflow-naver',
             createdAt: '2026-05-19T00:00:00Z',
             lastSignInAt: '2026-05-19T00:00:00Z',
           ),
@@ -282,7 +282,7 @@ void main() {
       currentSession: _session(
         userId: 'naver-user',
         email: null,
-        provider: 'custom:naver',
+        provider: 'custom:planflow-naver',
         userMetadata: const <String, dynamic>{},
         identities: const <UserIdentity>[
           UserIdentity(
@@ -295,7 +295,7 @@ void main() {
               },
             },
             identityId: 'naver-subject',
-            provider: 'custom:naver',
+            provider: 'custom:planflow-naver',
             createdAt: '2026-05-19T00:00:00Z',
             lastSignInAt: '2026-05-19T00:00:00Z',
           ),
@@ -320,7 +320,7 @@ void main() {
       currentSession: _session(
         userId: 'naver-user',
         email: null,
-        provider: 'custom:naver',
+        provider: 'custom:planflow-naver',
         userMetadata: const <String, dynamic>{
           'email': 'metadata-naver@example.com',
           'name': '네이버사용자',
@@ -345,7 +345,7 @@ void main() {
       currentSession: _session(
         userId: 'naver-user',
         email: null,
-        provider: 'custom:naver',
+        provider: 'custom:planflow-naver',
         userMetadata: const <String, dynamic>{},
         identities: const <UserIdentity>[
           UserIdentity(
@@ -360,7 +360,7 @@ void main() {
               },
             },
             identityId: 'naver-subject',
-            provider: 'custom:naver',
+            provider: 'custom:planflow-naver',
             createdAt: '2026-05-19T00:00:00Z',
             lastSignInAt: '2026-05-19T00:00:00Z',
           ),
