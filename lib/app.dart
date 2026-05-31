@@ -70,6 +70,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
   Future<void> _syncCalendarInBackground() async {
     try {
+      if (!await _waitForInitialAuthResolution()) {
+        return;
+      }
       final signedIn =
           authProvider.isSignedIn || await authProvider.syncCurrentSession();
       if (!signedIn) {
@@ -85,6 +88,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   Future<void> _syncSessionAndCalendar({required String reason}) async {
+    if (!await _waitForInitialAuthResolution()) {
+      return;
+    }
     final signedIn = await authProvider.syncCurrentSession();
     if (!signedIn) {
       return;
@@ -126,7 +132,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   void _onAuthProviderChange() {
-    if (authProvider.needsReauthentication &&
+    if (authProvider.hasResolvedInitialSession &&
+        authProvider.needsReauthentication &&
         authProvider.hasAccountSnapshot &&
         !_reauthSnackBarShown) {
       _reauthSnackBarShown = true;
@@ -184,6 +191,12 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
 
+    if (!await _waitForInitialAuthResolution()) {
+      await _naverIcsShareStore.savePendingPaths(paths);
+      appRouter.go(AppRoutes.login);
+      return;
+    }
+
     final signedIn =
         authProvider.isSignedIn || await authProvider.syncCurrentSession();
     if (!signedIn) {
@@ -193,6 +206,17 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     }
 
     appRouter.go(AppRoutes.naverIcsImport, extra: paths);
+  }
+
+  Future<bool> _waitForInitialAuthResolution() async {
+    if (!AppEnv.isSupabaseReady || authProvider.hasResolvedInitialSession) {
+      return true;
+    }
+    final resolved = await authProvider.waitForInitialSessionResolution();
+    if (!resolved) {
+      debugPrint('Session sync deferred: initial auth unresolved');
+    }
+    return resolved;
   }
 
   bool _isIcsShare(SharedMediaFile file) {

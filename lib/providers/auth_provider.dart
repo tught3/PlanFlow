@@ -27,6 +27,7 @@ class AuthProvider extends ChangeNotifier {
   final AuthSessionClient? _providedAuthService;
   AuthSessionClient? _authService;
   Completer<AuthState>? _firstAuthEventCompleter;
+  Completer<void>? _initialSessionResolvedCompleter;
   String? _userId;
   String? _email;
   String? _displayName;
@@ -80,18 +81,37 @@ class AuthProvider extends ChangeNotifier {
   AuthSessionClient get _service =>
       _authService ??= _providedAuthService ?? AuthService();
 
+  Future<bool> waitForInitialSessionResolution({
+    Duration timeout = const Duration(seconds: 4),
+  }) async {
+    if (hasResolvedInitialSession) {
+      return true;
+    }
+    final completer = _initialSessionResolvedCompleter;
+    if (completer == null) {
+      return hasResolvedInitialSession;
+    }
+    try {
+      await completer.future.timeout(timeout);
+    } catch (_) {}
+    return hasResolvedInitialSession;
+  }
+
   void start() {
     if (_started) {
       return;
     }
     _started = true;
     if (!AppEnv.isSupabaseReady) {
+      _initialSessionResolvedCompleter ??= Completer<void>();
+      _completeInitialSessionResolution();
       _setSessionStatus(AuthSessionStatus.signedOut, notify: false);
       _hasResolvedInitialSession = true;
       notifyListeners();
       return;
     }
     final service = _service;
+    _initialSessionResolvedCompleter ??= Completer<void>();
     _firstAuthEventCompleter = Completer<AuthState>();
     _subscription = service.authStateChanges.listen((authState) async {
       final firstAuthEventCompleter = _firstAuthEventCompleter;
@@ -138,6 +158,49 @@ class AuthProvider extends ChangeNotifier {
       return false;
     }
     final service = _service;
+    final inFlightRefresh = _refreshInFlight;
+    if (inFlightRefresh != null) {
+      await inFlightRefresh;
+      final inFlightSession = service.currentSession;
+      final inFlightUser = inFlightSession?.user ?? service.currentUser;
+      if (inFlightUser != null) {
+        await _syncProfileAndApplyUser(
+          service,
+          inFlightUser,
+          sessionStatus: inFlightSession != null
+              ? AuthSessionStatus.active
+              : AuthSessionStatus.reauthRequired,
+          resolvesInitialSession: true,
+        );
+        return inFlightSession != null;
+      }
+    }
+    if (!_hasResolvedInitialSession) {
+      final resolved = await waitForInitialSessionResolution();
+      final bootstrapSession = service.currentSession;
+      final bootstrapUser = bootstrapSession?.user ?? service.currentUser;
+      if (bootstrapUser != null) {
+        await _syncProfileAndApplyUser(
+          service,
+          bootstrapUser,
+          sessionStatus: bootstrapSession != null
+              ? AuthSessionStatus.active
+              : AuthSessionStatus.reauthRequired,
+          resolvesInitialSession: true,
+        );
+        return bootstrapSession != null;
+      }
+      if (!resolved) {
+        debugPrint('Session refresh deferred: initial auth unresolved');
+      }
+      await _syncProfileAndApplyUser(
+        service,
+        null,
+        sessionStatus: AuthSessionStatus.signedOut,
+        resolvesInitialSession: true,
+      );
+      return false;
+    }
     final snapshotSession = service.currentSession;
     final snapshotUser = snapshotSession?.user ?? service.currentUser;
     final hadAccountSnapshot = hasAccountSnapshot;
@@ -428,7 +491,16 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     _hasResolvedInitialSession = true;
+    _completeInitialSessionResolution();
     notifyListeners();
+  }
+
+  void _completeInitialSessionResolution() {
+    final completer = _initialSessionResolvedCompleter;
+    if (completer == null || completer.isCompleted) {
+      return;
+    }
+    completer.complete();
   }
 
   Future<void> _syncProfileAndApplyUser(

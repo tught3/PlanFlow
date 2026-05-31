@@ -1474,3 +1474,8 @@
 - 출발 알림에 `출발했어요` 액션과 앱 내 `출발하셨나요?` 확인 모달을 추가하고, 이벤트별 로컬 acknowledgement 상태로 같은 이벤트가 monitor/refresh에서 다시 예약되지 않게 정리했다.
 - 이벤트 수정/삭제 시 acknowledgement를 함께 해제하고 departure/preflight 알림 아티팩트를 취소하도록 연결했다.
 - Verification passed: `scripts/flutter-local.ps1 test test/services/departure_alarm_service_test.dart test/services/manual_event_side_effect_service_test.dart test/services/notification_service_test.dart test/screens/event_detail_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:42887`, and `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-05-31 Startup Auth Session Race Fix
+- 앱 시작/복귀 시점에 초기 auth 복구가 끝나기 전에 `syncCurrentSession()`이 다시 refresh를 걸며 세션 만료/재인증 snackbar가 튀던 경로를 막기 위해, 초기 auth resolution completer를 추가하고 bootstrap in-flight refresh를 재사용하도록 정리했다.
+- startup / resume / shared-ICS 진입은 초기 auth resolution이 끝날 때까지 기다린 뒤 세션 동기화를 진행하도록 바꿔서, 빌드/설치 직후 로그인 세션이 불필요하게 풀리는 현상을 줄였다.
+- Verification passed: `scripts/flutter-local.ps1 test test/providers/auth_provider_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:42887`, and `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.

@@ -66,6 +66,35 @@ void main() {
     provider.dispose();
   });
 
+  test('delays refresh until initial auth recovery arrives', () async {
+    final service = _FakeAuthService(currentSession: null);
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    final signedInFuture = provider.syncCurrentSession();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(service.refreshCount, 0);
+    expect(provider.sessionStatus, AuthSessionStatus.unresolved);
+
+    service.emitSession(
+      _session(userId: 'restored-user', email: 'restored@example.com'),
+    );
+    final signedIn = await signedInFuture;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(signedIn, isTrue);
+    expect(provider.hasResolvedInitialSession, isTrue);
+    expect(provider.isSignedIn, isTrue);
+    expect(provider.userId, 'restored-user');
+    expect(service.refreshCount, 1);
+
+    provider.dispose();
+    await service.dispose();
+  });
+
   test('shares an in-flight refresh between bootstrap and sync calls',
       () async {
     final refreshGate = Completer<void>();
