@@ -133,6 +133,83 @@ void main() {
     expect(status.lastNotifyAt, isNull);
   });
 
+  test('acknowledged departures are skipped and cancel their artifacts',
+      () async {
+    final notifications = _FakeNotificationService();
+    final cancelledAlarmIds = <int>[];
+    final service = DepartureAlarmService(
+      notificationService: notifications,
+      preflightCanceller: (alarmId) async {
+        cancelledAlarmIds.add(alarmId);
+        return true;
+      },
+      now: () => DateTime(2026, 5, 8, 9),
+    );
+
+    await service.acknowledgeDeparture('event-ack');
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('departure_alarm:ack:event-ack'), isTrue);
+    expect(
+      notifications.cancelledNotificationIds,
+      contains(notifications.notificationIdFor('event-ack:departure')),
+    );
+    expect(cancelledAlarmIds, isNotEmpty);
+
+    final skippedSchedule = await service.scheduleForEvent(
+      EventModel(
+        id: 'event-ack',
+        userId: 'user-1',
+        title: '출발 확인됨',
+        startAt: DateTime(2026, 5, 8, 12),
+        location: '장소',
+        locationLat: 36.327,
+        locationLng: 127.427,
+      ),
+      rescheduleMonitor: false,
+    );
+
+    expect(skippedSchedule.isScheduled, isFalse);
+    expect(skippedSchedule.skippedReason, 'departure_acknowledged');
+    expect(notifications.titles, isEmpty);
+    expect(notifications.criticalTitles, isEmpty);
+  });
+
+  test('runPreflightForEvent skips acknowledged departures', () async {
+    SharedPreferences.setMockInitialValues({
+      'departure_alarm:ack:event-ack': true,
+    });
+    AppEnv.markSupabaseInitialized();
+    final notifications = _FakeNotificationService();
+    final service = DepartureAlarmService(
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-ack',
+            userId: 'user-1',
+            title: '출발 확인됨',
+            startAt: DateTime(2026, 5, 8, 12),
+            location: '장소',
+            locationLat: 36.327,
+            locationLng: 127.427,
+          ),
+        ],
+      ),
+      notificationService: notifications,
+      preflightScheduler: _FakeDeparturePreflightScheduler().call,
+      now: () => DateTime(2026, 5, 8, 9),
+    );
+
+    final result = await service.runPreflightForEvent(
+      'event-ack',
+      userId: 'user-1',
+    );
+
+    expect(result.isScheduled, isFalse);
+    expect(result.skippedReason, 'departure_acknowledged');
+    expect(notifications.criticalTitles, isEmpty);
+  });
+
   test('falls back to normal notification when critical channel is blocked',
       () async {
     final now = DateTime(2026, 5, 8, 9);
@@ -314,6 +391,44 @@ void main() {
     expect(status.lastMonitorSkippedReason, 'signed_out');
   });
 
+  test('refreshUpcoming skips acknowledged events', () async {
+    SharedPreferences.setMockInitialValues({
+      'departure_alarm:ack:event-1': true,
+    });
+    AppEnv.markSupabaseInitialized();
+    final service = DepartureAlarmService(
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '출발 확인됨',
+            startAt: DateTime(2026, 5, 8, 14),
+            location: '장소',
+            locationLat: 36.327,
+            locationLng: 127.427,
+          ),
+        ],
+      ),
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127),
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 30),
+          source: TravelTimeBufferSource.tmap,
+          reason: 'test',
+        ),
+      ),
+      preflightScheduler: _FakeDeparturePreflightScheduler().call,
+      now: () => DateTime(2026, 5, 8, 9),
+    );
+
+    final result = await service.refreshUpcoming(userId: 'user-1');
+
+    expect(result.skipped, 1);
+    expect(result.scheduled, 0);
+  });
+
   test('refreshUpcoming uses urgent interval when event is within six hours',
       () async {
     AppEnv.markSupabaseInitialized();
@@ -471,6 +586,12 @@ class _FakeNotificationService extends NotificationService {
   final payloads = <String?>[];
   final criticalTitles = <String>[];
   final criticalBodies = <String?>[];
+  final cancelledNotificationIds = <int>[];
+
+  @override
+  Future<void> cancel(int id) async {
+    cancelledNotificationIds.add(id);
+  }
 
   @override
   Future<void> scheduleEventReminder({
@@ -501,6 +622,42 @@ class _FakeNotificationService extends NotificationService {
           : NotificationScheduleStatus.scheduled,
       notifyAt: notifyAt,
       message: blockCritical ? 'blocked' : null,
+    );
+  }
+
+  @override
+  Future<NotificationScheduleResult> scheduleDepartureAlarmWithResult({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime notifyAt,
+    String? payload,
+  }) async {
+    criticalTitles.add(title);
+    criticalBodies.add(body);
+    return NotificationScheduleResult(
+      status: blockCritical
+          ? NotificationScheduleStatus.permissionBlocked
+          : NotificationScheduleStatus.scheduled,
+      notifyAt: notifyAt,
+      message: blockCritical ? 'blocked' : null,
+    );
+  }
+
+  @override
+  Future<NotificationScheduleResult> scheduleDepartureFallbackWithResult({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime notifyAt,
+    String? payload,
+  }) async {
+    titles.add(title);
+    bodies.add(body);
+    payloads.add(payload);
+    return NotificationScheduleResult(
+      status: NotificationScheduleStatus.scheduled,
+      notifyAt: notifyAt,
     );
   }
 }

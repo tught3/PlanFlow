@@ -2,6 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/services/notification_service.dart';
 
 void main() {
@@ -174,6 +175,29 @@ void main() {
         <String, Object?>{
           'channelId': NotificationService.criticalAlarmChannelId,
         },
+      );
+    });
+
+    test('routes departure notification action and body tap separately', () {
+      final tappedDeparture = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotification,
+        payload: 'departure:event-1',
+      );
+      final acknowledgedDeparture = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.departureAcknowledgedActionId,
+        payload: 'departure:event-1',
+      );
+
+      expect(
+        NotificationService.routeForNotificationResponse(tappedDeparture),
+        '${AppRoutes.eventDetail}/event-1?departureAction=prompt',
+      );
+      expect(
+        NotificationService.routeForNotificationResponse(acknowledgedDeparture),
+        '${AppRoutes.eventDetail}/event-1',
       );
     });
   });

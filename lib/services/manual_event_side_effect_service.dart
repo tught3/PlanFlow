@@ -197,6 +197,7 @@ class ManualEventSideEffectService {
       travelMode: travelMode,
     );
 
+    await _departureAlarms.clearAcknowledgement(event.id);
     await _notifications.cancelEventNotifications(event.id);
 
     try {
@@ -293,6 +294,7 @@ class ManualEventSideEffectService {
     Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
   }) async {
+    await _departureAlarms.clearAcknowledgement(eventId);
     await _notifications.cancelEventNotifications(eventId);
     final resolvedUserId = userId ?? _currentSupabaseUserId();
     if (resolvedUserId == null || resolvedUserId.isEmpty) {

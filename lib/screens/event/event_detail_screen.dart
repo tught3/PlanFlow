@@ -29,21 +29,27 @@ class EventDetailScreen extends StatefulWidget {
     this.event,
     this.eventId,
     this.eventRepository,
+    this.showDeparturePrompt = false,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
     SmartPreparationAlarmService? smartPreparationAlarmService,
+    DepartureAlarmService? departureAlarmService,
   })  : sideEffectService =
             sideEffectService ?? const ManualEventSideEffectService(),
         homeWidgetService = homeWidgetService ?? HomeWidgetService(),
         smartPreparationAlarmService = smartPreparationAlarmService ??
-            const SmartPreparationAlarmService();
+            const SmartPreparationAlarmService(),
+        departureAlarmService =
+            departureAlarmService ?? const DepartureAlarmService();
 
   final EventModel? event;
   final String? eventId;
   final EventRepository? eventRepository;
+  final bool showDeparturePrompt;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
   final SmartPreparationAlarmService smartPreparationAlarmService;
+  final DepartureAlarmService departureAlarmService;
 
   @override
   State<EventDetailScreen> createState() => _EventDetailScreenState();
@@ -54,6 +60,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool _isLoading = false;
   bool _isDeleting = false;
   bool _isSavingSupplies = false;
+  bool _departurePromptShown = false;
   String? _loadError;
   final Set<String> _checkedSupplies = <String>{};
   List<PreActionModel> _smartPreparationAlarms = const <PreActionModel>[];
@@ -87,6 +94,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     _event = widget.event;
     _syncCheckedSupplies();
     _loadLatestEvent();
+    if (widget.showDeparturePrompt) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_maybeShowDeparturePrompt());
+      });
+    }
   }
 
   Future<void> _loadLatestEvent() async {
@@ -131,6 +143,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         _loadError = latestEvent == null ? '일정을 다시 찾지 못했습니다.' : null;
         _syncCheckedSupplies();
       });
+      if (widget.showDeparturePrompt) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(_maybeShowDeparturePrompt());
+        });
+      }
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -153,6 +170,48 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       ..clear()
       ..addAll(persisted.where(supplies.contains));
     _checkedSupplies.removeWhere((item) => !supplies.contains(item));
+  }
+
+  Future<void> _maybeShowDeparturePrompt() async {
+    if (!mounted || !widget.showDeparturePrompt || _departurePromptShown) {
+      return;
+    }
+    if (_isLoading || _event == null) {
+      return;
+    }
+    _departurePromptShown = true;
+    final event = _event!;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('출발하셨나요?'),
+        content: Text(
+          '"${event.title}" 일정의 출발 알림을 멈출까요?',
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        actions: [
+          FilledButton.tonal(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('아직 아니에요'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('출발했어요'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) {
+      return;
+    }
+    await widget.departureAlarmService.acknowledgeDeparture(event.id);
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('출발 알림을 멈췄어요.')),
+    );
   }
 
   Future<void> _toggleSupply(String item) async {

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -7,6 +8,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../core/constants.dart';
 import '../core/router.dart';
+import 'departure_acknowledgement_store.dart';
 
 enum NotificationScheduleStatus {
   scheduled,
@@ -51,6 +53,7 @@ class NotificationService {
   static const String _criticalAlarmChannelDescription =
       '중요 일정 알람. 일반 알림보다 강한 진동과 전용 알림음으로 구분합니다.';
   static const Color _criticalAlarmColor = Color(0xFFD32F2F);
+  static const String departureAcknowledgedActionId = 'departure_ack';
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
   );
@@ -125,7 +128,7 @@ class NotificationService {
         title: title,
         body: body,
         notifyAt: notifyAt,
-        details: _eventReminderDetails,
+        details: _eventReminderDetails(),
         androidScheduleMode: reminderScheduleModeForStatus(status),
         payload: payload,
       );
@@ -256,6 +259,163 @@ class NotificationService {
     }
   }
 
+  Future<void> scheduleDepartureAlarm({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime notifyAt,
+    String? payload,
+  }) async {
+    await scheduleDepartureAlarmWithResult(
+      id: id,
+      title: title,
+      body: body,
+      notifyAt: notifyAt,
+      payload: payload,
+    );
+  }
+
+  Future<NotificationScheduleResult> scheduleDepartureAlarmWithResult({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime notifyAt,
+    String? payload,
+  }) async {
+    if (!notifyAt.isAfter(DateTime.now())) {
+      debugPrint('Departure alarm skipped because notifyAt is past: $notifyAt');
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.skippedPast,
+        notifyAt: notifyAt,
+        message: '吏湲?異쒕컻 ?쇱젙 ?쓣?덉빟 ?덉뒿?덈떎.',
+      );
+    }
+
+    try {
+      await initialize();
+      await _runPermissionRequestBestEffort(
+        'exact alarm before departure notification',
+        _requestExactAlarmPermissionIfNeeded,
+      );
+      final fullScreenIntentAllowed =
+          await _requestFullScreenIntentPermissionBestEffort();
+      final status = await checkPermissionStatus();
+      if (status.notificationsEnabled == false) {
+        debugPrint(
+          'Departure alarm permission blocked: '
+          'notifications=${status.notificationsEnabled}, '
+          'exact=${status.exactAlarmsEnabled}',
+        );
+        return NotificationScheduleResult(
+          status: NotificationScheduleStatus.permissionBlocked,
+          notifyAt: notifyAt,
+          message: _criticalAlarmPermissionMessage(status),
+        );
+      }
+
+      await _scheduleNotification(
+        id: id,
+        title: title,
+        body: body,
+        notifyAt: notifyAt,
+        details: _departureNotificationDetails(
+          title: title,
+          body: body,
+          fullScreenIntent: shouldUseCriticalFullScreenIntent(
+            status: status,
+            requestResult: fullScreenIntentAllowed,
+          ),
+        ),
+        androidScheduleMode: criticalAlarmScheduleModeForStatus(status),
+        payload: payload,
+      );
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.scheduled,
+        notifyAt: notifyAt,
+        message: _criticalAlarmScheduleWarning(
+          status: status,
+          fullScreenIntentAllowed: fullScreenIntentAllowed,
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Departure alarm scheduling failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.error,
+        notifyAt: notifyAt,
+        message: '吏湲?異쒕컻 ?뚮┝ ?덉빟 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.',
+      );
+    }
+  }
+
+  Future<NotificationScheduleResult> scheduleDepartureFallbackWithResult({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime notifyAt,
+    String? payload,
+  }) async {
+    if (!notifyAt.isAfter(DateTime.now())) {
+      debugPrint('Departure fallback skipped because notifyAt is past: $notifyAt');
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.skippedPast,
+        notifyAt: notifyAt,
+        message: '吏湲?異쒕컻 ?ŀ???쒓컙??吏???덉빟 ?섏? ?딆뒿?덈떎.',
+      );
+    }
+
+    try {
+      await initialize();
+      final status = await checkPermissionStatus();
+      if (status.notificationsEnabled == false) {
+        debugPrint(
+          'Departure fallback permission blocked: '
+          'notifications=${status.notificationsEnabled}, '
+          'exact=${status.exactAlarmsEnabled}',
+        );
+        return NotificationScheduleResult(
+          status: NotificationScheduleStatus.permissionBlocked,
+          notifyAt: notifyAt,
+          message: _criticalAlarmPermissionMessage(status),
+        );
+      }
+      await _scheduleNotification(
+        id: id,
+        title: title,
+        body: body,
+        notifyAt: notifyAt,
+        details: _eventReminderDetails(
+          actions: const [
+            AndroidNotificationAction(
+              departureAcknowledgedActionId,
+              '출발했어요',
+              cancelNotification: true,
+              showsUserInterface: true,
+              semanticAction: SemanticAction.none,
+            ),
+          ],
+        ),
+        androidScheduleMode: reminderScheduleModeForStatus(status),
+        payload: payload,
+      );
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.scheduled,
+        notifyAt: notifyAt,
+        message: status.exactAlarmsEnabled == false
+            ? '정확한 알림 권한이 꺼져 있어 Android가 약간 늦게 울릴 수 있습니다.'
+            : null,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Departure fallback scheduling failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return NotificationScheduleResult(
+        status: NotificationScheduleStatus.error,
+        notifyAt: notifyAt,
+        message: '출발 알림 예약 중 오류가 발생했습니다.',
+      );
+    }
+  }
+
   Future<void> cancel(int id) async {
     await initialize();
     await _plugin.cancel(id: id);
@@ -267,6 +427,21 @@ class NotificationService {
     await cancel(notificationIdFor('$eventId:departure'));
     await cancelSmartPreparationAlarms(eventId);
     await cancelPreActionAlarms(eventId);
+  }
+
+  Future<void> cancelDepartureNotifications(String eventId) async {
+    await cancel(notificationIdFor('$eventId:departure'));
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    try {
+      await AndroidAlarmManager.cancel(
+        _stableNotificationId('$eventId:departure_preflight'),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Cancel departure preflight failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<void> cancelSmartPreparationAlarms(String eventId) async {
@@ -468,32 +643,17 @@ class NotificationService {
     await _plugin.initialize(
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (response) {
-        if (response.payload == 'naver_ics_monthly_reminder') {
-          appRouter.go(AppRoutes.naverIcsImport);
-          return;
-        }
-        final payload = response.payload ?? '';
-        if (payload == 'briefing:morning' || payload == 'briefing:evening') {
-          final type = payload.endsWith('evening') ? 'evening' : 'morning';
-          appRouter.go('${AppRoutes.briefing}?type=$type');
-          return;
-        }
-        if (payload.startsWith('event:')) {
-          final eventId = payload.substring('event:'.length).trim();
+        final route = routeForNotificationResponse(response);
+        if (response.actionId == departureAcknowledgedActionId &&
+            (response.payload ?? '').startsWith('departure:')) {
+          final eventId =
+              (response.payload ?? '').substring('departure:'.length).trim();
           if (eventId.isNotEmpty) {
-            appRouter.go(
-              '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}',
-            );
+            unawaited(_acknowledgeDeparture(eventId));
           }
-          return;
         }
-        if (payload.startsWith('departure:')) {
-          final eventId = payload.substring('departure:'.length).trim();
-          if (eventId.isNotEmpty) {
-            appRouter.go(
-              '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}',
-            );
-          }
+        if (route != null) {
+          appRouter.go(route);
         }
       },
     );
@@ -649,8 +809,10 @@ class NotificationService {
     );
   }
 
-  NotificationDetails get _eventReminderDetails {
-    return const NotificationDetails(
+  NotificationDetails _eventReminderDetails({
+    List<AndroidNotificationAction>? actions,
+  }) {
+    return NotificationDetails(
       android: AndroidNotificationDetails(
         _eventReminderChannelId,
         _eventReminderChannelName,
@@ -658,11 +820,76 @@ class NotificationService {
         importance: Importance.high,
         priority: Priority.high,
         category: AndroidNotificationCategory.event,
+        actions: actions,
       ),
       iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
       macOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
       linux: LinuxNotificationDetails(
         urgency: LinuxNotificationUrgency.normal,
+        suppressSound: false,
+      ),
+    );
+  }
+
+  NotificationDetails _departureNotificationDetails({
+    required String title,
+    required String body,
+    required bool fullScreenIntent,
+  }) {
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        criticalAlarmChannelId,
+        _criticalAlarmChannelName,
+        channelDescription: _criticalAlarmChannelDescription,
+        importance: Importance.max,
+        priority: Priority.max,
+        styleInformation: BigTextStyleInformation(
+          body,
+          contentTitle: title,
+          summaryText: '?볦튂硫????섎뒗 以묒슂 ?뚮엺',
+        ),
+        category: AndroidNotificationCategory.alarm,
+        fullScreenIntent: fullScreenIntent,
+        channelAction: AndroidNotificationChannelAction.update,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound(
+          criticalAlarmSoundResource,
+        ),
+        enableVibration: true,
+        autoCancel: false,
+        color: _criticalAlarmColor,
+        colorized: true,
+        enableLights: true,
+        ledColor: _criticalAlarmColor,
+        ledOnMs: 1000,
+        ledOffMs: 500,
+        vibrationPattern: Int64List.fromList(
+          <int>[0, 1200, 250, 1200, 250, 1600],
+        ),
+        visibility: NotificationVisibility.public,
+        ticker: '以묒슂 ?쇱젙 ?뚮엺',
+        actions: const [
+          AndroidNotificationAction(
+            departureAcknowledgedActionId,
+            '출발했어요',
+            cancelNotification: true,
+            showsUserInterface: true,
+            semanticAction: SemanticAction.none,
+          ),
+        ],
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: true,
+        interruptionLevel: InterruptionLevel.critical,
+      ),
+      macOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: true,
+        interruptionLevel: InterruptionLevel.critical,
+      ),
+      linux: const LinuxNotificationDetails(
+        urgency: LinuxNotificationUrgency.critical,
         suppressSound: false,
       ),
     );
@@ -756,6 +983,52 @@ class NotificationService {
       '알림을 누르면 해당 일정으로 이동합니다.',
     ];
     return bodyLines.join('\n');
+  }
+
+  @visibleForTesting
+  static String? routeForNotificationResponse(NotificationResponse response) {
+    if (response.payload == 'naver_ics_monthly_reminder') {
+      return AppRoutes.naverIcsImport;
+    }
+
+    final payload = response.payload ?? '';
+    if (payload == 'briefing:morning' || payload == 'briefing:evening') {
+      final type = payload.endsWith('evening') ? 'evening' : 'morning';
+      return '${AppRoutes.briefing}?type=$type';
+    }
+
+    if (payload.startsWith('event:')) {
+      final eventId = payload.substring('event:'.length).trim();
+      if (eventId.isEmpty) {
+        return null;
+      }
+      return '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}';
+    }
+
+    if (payload.startsWith('departure:')) {
+      final eventId = payload.substring('departure:'.length).trim();
+      if (eventId.isEmpty) {
+        return null;
+      }
+      final eventRoute =
+          '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}';
+      if (response.actionId == departureAcknowledgedActionId) {
+        return eventRoute;
+      }
+      return '$eventRoute?departureAction=prompt';
+    }
+
+    return null;
+  }
+
+  Future<void> _acknowledgeDeparture(String eventId) async {
+    final normalizedEventId = eventId.trim();
+    if (normalizedEventId.isEmpty) {
+      return;
+    }
+    const store = SharedPreferencesDepartureAcknowledgementStore();
+    await store.markAcknowledged(normalizedEventId);
+    await cancelDepartureNotifications(normalizedEventId);
   }
 
   int _stableNotificationId(String id) {

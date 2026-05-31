@@ -12,6 +12,7 @@ import '../data/models/user_settings_model.dart';
 import '../data/repositories/event_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import 'app_permission_service.dart';
+import 'departure_acknowledgement_store.dart';
 import 'map_service.dart';
 import 'notification_service.dart';
 import 'travel_time_buffer_service.dart';
@@ -32,6 +33,8 @@ class DepartureAlarmService {
     EventRepository? eventRepository,
     SettingsRepository? settingsRepository,
     DepartureAlarmPreflightScheduler? preflightScheduler,
+    Future<bool> Function(int alarmId)? preflightCanceller,
+    DepartureAcknowledgementStore? acknowledgementStore,
     DateTime Function()? now,
   })  : _permissionService = permissionService,
         _currentLocationProvider = currentLocationProvider,
@@ -40,6 +43,8 @@ class DepartureAlarmService {
         _eventRepository = eventRepository,
         _settingsRepository = settingsRepository,
         _preflightScheduler = preflightScheduler,
+        _preflightCanceller = preflightCanceller,
+        _acknowledgementStore = acknowledgementStore,
         _now = now;
 
   static const String label = '출발 알림';
@@ -80,6 +85,8 @@ class DepartureAlarmService {
   final EventRepository? _eventRepository;
   final SettingsRepository? _settingsRepository;
   final DepartureAlarmPreflightScheduler? _preflightScheduler;
+  final Future<bool> Function(int alarmId)? _preflightCanceller;
+  final DepartureAcknowledgementStore? _acknowledgementStore;
   final DateTime Function()? _now;
 
   AppPermissionService get _permissions =>
@@ -93,8 +100,22 @@ class DepartureAlarmService {
 
   EventRepository get _events => _eventRepository ?? EventRepository.supabase();
 
-  SettingsRepository get _settings =>
-      _settingsRepository ?? SettingsRepository.supabase();
+  SettingsRepository get _settings {
+    final injected = _settingsRepository;
+    if (injected != null) {
+      return injected;
+    }
+    try {
+      return SettingsRepository.supabase();
+    } catch (error, stackTrace) {
+      debugPrint('Departure alarm settings fallback: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return const _FallbackSettingsRepository();
+    }
+  }
+
+  DepartureAcknowledgementStore get _acknowledgements =>
+      _acknowledgementStore ?? const SharedPreferencesDepartureAcknowledgementStore();
 
   DateTime get _currentTime => (_now ?? DateTime.now)();
 
@@ -118,6 +139,14 @@ class DepartureAlarmService {
       return _recordAndReturnScheduleResult(
         event,
         const DepartureAlarmScheduleResult.skipped('missing_destination'),
+      );
+    }
+    if (await _acknowledgements.isAcknowledged(event.id)) {
+      return _recordAndReturnScheduleResult(
+        event,
+        const DepartureAlarmScheduleResult.skipped(
+          'departure_acknowledged',
+        ),
       );
     }
 
@@ -226,6 +255,11 @@ class DepartureAlarmService {
     if (event == null) {
       return const DepartureAlarmScheduleResult.skipped('event_not_found');
     }
+    if (await _acknowledgements.isAcknowledged(event.id)) {
+      return const DepartureAlarmScheduleResult.skipped(
+        'departure_acknowledged',
+      );
+    }
 
     final settings = await _loadSettings(resolvedUserId);
     final safetyMargin = Duration(
@@ -239,6 +273,24 @@ class DepartureAlarmService {
       travelModeOverride: travelMode,
       fireDueDeparture: true,
     );
+  }
+
+  Future<void> acknowledgeDeparture(String eventId) async {
+    final normalizedEventId = eventId.trim();
+    if (normalizedEventId.isEmpty) {
+      return;
+    }
+    await _acknowledgements.markAcknowledged(normalizedEventId);
+    await _cancelDepartureArtifacts(normalizedEventId);
+  }
+
+  Future<void> clearAcknowledgement(String eventId) async {
+    final normalizedEventId = eventId.trim();
+    if (normalizedEventId.isEmpty) {
+      return;
+    }
+    await _acknowledgements.clearAcknowledged(normalizedEventId);
+    await _cancelDepartureArtifacts(normalizedEventId);
   }
 
   Future<DepartureAlarmMonitorResult> refreshUpcoming({
@@ -270,6 +322,10 @@ class DepartureAlarmService {
     for (final event in events) {
       final startAt = event.startAt;
       if (startAt == null || startAt.isBefore(now) || startAt.isAfter(until)) {
+        continue;
+      }
+      if (await _acknowledgements.isAcknowledged(event.id)) {
+        skipped += 1;
         continue;
       }
       if (startAt.isBefore(now.add(monitorUrgentWindow))) {
@@ -388,7 +444,7 @@ class DepartureAlarmService {
       travelMinutes,
       safetyMargin: safetyMargin,
     );
-    final criticalResult = await _notifications.scheduleCriticalAlarmWithResult(
+    final criticalResult = await _notifications.scheduleDepartureAlarmWithResult(
       id: notificationId,
       title: '지금 출발해야 해요',
       body: body,
@@ -403,13 +459,52 @@ class DepartureAlarmService {
       'Departure alarm critical channel fallback: '
       '${criticalResult.status.name} ${criticalResult.message ?? ''}',
     );
-    await _notifications.scheduleEventReminder(
+    await _notifications.scheduleDepartureFallbackWithResult(
       id: notificationId,
       title: '지금 출발해야 해요',
       body: body,
       notifyAt: notifyAt,
       payload: 'departure:${event.id}',
     );
+  }
+
+  Future<void> _cancelDepartureArtifacts(String eventId) async {
+    final normalizedEventId = eventId.trim();
+    if (normalizedEventId.isEmpty) {
+      return;
+    }
+    await _notifications.cancel(
+      _notifications.notificationIdFor('$normalizedEventId:departure'),
+    );
+    await _cancelDeparturePreflight(normalizedEventId);
+  }
+
+  Future<bool> _cancelDeparturePreflight(String eventId) async {
+    final alarmId = _stableAlarmId('$eventId:departure_preflight');
+    final injectedCanceller = _preflightCanceller;
+    if (injectedCanceller != null) {
+      try {
+        return await injectedCanceller(alarmId);
+      } catch (error, stackTrace) {
+        debugPrint('Departure preflight cancel failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+        return false;
+      }
+    }
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return false;
+    }
+    try {
+      final initialized = await AndroidAlarmManager.initialize();
+      if (!initialized) {
+        return false;
+      }
+      return AndroidAlarmManager.cancel(alarmId);
+    } catch (error, stackTrace) {
+      debugPrint('Departure preflight cancel failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
   }
 
   Duration _monitorIntervalForEvent(EventModel event) {
@@ -678,6 +773,20 @@ class DepartureAlarmRuntimeStatus {
   final int? lastMonitorSkipped;
   final String? lastMonitorSkippedReason;
   final bool? monitorScheduled;
+}
+
+class _FallbackSettingsRepository extends SettingsRepository {
+  const _FallbackSettingsRepository();
+
+  @override
+  Future<UserSettingsModel?> fetchSettings(String userId) async {
+    return UserSettingsModel.defaults(userId: userId);
+  }
+
+  @override
+  Future<UserSettingsModel> upsertSettings(UserSettingsModel settings) async {
+    return settings;
+  }
 }
 
 @pragma('vm:entry-point')

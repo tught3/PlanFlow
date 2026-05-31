@@ -48,10 +48,11 @@ void main() {
         () async {
       final gateway = _FakeManualEventGateway();
       final notifications = _FakeNotificationService();
+      final departure = _FakeDepartureAlarmService();
       final service = ManualEventSideEffectService(
         gateway: gateway,
         eventRepository: _FakeEventRepository(),
-        departureAlarmService: _FakeDepartureAlarmService(),
+        departureAlarmService: departure,
         notificationService: notifications,
       );
       final event = EventModel(
@@ -70,6 +71,7 @@ void main() {
       expect(result.isFullySynced, true);
       expect(gateway.deletedReminderEventIds, ['event-2']);
       expect(gateway.deletedPreActionEventIds, ['event-2']);
+      expect(departure.clearedAcknowledgementEventIds, ['event-2']);
       expect(gateway.insertedReminders, hasLength(2));
       expect(gateway.insertedReminders.map((row) => row['type']), [
         'push',
@@ -86,16 +88,18 @@ void main() {
 
     test('delete cleanup cancels local notifications for the event', () async {
       final notifications = _FakeNotificationService();
+      final departure = _FakeDepartureAlarmService();
       final service = ManualEventSideEffectService(
         gateway: _FakeManualEventGateway(),
         eventRepository: _FakeEventRepository(),
-        departureAlarmService: _FakeDepartureAlarmService(),
+        departureAlarmService: departure,
         notificationService: notifications,
       );
 
       await service.cleanupAfterDelete('event-3');
 
       expect(notifications.cancelledEventIds, ['event-3']);
+      expect(departure.clearedAcknowledgementEventIds, ['event-3']);
     });
 
     test('syncAfterSave recalculates prep and departure alarms for the day',
@@ -226,6 +230,7 @@ void main() {
       await service.cleanupAfterDelete('deleted-event', userId: 'user-1');
 
       expect(notifications.cancelledEventIds, ['deleted-event']);
+      expect(departure.clearedAcknowledgementEventIds, ['deleted-event']);
       expect(gateway.deletedExternalPreActionEventIds, ['remaining-place']);
       final remainingTitles = gateway.insertedPreActions
           .where((row) => row['event_id'] == 'remaining-place')
@@ -967,6 +972,8 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   int scheduleForEventCallCount = 0;
   int scheduleNextMonitorCallCount = 0;
   final scheduledEventIds = <String>[];
+  final acknowledgedEventIds = <String>[];
+  final clearedAcknowledgementEventIds = <String>[];
   Duration? lastSafetyMarginOverride;
 
   @override
@@ -992,5 +999,15 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
   }) async {
     scheduleNextMonitorCallCount += 1;
     return true;
+  }
+
+  @override
+  Future<void> acknowledgeDeparture(String eventId) async {
+    acknowledgedEventIds.add(eventId);
+  }
+
+  @override
+  Future<void> clearAcknowledgement(String eventId) async {
+    clearedAcknowledgementEventIds.add(eventId);
   }
 }

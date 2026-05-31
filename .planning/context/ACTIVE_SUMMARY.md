@@ -1470,3 +1470,7 @@
 - 위치 문자열 정규화는 시간 표현을 먼저 제거하도록 강화해서 `오늘 오후 5시 판교 대장동 해링턴플레이스 방문`이 `대장동 해링턴플레이스`로 남게 했고, 네이버 지도는 준비될 때까지 기다렸다가 우선 사용하도록 바꿨다.
 - Naver Map 초기화 성공/실패 로그를 추가하고, 위치 픽커 대기 시간을 10초로 늘려 Naver 우선 렌더링이 너무 빨리 Google fallback으로 내려가지 않도록 조정했다.
 - Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 test test/services/voice_schedule_structure_service_test.dart test/screens/voice_conversation_screen_test.dart --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:33125`, and `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.
+## 2026-05-31 Departure Alarm Acknowledgement Flow
+- 출발 알림에 `출발했어요` 액션과 앱 내 `출발하셨나요?` 확인 모달을 추가하고, 이벤트별 로컬 acknowledgement 상태로 같은 이벤트가 monitor/refresh에서 다시 예약되지 않게 정리했다.
+- 이벤트 수정/삭제 시 acknowledgement를 함께 해제하고 departure/preflight 알림 아티팩트를 취소하도록 연결했다.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/departure_alarm_service_test.dart test/services/manual_event_side_effect_service_test.dart test/services/notification_service_test.dart test/screens/event_detail_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:42887`, and `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.
