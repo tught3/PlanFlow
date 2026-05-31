@@ -1450,3 +1450,8 @@
 - Switched PlanFlow's Naver OAuth path from `custom:naver` to the new Supabase custom provider `custom:planflow-naver` in the auth service, supporting docs, and auth-provider test fixtures.
 - Simplified social-provider detection so any Naver-flavored provider key still resolves to the Naver label without hard-coding the old provider ID.
 - Verification passed: `scripts/flutter-local.ps1 test test/providers/auth_provider_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:5555`, and a real `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-05-31 Query Cue And Manual Briefing Notification Suppression
+- Expanded voice query intent cues so phrases like `몇시야`, `있어?`, and related question forms route to query flow instead of edit flow.
+- Manual briefing playback from the app foreground now suppresses the one-second notification and only plays TTS, while scheduled/background briefing behavior stays unchanged.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/voice_command_pipeline_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/briefing_scheduler_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, and update install/launch on `192.168.0.102:33125`.

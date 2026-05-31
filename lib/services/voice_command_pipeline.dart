@@ -516,7 +516,15 @@ class VoiceCommandPipeline {
   bool _hasQueryIntentCue(String text) {
     final normalized = normalizeManagementText(text);
     return RegExp(
-      r'(찾아\s*줘|찾아\s*주세요|검색|알려\s*줘|알려\s*주세요|언제|어디|뭐야|보여\s*줘|보여\s*주세요|일정\s*확인|확인해\s*줘|확인해\s*주세요)',
+      r'(찾아\s*줘|찾아\s*주세요|검색'
+      r'|알려\s*줘|알려\s*주세요'
+      r'|언제|언제야|언제인지|언제예요'
+      r'|어디|뭐야|뭐예요|뭐가|무슨'
+      r'|몇\s*시|몇시야|몇시에|몇\s*시야|몇\s*시에'
+      r'|있어|있어요|있나|있나요|있는지|있을까'
+      r'|보여\s*줘|보여\s*주세요|일정\s*확인|확인해\s*줘|확인해\s*주세요'
+      r'|어떻게\s*돼|어떻게\s*됐|어떻게\s*되'
+      r'|어떤\s*일정|뭐\s*있어)',
     ).hasMatch(normalized);
   }
 

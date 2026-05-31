@@ -60,6 +60,7 @@ class HomeScreen extends StatefulWidget {
     this.smartPreparationAlarmService = const SmartPreparationAlarmService(),
     this.homeWidgetService,
     this.loadHeaderSummary = true,
+    this.nowProvider,
     BriefingSchedulerService? briefingSchedulerService,
   }) : _briefingSchedulerService = briefingSchedulerService;
 
@@ -69,6 +70,7 @@ class HomeScreen extends StatefulWidget {
   final SmartPreparationAlarmService smartPreparationAlarmService;
   final HomeWidgetService? homeWidgetService;
   final bool loadHeaderSummary;
+  final DateTime Function()? nowProvider;
   final BriefingSchedulerService? _briefingSchedulerService;
 
   @override
@@ -268,7 +270,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     List<EventModel> allEvents, {
     bool refreshHomeWidget = true,
   }) async {
-    final now = DateTime.now();
+    final now = widget.nowProvider?.call() ?? DateTime.now();
     final todayEvents = allEvents.where((event) {
       return _eventIntersectsDay(event, now);
     }).toList(growable: false)
@@ -396,6 +398,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final result = await _briefingSchedulerService.executeBriefing(
         isMorning: isMorning,
         userId: user.id,
+        isManualTrigger: true,
       );
       _showSnack(result.message);
     } catch (error, stackTrace) {

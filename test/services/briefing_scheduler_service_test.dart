@@ -222,6 +222,41 @@ void main() {
     expect(tts.lastText, isNot(contains('중요.')));
   });
 
+  test('manual briefing suppresses notification but still speaks', () async {
+    AppEnv.markSupabaseInitialized();
+    final notification = _FakeNotificationService();
+    final tts = _FakeTtsService();
+    final service = BriefingSchedulerService(
+      alarmService: _FakeAlarmService(),
+      ttsService: tts,
+      notificationService: notification,
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '회의',
+            startAt: DateTime.utc(2026, 5, 12, 9),
+          ),
+        ],
+      ),
+      settingsRepository: _FakeSettingsRepository(
+        settings: UserSettingsModel.defaults(userId: 'user-1'),
+      ),
+      now: () => DateTime(2026, 5, 12, 7),
+    );
+
+    final result = await service.executeBriefing(
+      isMorning: true,
+      userId: 'user-1',
+      isManualTrigger: true,
+    );
+
+    expect(result.delivered, isTrue);
+    expect(notification.lastBody, isNull);
+    expect(tts.lastText, isNotNull);
+  });
+
   test('local briefing does not mention movement when events have no location',
       () async {
     AppEnv.markSupabaseInitialized();

@@ -218,6 +218,7 @@ class BriefingSchedulerService {
   Future<BriefingExecutionResult> executeBriefing({
     required bool isMorning,
     String? userId,
+    bool isManualTrigger = false,
   }) async {
     final resolvedUserId = _resolveUserId(userId);
     final type = isMorning ? 'morning' : 'evening';
@@ -241,6 +242,7 @@ class BriefingSchedulerService {
         await _deliverBriefing(
           message,
           isMorning: isMorning,
+          suppressNotification: isManualTrigger,
         );
         const result = BriefingExecutionResult(
           delivered: true,
@@ -257,6 +259,7 @@ class BriefingSchedulerService {
         await _deliverBriefing(
           message,
           isMorning: isMorning,
+          suppressNotification: isManualTrigger,
         );
         const result = BriefingExecutionResult(
           delivered: true,
@@ -280,6 +283,7 @@ class BriefingSchedulerService {
         await _deliverBriefing(
           message,
           isMorning: isMorning,
+          suppressNotification: isManualTrigger,
         );
         final result = BriefingExecutionResult(
           delivered: true,
@@ -316,7 +320,11 @@ class BriefingSchedulerService {
           'Briefing fallback used: type=$type events=${events.length} reason=$failureReason',
         );
       }
-      await _deliverBriefing(briefingText, isMorning: isMorning);
+      await _deliverBriefing(
+        briefingText,
+        isMorning: isMorning,
+        suppressNotification: isManualTrigger,
+      );
       final result = BriefingExecutionResult(
         delivered: true,
         usedFallback: usedFallback,
@@ -526,20 +534,23 @@ class BriefingSchedulerService {
   Future<void> _deliverBriefing(
     String text, {
     required bool isMorning,
+    bool suppressNotification = false,
   }) async {
     final title = isMorning ? '모닝 브리핑' : '이브닝 브리핑';
     final type = isMorning ? 'morning' : 'evening';
 
-    try {
-      await _notificationService.scheduleEventReminder(
-        id: isMorning ? 90001 : 90002,
-        title: title,
-        body: text.length > 100 ? '${text.substring(0, 100)}...' : text,
-        notifyAt: DateTime.now().add(const Duration(seconds: 1)),
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Briefing notification failed: type=$type error=$error');
-      debugPrintStack(stackTrace: stackTrace);
+    if (!suppressNotification) {
+      try {
+        await _notificationService.scheduleEventReminder(
+          id: isMorning ? 90001 : 90002,
+          title: title,
+          body: text.length > 100 ? '${text.substring(0, 100)}...' : text,
+          notifyAt: DateTime.now().add(const Duration(seconds: 1)),
+        );
+      } catch (error, stackTrace) {
+        debugPrint('Briefing notification failed: type=$type error=$error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
     }
 
     try {

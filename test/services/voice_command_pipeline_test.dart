@@ -83,5 +83,15 @@ void main() {
       expect(query.intent, VoiceCommandPipelineIntent.query);
       expect(query.targetText, contains('오늘'));
     });
+
+    test('query cues like 몇시야 and 있어? resolve to query intent', () {
+      final fewOClock = pipeline.analyze('내일 회의 몇시야?');
+      final hasSomething = pipeline.analyze('이번 주 일정 있어?');
+      final whereIsIt = pipeline.analyze('그 일정 어디야?');
+
+      expect(fewOClock.intent, VoiceCommandPipelineIntent.query);
+      expect(hasSomething.intent, VoiceCommandPipelineIntent.query);
+      expect(whereIsIt.intent, VoiceCommandPipelineIntent.query);
+    });
   });
 }
