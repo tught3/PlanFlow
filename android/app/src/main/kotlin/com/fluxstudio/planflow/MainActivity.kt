@@ -687,6 +687,13 @@ private class PlanFlowSttChannel(
     private var sessionId = 0
     private var restartAttempts = 0
     private var startGeneration = 0
+    private var isDisposed = false
+
+    /** dispose 후 호출을 무시하는 안전한 invokeMethod */
+    private fun invokeIfActive(method: String, args: Any? = null) {
+        if (isDisposed) return
+        try { channel.invokeMethod(method, args) } catch (_: Exception) {}
+    }
 
     init {
         channel.setMethodCallHandler { call, result ->
@@ -714,13 +721,15 @@ private class PlanFlowSttChannel(
                 "resetTranscript" -> {
                     sessionId += 1
                     latestPartialText = ""
+                    val resetGeneration = ++startGeneration  // pending restart 무효화
                     recognizer?.cancel()
                     if (listening && !userRequestedStop) {
                         activity.window.decorView.postDelayed({
-                            if (listening && !userRequestedStop) {
+                            if (listening && !userRequestedStop && resetGeneration == startGeneration) {
+                                ensureRecognizer()  // cancel 후 null일 수 있으므로 ensure
                                 startListening()
                             }
-                        }, 150)
+                        }, 300)  // 150ms → 300ms (cancel onError 콜백 여유)
                     }
                     result.success(sessionId)
                 }
@@ -788,13 +797,10 @@ private class PlanFlowSttChannel(
             return
         }
         restartAttempts += 1
-        val maxAttempts = if (recreateRecognizer) 2 else 8
+        val maxAttempts = if (recreateRecognizer) 4 else 8  // 2→4: 바쁜 기기에서 더 많이 시도
         if (restartAttempts > maxAttempts) {
             listening = false
-            channel.invokeMethod(
-                "error",
-                mapOf("text" to latestPartialText, "sessionId" to sessionId),
-            )
+            invokeIfActive("error", mapOf("text" to latestPartialText, "sessionId" to sessionId))
             return
         }
         if (recreateRecognizer) {
@@ -805,7 +811,7 @@ private class PlanFlowSttChannel(
             recognizer?.cancel()
         }
         val generation = ++startGeneration
-        channel.invokeMethod("restarted", mapOf("sessionId" to sessionId))
+        invokeIfActive("restarted", mapOf("sessionId" to sessionId))
         activity.window.decorView.postDelayed({
             if (listening && !userRequestedStop && generation == startGeneration) {
                 ensureRecognizer()
@@ -823,10 +829,7 @@ private class PlanFlowSttChannel(
         if (text.isNotEmpty()) {
             restartAttempts = 0
             latestPartialText = text
-            channel.invokeMethod(
-                "partial",
-                mapOf("text" to text, "sessionId" to sessionId),
-            )
+            invokeIfActive("partial", mapOf("text" to text, "sessionId" to sessionId))
         }
     }
 
@@ -835,18 +838,19 @@ private class PlanFlowSttChannel(
         startGeneration += 1
         stopSnapshotText = latestPartialText
         recognizer?.cancel()
-        channel.invokeMethod(
-            "cancelled",
-            mapOf("text" to latestPartialText, "sessionId" to sessionId),
-        )
+        invokeIfActive("cancelled", mapOf("text" to latestPartialText, "sessionId" to sessionId))
     }
 
     fun dispose() {
+        isDisposed = true
         listening = false
         startGeneration += 1
-        channel.setMethodCallHandler(null)
-        recognizer?.destroy()
+        val old = recognizer
         recognizer = null
+        old?.setRecognitionListener(null)  // 지연 콜백 차단
+        old?.cancel()                       // cancel 먼저
+        old?.destroy()                      // destroy 나중 (Android 권장 순서)
+        channel.setMethodCallHandler(null)
     }
 
     override fun onReadyForSpeech(params: Bundle?) = Unit
@@ -854,32 +858,46 @@ private class PlanFlowSttChannel(
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() {
-        channel.invokeMethod("segmentEnded", mapOf("sessionId" to sessionId))
+        invokeIfActive("segmentEnded", mapOf("sessionId" to sessionId))
     }
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
     override fun onError(error: Int) {
         if (userRequestedStop) {
             listening = false
-            channel.invokeMethod(
-                "stopped",
-                mapOf("text" to stopSnapshotText, "sessionId" to sessionId),
-            )
+            invokeIfActive("stopped", mapOf("text" to stopSnapshotText, "sessionId" to sessionId))
             return
         }
-        val recreateRecognizer =
-            error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
-                error == SpeechRecognizer.ERROR_CLIENT
-        restartSoon(recreateRecognizer = recreateRecognizer)
+        when (error) {
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
+                // 권한 없음 → 재시작 불가, 즉시 실패 처리
+                listening = false
+                invokeIfActive("error", mapOf(
+                    "text" to latestPartialText,
+                    "sessionId" to sessionId,
+                    "reason" to "permission",
+                ))
+            }
+            SpeechRecognizer.ERROR_AUDIO -> {
+                // 오디오 포맷 에러 → recognizer 재생성 필요
+                restartSoon(recreateRecognizer = true)
+            }
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
+            SpeechRecognizer.ERROR_CLIENT -> {
+                // 바쁘거나 클라이언트 에러 → recognizer 재생성
+                restartSoon(recreateRecognizer = true)
+            }
+            else -> {
+                // 그 외 (ERROR_NO_MATCH, ERROR_SPEECH_TIMEOUT, ERROR_NETWORK 등) → 단순 재시작
+                restartSoon(recreateRecognizer = false)
+            }
+        }
     }
 
     override fun onResults(results: Bundle?) {
         if (userRequestedStop) {
             listening = false
-            channel.invokeMethod(
-                "stopped",
-                mapOf("text" to stopSnapshotText, "sessionId" to sessionId),
-            )
+            invokeIfActive("stopped", mapOf("text" to stopSnapshotText, "sessionId" to sessionId))
             return
         }
         publishText(results)

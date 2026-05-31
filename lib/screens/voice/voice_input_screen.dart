@@ -41,7 +41,8 @@ class VoiceInputScreen extends StatefulWidget {
   State<VoiceInputScreen> createState() => _VoiceInputScreenState();
 }
 
-class _VoiceInputScreenState extends State<VoiceInputScreen> {
+class _VoiceInputScreenState extends State<VoiceInputScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _rawTextController = TextEditingController();
   final FocusNode _rawTextFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
@@ -78,6 +79,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _voiceAnalysisService =
         widget.voiceAnalysisService ?? VoiceCommandAnalysisService();
     _voiceCommandRouter = const VoiceCommandRouter();
@@ -88,7 +90,16 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 전화·화면잠금·앱전환 시 STT 즉시 취소
+    if (state == AppLifecycleState.paused && _isListening) {
+      unawaited(widget.sttService.cancelActiveListen());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _isDisposing = true;
     _partialTranscriptToken++;
     _listenSessionGeneration++;
@@ -348,7 +359,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen> {
       _partialTranscriptToken++;
       _listenSessionGeneration++;
       _isFinishingVoiceFlow = false;
-      await widget.sttService.stopActiveListen();
+      // 타이핑 시작 시 STT를 즉시 취소 (stop은 250ms 대기 중 텍스트 추가 가능)
+      await widget.sttService.cancelActiveListen();
       if (!mounted) {
         return;
       }
