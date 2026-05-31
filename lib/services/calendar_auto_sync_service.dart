@@ -615,6 +615,7 @@ Future<void> _dailyCalendarSyncCallback() async {
         authOptions: buildPlanFlowAuthOptions(
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
+          autoRefreshToken: false,
         ),
       );
       AppEnv.markSupabaseInitialized();

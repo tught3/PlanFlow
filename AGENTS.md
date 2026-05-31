@@ -22,6 +22,14 @@
 # Codex Common Rules
 <!-- 프로젝트 공통 Codex 작업 규칙 -->
 
+## FluxOS Pipeline Gate
+- FluxStudio 계열 프로젝트에서 사용자가 개발, 수정, 분석, 리뷰가 필요한 비단순 지시를 내리면 먼저 FluxOS 파이프라인을 사용한다.
+- 표준 흐름은 `Claude Code 계획 -> Codex 구현 -> Claude Code 리뷰 -> CEO 보고`다.
+- 프로젝트 세션이 직접 코드를 수정해야 하는 경우에도 수정 전 `python E:\FluxStudio\.fluxos\run.py pipeline "<지시내용>" --project <Project> --source <session>` 또는 이미 생성된 task의 `pipeline-audit` 결과를 확인한다.
+- 진행 확인은 `python E:\FluxStudio\.fluxos\run.py pipeline-audit [TASK_ID]`를 사용하고, 최소한 `Claude Code 계획` 단계가 생성됐는지 확인한 뒤 구현에 들어간다.
+- Claude Code가 인증, 한도, 연결 문제로 실패하면 FluxOS의 Codex-only fallback을 사용하되, 최종 보고에 fallback 사유를 명시한다.
+- 긴급 단순 수정으로 파이프라인을 생략한 경우에는 생략 사유, 변경 범위, 검증 결과를 최종 보고에 반드시 남긴다.
+
 ## 기본 원칙
 - 기본 응답 언어는 한국어다.
 - 여기에 남길 규칙은 둘 이상의 프로젝트군에서 재사용되는 것만 둔다.

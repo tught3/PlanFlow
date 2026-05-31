@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart'
     show
@@ -583,6 +584,8 @@ class NaverOpenApiCalendarService {
       memo: schedule.description,
       supplies: const <String>[],
       suppliesChecked: const <String>[],
+      isAllDay: schedule.isAllDay,
+      isMultiDay: _isAllDayMultiDay(schedule),
       isCritical: ExternalEventImportClassifier.isCritical(
         title: schedule.summary,
         description: schedule.description,
@@ -598,6 +601,26 @@ class NaverOpenApiCalendarService {
       externalUpdatedAt: schedule.lastModifiedAt?.toUtc() ?? syncedAt,
       lastSyncedAt: syncedAt,
     );
+  }
+
+  bool _isAllDayMultiDay(_NaverApiSchedule schedule) {
+    if (!schedule.isAllDay) {
+      return false;
+    }
+    final startAt = schedule.startAt;
+    final endAt = schedule.endAt;
+    if (endAt == null || !endAt.isAfter(startAt)) {
+      return false;
+    }
+    var localEnd = planflowLocal(endAt);
+    if (localEnd.hour == 0 &&
+        localEnd.minute == 0 &&
+        localEnd.second == 0 &&
+        localEnd.millisecond == 0 &&
+        localEnd.microsecond == 0) {
+      localEnd = localEnd.subtract(const Duration(microseconds: 1));
+    }
+    return planflowLocalDay(localEnd).isAfter(planflowLocalDay(startAt));
   }
 
   // ---------------------------------------------------------------------------
@@ -792,12 +815,13 @@ class NaverOpenApiCalendarService {
     final dm = dateOnly.firstMatch(s);
     if (dm != null) {
       try {
-        // Asia/Seoul = UTC+9
-        return DateTime.utc(
-          int.parse(dm.group(1)!),
-          int.parse(dm.group(2)!),
-          int.parse(dm.group(3)!),
-        ).subtract(const Duration(hours: -9));
+        return planflowSeoulDateTimeToUtc(
+          DateTime(
+            int.parse(dm.group(1)!),
+            int.parse(dm.group(2)!),
+            int.parse(dm.group(3)!),
+          ),
+        );
       } catch (_) {}
     }
 

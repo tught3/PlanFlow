@@ -800,6 +800,7 @@ Future<void> _departureAlarmMonitorCallback() async {
         authOptions: buildPlanFlowAuthOptions(
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
+          autoRefreshToken: false,
         ),
       );
       AppEnv.markSupabaseInitialized();
@@ -828,6 +829,7 @@ Future<void> _departureAlarmPreflightCallback(
         authOptions: buildPlanFlowAuthOptions(
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
+          autoRefreshToken: false,
         ),
       );
       AppEnv.markSupabaseInitialized();

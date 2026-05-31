@@ -55,6 +55,7 @@ Future<void> _dailyBackupCallback() async {
         authOptions: buildPlanFlowAuthOptions(
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
+          autoRefreshToken: false,
         ),
       );
       AppEnv.markSupabaseInitialized();

@@ -136,20 +136,42 @@ class AuthService implements AuthSessionClient {
       return signInWithOAuth(provider);
     }
 
+    if (provider == PlanFlowOAuthProvider.naver &&
+        await _hasLinkedIdentity('naver')) {
+      debugPrint(
+        'OAuth calendar link fallback: provider=naver already linked, '
+        'requesting fresh consent instead of identity link',
+      );
+      return signInWithOAuth(provider, forceConsent: true);
+    }
+
     final queryParams = oauthQueryParamsFor(provider);
-    final response = await _client.auth.getLinkIdentityUrl(
-      oauthProvider,
-      redirectTo: AppEnv.authRedirectUrl,
-      scopes: oauthScopesFor(provider, forCalendar: true),
-      queryParams: queryParams,
-    );
-    return _launchOAuthUrl(
-      uri: Uri.parse(response.url),
-      appProvider: provider,
-      supabaseProvider: oauthProvider,
-      queryParams: queryParams,
-      purpose: 'calendar-link',
-    );
+    try {
+      final response = await _client.auth.getLinkIdentityUrl(
+        oauthProvider,
+        redirectTo: AppEnv.authRedirectUrl,
+        scopes: oauthScopesFor(provider, forCalendar: true),
+        queryParams: queryParams,
+      );
+      return _launchOAuthUrl(
+        uri: Uri.parse(response.url),
+        appProvider: provider,
+        supabaseProvider: oauthProvider,
+        queryParams: queryParams,
+        purpose: 'calendar-link',
+      );
+    } catch (error, stackTrace) {
+      if (provider == PlanFlowOAuthProvider.naver &&
+          _isIdentityAlreadyExistsError(error)) {
+        debugPrint(
+          'OAuth calendar link already exists: falling back to '
+          'fresh Naver consent flow',
+        );
+        debugPrintStack(stackTrace: stackTrace);
+        return signInWithOAuth(provider, forceConsent: true);
+      }
+      rethrow;
+    }
   }
 
   Future<bool> reconnectNaverCalendar() {
@@ -184,6 +206,31 @@ class AuthService implements AuthSessionClient {
       debugPrintStack(stackTrace: stackTrace);
       return false;
     }
+  }
+
+  Future<bool> _hasLinkedIdentity(String providerKey) async {
+    try {
+      final identities = await _client.auth.getUserIdentities();
+      return identities.any((identity) {
+        final provider = identity.provider.toLowerCase();
+        return provider.contains(providerKey.toLowerCase());
+      });
+    } catch (error, stackTrace) {
+      debugPrint('OAuth linked identity lookup skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
+  }
+
+  bool _isIdentityAlreadyExistsError(Object error) {
+    if (error is AuthException) {
+      final message = error.message.toLowerCase();
+      final code = error.code?.toLowerCase() ?? '';
+      return message.contains('identity_already_exists') ||
+          code.contains('identity_already_exists');
+    }
+    final text = error.toString().toLowerCase();
+    return text.contains('identity_already_exists');
   }
 
   Future<bool> _launchOAuthUrl({

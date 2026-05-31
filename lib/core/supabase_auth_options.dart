@@ -163,9 +163,11 @@ class PlanFlowAuthLocalStorage extends LocalStorage {
 FlutterAuthClientOptions buildPlanFlowAuthOptions({
   required String supabaseUrl,
   bool detectSessionInUri = false,
+  bool autoRefreshToken = true,
 }) {
   return FlutterAuthClientOptions(
     detectSessionInUri: detectSessionInUri,
+    autoRefreshToken: autoRefreshToken,
     localStorage: PlanFlowAuthLocalStorage(
       legacyPersistSessionKey:
           PlanFlowAuthLocalStorage.legacyKeyForSupabaseUrl(supabaseUrl),

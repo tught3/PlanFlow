@@ -122,6 +122,7 @@ Future<void> _briefingAlarmCallback(
         authOptions: buildPlanFlowAuthOptions(
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
+          autoRefreshToken: false,
         ),
       );
       AppEnv.markSupabaseInitialized();

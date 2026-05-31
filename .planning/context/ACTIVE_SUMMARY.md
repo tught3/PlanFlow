@@ -1,5 +1,11 @@
 # ACTIVE SUMMARY
 
+## 2026-05-31 STT Silence And Widget Offset Cleanup
+- Conversation-mode STT silence is now 30 seconds in both the Flutter service layer and the Android fallback, so the listen loop no longer retriggers every couple of seconds during a spoken sentence.
+- Home widgets now keep raw event payloads alongside the existing summarized payload, which lets the Kotlin providers render month/week/day widgets from the actual event list and move previous/next controls without a +/-1 clamp.
+- The monthly widget date-number tap is the only deep-link target now; blank month-cell space no longer opens the app.
+- Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 test test/services/home_widget_service_test.dart test/screens/confirm_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, and install/launch on `192.168.0.102:36273`.
+
 ## 2026-05-29 Firebase Android Package Cleanup Follow-up
 - Removed the stale `com.planflow.app` client entry from `android/app/google-services.json` so the Firebase Android config now matches the current `com.fluxstudio.planflow` package only.
 - Re-verified the current location picker flow after the Naver-first preference change: focused `location_picker_screen_test.dart`, `flutter analyze`, debug APK build, and update/install/launch on `192.168.0.102:5555` all passed.
@@ -1484,3 +1490,8 @@
 - AI 음성 대화에서 한마디마다 시작음이 반복되는 문제를 줄이기 위해 conversation listen silence를 2초대에서 10초로 늘리고, Android 네이티브 STT 쪽의 최소 길이도 이에 맞게 완화했다.
 - 연속 발화 중에는 재시작이 덜 일어나도록 조정하되, 전송/종료 시에는 기존 턴 경계와 자동 재시작 제어를 유지한다.
 - Verification passed: `scripts/flutter-local.ps1 test test/services/stt_service_test.dart test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`.
+## 2026-06-01 Background Session Rotation And Holiday Date Fix
+- Background Supabase initializers for briefing, auto-sync, backup, and departure alarms now pass `autoRefreshToken: false` so one-shot background work no longer rotates the foreground refresh token and breaks the signed-in session.
+- Naver Open API calendar import now parses all-day date-only holidays with the local-day helper and marks all-day multi-day spans correctly so holidays like 광복절 and 개천절 stay on the intended local date.
+- Naver calendar reconnect now falls back gracefully when the Naver identity is already linked, and the related regression tests were added/updated.
+- Verification passed: `scripts/flutter-local.ps1 test test/core/supabase_auth_options_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/naver_open_api_calendar_service_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/auth_service_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/providers/auth_provider_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/device_calendar_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:36273`, and `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.
