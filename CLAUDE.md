@@ -137,6 +137,12 @@
 - Flutter 앱을 에뮬레이터로 실행해야 하거나 연결된 장치가 없으면 `flutter devices`로 먼저 확인하고, 항상 같은 AVD `flux_phone`의 `emulator-5554`에서 `flutter run -d emulator-5554`로 실행한다.
 - `flux_phone`/`emulator-5554`는 한 번에 하나의 세션만 사용한다. 다른 세션이 사용 중이면 새 실행을 직접 시작하지 말고 FIFO 큐에 적재해 앞 세션이 끝난 뒤 다음 세션이 이어서 사용하게 한다.
 - 같은 프로젝트에서 같은 에뮬레이터 실행 요청이 반복 입력되면 큐에 중복으로 쌓지 말고 기존 대기 항목 하나만 유지한다.
+- 로컬 개발/디버그의 AI 호출은 기본적으로 Hermes 로컬 경로를 우선하고, 배포/릴리즈와 127.0.0.1을 직접 볼 수 없는 런타임은 OpenAI 배포 경로를 우선한다.
+- Hermes 로컬 기본값은 `http://127.0.0.1:8645/v1`, API key 예시는 `hermes-local`이다. 수동 override가 필요할 때만 `OPENAI_BASE_URL`로 바꾼다.
+- FLUXSTUDIO 계열의 공용 AI 호출은 Hermes 기본 경로를 사용하되, PlanFlow는 이번 자동 전환 범위에서 제외한다.
+- Docker는 세션별로 직접 start/stop 하지 말고 FluxOS 공용 lease 명령(`docker status --project <Project>`, `docker ensure --project <Project> --owner "<session>" --reason "<task>"`, `docker release <lease_id> --project <Project> --owner "<session>"`, `docker refresh <lease_id> --project <Project> --owner "<session>"`, `docker watch <lease_id> --project <Project> --owner "<session>" --parent-pid <pid>`, `docker daemon`)으로만 다룬다.
+- Docker가 필요한 작업은 먼저 lease를 확보하고, 끝나면 반드시 release한다. active lease가 남아 있으면 다른 세션은 기다린다.
+- 실행 중인 컨테이너가 하나라도 있으면 Docker를 함부로 끄지 않는다.
 - 범위는 사용자 요청에 맞게 좁게 유지한다.
 - 관련 없는 파일을 수정하거나 삭제하지 않는다.
 - 사용자가 만든 변경은 되돌리지 않는다.
@@ -185,6 +191,7 @@
 - Chrome/Edge는 ChatGPT·Claude 작업이 들어 있을 수 있으므로 기본 자동 종료 대상에서 제외하고, CPU 우선순위를 일반 백그라운드 앱보다 높게 유지한다.
 - Windows에서는 `wiki ios-off`로 Codex의 iOS/Xcode 플러그인을 꺼서 `xcodebuildmcp` 재시작 루프를 막는다.
 - AI_WIKI가 실행하는 큰 빌드, 테스트, 대량 검색, 장시간 동기화는 가능하면 `scripts/invoke-guarded-task.ps1` 또는 `wiki guarded`를 통해 실행한다.
+- FluxOS의 Docker는 세션별 직접 start/stop보다 공용 lease가 우선이다. `python E:\FluxStudio\.fluxos\run.py docker status --project <Project>`, `python E:\FluxStudio\.fluxos\run.py docker ensure --project <Project> --owner "<session>" --reason "<task>"`, `python E:\FluxStudio\.fluxos\run.py docker release <lease_id> --project <Project> --owner "<session>"`, `python E:\FluxStudio\.fluxos\run.py docker refresh <lease_id> --project <Project> --owner "<session>"`, `python E:\FluxStudio\.fluxos\run.py docker watch <lease_id> --project <Project> --owner "<session>" --parent-pid <pid>`, `python E:\FluxStudio\.fluxos\run.py docker daemon` 흐름으로만 제어하고, active lease가 남아 있으면 다른 세션은 대기한다.
 - 전체 메모리 사용량이 70% 이상이거나 예상 작업 메모리를 더했을 때 70%를 넘으면 큰 작업을 즉시 실행하지 않고 리소스 큐에 넣는다.
 - 큐에 쌓인 작업은 FIFO 순서로 처리하고, 실행해도 70%를 넘지 않을 때만 시작한다.
 - 같은 작업이 반복 입력되면 `cwd + category + command` 기준으로 동일 여부를 판단하고, 이미 대기 중이거나 실행 중인 작업은 새로 쌓지 않고 스킵한다.
@@ -371,6 +378,11 @@
 - `flux_phone`/`emulator-5554`는 한 번에 하나의 세션만 사용한다. 다른 Codex/Claude/터미널 세션에서 같은 에뮬레이터 실행이 진행 중이면 새 실행을 직접 시작하지 말고 FIFO 큐에 적재해 앞 세션 종료 후 이어서 사용한다.
 - 같은 프로젝트에서 같은 에뮬레이터 실행 요청이 반복 입력되면 큐에 중복 적재하지 않고 기존 대기 항목 하나만 유지한다.
 - 에뮬레이터 실행은 가능하면 `E:\AI_WIKI\scripts\flutter-emulator-run.ps1`를 통해 큐/잠금 확인 후 진행한다.
+- FLUXSTUDIO 앱들의 로컬 개발/디버그 AI 호출은 Hermes 로컬 경로를 기본으로 사용하고, 배포/릴리즈나 127.0.0.1을 직접 못 보는 런타임은 OpenAI 배포 경로를 기본으로 사용한다.
+- Hermes 로컬 기본값은 `http://127.0.0.1:8645/v1`, API key 예시는 `hermes-local`이다. 수동 override가 필요할 때만 `OPENAI_BASE_URL`를 바꾼다.
+- PlanFlow는 Hermes 자동 전환 범위에서 제외한다.
+- Docker는 세션별 직접 start/stop 대신 FluxOS 공용 lease(`docker status|ensure|release|refresh|watch|daemon`)로만 다룬다.
+- Docker가 필요한 작업은 먼저 lease를 잡고, 끝나면 반드시 release한다. active lease가 남아 있으면 다른 세션은 기다린다.
 - Android-first 원칙을 유지하고, iOS 관련 코드는 명시 요청이 없으면 넣지 않는다.
 - 프로젝트별 저장소 규칙이 따로 있으면 그 규칙을 우선하고, 공통 스택은 충돌이 없을 때만 적용한다.
 
