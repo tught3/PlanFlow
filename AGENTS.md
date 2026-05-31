@@ -1,4 +1,21 @@
-﻿<!-- [WIKI:START] Personal Wiki Reference - 직접 수정 금지 -->
+﻿## FluxOS 파이프라인 연결
+이 세션의 작업 지시는 FluxOS 파이프라인을 통해 처리된다.
+
+### 작업 시작 전 필수
+`python E:\FluxStudio\.fluxos\pipeline\task_queue.py --input "<지시 내용>" --project "PlanFlow" --source "planflow"`
+
+### 파이프라인 흐름
+1. `task_queue.py`가 태스크를 생성한다.
+2. `claude_runner.py`가 Claude Code 분석을 시도한다.
+3. `TASK_{ID}_codex.md`를 읽고 Codex가 구현한다.
+4. 완료 후 `TASK_{ID}_done.md`를 생성해 리뷰 단계로 넘긴다.
+
+### 주의사항
+- 이 프로젝트 폴더만 수정하고 다른 프로젝트에는 접근하지 않는다.
+- Supabase 스키마 변경 시 대용님 확인이 필수다.
+- 완료 시 빌드 확인, 커밋, 푸시까지 수행한다.
+
+<!-- [WIKI:START] Personal Wiki Reference - 직접 수정 금지 -->
 <!-- 작업 경로: E:\FluxStudio\planflow -->
 <!-- 생성: 2026-05-24 09:48 -->
 
