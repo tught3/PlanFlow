@@ -58,6 +58,10 @@ Future<void> _initializeFirebaseServices() async {
 Future<void> _initializeNaverMap() async {
   if (AppEnv.naverMapClientId.trim().isNotEmpty) {
     var naverMapAuthFailed = false;
+    debugPrint(
+      'Naver Map init start: package=com.fluxstudio.planflow '
+      'clientIdSet=${AppEnv.naverMapClientId.trim().isNotEmpty}',
+    );
     try {
       await FlutterNaverMap()
           .init(
@@ -70,6 +74,10 @@ Future<void> _initializeNaverMap() async {
           .timeout(const Duration(seconds: 8));
       if (!naverMapAuthFailed) {
         AppEnv.markNaverMapInitialized();
+        debugPrint(
+          'Naver Map init ready: package=com.fluxstudio.planflow '
+          'clientIdSet=${AppEnv.naverMapClientId.trim().isNotEmpty}',
+        );
       }
     } catch (error) {
       debugPrint('Naver Map initialization skipped: $error');

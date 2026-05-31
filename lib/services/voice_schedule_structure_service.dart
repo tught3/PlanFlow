@@ -19,7 +19,6 @@ class VoiceScheduleStructure {
   final Map<String, String> explicitFieldClauses;
   final String? startAtCandidate;
 }
-
 class VoiceScheduleStructureSplit {
   const VoiceScheduleStructureSplit({
     required this.location,
@@ -334,12 +333,16 @@ class VoiceScheduleStructureService {
       source,
       preserveRelativeDayWords: preserveRelativeDayWords,
     );
-    final titleWithoutLocation = preserveLeadingLocationTitle(cleaned);
+    final titleWithoutLocation = preserveLeadingLocationTitle(
+      cleaned,
+      rawText: rawText,
+    );
     final structuredTitle = preserveLeadingLocationTitle(
       stripScheduleNoise(
         structure.titleCandidate,
         preserveRelativeDayWords: true,
       ),
+      rawText: rawText,
     );
     if (shouldPreferStructuredTitle(
       normalizedTitle: titleWithoutLocation,
@@ -363,6 +366,7 @@ class VoiceScheduleStructureService {
         rawText,
         preserveRelativeDayWords: preserveRelativeDayWords,
       ),
+      rawText: rawText,
     );
     if (fallback.isNotEmpty) {
       return ensurePeopleInTitle(
@@ -416,13 +420,17 @@ class VoiceScheduleStructureService {
         )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    title = preserveLeadingLocationTitle(title);
+    title = preserveLeadingLocationTitle(
+      title,
+      rawText: referenceText ?? text,
+    );
 
     final structuredTitle = preserveLeadingLocationTitle(
       stripScheduleNoise(
         structure.titleCandidate,
         preserveRelativeDayWords: true,
       ),
+      rawText: referenceText ?? text,
     );
     if (shouldPreferStructuredTitle(
       normalizedTitle: title,
@@ -552,10 +560,11 @@ class VoiceScheduleStructureService {
     required String title,
   }) {
     final trimmed = location?.trim();
-    if (trimmed != null &&
-        trimmed.isNotEmpty &&
-        !_isInvalidLocationCandidate(trimmed)) {
-      return normalizeSpacingForSchedule(trimmed);
+    if (trimmed != null && trimmed.isNotEmpty) {
+      final normalizedLocation = _normalizeLocationCandidate(trimmed);
+      if (normalizedLocation != null) {
+        return normalizedLocation;
+      }
     }
 
     final source = normalizeText(rawText, '');
@@ -586,6 +595,36 @@ class VoiceScheduleStructureService {
     }
 
     return null;
+  }
+
+  String? _normalizeLocationCandidate(String text) {
+    final normalized = normalizeSpacingForSchedule(text);
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    final withoutLeadingTime = _stripLeadingTimePrefix(normalized);
+    final strippedNoise = stripScheduleNoise(withoutLeadingTime);
+    final cleaned = strippedNoise.isNotEmpty ? strippedNoise : withoutLeadingTime;
+    if (cleaned.isEmpty || _isInvalidLocationCandidate(cleaned)) {
+      return null;
+    }
+    return normalizeSpacingForSchedule(cleaned);
+  }
+
+  String _stripLeadingTimePrefix(String text) {
+    final normalized = normalizeSpacingForSchedule(text);
+    if (normalized.isEmpty) {
+      return normalized;
+    }
+
+    final leadingCue = _leadingTimeCue(normalized);
+    if (leadingCue == null) {
+      return normalized;
+    }
+
+    final stripped = normalized.substring(leadingCue.end).trim();
+    return stripped.isEmpty ? normalized : stripped;
   }
 
   void preserveDeliveryContent(
@@ -726,20 +765,136 @@ class VoiceScheduleStructureService {
     return location;
   }
 
-  String preserveLeadingLocationTitle(String text) {
+  String preserveLeadingLocationTitle(
+    String text, {
+    String? rawText,
+  }) {
     final normalized = text.trim();
     if (normalized.isEmpty) {
       return normalized;
     }
-    final extractedLocation = extractLeadingLocation(normalized);
+    final sourceText = rawText?.trim().isNotEmpty == true
+        ? rawText!.trim()
+        : normalized;
+    final extractedLocation = extractLeadingLocation(sourceText);
     if (extractedLocation == null || extractedLocation.isEmpty) {
       return stripLeadingLocationPhrase(normalized);
+    }
+    if (!_shouldKeepLeadingLocationInTitle(extractedLocation)) {
+      return _stripKnownLeadingLocationPrefix(normalized, extractedLocation);
     }
     final stripped = stripLeadingLocationPhrase(normalized);
     if (stripped == normalized || stripped.isEmpty) {
       return normalizeSpacingForSchedule(normalized);
     }
     return normalizeSpacingForSchedule('$extractedLocation $stripped');
+  }
+
+  String _stripKnownLeadingLocationPrefix(String text, String location) {
+    final normalizedText = text.trim();
+    final normalizedLocation = location.trim();
+    if (normalizedText.isEmpty || normalizedLocation.isEmpty) {
+      return normalizedText;
+    }
+    if (normalizedText == normalizedLocation) {
+      return '';
+    }
+
+    final prefixCandidates = <String>[
+      normalizedLocation,
+      if (!_shouldKeepLeadingLocationInTitle(normalizedLocation))
+        _leadingLocationRoot(normalizedLocation),
+    ].where((candidate) => candidate.isNotEmpty).toSet().toList();
+
+    for (final candidate in prefixCandidates) {
+      final prefixPattern = RegExp(
+        '^${RegExp.escape(candidate)}(?:\\s*(?:에서|에|로|으로)\\s*)?',
+      );
+      if (!prefixPattern.hasMatch(normalizedText)) {
+        continue;
+      }
+
+      final remainder = normalizedText.replaceFirst(prefixPattern, '').trim();
+      if (remainder.isEmpty) {
+        continue;
+      }
+      return normalizeSpacingForSchedule(remainder);
+    }
+
+    return normalizedText;
+  }
+
+  String _leadingLocationRoot(String location) {
+    final normalized = normalizeText(location, '').trim();
+    if (normalized.isEmpty) {
+      return '';
+    }
+
+    final firstToken = normalized.split(RegExp(r'\s+')).first.trim();
+    if (firstToken.isEmpty) {
+      return '';
+    }
+
+    final stripped = firstToken.replaceFirst(
+      RegExp(r'(?:에서|에|로|으로)$'),
+      '',
+    );
+    if (stripped.isEmpty) {
+      return '';
+    }
+    return normalizeSpacingForSchedule(stripped);
+  }
+
+  bool _shouldKeepLeadingLocationInTitle(String location) {
+    final normalized = normalizeText(location, '').replaceAll(RegExp(r'\s+'), '');
+    if (normalized.isEmpty) {
+      return false;
+    }
+
+    const orgKeywords = <String>[
+      '회사',
+      '본사',
+      '부서',
+      '팀',
+      '사무실',
+      '연구소',
+    ];
+    if (orgKeywords.any(normalized.contains)) {
+      return false;
+    }
+
+    const placeKeywords = <String>[
+      '센터',
+      '병원',
+      '약국',
+      '식당',
+      '카페',
+      '호텔',
+      '학교',
+      '학원',
+      '은행',
+      '마트',
+      '공원',
+      '주차장',
+      '지점',
+      '건물',
+      '오피스',
+      '스튜디오',
+      '헬스장',
+      '편의점',
+      '아웃렛',
+      '주유소',
+      '시장',
+      '횟집',
+      '맛집',
+      '가게',
+      '본점',
+      '역',
+      '공항',
+      '터미널',
+      '항',
+    ];
+    return placeKeywords.any(normalized.contains);
   }
 
   String stripLeadingLocationPhrase(String text) {

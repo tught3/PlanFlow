@@ -16,6 +16,7 @@ class _FakeSttService extends SttService {
   Completer<SttListenResult>? _completer;
   ValueChanged<String>? _onPartialResult;
   int cancelCalls = 0;
+  int stopCalls = 0;
 
   @override
   Future<SttListenResult> listen({
@@ -48,7 +49,15 @@ class _FakeSttService extends SttService {
   Future<void> cancelActiveListen() async {
     cancelCalls += 1;
     if (_completer != null && !_completer!.isCompleted) {
-      completeFailure('취소됐어요.');
+      completeFailure('Cancelled.');
+    }
+  }
+
+  @override
+  Future<void> stopActiveListen() async {
+    stopCalls += 1;
+    if (_completer != null && !_completer!.isCompleted) {
+      completeFailure('Stopped.');
     }
   }
 }
@@ -193,6 +202,7 @@ void main() {
 
     expect(find.text('오늘 일정 알려줘'), findsOneWidget);
     expect(find.textContaining('일정'), findsWidgets);
+    expect(find.text('듣고 있어요...'), findsNothing);
   });
 
   testWidgets('AI 일정 대화는 STT 실패도 화면에 안내로 남긴다', (tester) async {
@@ -513,7 +523,7 @@ void main() {
 
     expect(find.textContaining('음성입력이 중지되었습니다'), findsOneWidget);
     expect(find.byTooltip('음성 입력 다시 시작'), findsOneWidget);
-    expect(stt.cancelCalls, greaterThanOrEqualTo(1));
+    expect(stt.stopCalls, greaterThanOrEqualTo(1));
     expect(tester.takeException(), isNull);
   });
 
@@ -592,4 +602,5 @@ void main() {
     expect(find.text('듣고 있어요...'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
 }

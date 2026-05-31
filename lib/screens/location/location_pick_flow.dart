@@ -284,7 +284,7 @@ String? _normalizePreferredMapProvider(String? value) {
 LocationPickerInAppMapProvider? _inAppMapProviderFor(String provider) {
   return switch (provider) {
     'google' => LocationPickerInAppMapProvider.google,
-    'naver' => AppEnv.isNaverMapReady
+    'naver' => AppEnv.naverMapClientId.trim().isNotEmpty
         ? LocationPickerInAppMapProvider.naver
         : AppEnv.googleMapsApiKey.trim().isNotEmpty
             ? LocationPickerInAppMapProvider.google

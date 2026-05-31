@@ -42,7 +42,7 @@ class LocationPickerScreen extends StatefulWidget {
 }
 
 class _LocationPickerScreenState extends State<LocationPickerScreen> {
-  static const _defaultMapReadinessTimeout = Duration(seconds: 5);
+  static const _defaultMapReadinessTimeout = Duration(seconds: 10);
   static const _candidateScrollStep = 240.0;
   static const _candidateScrollAnimationDuration = Duration(milliseconds: 220);
 
@@ -55,6 +55,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   google_maps.GoogleMapController? _googleMapController;
   bool _isSearching = false;
   bool _hasUserChosenMapTarget = false;
+  bool _isWaitingForNaverMapReady = false;
+  bool _useGoogleFallbackForMap = false;
   String? _message;
   String? _mapLoadMessage;
   GeoPoint? _resolvedInitialMapCenter;
@@ -77,6 +79,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   bool get _canUseInAppMap => widget.canUseInAppMapOverride == false
       ? false
       : (_canUseNaverMap || _canUseGoogleMap);
+
+  bool get _prefersNaverMap =>
+      widget.preferredInAppMapProvider == LocationPickerInAppMapProvider.naver ||
+      (widget.preferredInAppMapProvider == null &&
+          AppEnv.naverMapClientId.trim().isNotEmpty);
 
   bool get _shouldUseNaverMap {
     if (widget.preferredInAppMapProvider ==
@@ -136,6 +143,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       _mapRenderState = _canUseInAppMap
           ? _MapRenderState.loading
           : _MapRenderState.unavailable;
+      _isWaitingForNaverMapReady =
+          _prefersNaverMap && AppEnv.naverMapClientId.trim().isNotEmpty;
     }
     if (_results.isEmpty &&
         widget.initialQuery.trim().isNotEmpty &&
@@ -335,6 +344,45 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     if (!_canUseInAppMap || widget.debugForceMapUnavailableTimeout) {
       return;
     }
+    if (_isWaitingForNaverMapReady) {
+      final deadline =
+          DateTime.now().add(_defaultMapReadinessTimeout);
+      while (mounted &&
+          !AppEnv.isNaverMapReady &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      if (!mounted) {
+        return;
+      }
+      if (AppEnv.isNaverMapReady) {
+        setState(() {
+          _mapLoadMessage = null;
+          _mapRenderState = _MapRenderState.loading;
+          _isWaitingForNaverMapReady = false;
+          _useGoogleFallbackForMap = false;
+        });
+        return;
+      }
+      if (_canUseGoogleMap) {
+        setState(() {
+          _mapLoadMessage =
+              '네이버 지도를 준비하지 못해서 구글 지도를 대신 보여드려요.';
+          _mapRenderState = _MapRenderState.loading;
+          _isWaitingForNaverMapReady = false;
+          _useGoogleFallbackForMap = true;
+        });
+        return;
+      }
+      if (_mapRenderState == _MapRenderState.loading) {
+        setState(() {
+          _mapLoadMessage = _mapUnavailableTimeoutMessage;
+          _mapRenderState = _MapRenderState.unavailable;
+          _isWaitingForNaverMapReady = false;
+        });
+      }
+      return;
+    }
     await Future<void>.delayed(_defaultMapReadinessTimeout);
     if (!mounted) {
       return;
@@ -464,6 +512,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     }
 
     // 네이버 지도 (loading → ready 모두 NaverMap 위젯 유지)
+    if (_isWaitingForNaverMapReady &&
+        !_useGoogleFallbackForMap &&
+        !AppEnv.isNaverMapReady) {
+      return _MapLoadingPanel(
+        message: _mapLoadMessage ?? '네이버 지도를 준비하고 있어요.',
+        query: _queryController.text,
+      );
+    }
+
     if (_shouldUseNaverMap) {
       return NaverMap(
         forceGesture: true,
@@ -850,6 +907,46 @@ class _MapUnavailablePanel extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
+            ),
+            const SizedBox(height: 14),
+            _ExternalMapButtons(query: query),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapLoadingPanel extends StatelessWidget {
+  const _MapLoadingPanel({
+    required this.message,
+    required this.query,
+  });
+
+  final String message;
+  final String query;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(
+              height: 28,
+              width: 28,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            const SizedBox(height: 16),
             Text(
               message,
               textAlign: TextAlign.center,

@@ -116,6 +116,22 @@ void main() {
       expect(localTitle, '강릉 건도리횟집 결제 사전기안');
     });
 
+    test('strips organization-like leading names from the title', () {
+      const rawText = '우리회사에서 매월 월례 조회 메모에 주차장 B2 확인';
+
+      final parsedTitle = service.normalizeParsedScheduleTitle(
+        '우리회사 월례 조회',
+        rawText: rawText,
+      );
+      final localTitle = service.normalizeLocalVoiceTitle(
+        rawText,
+        referenceText: rawText,
+      );
+
+      expect(parsedTitle, '월례 조회');
+      expect(localTitle, '월례 조회');
+    });
+
     test('classifies name-like particles into target and participants', () {
       final target = service.extractPeopleFields('민수한테 확인 전화');
       final participant = service.extractPeopleFields('수연이랑 병원 방문');
@@ -207,6 +223,18 @@ void main() {
         ),
         isTrue,
       );
+    });
+
+    test('normalizes noisy location text by removing time words', () {
+      const rawText = '오늘 오후 5시 판교 대장동 해링턴플레이스 방문';
+
+      final location = service.normalizeScheduleLocation(
+        location: '오후 5시 판교 대장동 해링턴플레이스',
+        rawText: rawText,
+        title: '방문',
+      );
+
+      expect(location, '대장동 해링턴플레이스');
     });
   });
 }

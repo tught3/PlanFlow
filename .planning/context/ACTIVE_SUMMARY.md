@@ -1464,3 +1464,9 @@
 - AI 일정 대화에서 프로그램matic clear가 입력 턴 세대를 깨지 않도록 가드를 추가해, 첫 음성 입력이 실패하는 경로를 막고 재입력 없이도 첫 partial/final이 정상 반영되게 정리했다.
 - 삭제/종료/전송 경로의 clear도 같은 가드를 공유하도록 맞춰 늦은 STT 콜백이 새 입력을 덮지 않게 했고, 다중 대상 후속 수정은 `selectedEvents` 세션 상태로 유지해 단일 대상으로 축소되지 않게 보존했다.
 - Verification passed: `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/voice_conversation_controller_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:33125`, and `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-05-31 Voice Pipeline And Naver Map Follow-up
+- AI 일정 대화의 음성 입력 파이프라인을 다시 정리해서, 첫 입력 실패나 늦은 STT 콜백이 새 입력을 덮는 흐름을 막고, 직접입력 전환/전송/이탈 시 stop-cancel 경계를 더 분명히 유지하도록 손봤다.
+- 위치 문자열 정규화는 시간 표현을 먼저 제거하도록 강화해서 `오늘 오후 5시 판교 대장동 해링턴플레이스 방문`이 `대장동 해링턴플레이스`로 남게 했고, 네이버 지도는 준비될 때까지 기다렸다가 우선 사용하도록 바꿨다.
+- Naver Map 초기화 성공/실패 로그를 추가하고, 위치 픽커 대기 시간을 10초로 늘려 Naver 우선 렌더링이 너무 빨리 Google fallback으로 내려가지 않도록 조정했다.
+- Verification passed: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 test test/services/voice_schedule_structure_service_test.dart test/screens/voice_conversation_screen_test.dart --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:33125`, and `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.
