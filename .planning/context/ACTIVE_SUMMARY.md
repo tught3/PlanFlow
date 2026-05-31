@@ -1459,3 +1459,8 @@
 - AI 일정 대화 화면에 입력 턴 세대와 음성 세대를 분리하는 가드를 추가해, 사용자가 다시 입력한 뒤에도 이전 STT partial/final 콜백이 입력창을 다시 채우지 못하게 막았다.
 - 수동 전송 시에는 기존 음성 listen을 강제로 끊고, 음성 final 제출은 예외 처리해 늦은 콜백이 새 입력을 덮지 않도록 정리했다.
 - Verification passed: `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, and update install/launch on `192.168.0.102:33125`.
+
+## 2026-05-31 Voice Conversation First-Listen Recovery And Multi-Target Preservation
+- AI 일정 대화에서 프로그램matic clear가 입력 턴 세대를 깨지 않도록 가드를 추가해, 첫 음성 입력이 실패하는 경로를 막고 재입력 없이도 첫 partial/final이 정상 반영되게 정리했다.
+- 삭제/종료/전송 경로의 clear도 같은 가드를 공유하도록 맞춰 늦은 STT 콜백이 새 입력을 덮지 않게 했고, 다중 대상 후속 수정은 `selectedEvents` 세션 상태로 유지해 단일 대상으로 축소되지 않게 보존했다.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/voice_conversation_controller_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:33125`, and `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.

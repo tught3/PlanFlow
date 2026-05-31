@@ -71,6 +71,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   int _listenGeneration = 0;
   int _inputTurnGeneration = 0;
   bool _isApplyingVoiceTranscript = false;
+  bool _isApplyingInputReset = false;
   Timer? _restartListenTimer;
   String? _conversationStatus;
 
@@ -195,7 +196,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       });
       unawaited(widget.sttService.cancelActiveListen());
     }
-    _inputController.clear();
+    _setConversationInputText('');
     setState(() {
       _isSubmitting = true;
       _conversationStatus = 'AI 문맥 분석중이에요...';
@@ -274,8 +275,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       _keepListening = true;
       _voicePausedByUser = false;
       _conversationStatus = '듣고 있어요...';
-      _inputController.clear();
     });
+    _setConversationInputText('');
     try {
       final result = await widget.sttService.listen(
         onPartialResult: (text) {
@@ -437,7 +438,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     try {
       await _repository.deleteEvent(event.id, userId: authProvider.userId);
       _deletedEventIds.add(event.id);
-      _inputController.clear();
+      _setConversationInputText('');
       _restartListenTimer?.cancel();
       _listenGeneration += 1;
       EventRefreshBus.instance.notifyChanged(
@@ -607,7 +608,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     }
     _isExitingConversation = true;
     await _stopVoiceBeforeNavigation();
-    _inputController.clear();
+    _setConversationInputText('');
     _inputTurnGeneration += 1;
     _conversation.clearSession();
     if (!mounted) return;
@@ -615,7 +616,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   }
 
   void _handleInputChanged(String value) {
-    if (_isApplyingVoiceTranscript) {
+    if (_isApplyingInputReset || _isApplyingVoiceTranscript) {
       return;
     }
     _inputTurnGeneration += 1;
@@ -630,8 +631,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         _keepListening = false;
         _voicePausedByUser = true;
         _isListening = false;
-        _conversationStatus =
-            '음성 입력이 중지되었습니다. 다시 음성 입력하실 때 마이크 버튼을 눌러 주세요.';
+        _conversationStatus = '음성 입력이 중지되었습니다. 다시 음성 입력하실 때 마이크 버튼을 눌러 주세요.';
       });
     } else {
       _keepListening = false;
@@ -662,6 +662,22 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     }
   }
 
+  void _setConversationInputText(String text) {
+    if (!mounted) {
+      return;
+    }
+    final nextText = text;
+    _isApplyingInputReset = true;
+    try {
+      _inputController.value = TextEditingValue(
+        text: nextText,
+        selection: TextSelection.collapsed(offset: nextText.length),
+      );
+    } finally {
+      _isApplyingInputReset = false;
+    }
+  }
+
   String _messageForResult(VoiceConversationResult result) {
     switch (result.action) {
       case VoiceConversationAction.showEvents:
@@ -687,6 +703,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       case VoiceConversationAction.deleteCanceled:
         return '삭제를 취소했어요.';
       case VoiceConversationAction.none:
+        if (result.selectedEvents.length > 1) {
+          return '${result.selectedEvents.length}개의 일정을 선택했어요. 무엇을 바꿀지 이어서 말해 주세요.';
+        }
         if (result.targetEvent != null) {
           return '${result.targetEvent!.title} 일정을 보고 있어요. 무엇을 바꿀지 이어서 말해 주세요.';
         }

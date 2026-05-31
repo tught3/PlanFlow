@@ -26,16 +26,19 @@ class VoiceConversationDeleteAction {
 class VoiceConversationSession {
   const VoiceConversationSession({
     this.visibleEvents = const <EventModel>[],
+    this.selectedEvents = const <EventModel>[],
     this.focusedEvent,
     this.pendingDelete,
   });
 
   final List<EventModel> visibleEvents;
+  final List<EventModel> selectedEvents;
   final EventModel? focusedEvent;
   final VoiceConversationDeleteAction? pendingDelete;
 
   VoiceConversationSession copyWith({
     List<EventModel>? visibleEvents,
+    List<EventModel>? selectedEvents,
     EventModel? focusedEvent,
     VoiceConversationDeleteAction? pendingDelete,
     bool clearPendingAction = false,
@@ -43,6 +46,7 @@ class VoiceConversationSession {
   }) {
     return VoiceConversationSession(
       visibleEvents: visibleEvents ?? this.visibleEvents,
+      selectedEvents: selectedEvents ?? this.selectedEvents,
       focusedEvent:
           clearFocusedEvent ? null : focusedEvent ?? this.focusedEvent,
       pendingDelete:
@@ -57,6 +61,7 @@ class VoiceConversationResult {
     required this.inputText,
     this.queryRange,
     this.visibleEvents = const <EventModel>[],
+    this.selectedEvents = const <EventModel>[],
     this.targetEvent,
     this.locationText,
     this.pendingDelete,
@@ -73,6 +78,7 @@ class VoiceConversationResult {
   final String inputText;
   final VoiceConversationDateRange? queryRange;
   final List<EventModel> visibleEvents;
+  final List<EventModel> selectedEvents;
   final EventModel? targetEvent;
   final String? locationText;
   final VoiceConversationDeleteAction? pendingDelete;
@@ -85,6 +91,7 @@ class VoiceConversationResult {
   final String? _assistantMessage;
 
   bool get isEmptyAvailability => isAvailabilityCheck && visibleEvents.isEmpty;
+  bool get hasMultipleSelectedEvents => selectedEvents.length > 1;
   bool get shouldOpenEdit =>
       action == VoiceConversationAction.openEditScreen &&
       requiresEditScreenNavigation;
@@ -92,6 +99,9 @@ class VoiceConversationResult {
   String get assistantMessage => _assistantMessage ?? _defaultMessage();
 
   String _defaultMessage() {
+    if (action == VoiceConversationAction.none && selectedEvents.length > 1) {
+      return '${selectedEvents.length}개의 일정을 선택했어요. 무엇을 바꿀지 이어서 말해 주세요.';
+    }
     return switch (action) {
       VoiceConversationAction.showEvents => visibleEvents.isEmpty
           ? (isAvailabilityCheck ? '해당 날짜는 비어 있어요.' : '해당 날짜에 표시할 일정이 없어요.')
@@ -148,6 +158,7 @@ class VoiceConversationController {
   void clearSession() {
     _state
       ..visibleEvents = const <EventModel>[]
+      ..selectedEvents = const <EventModel>[]
       ..focusedEvent = null
       ..pendingDelete = null;
   }
@@ -180,7 +191,8 @@ class VoiceConversationController {
       final confirmed = state.pendingDelete!;
       state
         ..pendingDelete = null
-        ..focusedEvent = confirmed.event;
+        ..focusedEvent = confirmed.event
+        ..selectedEvents = const <EventModel>[];
       return _finish(
         state,
         session,
@@ -210,6 +222,27 @@ class VoiceConversationController {
       );
     }
 
+    final multiTargets = _resolveExplicitFollowUpTargets(text, state);
+    if (_isModificationIntent(text) && multiTargets.length > 1) {
+      state
+        ..visibleEvents = multiTargets
+        ..selectedEvents = multiTargets
+        ..focusedEvent = null
+        ..pendingDelete = null;
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.none,
+          inputText: input,
+          visibleEvents: multiTargets,
+          selectedEvents: multiTargets,
+          assistantMessage:
+              '${multiTargets.length}개의 일정을 선택했어요. 무엇을 바꿀지 이어서 말해 주세요.',
+        ),
+      );
+    }
+
     if (_isLocationIntent(text)) {
       final ambiguous = _resolveAmbiguousTimeTargets(text, state);
       if (ambiguous.length > 1) {
@@ -224,6 +257,7 @@ class VoiceConversationController {
             action: VoiceConversationAction.showEvents,
             inputText: input,
             visibleEvents: ambiguous,
+            selectedEvents: const <EventModel>[],
             assistantMessage: '같은 시간대 일정이 여러 개예요. 몇 번째 일정인지 골라서 다시 말해 주세요.',
           ),
         );
@@ -231,7 +265,9 @@ class VoiceConversationController {
       final target = _resolveFollowUpTarget(text, state);
       final locationText = _extractLocationText(text);
       if (target != null && locationText != null) {
-        state.focusedEvent = target;
+        state
+          ..focusedEvent = target
+          ..selectedEvents = const <EventModel>[];
         return _finish(
           state,
           session,
@@ -260,6 +296,7 @@ class VoiceConversationController {
             action: VoiceConversationAction.showEvents,
             inputText: input,
             visibleEvents: ambiguous,
+            selectedEvents: const <EventModel>[],
             assistantMessage: '같은 시간대 일정이 여러 개예요. 삭제할 일정을 번호로 다시 말해 주세요.',
           ),
         );
@@ -272,7 +309,8 @@ class VoiceConversationController {
         );
         state
           ..focusedEvent = target
-          ..pendingDelete = pending;
+          ..pendingDelete = pending
+          ..selectedEvents = const <EventModel>[];
         return _finish(
           state,
           session,
@@ -296,6 +334,7 @@ class VoiceConversationController {
       state
         ..visibleEvents = matched
         ..focusedEvent = matched.length == 1 ? matched.first : null
+        ..selectedEvents = const <EventModel>[]
         ..pendingDelete = null;
       return _finish(
         state,
@@ -305,6 +344,7 @@ class VoiceConversationController {
           inputText: input,
           queryRange: range,
           visibleEvents: matched,
+          selectedEvents: const <EventModel>[],
           targetEvent: state.focusedEvent,
           isAvailabilityCheck: _isAvailabilityIntent(text),
         ),
@@ -313,7 +353,9 @@ class VoiceConversationController {
 
     final followUp = _resolveFollowUpTarget(text, state);
     if (followUp != null) {
-      state.focusedEvent = followUp;
+      state
+        ..focusedEvent = followUp
+        ..selectedEvents = const <EventModel>[];
       return _finish(
         state,
         session,
@@ -321,6 +363,7 @@ class VoiceConversationController {
           action: VoiceConversationAction.none,
           inputText: input,
           targetEvent: followUp,
+          selectedEvents: <EventModel>[followUp],
         ),
       );
     }
@@ -331,6 +374,9 @@ class VoiceConversationController {
       VoiceConversationResult(
         action: VoiceConversationAction.none,
         inputText: input,
+        selectedEvents: state.selectedEvents.length > 1
+            ? state.selectedEvents
+            : const <EventModel>[],
       ),
     );
   }
@@ -359,6 +405,7 @@ class VoiceConversationController {
       inputText: result.inputText,
       queryRange: result.queryRange,
       visibleEvents: result.visibleEvents,
+      selectedEvents: result.selectedEvents,
       targetEvent: result.targetEvent,
       locationText: result.locationText,
       pendingDelete: result.pendingDelete,
@@ -460,6 +507,18 @@ class VoiceConversationController {
     String text,
     _VoiceConversationState state,
   ) {
+    if (state.selectedEvents.length > 1) {
+      final selectedOrdinal = _parseOrdinalIndex(text);
+      if (selectedOrdinal != null &&
+          selectedOrdinal >= 0 &&
+          selectedOrdinal < state.selectedEvents.length) {
+        return state.selectedEvents[selectedOrdinal];
+      }
+      if (_isFocusedEventReference(text)) {
+        return state.selectedEvents.first;
+      }
+    }
+
     final ordinalIndex = _parseOrdinalIndex(text);
     if (ordinalIndex != null &&
         ordinalIndex >= 0 &&
@@ -481,6 +540,86 @@ class VoiceConversationController {
     }
 
     return null;
+  }
+
+  List<EventModel> _resolveExplicitFollowUpTargets(
+    String text,
+    _VoiceConversationState state,
+  ) {
+    final ordinalIndices = _parseExplicitOrdinalIndices(text);
+    if (ordinalIndices.length <= 1) {
+      return const <EventModel>[];
+    }
+    final selected = <EventModel>[];
+    final seen = <String>{};
+    for (final ordinalIndex in ordinalIndices) {
+      if (ordinalIndex < 0 || ordinalIndex >= state.visibleEvents.length) {
+        continue;
+      }
+      final event = state.visibleEvents[ordinalIndex];
+      if (seen.add(event.id)) {
+        selected.add(event);
+      }
+    }
+    return selected.length > 1 ? selected : const <EventModel>[];
+  }
+
+  bool _isModificationIntent(String text) {
+    return text.contains('바꿔') ||
+        text.contains('변경') ||
+        text.contains('수정') ||
+        text.contains('고쳐') ||
+        text.contains('맞춰') ||
+        text.contains('조정') ||
+        text.contains('옮겨');
+  }
+
+  List<int> _parseExplicitOrdinalIndices(String text) {
+    final matches = <_OrdinalTokenMatch>[];
+    final numericPattern = RegExp(r'(\d+)\s*(?:번째|번\s*째|번)');
+    for (final match in numericPattern.allMatches(text)) {
+      final value = int.tryParse(match.group(1) ?? '');
+      if (value == null) {
+        continue;
+      }
+      matches.add(_OrdinalTokenMatch(match.start, value - 1));
+    }
+
+    const words = <String, int>{
+      '첫': 1,
+      '첫째': 1,
+      '두': 2,
+      '둘': 2,
+      '둘째': 2,
+      '세': 3,
+      '셋': 3,
+      '셋째': 3,
+      '네': 4,
+      '넷': 4,
+      '넷째': 4,
+      '다섯': 5,
+      '여섯': 6,
+      '일곱': 7,
+      '여덟': 8,
+      '아홉': 9,
+      '열': 10,
+    };
+    for (final entry in words.entries) {
+      final pattern = RegExp('${entry.key}\\s*(?:번째|째|번)');
+      for (final match in pattern.allMatches(text)) {
+        matches.add(_OrdinalTokenMatch(match.start, entry.value - 1));
+      }
+    }
+
+    matches.sort((left, right) => left.position.compareTo(right.position));
+    final indices = <int>[];
+    final seen = <int>{};
+    for (final match in matches) {
+      if (seen.add(match.ordinalIndex)) {
+        indices.add(match.ordinalIndex);
+      }
+    }
+    return indices;
   }
 
   List<EventModel> _resolveAmbiguousTimeTargets(
@@ -661,6 +800,7 @@ class _VoiceConversationState {
   _VoiceConversationState({
     required Iterable<EventModel> events,
     this.visibleEvents = const <EventModel>[],
+    this.selectedEvents = const <EventModel>[],
     this.focusedEvent,
     this.pendingDelete,
   }) : events = List<EventModel>.of(events) {
@@ -678,6 +818,7 @@ class _VoiceConversationState {
     return _VoiceConversationState(
       events: events,
       visibleEvents: session.visibleEvents,
+      selectedEvents: session.selectedEvents,
       focusedEvent: session.focusedEvent,
       pendingDelete: session.pendingDelete,
     );
@@ -685,6 +826,7 @@ class _VoiceConversationState {
 
   final List<EventModel> events;
   List<EventModel> visibleEvents;
+  List<EventModel> selectedEvents;
   EventModel? focusedEvent;
   VoiceConversationDeleteAction? pendingDelete;
 
@@ -698,10 +840,18 @@ class _VoiceConversationState {
   VoiceConversationSession toSession() {
     return VoiceConversationSession(
       visibleEvents: List<EventModel>.unmodifiable(visibleEvents),
+      selectedEvents: List<EventModel>.unmodifiable(selectedEvents),
       focusedEvent: focusedEvent,
       pendingDelete: pendingDelete,
     );
   }
+}
+
+class _OrdinalTokenMatch {
+  const _OrdinalTokenMatch(this.position, this.ordinalIndex);
+
+  final int position;
+  final int ordinalIndex;
 }
 
 class _TimeReference {
