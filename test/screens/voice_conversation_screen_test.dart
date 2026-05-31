@@ -211,6 +211,47 @@ void main() {
     expect(find.text('음성을 알아듣지 못했어요.'), findsWidgets);
   });
 
+  testWidgets(
+    'AI 일정 대화는 수동 수정 후 제출해도 늦은 STT partial이 입력창을 다시 채우지 않는다',
+    (tester) async {
+      final stt = _FakeSttService();
+      await pumpConversation(
+        tester,
+        VoiceConversationScreen(sttService: stt),
+      );
+
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pump();
+
+      stt.emitPartial('첫번째 일정');
+      await tester.pump();
+
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        '첫번째 일정',
+      );
+
+      await tester.enterText(find.byType(TextField), '두번째 일정');
+      await tester.pump();
+
+      await tester.tap(find.text('전송'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        isEmpty,
+      );
+
+      stt.emitPartial('늦게온 일정');
+      await tester.pump();
+
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        isEmpty,
+      );
+    },
+  );
+
   testWidgets('AI 일정 대화는 initialText를 자동 제출한다', (tester) async {
     await pumpConversation(
       tester,

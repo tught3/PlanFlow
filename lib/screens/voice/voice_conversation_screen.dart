@@ -69,6 +69,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   bool _didSubmitInitialText = false;
   bool _isExitingConversation = false;
   int _listenGeneration = 0;
+  int _inputTurnGeneration = 0;
+  bool _isApplyingVoiceTranscript = false;
   Timer? _restartListenTimer;
   String? _conversationStatus;
 
@@ -167,7 +169,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     }
   }
 
-  Future<void> _submitText([String? overrideText]) async {
+  Future<void> _submitText(
+    String? overrideText, {
+    bool fromVoiceFinal = false,
+  }) async {
     final rawText = (overrideText ?? _inputController.text).trim();
     final text = _normalizeSubmitTextForPendingDelete(rawText);
     if (text.isEmpty || _isSubmitting) {
@@ -176,6 +181,19 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         'empty=${text.isEmpty} submitting=$_isSubmitting',
       );
       return;
+    }
+    _restartListenTimer?.cancel();
+    _inputTurnGeneration += 1;
+    if (!fromVoiceFinal) {
+      _listenGeneration += 1;
+    }
+    if (_isListening && !fromVoiceFinal) {
+      setState(() {
+        _isListening = false;
+        _keepListening = false;
+        _voicePausedByUser = true;
+      });
+      unawaited(widget.sttService.cancelActiveListen());
     }
     _inputController.clear();
     setState(() {
@@ -249,6 +267,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     }
     _restartListenTimer?.cancel();
     final listenGeneration = ++_listenGeneration;
+    final inputGeneration = _inputTurnGeneration;
     debugPrint('VoiceConversationScreen STT start');
     setState(() {
       _isListening = true;
@@ -265,13 +284,15 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
           if (!mounted || normalized.isEmpty) {
             return;
           }
-          setState(() {
-            _inputController.value = TextEditingValue(
-              text: normalized,
-              selection: TextSelection.collapsed(offset: normalized.length),
-            );
-            _conversationStatus = '듣고 있어요...';
-          });
+          _applyVoiceTranscriptToInput(
+            normalized,
+            listenGeneration: listenGeneration,
+            inputGeneration: inputGeneration,
+          );
+          if (!mounted || listenGeneration != _listenGeneration) {
+            return;
+          }
+          setState(() => _conversationStatus = '듣고 있어요...');
         },
       );
       if (!mounted) {
@@ -287,11 +308,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         'success=${result.isSuccess} hasText=${result.hasText} text=$submitText',
       );
       if (result.isSuccess && submitText.isNotEmpty) {
-        _inputController.value = TextEditingValue(
-          text: submitText,
-          selection: TextSelection.collapsed(offset: submitText.length),
+        _applyVoiceTranscriptToInput(
+          submitText,
+          listenGeneration: listenGeneration,
+          inputGeneration: inputGeneration,
         );
-        await _submitText(submitText);
+        await _submitText(submitText, fromVoiceFinal: true);
       } else if (mounted) {
         final message = result.message ?? '음성을 알아듣지 못했어요. 다시 말해 주세요.';
         setState(() {
@@ -586,9 +608,58 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     _isExitingConversation = true;
     await _stopVoiceBeforeNavigation();
     _inputController.clear();
+    _inputTurnGeneration += 1;
     _conversation.clearSession();
     if (!mounted) return;
     context.pop(voiceConversationClosedResult);
+  }
+
+  void _handleInputChanged(String value) {
+    if (_isApplyingVoiceTranscript) {
+      return;
+    }
+    _inputTurnGeneration += 1;
+    if (!_isListening && !_keepListening) {
+      return;
+    }
+    _restartListenTimer?.cancel();
+    _listenGeneration += 1;
+    unawaited(widget.sttService.cancelActiveListen());
+    if (mounted) {
+      setState(() {
+        _keepListening = false;
+        _voicePausedByUser = true;
+        _isListening = false;
+        _conversationStatus =
+            '음성 입력이 중지되었습니다. 다시 음성 입력하실 때 마이크 버튼을 눌러 주세요.';
+      });
+    } else {
+      _keepListening = false;
+      _voicePausedByUser = true;
+      _isListening = false;
+    }
+  }
+
+  void _applyVoiceTranscriptToInput(
+    String text, {
+    required int listenGeneration,
+    required int inputGeneration,
+  }) {
+    if (!mounted ||
+        text.isEmpty ||
+        listenGeneration != _listenGeneration ||
+        inputGeneration != _inputTurnGeneration) {
+      return;
+    }
+    _isApplyingVoiceTranscript = true;
+    try {
+      _inputController.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    } finally {
+      _isApplyingVoiceTranscript = false;
+    }
   }
 
   String _messageForResult(VoiceConversationResult result) {
@@ -706,7 +777,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
             statusText: _conversationStatus,
             onListen: _listenOnce,
             onStopListening: _pauseVoiceInput,
-            onSubmit: _submitText,
+            onSubmit: () => _submitText(null),
+            onChanged: _handleInputChanged,
           ),
         ),
       ),
@@ -941,6 +1013,7 @@ class _ConversationInputBar extends StatelessWidget {
     required this.onListen,
     required this.onStopListening,
     required this.onSubmit,
+    required this.onChanged,
   });
 
   final TextEditingController controller;
@@ -952,6 +1025,7 @@ class _ConversationInputBar extends StatelessWidget {
   final VoidCallback onListen;
   final VoidCallback onStopListening;
   final VoidCallback onSubmit;
+  final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -986,6 +1060,7 @@ class _ConversationInputBar extends StatelessWidget {
                     decoration: const InputDecoration(
                       hintText: '예: 5월 7일 일정 보여줘',
                     ),
+                    onChanged: onChanged,
                     onSubmitted: (_) => onSubmit(),
                   ),
                 ),

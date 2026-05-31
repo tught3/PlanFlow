@@ -1455,3 +1455,7 @@
 - Expanded voice query intent cues so phrases like `몇시야`, `있어?`, and related question forms route to query flow instead of edit flow.
 - Manual briefing playback from the app foreground now suppresses the one-second notification and only plays TTS, while scheduled/background briefing behavior stays unchanged.
 - Verification passed: `scripts/flutter-local.ps1 test test/services/voice_command_pipeline_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/briefing_scheduler_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, and update install/launch on `192.168.0.102:33125`.
+## 2026-05-31 Voice Conversation Input Boundary Fix
+- AI 일정 대화 화면에 입력 턴 세대와 음성 세대를 분리하는 가드를 추가해, 사용자가 다시 입력한 뒤에도 이전 STT partial/final 콜백이 입력창을 다시 채우지 못하게 막았다.
+- 수동 전송 시에는 기존 음성 listen을 강제로 끊고, 음성 final 제출은 예외 처리해 늦은 콜백이 새 입력을 덮지 않도록 정리했다.
+- Verification passed: `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, and update install/launch on `192.168.0.102:33125`.
