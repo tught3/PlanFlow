@@ -1479,3 +1479,8 @@
 - 앱 시작/복귀 시점에 초기 auth 복구가 끝나기 전에 `syncCurrentSession()`이 다시 refresh를 걸며 세션 만료/재인증 snackbar가 튀던 경로를 막기 위해, 초기 auth resolution completer를 추가하고 bootstrap in-flight refresh를 재사용하도록 정리했다.
 - startup / resume / shared-ICS 진입은 초기 auth resolution이 끝날 때까지 기다린 뒤 세션 동기화를 진행하도록 바꿔서, 빌드/설치 직후 로그인 세션이 불필요하게 풀리는 현상을 줄였다.
 - Verification passed: `scripts/flutter-local.ps1 test test/providers/auth_provider_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:42887`, and `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-05-31 Voice Conversation Beep Interval Tuning
+- AI 음성 대화에서 한마디마다 시작음이 반복되는 문제를 줄이기 위해 conversation listen silence를 2초대에서 10초로 늘리고, Android 네이티브 STT 쪽의 최소 길이도 이에 맞게 완화했다.
+- 연속 발화 중에는 재시작이 덜 일어나도록 조정하되, 전송/종료 시에는 기존 턴 경계와 자동 재시작 제어를 유지한다.
+- Verification passed: `scripts/flutter-local.ps1 test test/services/stt_service_test.dart test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`.

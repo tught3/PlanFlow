@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.provider.CalendarContract
 import android.provider.Settings
 import android.speech.RecognitionListener
@@ -687,6 +688,9 @@ private class PlanFlowSttChannel(
     private var sessionId = 0
     private var restartAttempts = 0
     private var startGeneration = 0
+    private var listenMode = "dictation"
+    private var listenSilenceMs = 30000L
+    private var warmupRetryUsed = false
     private var isDisposed = false
 
     /** dispose 후 호출을 무시하는 안전한 invokeMethod */
@@ -695,17 +699,38 @@ private class PlanFlowSttChannel(
         try { channel.invokeMethod(method, args) } catch (_: Exception) {}
     }
 
+    private fun logPhase(phase: String, extras: Map<String, Any?> = emptyMap()) {
+        val extraText = extras.entries.joinToString(" ") { (key, value) -> "$key=$value" }
+        val message = buildString {
+            append("[STT] phase=")
+            append(phase)
+            append(" session=")
+            append(sessionId)
+            append(" gen=")
+            append(startGeneration)
+            append(" mode=")
+            append(listenMode)
+            if (extraText.isNotBlank()) {
+                append(' ')
+                append(extraText)
+            }
+        }
+        Log.d("PlanFlowStt", message)
+    }
+
     init {
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "start" -> {
-                    start()
+                    val args = call.arguments as? Map<*, *>
+                    start(args)
                     result.success(true)
                 }
                 "stop" -> {
                     userRequestedStop = true
                     stopSnapshotText = latestPartialText
                     startGeneration += 1
+                    logPhase("stop", mapOf("text" to stopSnapshotText.take(80)))
                     recognizer?.stopListening()
                     result.success(latestPartialText)
                 }
@@ -722,6 +747,7 @@ private class PlanFlowSttChannel(
                     sessionId += 1
                     latestPartialText = ""
                     val resetGeneration = ++startGeneration  // pending restart 무효화
+                    logPhase("reset_transcript")
                     recognizer?.cancel()
                     if (listening && !userRequestedStop) {
                         activity.window.decorView.postDelayed({
@@ -738,12 +764,24 @@ private class PlanFlowSttChannel(
         }
     }
 
-    private fun start() {
+    private fun start(args: Map<*, *>? = null) {
         if (!SpeechRecognizer.isRecognitionAvailable(activity)) {
+            logPhase("start_unavailable")
             channel.invokeMethod("error", "unavailable")
             return
         }
-        // listening=false 먼저 설정 → cancel의 onError 콜백이 restartSoon 실행 안 함
+
+        listenMode = args?.get("mode")?.toString()?.lowercase(Locale.getDefault())
+            ?.takeIf { it == "conversation" || it == "dictation" }
+            ?: "dictation"
+        listenSilenceMs = (args?.get("silenceMs") as? Number)?.toLong()
+            ?: if (listenMode == "conversation") {
+                10000L
+            } else {
+                30000L
+            }
+        warmupRetryUsed = false
+
         listening = false
         startGeneration += 1
         val oldRecognizer = recognizer
@@ -759,8 +797,9 @@ private class PlanFlowSttChannel(
         restartAttempts = 0
         sessionId += 1
         startGeneration += 1
+        logPhase("start", mapOf("silenceMs" to listenSilenceMs))
         ensureRecognizer()
-        startListening()
+        startListening(attempt = "first")
     }
 
     private fun ensureRecognizer() {
@@ -775,31 +814,58 @@ private class PlanFlowSttChannel(
         recognizer?.setRecognitionListener(this)
     }
 
-    private fun startListening() {
+    private fun startListening(attempt: String = "retry") {
         if (!listening || userRequestedStop) {
             return
         }
+        val effectiveSilenceMs = listenSilenceMs.coerceAtLeast(1000L)
+        val minimumLengthMs = if (listenMode == "conversation") {
+            maxOf(3000L, effectiveSilenceMs)
+        } else {
+            300000L
+        }
+        logPhase(
+            "start_listening",
+            mapOf(
+                "attempt" to attempt,
+                "silenceMs" to effectiveSilenceMs,
+                "minimumMs" to minimumLengthMs,
+            ),
+        )
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.KOREA.toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 30000)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 30000)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 300000)
+            putExtra(
+                RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
+                effectiveSilenceMs,
+            )
+            putExtra(
+                RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
+                effectiveSilenceMs,
+            )
+            putExtra(
+                RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,
+                minimumLengthMs,
+            )
         }
         recognizer?.startListening(intent)
     }
 
-    private fun restartSoon(recreateRecognizer: Boolean = false) {
+    private fun restartSoon(recreateRecognizer: Boolean = false, reason: String = "restart") {
         if (!listening || userRequestedStop) {
             return
         }
         restartAttempts += 1
-        val maxAttempts = if (recreateRecognizer) 4 else 8  // 2→4: 바쁜 기기에서 더 많이 시도
+        val maxAttempts = if (recreateRecognizer) 4 else 8
         if (restartAttempts > maxAttempts) {
             listening = false
+            logPhase(
+                "restart_exhausted",
+                mapOf("reason" to reason, "attempts" to restartAttempts),
+            )
             invokeIfActive("error", mapOf("text" to latestPartialText, "sessionId" to sessionId))
             return
         }
@@ -811,16 +877,20 @@ private class PlanFlowSttChannel(
             recognizer?.cancel()
         }
         val generation = ++startGeneration
+        logPhase(
+            "restarted",
+            mapOf("reason" to reason, "recreate" to recreateRecognizer, "attempts" to restartAttempts),
+        )
         invokeIfActive("restarted", mapOf("sessionId" to sessionId))
         activity.window.decorView.postDelayed({
             if (listening && !userRequestedStop && generation == startGeneration) {
                 ensureRecognizer()
-                startListening()
+                startListening(attempt = reason)
             }
         }, if (recreateRecognizer) 1200 else 900)
     }
 
-    private fun publishText(results: Bundle?) {
+    private fun publishText(results: Bundle?, phase: String = "partial") {
         val text = results
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             ?.firstOrNull()
@@ -829,6 +899,7 @@ private class PlanFlowSttChannel(
         if (text.isNotEmpty()) {
             restartAttempts = 0
             latestPartialText = text
+            logPhase(phase, mapOf("text" to text.take(80)))
             invokeIfActive("partial", mapOf("text" to text, "sessionId" to sessionId))
         }
     }
@@ -837,6 +908,7 @@ private class PlanFlowSttChannel(
         listening = false
         startGeneration += 1
         stopSnapshotText = latestPartialText
+        logPhase("cancel", mapOf("text" to latestPartialText.take(80)))
         recognizer?.cancel()
         invokeIfActive("cancelled", mapOf("text" to latestPartialText, "sessionId" to sessionId))
     }
@@ -847,9 +919,10 @@ private class PlanFlowSttChannel(
         startGeneration += 1
         val old = recognizer
         recognizer = null
-        old?.setRecognitionListener(null)  // 지연 콜백 차단
-        old?.cancel()                       // cancel 먼저
-        old?.destroy()                      // destroy 나중 (Android 권장 순서)
+        logPhase("dispose")
+        old?.setRecognitionListener(null)
+        old?.cancel()
+        old?.destroy()
         channel.setMethodCallHandler(null)
     }
 
@@ -858,11 +931,13 @@ private class PlanFlowSttChannel(
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() {
+        logPhase("segment_ended")
         invokeIfActive("segmentEnded", mapOf("sessionId" to sessionId))
     }
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
     override fun onError(error: Int) {
+        logPhase("error", mapOf("code" to error))
         if (userRequestedStop) {
             listening = false
             invokeIfActive("stopped", mapOf("text" to stopSnapshotText, "sessionId" to sessionId))
@@ -870,7 +945,6 @@ private class PlanFlowSttChannel(
         }
         when (error) {
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
-                // 권한 없음 → 재시작 불가, 즉시 실패 처리
                 listening = false
                 invokeIfActive("error", mapOf(
                     "text" to latestPartialText,
@@ -879,29 +953,39 @@ private class PlanFlowSttChannel(
                 ))
             }
             SpeechRecognizer.ERROR_AUDIO -> {
-                // 오디오 포맷 에러 → recognizer 재생성 필요
-                restartSoon(recreateRecognizer = true)
+                restartSoon(recreateRecognizer = true, reason = "audio")
             }
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
             SpeechRecognizer.ERROR_CLIENT -> {
-                // 바쁘거나 클라이언트 에러 → recognizer 재생성
-                restartSoon(recreateRecognizer = true)
+                if (!warmupRetryUsed) {
+                    warmupRetryUsed = true
+                    restartSoon(recreateRecognizer = true, reason = "warmup")
+                } else {
+                    restartSoon(recreateRecognizer = true, reason = "busy")
+                }
             }
             else -> {
-                // 그 외 (ERROR_NO_MATCH, ERROR_SPEECH_TIMEOUT, ERROR_NETWORK 등) → 단순 재시작
-                restartSoon(recreateRecognizer = false)
+                restartSoon(recreateRecognizer = false, reason = "generic")
             }
         }
     }
 
     override fun onResults(results: Bundle?) {
+        logPhase("results", mapOf("conversation" to (listenMode == "conversation")))
         if (userRequestedStop) {
             listening = false
             invokeIfActive("stopped", mapOf("text" to stopSnapshotText, "sessionId" to sessionId))
             return
         }
-        publishText(results)
-        restartSoon()
+        publishText(results, phase = "final")
+        if (listenMode == "conversation") {
+            listening = false
+            startGeneration += 1
+            stopSnapshotText = latestPartialText
+            invokeIfActive("stopped", mapOf("text" to latestPartialText, "sessionId" to sessionId))
+            return
+        }
+        restartSoon(reason = "final")
     }
 
     override fun onPartialResults(partialResults: Bundle?) {

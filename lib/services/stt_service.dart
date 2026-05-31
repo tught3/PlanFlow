@@ -15,6 +15,11 @@ enum SttListenFailure {
   unavailable,
 }
 
+enum SttListenMode {
+  dictation,
+  conversation,
+}
+
 class SttListenResult {
   const SttListenResult._({
     this.text,
@@ -60,6 +65,9 @@ class SttService {
       MethodChannel('planflow/native_stt');
   static const MethodChannel _androidPermissionsChannel =
       MethodChannel('planflow/android_permissions');
+  static const Duration _permissionStabilizationDelay =
+      Duration(milliseconds: 300);
+  static const Duration _nativeStartRetryDelay = Duration(milliseconds: 250);
 
   static SpeechToText? _activeSpeech;
   static Completer<SttListenResult>? _activeCompleter;
@@ -99,6 +107,22 @@ class SttService {
   static void debugResetActiveListenState() {
     _activeListenGeneration += 1;
     _clearActiveListenState(clearHandler: true);
+  }
+
+  static void _logPhase(
+    String phase, {
+    required SttListenMode mode,
+    String attempt = 'normal',
+    String? reason,
+  }) {
+    final session = _activeNativeSessionId ?? 0;
+    final suffix = reason == null || reason.trim().isEmpty
+        ? ''
+        : ' reason=${reason.trim()}';
+    debugPrint(
+      '[STT] phase=$phase gen=$_activeListenGeneration session=$session '
+      'mode=${mode.name} attempt=$attempt$suffix',
+    );
   }
 
   static String? resolveKoreanLocaleId(Iterable<String> localeIds) {
@@ -617,11 +641,19 @@ class SttService {
 
   @visibleForTesting
   static SpeechListenOptions buildListenOptions() {
+    return buildListenOptionsForMode(SttListenMode.dictation);
+  }
+
+  static SpeechListenOptions buildListenOptionsForMode(
+    SttListenMode mode,
+  ) {
     return SpeechListenOptions(
       onDevice: true,
       partialResults: true,
       cancelOnError: false,
-      listenMode: ListenMode.dictation,
+      listenMode: mode == SttListenMode.conversation
+          ? ListenMode.confirmation
+          : ListenMode.dictation,
     );
   }
 
@@ -650,7 +682,7 @@ class SttService {
   Future<void> cancelActiveListen() async {
     _userRequestedStop = true;
     _activeListenGeneration += 1;
-    debugPrint('SttService phase=cancel');
+    _logPhase('cancel', mode: SttListenMode.dictation);
     final hadActiveNativeListen = _activeNativeListen;
     final speech = _activeSpeech;
     if (hadActiveNativeListen) {
@@ -692,7 +724,7 @@ class SttService {
         _activeNativeSessionText.isEmpty) {
       return;
     }
-    debugPrint('SttService phase=pre_listen_cleanup');
+    _logPhase('pre_listen_cleanup', mode: SttListenMode.dictation);
     if (_activeNativeListen) {
       try {
         await _nativeSttChannel.invokeMethod<String>('cancel');
@@ -787,26 +819,47 @@ class SttService {
   Future<SttListenResult> listen({
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
+    SttListenMode mode = SttListenMode.dictation,
   }) async {
     await _cleanupBeforeNewListen();
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final hadPermissionBefore = await _hasAndroidMicrophonePermission();
       final permissionResult = await _ensureAndroidMicrophonePermission();
       if (permissionResult != null) {
         return permissionResult;
       }
+      if (!hadPermissionBefore) {
+        await Future<void>.delayed(_permissionStabilizationDelay);
+      }
       final nativeResult = await _listenWithNativeAndroid(
         onPartialResult: onPartialResult,
         onRestart: onRestart,
+        mode: mode,
+        attempt: 'first',
       );
       if (nativeResult.failure != SttListenFailure.unavailable) {
         return nativeResult;
       }
+      await Future<void>.delayed(_nativeStartRetryDelay);
+      final retryResult = await _listenWithNativeAndroid(
+        onPartialResult: onPartialResult,
+        onRestart: onRestart,
+        mode: mode,
+        attempt: 'warmup-retry',
+      );
+      if (retryResult.failure != SttListenFailure.unavailable) {
+        return retryResult;
+      }
     }
-    return _listenWithSpeechToText(onPartialResult: onPartialResult);
+    return _listenWithSpeechToText(
+      onPartialResult: onPartialResult,
+      mode: mode,
+    );
   }
 
   Future<SttListenResult> _listenWithSpeechToText({
     ValueChanged<String>? onPartialResult,
+    SttListenMode mode = SttListenMode.dictation,
   }) async {
     final speech = SpeechToText();
     final completer = Completer<SttListenResult>();
@@ -816,6 +869,7 @@ class SttService {
     _activeCompleter = completer;
     _activeRecognizedText = null;
     _userRequestedStop = false;
+    _logPhase('start', mode: mode);
 
     void completeSuccess([String? text]) {
       if (listenGeneration != _activeListenGeneration) {
@@ -889,7 +943,7 @@ class SttService {
         localeId: localeId,
         listenFor: _listenFor,
         pauseFor: _pauseFor,
-        listenOptions: buildListenOptions(),
+        listenOptions: buildListenOptionsForMode(mode),
         onResult: (result) {
           if (listenGeneration != _activeListenGeneration) {
             return;
@@ -920,7 +974,8 @@ class SttService {
           latestRecognizedText = text;
           _activeRecognizedText = text;
           onPartialResult?.call(text);
-          if (result.finalResult && _userRequestedStop) {
+          if (result.finalResult &&
+              (mode == SttListenMode.conversation || _userRequestedStop)) {
             completeSuccess(text);
           }
         },
@@ -984,9 +1039,29 @@ class SttService {
     }
   }
 
+  Future<bool> _hasAndroidMicrophonePermission() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return true;
+    }
+    try {
+      return await _androidPermissionsChannel.invokeMethod<bool>(
+            'checkMicrophonePermission',
+          ) ??
+          false;
+    } catch (error) {
+      debugPrint('PlanFlow STT permission pre-check failed: $error');
+      return false;
+    }
+  }
+
   static void _completeActiveListenFromText({bool detach = false}) {
     final completer = _activeCompleter;
     if (completer == null || completer.isCompleted) {
+      debugPrint(
+        '[STT] phase=complete_skipped gen=$_activeListenGeneration '
+        'session=${_activeNativeSessionId ?? 0} detach=$detach reason='
+        '${completer == null ? "completer_null" : "completer_completed"}',
+      );
       if (detach) {
         _activeListenGeneration += 1;
         _clearActiveListenState(clearHandler: true);
@@ -1016,6 +1091,11 @@ class SttService {
   }) {
     final completer = _activeCompleter;
     if (completer == null || completer.isCompleted) {
+      debugPrint(
+        '[STT] phase=failure_skipped gen=$_activeListenGeneration '
+        'session=${_activeNativeSessionId ?? 0} failure=$failure reason='
+        '${completer == null ? "completer_null" : "completer_completed"}',
+      );
       return;
     }
     completer.complete(
@@ -1056,6 +1136,8 @@ class SttService {
   Future<SttListenResult> _listenWithNativeAndroid({
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
+    SttListenMode mode = SttListenMode.dictation,
+    String attempt = 'first',
   }) async {
     final completer = Completer<SttListenResult>();
     final listenGeneration = ++_activeListenGeneration;
@@ -1069,6 +1151,7 @@ class SttService {
     _activeCompleter = completer;
     _activeRecognizedText = null;
     _userRequestedStop = false;
+    _logPhase('start', mode: mode, attempt: attempt);
 
     String eventText(Object? arguments) {
       if (arguments is Map) {
@@ -1149,6 +1232,17 @@ class SttService {
       return didHandle;
     }
 
+    void finishConversationMode(String text) {
+      if (listenGeneration != _activeListenGeneration) {
+        return;
+      }
+      _activeNativeListen = false;
+      latestRecognizedText = text.trim();
+      _activeRecognizedText = latestRecognizedText;
+      _activeNativeSessionText = '';
+      _completeActiveListenFromText(detach: true);
+    }
+
     void updateRecognizedText(String incomingText) {
       if (listenGeneration != _activeListenGeneration) {
         return;
@@ -1218,6 +1312,10 @@ class SttService {
         case 'stopped':
           updateRecognizedText(eventText(call.arguments));
           commitActiveSession();
+          if (mode == SttListenMode.conversation) {
+            finishConversationMode(latestRecognizedText);
+            break;
+          }
           _completeActiveListenFromText(detach: true);
           break;
         case 'cancelled':
@@ -1247,7 +1345,10 @@ class SttService {
     });
 
     try {
-      final started = await _nativeSttChannel.invokeMethod<bool>('start');
+      final started = await _nativeSttChannel.invokeMethod<bool>('start', <String, dynamic>{
+        'mode': mode.name,
+        'silenceMs': mode == SttListenMode.conversation ? 10000 : 30000,
+      });
       if (started != true) {
         return SttListenResult.failure(
           failure: SttListenFailure.unavailable,
