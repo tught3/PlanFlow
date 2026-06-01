@@ -123,6 +123,7 @@ Future<void> _briefingAlarmCallback(
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
           autoRefreshToken: false,
+          isolateMode: true,
         ),
       );
       AppEnv.markSupabaseInitialized();

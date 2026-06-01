@@ -56,6 +56,7 @@ Future<void> _dailyBackupCallback() async {
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
           autoRefreshToken: false,
+          isolateMode: true,
         ),
       );
       AppEnv.markSupabaseInitialized();

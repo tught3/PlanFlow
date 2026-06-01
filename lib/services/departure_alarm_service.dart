@@ -90,6 +90,9 @@ class DepartureAlarmService {
       'departure_alarm:repeat_interval_min';
   static const String _lastVisibleNotifyPrefix =
       'departure_alarm:last_visible_notify_at:';
+  static const String cachedOriginLatKey = 'departure_alarm:cached_origin_lat';
+  static const String cachedOriginLngKey = 'departure_alarm:cached_origin_lng';
+  static const String cachedOriginAtKey = 'departure_alarm:cached_origin_at';
 
   final AppPermissionService? _permissionService;
   final Future<GeoPoint?> Function()? _currentLocationProvider;
@@ -687,33 +690,51 @@ class DepartureAlarmService {
   }
 
   Future<GeoPoint?> _resolveOriginLocation() async {
-    final origin = await (_currentLocationProvider?.call() ??
-        _permissions.getCurrentLocation());
-    if (origin != null) {
-      await _cacheLastOrigin(origin);
-      return origin;
+    final provider = _currentLocationProvider;
+    if (provider != null) {
+      final origin = await provider();
+      if (origin != null) {
+        await _cacheLastOrigin(origin);
+        return origin;
+      }
     }
-    return _loadCachedOrigin();
+    final cachedOrigin = await _loadCachedOrigin();
+    if (cachedOrigin != null) {
+      return cachedOrigin;
+    }
+    final permissionGranted = await _permissions.checkLocationPermission();
+    if (!permissionGranted) {
+      return null;
+    }
+    final lastKnownOrigin = await _permissions.getLastKnownLocation();
+    if (lastKnownOrigin != null) {
+      await _cacheLastOrigin(lastKnownOrigin);
+      return lastKnownOrigin;
+    }
+    final fallbackOrigin = await _permissions.getCurrentLocation();
+    if (fallbackOrigin != null) {
+      await _cacheLastOrigin(fallbackOrigin);
+      return fallbackOrigin;
+    }
+    return null;
   }
 
   Future<void> _cacheLastOrigin(GeoPoint origin) async {
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setDouble(
-        'departure_alarm:last_origin_lat', origin.latitude);
-    await preferences.setDouble(
-        'departure_alarm:last_origin_lng', origin.longitude);
+    await preferences.setDouble(cachedOriginLatKey, origin.latitude);
+    await preferences.setDouble(cachedOriginLngKey, origin.longitude);
     await preferences.setString(
-      'departure_alarm:last_origin_at',
+      cachedOriginAtKey,
       _currentTime.toIso8601String(),
     );
   }
 
   Future<GeoPoint?> _loadCachedOrigin() async {
     final preferences = await SharedPreferences.getInstance();
-    final lat = preferences.getDouble('departure_alarm:last_origin_lat');
-    final lng = preferences.getDouble('departure_alarm:last_origin_lng');
+    final lat = preferences.getDouble(cachedOriginLatKey);
+    final lng = preferences.getDouble(cachedOriginLngKey);
     final savedAt = _parseDateTime(
-      preferences.getString('departure_alarm:last_origin_at'),
+      preferences.getString(cachedOriginAtKey),
     );
     if (lat == null || lng == null || savedAt == null) {
       return null;
@@ -918,6 +939,7 @@ Future<void> _departureAlarmMonitorCallback() async {
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
           autoRefreshToken: false,
+          isolateMode: true,
         ),
       );
       AppEnv.markSupabaseInitialized();
@@ -947,6 +969,7 @@ Future<void> _departureAlarmPreflightCallback(
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
           autoRefreshToken: false,
+          isolateMode: true,
         ),
       );
       AppEnv.markSupabaseInitialized();

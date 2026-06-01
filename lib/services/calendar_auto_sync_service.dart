@@ -616,6 +616,7 @@ Future<void> _dailyCalendarSyncCallback() async {
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
           autoRefreshToken: false,
+          isolateMode: true,
         ),
       );
       AppEnv.markSupabaseInitialized();

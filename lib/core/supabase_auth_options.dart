@@ -160,11 +160,37 @@ class PlanFlowAuthLocalStorage extends LocalStorage {
   }
 }
 
+/// 백그라운드 isolate 전용 빈 LocalStorage.
+/// 저장된 세션을 읽지 않아 토큰 rotation 충돌을 방지한다.
+class _IsolatedEmptyLocalStorage extends LocalStorage {
+  @override
+  Future<void> initialize() async {}
+  @override
+  Future<bool> hasAccessToken() async => false;
+  @override
+  Future<String?> accessToken() async => null;
+  @override
+  Future<void> persistSession(String persistSessionString) async {}
+  @override
+  Future<void> removePersistedSession() async {}
+}
+
 FlutterAuthClientOptions buildPlanFlowAuthOptions({
   required String supabaseUrl,
   bool detectSessionInUri = false,
   bool autoRefreshToken = true,
+  /// true이면 저장된 세션을 로드하지 않는다 (백그라운드 isolate용).
+  /// autoRefreshToken=false만으로는 초기 recoverSession() 호출을 막지 못해
+  /// 토큰 rotation이 발생해 메인 앱 세션이 invalidate되는 문제 방지.
+  bool isolateMode = false,
 }) {
+  if (isolateMode) {
+    return FlutterAuthClientOptions(
+      detectSessionInUri: false,
+      autoRefreshToken: false,
+      localStorage: _IsolatedEmptyLocalStorage(),
+    );
+  }
   return FlutterAuthClientOptions(
     detectSessionInUri: detectSessionInUri,
     autoRefreshToken: autoRefreshToken,
