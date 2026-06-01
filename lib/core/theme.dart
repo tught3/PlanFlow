@@ -208,6 +208,8 @@ ThemeData buildPlanFlowTheme() {
       contentTextStyle: const TextStyle(color: Colors.white, fontSize: 13),
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      // 화면 가운데 아래 위치 (기본 최하단 → 중앙 아래)
+      insetPadding: EdgeInsets.fromLTRB(24, 0, 24, 80),
     ),
     textTheme: const TextTheme(
       headlineSmall: TextStyle(
