@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -30,6 +32,23 @@ void main() {
       const Duration(minutes: 5),
     );
     expect(SttService.debugConversationSilenceMs, 300000);
+  });
+
+  test('Android conversation mode restarts after final results until user stop',
+      () {
+    final source = File(
+      'android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt',
+    ).readAsStringSync();
+
+    expect(
+      source,
+      contains('restartSoon(reason = "conversation_final")'),
+    );
+    expect(
+      source,
+      isNot(contains(
+          'invokeIfActive("stopped", mapOf("text" to latestPartialText')),
+    );
   });
 
   test('SttService prefers ko_KR and falls back to other Korean locale ids',

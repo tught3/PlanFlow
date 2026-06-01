@@ -636,6 +636,54 @@ void main() {
     expect(find.text('앱 비밀번호'), findsNothing);
   });
 
+  testWidgets('Naver OAuth launch does not immediately fail permission check',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final authService = _FakeAuthService(connectCalendarResult: true);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.signedOut(
+                CalendarProvider.naver,
+              ),
+            ),
+          ),
+          notificationService: _FakeNotificationService(),
+          authService: authService,
+          naverImportService: _FakeNaverOpenApiCalendarService(
+            initialHasAccess: false,
+          ),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final syncButton =
+        find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
+    await _scrollUntilHitTestable(tester, syncButton);
+    await tester.tap(syncButton.hitTestable().first);
+    await tester.pumpAndSettle();
+
+    expect(authService.connectCalendarCallCount, 1);
+    expect(
+      find.textContaining('권한 동의가 확인되지 않았습니다'),
+      findsNothing,
+    );
+    expect(
+      find.textContaining('캘린더 권한을 허용하고 PlanFlow로 돌아온 뒤 다시 동기화'),
+      findsWidgets,
+    );
+  });
+
   testWidgets('logout does not clear saved Naver calendar credentials',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
@@ -1196,7 +1244,7 @@ class _FakeNaverCalDavCredentialStore implements NaverCalDavCredentialStore {
 }
 
 class _FakeAuthService extends AuthService {
-  _FakeAuthService()
+  _FakeAuthService({this.connectCalendarResult = false})
       : super(
           client: SupabaseClient(
             'https://example.com',
@@ -1208,7 +1256,15 @@ class _FakeAuthService extends AuthService {
           ),
         );
 
+  final bool connectCalendarResult;
   int signOutCallCount = 0;
+  int connectCalendarCallCount = 0;
+
+  @override
+  Future<bool> connectCalendarProvider(PlanFlowOAuthProvider provider) async {
+    connectCalendarCallCount += 1;
+    return connectCalendarResult;
+  }
 
   @override
   Future<void> signOut() async {

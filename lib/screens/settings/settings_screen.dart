@@ -558,21 +558,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           }
           return false;
         }
-        // 동의 완료 후 권한 상태 갱신 대기
-        await Future<void>.delayed(const Duration(seconds: 2));
-        final permResult =
-            await _naverCalendarPermissionServiceInstance.refreshStatus();
         if (mounted) {
           setState(() {
             _isTestingNaverCalDav = false;
-            _hasNaverCalDavCredentials =
-                permResult.status == NaverCalendarPermissionStatus.granted;
           });
-        }
-        if (permResult.status != NaverCalendarPermissionStatus.granted) {
-          if (mounted) {
-            _showSnack('네이버 캘린더 권한 동의가 확인되지 않았습니다. 잠시 후 다시 시도해 주세요.');
-          }
+          _showSnack(
+            '네이버 권한 동의가 열렸습니다. 캘린더 권한을 허용하고 PlanFlow로 돌아온 뒤 다시 동기화를 눌러 주세요.',
+          );
+          unawaited(_loadNaverCalDavState());
           return false;
         }
       } catch (error, stackTrace) {

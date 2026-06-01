@@ -1515,3 +1515,9 @@
 - Naver calendar permission probing now uses the read-only `findSchedules.json` endpoint with a one-day window instead of sending a dummy `createSchedule` payload, preventing false "permission not confirmed" results when sync itself is working.
 - Monthly widget visible date cells now bind the whole visible cell container as well as the day number to `planflow://calendar?date=YYYY-MM-DD`, while truly blank cells remain no-op.
 - Verification passed: `test/services/naver_calendar_permission_service_test.dart`, `test/app_home_widget_route_test.dart`, `test/screens/calendar_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:41013`, `am start` launch check, and direct `planflow://calendar?date=2026-06-15` intent showing the selected date panel.
+
+## 2026-06-01 STT Final Restart And Naver Consent Follow-up
+- Android native conversation STT no longer treats each `onResults` final callback as user completion; in conversation mode it publishes the final text and restarts listening until the user explicitly stops, reducing short-pause turn endings.
+- Naver Open API access checks now verify actual calendar permission via `NaverCalendarPermissionService.refreshStatus()` instead of treating any stored provider token as sufficient.
+- Settings no longer shows a false "권한 동의가 확인되지 않았습니다" snackbar two seconds after launching external Naver OAuth; it now asks the user to complete consent and retry sync after returning.
+- Verification passed: `test/services/stt_service_test.dart`, `test/services/naver_open_api_calendar_service_test.dart`, targeted `test/screens/settings_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:41013`, and `am start` launch check.

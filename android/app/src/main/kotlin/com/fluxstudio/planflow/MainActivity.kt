@@ -859,7 +859,13 @@ private class PlanFlowSttChannel(
             return
         }
         restartAttempts += 1
-        val maxAttempts = if (recreateRecognizer) 4 else 8
+        val maxAttempts = if (listenMode == "conversation") {
+            120
+        } else if (recreateRecognizer) {
+            4
+        } else {
+            8
+        }
         if (restartAttempts > maxAttempts) {
             listening = false
             logPhase(
@@ -979,10 +985,8 @@ private class PlanFlowSttChannel(
         }
         publishText(results, phase = "final")
         if (listenMode == "conversation") {
-            listening = false
-            startGeneration += 1
             stopSnapshotText = latestPartialText
-            invokeIfActive("stopped", mapOf("text" to latestPartialText, "sessionId" to sessionId))
+            restartSoon(reason = "conversation_final")
             return
         }
         restartSoon(reason = "final")

@@ -9,9 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart'
-    show
-        EventRepository,
-        SupabaseEventRepository;
+    show EventRepository, SupabaseEventRepository;
 import 'external_event_import_classifier.dart';
 import 'naver_caldav_service.dart'
     show
@@ -239,8 +237,7 @@ class NaverOpenApiCalendarService {
 
         emit(_progress(
           mode: mode,
-          message:
-              failedCount > 0 ? '일부 일정 저장에 실패했습니다.' : '일정을 저장하는 중입니다.',
+          message: failedCount > 0 ? '일부 일정 저장에 실패했습니다.' : '일정을 저장하는 중입니다.',
           index: i + 1,
           total: schedules.length,
           savedCount: savedCount,
@@ -303,8 +300,13 @@ class NaverOpenApiCalendarService {
   /// OAuth 토큰 기반 캘린더 접근 가능 여부.
   Future<bool> hasCalendarAccess() async {
     try {
-      final token = await _resolveAccessToken();
-      return token != null && token.trim().isNotEmpty;
+      final permission = await (_permissionServiceOverride ??
+              NaverCalendarPermissionService(
+                supabaseClient: _supabaseClientOverride,
+                accessTokenProvider: _accessTokenProviderOverride,
+              ))
+          .refreshStatus();
+      return permission.isGranted;
     } catch (_) {
       return false;
     }
@@ -326,7 +328,8 @@ class NaverOpenApiCalendarService {
     _MutableDiagnostics? diagnostics,
   }) async {
     final now = DateTime.now().toUtc();
-    final effectiveFrom = from ?? DateTime.utc(now.year - 2, now.month, now.day);
+    final effectiveFrom =
+        from ?? DateTime.utc(now.year - 2, now.month, now.day);
     final effectiveTo = to ?? DateTime.utc(now.year + 1, now.month, now.day);
 
     // 3개월 윈도우로 분할
@@ -378,15 +381,13 @@ class NaverOpenApiCalendarService {
 
       late http.Response response;
       try {
-        response = await _httpClient
-            .get(
-              uri,
-              headers: <String, String>{
-                HttpHeaders.authorizationHeader: 'Bearer $accessToken',
-                HttpHeaders.acceptHeader: 'application/json',
-              },
-            )
-            .timeout(_timeout);
+        response = await _httpClient.get(
+          uri,
+          headers: <String, String>{
+            HttpHeaders.authorizationHeader: 'Bearer $accessToken',
+            HttpHeaders.acceptHeader: 'application/json',
+          },
+        ).timeout(_timeout);
       } on TimeoutException {
         throw const _NaverApiException(
           '네이버 캘린더 서버 응답 시간이 초과되었습니다.',
@@ -496,14 +497,19 @@ class NaverOpenApiCalendarService {
       final calId = (json['calId'] ?? json['id'] ?? json['uid'])?.toString();
 
       // 제목
-      final summary = (json['summary'] ?? json['title'] ?? '')?.toString() ?? '';
+      final summary =
+          (json['summary'] ?? json['title'] ?? '')?.toString() ?? '';
 
       // 시작/종료 시간 (여러 포맷 시도)
-      final rawStart = (json['dtStart'] ?? json['startDate'] ??
-              json['start'] ?? json['startDateTime'])
+      final rawStart = (json['dtStart'] ??
+              json['startDate'] ??
+              json['start'] ??
+              json['startDateTime'])
           ?.toString();
-      final rawEnd = (json['dtEnd'] ?? json['endDate'] ??
-              json['end'] ?? json['endDateTime'])
+      final rawEnd = (json['dtEnd'] ??
+              json['endDate'] ??
+              json['end'] ??
+              json['endDateTime'])
           ?.toString();
 
       var startAt = _parseNaverDateTime(rawStart);
@@ -551,8 +557,7 @@ class NaverOpenApiCalendarService {
         summary: summary,
         startAt: startAt,
         endAt: endAt,
-        location:
-            (json['location'] ?? json['place'])?.toString().nullIfBlank,
+        location: (json['location'] ?? json['place'])?.toString().nullIfBlank,
         description:
             (json['description'] ?? json['memo'])?.toString().nullIfBlank,
         lastModifiedAt: lastModified,
