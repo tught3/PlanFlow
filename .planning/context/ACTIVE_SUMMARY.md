@@ -1510,3 +1510,8 @@
 - Broad medical category place queries such as `병원 방문`, `병원 미팅`, `병원 진료`, `치과 예약`, and `약국 가기` no longer auto-resolve to arbitrary coordinates, while region-qualified queries like `성남 병원` still resolve.
 - Ambiguous visit/meeting schedules no longer receive automatic movement-preparation alarms; explicit medical/patient-visit/travel contexts still keep useful preparation guidance.
 - Verification passed: focused calendar/event editor/time wheel/location lookup/smart preparation tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and `scripts/flutter-local.ps1 build apk --debug --no-pub`. Full `scripts/flutter-local.ps1 test --no-pub` still has 6 failures in unrelated existing settings/background/voice conversation tests, and ADB install/run could not be completed because no device was connected.
+
+## 2026-06-01 Naver Permission Probe And Widget Date Tap Follow-up
+- Naver calendar permission probing now uses the read-only `findSchedules.json` endpoint with a one-day window instead of sending a dummy `createSchedule` payload, preventing false "permission not confirmed" results when sync itself is working.
+- Monthly widget visible date cells now bind the whole visible cell container as well as the day number to `planflow://calendar?date=YYYY-MM-DD`, while truly blank cells remain no-op.
+- Verification passed: `test/services/naver_calendar_permission_service_test.dart`, `test/app_home_widget_route_test.dart`, `test/screens/calendar_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:41013`, `am start` launch check, and direct `planflow://calendar?date=2026-06-15` intent showing the selected date panel.

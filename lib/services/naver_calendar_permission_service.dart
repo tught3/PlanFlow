@@ -46,7 +46,7 @@ class NaverCalendarPermissionService {
         _preferences = preferences ?? SharedPreferencesAsync(),
         _accessTokenProvider = accessTokenProvider,
         _probeUri = probeUri ??
-            Uri.parse('https://openapi.naver.com/calendar/createSchedule.json');
+            Uri.parse('https://openapi.naver.com/calendar/findSchedules.json');
 
   static const String _statusKey = 'naver_calendar_permission_status';
   static const String _lastCheckedAtKey =
@@ -122,16 +122,23 @@ class NaverCalendarPermissionService {
     }
 
     try {
-      final response = await _httpClient.post(
-        _probeUri,
+      final now = DateTime.now().toUtc();
+      final probeUri = _probeUri.replace(
+        queryParameters: <String, String>{
+          'startDateTime': _formatNaverProbeDateTime(now),
+          'endDateTime': _formatNaverProbeDateTime(
+            now.add(const Duration(days: 1)),
+          ),
+          'calendarId': 'defaultCalendarId',
+          'startIndex': '1',
+          'count': '1',
+        },
+      );
+      final response = await _httpClient.get(
+        probeUri,
         headers: <String, String>{
           HttpHeaders.authorizationHeader: 'Bearer $accessToken',
-          HttpHeaders.contentTypeHeader:
-              'application/x-www-form-urlencoded; charset=utf-8',
-        },
-        body: const <String, String>{
-          'calendarId': 'defaultCalendarId',
-          'scheduleIcalString': 'PLANFLOW_PERMISSION_PROBE',
+          HttpHeaders.acceptHeader: 'application/json',
         },
       ).timeout(const Duration(seconds: 8));
 
@@ -316,6 +323,13 @@ class NaverCalendarPermissionService {
       statusCode: statusCode,
       message: '네이버 캘린더 권한 상태를 확인하지 못했습니다.',
     );
+  }
+
+  static String _formatNaverProbeDateTime(DateTime value) {
+    final utc = value.toUtc();
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${utc.year}${two(utc.month)}${two(utc.day)}T'
+        '${two(utc.hour)}${two(utc.minute)}${two(utc.second)}Z';
   }
 
   static NaverCalendarPermissionStatus _parseStatus(String? value) {
