@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
@@ -122,6 +124,45 @@ void main() {
       ),
       findsNothing,
     );
+  });
+
+  testWidgets('CalendarScreen direct add passes selected date to edit route',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final selectedDay = DateTime(2026, 6, 15, 9);
+    final repository = _AsyncEventRepository([
+      Future.value(<EventModel>[]),
+    ]);
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, __) => CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: selectedDay,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEdit,
+          builder: (_, state) => Scaffold(
+            body: Text('edit-date:${state.uri.queryParameters['date']}'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('직접 추가').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('edit-date:2026-06-15'), findsOneWidget);
   });
 
   test('calendar marks date-range events across every local day', () {

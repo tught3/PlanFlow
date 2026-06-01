@@ -1279,7 +1279,7 @@ For "병문안" or "문병", add a visit-oriented pre_action such as "꽃이나 
 Fasting/medication pre_actions require explicit fasting-sensitive context such as 내시경, 금식, 마취, 수술, or a medical 검사/검진 context. Do not add them for a generic hospital location.
 Few-shot guidance:
 - Input: "내일 오전 10시 병원" -> pre_actions: []
-- Input: "내일 오후 2시 병원 미팅" -> pre_actions may include movement if needed, but no "병원 준비사항 확인" and no "금식/복약 안내 확인".
+- Input: "내일 오후 2시 병원 미팅" -> pre_actions: [] unless the text explicitly asks for departure, travel, supplies, or documents.
 - Input: "토요일 병원 병문안" -> include "꽃이나 선물 챙기기", but no medical or fasting pre_actions.
 - Input: "월요일 오전 8시 병원 건강검진" -> include "병원 준비사항 확인" and "금식/복약 안내 확인".
 - Input: "모레 오전 8시 위내시경 검사" -> include "병원 준비사항 확인" and "금식/복약 안내 확인".

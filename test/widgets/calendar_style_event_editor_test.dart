@@ -153,6 +153,53 @@ void main() {
     expect(changedStart!.hour, 13);
   });
 
+  testWidgets(
+      'period wheel only toggles AM and PM with correct 12-hour mapping',
+      (tester) async {
+    DateTime? changedStart;
+
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 5, 13),
+        endAt: DateTime(2026, 5, 13, 1),
+        onStartChanged: (value) => changedStart = value,
+      ),
+    );
+
+    await tester.tap(find.text('시작'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('오전'), findsWidgets);
+    expect(find.text('오후'), findsWidgets);
+
+    final midnightPeriodWheel =
+        tester.widget(find.byKey(const Key('start-period-wheel'))) as dynamic;
+    midnightPeriodWheel.onChanged(1);
+    await tester.pump();
+
+    expect(changedStart, isNotNull);
+    expect(changedStart!.hour, 12);
+
+    await tester.pumpWidget(
+      _TestHost(
+        startAt: DateTime(2026, 5, 13, 12),
+        endAt: DateTime(2026, 5, 13, 13),
+        onStartChanged: (value) => changedStart = value,
+      ),
+    );
+
+    await tester.tap(find.text('시작'));
+    await tester.pumpAndSettle();
+
+    final noonPeriodWheel =
+        tester.widget(find.byKey(const Key('start-period-wheel'))) as dynamic;
+    noonPeriodWheel.onChanged(0);
+    await tester.pump();
+
+    expect(changedStart, isNotNull);
+    expect(changedStart!.hour, 0);
+  });
+
   testWidgets('timezone row is removed from editor', (tester) async {
     await tester.pumpWidget(
       _TestHost(

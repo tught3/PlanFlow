@@ -50,6 +50,20 @@ void main() {
     expect(find.text('시작 시간 조정'), findsOneWidget);
   });
 
+  testWidgets('EventEditScreen initializes new event date from selected date',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventEditScreen(
+          initialDate: DateTime(2026, 6, 15),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('26. 6. 15.(월)'), findsWidgets);
+  });
+
   testWidgets(
       'EventEditScreen asks for full-screen consent when critical is enabled',
       (tester) async {

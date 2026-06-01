@@ -1503,3 +1503,10 @@
 - Departure alarms now have a local repeat interval setting in Settings, throttle repeated due-departure notifications by that interval, and reuse a recent cached origin when live location lookup is unavailable.
 - Naver calendar connection now requests `email,calendar` for calendar consent paths, including the already-linked identity fallback and the no-active-session reconnect path.
 - Verification passed: focused voice schedule, GPT recurrence, STT, notification, departure alarm, settings, and auth service tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; `scripts/flutter-local.ps1 build apk --debug --no-pub`. ADB install/run could not be completed because `adb devices` returned no connected devices.
+
+## 2026-06-01 Calendar Date Route And Ambiguous Prep Guard
+- Calendar direct-add routes now include the selected date, and new event edit screens initialize their date from the `date=YYYY-MM-DD` query instead of falling back to today.
+- Monthly widget fallback cells keep date-number deep links while blank month-cell areas remain no-op, preserving visible-date navigation without accidental background launches.
+- Broad medical category place queries such as `병원 방문`, `병원 미팅`, `병원 진료`, `치과 예약`, and `약국 가기` no longer auto-resolve to arbitrary coordinates, while region-qualified queries like `성남 병원` still resolve.
+- Ambiguous visit/meeting schedules no longer receive automatic movement-preparation alarms; explicit medical/patient-visit/travel contexts still keep useful preparation guidance.
+- Verification passed: focused calendar/event editor/time wheel/location lookup/smart preparation tests, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, and `scripts/flutter-local.ps1 build apk --debug --no-pub`. Full `scripts/flutter-local.ps1 test --no-pub` still has 6 failures in unrelated existing settings/background/voice conversation tests, and ADB install/run could not be completed because no device was connected.

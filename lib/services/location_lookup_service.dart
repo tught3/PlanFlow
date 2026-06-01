@@ -124,6 +124,15 @@ class LocationLookupService {
       );
     }
 
+    if (_isBroadGenericPlaceQuery(normalized)) {
+      return LocationLookupSearchResult(
+        originalQuery: normalized,
+        results: const <LocationLookupResult>[],
+        searchedQueries: const <String>[],
+        fallbackQueries: const <String>[],
+      );
+    }
+
     final regionResult = _lookupKoreanRegion(normalized);
     if (regionResult != null) {
       return LocationLookupSearchResult(
@@ -177,6 +186,9 @@ class LocationLookupService {
   List<String> buildRetryQueries(String query) {
     final normalized = _normalizeWhitespace(query);
     if (normalized.isEmpty) {
+      return const <String>[];
+    }
+    if (_isBroadGenericPlaceQuery(normalized)) {
       return const <String>[];
     }
 
@@ -759,6 +771,23 @@ class LocationLookupService {
         .any((alias) => token == alias || token.contains(alias));
   }
 
+  bool _isBroadGenericPlaceQuery(String query) {
+    if (_hasExplicitRegionHint(query)) {
+      return false;
+    }
+    final tokens = _tokenize(query)
+        .map(_removeKoreanParticleSuffix)
+        .map(_removeLocationSuffix)
+        .map((token) => token.replaceAll(RegExp(r'\s+'), ''))
+        .where((token) => token.isNotEmpty)
+        .where((token) => !_genericPlaceActionWords.contains(token))
+        .toList(growable: false);
+    if (tokens.isEmpty) {
+      return false;
+    }
+    return tokens.every(_genericPlaceWords.contains);
+  }
+
   static const List<String> _koreanParticleSuffixes = <String>[
     '에서',
     '으로',
@@ -977,6 +1006,33 @@ class _KnownPlaceAlias {
     return false;
   }
 }
+
+const Set<String> _genericPlaceWords = <String>{
+  '병원',
+  '의원',
+  '치과',
+  '한의원',
+  '약국',
+};
+
+const Set<String> _genericPlaceActionWords = <String>{
+  '방문',
+  '가기',
+  '감',
+  '가',
+  '예약',
+  '미팅',
+  '회의',
+  '약속',
+  '진료',
+  '검진',
+  '검사',
+  '치료',
+  '처방',
+  '접종',
+  '들르기',
+  '들름',
+};
 
 const List<_KnownPlaceAlias> _knownPlaceAliases = <_KnownPlaceAlias>[
   _KnownPlaceAlias(

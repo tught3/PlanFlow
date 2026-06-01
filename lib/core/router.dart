@@ -207,6 +207,7 @@ final GoRouter appRouter = GoRouter(
         return EventEditScreen(
           event: event,
           eventId: _resolveEventId(state, event),
+          initialDate: _parseRouteDate(state.uri.queryParameters['date']),
         );
       },
     ),

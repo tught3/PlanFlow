@@ -128,17 +128,12 @@ class SmartPreparationAlarmService {
       add('꽃이나 선물 챙기기', 3);
     }
 
-    if (_containsAny(searchable, const <String>[
-      '이동',
-      '방문',
-      '미팅',
-      '회의',
-      '예약',
-      '약속',
-      '면접',
-      '출발',
-      '도착',
-    ])) {
+    if (_hasMovementPreparationContext(
+      purposeText: purposeText,
+      locationText: locationText,
+      hasMedicalContext: hasMedicalContext,
+      hasPatientVisitContext: hasPatientVisitContext,
+    )) {
       add('이동시간과 출발 시간 확인', 2);
     }
 
@@ -460,6 +455,38 @@ class SmartPreparationAlarmService {
 
   bool _containsAny(String text, List<String> keywords) {
     return keywords.any(text.contains);
+  }
+
+  bool _hasMovementPreparationContext({
+    required String purposeText,
+    required String locationText,
+    required bool hasMedicalContext,
+    required bool hasPatientVisitContext,
+  }) {
+    final combined = '$purposeText $locationText'.trim();
+    if (hasMedicalContext || hasPatientVisitContext) {
+      return true;
+    }
+    if (_containsAny(combined, const <String>[
+      '이동',
+      '출발',
+      '도착',
+      '공항',
+      '터미널',
+      '기차역',
+      '버스터미널',
+      '면접',
+    ])) {
+      return true;
+    }
+    if (_containsAny(locationText, const <String>[
+      '역',
+      '공항',
+      '터미널',
+    ])) {
+      return true;
+    }
+    return false;
   }
 
   bool _hasMedicalContext({

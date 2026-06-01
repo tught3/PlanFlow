@@ -717,7 +717,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           scrollController: scrollController,
           onAdd: () {
             Navigator.of(context).pop();
-            context.push(AppRoutes.eventEdit);
+            context.push(_eventEditRouteForDay(day));
           },
           onVoice: () {
             Navigator.of(context).pop();
@@ -840,7 +840,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     _CalendarSelectedDateHeader(
                       selectedDateLabel: selectedDateLabel,
                       eventCount: dayEvents.length,
-                      onAdd: () => context.push(AppRoutes.eventEdit),
+                      onAdd: () =>
+                          context.push(_eventEditRouteForDay(_selectedDate)),
                       onVoice: () => context.push(AppRoutes.voice),
                     ),
                     const SizedBox(height: 12),
@@ -919,6 +920,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
       ),
     );
+  }
+
+  String _eventEditRouteForDay(DateTime day) {
+    final date = '${day.year.toString().padLeft(4, '0')}-'
+        '${day.month.toString().padLeft(2, '0')}-'
+        '${day.day.toString().padLeft(2, '0')}';
+    return '${AppRoutes.eventEdit}?date=$date';
   }
 
   String _koreanDateLabel(DateTime value) {

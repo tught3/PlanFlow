@@ -238,6 +238,69 @@ void main() {
     );
   });
 
+  test('LocationLookupService does not auto-resolve broad medical categories',
+      () async {
+    final requests = <String>[];
+    final service = LocationLookupService(
+      tmapApiKey: 'tmap-key',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        requests.add(request.url.toString());
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    for (final query in const <String>[
+      '병원',
+      '병원 방문',
+      '병원 미팅',
+      '병원 진료',
+      '치과 예약',
+      '약국 가기',
+    ]) {
+      final result = await service.searchWithFallback(query);
+      expect(result.results, isEmpty, reason: query);
+      expect(result.searchedQueries, isEmpty, reason: query);
+      expect(result.fallbackQueries, isEmpty, reason: query);
+    }
+    expect(requests, isEmpty);
+  });
+
+  test('LocationLookupService still resolves region-qualified hospital queries',
+      () async {
+    final requests = <String>[];
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        final query = request.url.queryParameters['query'] ?? '';
+        requests.add(query);
+        if (query == '성남 병원') {
+          return http.Response.bytes(
+            utf8.encode(
+              '{"addresses":[{"roadAddress":"경기도 성남시 병원로 1","x":"127.126","y":"37.42"}]}',
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    final result = await service.searchWithFallback('성남 병원');
+
+    expect(requests, contains('성남 병원'));
+    expect(result.results, hasLength(1));
+    expect(result.results.single.latitude, 37.42);
+  });
+
   test('LocationLookupService expands Wonju Christian hospital aliases', () {
     final service = LocationLookupService(
       tmapApiKey: '',

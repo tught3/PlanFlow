@@ -985,7 +985,11 @@ class PlanFlowMonthlyWidgetProvider :
                     views.setViewVisibility(inMonthId, View.GONE)
                 }
 
-                bindCalendarLink(context, views, cellContainerId, targetDate)
+                if (dayText != null) {
+                    bindCalendarLink(context, views, dayId, targetDate)
+                } else {
+                    views.setOnClickPendingIntent(dayId, null)
+                }
 
                 if (overflow > 0) {
                     views.setTextViewText(overflowId, "+$overflow")
@@ -1031,8 +1035,6 @@ class PlanFlowMonthlyWidgetProvider :
                 }
             }
 
-            bindCalendarLink(context, views, R.id.widget_month_container, todayDate())
-            bindCalendarLink(context, views, R.id.widget_month_title, todayDate())
             bindVoice(context, views, R.id.widget_month_voice_button)
         } catch (e: Exception) {
             views.setTextViewText(R.id.widget_month_title, "일정 로드 실패 — 앱을 열어 새로고침하세요")

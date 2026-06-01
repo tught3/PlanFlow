@@ -55,6 +55,29 @@ void main() {
     }
   });
 
+  test('buildCandidates skips ambiguous visit and meeting preparation alarms',
+      () {
+    final service = SmartPreparationAlarmService();
+
+    for (final rawText in const <String>[
+      '내일 오전 10시 병원 방문',
+      '내일 오후 2시 병원 미팅',
+      '내일 거래처 방문',
+      '내일 회의',
+    ]) {
+      final candidates = service.buildCandidates(
+        rawText: rawText,
+        eventStartAt: DateTime(2026, 5, 8, 10),
+      );
+
+      expect(
+        candidates.map((candidate) => candidate.title),
+        isNot(contains('이동시간과 출발 시간 확인')),
+        reason: rawText,
+      );
+    }
+  });
+
   test('buildCandidates creates visit prep for hospital patient visits', () {
     final service = SmartPreparationAlarmService();
     final candidates = service.buildCandidates(

@@ -37,6 +37,7 @@ class EventEditScreen extends StatefulWidget {
     super.key,
     this.event,
     this.eventId,
+    this.initialDate,
     this.eventRepository,
     this.permissionService,
     ManualEventSideEffectService? sideEffectService,
@@ -47,6 +48,7 @@ class EventEditScreen extends StatefulWidget {
 
   final EventModel? event;
   final String? eventId;
+  final DateTime? initialDate;
   final EventRepository? eventRepository;
   final AppPermissionService? permissionService;
   final ManualEventSideEffectService sideEffectService;
@@ -282,7 +284,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       text: event?.supplies.join(', ') ?? '',
     );
     _startAt = event?.startAt == null
-        ? planflowNow().add(const Duration(hours: 1))
+        ? _initialStartAtForNewEvent()
         : planflowLocal(event!.startAt!);
     _endAt = event?.endAt == null ? null : planflowLocal(event!.endAt!);
     _locationLat = event?.locationLat;
@@ -298,6 +300,21 @@ class _EventEditScreenState extends State<EventEditScreen> {
     if (event != null) {
       unawaited(_loadReminderOffsetIfNeeded(event));
     }
+  }
+
+  DateTime _initialStartAtForNewEvent() {
+    final fallback = planflowNow().add(const Duration(hours: 1));
+    final initialDate = widget.initialDate;
+    if (initialDate == null) {
+      return fallback;
+    }
+    return DateTime(
+      initialDate.year,
+      initialDate.month,
+      initialDate.day,
+      fallback.hour,
+      fallback.minute,
+    );
   }
 
   @override
