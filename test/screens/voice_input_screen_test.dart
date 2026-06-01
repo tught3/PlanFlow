@@ -99,6 +99,7 @@ class _FakeSttService extends SttService {
   Future<SttListenResult> listen({
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
+    SttListenMode mode = SttListenMode.dictation,
   }) {
     listenCalls += 1;
     _onPartialResult = onPartialResult;
@@ -2099,4 +2100,48 @@ void main() {
       '이번 주 금요일 6시 일정에 강릉 건도리 횟집 장소 추가',
     );
   });
+
+
+  testWidgets('?? ?? ? ???? ?? ??? ?? ?? ???', (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => const VoiceInputScreen(
+            autoStartOverride: false,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => TextButton(
+            onPressed: () => context.pop(),
+            child: const Text('??'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.enterText(
+      find.byType(TextField),
+      '?? ?? 7?? ??? ??? ??',
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('voice-input-confirm-current-text-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('??'), findsOneWidget);
+
+    await tester.tap(find.text('??'));
+    await tester.pumpAndSettle();
+
+    final textField = tester.widget<TextField>(find.byType(TextField));
+    expect(textField.controller?.text, isEmpty);
+    expect(find.text('?? ?? 7?? ??? ??? ??'), findsNothing);
+  });
+
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 import '../core/env.dart';
 import '../core/event_metadata.dart';
@@ -244,6 +245,10 @@ class VoiceCommandAnalysisService {
     VoiceAnalysisRequestBudget? budget,
     VoiceCommandAnalysisResult? previousDraft,
   }) async {
+    debugPrint(
+      '[PIPE] stage=analysis_start text_len=${rawText.trim().length} '
+      'stage=${stage.name} context=${context.name}',
+    );
     final cleanup = VoiceTextCleanupService.cleanLocally(
       rawText,
       context: context,
@@ -258,6 +263,10 @@ class VoiceCommandAnalysisService {
     final effectivePreviousDraft = previousDraft ?? _latestDraft;
     final cacheHit = _aiCache[signature];
     if (cacheHit != null) {
+      debugPrint(
+        '[PIPE] stage=analysis_cache_hit intent=${cacheHit.intent.name} '
+        'method=${cacheHit.method.name}',
+      );
       final cachedResult = cacheHit.copyWith(
         rawText: cleanup.originalText,
         cleanedText: normalized,
@@ -286,6 +295,10 @@ class VoiceCommandAnalysisService {
     );
     final effectiveBudget = budget ?? _sessionBudget;
     if (!shouldRequest || !effectiveBudget.tryConsume()) {
+      debugPrint(
+        '[PIPE] stage=analysis_local intent=${localResult.intent.name} '
+        'reason=${!shouldRequest ? 'no_ai_needed' : 'budget_exhausted'}',
+      );
       _latestDraft = localResult;
       return localResult;
     }
@@ -320,6 +333,7 @@ class VoiceCommandAnalysisService {
     );
     final parsed = _decodeJsonMap(content);
     if (parsed == null) {
+      debugPrint('[PIPE] stage=analysis_ai_fallback reason=decode_failed');
       _latestDraft = localResult;
       return localResult;
     }
@@ -335,6 +349,10 @@ class VoiceCommandAnalysisService {
     );
     _aiCache[signature] = aiResult;
     _latestDraft = aiResult;
+    debugPrint(
+      '[PIPE] stage=analysis_ai_done intent=${aiResult.intent.name} '
+      'confidence=${aiResult.confidence.toStringAsFixed(2)}',
+    );
     return aiResult;
   }
 

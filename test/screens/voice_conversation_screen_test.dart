@@ -17,12 +17,15 @@ class _FakeSttService extends SttService {
   ValueChanged<String>? _onPartialResult;
   int cancelCalls = 0;
   int stopCalls = 0;
+  int listenCalls = 0;
 
   @override
   Future<SttListenResult> listen({
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
+    SttListenMode mode = SttListenMode.dictation,
   }) {
+    listenCalls += 1;
     _onPartialResult = onPartialResult;
     _completer = Completer<SttListenResult>();
     return _completer!.future;
@@ -205,7 +208,7 @@ void main() {
     expect(find.text('듣고 있어요...'), findsNothing);
   });
 
-  testWidgets('AI 일정 대화는 STT 실패도 화면에 안내로 남긴다', (tester) async {
+  testWidgets('AI 일정 대화는 STT 실패 시 바로 재시도하고 실패 문구를 남기지 않는다', (tester) async {
     final stt = _FakeSttService();
     await pumpConversation(
       tester,
@@ -216,9 +219,12 @@ void main() {
     await tester.pump();
 
     stt.completeFailure('음성을 알아듣지 못했어요.');
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 20));
 
-    expect(find.text('음성을 알아듣지 못했어요.'), findsWidgets);
+    expect(find.text('음성을 알아듣지 못했어요.'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(stt.listenCalls, greaterThanOrEqualTo(2));
+    expect(find.text('음성을 알아듣지 못했어요.'), findsNothing);
   });
 
   testWidgets(

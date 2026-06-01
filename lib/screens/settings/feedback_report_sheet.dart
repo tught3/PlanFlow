@@ -7,7 +7,7 @@ import '../../core/theme.dart';
 import '../../data/models/feedback_report_model.dart';
 import '../../data/repositories/feedback_repository.dart';
 
-const String officialSupportEmail = 'officialfluxstudio.kr@gmail.com';
+const String officialSupportEmail = 'support@fluxstudio.co.kr';
 const Set<String> feedbackAdminEmails = <String>{
   'tught3@naver.com',
   'tught3@gmail.com',

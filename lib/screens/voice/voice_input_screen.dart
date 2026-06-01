@@ -43,6 +43,9 @@ class VoiceInputScreen extends StatefulWidget {
 
 class _VoiceInputScreenState extends State<VoiceInputScreen>
     with WidgetsBindingObserver {
+  static const String _voiceConversationClosedMessage =
+      'AI 일정 대화를 종료했어요. 새로 말하려면 음성 입력을 다시 시작해 주세요.';
+
   final TextEditingController _rawTextController = TextEditingController();
   final FocusNode _rawTextFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
@@ -230,6 +233,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
             _statusMessage = appL10n(context).voiceAutoRestarted;
           });
         },
+        mode: SttListenMode.dictation,
       );
       if (!mounted || _isDisposing) {
         return;
@@ -359,8 +363,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       _partialTranscriptToken++;
       _listenSessionGeneration++;
       _isFinishingVoiceFlow = false;
-      // 타이핑 시작 시 STT를 즉시 취소 (stop은 250ms 대기 중 텍스트 추가 가능)
-      await widget.sttService.cancelActiveListen();
+      // 타이핑 시작 시 STT를 확정 종료한다. 상태와 종료 신호를 같이 맞춘다.
+      await widget.sttService.stopActiveListen();
       if (!mounted) {
         return;
       }
@@ -680,12 +684,23 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         if (!mounted) {
           return;
         }
-        if (_isVoiceConversationRoute(location) &&
-            result == voiceConversationClosedResult) {
+        final shouldResetTranscript =
+            location == AppRoutes.confirm ||
+            location == AppRoutes.voiceAction ||
+            (_isVoiceConversationRoute(location) &&
+                result == voiceConversationClosedResult);
+        if (shouldResetTranscript) {
           _resetTranscriptForFreshVoiceInput();
-          setState(() {
-            _statusMessage = 'AI 일정 대화를 종료했어요. 새로 말하려면 음성 입력을 다시 시작해 주세요.';
-          });
+          if (_isVoiceConversationRoute(location) &&
+              result == voiceConversationClosedResult) {
+            setState(() {
+              _statusMessage = _voiceConversationClosedMessage;
+            });
+          } else {
+            setState(() {
+              _statusMessage = null;
+            });
+          }
         }
         _resetVoiceCommandSubmitGuard(clearSignature: true);
       }),

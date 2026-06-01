@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/local_time.dart';
@@ -97,6 +99,7 @@ class HomeWidgetSchedulePayload {
   const HomeWidgetSchedulePayload({
     required this.nextEvent,
     required this.month,
+    this.rawEvents = const <Map<String, Object?>>[],
     this.lastPastEvent,
     this.todayUpcomingEvents = const <HomeWidgetListEventData>[],
     this.tomorrowEvents = const <HomeWidgetListEventData>[],
@@ -112,6 +115,7 @@ class HomeWidgetSchedulePayload {
 
   final HomeWidgetNextEventData nextEvent;
   final DateTime month;
+  final List<Map<String, Object?>> rawEvents;
   final HomeWidgetListEventData? lastPastEvent;
   final List<HomeWidgetListEventData> todayUpcomingEvents;
   final List<HomeWidgetListEventData> tomorrowEvents;
@@ -221,7 +225,27 @@ class HomeWidgetSchedulePayloadBuilder {
       weekDays: _weekDays(sortedEvents, now),
       previousWeekDays: _weekDays(sortedEvents, previousWeekNow),
       nextWeekDays: _weekDays(sortedEvents, nextWeekNow),
+      rawEvents: _rawEvents(events),
     );
+  }
+
+  static List<Map<String, Object?>> _rawEvents(List<EventModel> events) {
+    return events
+        .map(
+          (event) => <String, Object?>{
+            'id': event.id,
+            'user_id': event.userId,
+            'title': event.title,
+            'start_at': event.startAt?.toUtc().toIso8601String(),
+            'end_at': event.endAt?.toUtc().toIso8601String(),
+            'location': event.location,
+            'is_critical': event.isCritical,
+            'is_all_day': event.isAllDay,
+            'is_multi_day': event.isMultiDay,
+            'parent_event_id': event.parentEventId,
+          },
+        )
+        .toList(growable: false);
   }
 
   static List<HomeWidgetMonthDayData> _monthDays(
@@ -702,6 +726,7 @@ class HomeWidgetService {
 
   Future<bool> updateScheduleData({
     required HomeWidgetNextEventData nextEvent,
+    List<Map<String, Object?>> rawEvents = const <Map<String, Object?>>[],
     List<HomeWidgetListEventData> todayEvents =
         const <HomeWidgetListEventData>[],
     HomeWidgetListEventData? lastPastEvent,
@@ -765,6 +790,11 @@ class HomeWidgetService {
           todayUpcomingEvents:
               todayUpcomingEvents.isEmpty ? todayEvents : todayUpcomingEvents,
           tomorrowEvents: tomorrowEvents,
+        ) &&
+        success;
+    success = await _saveValue(
+          'schedule_events_json',
+          jsonEncode(rawEvents),
         ) &&
         success;
     success = await _saveMonthData(month: month, days: monthDays) && success;
@@ -838,6 +868,7 @@ class HomeWidgetService {
   }) {
     return updateScheduleData(
       nextEvent: payload.nextEvent,
+      rawEvents: payload.rawEvents,
       todayEvents: payload.todayUpcomingEvents,
       lastPastEvent: payload.lastPastEvent,
       todayUpcomingEvents: payload.todayUpcomingEvents,

@@ -13,6 +13,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/location_lookup_service.dart';
+import '../../services/remote_config_service.dart';
 import '../../services/stt_service.dart';
 import '../../services/voice_conversation_controller.dart';
 
@@ -80,6 +81,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   bool _manualEditInterruptedListening = false;
   bool _didSubmitInitialText = false;
   bool _isExitingConversation = false;
+  bool _didRetryConversationEarlyFailure = false;
   int _listenGeneration = 0;
   int _inputTurnGeneration = 0;
   bool _isApplyingVoiceTranscript = false;
@@ -87,6 +89,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   // ignore: unused_field
   _VoiceConversationPhase _voicePhase = _VoiceConversationPhase.idle;
   Timer? _restartListenTimer;
+  Timer? _conversationWatchdogTimer;
   String? _conversationStatus;
 
   @override
@@ -99,7 +102,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
           return;
         }
         setState(() => _keepListening = true);
-        unawaited(_listenOnce());
+        unawaited(_startConversationListen(resetRetryPolicy: true));
       });
     }
   }
@@ -126,13 +129,14 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       _conversationStatus = '계속 대화를 이어서 할 수 있습니다. 그냥 편하게 말하세요.';
     });
     if (!_isListening && !_isSubmitting) {
-      unawaited(_listenOnce());
+      unawaited(_startConversationListen(resetRetryPolicy: true));
     }
   }
 
   @override
   void dispose() {
     _restartListenTimer?.cancel();
+    _conversationWatchdogTimer?.cancel();
     unawaited(widget.sttService.cancelActiveListen());
     _inputController.dispose();
     _scrollController.dispose();
@@ -200,6 +204,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       return;
     }
     _restartListenTimer?.cancel();
+    _conversationWatchdogTimer?.cancel();
     _isRestartPending = false;
     _inputTurnGeneration += 1;
     if (!fromVoiceFinal) {
@@ -212,8 +217,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         _isListening = false;
         _keepListening = false;
         _voicePausedByUser = true;
-        _conversationStatus =
-            '음성 입력을 멈췄어요. 지금 입력한 내용만 저장할게요.';
+        _conversationStatus = '음성 입력을 멈췄어요. 지금 입력한 내용만 저장할게요.';
       });
       unawaited(widget.sttService.stopActiveListen());
     } else if (_keepListening && !fromVoiceFinal) {
@@ -222,8 +226,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         _voicePhase = _VoiceConversationPhase.submitting;
         _keepListening = false;
         _voicePausedByUser = true;
-        _conversationStatus =
-            '음성 입력을 멈췄어요. 지금 입력한 내용만 저장할게요.';
+        _conversationStatus = '음성 입력을 멈췄어요. 지금 입력한 내용만 저장할게요.';
       });
       unawaited(widget.sttService.stopActiveListen());
     }
@@ -299,10 +302,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       return;
     }
     _restartListenTimer?.cancel();
+    _conversationWatchdogTimer?.cancel();
     _isRestartPending = false;
     _manualEditInterruptedListening = false;
     final listenGeneration = ++_listenGeneration;
     final inputGeneration = _inputTurnGeneration;
+    var shouldRetryEarlyFailure = false;
     debugPrint('VoiceConversationScreen STT start');
     setState(() {
       _isListening = true;
@@ -312,6 +317,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       _conversationStatus = '듣고 있어요...';
     });
     _setConversationInputText('');
+    _armConversationWatchdog(listenGeneration);
     try {
       final result = await widget.sttService.listen(
         onPartialResult: (text) {
@@ -325,11 +331,27 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
             listenGeneration: listenGeneration,
             inputGeneration: inputGeneration,
           );
+          _armConversationWatchdog(listenGeneration);
           if (!mounted || listenGeneration != _listenGeneration) {
             return;
           }
           setState(() => _conversationStatus = '듣고 있어요...');
         },
+        onRestart: (count) {
+          if (!mounted || listenGeneration != _listenGeneration) {
+            return;
+          }
+          debugPrint(
+            'VoiceConversationScreen STT restarted: count=$count gen=$listenGeneration',
+          );
+          setState(() {
+            _isRestartPending = true;
+            _voicePhase = _VoiceConversationPhase.restartPending;
+            _conversationStatus = '음성을 다시 듣고 있어요...';
+          });
+          _armConversationWatchdog(listenGeneration);
+        },
+        mode: SttListenMode.conversation,
       );
       if (!mounted) {
         return;
@@ -337,6 +359,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       if (listenGeneration != _listenGeneration) {
         return;
       }
+      _conversationWatchdogTimer?.cancel();
       final finalText = SttService.normalizeVoiceTranscript(result.text ?? '');
       final submitText = _normalizeSubmitTextForPendingDelete(finalText);
       debugPrint(
@@ -367,6 +390,20 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
           inputGeneration: inputGeneration,
         );
         await _submitText(submitText, fromVoiceFinal: true);
+      } else if (_shouldRetryEarlyListen(result) &&
+          !_didRetryConversationEarlyFailure &&
+          !_manualEditInterruptedListening &&
+          !_voicePausedByUser) {
+        shouldRetryEarlyFailure = true;
+        _didRetryConversationEarlyFailure = true;
+        if (mounted && listenGeneration == _listenGeneration) {
+          setState(() {
+            _isListening = false;
+            _isRestartPending = true;
+            _voicePhase = _VoiceConversationPhase.restartPending;
+            _conversationStatus = '음성 입력을 다시 준비하고 있어요...';
+          });
+        }
       } else if (mounted) {
         final message = result.message ?? '음성을 알아듣지 못했어요. 다시 말해 주세요.';
         setState(() {
@@ -393,6 +430,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         );
       });
     } finally {
+      _conversationWatchdogTimer?.cancel();
       if (mounted && listenGeneration == _listenGeneration) {
         setState(() {
           _isListening = false;
@@ -401,6 +439,17 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
           }
         });
       }
+    }
+
+    if (shouldRetryEarlyFailure &&
+        listenGeneration == _listenGeneration &&
+        _keepListening &&
+        !_voicePausedByUser &&
+        mounted) {
+      _scheduleAutoRestartListen(
+        delay: const Duration(milliseconds: 650),
+      );
+      return;
     }
 
     if (listenGeneration == _listenGeneration &&
@@ -415,13 +464,15 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     }
   }
 
-  void _scheduleAutoRestartListen() {
+  void _scheduleAutoRestartListen({
+    Duration delay = const Duration(milliseconds: 700),
+  }) {
     if (!_keepListening || _voicePausedByUser || !mounted) {
       return;
     }
     _isRestartPending = true;
     _restartListenTimer?.cancel();
-    _restartListenTimer = Timer(const Duration(milliseconds: 700), () {
+    _restartListenTimer = Timer(delay, () {
       if (_keepListening && !_voicePausedByUser && mounted && !_isListening) {
         _isRestartPending = false;
         unawaited(_listenOnce());
@@ -429,11 +480,55 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     });
   }
 
+  void _armConversationWatchdog(int listenGeneration) {
+    _conversationWatchdogTimer?.cancel();
+    final maxSeconds = RemoteConfigService.maxVoiceDurationSeconds <= 0
+        ? 60
+        : RemoteConfigService.maxVoiceDurationSeconds;
+    _conversationWatchdogTimer = Timer(Duration(seconds: maxSeconds + 5), () {
+      if (!mounted ||
+          listenGeneration != _listenGeneration ||
+          !_isListening ||
+          _voicePausedByUser) {
+        return;
+      }
+      debugPrint(
+        'VoiceConversationScreen watchdog timeout: gen=$listenGeneration',
+      );
+      if (mounted && listenGeneration == _listenGeneration) {
+        setState(() {
+          _isRestartPending = true;
+          _voicePhase = _VoiceConversationPhase.restartPending;
+          _conversationStatus = '음성이 오래 이어져서 다시 듣는 중이에요...';
+        });
+      }
+      unawaited(widget.sttService.cancelActiveListen());
+    });
+  }
+
+  bool _shouldRetryEarlyListen(SttListenResult result) {
+    if (result.hasText) {
+      return false;
+    }
+    return result.failure == SttListenFailure.silence ||
+        result.failure == SttListenFailure.unavailable;
+  }
+
+  Future<void> _startConversationListen(
+      {required bool resetRetryPolicy}) async {
+    if (resetRetryPolicy) {
+      _didRetryConversationEarlyFailure = false;
+    }
+    await _listenOnce();
+  }
+
   Future<void> _pauseVoiceInput() async {
     _restartListenTimer?.cancel();
+    _conversationWatchdogTimer?.cancel();
     _isRestartPending = false;
     _listenGeneration += 1;
     _manualEditInterruptedListening = true;
+    _didRetryConversationEarlyFailure = false;
     if (mounted) {
       setState(() {
         _voicePhase = _VoiceConversationPhase.stopping;
@@ -491,8 +586,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
 
   Future<void> _stopVoiceBeforeNavigation() async {
     _restartListenTimer?.cancel();
+    _conversationWatchdogTimer?.cancel();
     _isRestartPending = false;
     _listenGeneration += 1;
+    _didRetryConversationEarlyFailure = false;
     if (mounted) {
       setState(() {
         _voicePhase = _VoiceConversationPhase.stopping;
@@ -701,6 +798,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     _conversation.clearSession();
     _isRestartPending = false;
     _manualEditInterruptedListening = false;
+    _didRetryConversationEarlyFailure = false;
     if (!mounted) return;
     context.pop(voiceConversationClosedResult);
   }
@@ -881,17 +979,17 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         bottomNavigationBar: SafeArea(
           top: false,
           child: _ConversationInputBar(
-          controller: _inputController,
-          isSubmitting: _isSubmitting,
-          isListening: _isListening,
-          keepListening: _keepListening,
-          voicePausedByUser: _voicePausedByUser,
-          isRestartPending: _isRestartPending,
-          statusText: _conversationStatus,
-          onListen: _listenOnce,
-          onStopListening: _pauseVoiceInput,
-          onSubmit: () => _submitText(null),
-          onChanged: _handleInputChanged,
+            controller: _inputController,
+            isSubmitting: _isSubmitting,
+            isListening: _isListening,
+            keepListening: _keepListening,
+            voicePausedByUser: _voicePausedByUser,
+            isRestartPending: _isRestartPending,
+            statusText: _conversationStatus,
+            onListen: () => _startConversationListen(resetRetryPolicy: true),
+            onStopListening: _pauseVoiceInput,
+            onSubmit: () => _submitText(null),
+            onChanged: _handleInputChanged,
           ),
         ),
       ),

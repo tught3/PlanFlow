@@ -833,6 +833,7 @@ class _FakeHomeWidgetService extends HomeWidgetService {
   @override
   Future<bool> updateScheduleData({
     required HomeWidgetNextEventData nextEvent,
+    List<Map<String, Object?>> rawEvents = const <Map<String, Object?>>[],
     List<HomeWidgetListEventData> todayEvents =
         const <HomeWidgetListEventData>[],
     HomeWidgetListEventData? lastPastEvent,

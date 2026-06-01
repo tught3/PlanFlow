@@ -529,7 +529,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return false;
     }
 
-    // Open API: 앱 비밀번호 대신 OAuth calendar scope 연결
+    // CalDAV 자격증명이 있으면 Open API 체크 없이 바로 동기화
+    final hasCalDavCredentials = await _naverCalDavService.hasCredentials();
+    if (hasCalDavCredentials) {
+      if (!mounted) return false;
+      _showSnack('네이버 캘린더 동기화를 시작합니다.');
+      await _markNaverCalDavConnection(
+        status: CalendarConnectionStatus.connected,
+        lastError: null,
+      );
+      await _loadCalendarStatus();
+      if (!mounted) return false;
+      final imported = await _importNaverCalDavEvents(skipIntro: true);
+      return imported?.success ?? false;
+    }
+
+    // CalDAV 자격증명 없을 때만 Open API 경로 시도
     final hasAccess = await _naverImportService.hasCalendarAccess();
     if (!hasAccess) {
       setState(() {
@@ -657,8 +672,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!_isNaverCalDavProgressDialogOpen) {
       unawaited(_showNaverCalDavProgressDialog(dismissible: true));
     }
-    // Open API import 서비스 사용 (CalDAV → OAuth 전환)
-    final result = await _naverImportService.syncAll(
+    // CalDAV 서비스 직접 사용 (Open API 토큰 의존성 제거)
+    final result = await _naverCalDavService.syncAll(
       userId: userId,
       from: from,
       to: to,

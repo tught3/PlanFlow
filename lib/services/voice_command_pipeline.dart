@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'voice_text_cleanup_service.dart';
 
 enum VoiceCommandPipelineIntent {
@@ -41,12 +43,26 @@ class VoiceCommandPlan {
 class VoiceCommandPipeline {
   const VoiceCommandPipeline();
 
+  void _logStage(
+    String stage, {
+    String? intent,
+    String? reason,
+  }) {
+    final parts = <String>[
+      '[PIPE] stage=$stage',
+      if (intent != null && intent.isNotEmpty) 'intent=$intent',
+      if (reason != null && reason.isNotEmpty) 'reason=$reason',
+    ];
+    debugPrint(parts.join(' '));
+  }
+
   VoiceCommandPlan analyze(
     String rawText, {
     VoiceCommandPipelineIntent? intent,
     VoiceTextCleanupContext context = VoiceTextCleanupContext.add,
     Iterable<VoiceTextCleanupCandidate> candidates = const [],
   }) {
+    _logStage('analyze_start');
     final cleanup = VoiceTextCleanupService.cleanLocally(
       rawText,
       context: context,
@@ -61,6 +77,11 @@ class VoiceCommandPipeline {
       normalizedText,
       intent: resolvedIntent,
       requestedChanges: requestedChanges,
+    );
+    _logStage(
+      'split',
+      intent: resolvedIntent.name,
+      reason: split.targetText.trim().isEmpty ? 'no_target' : 'target_ok',
     );
     final fieldValues = extractRequestedFieldValues(
       split,
@@ -80,6 +101,11 @@ class VoiceCommandPipeline {
         !requestedChanges.contains('location') &&
         !requestedChanges.contains('title') &&
         !requestedChanges.contains('memo');
+    _logStage(
+      'analyze_done',
+      intent: resolvedIntent.name,
+      reason: safeDirectApply ? 'safe_direct_apply' : 'standard',
+    );
 
     return VoiceCommandPlan(
       rawText: cleanup.originalText,
@@ -163,12 +189,14 @@ class VoiceCommandPipeline {
         if (split != null) {
           return split;
         }
+        _logStage('split_location', intent: intent.name, reason: 'no_split');
       }
       if (requestedChanges.contains('start_at')) {
         final split = _splitDateTimeChange(normalizedText);
         if (split != null) {
           return split;
         }
+        _logStage('split_datetime', intent: intent.name, reason: 'no_split');
       }
     }
 

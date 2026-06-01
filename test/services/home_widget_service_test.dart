@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/services/home_widget_platform.dart';
@@ -132,6 +134,45 @@ void main() {
         title: 'Morning sync',
         startAt: DateTime.parse('2026-05-04T01:00:00Z'),
       ),
+      rawEvents: const <Map<String, Object?>>[
+        <String, Object?>{
+          'id': 'past',
+          'user_id': 'user-1',
+          'title': 'Past event',
+          'start_at': '2026-05-04T00:00:00.000Z',
+        },
+        <String, Object?>{
+          'id': 'upcoming',
+          'user_id': 'user-1',
+          'title': 'Upcoming event',
+          'start_at': '2026-05-04T03:00:00.000Z',
+        },
+        <String, Object?>{
+          'id': 'tomorrow',
+          'user_id': 'user-1',
+          'title': 'Tomorrow event',
+          'start_at': '2026-05-05T01:00:00.000Z',
+        },
+        <String, Object?>{
+          'id': 'cell-1',
+          'user_id': 'user-1',
+          'title': 'Cell event 1',
+          'start_at': '2026-05-01T09:00:00.000Z',
+          'is_critical': true,
+        },
+        <String, Object?>{
+          'id': 'prev-month',
+          'user_id': 'user-1',
+          'title': 'Previous month event',
+          'start_at': '2026-04-30T00:00:00.000Z',
+        },
+        <String, Object?>{
+          'id': 'next-month',
+          'user_id': 'user-1',
+          'title': 'Next month event',
+          'start_at': '2026-06-01T00:00:00.000Z',
+        },
+      ],
       todayEvents: List<HomeWidgetListEventData>.generate(
         7,
         (index) => HomeWidgetListEventData(title: 'Today event ${index + 1}'),
@@ -259,6 +300,12 @@ void main() {
     expect(platform.savedValues['month_cell_42_in_month'], isFalse);
     expect(platform.savedValues['month_title_offset_-1'], '2026.04');
     expect(platform.savedValues['month_title_offset_1'], '2026.06');
+    expect(platform.savedValues['schedule_events_json'], isA<String>());
+    final rawEvents = jsonDecode(
+      platform.savedValues['schedule_events_json'] as String,
+    ) as List<dynamic>;
+    expect(rawEvents.length, 6);
+    expect(rawEvents.first['title'], 'Past event');
     expect(platform.savedValues['month_offset_-1_cell_6_day'], 30);
     expect(
       platform.savedValues['month_offset_-1_cell_6_event_1_title'],
@@ -334,6 +381,8 @@ void main() {
     expect(payload.nextEvent.title, 'Next event');
     expect(payload.nextEvent.eventId, 'next');
     expect(payload.nextEvent.isCritical, isTrue);
+    expect(payload.rawEvents.length, 6);
+    expect(payload.rawEvents.first['title'], 'Past event');
     expect(payload.lastPastEvent?.title, 'Past event');
     expect(payload.lastPastEvent?.eventId, 'past');
     expect(payload.todayUpcomingEvents.map((event) => event.title),

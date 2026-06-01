@@ -6,10 +6,36 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const HERMES_LOCAL_API_KEY = "hermes-local";
+
 type ProxyErrorBody = {
   error: string;
   detail?: string;
 };
+
+function normalizeBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/, "");
+}
+
+function getOpenAIBaseUrl(): string | undefined {
+  const value = Deno.env.get("OPENAI_BASE_URL")?.trim();
+  return value ? normalizeBaseUrl(value) : undefined;
+}
+
+function getOpenAIApiKey(): string | undefined {
+  const apiKey = Deno.env.get("OPENAI_API_KEY")?.trim();
+  if (apiKey) {
+    return apiKey;
+  }
+  return getOpenAIBaseUrl() ? HERMES_LOCAL_API_KEY : undefined;
+}
+
+function buildOpenAIUrl(pathname: string): string {
+  const baseUrl = getOpenAIBaseUrl() ?? DEFAULT_OPENAI_BASE_URL;
+  const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return `${normalizeBaseUrl(baseUrl)}${normalizedPath}`;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -20,7 +46,7 @@ serve(async (req) => {
     return json({ error: "method_not_allowed" }, 405);
   }
 
-  const openAiApiKey = Deno.env.get("OPENAI_API_KEY")?.trim() ?? "";
+  const openAiApiKey = getOpenAIApiKey() ?? "";
   if (!openAiApiKey) {
     return json(
       {
@@ -38,7 +64,7 @@ serve(async (req) => {
     return json({ error: "invalid_json_body" }, 400);
   }
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch(buildOpenAIUrl("/chat/completions"), {
     method: "POST",
     headers: {
       authorization: `Bearer ${openAiApiKey}`,

@@ -83,8 +83,8 @@ void main() {
 
   testWidgets('HomeScreen shows every past event at the latest same time',
       (tester) async {
-    final now = DateTime.now();
-    final latestStart = DateTime(now.year, now.month, now.day, 9);
+    final now = DateTime(2026, 5, 28, 12);
+    final latestStart = now.subtract(const Duration(hours: 1));
     final repository = _QueuedEventRepository(
       responses: <Future<List<EventModel>> Function()>[
         () async => <EventModel>[
@@ -119,6 +119,7 @@ void main() {
               const _FakeSmartPreparationAlarmService(),
           homeWidgetService: _RecordingHomeWidgetService(),
           loadHeaderSummary: false,
+          nowProvider: () => now,
         ),
       ),
     );

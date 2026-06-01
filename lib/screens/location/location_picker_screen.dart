@@ -61,6 +61,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   String? _mapLoadMessage;
   GeoPoint? _resolvedInitialMapCenter;
   _MapRenderState _mapRenderState = _MapRenderState.unavailable;
+  Timer? _mapReadinessTimer;
 
   bool get _canUseNaverMap {
     if (widget.canUseInAppMapOverride == false) {
@@ -158,6 +159,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   @override
   void dispose() {
+    _mapReadinessTimer?.cancel();
     _queryController.dispose();
     _candidateScrollController.dispose();
     super.dispose();
@@ -341,64 +343,70 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   }
 
   Future<void> _watchMapReadiness() async {
+    _mapReadinessTimer?.cancel();
     if (!_canUseInAppMap || widget.debugForceMapUnavailableTimeout) {
       return;
     }
     if (_isWaitingForNaverMapReady) {
-      final deadline =
-          DateTime.now().add(_defaultMapReadinessTimeout);
-      while (mounted &&
-          !AppEnv.isNaverMapReady &&
-          DateTime.now().isBefore(deadline)) {
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-      }
+      final deadline = DateTime.now().add(_defaultMapReadinessTimeout);
+      _mapReadinessTimer = Timer.periodic(
+        const Duration(milliseconds: 100),
+        (timer) {
+          if (!mounted) {
+            timer.cancel();
+            return;
+          }
+          if (AppEnv.isNaverMapReady) {
+            timer.cancel();
+            setState(() {
+              _mapLoadMessage = null;
+              _mapRenderState = _MapRenderState.loading;
+              _isWaitingForNaverMapReady = false;
+              _useGoogleFallbackForMap = false;
+            });
+            return;
+          }
+          if (DateTime.now().isBefore(deadline)) {
+            return;
+          }
+          timer.cancel();
+          if (_canUseGoogleMap) {
+            setState(() {
+              _mapLoadMessage =
+                  '?????????? ??????? ???????? ????? ????????????';
+              _mapRenderState = _MapRenderState.loading;
+              _isWaitingForNaverMapReady = false;
+              _useGoogleFallbackForMap = true;
+            });
+            return;
+          }
+          if (_mapRenderState == _MapRenderState.loading) {
+            setState(() {
+              _mapLoadMessage = _mapUnavailableTimeoutMessage;
+              _mapRenderState = _MapRenderState.unavailable;
+              _isWaitingForNaverMapReady = false;
+            });
+          }
+        },
+      );
+      return;
+    }
+    _mapReadinessTimer = Timer(_defaultMapReadinessTimeout, () {
       if (!mounted) {
         return;
       }
-      if (AppEnv.isNaverMapReady) {
-        setState(() {
-          _mapLoadMessage = null;
-          _mapRenderState = _MapRenderState.loading;
-          _isWaitingForNaverMapReady = false;
-          _useGoogleFallbackForMap = false;
-        });
+      if (_mapRenderState != _MapRenderState.loading) {
         return;
       }
-      if (_canUseGoogleMap) {
+      final hasController = _mapController != null || _googleMapController != null;
+      if (!hasController) {
         setState(() {
           _mapLoadMessage =
-              '네이버 지도를 준비하지 못해서 구글 지도를 대신 보여드려요.';
-          _mapRenderState = _MapRenderState.loading;
-          _isWaitingForNaverMapReady = false;
-          _useGoogleFallbackForMap = true;
-        });
-        return;
-      }
-      if (_mapRenderState == _MapRenderState.loading) {
-        setState(() {
-          _mapLoadMessage = _mapUnavailableTimeoutMessage;
+              '????? ???????????? ??? ??? ?????? ???????????????';
           _mapRenderState = _MapRenderState.unavailable;
-          _isWaitingForNaverMapReady = false;
         });
       }
-      return;
-    }
-    await Future<void>.delayed(_defaultMapReadinessTimeout);
-    if (!mounted) {
-      return;
-    }
-    if (_mapRenderState != _MapRenderState.loading) {
-      return;
-    }
-    final hasController =
-        _mapController != null || _googleMapController != null;
-    if (!hasController) {
-      setState(() {
-        _mapLoadMessage =
-            '지도를 불러올 수 없어요. 아래 후보 목록에서 장소를 선택해 주세요.';
-        _mapRenderState = _MapRenderState.unavailable;
-      });
-    }
+    });
   }
 
   Future<void> _watchInitialMapCenter() async {

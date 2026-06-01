@@ -153,10 +153,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
       });
     }
     try {
-      final gpsFuture =
-          _permissionService.getCurrentLocationWithPermission(
+      final gpsFuture = _permissionService
+          .getCurrentLocationWithPermission(
         requestIfMissing: false,
-      ).catchError((Object error, StackTrace stackTrace) {
+      )
+          .catchError((Object error, StackTrace stackTrace) {
         debugPrint('EventEditScreen background GPS lookup skipped: $error');
         debugPrintStack(stackTrace: stackTrace);
         return null;

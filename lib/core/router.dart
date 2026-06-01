@@ -26,8 +26,8 @@ final GoRouter appRouter = GoRouter(
   refreshListenable: authProvider,
   redirect: (context, state) {
     final path = state.uri.path;
-    final isAuthPath = path == AppRoutes.login ||
-        path == AppRoutes.resetPassword;
+    final isAuthPath =
+        path == AppRoutes.login || path == AppRoutes.resetPassword;
 
     if (path == AppRoutes.root) {
       if (!authProvider.hasResolvedInitialSession) {
@@ -185,6 +185,8 @@ final GoRouter appRouter = GoRouter(
         return EventDetailScreen(
           event: event,
           eventId: _resolveEventId(state, event),
+          showDeparturePrompt:
+              state.uri.queryParameters['departureAction'] == 'prompt',
         );
       },
     ),
@@ -196,6 +198,8 @@ final GoRouter appRouter = GoRouter(
         return EventDetailScreen(
           event: event,
           eventId: _resolveEventId(state, event),
+          showDeparturePrompt:
+              state.uri.queryParameters['departureAction'] == 'prompt',
         );
       },
     ),
@@ -258,7 +262,6 @@ bool _isAutoStart(GoRouterState state) {
       state.uri.queryParameters['autostart'];
   return value == '1' || value == 'true';
 }
-
 
 SettingsInitialAction? _parseSettingsInitialAction(GoRouterState state) {
   switch (state.uri.queryParameters['open']) {
