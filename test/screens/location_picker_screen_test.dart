@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -530,6 +530,7 @@ class _EmptyLocationLookupService extends LocationLookupService {
   Future<List<LocationLookupResult>> search(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
     searchCallCount += 1;
     return const <LocationLookupResult>[];
@@ -539,6 +540,7 @@ class _EmptyLocationLookupService extends LocationLookupService {
   Future<LocationLookupSearchResult> searchWithFallback(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
     searchCallCount += 1;
     return LocationLookupSearchResult(
@@ -556,6 +558,7 @@ class _ThrowingLocationLookupService extends LocationLookupService {
   Future<LocationLookupSearchResult> searchWithFallback(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
     throw const LocationLookupException(
       statusCode: 401,
@@ -574,6 +577,7 @@ class _BlockingLocationLookupService extends LocationLookupService {
   Future<LocationLookupSearchResult> searchWithFallback(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) {
     if (!searchStarted.isCompleted) {
       searchStarted.complete();

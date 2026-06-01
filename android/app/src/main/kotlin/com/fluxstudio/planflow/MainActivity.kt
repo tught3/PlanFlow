@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.provider.CalendarContract
 import android.provider.Settings
@@ -688,6 +689,7 @@ private class PlanFlowSttChannel(
     private var sessionId = 0
     private var restartAttempts = 0
     private var startGeneration = 0
+    private var lastRestartAtMs = 0L
     private var listenMode = "dictation"
     private var listenSilenceMs = 30000L
     private var segmentedSessionMode = false
@@ -797,6 +799,7 @@ private class PlanFlowSttChannel(
         latestPartialText = ""
         stopSnapshotText = ""
         restartAttempts = 0
+        lastRestartAtMs = 0L
         sessionId += 1
         startGeneration += 1
         logPhase("start", mapOf("silenceMs" to listenSilenceMs))
@@ -859,7 +862,22 @@ private class PlanFlowSttChannel(
                 minimumLengthMs,
             )
         }
-        recognizer?.startListening(intent)
+        try {
+            recognizer?.startListening(intent)
+        } catch (error: Exception) {
+            logPhase(
+                "start_listening_failed",
+                mapOf("attempt" to attempt, "error" to (error.message ?: error.javaClass.simpleName)),
+            )
+            invokeIfActive(
+                "stalled",
+                mapOf(
+                    "sessionId" to sessionId,
+                    "reason" to "start_failed",
+                ),
+            )
+            restartSoon(recreateRecognizer = true, reason = "start_failed")
+        }
     }
 
     private fun restartSoon(recreateRecognizer: Boolean = false, reason: String = "restart") {
@@ -891,17 +909,31 @@ private class PlanFlowSttChannel(
             recognizer?.cancel()
         }
         val generation = ++startGeneration
+        val baseDelay = if (recreateRecognizer) 1200L else 900L
+        val now = SystemClock.elapsedRealtime()
+        val minConversationDelay = 4500L
+        val restartDelay = if (listenMode == "conversation" && lastRestartAtMs > 0L) {
+            val elapsed = now - lastRestartAtMs
+            if (elapsed < minConversationDelay) {
+                minConversationDelay - elapsed
+            } else {
+                baseDelay
+            }
+        } else {
+            baseDelay
+        }
+        lastRestartAtMs = now
         logPhase(
             "restarted",
             mapOf("reason" to reason, "recreate" to recreateRecognizer, "attempts" to restartAttempts),
         )
-        invokeIfActive("restarted", mapOf("sessionId" to sessionId))
+        invokeIfActive("restarted", mapOf("sessionId" to sessionId, "reason" to reason))
         activity.window.decorView.postDelayed({
             if (listening && !userRequestedStop && generation == startGeneration) {
                 ensureRecognizer()
                 startListening(attempt = reason)
             }
-        }, if (recreateRecognizer) 1200 else 900)
+        }, restartDelay)
     }
 
     private fun publishText(results: Bundle?, phase: String = "partial") {
@@ -940,12 +972,19 @@ private class PlanFlowSttChannel(
         channel.setMethodCallHandler(null)
     }
 
-    override fun onReadyForSpeech(params: Bundle?) = Unit
-    override fun onBeginningOfSpeech() = Unit
+    override fun onReadyForSpeech(params: Bundle?) {
+        logPhase("ready")
+        invokeIfActive("ready", mapOf("sessionId" to sessionId))
+    }
+    override fun onBeginningOfSpeech() {
+        logPhase("speech_start")
+        invokeIfActive("speechStart", mapOf("sessionId" to sessionId))
+    }
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() {
         logPhase("segment_ended")
+        invokeIfActive("speechEnd", mapOf("sessionId" to sessionId))
         invokeIfActive("segmentEnded", mapOf("sessionId" to sessionId))
     }
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
@@ -994,6 +1033,10 @@ private class PlanFlowSttChannel(
         publishText(results, phase = "final")
         if (listenMode == "conversation") {
             stopSnapshotText = latestPartialText
+            if (segmentedSessionMode) {
+                logPhase("conversation_final_keep_alive")
+                return
+            }
             restartSoon(reason = "conversation_final")
             return
         }

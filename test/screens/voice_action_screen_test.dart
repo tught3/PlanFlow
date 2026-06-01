@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
@@ -394,6 +394,53 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('일정 탭'), findsOneWidget);
+  });
+
+  testWidgets('중요 표시 수정은 바로 저장 시 isCritical을 반영한다', (tester) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'event-1',
+          title: '한강 피크닉',
+          startAt: DateTime.now().add(const Duration(days: 1)),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '한강 피크닉 일정 중요하게 표시해줘',
+            action: VoiceScheduleAction.edit,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+            sideEffectService: const _NoopSideEffectService(),
+            homeWidgetService: _NoopHomeWidgetService(),
+            locationLookupService: _FakeLocationLookupService.empty(),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (context, state) => const Text(
+            '일정 탭',
+            textDirection: TextDirection.ltr,
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('중요 일정'), findsOneWidget);
+    await tester.tap(find.text('바로 저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('일정 탭'), findsOneWidget);
+    expect(repository.updatedEvents, hasLength(1));
+    expect(repository.updatedEvents.single.isCritical, isTrue);
   });
 
   testWidgets('장소 추가 수정 명령은 시간 변경 없이 편집 화면에 장소만 채운다', (tester) async {
@@ -1654,6 +1701,7 @@ class _FakeLocationLookupService extends LocationLookupService {
   Future<List<LocationLookupResult>> search(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
     queries.add(query);
     return results;

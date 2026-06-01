@@ -1525,3 +1525,9 @@
 - Conversation-mode Android STT now requests segmented sessions and skips the extra cancel step when restarting the same conversation listen, which should reduce repeated start beeps on newer devices that support segmented recognition.
 - The native STT regression test now checks for the segmented-session intent path and the segmented-session end callback in MainActivity.
 - Verification passed again: `scripts/flutter-local.ps1 test test/services/stt_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install` on `192.168.0.102:41013`, and `am start` launch check.
+
+## 2026-06-02 Voice State Sync And Location Provider Flow
+- AI 일정 대화 now listens to native STT ready/speech/error/stalled events so the bottom bar only says `듣고 있어요...` after the native recognizer is actually ready, and `onResults()` in segmented conversation mode no longer forces a restart on every phrase.
+- Voice command intent scoring now treats `휴가 취소하기` and `월례조회` as addable schedule content when date/time/action context is strong, while actual schedule delete/query commands still route to delete/query.
+- Location picking no longer auto-launches external TMAP for TMAP preference; it opens the in-app Naver/Google map path and ranks candidates by text/region relevance before provider preference.
+- Verification passed: focused STT, AI conversation, command pipeline, location lookup, and location picker tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; `scripts/flutter-local.ps1 build apk --debug --no-pub`; update install and launch on `192.168.0.102:43119`.

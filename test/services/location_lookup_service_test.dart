@@ -186,6 +186,53 @@ void main() {
     expect(results.first.name, '삼성전자서비스 용산센터');
   });
 
+  test('LocationLookupService ranks query relevance before provider preference',
+      () async {
+    final service = LocationLookupService(
+      tmapApiKey: 'tmap-key',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      proxyUrl: '',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        if (request.url.host == 'apis.openapi.sk.com') {
+          return http.Response.bytes(
+            utf8.encode(
+              '{"searchPoiInfo":{"pois":{"poi":['
+              '{"name":"해링턴플레이스","upperAddrName":"서울","middleAddrName":"강남구","lowerAddrName":"역삼동","frontLon":"127.0300","frontLat":"37.5000"}'
+              ']}}}',
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        if (request.url.host == 'naveropenapi.apigw.ntruss.com') {
+          return http.Response.bytes(
+            utf8.encode(
+              '{"addresses":[{"roadAddress":"경기 성남시 분당구 대장동 해링턴플레이스","jibunAddress":"경기 성남시 분당구 대장동","x":"127.0700","y":"37.3700"}]}',
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    final results = await service.search(
+      '대장동 해링턴플레이스',
+      preferredProvider: LocationLookupProvider.tmap,
+    );
+
+    expect(results, hasLength(2));
+    expect(results.first.label, contains('대장동'));
+    expect(results.first.provider, LocationLookupProvider.naver);
+  });
+
   test(
       'LocationLookupService retries local fallback queries when exact search is empty',
       () async {

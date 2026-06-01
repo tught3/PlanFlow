@@ -44,23 +44,16 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   final lookupFuture = trimmed.isEmpty
       ? null
       : service
-          .searchWithFallback(trimmed, origin: origin)
+          .searchWithFallback(
+            trimmed,
+            origin: origin,
+            preferredProvider:
+                _lookupProviderForPreference(resolvedMapProvider),
+          )
           .timeout(const Duration(seconds: 12));
   final initialMapCenterFuture = permissionMessage == null
       ? _startInitialMapCenterLoad(permissionService)
       : null;
-  if (resolvedMapProvider == 'tmap' && trimmed.isNotEmpty) {
-    await _openExternalMapTarget(
-      context,
-      _ExternalMapTarget.tmap,
-      trimmed,
-      failureMessage: 'TMAP을 열지 못했어요. 앱 안 지도에서 계속 선택해 주세요.',
-    );
-    if (!context.mounted) {
-      return null;
-    }
-  }
-
   if (trimmed.isEmpty) {
     if (!context.mounted) {
       return null;
@@ -289,6 +282,20 @@ LocationPickerInAppMapProvider? _inAppMapProviderFor(String provider) {
         : AppEnv.googleMapsApiKey.trim().isNotEmpty
             ? LocationPickerInAppMapProvider.google
             : LocationPickerInAppMapProvider.naver,
+    'tmap' => AppEnv.naverMapClientId.trim().isNotEmpty
+        ? LocationPickerInAppMapProvider.naver
+        : AppEnv.googleMapsApiKey.trim().isNotEmpty
+            ? LocationPickerInAppMapProvider.google
+            : null,
+    _ => null,
+  };
+}
+
+LocationLookupProvider? _lookupProviderForPreference(String provider) {
+  return switch (provider) {
+    'tmap' => LocationLookupProvider.tmap,
+    'naver' => LocationLookupProvider.naver,
+    'google' => LocationLookupProvider.google,
     _ => null,
   };
 }

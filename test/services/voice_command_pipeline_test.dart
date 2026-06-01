@@ -71,6 +71,19 @@ void main() {
       expect(plan.safeDirectApply, isTrue);
     });
 
+    test('중요도 변경 요청은 is_critical로 분류한다', () {
+      final plan = pipeline.analyze(
+        '이 일정 중요하게 표시해줘',
+        intent: VoiceCommandPipelineIntent.edit,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.intent, VoiceCommandPipelineIntent.edit);
+      expect(plan.requestedChanges, contains('is_critical'));
+      expect(plan.requestedFieldValues['is_critical'], 'true');
+      expect(plan.safeDirectApply, isTrue);
+    });
+
     test('명확한 새 일정 추가와 조회 명령을 구분한다', () {
       final add = pipeline.analyze('내일 오후 3시 강남역 미팅 추가');
       final query = pipeline.analyze(
@@ -92,6 +105,25 @@ void main() {
       expect(fewOClock.intent, VoiceCommandPipelineIntent.query);
       expect(hasSomething.intent, VoiceCommandPipelineIntent.query);
       expect(whereIsIt.intent, VoiceCommandPipelineIntent.query);
+    });
+
+    test('취소가 제목 내용이면 삭제가 아니라 새 일정으로 분류한다', () {
+      final plan = pipeline.analyze('내일 오후 3시 김다미한테 전화해서 휴가 취소하기');
+
+      expect(plan.intent, VoiceCommandPipelineIntent.add);
+      expect(plan.targetText, contains('김다미'));
+      expect(plan.targetText, contains('휴가 취소'));
+    });
+
+    test('월례조회처럼 일정 제목의 조회는 조회 명령으로 오인하지 않는다', () {
+      final add = pipeline.analyze('내일 오후 3시 월례조회');
+      final query = pipeline.analyze(
+        '내일 일정 조회',
+        context: VoiceTextCleanupContext.query,
+      );
+
+      expect(add.intent, VoiceCommandPipelineIntent.add);
+      expect(query.intent, VoiceCommandPipelineIntent.query);
     });
   });
 }

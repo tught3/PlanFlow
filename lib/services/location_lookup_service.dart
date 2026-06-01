@@ -105,14 +105,20 @@ class LocationLookupService {
   Future<List<LocationLookupResult>> search(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
-    final response = await searchWithFallback(query, origin: origin);
+    final response = await searchWithFallback(
+      query,
+      origin: origin,
+      preferredProvider: preferredProvider,
+    );
     return response.results;
   }
 
   Future<LocationLookupSearchResult> searchWithFallback(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
     final normalized = query.trim();
     if (normalized.isEmpty) {
@@ -169,6 +175,7 @@ class LocationLookupService {
       normalized,
       _dedupeResults(results),
       origin: origin,
+      preferredProvider: preferredProvider,
     );
     final outcome = LocationLookupSearchResult(
       originalQuery: normalized,
@@ -633,20 +640,89 @@ class LocationLookupService {
     String query,
     List<LocationLookupResult> results, {
     required GeoPoint? origin,
+    required LocationLookupProvider? preferredProvider,
   }) {
-    if (origin == null || results.length < 2 || _hasExplicitRegionHint(query)) {
+    if (results.length < 2) {
       return results;
     }
+    final originalIndex = <LocationLookupResult, int>{
+      for (var index = 0; index < results.length; index++) results[index]: index,
+    };
     final ranked = List<LocationLookupResult>.of(results);
     ranked.sort((a, b) {
-      final distanceCompare =
-          _distanceMeters(origin, a).compareTo(_distanceMeters(origin, b));
-      if (distanceCompare != 0) {
-        return distanceCompare;
+      final scoreCompare = _relevanceScore(
+        query,
+        b,
+        origin: origin,
+        preferredProvider: preferredProvider,
+      ).compareTo(
+        _relevanceScore(
+          query,
+          a,
+          origin: origin,
+          preferredProvider: preferredProvider,
+        ),
+      );
+      if (scoreCompare != 0) {
+        return scoreCompare;
       }
-      return results.indexOf(a).compareTo(results.indexOf(b));
+      return (originalIndex[a] ?? 0).compareTo(originalIndex[b] ?? 0);
     });
     return ranked;
+  }
+
+  double _relevanceScore(
+    String query,
+    LocationLookupResult result, {
+    required GeoPoint? origin,
+    required LocationLookupProvider? preferredProvider,
+  }) {
+    final normalizedQuery = _compactSearchText(query);
+    final label = _compactSearchText('${result.name} ${result.address}');
+    var score = 0.0;
+    if (normalizedQuery.isNotEmpty && label == normalizedQuery) {
+      score += 120;
+    } else if (normalizedQuery.isNotEmpty && label.contains(normalizedQuery)) {
+      score += 80;
+    } else if (normalizedQuery.isNotEmpty && normalizedQuery.contains(label)) {
+      score += 45;
+    }
+
+    final queryTokens = _tokenize(query)
+        .map(_removeKoreanParticleSuffix)
+        .map(_removeLocationSuffix)
+        .map(_compactSearchText)
+        .where((token) => token.length >= 2)
+        .toList(growable: false);
+    for (final token in queryTokens) {
+      if (label.contains(token)) {
+        score += 12;
+      }
+    }
+
+    for (final region in _matchedKoreanRegionHints(query)) {
+      if (_containsAlias(_compactSearchText(result.name), region) ||
+          _containsAlias(_compactSearchText(result.address), region)) {
+        score += 30;
+      }
+    }
+
+    if (preferredProvider != null && result.provider == preferredProvider) {
+      score += 8;
+    }
+
+    if (origin != null && !_hasExplicitRegionHint(query)) {
+      final distance = _distanceMeters(origin, result);
+      score += (30 - (distance / 1000)).clamp(0, 30).toDouble();
+    }
+    return score;
+  }
+
+  String _compactSearchText(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[\s\p{P}\p{S}]', unicode: true), '');
   }
 
   double _distanceMeters(GeoPoint origin, LocationLookupResult result) {

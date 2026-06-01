@@ -99,6 +99,7 @@ class _FakeSttService extends SttService {
   Future<SttListenResult> listen({
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
+    ValueChanged<SttNativeStatusEvent>? onStatus,
     SttListenMode mode = SttListenMode.dictation,
   }) {
     listenCalls += 1;

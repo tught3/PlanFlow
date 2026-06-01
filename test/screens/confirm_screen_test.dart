@@ -639,6 +639,7 @@ class _EmptyLocationLookupService extends LocationLookupService {
   Future<List<LocationLookupResult>> search(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
     return const <LocationLookupResult>[];
   }
@@ -649,6 +650,7 @@ class _SingleLocationLookupService extends LocationLookupService {
   Future<List<LocationLookupResult>> search(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
     return const <LocationLookupResult>[
       LocationLookupResult(
@@ -666,6 +668,7 @@ class _DelayedSingleLocationLookupService extends _SingleLocationLookupService {
   Future<List<LocationLookupResult>> search(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 200));
     return super.search(query, origin: origin);
@@ -677,6 +680,7 @@ class _RestaurantLocationLookupService extends LocationLookupService {
   Future<List<LocationLookupResult>> search(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
     return const <LocationLookupResult>[
       LocationLookupResult(

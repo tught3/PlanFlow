@@ -20,6 +20,30 @@ enum SttListenMode {
   conversation,
 }
 
+enum SttNativeStatus {
+  ready,
+  speechStart,
+  speechEnd,
+  segmentEnded,
+  restarted,
+  stalled,
+  stopped,
+  cancelled,
+  error,
+}
+
+class SttNativeStatusEvent {
+  const SttNativeStatusEvent({
+    required this.status,
+    this.restartCount = 0,
+    this.reason,
+  });
+
+  final SttNativeStatus status;
+  final int restartCount;
+  final String? reason;
+}
+
 class SttListenResult {
   const SttListenResult._({
     this.text,
@@ -847,6 +871,7 @@ class SttService {
   Future<SttListenResult> listen({
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
+    ValueChanged<SttNativeStatusEvent>? onStatus,
     SttListenMode mode = SttListenMode.dictation,
   }) async {
     await _cleanupBeforeNewListen();
@@ -862,6 +887,7 @@ class SttService {
       final nativeResult = await _listenWithNativeAndroid(
         onPartialResult: onPartialResult,
         onRestart: onRestart,
+        onStatus: onStatus,
         mode: mode,
         attempt: 'first',
       );
@@ -872,6 +898,7 @@ class SttService {
       final retryResult = await _listenWithNativeAndroid(
         onPartialResult: onPartialResult,
         onRestart: onRestart,
+        onStatus: onStatus,
         mode: mode,
         attempt: 'warmup-retry',
       );
@@ -881,12 +908,14 @@ class SttService {
     }
     return _listenWithSpeechToText(
       onPartialResult: onPartialResult,
+      onStatus: onStatus,
       mode: mode,
     );
   }
 
   Future<SttListenResult> _listenWithSpeechToText({
     ValueChanged<String>? onPartialResult,
+    ValueChanged<SttNativeStatusEvent>? onStatus,
     SttListenMode mode = SttListenMode.dictation,
   }) async {
     final speech = SpeechToText();
@@ -927,6 +956,16 @@ class SttService {
           if (listenGeneration != _activeListenGeneration) {
             return;
           }
+          if (status == SpeechToText.listeningStatus) {
+            onStatus?.call(
+              const SttNativeStatusEvent(status: SttNativeStatus.ready),
+            );
+          } else if (status == SpeechToText.doneStatus ||
+              status == SpeechToText.notListeningStatus) {
+            onStatus?.call(
+              const SttNativeStatusEvent(status: SttNativeStatus.stopped),
+            );
+          }
           if (_userRequestedStop &&
               (status == SpeechToText.doneStatus ||
                   status == SpeechToText.notListeningStatus)) {
@@ -937,6 +976,12 @@ class SttService {
           if (listenGeneration != _activeListenGeneration) {
             return;
           }
+          onStatus?.call(
+            SttNativeStatusEvent(
+              status: SttNativeStatus.error,
+              reason: error.errorMsg,
+            ),
+          );
           if (error.errorMsg == 'error_permission' ||
               error.errorMsg == 'error_client') {
             _completeActiveFailure(
@@ -1001,6 +1046,9 @@ class SttService {
           }
           latestRecognizedText = text;
           _activeRecognizedText = text;
+          onStatus?.call(
+            const SttNativeStatusEvent(status: SttNativeStatus.speechStart),
+          );
           onPartialResult?.call(text);
           if (result.finalResult &&
               (mode == SttListenMode.conversation || _userRequestedStop)) {
@@ -1164,6 +1212,7 @@ class SttService {
   Future<SttListenResult> _listenWithNativeAndroid({
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
+    ValueChanged<SttNativeStatusEvent>? onStatus,
     SttListenMode mode = SttListenMode.dictation,
     String attempt = 'first',
   }) async {
@@ -1197,6 +1246,28 @@ class SttService {
         return int.tryParse(value?.toString() ?? '');
       }
       return null;
+    }
+
+    String? eventReason(Object? arguments) {
+      if (arguments is Map) {
+        final value = arguments['reason']?.toString().trim();
+        return value == null || value.isEmpty ? null : value;
+      }
+      return null;
+    }
+
+    void emitStatus(
+      SttNativeStatus status, {
+      int restartCount = 0,
+      String? reason,
+    }) {
+      onStatus?.call(
+        SttNativeStatusEvent(
+          status: status,
+          restartCount: restartCount,
+          reason: reason,
+        ),
+      );
     }
 
     bool acceptsEvent(Object? arguments) {
@@ -1334,10 +1405,21 @@ class SttService {
         return;
       }
       switch (call.method) {
+        case 'ready':
+          emitStatus(SttNativeStatus.ready);
+          break;
+        case 'speechStart':
+          emitStatus(SttNativeStatus.speechStart);
+          break;
+        case 'speechEnd':
+          emitStatus(SttNativeStatus.speechEnd);
+          break;
         case 'partial':
+          emitStatus(SttNativeStatus.speechStart);
           updateRecognizedText(eventText(call.arguments));
           break;
         case 'stopped':
+          emitStatus(SttNativeStatus.stopped);
           updateRecognizedText(eventText(call.arguments));
           commitActiveSession();
           if (mode == SttListenMode.conversation) {
@@ -1347,12 +1429,17 @@ class SttService {
           _completeActiveListenFromText(detach: true);
           break;
         case 'cancelled':
+          emitStatus(SttNativeStatus.cancelled);
           _completeActiveFailure(
             failure: SttListenFailure.silence,
             message: '음성 입력을 취소했어요.',
           );
           break;
         case 'error':
+          emitStatus(
+            SttNativeStatus.error,
+            reason: eventReason(call.arguments),
+          );
           _completeActiveFailure(
             failure: SttListenFailure.unavailable,
             message: _genericMessage,
@@ -1360,6 +1447,11 @@ class SttService {
           break;
         case 'restarted':
           restartCount += 1;
+          emitStatus(
+            SttNativeStatus.restarted,
+            restartCount: restartCount,
+            reason: eventReason(call.arguments),
+          );
           final committed = commitActiveSession();
           if (!committed && restartCount > 1) {
             break;
@@ -1367,7 +1459,14 @@ class SttService {
           onRestart?.call(restartCount);
           break;
         case 'segmentEnded':
+          emitStatus(SttNativeStatus.segmentEnded);
           commitActiveSession();
+          break;
+        case 'stalled':
+          emitStatus(
+            SttNativeStatus.stalled,
+            reason: eventReason(call.arguments),
+          );
           break;
       }
     });

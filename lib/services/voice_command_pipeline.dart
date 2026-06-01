@@ -132,7 +132,11 @@ class VoiceCommandPipeline {
     VoiceTextCleanupContext context = VoiceTextCleanupContext.add,
   }) {
     final normalized = normalizeManagementText(text);
-    if (RegExp(r'(삭제|지워|없애|취소|제거)').hasMatch(normalized)) {
+    final strongScheduleAdd = _hasStrongScheduleCreationCue(normalized);
+    if (strongScheduleAdd && !_hasExplicitManagementDeleteCue(normalized)) {
+      return VoiceCommandPipelineIntent.add;
+    }
+    if (_hasDeleteIntentCue(normalized)) {
       return VoiceCommandPipelineIntent.delete;
     }
     if (RegExp(r'(수정|변경|바꿔|미뤄|앞당겨|옮겨|이동|고쳐|편집|연기|늦춰|당겨)')
@@ -145,7 +149,7 @@ class VoiceCommandPipeline {
     if (isAmbiguousFieldAddition(normalized)) {
       return VoiceCommandPipelineIntent.choose;
     }
-    if (_hasAddIntentCue(normalized)) {
+    if (_hasAddIntentCue(normalized) || strongScheduleAdd) {
       return VoiceCommandPipelineIntent.add;
     }
     if (_hasAmbiguousQueryIntentCue(normalized)) {
@@ -243,6 +247,10 @@ class VoiceCommandPipeline {
     if (RegExp(r'(하루\s*종일|하루종일|종일|온종일)').hasMatch(normalized)) {
       changes.add('is_all_day');
     }
+    if (RegExp(r'(중요(?:한|도|하게)?|긴급|필수|critical|important)')
+        .hasMatch(normalized)) {
+      changes.add('is_critical');
+    }
     return changes.toList(growable: false);
   }
 
@@ -256,6 +264,9 @@ class VoiceCommandPipeline {
       if (location != null) {
         values['location'] = location;
       }
+    }
+    if (requestedChanges.contains('is_critical')) {
+      values['is_critical'] = 'true';
     }
     return values;
   }
@@ -511,6 +522,47 @@ class VoiceCommandPipeline {
             _hasScheduleCue(normalized));
   }
 
+  bool _hasStrongScheduleCreationCue(String text) {
+    final normalized = normalizeManagementText(text);
+    if (!_hasScheduleCue(normalized)) {
+      return false;
+    }
+    if (_hasQueryIntentCueRaw(normalized)) {
+      return false;
+    }
+    if (_hasRecurringLookupAddCue(normalized)) {
+      return true;
+    }
+    final hasActionOrObject = RegExp(
+      r'(전화|방문|참석|작성|제출|예약|결제|회의|미팅|조회|취소\s*하기|취소하기|가기|만나|물어|확인|하기|하기로)',
+    ).hasMatch(normalized);
+    final hasTime = RegExp(
+      r'(오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*[0-9가-힣]{1,8}\s*시',
+    ).hasMatch(normalized);
+    return hasTime && hasActionOrObject;
+  }
+
+  bool _hasDeleteIntentCue(String text) {
+    final normalized = normalizeManagementText(text);
+    if (!RegExp(r'(삭제|지워|없애|취소|제거)').hasMatch(normalized)) {
+      return false;
+    }
+    if (_hasStrongScheduleCreationCue(normalized) &&
+        !_hasExplicitManagementDeleteCue(normalized)) {
+      return false;
+    }
+    return _hasExplicitManagementDeleteCue(normalized) ||
+        RegExp(r'(\d+\s*번|첫\s*번째|두\s*번째|세\s*번째|네\s*번째|이\s*일정|그\s*일정|해당\s*일정).*(삭제|지워|없애|취소|제거)')
+            .hasMatch(normalized);
+  }
+
+  bool _hasExplicitManagementDeleteCue(String text) {
+    final normalized = normalizeManagementText(text);
+    return RegExp(
+      r'((일정|스케줄|약속)\s*(삭제|지워|없애|취소|제거)|(삭제|지워|없애|제거)\s*(해|해줘|해주세요)|(취소)\s*(해|해줘|해주세요))',
+    ).hasMatch(normalized);
+  }
+
   bool _hasExplicitAddIntentCue(String text) {
     final normalized = normalizeManagementText(text);
     return RegExp(
@@ -527,7 +579,7 @@ class VoiceCommandPipeline {
 
   bool _hasAmbiguousQueryIntentCue(String text) {
     final normalized = normalizeManagementText(text);
-    return RegExp(r'^(?:일정\s*)?조회$').hasMatch(normalized);
+    return RegExp(r'^조회$').hasMatch(normalized);
   }
 
   bool _looksLikeScheduleContentToConfirm(String text) {
@@ -542,6 +594,15 @@ class VoiceCommandPipeline {
   }
 
   bool _hasQueryIntentCue(String text) {
+    final normalized = normalizeManagementText(text);
+    if (_hasStrongScheduleCreationCue(normalized) ||
+        _hasRecurringLookupAddCue(normalized)) {
+      return false;
+    }
+    return _hasQueryIntentCueRaw(normalized);
+  }
+
+  bool _hasQueryIntentCueRaw(String text) {
     final normalized = normalizeManagementText(text);
     return RegExp(
       r'(찾아\s*줘|찾아\s*주세요|검색'

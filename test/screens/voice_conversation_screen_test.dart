@@ -15,6 +15,7 @@ import 'package:planflow/services/stt_service.dart';
 class _FakeSttService extends SttService {
   Completer<SttListenResult>? _completer;
   ValueChanged<String>? _onPartialResult;
+  ValueChanged<SttNativeStatusEvent>? _onStatus;
   int cancelCalls = 0;
   int stopCalls = 0;
   int listenCalls = 0;
@@ -23,12 +24,18 @@ class _FakeSttService extends SttService {
   Future<SttListenResult> listen({
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
+    ValueChanged<SttNativeStatusEvent>? onStatus,
     SttListenMode mode = SttListenMode.dictation,
   }) {
     listenCalls += 1;
     _onPartialResult = onPartialResult;
+    _onStatus = onStatus;
     _completer = Completer<SttListenResult>();
     return _completer!.future;
+  }
+
+  void emitStatus(SttNativeStatus status) {
+    _onStatus?.call(SttNativeStatusEvent(status: status));
   }
 
   void emitPartial(String text) {
@@ -131,6 +138,7 @@ class _FakeLocationLookupService extends LocationLookupService {
   Future<List<LocationLookupResult>> search(
     String query, {
     GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
   }) async {
     return <LocationLookupResult>[
       LocationLookupResult(
@@ -181,13 +189,33 @@ void main() {
     await tester.tap(find.byTooltip('음성 입력 다시 시작'));
     await tester.pump();
 
-    expect(find.text('듣는 중...'), findsOneWidget);
+    expect(find.text('마이크를 준비하고 있어요...'), findsOneWidget);
 
     stt.emitPartial('이번주 금요일 일정');
     await tester.pump();
 
     final textField = tester.widget<TextField>(find.byType(TextField));
     expect(textField.controller?.text, '이번주 금요일 일정');
+  });
+
+  testWidgets('AI 일정 대화는 native ready 전에는 듣는 중으로 표시하지 않는다',
+      (tester) async {
+    final stt = _FakeSttService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(sttService: stt),
+    );
+
+    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
+    await tester.pump();
+
+    expect(find.text('마이크를 준비하고 있어요...'), findsOneWidget);
+    expect(find.text('듣고 있어요...'), findsNothing);
+
+    stt.emitStatus(SttNativeStatus.ready);
+    await tester.pump();
+
+    expect(find.text('듣고 있어요...'), findsOneWidget);
   });
 
   testWidgets('AI 일정 대화는 STT 성공 후 사용자 말과 응답을 표시한다', (tester) async {
@@ -311,12 +339,12 @@ void main() {
       tester,
       VoiceConversationScreen(
         repository: _FakeEventRepository(events),
-        initialText: '이번 주 금요일 일정 다 보여 줘',
+        initialText: '5월 29일 일정 다 보여 줘',
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('이번 주 금요일 일정 다 보여 줘'), findsOneWidget);
+    expect(find.text('5월 29일 일정 다 보여 줘'), findsOneWidget);
     expect(find.textContaining('일정 4개를 찾았어요'), findsOneWidget);
     expect(find.text('금요일 일정 1'), findsOneWidget);
     expect(find.text('금요일 일정 4'), findsOneWidget);
@@ -337,7 +365,7 @@ void main() {
           path: AppRoutes.voiceConversation,
           builder: (context, state) => VoiceConversationScreen(
             repository: _FakeEventRepository(<EventModel>[event]),
-            initialText: '이번 주 금요일 일정 다 보여 줘',
+            initialText: '5월 29일 일정 다 보여 줘',
           ),
         ),
         GoRoute(
@@ -385,7 +413,7 @@ void main() {
       tester,
       VoiceConversationScreen(
         repository: repository,
-        initialText: '이번 주 금요일 일정 다 보여 줘',
+        initialText: '5월 29일 일정 다 보여 줘',
       ),
     );
     await tester.pumpAndSettle();
@@ -422,7 +450,7 @@ void main() {
       tester,
       VoiceConversationScreen(
         repository: repository,
-        initialText: '이번 주 금요일 일정 다 보여 줘',
+        initialText: '5월 29일 일정 다 보여 줘',
       ),
     );
     await tester.pumpAndSettle();
@@ -521,7 +549,7 @@ void main() {
     await tester.tap(find.byTooltip('음성 입력 다시 시작'));
     await tester.pump();
 
-    expect(find.text('듣는 중...'), findsOneWidget);
+    expect(find.text('마이크를 준비하고 있어요...'), findsOneWidget);
     expect(find.text('정지'), findsOneWidget);
 
     await tester.tap(find.text('정지'));

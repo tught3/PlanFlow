@@ -13,7 +13,6 @@ import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/location_lookup_service.dart';
-import '../../services/remote_config_service.dart';
 import '../../services/stt_service.dart';
 import '../../services/voice_conversation_controller.dart';
 
@@ -86,6 +85,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   int _inputTurnGeneration = 0;
   bool _isApplyingVoiceTranscript = false;
   bool _isApplyingInputReset = false;
+  bool _nativeVoiceReady = false;
+  bool _didRetrySilentNativeStart = false;
   // ignore: unused_field
   _VoiceConversationPhase _voicePhase = _VoiceConversationPhase.idle;
   Timer? _restartListenTimer;
@@ -305,6 +306,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     _conversationWatchdogTimer?.cancel();
     _isRestartPending = false;
     _manualEditInterruptedListening = false;
+    _nativeVoiceReady = false;
     final listenGeneration = ++_listenGeneration;
     final inputGeneration = _inputTurnGeneration;
     var shouldRetryEarlyFailure = false;
@@ -313,8 +315,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       _isListening = true;
       _keepListening = true;
       _voicePausedByUser = false;
-      _voicePhase = _VoiceConversationPhase.listening;
-      _conversationStatus = '듣고 있어요...';
+      _voicePhase = _VoiceConversationPhase.restartPending;
+      _conversationStatus = '마이크를 준비하고 있어요...';
     });
     _setConversationInputText('');
     _armConversationWatchdog(listenGeneration);
@@ -335,7 +337,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
           if (!mounted || listenGeneration != _listenGeneration) {
             return;
           }
-          setState(() => _conversationStatus = '듣고 있어요...');
+          setState(() {
+            _nativeVoiceReady = true;
+            _voicePhase = _VoiceConversationPhase.listening;
+            _conversationStatus = '듣고 있어요...';
+          });
         },
         onRestart: (count) {
           if (!mounted || listenGeneration != _listenGeneration) {
@@ -345,11 +351,18 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
             'VoiceConversationScreen STT restarted: count=$count gen=$listenGeneration',
           );
           setState(() {
+            _nativeVoiceReady = false;
             _isRestartPending = true;
             _voicePhase = _VoiceConversationPhase.restartPending;
-            _conversationStatus = '음성을 다시 듣고 있어요...';
+            _conversationStatus = '마이크를 다시 연결하고 있어요...';
           });
           _armConversationWatchdog(listenGeneration);
+        },
+        onStatus: (event) {
+          _handleNativeVoiceStatus(
+            event,
+            listenGeneration: listenGeneration,
+          );
         },
         mode: SttListenMode.conversation,
       );
@@ -434,6 +447,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       if (mounted && listenGeneration == _listenGeneration) {
         setState(() {
           _isListening = false;
+          _nativeVoiceReady = false;
           if (!_keepListening) {
             _voicePhase = _VoiceConversationPhase.idle;
           }
@@ -464,6 +478,71 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     }
   }
 
+  void _handleNativeVoiceStatus(
+    SttNativeStatusEvent event, {
+    required int listenGeneration,
+  }) {
+    if (!mounted || listenGeneration != _listenGeneration) {
+      return;
+    }
+    switch (event.status) {
+      case SttNativeStatus.ready:
+      case SttNativeStatus.speechStart:
+        setState(() {
+          _nativeVoiceReady = true;
+          _isRestartPending = false;
+          _voicePhase = _VoiceConversationPhase.listening;
+          _conversationStatus = '듣고 있어요...';
+        });
+        _armConversationWatchdog(listenGeneration);
+        break;
+      case SttNativeStatus.speechEnd:
+      case SttNativeStatus.segmentEnded:
+        setState(() {
+          _nativeVoiceReady = true;
+          _conversationStatus = '계속 듣고 있어요. 이어서 말해 주세요.';
+        });
+        _armConversationWatchdog(listenGeneration);
+        break;
+      case SttNativeStatus.restarted:
+        setState(() {
+          _nativeVoiceReady = false;
+          _isRestartPending = true;
+          _voicePhase = _VoiceConversationPhase.restartPending;
+          _conversationStatus = '마이크를 다시 연결하고 있어요...';
+        });
+        _armConversationWatchdog(listenGeneration);
+        break;
+      case SttNativeStatus.stalled:
+        if (_didRetrySilentNativeStart) {
+          setState(() {
+            _nativeVoiceReady = false;
+            _conversationStatus = '마이크 연결이 불안정해요. 정지 후 다시 눌러 주세요.';
+          });
+          return;
+        }
+        _didRetrySilentNativeStart = true;
+        setState(() {
+          _nativeVoiceReady = false;
+          _isRestartPending = true;
+          _voicePhase = _VoiceConversationPhase.restartPending;
+          _conversationStatus = '마이크를 다시 연결하고 있어요...';
+        });
+        unawaited(widget.sttService.cancelActiveListen());
+        break;
+      case SttNativeStatus.stopped:
+      case SttNativeStatus.cancelled:
+      case SttNativeStatus.error:
+        setState(() {
+          _nativeVoiceReady = false;
+          if (!_keepListening || _voicePausedByUser) {
+            _isListening = false;
+          }
+        });
+        break;
+    }
+  }
+
   void _scheduleAutoRestartListen({
     Duration delay = const Duration(milliseconds: 700),
   }) {
@@ -482,24 +561,37 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
 
   void _armConversationWatchdog(int listenGeneration) {
     _conversationWatchdogTimer?.cancel();
-    final maxSeconds = RemoteConfigService.maxVoiceDurationSeconds <= 0
-        ? 60
-        : RemoteConfigService.maxVoiceDurationSeconds;
-    _conversationWatchdogTimer = Timer(Duration(seconds: maxSeconds + 5), () {
+    _conversationWatchdogTimer = Timer(const Duration(seconds: 8), () {
       if (!mounted ||
           listenGeneration != _listenGeneration ||
           !_isListening ||
           _voicePausedByUser) {
         return;
       }
+      if (_nativeVoiceReady) {
+        _armConversationWatchdog(listenGeneration);
+        return;
+      }
+      if (_didRetrySilentNativeStart) {
+        setState(() {
+          _nativeVoiceReady = false;
+          _isRestartPending = true;
+          _voicePhase = _VoiceConversationPhase.restartPending;
+          _conversationStatus = '마이크 연결을 확인하고 있어요. 반응이 없으면 정지 후 다시 눌러 주세요.';
+        });
+        _armConversationWatchdog(listenGeneration);
+        return;
+      }
+      _didRetrySilentNativeStart = true;
       debugPrint(
-        'VoiceConversationScreen watchdog timeout: gen=$listenGeneration',
+        'VoiceConversationScreen native ready watchdog timeout: gen=$listenGeneration',
       );
       if (mounted && listenGeneration == _listenGeneration) {
         setState(() {
+          _nativeVoiceReady = false;
           _isRestartPending = true;
           _voicePhase = _VoiceConversationPhase.restartPending;
-          _conversationStatus = '음성이 오래 이어져서 다시 듣는 중이에요...';
+          _conversationStatus = '마이크를 다시 연결하고 있어요...';
         });
       }
       unawaited(widget.sttService.cancelActiveListen());
@@ -518,6 +610,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
       {required bool resetRetryPolicy}) async {
     if (resetRetryPolicy) {
       _didRetryConversationEarlyFailure = false;
+      _didRetrySilentNativeStart = false;
     }
     await _listenOnce();
   }
@@ -1318,13 +1411,16 @@ class _VoiceConversationControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isVoiceActive = isListening || isRestartPending;
-    final label = isListening
-        ? '듣는 중...'
-        : isRestartPending
-            ? '곧 다시 듣기를 시작해요. 잠시만 기다려 주세요.'
-            : (statusText?.trim().isNotEmpty ?? false)
-                ? statusText!.trim()
-                : '음성입력이 중지되었습니다. 다시 음성입력하실 때 마이크 버튼을 눌러 주세요.';
+    final trimmedStatus = statusText?.trim();
+    final label = isVoiceActive && (trimmedStatus?.isNotEmpty ?? false)
+        ? trimmedStatus!
+        : isListening
+            ? '마이크를 준비하고 있어요...'
+            : isRestartPending
+                ? '곧 다시 듣기를 시작해요. 잠시만 기다려 주세요.'
+                : (trimmedStatus?.isNotEmpty ?? false)
+                    ? trimmedStatus!
+                    : '음성입력이 중지되었습니다. 다시 음성입력하실 때 마이크 버튼을 눌러 주세요.';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
