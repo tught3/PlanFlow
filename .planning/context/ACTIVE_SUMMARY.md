@@ -1531,3 +1531,10 @@
 - Voice command intent scoring now treats `휴가 취소하기` and `월례조회` as addable schedule content when date/time/action context is strong, while actual schedule delete/query commands still route to delete/query.
 - Location picking no longer auto-launches external TMAP for TMAP preference; it opens the in-app Naver/Google map path and ranks candidates by text/region relevance before provider preference.
 - Verification passed: focused STT, AI conversation, command pipeline, location lookup, and location picker tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; `scripts/flutter-local.ps1 build apk --debug --no-pub`; update install and launch on `192.168.0.102:43119`.
+
+## 2026-06-02 Residual Voice Edit And Departure Origin Follow-up
+- `stripScheduleNoise()` now keeps ordinary person/place/action words while still removing date/time/range field noise such as `오후3시에` and `부터/까지`, so `오후3시에 요미 약받기` normalizes to `요미 약받기` without regressing date-range titles.
+- AI 일정 대화 now recognizes important/normal alarm edits as `is_critical_true`/`is_critical_false`, resolves ordinal or title-based targets from the current result list, and applies critical/location edits directly instead of forcing the edit screen.
+- Departure alarm origin lookup now tries the injected/current live location path first, then falls back to a recent SharedPreferences origin cache with a 2-hour validity window; Home resume keeps that foreground cache warm.
+- Verification passed: focused voice schedule, GPT, voice command pipeline, voice conversation controller/screen, and departure alarm tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; `scripts/flutter-local.ps1 build apk --debug --target-platform android-arm64 --no-pub`.
+- Full `scripts/flutter-local.ps1 test --no-pub` still has unrelated existing failures in Settings/Naver, background task, voice action/input, and voice command analysis/router expectations; the focused tests for this task pass.

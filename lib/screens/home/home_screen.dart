@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
@@ -14,6 +15,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/early_bird_email_repository.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/briefing_scheduler_service.dart';
+import '../../services/departure_alarm_service.dart';
 import '../../services/event_prefetch_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_header_summary_service.dart';
@@ -122,10 +124,45 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unawaited(_cacheForegroundLocation());
       _loadTodayEvents();
       if (widget.loadHeaderSummary) {
         unawaited(_loadHomeHeaderSummary());
       }
+    }
+  }
+
+  Future<void> _cacheForegroundLocation() async {
+    try {
+      final permissionService = AppPermissionService();
+      final locationGranted = await permissionService.checkLocationPermission();
+      if (!locationGranted) {
+        return;
+      }
+      final lastKnownLocation = await permissionService.getLastKnownLocation();
+      final currentLocation = lastKnownLocation == null
+          ? await permissionService.getCurrentLocation()
+          : null;
+      final location = lastKnownLocation ?? currentLocation;
+      if (location == null) {
+        return;
+      }
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setDouble(
+        DepartureAlarmService.cachedOriginLatKey,
+        location.latitude,
+      );
+      await preferences.setDouble(
+        DepartureAlarmService.cachedOriginLngKey,
+        location.longitude,
+      );
+      await preferences.setString(
+        DepartureAlarmService.cachedOriginAtKey,
+        DateTime.now().toIso8601String(),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Home foreground location cache failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
   }
 

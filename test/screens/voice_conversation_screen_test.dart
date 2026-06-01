@@ -77,6 +77,7 @@ class _FakeEventRepository extends EventRepository {
 
   final List<EventModel> events;
   final List<String> deletedIds = <String>[];
+  final List<EventModel> updatedEvents = <EventModel>[];
 
   @override
   Future<List<EventModel>> listEvents({String? userId}) async => events;
@@ -95,7 +96,14 @@ class _FakeEventRepository extends EventRepository {
   Future<EventModel> createEvent(EventModel event) async => event;
 
   @override
-  Future<EventModel> updateEvent(EventModel event) async => event;
+  Future<EventModel> updateEvent(EventModel event) async {
+    updatedEvents.add(event);
+    final index = events.indexWhere((candidate) => candidate.id == event.id);
+    if (index >= 0) {
+      events[index] = event;
+    }
+    return event;
+  }
 
   @override
   Future<void> deleteEvent(String eventId, {String? userId}) async {
@@ -198,8 +206,7 @@ void main() {
     expect(textField.controller?.text, '이번주 금요일 일정');
   });
 
-  testWidgets('AI 일정 대화는 native ready 전에는 듣는 중으로 표시하지 않는다',
-      (tester) async {
+  testWidgets('AI 일정 대화는 native ready 전에는 듣는 중으로 표시하지 않는다', (tester) async {
     final stt = _FakeSttService();
     await pumpConversation(
       tester,
@@ -583,17 +590,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AI 일정 대화는 편집 화면으로 이동하기 전 STT를 종료한다', (tester) async {
+  testWidgets('AI 일정 대화는 장소 변경을 편집 화면 없이 바로 저장한다', (tester) async {
     final stt = _FakeSttService();
-    final events = <EventModel>[
+    final repository = _FakeEventRepository(<EventModel>[
       EventModel(
         id: 'event-1',
         userId: 'user-1',
         title: '방문 일정',
         startAt: DateTime(2026, 5, 22, 9).toUtc(),
       ),
-    ];
-
+    ]);
     final router = GoRouter(
       initialLocation: AppRoutes.voiceConversation,
       routes: [
@@ -601,7 +607,7 @@ void main() {
           path: AppRoutes.voiceConversation,
           builder: (context, state) => VoiceConversationScreen(
             sttService: stt,
-            repository: _FakeEventRepository(events),
+            repository: repository,
             locationLookupService: _FakeLocationLookupService(),
             permissionService: _NoLocationPermissionService(),
             initialText: '5월 22일 일정 보여줘',
@@ -628,13 +634,47 @@ void main() {
     await tester.tap(find.byTooltip('음성 입력 다시 시작'));
     await tester.pump();
     stt.completeSuccess('그 일정에 강릉 건도리횟집 장소추가');
-    for (var i = 0; i < 20 && find.text('편집 화면').evaluate().isEmpty; i += 1) {
+    for (var i = 0; i < 20 && repository.updatedEvents.isEmpty; i += 1) {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    expect(stt.cancelCalls, greaterThanOrEqualTo(1));
+    expect(find.text('편집 화면'), findsNothing);
+    expect(repository.updatedEvents, hasLength(1));
+    expect(repository.updatedEvents.single.location, '강릉 건도리횟집');
+    expect(repository.updatedEvents.single.locationLat, 37.7519);
+    expect(repository.updatedEvents.single.locationLng, 128.8761);
     expect(find.text('듣고 있어요...'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('AI 일정 대화는 중요 알림 변경을 바로 저장한다', (tester) async {
+    final repository = _FakeEventRepository(<EventModel>[
+      EventModel(
+        id: 'event-1',
+        userId: 'user-1',
+        title: '방문 일정',
+        startAt: DateTime(2026, 5, 22, 9).toUtc(),
+        isCritical: false,
+      ),
+    ]);
+
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(
+        repository: repository,
+        initialText: '5월 22일 일정 보여줘',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '첫번째 일정 중요한 알림으로 바꿔줘');
+    await tester.tap(find.text('전송'));
+    for (var i = 0; i < 20 && repository.updatedEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(repository.updatedEvents, hasLength(1));
+    expect(repository.updatedEvents.single.isCritical, isTrue);
+    expect(tester.takeException(), isNull);
+  });
 }

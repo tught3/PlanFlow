@@ -116,10 +116,10 @@ void main() {
 
       final result = controller.handle('3번째 일정에 원주세브란스기독병원 장소 추가해줘');
 
-      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.action, VoiceConversationAction.confirmedEdit);
       expect(result.targetEvent?.id, 'third');
       expect(result.locationText, '원주세브란스기독병원');
-      expect(result.requiresEditScreenNavigation, isTrue);
+      expect(result.requiresEditScreenNavigation, isFalse);
       expect(result.requiresDeleteConfirmation, isFalse);
       expect(controller.focusedEvent?.id, 'third');
     });
@@ -139,7 +139,7 @@ void main() {
 
       final result = controller.handle('4번에 강릉 건도리횟집 장소추가');
 
-      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.action, VoiceConversationAction.confirmedEdit);
       expect(result.targetEvent?.id, 'fourth');
       expect(result.locationText, '강릉 건도리횟집');
     });
@@ -155,9 +155,59 @@ void main() {
 
       final result = controller.handle('그 일정 장소를 원주세브란스기독병원으로 바꿔줘');
 
-      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.action, VoiceConversationAction.confirmedEdit);
       expect(result.targetEvent?.id, 'visit');
       expect(result.locationText, '원주세브란스기독병원');
+    });
+
+    test('ordinal follow-up can mark an event as critical alarm', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '회의', DateTime(2026, 5, 7, 9)),
+          _event('second', '방문', DateTime(2026, 5, 7, 10)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result = controller.handle('첫번째 일정 중요한 알람으로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.targetEvent?.id, 'first');
+      expect(result.criticalValue, isTrue);
+    });
+
+    test('title follow-up can mark an event as critical alarm', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('meeting', '내일 회의', DateTime(2026, 5, 8, 9)),
+          _event('visit', '내일 방문', DateTime(2026, 5, 8, 10)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('내일 일정 알려줘');
+
+      final result = controller.handle('내일 회의 중요 알림으로');
+
+      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.targetEvent?.id, 'meeting');
+      expect(result.criticalValue, isTrue);
+    });
+
+    test('ordinal follow-up can mark an event as normal alarm', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '회의', DateTime(2026, 5, 7, 9)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result = controller.handle('첫번째 일정 일반 알림으로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.targetEvent?.id, 'first');
+      expect(result.criticalValue, isFalse);
     });
 
     test('time follow-up delete resolves target and asks for confirmation', () {

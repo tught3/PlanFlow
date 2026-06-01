@@ -698,25 +698,26 @@ class DepartureAlarmService {
         return origin;
       }
     }
-    final cachedOrigin = await _loadCachedOrigin();
-    if (cachedOrigin != null) {
-      return cachedOrigin;
+    try {
+      final permissionGranted = await _permissions.checkLocationPermission();
+      if (permissionGranted) {
+        final lastKnownOrigin = await _permissions.getLastKnownLocation();
+        if (lastKnownOrigin != null) {
+          await _cacheLastOrigin(lastKnownOrigin);
+          return lastKnownOrigin;
+        }
+        final fallbackOrigin = await _permissions
+            .getCurrentLocation()
+            .timeout(const Duration(seconds: 5));
+        if (fallbackOrigin != null) {
+          await _cacheLastOrigin(fallbackOrigin);
+          return fallbackOrigin;
+        }
+      }
+    } catch (error) {
+      debugPrint('Departure origin live lookup failed: $error');
     }
-    final permissionGranted = await _permissions.checkLocationPermission();
-    if (!permissionGranted) {
-      return null;
-    }
-    final lastKnownOrigin = await _permissions.getLastKnownLocation();
-    if (lastKnownOrigin != null) {
-      await _cacheLastOrigin(lastKnownOrigin);
-      return lastKnownOrigin;
-    }
-    final fallbackOrigin = await _permissions.getCurrentLocation();
-    if (fallbackOrigin != null) {
-      await _cacheLastOrigin(fallbackOrigin);
-      return fallbackOrigin;
-    }
-    return null;
+    return _loadCachedOrigin();
   }
 
   Future<void> _cacheLastOrigin(GeoPoint origin) async {
@@ -739,7 +740,7 @@ class DepartureAlarmService {
     if (lat == null || lng == null || savedAt == null) {
       return null;
     }
-    if (_currentTime.difference(savedAt) > const Duration(hours: 6)) {
+    if (_currentTime.difference(savedAt) > const Duration(hours: 2)) {
       return null;
     }
     return GeoPoint(latitude: lat, longitude: lng);

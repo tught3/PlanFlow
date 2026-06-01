@@ -21,6 +21,25 @@ void main() {
       expect(result.titleCandidate, '내일팀장님 동행방문하시는지 확인전화하기');
     });
 
+    test('keeps ordinary words like 요미 while removing only schedule noise', () {
+      const rawText = '오후3시에 요미 약받기';
+      final structure = service.analyze(rawText);
+
+      final localTitle = service.normalizeLocalVoiceTitle(
+        rawText,
+        referenceText: rawText,
+        structured: structure,
+      );
+      final parsedTitle = service.normalizeParsedScheduleTitle(
+        '요미 약받기',
+        rawText: rawText,
+        structured: structure,
+      );
+
+      expect(localTitle, '요미 약받기');
+      expect(parsedTitle, '요미 약받기');
+    });
+
     test('extracts explicit memo from content after the leading cue', () {
       final result = service.analyze('내일 오전 10시에 병원 방문 메모에 주차장 확인');
 

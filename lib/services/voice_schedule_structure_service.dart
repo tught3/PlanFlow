@@ -290,15 +290,12 @@ class VoiceScheduleStructureService {
     var cleaned = text.replaceAll(RegExp(r'[\(\)\[\]{}]'), ' ');
     final patterns = <RegExp>[
       RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
-      RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
       RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
       RegExp(r'\d{1,2}\s*시(?:\s*(?:\d{1,2}\s*분?|반))?'),
-      RegExp(r'\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따)'),
       RegExp(r'\d{1,2}\s*(?:일|주|개월|달|월|년)\s*마다'),
       RegExp(r'(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]\s*요일'),
       RegExp(r'(?:매주|매월|매년|격주|매일)'),
-      RegExp(r'(?:반복\s*설정|반복설정|반복|알림|리마인더|알람|reminder)'),
-      RegExp(r'(?:부터|까지|동안|정각|정도|쯤|예정|예약)'),
+      RegExp(r'(?:부터|까지|동안|정각|정도|쯤|예정)'),
       RegExp(r'(^|\s)경(?=\s|$)'),
       RegExp(
         r'(?:열두시반|열한시반|열시반|한시반|두시반|세시반|네시반)',

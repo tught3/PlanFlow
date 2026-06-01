@@ -71,16 +71,29 @@ void main() {
       expect(plan.safeDirectApply, isTrue);
     });
 
-    test('중요도 변경 요청은 is_critical로 분류한다', () {
+    test('중요 알림 변경 요청은 is_critical_true로 분류한다', () {
       final plan = pipeline.analyze(
-        '이 일정 중요하게 표시해줘',
+        '이 일정 중요한 알림으로 바꿔줘',
         intent: VoiceCommandPipelineIntent.edit,
         context: VoiceTextCleanupContext.edit,
       );
 
       expect(plan.intent, VoiceCommandPipelineIntent.edit);
-      expect(plan.requestedChanges, contains('is_critical'));
+      expect(plan.requestedChanges, contains('is_critical_true'));
       expect(plan.requestedFieldValues['is_critical'], 'true');
+      expect(plan.safeDirectApply, isTrue);
+    });
+
+    test('일반 알림 변경 요청은 is_critical_false로 분류한다', () {
+      final plan = pipeline.analyze(
+        '첫번째 일정 일반 알림으로 바꿔줘',
+        intent: VoiceCommandPipelineIntent.edit,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.intent, VoiceCommandPipelineIntent.edit);
+      expect(plan.requestedChanges, contains('is_critical_false'));
+      expect(plan.requestedFieldValues['is_critical'], 'false');
       expect(plan.safeDirectApply, isTrue);
     });
 

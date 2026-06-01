@@ -260,6 +260,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         if (!deleted) {
           return;
         }
+      } else if (result.action == VoiceConversationAction.confirmedEdit &&
+          result.targetEvent != null) {
+        final updated = await _applyConversationEventUpdate(result);
+        if (!updated) {
+          return;
+        }
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText != null) {
@@ -677,6 +683,73 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     await _loadEvents();
   }
 
+  Future<bool> _applyConversationEventUpdate(
+    VoiceConversationResult result,
+  ) async {
+    final event = result.targetEvent;
+    if (event == null) {
+      return false;
+    }
+    var edited = event;
+    final locationText = result.locationText?.trim();
+    if (locationText != null && locationText.isNotEmpty) {
+      edited = _copyEventWithLocation(edited, location: locationText);
+      try {
+        final origin =
+            await _permissionService.getCurrentLocationWithPermission(
+          requestIfMissing: false,
+        );
+        final results = await _locations.search(locationText, origin: origin);
+        if (results.isNotEmpty) {
+          final picked = results.first;
+          final resolvedLabel = picked.bestPlaceLabel.trim();
+          edited = _copyEventWithLocation(
+            edited,
+            location: resolvedLabel.isNotEmpty ? resolvedLabel : picked.label,
+            locationLat: picked.latitude,
+            locationLng: picked.longitude,
+          );
+        }
+      } catch (error) {
+        debugPrint(
+            'VoiceConversationScreen location update lookup failed: $error');
+      }
+    }
+    final criticalValue = result.criticalValue;
+    if (criticalValue != null) {
+      edited = _copyEventWithCritical(edited, isCritical: criticalValue);
+    }
+
+    try {
+      final saved = await _repository.updateEvent(edited);
+      _events = _events
+          .map((candidate) => candidate.id == saved.id ? saved : candidate)
+          .toList(growable: false);
+      _conversation.replaceEvents(_events);
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'voice_conversation_update',
+        eventId: saved.id,
+        startAt: saved.startAt,
+      );
+      await _loadEvents();
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('VoiceConversationScreen update failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(() {
+          _conversationStatus = '일정 변경 저장에 실패했어요.';
+          _messages.add(
+            const _ConversationMessage.assistant(
+              '일정 변경 저장에 실패했어요. 잠시 후 다시 시도해 주세요.',
+            ),
+          );
+        });
+      }
+      return false;
+    }
+  }
+
   Future<void> _stopVoiceBeforeNavigation() async {
     _restartListenTimer?.cancel();
     _conversationWatchdogTimer?.cancel();
@@ -979,6 +1052,17 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
         final title = result.targetEvent?.title ?? '선택한 일정';
         final location = result.locationText ?? '장소';
         return '$title 일정의 장소에 $location 입력 화면을 열게요. 저장은 편집 화면에서 직접 눌러 주세요.';
+      case VoiceConversationAction.confirmedEdit:
+        final title = result.targetEvent?.title ?? '선택한 일정';
+        if (result.criticalValue != null) {
+          return result.criticalValue!
+              ? '$title 일정을 중요 알림으로 변경했어요.'
+              : '$title 일정을 일반 알림으로 변경했어요.';
+        }
+        if (result.locationText != null) {
+          return '$title 일정의 장소를 ${result.locationText}로 변경했어요.';
+        }
+        return '$title 일정을 변경했어요.';
       case VoiceConversationAction.confirmDelete:
         final title = result.targetEvent?.title ?? '선택한 일정';
         return '$title 일정을 삭제할까요? 삭제하려면 “응 삭제해”라고 말하거나 삭제 확인을 눌러 주세요.';
@@ -1724,6 +1808,41 @@ EventModel _copyEventWithLocation(
     participants: event.participants,
     targets: event.targets,
     isCritical: event.isCritical,
+    recurrenceRule: event.recurrenceRule,
+    isAllDay: event.isAllDay,
+    isMultiDay: event.isMultiDay,
+    parentEventId: event.parentEventId,
+    category: event.category,
+    source: event.source,
+    externalId: event.externalId,
+    externalCalendarId: event.externalCalendarId,
+    externalEtag: event.externalEtag,
+    externalUpdatedAt: event.externalUpdatedAt,
+    lastSyncedAt: event.lastSyncedAt,
+    createdAt: event.createdAt,
+    updatedAt: event.updatedAt,
+  );
+}
+
+EventModel _copyEventWithCritical(
+  EventModel event, {
+  required bool isCritical,
+}) {
+  return EventModel(
+    id: event.id,
+    userId: event.userId,
+    title: event.title,
+    startAt: event.startAt,
+    endAt: event.endAt,
+    location: event.location,
+    locationLat: event.locationLat,
+    locationLng: event.locationLng,
+    memo: event.memo,
+    supplies: event.supplies,
+    suppliesChecked: event.suppliesChecked,
+    participants: event.participants,
+    targets: event.targets,
+    isCritical: isCritical,
     recurrenceRule: event.recurrenceRule,
     isAllDay: event.isAllDay,
     isMultiDay: event.isMultiDay,

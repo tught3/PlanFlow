@@ -247,9 +247,11 @@ class VoiceCommandPipeline {
     if (RegExp(r'(하루\s*종일|하루종일|종일|온종일)').hasMatch(normalized)) {
       changes.add('is_all_day');
     }
-    if (RegExp(r'(중요(?:한|도|하게)?|긴급|필수|critical|important)')
-        .hasMatch(normalized)) {
-      changes.add('is_critical');
+    if (RegExp(r'(중요|긴급|급한|critical|중요한)\s*(알람|알림|경보)').hasMatch(normalized)) {
+      changes.add('is_critical_true');
+    }
+    if (RegExp(r'(보통|일반|normal)\s*(알람|알림)').hasMatch(normalized)) {
+      changes.add('is_critical_false');
     }
     return changes.toList(growable: false);
   }
@@ -265,8 +267,10 @@ class VoiceCommandPipeline {
         values['location'] = location;
       }
     }
-    if (requestedChanges.contains('is_critical')) {
+    if (requestedChanges.contains('is_critical_true')) {
       values['is_critical'] = 'true';
+    } else if (requestedChanges.contains('is_critical_false')) {
+      values['is_critical'] = 'false';
     }
     return values;
   }

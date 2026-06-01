@@ -8,6 +8,7 @@ enum VoiceConversationAction {
   none,
   showEvents,
   openEditScreen,
+  confirmedEdit,
   confirmDelete,
   deleteConfirmed,
   deleteCanceled,
@@ -64,6 +65,7 @@ class VoiceConversationResult {
     this.selectedEvents = const <EventModel>[],
     this.targetEvent,
     this.locationText,
+    this.criticalValue,
     this.pendingDelete,
     this.deleteConfirmed = false,
     this.deleteCanceled = false,
@@ -81,6 +83,7 @@ class VoiceConversationResult {
   final List<EventModel> selectedEvents;
   final EventModel? targetEvent;
   final String? locationText;
+  final bool? criticalValue;
   final VoiceConversationDeleteAction? pendingDelete;
   final bool deleteConfirmed;
   final bool deleteCanceled;
@@ -108,6 +111,8 @@ class VoiceConversationResult {
           : '${visibleEvents.length}개의 일정을 찾았어요.',
       VoiceConversationAction.openEditScreen =>
         '장소를 수정 화면에 넣어둘게요. 확인 후 저장해 주세요.',
+      VoiceConversationAction.confirmedEdit =>
+        targetEvent == null ? '변경할 일정을 찾지 못했어요.' : '일정을 변경했어요.',
       VoiceConversationAction.confirmDelete => targetEvent == null
           ? '삭제할 일정을 찾지 못했어요.'
           : '"${targetEvent!.title}" 일정을 삭제할까요? 삭제 확인이 필요해요.',
@@ -243,6 +248,41 @@ class VoiceConversationController {
       );
     }
 
+    final criticalValue = _criticalValueFromText(text);
+    if (criticalValue != null) {
+      final target = _resolveFollowUpTarget(text, state);
+      if (target == null) {
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.none,
+            inputText: input,
+            assistantMessage: state.visibleEvents.isEmpty
+                ? '먼저 일정을 조회해 주세요.'
+                : '변경할 일정을 찾지 못했어요. 몇 번째 일정인지 다시 말해 주세요.',
+          ),
+        );
+      }
+      state
+        ..focusedEvent = target
+        ..selectedEvents = const <EventModel>[]
+        ..pendingDelete = null;
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.confirmedEdit,
+          inputText: input,
+          targetEvent: target,
+          criticalValue: criticalValue,
+          assistantMessage: criticalValue
+              ? '"${target.title}" 일정을 중요 알림으로 변경할게요.'
+              : '"${target.title}" 일정을 일반 알림으로 변경할게요.',
+        ),
+      );
+    }
+
     if (_isLocationIntent(text)) {
       final ambiguous = _resolveAmbiguousTimeTargets(text, state);
       if (ambiguous.length > 1) {
@@ -272,11 +312,25 @@ class VoiceConversationController {
           state,
           session,
           VoiceConversationResult(
-            action: VoiceConversationAction.openEditScreen,
+            action: VoiceConversationAction.confirmedEdit,
             inputText: input,
             targetEvent: target,
             locationText: locationText,
-            requiresEditScreenNavigation: true,
+            assistantMessage:
+                '"${target.title}" 일정의 장소를 "$locationText"(으)로 변경할게요.',
+          ),
+        );
+      }
+      if (target == null) {
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.none,
+            inputText: input,
+            assistantMessage: state.visibleEvents.isEmpty
+                ? '먼저 일정을 조회해 주세요.'
+                : '변경할 일정을 찾지 못했어요. 몇 번째 일정인지 다시 말해 주세요.',
           ),
         );
       }
@@ -408,6 +462,7 @@ class VoiceConversationController {
       selectedEvents: result.selectedEvents,
       targetEvent: result.targetEvent,
       locationText: result.locationText,
+      criticalValue: result.criticalValue,
       pendingDelete: result.pendingDelete,
       deleteConfirmed: result.deleteConfirmed,
       deleteCanceled: result.deleteCanceled,
@@ -469,8 +524,21 @@ class VoiceConversationController {
     return (text.contains('장소') || text.contains('위치')) &&
         (text.contains('추가') ||
             text.contains('변경') ||
+            text.contains('수정') ||
             text.contains('바꿔') ||
+            text.contains('고쳐') ||
+            text.contains('설정') ||
             text.contains('넣어'));
+  }
+
+  bool? _criticalValueFromText(String text) {
+    if (RegExp(r'(중요|긴급|급한|critical|중요한)\s*(알람|알림|경보)').hasMatch(text)) {
+      return true;
+    }
+    if (RegExp(r'(보통|일반|normal)\s*(알람|알림)').hasMatch(text)) {
+      return false;
+    }
+    return null;
   }
 
   bool _isDeleteIntent(String text) {
@@ -539,7 +607,57 @@ class VoiceConversationController {
           (state.visibleEvents.isEmpty ? null : state.visibleEvents.first);
     }
 
+    final titleMatched = _matchVisibleEventByTitle(text, state.visibleEvents);
+    if (titleMatched != null) {
+      return titleMatched;
+    }
+
     return null;
+  }
+
+  EventModel? _matchVisibleEventByTitle(
+    String text,
+    List<EventModel> visibleEvents,
+  ) {
+    if (visibleEvents.isEmpty) {
+      return null;
+    }
+    final queryTokens = text
+        .replaceAll(RegExp(r'\d+\s*(?:번째|번\s*째|번)'), ' ')
+        .replaceAll(
+          RegExp(
+            r'(일정|중요|긴급|급한|critical|중요한|보통|일반|normal|알람|알림|경보|장소|위치|추가|변경|수정|바꿔|고쳐|설정|넣어|으로|로|에|을|를|은|는|해줘|줘)',
+          ),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .split(RegExp(r'\s+'))
+        .map(_compact)
+        .where((token) => !_isDateReferenceToken(token))
+        .where((token) => token.length >= 2)
+        .toList(growable: false);
+    if (queryTokens.isEmpty) {
+      return null;
+    }
+
+    final matches = <EventModel>[];
+    for (final event in visibleEvents) {
+      final compactTitle = _compact(event.title);
+      if (queryTokens.any(compactTitle.contains)) {
+        matches.add(event);
+      }
+    }
+    return matches.length == 1 ? matches.single : null;
+  }
+
+  bool _isDateReferenceToken(String token) {
+    return token == '오늘' ||
+        token == '내일' ||
+        token == '모레' ||
+        token == '어제' ||
+        RegExp(r'^\d{1,2}월\d{1,2}일$').hasMatch(token) ||
+        RegExp(r'^\d{1,2}일$').hasMatch(token);
   }
 
   List<EventModel> _resolveExplicitFollowUpTargets(
