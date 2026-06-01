@@ -19,6 +19,7 @@ class VoiceScheduleStructure {
   final Map<String, String> explicitFieldClauses;
   final String? startAtCandidate;
 }
+
 class VoiceScheduleStructureSplit {
   const VoiceScheduleStructureSplit({
     required this.location,
@@ -337,15 +338,23 @@ class VoiceScheduleStructureService {
       cleaned,
       rawText: rawText,
     );
-    final structuredTitle = preserveLeadingLocationTitle(
-      stripScheduleNoise(
-        structure.titleCandidate,
-        preserveRelativeDayWords: true,
+    final hasRecurrenceIntent = _hasRecurrenceIntent(structure, rawText);
+    final cleanedTitle = _stripTrailingRecurrenceCommand(
+      titleWithoutLocation,
+      hasRecurrenceIntent: hasRecurrenceIntent,
+    );
+    final structuredTitle = _stripTrailingRecurrenceCommand(
+      preserveLeadingLocationTitle(
+        stripScheduleNoise(
+          structure.titleCandidate,
+          preserveRelativeDayWords: true,
+        ),
+        rawText: rawText,
       ),
-      rawText: rawText,
+      hasRecurrenceIntent: hasRecurrenceIntent,
     );
     if (shouldPreferStructuredTitle(
-      normalizedTitle: titleWithoutLocation,
+      normalizedTitle: cleanedTitle,
       structuredTitle: structuredTitle,
       structure: structure,
     )) {
@@ -354,19 +363,22 @@ class VoiceScheduleStructureService {
         rawText,
       );
     }
-    if (titleWithoutLocation.isNotEmpty) {
+    if (cleanedTitle.isNotEmpty) {
       return ensurePeopleInTitle(
-        normalizeSpacingForSchedule(titleWithoutLocation),
+        normalizeSpacingForSchedule(cleanedTitle),
         rawText,
       );
     }
 
-    final fallback = preserveLeadingLocationTitle(
-      stripScheduleNoise(
-        rawText,
-        preserveRelativeDayWords: preserveRelativeDayWords,
+    final fallback = _stripTrailingRecurrenceCommand(
+      preserveLeadingLocationTitle(
+        stripScheduleNoise(
+          rawText,
+          preserveRelativeDayWords: preserveRelativeDayWords,
+        ),
+        rawText: rawText,
       ),
-      rawText: rawText,
+      hasRecurrenceIntent: hasRecurrenceIntent,
     );
     if (fallback.isNotEmpty) {
       return ensurePeopleInTitle(
@@ -425,12 +437,22 @@ class VoiceScheduleStructureService {
       rawText: referenceText ?? text,
     );
 
-    final structuredTitle = preserveLeadingLocationTitle(
-      stripScheduleNoise(
-        structure.titleCandidate,
-        preserveRelativeDayWords: true,
+    final hasRecurrenceIntent =
+        _hasRecurrenceIntent(structure, referenceText ?? text);
+    title = _stripTrailingRecurrenceCommand(
+      title,
+      hasRecurrenceIntent: hasRecurrenceIntent,
+    );
+
+    final structuredTitle = _stripTrailingRecurrenceCommand(
+      preserveLeadingLocationTitle(
+        stripScheduleNoise(
+          structure.titleCandidate,
+          preserveRelativeDayWords: true,
+        ),
+        rawText: referenceText ?? text,
       ),
-      rawText: referenceText ?? text,
+      hasRecurrenceIntent: hasRecurrenceIntent,
     );
     if (shouldPreferStructuredTitle(
       normalizedTitle: title,
@@ -446,8 +468,43 @@ class VoiceScheduleStructureService {
         ? normalizeText(stripExplicitMemoClause(text), '')
         : title;
     return ensurePeopleInTitle(
-      normalizeSpacingForSchedule(resolvedTitle),
+      normalizeSpacingForSchedule(
+        _stripTrailingRecurrenceCommand(
+          resolvedTitle,
+          hasRecurrenceIntent: hasRecurrenceIntent,
+        ),
+      ),
       referenceText ?? text,
+    );
+  }
+
+  bool _hasRecurrenceIntent(
+    VoiceScheduleStructure structure,
+    String rawText,
+  ) {
+    final recurrence = structure.explicitFieldClauses['recurrence_rule'];
+    if (recurrence != null && recurrence.trim().isNotEmpty) {
+      return true;
+    }
+    return RegExp(r'(?:매일|매주|격주|매월|매년|반복\s*설정|반복설정)')
+        .hasMatch(normalizeText(rawText, ''));
+  }
+
+  String _stripTrailingRecurrenceCommand(
+    String title, {
+    required bool hasRecurrenceIntent,
+  }) {
+    if (!hasRecurrenceIntent) {
+      return title;
+    }
+    return normalizeSpacingForSchedule(
+      title
+          .replaceAll(
+            RegExp(r'\s*(?:반복\s*설정|반복설정|반복\s*예약|반복\s*알림|반복)\s*$'),
+            '',
+          )
+          .replaceAll(RegExp(r'^\s*\d{1,2}\s*일\s+'), '')
+          .trim(),
     );
   }
 
@@ -605,7 +662,8 @@ class VoiceScheduleStructureService {
 
     final withoutLeadingTime = _stripLeadingTimePrefix(normalized);
     final strippedNoise = stripScheduleNoise(withoutLeadingTime);
-    final cleaned = strippedNoise.isNotEmpty ? strippedNoise : withoutLeadingTime;
+    final cleaned =
+        strippedNoise.isNotEmpty ? strippedNoise : withoutLeadingTime;
     if (cleaned.isEmpty || _isInvalidLocationCandidate(cleaned)) {
       return null;
     }
@@ -773,9 +831,8 @@ class VoiceScheduleStructureService {
     if (normalized.isEmpty) {
       return normalized;
     }
-    final sourceText = rawText?.trim().isNotEmpty == true
-        ? rawText!.trim()
-        : normalized;
+    final sourceText =
+        rawText?.trim().isNotEmpty == true ? rawText!.trim() : normalized;
     final extractedLocation = extractLeadingLocation(sourceText);
     if (extractedLocation == null || extractedLocation.isEmpty) {
       return stripLeadingLocationPhrase(normalized);
@@ -846,7 +903,8 @@ class VoiceScheduleStructureService {
   }
 
   bool _shouldKeepLeadingLocationInTitle(String location) {
-    final normalized = normalizeText(location, '').replaceAll(RegExp(r'\s+'), '');
+    final normalized =
+        normalizeText(location, '').replaceAll(RegExp(r'\s+'), '');
     if (normalized.isEmpty) {
       return false;
     }

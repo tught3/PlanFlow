@@ -89,10 +89,12 @@ class AuthService implements AuthSessionClient {
   Future<bool> signInWithOAuth(
     PlanFlowOAuthProvider provider, {
     bool forceConsent = false,
+    bool forCalendar = false,
   }) async {
     final uri = await buildOAuthSignInUri(
       provider,
       forceConsent: forceConsent,
+      forCalendar: forCalendar,
     );
     final queryParams = oauthQueryParamsFor(
       provider,
@@ -110,9 +112,10 @@ class AuthService implements AuthSessionClient {
   Future<Uri> buildOAuthSignInUri(
     PlanFlowOAuthProvider provider, {
     bool forceConsent = false,
+    bool forCalendar = false,
   }) async {
     final oauthProvider = _oauthProvider(provider);
-    final scopes = oauthScopesFor(provider);
+    final scopes = oauthScopesFor(provider, forCalendar: forCalendar);
     final queryParams = oauthQueryParamsFor(
       provider,
       forceConsent: forceConsent,
@@ -133,7 +136,10 @@ class AuthService implements AuthSessionClient {
   Future<bool> connectCalendarProvider(PlanFlowOAuthProvider provider) async {
     final oauthProvider = _oauthProvider(provider);
     if (_client.auth.currentSession == null) {
-      return signInWithOAuth(provider);
+      return signInWithOAuth(
+        provider,
+        forCalendar: provider == PlanFlowOAuthProvider.naver,
+      );
     }
 
     if (provider == PlanFlowOAuthProvider.naver &&
@@ -142,7 +148,7 @@ class AuthService implements AuthSessionClient {
         'OAuth calendar link fallback: provider=naver already linked, '
         'requesting fresh consent instead of identity link',
       );
-      return signInWithOAuth(provider, forceConsent: true);
+      return signInWithOAuth(provider, forceConsent: true, forCalendar: true);
     }
 
     final queryParams = oauthQueryParamsFor(provider);
@@ -168,7 +174,7 @@ class AuthService implements AuthSessionClient {
           'fresh Naver consent flow',
         );
         debugPrintStack(stackTrace: stackTrace);
-        return signInWithOAuth(provider, forceConsent: true);
+        return signInWithOAuth(provider, forceConsent: true, forCalendar: true);
       }
       rethrow;
     }
@@ -301,7 +307,8 @@ class AuthService implements AuthSessionClient {
     return switch (provider) {
       PlanFlowOAuthProvider.google => OAuthProvider.google,
       PlanFlowOAuthProvider.kakao => OAuthProvider.kakao,
-      PlanFlowOAuthProvider.naver => const OAuthProvider('custom:planflow-naver'),
+      PlanFlowOAuthProvider.naver =>
+        const OAuthProvider('custom:planflow-naver'),
     };
   }
 
@@ -318,8 +325,7 @@ class AuthService implements AuthSessionClient {
       // enabled in Kakao Developers. Keep login on profile-only scopes; email
       // can be added later only after the Kakao consent item is approved.
       PlanFlowOAuthProvider.kakao => 'openid,profile_nickname,profile_image',
-      PlanFlowOAuthProvider.naver =>
-        forCalendar ? 'email,calendar' : 'email',
+      PlanFlowOAuthProvider.naver => forCalendar ? 'email,calendar' : 'email',
     };
   }
 

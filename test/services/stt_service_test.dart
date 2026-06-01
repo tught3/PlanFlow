@@ -20,6 +20,18 @@ void main() {
     expect(options.listenMode, ListenMode.dictation);
   });
 
+  test('SttService keeps conversation listening open for long pauses', () {
+    expect(
+      SttService.debugListenForForMode(SttListenMode.conversation),
+      const Duration(minutes: 5),
+    );
+    expect(
+      SttService.debugPauseForForMode(SttListenMode.conversation),
+      const Duration(minutes: 5),
+    );
+    expect(SttService.debugConversationSilenceMs, 300000);
+  });
+
   test('SttService prefers ko_KR and falls back to other Korean locale ids',
       () {
     expect(

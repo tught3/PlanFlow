@@ -287,7 +287,7 @@ class NotificationService {
       return NotificationScheduleResult(
         status: NotificationScheduleStatus.skippedPast,
         notifyAt: notifyAt,
-        message: '吏湲?異쒕컻 ?쇱젙 ?쓣?덉빟 ?덉뒿?덈떎.',
+        message: '이미 지난 출발 알림은 예약하지 않았습니다.',
       );
     }
 
@@ -343,7 +343,7 @@ class NotificationService {
       return NotificationScheduleResult(
         status: NotificationScheduleStatus.error,
         notifyAt: notifyAt,
-        message: '吏湲?異쒕컻 ?뚮┝ ?덉빟 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.',
+        message: '출발 알림 예약 중 오류가 발생했습니다.',
       );
     }
   }
@@ -356,11 +356,12 @@ class NotificationService {
     String? payload,
   }) async {
     if (!notifyAt.isAfter(DateTime.now())) {
-      debugPrint('Departure fallback skipped because notifyAt is past: $notifyAt');
+      debugPrint(
+          'Departure fallback skipped because notifyAt is past: $notifyAt');
       return NotificationScheduleResult(
         status: NotificationScheduleStatus.skippedPast,
         notifyAt: notifyAt,
-        message: '吏湲?異쒕컻 ?ŀ???쒓컙??吏???덉빟 ?섏? ?딆뒿?덈떎.',
+        message: '이미 지난 출발 알림은 예약하지 않았습니다.',
       );
     }
 
@@ -846,7 +847,7 @@ class NotificationService {
         styleInformation: BigTextStyleInformation(
           body,
           contentTitle: title,
-          summaryText: '?볦튂硫????섎뒗 以묒슂 ?뚮엺',
+          summaryText: '놓치면 안 되는 중요 알림',
         ),
         category: AndroidNotificationCategory.alarm,
         fullScreenIntent: fullScreenIntent,
@@ -867,7 +868,7 @@ class NotificationService {
           <int>[0, 1200, 250, 1200, 250, 1600],
         ),
         visibility: NotificationVisibility.public,
-        ticker: '以묒슂 ?쇱젙 ?뚮엺',
+        ticker: '중요 일정 알림',
         actions: const [
           AndroidNotificationAction(
             departureAcknowledgedActionId,

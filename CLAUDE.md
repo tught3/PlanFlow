@@ -123,6 +123,8 @@
 - PowerShell에서 한글 파일을 읽거나 쓸 때는 `Get-Content -Encoding UTF8`, `Set-Content -Encoding UTF8`, `[System.IO.File]::ReadAllText(..., [System.Text.Encoding]::UTF8)`, `[System.IO.File]::WriteAllText(..., [System.Text.Encoding]::UTF8)`처럼 인코딩을 명시한다.
 - `type`, `more`, `echo > file`, 기본 인코딩의 `Get-Content`/`Set-Content`, Python/Node의 기본 인코딩 추정처럼 코드페이지에 의존하는 방식으로 한글 문서를 읽거나 쓰지 않는다.
 - 이미 글자가 깨져 보이면 그 상태로 저장하지 말고 즉시 중단한 뒤 UTF-8로 다시 읽어 원문을 확인한다.
+- PowerShell 명령에서는 `&&`를 쓰지 않는다. 여러 명령을 이어야 하면 명령을 분리해서 실행하거나, PowerShell 네이티브 방식인 세미콜론과 `$LASTEXITCODE`/`if ($?) { ... }` 조건문을 사용한다.
+- Bash/CMD 전용 체이닝 문법을 PowerShell에 그대로 가져오지 않는다. 특히 `cmd /c`, `bash -lc`로 우회해 삭제/이동/생성 같은 파일 작업을 섞어 실행하지 않는다.
 
 ## 모델 라우팅과 병렬 처리
 - 비단순 작업은 계획 -> 병렬 작업자 -> 별도 리뷰어 -> 수정 -> 재리뷰 순서로 진행한다.
@@ -136,6 +138,10 @@
 
 ## 작업 방식
 - 기존 코드, 기존 문서, 기존 구조를 먼저 확인한다.
+- 모든 파일 수정 전에는 FluxOS 잠금 상태를 확인하고, 같은 프로젝트에 active 작업이 있으면 새 작업을 직접 시작하지 않고 지시사항 단위로 FIFO 큐에 넣는다.
+- 큐 대기는 파일 하나가 풀렸는지가 아니라 앞선 지시사항 전체가 완료되어 release될 때까지 유지한다. 앞 작업이 여러 파일을 수정 중이면 그중 일부 파일이 먼저 끝났더라도 다음 지시는 시작하지 않는다.
+- 큐에 올라간 지시사항은 앞 작업 release 후 첫 번째 대기 항목부터 순서대로 active로 승격하고, 필요한 payload가 있으면 그때 실행한다.
+- `AGENTS.md`, `CLAUDE.md` 같은 생성 문서는 다른 세션이 작업 중인 프로젝트에 직접 재생성하지 않고, AI_WIKI 원본만 수정한 뒤 해당 프로젝트 doc-generate 작업을 큐에 적재한다.
 - 새 기능, 화면, 컴포넌트, UI 요소를 추가하기 전에는 반드시 기존 디자인 스타일, CSS, 테마, 토큰, 공용 컴포넌트, 레이아웃 패턴이 있는지 먼저 확인한다.
 - 새 UI는 프로젝트가 이미 쓰는 스타일과 시각 언어에 맞춰 통일해서 개발하고, 기본 브라우저/프레임워크 스타일을 그대로 덧붙이지 않는다.
 - 버튼, 카드, 입력창, 모달, 색상, 간격, 폰트, 아이콘, 상태 표시 등은 기존 앱의 구현 방식을 우선 재사용한다.
@@ -148,8 +154,9 @@
 - Flutter 앱을 에뮬레이터로 실행해야 하거나 연결된 장치가 없으면 `flutter devices`로 먼저 확인하고, 항상 같은 AVD `flux_phone`의 `emulator-5554`에서 `flutter run -d emulator-5554`로 실행한다.
 - `flux_phone`/`emulator-5554`는 한 번에 하나의 세션만 사용한다. 다른 세션이 사용 중이면 새 실행을 직접 시작하지 말고 FIFO 큐에 적재해 앞 세션이 끝난 뒤 다음 세션이 이어서 사용하게 한다.
 - 같은 프로젝트에서 같은 에뮬레이터 실행 요청이 반복 입력되면 큐에 중복으로 쌓지 말고 기존 대기 항목 하나만 유지한다.
-- 실제 Android 기기를 무선 디버깅으로 연결할 때는 `adb connect <ip>:<port>`의 명시 IP 연결을 우선하고, 같은 기기가 `adb-..._adb-tls-connect._tcp` mDNS 항목으로 중복 표시되면 mDNS 자동 연결을 끄거나 해당 mDNS 연결을 끊어 하나의 device만 유지한다.
-- ADB 장치가 중복으로 보이면 `adb devices -l`과 `adb mdns services`로 같은 `product/model/device`인지 확인하고, 같은 기기 중복이면 테스트/빌드를 시작하기 전에 중복 연결을 정리한다.
+- 실제 Android 기기를 무선 디버깅으로 연결할 때는 `adb connect <ip>:<port>`의 명시 IP 연결을 우선하고, 같은 기기가 `adb-..._adb-tls-connect._tcp` mDNS 항목으로 중복 표시되지 않게 자동 정리한다.
+- ADB/Flutter 실행 전에는 공용 래퍼가 `E:\AI_WIKI\scripts\adb-single-device.ps1`를 자동 호출해 mDNS 자동 연결을 비활성화하고, 같은 기기의 mDNS 중복 연결을 끊어 하나의 device만 유지한다.
+- 무선 디버깅 포트를 고정해서 자동 재연결해야 할 때만 사용자 환경변수 `AI_WIKI_ADB_DEVICE=<ip>:<port>`를 설정한다.
 - 로컬 개발/디버그의 AI 호출은 기본적으로 Hermes 로컬 경로를 우선하고, 배포/릴리즈와 127.0.0.1을 직접 볼 수 없는 런타임은 OpenAI 배포 경로를 우선한다.
 - Hermes 로컬 기본값은 `http://127.0.0.1:8645/v1`, API key 예시는 `hermes-local`이다. 수동 override가 필요할 때만 `OPENAI_BASE_URL`로 바꾼다.
 - FLUXSTUDIO 계열의 공용 AI 호출은 Hermes 기본 경로를 사용하되, PlanFlow는 이번 자동 전환 범위에서 제외한다.
@@ -386,13 +393,17 @@
 - 신규 의존성 추가 전 반드시 보고
 - 기존 동작 중인 파서/로직 리팩토링 금지
 - 모든 API 키: 환경변수 관리 (.env, 하드코딩 절대 금지)
+- Windows/PowerShell 작업에서는 `&&` 명령 체이닝을 쓰지 않는다. 명령을 분리하거나 `$LASTEXITCODE`/`if ($?)`로 성공 여부를 확인한다.
+- 한글 파일과 한국어 로그/문서는 항상 UTF-8 명시 읽기/쓰기를 사용하고, 깨진 텍스트가 보이면 저장하지 않고 UTF-8로 다시 확인한다.
+- 같은 프로젝트에 active 작업이 있으면 새 수정 지시는 프로젝트 단위 FIFO 큐에 넣고, 앞 지시사항 전체가 완료되어 release되기 전까지 시작하지 않는다.
 - Flutter 작업은 가능하면 `scripts/flutter-local.ps1` 같은 로컬 래퍼를 우선 사용하고, 빌드 뒤에는 Gradle daemon 정리까지 포함한다.
 - 사용자가 에뮬레이터 실행을 지시했거나 연결된 장치가 없으면 먼저 `flutter devices`로 장치 상태를 확인하고, 항상 AVD `flux_phone`의 `emulator-5554`에서 `flutter run -d emulator-5554`로 실행한다.
 - `flux_phone`/`emulator-5554`는 한 번에 하나의 세션만 사용한다. 다른 Codex/Claude/터미널 세션에서 같은 에뮬레이터 실행이 진행 중이면 새 실행을 직접 시작하지 말고 FIFO 큐에 적재해 앞 세션 종료 후 이어서 사용한다.
 - 같은 프로젝트에서 같은 에뮬레이터 실행 요청이 반복 입력되면 큐에 중복 적재하지 않고 기존 대기 항목 하나만 유지한다.
 - 에뮬레이터 실행은 가능하면 `E:\AI_WIKI\scripts\flutter-emulator-run.ps1`를 통해 큐/잠금 확인 후 진행한다.
-- 실제 Android 기기 무선 디버깅은 명시 IP 연결 하나만 유지한다. `adb connect <ip>:<port>` 후 같은 기기가 `adb-..._adb-tls-connect._tcp` mDNS 이름으로도 잡히면 테스트 전에 mDNS 중복 연결을 끊고, 필요한 경우 사용자 환경변수 `ADB_MDNS_AUTO_CONNECT=0`로 자동 mDNS 연결을 비활성화한다.
-- Flutter/ADB 실행 전 `adb devices -l`에 같은 `product/model/device`가 두 줄 이상 보이면 먼저 중복을 정리하고, `flutter run -d <명시 device id>`처럼 대상 장치를 명확히 지정한다.
+- 실제 Android 기기 무선 디버깅은 명시 IP 연결 하나만 유지한다. 공용 Flutter/ADB 래퍼는 실행 전 `E:\AI_WIKI\scripts\adb-single-device.ps1`를 자동 호출해 `adb-..._adb-tls-connect._tcp` mDNS 중복 연결을 끊고 `ADB_MDNS_AUTO_CONNECT=0`을 유지한다.
+- Flutter/ADB 실행 전 `adb devices -l`에 같은 `product/model/device`가 두 줄 이상 보이면 래퍼가 먼저 중복을 정리하고, `flutter run -d <명시 device id>`처럼 대상 장치를 명확히 지정한다.
+- 무선 디버깅 포트를 고정해서 자동 재연결해야 할 때만 사용자 환경변수 `AI_WIKI_ADB_DEVICE=<ip>:<port>`를 설정한다.
 - FLUXSTUDIO 앱들의 로컬 개발/디버그 AI 호출은 Hermes 로컬 경로를 기본으로 사용하고, 배포/릴리즈나 127.0.0.1을 직접 못 보는 런타임은 OpenAI 배포 경로를 기본으로 사용한다.
 - Hermes 로컬 기본값은 `http://127.0.0.1:8645/v1`, API key 예시는 `hermes-local`이다. 수동 override가 필요할 때만 `OPENAI_BASE_URL`를 바꾼다.
 - PlanFlow는 Hermes 자동 전환 범위에서 제외한다.

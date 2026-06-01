@@ -1495,3 +1495,11 @@
 - Naver Open API calendar import now parses all-day date-only holidays with the local-day helper and marks all-day multi-day spans correctly so holidays like 광복절 and 개천절 stay on the intended local date.
 - Naver calendar reconnect now falls back gracefully when the Naver identity is already linked, and the related regression tests were added/updated.
 - Verification passed: `scripts/flutter-local.ps1 test test/core/supabase_auth_options_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/naver_open_api_calendar_service_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/auth_service_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/providers/auth_provider_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/device_calendar_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, update install on `192.168.0.102:36273`, and `am start` launch check on `com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-06-01 Departure Alarm And Voice Stability Follow-up
+- Repetition command words are now stripped from titles only when a recurrence intent exists, including `매월 1일 톨비 작성 반복` -> `톨비 작성` with monthly recurrence preserved.
+- Smart departure notification mojibake strings were restored to UTF-8 Korean and covered by a static source regression scan across notification/departure/preparation alarm services.
+- Conversation STT listen/pause windows were extended to 5 minutes, and the Android native silence window now matches 300 seconds to reduce repeated start/stop beeps during natural pauses.
+- Departure alarms now have a local repeat interval setting in Settings, throttle repeated due-departure notifications by that interval, and reuse a recent cached origin when live location lookup is unavailable.
+- Naver calendar connection now requests `email,calendar` for calendar consent paths, including the already-linked identity fallback and the no-active-session reconnect path.
+- Verification passed: focused voice schedule, GPT recurrence, STT, notification, departure alarm, settings, and auth service tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; `scripts/flutter-local.ps1 build apk --debug --no-pub`. ADB install/run could not be completed because `adb devices` returned no connected devices.

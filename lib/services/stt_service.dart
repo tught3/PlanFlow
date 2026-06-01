@@ -61,6 +61,9 @@ class SttService {
   }
 
   static const Duration _pauseFor = Duration(seconds: 20);
+  static const Duration _conversationListenFor = Duration(minutes: 5);
+  static const Duration _conversationPauseFor = Duration(minutes: 5);
+  static const int _conversationSilenceMs = 300000;
   static const MethodChannel _nativeSttChannel =
       MethodChannel('planflow/native_stt');
   static const MethodChannel _androidPermissionsChannel =
@@ -92,6 +95,31 @@ class SttService {
 
   @visibleForTesting
   static int get debugActiveListenGeneration => _activeListenGeneration;
+
+  @visibleForTesting
+  static Duration debugListenForForMode(SttListenMode mode) {
+    return _listenForForMode(mode);
+  }
+
+  @visibleForTesting
+  static Duration debugPauseForForMode(SttListenMode mode) {
+    return _pauseForForMode(mode);
+  }
+
+  @visibleForTesting
+  static int get debugConversationSilenceMs => _conversationSilenceMs;
+
+  static Duration _listenForForMode(SttListenMode mode) {
+    return mode == SttListenMode.conversation
+        ? _conversationListenFor
+        : _listenFor;
+  }
+
+  static Duration _pauseForForMode(SttListenMode mode) {
+    return mode == SttListenMode.conversation
+        ? _conversationPauseFor
+        : _pauseFor;
+  }
 
   @visibleForTesting
   static void debugSeedNativeListenState({String recognizedText = ''}) {
@@ -941,8 +969,8 @@ class SttService {
 
       await speech.listen(
         localeId: localeId,
-        listenFor: _listenFor,
-        pauseFor: _pauseFor,
+        listenFor: _listenForForMode(mode),
+        pauseFor: _pauseForForMode(mode),
         listenOptions: buildListenOptionsForMode(mode),
         onResult: (result) {
           if (listenGeneration != _activeListenGeneration) {
@@ -982,7 +1010,7 @@ class SttService {
       );
 
       return await completer.future.timeout(
-        _listenFor + const Duration(seconds: 5),
+        _listenForForMode(mode) + const Duration(seconds: 5),
         onTimeout: () async {
           await speech.cancel();
           final normalized = latestRecognizedText?.trim();
@@ -1345,9 +1373,11 @@ class SttService {
     });
 
     try {
-      final started = await _nativeSttChannel.invokeMethod<bool>('start', <String, dynamic>{
+      final started =
+          await _nativeSttChannel.invokeMethod<bool>('start', <String, dynamic>{
         'mode': mode.name,
-        'silenceMs': mode == SttListenMode.conversation ? 10000 : 30000,
+        'silenceMs':
+            mode == SttListenMode.conversation ? _conversationSilenceMs : 30000,
       });
       if (started != true) {
         return SttListenResult.failure(
@@ -1356,7 +1386,7 @@ class SttService {
         );
       }
       return await completer.future.timeout(
-        _listenFor + const Duration(seconds: 5),
+        _listenForForMode(mode) + const Duration(seconds: 5),
         onTimeout: () async {
           await _nativeSttChannel.invokeMethod<String>('cancel');
           commitActiveSession();

@@ -51,6 +51,26 @@ void main() {
       expect(structure.explicitFieldClauses['recurrence_rule'], '매주');
     });
 
+    test('removes trailing repeat word from monthly recurrence title', () {
+      const rawText = '매월 1일 톨비 작성 반복';
+      final structure = service.analyze(rawText);
+
+      final localTitle = service.normalizeLocalVoiceTitle(
+        rawText,
+        referenceText: rawText,
+        structured: structure,
+      );
+      final parsedTitle = service.normalizeParsedScheduleTitle(
+        '톨비 작성 반복',
+        rawText: rawText,
+        structured: structure,
+      );
+
+      expect(localTitle, '톨비 작성');
+      expect(parsedTitle, '톨비 작성');
+      expect(structure.explicitFieldClauses['recurrence_rule'], '매월');
+    });
+
     test('keeps person words in title and extracts participants', () {
       const rawText = '내일 오전 11시 팀장님 원주세브란스방문';
 

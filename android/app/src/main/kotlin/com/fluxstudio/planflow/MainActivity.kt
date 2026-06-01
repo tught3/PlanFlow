@@ -776,7 +776,7 @@ private class PlanFlowSttChannel(
             ?: "dictation"
         listenSilenceMs = (args?.get("silenceMs") as? Number)?.toLong()
             ?: if (listenMode == "conversation") {
-                10000L
+                300000L
             } else {
                 30000L
             }

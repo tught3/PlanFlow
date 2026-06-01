@@ -54,6 +54,15 @@ class DepartureAlarmService {
   );
   static const Duration monitorInterval = Duration(minutes: 30);
   static const Duration monitorUrgentInterval = Duration(minutes: 15);
+  static const int defaultRepeatIntervalMin = 10;
+  static const List<int> allowedRepeatIntervalMinutes = <int>[
+    0,
+    5,
+    10,
+    15,
+    30,
+    60,
+  ];
   static const Duration monitorUrgentWindow = Duration(hours: 6);
   static const Duration monitorLookAhead = Duration(hours: 24);
   static const String _monitorAlarmId = 'departure_alarm:monitor';
@@ -77,6 +86,10 @@ class DepartureAlarmService {
       'departure_alarm:last_monitor_skipped_reason';
   static const String _monitorScheduledKey =
       'departure_alarm:monitor_scheduled';
+  static const String _repeatIntervalMinKey =
+      'departure_alarm:repeat_interval_min';
+  static const String _lastVisibleNotifyPrefix =
+      'departure_alarm:last_visible_notify_at:';
 
   final AppPermissionService? _permissionService;
   final Future<GeoPoint?> Function()? _currentLocationProvider;
@@ -115,9 +128,27 @@ class DepartureAlarmService {
   }
 
   DepartureAcknowledgementStore get _acknowledgements =>
-      _acknowledgementStore ?? const SharedPreferencesDepartureAcknowledgementStore();
+      _acknowledgementStore ??
+      const SharedPreferencesDepartureAcknowledgementStore();
 
   DateTime get _currentTime => (_now ?? DateTime.now)();
+
+  static Future<int> loadRepeatIntervalMinutes() async {
+    final preferences = await SharedPreferences.getInstance();
+    final value = preferences.getInt(_repeatIntervalMinKey);
+    if (value != null && allowedRepeatIntervalMinutes.contains(value)) {
+      return value;
+    }
+    return defaultRepeatIntervalMin;
+  }
+
+  static Future<void> saveRepeatIntervalMinutes(int minutes) async {
+    final normalized = allowedRepeatIntervalMinutes.contains(minutes)
+        ? minutes
+        : defaultRepeatIntervalMin;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setInt(_repeatIntervalMinKey, normalized);
+  }
 
   Future<DepartureAlarmScheduleResult> scheduleForEvent(
     EventModel event, {
@@ -149,9 +180,16 @@ class DepartureAlarmService {
         ),
       );
     }
+    if (fireDueDeparture && !await _canFireDueDeparture(event.id)) {
+      return _recordAndReturnScheduleResult(
+        event,
+        const DepartureAlarmScheduleResult.skipped(
+          'departure_repeat_throttled',
+        ),
+      );
+    }
 
-    final origin = await (_currentLocationProvider?.call() ??
-        _permissions.getCurrentLocation());
+    final origin = await _resolveOriginLocation();
     if (origin == null) {
       if (fireDueDeparture) {
         final notifyAt = _currentTime.add(_immediateNotificationDelay);
@@ -162,6 +200,7 @@ class DepartureAlarmService {
           safetyMargin: safetyMarginOverride ??
               const Duration(minutes: defaultSafetyMarginMin),
         );
+        await _recordDueDepartureFired(event.id);
         return _recordAndReturnScheduleResult(
           event,
           DepartureAlarmScheduleResult.scheduled(
@@ -218,6 +257,9 @@ class DepartureAlarmService {
         travelMinutes: estimate.minutes,
         safetyMargin: resolvedSafetyMargin,
       );
+      if (fireDueDeparture) {
+        await _recordDueDepartureFired(event.id);
+      }
     }
 
     if (rescheduleMonitor) {
@@ -346,11 +388,11 @@ class DepartureAlarmService {
         skipped += 1;
       }
     }
+    final urgentInterval = await _urgentMonitorInterval();
     final result = DepartureAlarmMonitorResult(
       scheduled: scheduled,
       skipped: skipped,
-      nextMonitorInterval:
-          hasUrgentEvent ? monitorUrgentInterval : monitorInterval,
+      nextMonitorInterval: hasUrgentEvent ? urgentInterval : monitorInterval,
     );
     await _recordMonitorStatus(result);
     return result;
@@ -444,7 +486,8 @@ class DepartureAlarmService {
       travelMinutes,
       safetyMargin: safetyMargin,
     );
-    final criticalResult = await _notifications.scheduleDepartureAlarmWithResult(
+    final criticalResult =
+        await _notifications.scheduleDepartureAlarmWithResult(
       id: notificationId,
       title: '지금 출발해야 해요',
       body: body,
@@ -605,6 +648,80 @@ class DepartureAlarmService {
       return monitorInterval;
     }
     return interval;
+  }
+
+  Future<Duration> _urgentMonitorInterval() async {
+    final minutes = await loadRepeatIntervalMinutes();
+    if (minutes <= 0) {
+      return monitorInterval;
+    }
+    return Duration(minutes: minutes);
+  }
+
+  Future<bool> _canFireDueDeparture(String eventId) async {
+    final minutes = await loadRepeatIntervalMinutes();
+    if (minutes <= 0) {
+      final previous = await _lastDueDepartureFiredAt(eventId);
+      return previous == null;
+    }
+    final previous = await _lastDueDepartureFiredAt(eventId);
+    if (previous == null) {
+      return true;
+    }
+    return _currentTime.difference(previous) >= Duration(minutes: minutes);
+  }
+
+  Future<DateTime?> _lastDueDepartureFiredAt(String eventId) async {
+    final preferences = await SharedPreferences.getInstance();
+    return _parseDateTime(
+      preferences.getString('$_lastVisibleNotifyPrefix$eventId'),
+    );
+  }
+
+  Future<void> _recordDueDepartureFired(String eventId) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      '$_lastVisibleNotifyPrefix$eventId',
+      _currentTime.toIso8601String(),
+    );
+  }
+
+  Future<GeoPoint?> _resolveOriginLocation() async {
+    final origin = await (_currentLocationProvider?.call() ??
+        _permissions.getCurrentLocation());
+    if (origin != null) {
+      await _cacheLastOrigin(origin);
+      return origin;
+    }
+    return _loadCachedOrigin();
+  }
+
+  Future<void> _cacheLastOrigin(GeoPoint origin) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setDouble(
+        'departure_alarm:last_origin_lat', origin.latitude);
+    await preferences.setDouble(
+        'departure_alarm:last_origin_lng', origin.longitude);
+    await preferences.setString(
+      'departure_alarm:last_origin_at',
+      _currentTime.toIso8601String(),
+    );
+  }
+
+  Future<GeoPoint?> _loadCachedOrigin() async {
+    final preferences = await SharedPreferences.getInstance();
+    final lat = preferences.getDouble('departure_alarm:last_origin_lat');
+    final lng = preferences.getDouble('departure_alarm:last_origin_lng');
+    final savedAt = _parseDateTime(
+      preferences.getString('departure_alarm:last_origin_at'),
+    );
+    if (lat == null || lng == null || savedAt == null) {
+      return null;
+    }
+    if (_currentTime.difference(savedAt) > const Duration(hours: 6)) {
+      return null;
+    }
+    return GeoPoint(latitude: lat, longitude: lng);
   }
 
   String? _currentSupabaseUserId() {
@@ -849,7 +966,9 @@ Future<void> _departureAlarmPreflightCallback(
     debugPrint('Departure alarm preflight skipped: $error');
     debugPrintStack(stackTrace: stackTrace);
   } finally {
-    await const DepartureAlarmService().scheduleNextMonitor(
-        interval: DepartureAlarmService.monitorUrgentInterval);
+    final service = const DepartureAlarmService();
+    await service.scheduleNextMonitor(
+      interval: await service._urgentMonitorInterval(),
+    );
   }
 }

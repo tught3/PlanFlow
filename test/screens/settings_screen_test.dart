@@ -14,6 +14,7 @@ import 'package:planflow/services/auth_service.dart';
 import 'package:planflow/services/backup_service.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
+import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
@@ -407,6 +408,7 @@ void main() {
     expect(section, findsOneWidget);
     expect(find.text('출발 여유 시간'), findsOneWidget);
     expect(find.text('출발 사전 알림'), findsOneWidget);
+    expect(find.text('출발 알림 반복 주기'), findsOneWidget);
 
     final safetyMarginSelector =
         find.byKey(const ValueKey('settings-departure-safety-margin-selector'));
@@ -435,6 +437,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(settingsRepository.savedSettings!.departPreAlarmOffset, 31);
+
+    final repeatSelector =
+        find.byKey(const ValueKey('settings-departure-repeat-selector'));
+    await _scrollUntilHitTestable(tester, repeatSelector);
+    await tester.tap(
+      find.descendant(
+        of: repeatSelector,
+        matching: find.text('15분'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(await DepartureAlarmService.loadRepeatIntervalMinutes(), 15);
   });
 
   testWidgets('SettingsScreen saves voice auto-start toggle', (tester) async {
@@ -525,7 +540,8 @@ void main() {
     );
   });
 
-  testWidgets('Naver calendar button runs Open API quick sync and shows feedback',
+  testWidgets(
+      'Naver calendar button runs Open API quick sync and shows feedback',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1093,8 +1109,11 @@ class _FakeDeviceEventRepository extends EventRepository {
 
 class _FakeNaverCalDavService extends NaverCalDavService {
   _FakeNaverCalDavService({
+    // ignore: unused_element_parameter
     this.initialHasCredentials = false,
+    // ignore: unused_element_parameter
     this.syncDelay = Duration.zero,
+    // ignore: unused_element_parameter
     this.syncResult = const NaverCalDavSyncResult(
       success: true,
       message: '네이버 CalDAV 연결은 성공했지만 가져올 일정이 없습니다.',

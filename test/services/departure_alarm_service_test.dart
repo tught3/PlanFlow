@@ -10,6 +10,8 @@ import 'package:planflow/services/travel_time_buffer_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
@@ -461,8 +463,10 @@ void main() {
 
     final result = await service.refreshUpcoming(userId: 'user-1');
 
-    expect(result.nextMonitorInterval,
-        DepartureAlarmService.monitorUrgentInterval);
+    expect(
+      result.nextMonitorInterval,
+      Duration(minutes: DepartureAlarmService.defaultRepeatIntervalMin),
+    );
     expect(result.scheduled, 1);
   });
 
@@ -502,12 +506,105 @@ void main() {
     expect(result.nextMonitorInterval, DepartureAlarmService.monitorInterval);
     expect(result.scheduled, 1);
   });
+
+  test('fireDueDeparture is throttled by configured repeat interval', () async {
+    final now = DateTime(2026, 5, 8, 9);
+    await DepartureAlarmService.saveRepeatIntervalMinutes(15);
+    final notifications = _FakeNotificationService();
+    final event = EventModel(
+      id: 'event-repeat',
+      userId: 'user-1',
+      title: '판교 방문',
+      startAt: DateTime(2026, 5, 8, 10),
+      location: '판교',
+      locationLat: 37.39,
+      locationLng: 127.11,
+    );
+    final service = DepartureAlarmService(
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127),
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 50),
+          source: TravelTimeBufferSource.coordinates,
+          reason: 'test',
+        ),
+      ),
+      notificationService: notifications,
+      preflightScheduler: _FakeDeparturePreflightScheduler(
+        shouldSchedule: false,
+      ).call,
+      now: () => now,
+    );
+
+    final first = await service.scheduleForEvent(
+      event,
+      fireDueDeparture: true,
+      rescheduleMonitor: false,
+    );
+    final second = await service.scheduleForEvent(
+      event,
+      fireDueDeparture: true,
+      rescheduleMonitor: false,
+    );
+
+    expect(first.isScheduled, isTrue);
+    expect(second.skippedReason, 'departure_repeat_throttled');
+    expect(notifications.criticalTitles, hasLength(1));
+  });
+
+  test('uses cached recent origin when live current location is unavailable',
+      () async {
+    final now = DateTime(2026, 5, 8, 9);
+    final event = EventModel(
+      id: 'event-cached-origin',
+      userId: 'user-1',
+      title: '판교 방문',
+      startAt: DateTime(2026, 5, 8, 10),
+      location: '판교',
+      locationLat: 37.39,
+      locationLng: 127.11,
+    );
+    final travel = _FakeTravelTimeBufferService(
+      routeEstimate: const TravelTimeBufferEstimate(
+        buffer: Duration(minutes: 20),
+        source: TravelTimeBufferSource.coordinates,
+        reason: 'test',
+      ),
+    );
+    final preflight = _FakeDeparturePreflightScheduler(shouldSchedule: false);
+
+    await DepartureAlarmService(
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127.0),
+      travelTimeBufferService: travel,
+      notificationService: _FakeNotificationService(),
+      preflightScheduler: preflight.call,
+      now: () => now,
+    ).scheduleForEvent(event, rescheduleMonitor: false);
+
+    final notifications = _FakeNotificationService();
+    final second = await DepartureAlarmService(
+      currentLocationProvider: () async => null,
+      travelTimeBufferService: travel,
+      notificationService: notifications,
+      preflightScheduler: preflight.call,
+      now: () => now.add(const Duration(minutes: 1)),
+    ).scheduleForEvent(event, rescheduleMonitor: false);
+
+    expect(second.isScheduled, isTrue);
+    expect(travel.lastOriginLat, 37.5);
+    expect(travel.lastOriginLng, 127.0);
+    expect(notifications.criticalTitles, contains('지금 출발해야 해요'));
+  });
 }
 
 class _FakeTravelTimeBufferService extends TravelTimeBufferService {
   _FakeTravelTimeBufferService({required this.routeEstimate});
 
   final TravelTimeBufferEstimate routeEstimate;
+  double? lastOriginLat;
+  double? lastOriginLng;
 
   @override
   Future<TravelTimeBufferEstimate> estimateWithMapApis({
@@ -518,6 +615,8 @@ class _FakeTravelTimeBufferService extends TravelTimeBufferService {
     MapTravelMode mode = MapTravelMode.car,
     String? locationText,
   }) async {
+    lastOriginLat = originLat;
+    lastOriginLng = originLng;
     return routeEstimate;
   }
 }

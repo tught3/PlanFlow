@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -180,8 +183,7 @@ void main() {
 
     test('routes departure notification action and body tap separately', () {
       final tappedDeparture = NotificationResponse(
-        notificationResponseType:
-            NotificationResponseType.selectedNotification,
+        notificationResponseType: NotificationResponseType.selectedNotification,
         payload: 'departure:event-1',
       );
       final acknowledgedDeparture = NotificationResponse(
@@ -199,6 +201,21 @@ void main() {
         NotificationService.routeForNotificationResponse(acknowledgedDeparture),
         '${AppRoutes.eventDetail}/event-1',
       );
+    });
+
+    test('departure notification strings do not contain mojibake', () {
+      final source = <String>[
+        'lib/services/notification_service.dart',
+        'lib/services/departure_alarm_service.dart',
+        'lib/services/smart_preparation_alarm_service.dart',
+      ].map((path) => File(path).readAsStringSync(encoding: utf8)).join('\n');
+
+      expect(
+        source,
+        isNot(matches(RegExp(r'吏|湲|異|쒕|쇱|덉|볦|튂|以묒|뚮|媛|諛|�'))),
+      );
+      expect(source, contains('이미 지난 출발 알림은 예약하지 않았습니다.'));
+      expect(source, contains('놓치면 안 되는 중요 알림'));
     });
   });
 }

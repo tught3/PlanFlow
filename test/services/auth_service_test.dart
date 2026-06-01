@@ -19,6 +19,16 @@ void main() {
       );
     });
 
+    test('Naver calendar connection requests calendar consent scope', () {
+      expect(
+        AuthService.oauthScopesFor(
+          PlanFlowOAuthProvider.naver,
+          forCalendar: true,
+        ),
+        'email,calendar',
+      );
+    });
+
     test('Naver recheck uses reprompt without changing normal login', () {
       expect(
         AuthService.oauthQueryParamsFor(PlanFlowOAuthProvider.naver),

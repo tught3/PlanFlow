@@ -26,6 +26,7 @@ import '../../services/briefing_scheduler_service.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/calendar_sync_service.dart';
 import '../../services/daily_backup_scheduler_service.dart';
+import '../../services/departure_alarm_service.dart';
 import '../../services/device_calendar_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
@@ -117,6 +118,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _prepPreAlarmOffset = 30;
   int _departPreAlarmOffset = 30;
   int _departureSafetyMarginMin = 20;
+  int _departureRepeatIntervalMin =
+      DepartureAlarmService.defaultRepeatIntervalMin;
   String _travelMode = 'car';
   bool _voiceAutoStart = false;
   bool _voiceCorrectionLearningEnabled = true;
@@ -321,11 +324,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadWidgetDisplaySettings() async {
     final hideWeekends = await _homeWidgetService.areWeekendsHidden();
+    final departureRepeatInterval =
+        await DepartureAlarmService.loadRepeatIntervalMinutes();
     if (!mounted) {
       return;
     }
     setState(() {
       _hideWidgetWeekends = hideWeekends;
+      _departureRepeatIntervalMin = departureRepeatInterval;
     });
   }
 
@@ -533,17 +539,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       final authService = _authService;
       if (authService == null) {
-        setState(() { _isTestingNaverCalDav = false; });
+        setState(() {
+          _isTestingNaverCalDav = false;
+        });
         _showSnack('Supabase 설정 후 네이버 캘린더를 연결할 수 있습니다.');
         return false;
       }
 
       try {
-        final launched =
-            await authService.connectCalendarProvider(PlanFlowOAuthProvider.naver);
+        final launched = await authService
+            .connectCalendarProvider(PlanFlowOAuthProvider.naver);
         if (!launched) {
           if (mounted) {
-            setState(() { _isTestingNaverCalDav = false; });
+            setState(() {
+              _isTestingNaverCalDav = false;
+            });
             _showSnack('네이버 캘린더 권한 동의 화면을 열지 못했습니다. 다시 시도해 주세요.');
           }
           return false;
@@ -569,7 +579,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         debugPrint('Naver calendar connect failed: $error');
         debugPrintStack(stackTrace: stackTrace);
         if (mounted) {
-          setState(() { _isTestingNaverCalDav = false; });
+          setState(() {
+            _isTestingNaverCalDav = false;
+          });
           _showSnack('네이버 캘린더 연결에 실패했습니다. 다시 시도해 주세요.');
         }
         return false;
@@ -2063,6 +2075,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _prepPreAlarmOffset = 30;
       _departPreAlarmOffset = 30;
       _departureSafetyMarginMin = 20;
+      _departureRepeatIntervalMin =
+          DepartureAlarmService.defaultRepeatIntervalMin;
       _travelMode = 'car';
       _voiceAutoStart = false;
       _voiceCorrectionLearningEnabled = true;
@@ -2075,6 +2089,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PlanFlowRegionController.instance.reset();
     });
     unawaited(_homeWidgetService.setHideWeekends(false));
+    unawaited(DepartureAlarmService.saveRepeatIntervalMinutes(
+      DepartureAlarmService.defaultRepeatIntervalMin,
+    ));
     unawaited(_persistSettings(successMessage: '설정을 기본값으로 되돌렸습니다.'));
   }
 
@@ -2203,6 +2220,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
+          const SizedBox(height: 16),
+          _SmartAlarmControl(
+            title: '출발 알림 반복 주기',
+            helperText: '출발 확인 전 같은 출발 알림을 다시 울릴 최소 간격입니다.',
+            child: _buildDepartureRepeatIntervalSelector(
+              key: const ValueKey('settings-departure-repeat-selector'),
+              value: _departureRepeatIntervalMin,
+              onChanged: (value) {
+                setState(() {
+                  _departureRepeatIntervalMin = value;
+                });
+                unawaited(
+                  DepartureAlarmService.saveRepeatIntervalMinutes(value),
+                );
+              },
+            ),
+          ),
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -2276,6 +2310,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ButtonSegment<int>(value: 10, label: Text('10분')),
           ButtonSegment<int>(value: 20, label: Text('20분')),
           ButtonSegment<int>(value: 30, label: Text('30분')),
+        ],
+        selected: <int>{selected},
+        onSelectionChanged: (selected) => onChanged(selected.first),
+      ),
+    );
+  }
+
+  Widget _buildDepartureRepeatIntervalSelector({
+    required Key key,
+    required int value,
+    required ValueChanged<int> onChanged,
+  }) {
+    final selected =
+        DepartureAlarmService.allowedRepeatIntervalMinutes.contains(value)
+            ? value
+            : DepartureAlarmService.defaultRepeatIntervalMin;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SegmentedButton<int>(
+        key: key,
+        showSelectedIcon: false,
+        segments: const <ButtonSegment<int>>[
+          ButtonSegment<int>(value: 0, label: Text('반복 안 함')),
+          ButtonSegment<int>(value: 5, label: Text('5분')),
+          ButtonSegment<int>(value: 10, label: Text('10분')),
+          ButtonSegment<int>(value: 15, label: Text('15분')),
+          ButtonSegment<int>(value: 30, label: Text('30분')),
+          ButtonSegment<int>(value: 60, label: Text('60분')),
         ],
         selected: <int>{selected},
         onSelectionChanged: (selected) => onChanged(selected.first),
