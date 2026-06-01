@@ -1521,3 +1521,7 @@
 - Naver Open API access checks now verify actual calendar permission via `NaverCalendarPermissionService.refreshStatus()` instead of treating any stored provider token as sufficient.
 - Settings no longer shows a false "권한 동의가 확인되지 않았습니다" snackbar two seconds after launching external Naver OAuth; it now asks the user to complete consent and retry sync after returning.
 - Verification passed: `test/services/stt_service_test.dart`, `test/services/naver_open_api_calendar_service_test.dart`, targeted `test/screens/settings_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, debug APK build, update install on `192.168.0.102:41013`, and `am start` launch check.
+## 2026-06-01 STT Segmented Session Quiet-Restart Follow-up
+- Conversation-mode Android STT now requests segmented sessions and skips the extra cancel step when restarting the same conversation listen, which should reduce repeated start beeps on newer devices that support segmented recognition.
+- The native STT regression test now checks for the segmented-session intent path and the segmented-session end callback in MainActivity.
+- Verification passed again: `scripts/flutter-local.ps1 test test/services/stt_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install` on `192.168.0.102:41013`, and `am start` launch check.

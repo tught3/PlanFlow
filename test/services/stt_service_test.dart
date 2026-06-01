@@ -46,6 +46,14 @@ void main() {
     );
     expect(
       source,
+      contains('RecognizerIntent.EXTRA_SEGMENTED_SESSION'),
+    );
+    expect(
+      source,
+      contains('override fun onEndOfSegmentedSession()'),
+    );
+    expect(
+      source,
       isNot(contains(
           'invokeIfActive("stopped", mapOf("text" to latestPartialText')),
     );

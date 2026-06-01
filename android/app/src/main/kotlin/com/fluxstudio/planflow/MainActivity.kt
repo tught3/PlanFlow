@@ -690,6 +690,7 @@ private class PlanFlowSttChannel(
     private var startGeneration = 0
     private var listenMode = "dictation"
     private var listenSilenceMs = 30000L
+    private var segmentedSessionMode = false
     private var warmupRetryUsed = false
     private var isDisposed = false
 
@@ -780,6 +781,7 @@ private class PlanFlowSttChannel(
             } else {
                 30000L
             }
+        segmentedSessionMode = listenMode == "conversation"
         warmupRetryUsed = false
 
         listening = false
@@ -838,6 +840,12 @@ private class PlanFlowSttChannel(
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)
+            if (segmentedSessionMode) {
+                putExtra(
+                    RecognizerIntent.EXTRA_SEGMENTED_SESSION,
+                    RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
+                )
+            }
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
                 effectiveSilenceMs,
@@ -879,7 +887,7 @@ private class PlanFlowSttChannel(
             recognizer?.cancel()
             recognizer?.destroy()
             recognizer = null
-        } else {
+        } else if (listenMode != "conversation") {
             recognizer?.cancel()
         }
         val generation = ++startGeneration
@@ -990,6 +998,27 @@ private class PlanFlowSttChannel(
             return
         }
         restartSoon(reason = "final")
+    }
+
+    override fun onSegmentResults(segmentResults: Bundle) {
+        logPhase("segment_results", mapOf("conversation" to (listenMode == "conversation")))
+        if (userRequestedStop) {
+            return
+        }
+        publishText(segmentResults, phase = "segment")
+    }
+
+    override fun onEndOfSegmentedSession() {
+        logPhase("segment_session_end", mapOf("conversation" to (listenMode == "conversation")))
+        if (userRequestedStop) {
+            listening = false
+            invokeIfActive("stopped", mapOf("text" to stopSnapshotText, "sessionId" to sessionId))
+            return
+        }
+        if (listenMode == "conversation") {
+            stopSnapshotText = latestPartialText
+            restartSoon(reason = "conversation_segmented_end")
+        }
     }
 
     override fun onPartialResults(partialResults: Bundle?) {
