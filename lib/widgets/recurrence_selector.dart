@@ -219,6 +219,11 @@ class RecurrenceSelector extends StatelessWidget {
                         const SizedBox(height: 10),
                       ],
                       if (draft.frequency == 'monthly') ...[
+                        _MonthlyRecurrenceSelector(
+                          value: draft,
+                          onChanged: update,
+                        ),
+                        const SizedBox(height: 10),
                         _RecurrenceSummary(text: _monthlySummary(draft)),
                         const SizedBox(height: 10),
                       ],
@@ -375,6 +380,213 @@ class _WeeklyByDaySelector extends StatelessWidget {
   }
 }
 
+enum _MonthlyRecurrenceMode {
+  dayOfMonth,
+  weekdayOrdinal,
+}
+
+class _MonthlyRecurrenceSelector extends StatelessWidget {
+  const _MonthlyRecurrenceSelector({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final RecurrenceSelection value;
+  final ValueChanged<RecurrenceSelection> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final mode = _monthlyMode(value);
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.primaryFaint.withValues(alpha: 0.32),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '매월 반복 방식',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              ChoiceChip(
+                label: const Text('날짜'),
+                selected: mode == _MonthlyRecurrenceMode.dayOfMonth,
+                onSelected: (_) => onChanged(
+                  _setMonthlyMode(
+                    value,
+                    _MonthlyRecurrenceMode.dayOfMonth,
+                  ),
+                ),
+              ),
+              ChoiceChip(
+                label: const Text('요일'),
+                selected: mode == _MonthlyRecurrenceMode.weekdayOrdinal,
+                onSelected: (_) => onChanged(
+                  _setMonthlyMode(
+                    value,
+                    _MonthlyRecurrenceMode.weekdayOrdinal,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (mode == _MonthlyRecurrenceMode.dayOfMonth) ...[
+            _MonthlyDaySelector(
+              value: value,
+              onChanged: onChanged,
+            ),
+          ] else ...[
+            _MonthlyOrdinalWeekdaySelector(
+              value: value,
+              onChanged: onChanged,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MonthlyDaySelector extends StatelessWidget {
+  const _MonthlyDaySelector({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final RecurrenceSelection value;
+  final ValueChanged<RecurrenceSelection> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedDay = _selectedMonthlyDay(value);
+    return Row(
+      children: [
+        Text(
+          '매월',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: PlanFlowColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+        const SizedBox(width: 8),
+        DropdownButton<int>(
+          value: selectedDay,
+          underline: const SizedBox.shrink(),
+          items: List.generate(
+            31,
+            (index) => index + 1,
+          ).map((day) {
+            return DropdownMenuItem<int>(
+              value: day,
+              child: Text('$day일'),
+            );
+          }).toList(growable: false),
+          onChanged: (day) {
+            if (day == null) {
+              return;
+            }
+            onChanged(_setMonthlyDay(value, day));
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _MonthlyOrdinalWeekdaySelector extends StatelessWidget {
+  const _MonthlyOrdinalWeekdaySelector({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final RecurrenceSelection value;
+  final ValueChanged<RecurrenceSelection> onChanged;
+
+  static const _orders = <(int, String)>[
+    (1, '첫째'),
+    (2, '둘째'),
+    (3, '셋째'),
+    (4, '넷째'),
+    (-1, '마지막'),
+  ];
+
+  static const _weekdays = <(String, String)>[
+    ('MO', '월'),
+    ('TU', '화'),
+    ('WE', '수'),
+    ('TH', '목'),
+    ('FR', '금'),
+    ('SA', '토'),
+    ('SU', '일'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = _selectedMonthlyOrdinal(value);
+    final selectedOrder = selected.order;
+    final selectedWeekday = selected.weekday;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final order in _orders)
+              ChoiceChip(
+                label: Text(order.$2),
+                selected: selectedOrder == order.$1,
+                onSelected: (_) {
+                  onChanged(
+                    _setMonthlyOrdinal(
+                      value,
+                      order: order.$1,
+                      weekday: selectedWeekday,
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final weekday in _weekdays)
+              FilterChip(
+                label: Text(weekday.$2),
+                selected: selectedWeekday == weekday.$1,
+                onSelected: (_) {
+                  onChanged(
+                    _setMonthlyOrdinal(
+                      value,
+                      order: selectedOrder,
+                      weekday: weekday.$1,
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _RecurrenceSummary extends StatelessWidget {
   const _RecurrenceSummary({required this.text});
 
@@ -408,14 +620,147 @@ String _monthlySummary(RecurrenceSelection value) {
     orElse: () => '',
   );
   if (byMonthDay.isNotEmpty) {
-    return '날짜 기준: 매월 ${byMonthDay.replaceFirst('BYMONTHDAY=', '')}일';
+    return '매월 ${byMonthDay.replaceFirst('BYMONTHDAY=', '')}일 반복';
   }
   final byDay = parts.firstWhere(
     (part) => part.startsWith('BYDAY='),
     orElse: () => '',
   );
   if (byDay.isNotEmpty) {
-    return '요일 기준: ${byDay.replaceFirst('BYDAY=', '')}';
+    final tokens = byDay.replaceFirst('BYDAY=', '').split(',');
+    if (tokens.isNotEmpty) {
+      final first = _formatMonthlyByDay(tokens.first);
+      return first ?? '매월 ${byDay.replaceFirst('BYDAY=', '')} 반복';
+    }
   }
-  return '매월 반복합니다. 음성으로 “매월 15일” 또는 “매월 첫 번째 월요일”처럼 말하면 더 구체적으로 저장됩니다.';
+  return '매월 15일 또는 매월 첫 번째 월요일처럼 말하면 더 구체적으로 저장됩니다.';
+}
+
+_MonthlyRecurrenceMode _monthlyMode(RecurrenceSelection value) {
+  final parts = value.preservedParts.map((part) => part.toUpperCase()).toList();
+  final byMonthDay = parts.any((part) => part.startsWith('BYMONTHDAY='));
+  if (byMonthDay) {
+    return _MonthlyRecurrenceMode.dayOfMonth;
+  }
+  final byDay = parts.any((part) => part.startsWith('BYDAY='));
+  if (byDay) {
+    return _MonthlyRecurrenceMode.weekdayOrdinal;
+  }
+  return _MonthlyRecurrenceMode.dayOfMonth;
+}
+
+int _selectedMonthlyDay(RecurrenceSelection value) {
+  final parts = value.preservedParts.map((part) => part.toUpperCase()).toList();
+  final byMonthDay = parts.firstWhere(
+    (part) => part.startsWith('BYMONTHDAY='),
+    orElse: () => '',
+  );
+  final parsed = int.tryParse(byMonthDay.replaceFirst('BYMONTHDAY=', ''));
+  return parsed != null && parsed >= 1 && parsed <= 31 ? parsed : 1;
+}
+
+({int order, String weekday}) _selectedMonthlyOrdinal(
+  RecurrenceSelection value,
+) {
+  final parts = value.preservedParts.map((part) => part.toUpperCase()).toList();
+  final byDay = parts.firstWhere(
+    (part) => part.startsWith('BYDAY='),
+    orElse: () => '',
+  );
+  final token = byDay.replaceFirst('BYDAY=', '');
+  final first = token.split(',').firstWhere(
+        (item) => item.isNotEmpty,
+        orElse: () => '',
+      );
+  final match = RegExp(r'^(-?\d+)?([A-Z]{2})$').firstMatch(first);
+  final weekday = match?.group(2) ?? 'MO';
+  final order = int.tryParse(match?.group(1) ?? '') ?? 1;
+  return (order: order, weekday: weekday);
+}
+
+RecurrenceSelection _setMonthlyMode(
+  RecurrenceSelection value,
+  _MonthlyRecurrenceMode mode,
+) {
+  if (mode == _MonthlyRecurrenceMode.dayOfMonth) {
+    return _setMonthlyDay(value, _selectedMonthlyDay(value));
+  }
+  final selected = _selectedMonthlyOrdinal(value);
+  return _setMonthlyOrdinal(
+    value,
+    order: selected.order,
+    weekday: selected.weekday,
+  );
+}
+
+RecurrenceSelection _setMonthlyDay(
+  RecurrenceSelection value,
+  int day,
+) {
+  final next = _replaceMonthlyParts(
+    value.preservedParts,
+    <String>[
+      'BYMONTHDAY=$day',
+    ],
+  );
+  return value.copyWith(preservedParts: next);
+}
+
+RecurrenceSelection _setMonthlyOrdinal(
+  RecurrenceSelection value, {
+  required int order,
+  required String weekday,
+}) {
+  final next = _replaceMonthlyParts(
+    value.preservedParts,
+    <String>[
+      'BYDAY=${order == -1 ? '-1' : order}$weekday',
+    ],
+  );
+  return value.copyWith(preservedParts: next);
+}
+
+List<String> _replaceMonthlyParts(
+  List<String> parts,
+  List<String> monthParts,
+) {
+  final next = parts
+      .where(
+        (part) =>
+            !part.toUpperCase().startsWith('BYMONTHDAY=') &&
+            !part.toUpperCase().startsWith('BYDAY='),
+      )
+      .toList();
+  next.addAll(monthParts);
+  return next;
+}
+
+String? _formatMonthlyByDay(String token) {
+  final match = RegExp(r'^(-?\d+)?([A-Z]{2})$').firstMatch(token);
+  if (match == null) {
+    return null;
+  }
+  final order = int.tryParse(match.group(1) ?? '') ?? 1;
+  final weekday = switch (match.group(2)) {
+    'MO' => '월요일',
+    'TU' => '화요일',
+    'WE' => '수요일',
+    'TH' => '목요일',
+    'FR' => '금요일',
+    'SA' => '토요일',
+    'SU' => '일요일',
+    _ => null,
+  };
+  if (weekday == null) {
+    return null;
+  }
+  final orderLabel = switch (order) {
+    1 => '첫 번째',
+    2 => '두 번째',
+    3 => '세 번째',
+    4 => '네 번째',
+    -1 => '마지막',
+    _ => '$order번째',
+  };
+  return '매월 $orderLabel $weekday 반복';
 }

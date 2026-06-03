@@ -90,6 +90,26 @@ void main() {
       expect(structure.explicitFieldClauses['recurrence_rule'], '매월');
     });
 
+    test('removes ordinal monthly recurrence phrase from the title', () {
+      const rawText = '매월 첫 번째 월요일 법인카드 정리 반복';
+      final structure = service.analyze(rawText);
+
+      final localTitle = service.normalizeLocalVoiceTitle(
+        rawText,
+        referenceText: rawText,
+        structured: structure,
+      );
+      final parsedTitle = service.normalizeParsedScheduleTitle(
+        '매월 첫 번째 월요일 법인카드 정리 반복',
+        rawText: rawText,
+        structured: structure,
+      );
+
+      expect(localTitle, '법인카드 정리');
+      expect(parsedTitle, '법인카드 정리');
+      expect(structure.explicitFieldClauses['recurrence_rule'], '매월');
+    });
+
     test('keeps person words in title and extracts participants', () {
       const rawText = '내일 오전 11시 팀장님 원주세브란스방문';
 

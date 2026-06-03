@@ -13,4 +13,13 @@ void main() {
     expect(selection.toRRule(), contains('COUNT=10'));
     expect(selection.toRRule(), contains('UNTIL=20260630T235959Z'));
   });
+
+  test('RecurrenceSelection preserves monthly ordinal weekday rule', () {
+    final selection = RecurrenceSelection.fromRRule(
+      'FREQ=MONTHLY;BYDAY=1MO',
+    );
+
+    expect(selection.frequency, 'monthly');
+    expect(selection.toRRule(), contains('BYDAY=1MO'));
+  });
 }

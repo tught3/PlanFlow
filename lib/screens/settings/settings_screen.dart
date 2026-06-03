@@ -93,7 +93,8 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   late final SettingsRepository _settingsRepository;
   late final SettingsProvider _settingsProvider;
   late final BriefingSchedulerService _briefingSchedulerService;
@@ -131,6 +132,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _timeZoneId = PlanFlowRegions.korea.timeZoneId;
 
   CalendarSyncSummary? _calendarSyncSummary;
+  CalendarAutoSyncSnapshot? _calendarAutoSyncSnapshot;
   List<BackupSnapshot> _backups = const <BackupSnapshot>[];
 
   bool _isLoadingCalendarStatus = true;
@@ -176,6 +178,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _settingsRepository = widget._settingsRepository ??
         (AppEnv.isSupabaseReady
             ? SettingsRepository.supabase()
@@ -231,6 +234,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (AppEnv.isSupabaseReady) {
       authProvider.removeListener(_handleFeedbackAdminAuthChanged);
     }
@@ -245,6 +249,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _naverCalDavProgress.dispose();
     _naverCalDavLongRunning.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshCalendarConnectionState());
+    }
+  }
+
+  Future<void> _refreshCalendarConnectionState() async {
+    await Future.wait<void>([
+      _loadCalendarStatus().catchError((error, stackTrace) {
+        debugPrint('Calendar status refresh skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }),
+      _loadAutoSyncSnapshot().catchError((error, stackTrace) {
+        debugPrint('Calendar auto-sync snapshot refresh skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }),
+      _loadNaverCalDavState().catchError((error, stackTrace) {
+        debugPrint('Naver CalDAV state refresh skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }),
+    ]);
   }
 
   void _handleFeedbackAdminAuthChanged() {
@@ -350,7 +378,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadAutoSyncSnapshot() async {
-    await _calendarAutoSyncService.loadSnapshot();
+    final snapshot = await _calendarAutoSyncService.loadSnapshot();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _calendarAutoSyncSnapshot = snapshot;
+    });
   }
 
   Future<void> _openCriticalAlarmSoundSettings() async {
@@ -926,7 +960,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => AlertDialog(
         title: const Text('네이버 캘린더 동기화'),
         content: const Text(
-          '데이터가 많은 경우 오래 걸릴 수 있습니다. 보통 1~2분 사이에 완료됩니다. 먼저 최근 3개월과 앞으로 6개월 일정만 빠르게 가져옵니다.',
+          '가져오는 데 시간이 걸릴 수 있습니다. 앱을 백그라운드로 보내도 계속 진행됩니다. 먼저 최근 3개월과 앞으로 6개월을 빠르게 가져옵니다.',
         ),
         actions: [
           _buildDialogButtonBar(
@@ -950,7 +984,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (context) => PopScope(
         canPop: dismissible,
         child: AlertDialog(
-          title: const Text('네이버 일정 가져오는 중'),
+          title: const Text('네이버 일정 가져오기'),
           content: ValueListenableBuilder<bool>(
             valueListenable: _naverCalDavLongRunning,
             builder: (context, isLongRunning, _) {
@@ -969,14 +1003,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const SizedBox(height: 16),
                       Text(
                         isLongRunning
-                            ? '데이터가 많아 오래 걸릴 수 있습니다. 보통 1~2분 사이에 완료됩니다. 잠시만 기다려 주세요.'
-                            : '데이터가 많은 경우 오래 걸릴 수 있습니다.',
+                            ? '일정이 많아서 조금 오래 걸리고 있습니다. 앱을 닫아도 진행은 계속돼요.'
+                            : '가져오는 중입니다. 잠시만 기다려 주세요.',
                       ),
                       const SizedBox(height: 12),
                       Text(progress?.message ?? '캘린더 확인 중입니다.'),
                       Text(
-                        '앱을 백그라운드로 보내도 동기화는 계속됩니다. '
-                        '완료되면 다시 알려드릴게요.',
+                        '앱을 백그라운드로 보내도 계속 진행됩니다. 완료되면 알려드릴게요.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: PlanFlowColors.textSecondary,
                             ),
@@ -1005,7 +1038,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       if (dismissible) ...[
                         const SizedBox(height: 12),
                         Text(
-                          '창을 닫아도 동기화는 계속됩니다.',
+                          '이 창을 닫아도 계속 진행됩니다.',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ],
@@ -2334,22 +2367,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
         DepartureAlarmService.allowedRepeatIntervalMinutes.contains(value)
             ? value
             : DepartureAlarmService.defaultRepeatIntervalMin;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SegmentedButton<int>(
-        key: key,
-        showSelectedIcon: false,
-        segments: const <ButtonSegment<int>>[
-          ButtonSegment<int>(value: 0, label: Text('반복 안 함')),
-          ButtonSegment<int>(value: 5, label: Text('5분')),
-          ButtonSegment<int>(value: 10, label: Text('10분')),
-          ButtonSegment<int>(value: 15, label: Text('15분')),
-          ButtonSegment<int>(value: 30, label: Text('30분')),
-          ButtonSegment<int>(value: 60, label: Text('60분')),
-        ],
-        selected: <int>{selected},
-        onSelectionChanged: (selected) => onChanged(selected.first),
-      ),
+    const options = <(int, String)>[
+      (0, '없음'),
+      (5, '5분'),
+      (10, '10분'),
+      (15, '15분'),
+      (30, '30분'),
+      (60, '60분'),
+    ];
+    return Wrap(
+      key: key,
+      spacing: 6,
+      runSpacing: 6,
+      children: options.map((item) {
+        final isSelected = selected == item.$1;
+        return ChoiceChip(
+          label: Text(item.$2),
+          selected: isSelected,
+          onSelected: (_) => onChanged(item.$1),
+        );
+      }).toList(growable: false),
     );
   }
 
@@ -2685,7 +2722,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 label: '네이버 캘린더',
                                 value: _naverCalendarStatusLabel(),
                                 icon: Icons.event_available_outlined,
-                                isConfigured: _hasNaverCalDavCredentials,
+                                isConfigured: _isNaverCalendarConfigured(),
                               ),
                               const SizedBox(height: 12),
                               Row(
@@ -2985,10 +3022,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   String _naverCalendarStatusLabel() {
+    final autoSyncSnapshot = _naverCalendarAutoSyncSnapshot;
+    if (autoSyncSnapshot != null) {
+      return autoSyncSnapshot.message;
+    }
+    final summary = _calendarSyncSummary?.naver;
+    if (summary != null) {
+      return summary.message;
+    }
     if (_hasNaverCalDavCredentials) {
       return _lastNaverCalDavResult?.message ?? '네이버 캘린더 연결됨';
     }
     return '네이버 캘린더 연결 안 됨';
+  }
+
+  CalendarAutoSyncProviderSnapshot? get _naverCalendarAutoSyncSnapshot {
+    final snapshot = _calendarAutoSyncSnapshot;
+    if (snapshot == null) {
+      return null;
+    }
+    final providers = snapshot.providers.where((provider) {
+      return provider.key == 'naver_caldav_auto_import' ||
+          provider.key == 'naver_api_auto_export';
+    }).toList(growable: false);
+    if (providers.isEmpty) {
+      return null;
+    }
+    providers.sort((a, b) {
+      final aStamp = a.checkedAt ??
+          a.lastSuccessAt ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      final bStamp = b.checkedAt ??
+          b.lastSuccessAt ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      return bStamp.compareTo(aStamp);
+    });
+    return providers.first;
+  }
+
+  bool _isNaverCalendarConfigured() {
+    final summary = _calendarSyncSummary?.naver;
+    if (summary != null) {
+      return switch (summary.status) {
+        CalendarIntegrationStatus.ready ||
+        CalendarIntegrationStatus.syncing ||
+        CalendarIntegrationStatus.synced ||
+        CalendarIntegrationStatus.reauthRequired =>
+          true,
+        CalendarIntegrationStatus.signedOut ||
+        CalendarIntegrationStatus.notConfigured ||
+        CalendarIntegrationStatus.unsupported ||
+        CalendarIntegrationStatus.failed =>
+          false,
+      };
+    }
+    final snapshot = _naverCalendarAutoSyncSnapshot;
+    if (snapshot != null) {
+      return snapshot.isHealthy;
+    }
+    return _hasNaverCalDavCredentials;
   }
 
   bool _isCalendarConfigured(CalendarIntegrationResult? result) {

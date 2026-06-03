@@ -734,19 +734,75 @@ class GptService {
   }
 
   DateTime? _extractMonthlyRecurringDateFromText(String text, DateTime now) {
+    final monthlyOrdinal = RegExp(
+      r'매월\s*(첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*([월화수목금토일])요일',
+    ).firstMatch(text);
+    if (monthlyOrdinal != null) {
+      final orderToken = monthlyOrdinal.group(1)?.replaceAll(' ', '') ?? '';
+      final weekdayToken = monthlyOrdinal.group(2);
+      final order = switch (orderToken) {
+        '첫번째' || '첫째' => 1,
+        '두번째' || '둘째' => 2,
+        '세번째' || '셋째' => 3,
+        '네번째' || '넷째' => 4,
+        '마지막' => -1,
+        _ => 1,
+      };
+      final weekday = _weekdayShortToken(weekdayToken);
+      if (weekday != null) {
+        return _monthlyWeekdayDate(now, weekday: weekday, order: order);
+      }
+    }
+
     final monthlyDay = RegExp(r'매월\s*(\d{1,2})일').firstMatch(text);
-    if (monthlyDay == null) {
+    if (monthlyDay != null) {
+      final day = int.tryParse(monthlyDay.group(1) ?? '');
+      if (day == null || day < 1) {
+        return null;
+      }
+
+      final lastDayOfMonth = DateTime(now.year, now.month + 1, 0).day;
+      final clampedDay = day > lastDayOfMonth ? lastDayOfMonth : day;
+      return DateTime(now.year, now.month, clampedDay);
+    }
+    return null;
+  }
+
+  DateTime? _monthlyWeekdayDate(
+    DateTime now, {
+    required String weekday,
+    required int order,
+  }) {
+    final targetWeekday = switch (weekday) {
+      'MO' => DateTime.monday,
+      'TU' => DateTime.tuesday,
+      'WE' => DateTime.wednesday,
+      'TH' => DateTime.thursday,
+      'FR' => DateTime.friday,
+      'SA' => DateTime.saturday,
+      'SU' => DateTime.sunday,
+      _ => null,
+    };
+    if (targetWeekday == null) {
       return null;
     }
 
-    final day = int.tryParse(monthlyDay.group(1) ?? '');
-    if (day == null || day < 1) {
-      return null;
+    final firstDayOfMonth = DateTime(now.year, now.month, 1);
+    final nextMonthStart = DateTime(now.year, now.month + 1, 1);
+    if (order == -1) {
+      var cursor = nextMonthStart.subtract(const Duration(days: 1));
+      while (cursor.month == now.month && cursor.weekday != targetWeekday) {
+        cursor = cursor.subtract(const Duration(days: 1));
+      }
+      return cursor.month == now.month ? cursor : null;
     }
 
-    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0).day;
-    final clampedDay = day > lastDayOfMonth ? lastDayOfMonth : day;
-    return DateTime(now.year, now.month, clampedDay);
+    var cursor = firstDayOfMonth;
+    while (cursor.weekday != targetWeekday) {
+      cursor = cursor.add(const Duration(days: 1));
+    }
+    cursor = cursor.add(Duration(days: 7 * (order - 1)));
+    return cursor.month == now.month ? cursor : null;
   }
 
   _ClockTime? _normalizeAmbiguousLeadingTime(

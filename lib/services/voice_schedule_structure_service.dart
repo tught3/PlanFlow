@@ -331,20 +331,22 @@ class VoiceScheduleStructureService {
       source,
       preserveRelativeDayWords: preserveRelativeDayWords,
     );
+    final hasRecurrenceIntent = _hasRecurrenceIntent(structure, rawText);
     final titleWithoutLocation = preserveLeadingLocationTitle(
-      cleaned,
+      _stripLeadingRecurrenceExpression(cleaned),
       rawText: rawText,
     );
-    final hasRecurrenceIntent = _hasRecurrenceIntent(structure, rawText);
     final cleanedTitle = _stripTrailingRecurrenceCommand(
       titleWithoutLocation,
       hasRecurrenceIntent: hasRecurrenceIntent,
     );
     final structuredTitle = _stripTrailingRecurrenceCommand(
       preserveLeadingLocationTitle(
-        stripScheduleNoise(
-          structure.titleCandidate,
-          preserveRelativeDayWords: true,
+        _stripLeadingRecurrenceExpression(
+          stripScheduleNoise(
+            structure.titleCandidate,
+            preserveRelativeDayWords: true,
+          ),
         ),
         rawText: rawText,
       ),
@@ -369,9 +371,11 @@ class VoiceScheduleStructureService {
 
     final fallback = _stripTrailingRecurrenceCommand(
       preserveLeadingLocationTitle(
-        stripScheduleNoise(
-          rawText,
-          preserveRelativeDayWords: preserveRelativeDayWords,
+        _stripLeadingRecurrenceExpression(
+          stripScheduleNoise(
+            rawText,
+            preserveRelativeDayWords: preserveRelativeDayWords,
+          ),
         ),
         rawText: rawText,
       ),
@@ -392,6 +396,7 @@ class VoiceScheduleStructureService {
   }) {
     final structure = structured ?? analyze(referenceText ?? text);
     var title = normalizeText(stripExplicitMemoClause(text), '');
+    title = _stripLeadingRecurrenceExpression(title);
     title = title
         .replaceAll(
           RegExp(
@@ -420,10 +425,10 @@ class VoiceScheduleStructureService {
         .replaceAll(
           (shouldPreserveRelativeDayWords(referenceText ?? title)
               ? RegExp(
-                  r'(이번주|다음주|격주|매주|매월|매년|(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]\s*요일|반복\s*설정|반복설정)',
+                  r'(이번주|다음주|격주|매주|매월|매년|(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]\s*요일|매월\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일|매월\s*\d{1,2}\s*일|반복\s*설정|반복설정)',
                 )
               : RegExp(
-                  r'(오늘|내일|모레|글피|이번주|다음주|격주|매주|매월|매년|(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]\s*요일|반복\s*설정|반복설정)',
+                  r'(오늘|내일|모레|글피|이번주|다음주|격주|매주|매월|매년|(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]\s*요일|매월\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일|매월\s*\d{1,2}\s*일|반복\s*설정|반복설정)',
                 )),
           ' ',
         )
@@ -483,8 +488,9 @@ class VoiceScheduleStructureService {
     if (recurrence != null && recurrence.trim().isNotEmpty) {
       return true;
     }
-    return RegExp(r'(?:매일|매주|격주|매월|매년|반복\s*설정|반복설정)')
-        .hasMatch(normalizeText(rawText, ''));
+    return RegExp(
+      r'(?:매일|매주|격주|매월|매년|매월\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일|매월\s*\d{1,2}\s*일|반복\s*설정|반복설정)',
+    ).hasMatch(normalizeText(rawText, ''));
   }
 
   String _stripTrailingRecurrenceCommand(
@@ -503,6 +509,40 @@ class VoiceScheduleStructureService {
           .replaceAll(RegExp(r'^\s*\d{1,2}\s*일\s+'), '')
           .trim(),
     );
+  }
+
+  String _stripLeadingRecurrenceExpression(String title) {
+    var result = title;
+    final patterns = <RegExp>[
+      RegExp(
+        r'^\s*(?:매주|격주)\s*(?:[월화수목금토일](?:\s*요일)?(?:\s*[·,\/]\s*[월화수목금토일](?:\s*요일)?)*)(?:\s+|$)',
+      ),
+      RegExp(
+        r'^\s*매월\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일(?:\s+|$)',
+      ),
+      RegExp(
+        r'^\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일(?:\s+|$)',
+      ),
+      RegExp(
+        r'^\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)(?:\s+|$)',
+      ),
+      RegExp(
+        r'^\s*[월화수목금토일]\s*요일(?:\s+|$)',
+      ),
+      RegExp(
+        r'^\s*매월\s*\d{1,2}\s*일(?:\s+|$)',
+      ),
+      RegExp(
+        r'^\s*매년\s*\d{1,2}\s*월\s*\d{1,2}\s*일(?:\s+|$)',
+      ),
+      RegExp(
+        r'^\s*(?:반복\s*설정|반복설정|반복\s*예약|반복\s*알림|반복)(?:\s+|$)',
+      ),
+    ];
+    for (final pattern in patterns) {
+      result = result.replaceFirst(pattern, '');
+    }
+    return normalizeSpacingForSchedule(result.trim());
   }
 
   VoiceSchedulePeopleFields extractPeopleFields(String rawText) {

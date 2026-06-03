@@ -119,9 +119,10 @@ void main() {
     expect(find.text('기본 알림'), findsNothing);
     expect(find.text('저장'), findsNothing);
     expect(find.text('변경 즉시 적용'), findsNothing);
-    expect(find.text('캘린더 연동', skipOffstage: false), findsOneWidget);
-    expect(find.text('연동 해제', skipOffstage: false), findsWidgets);
-    expect(find.text('네이버 일정 동기화', skipOffstage: false), findsOneWidget);
+    final syncButton =
+        find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
+    await _scrollUntilHitTestable(tester, syncButton);
+    expect(syncButton, findsOneWidget);
     expect(find.text('저장 누락 진단'), findsNothing);
     expect(find.text('Naver CalDAV 직접 연결'), findsNothing);
     expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
@@ -552,8 +553,7 @@ void main() {
         naver: CalendarIntegrationResult.signedOut(CalendarProvider.naver),
       ),
     );
-    final naverImportService = _FakeNaverOpenApiCalendarService(
-      initialHasAccess: true,
+    final naverCalDavService = _FakeNaverCalDavService(
       syncDelay: const Duration(seconds: 1),
       syncResult: const NaverCalDavSyncResult(
         success: true,
@@ -561,6 +561,9 @@ void main() {
         createdOrUpdated: 1,
         events: 1,
       ),
+    );
+    final naverImportService = _FakeNaverOpenApiCalendarService(
+      initialHasAccess: true,
     );
 
     await tester.pumpWidget(
@@ -570,6 +573,7 @@ void main() {
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: calendarSyncService,
           notificationService: _FakeNotificationService(),
+          naverCalDavService: naverCalDavService,
           naverImportService: naverImportService,
           userId: 'user-1',
         ),
@@ -582,10 +586,11 @@ void main() {
     await _scrollUntilHitTestable(tester, syncButton);
     await tester.tap(syncButton.hitTestable().first);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('네이버 일정 가져오는 중'), findsOneWidget);
+    expect(find.text('네이버 일정 가져오기'), findsOneWidget);
     expect(
-      find.textContaining('앱을 백그라운드로 보내도 동기화는 계속됩니다.'),
+      find.textContaining('앱을 백그라운드로 보내도 계속 진행됩니다.'),
       findsOneWidget,
     );
 
@@ -593,7 +598,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(calendarSyncService.naverSyncCallCount, 0);
-    expect(naverImportService.syncCallCount, 1);
+    expect(naverCalDavService.syncCallCount, 1);
+    expect(naverImportService.syncCallCount, 0);
   });
 
   testWidgets('initial Naver calendar action triggers OAuth connect flow',
@@ -658,6 +664,7 @@ void main() {
           ),
           notificationService: _FakeNotificationService(),
           authService: authService,
+          naverCalDavService: _FakeNaverCalDavService(),
           naverImportService: _FakeNaverOpenApiCalendarService(
             initialHasAccess: false,
           ),
@@ -671,6 +678,8 @@ void main() {
         find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
     await _scrollUntilHitTestable(tester, syncButton);
     await tester.tap(syncButton.hitTestable().first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.pumpAndSettle();
 
     expect(authService.connectCalendarCallCount, 1);

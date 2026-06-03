@@ -157,6 +157,40 @@ void main() {
       expect(result['title'], '원주집');
     });
 
+    test('fallback parsing supports monthly ordinal recurrence expressions',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': 'not valid json',
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 1, 12),
+      );
+
+      final result = await service.parseSchedule('매월 첫 번째 월요일 법인카드 정리 반복');
+
+      expect(result['parse_failed'], isTrue);
+      expect(result['start_at'], '2026-05-04T09:00:00.000');
+      expect(result['title'], '법인카드 정리');
+      expect(result['recurrence_rule'], 'FREQ=MONTHLY;BYDAY=1MO');
+    });
+
     test(
         'fallback parsing strips date time noise and preserves explicit memo cues',
         () async {

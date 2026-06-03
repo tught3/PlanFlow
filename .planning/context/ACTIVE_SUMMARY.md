@@ -1542,3 +1542,8 @@
 - `매월 1일 ... 반복` 입력에서 반복 규칙은 유지하되 시작일이 오늘로 밀리던 경로를 `gpt_service.dart`에서 보강했다.
 - `매월 1일 법인카드 정리 반복`에 대해 시작일이 이번 달 1일로 고정되는 회귀 테스트를 추가했다.
 - `gpt_service_test.dart`, `voice_schedule_structure_service_test.dart` focused tests, `analyze`, debug APK build, and ADB install/launch on `192.168.0.102:42445` passed.
+
+## 2026-06-03 반복 표현/설정 UI/Naver sync 정리
+- 반복 파싱과 제목 정규화가 `매주 목요일`, `매월 첫 번째 월요일`, `매월 마지막 금요일`, `매월 1일`을 함께 다루도록 확장되었고, 편집 UI의 반복 선택도 월간 숫자형/요일형을 분리해 복원되게 정리했다.
+- 설정 화면의 출발 알림 반복주기 칩 UI를 좁혀서 오버플로우를 줄였고, 네이버 일정 가져오기 안내 문구와 백그라운드 동기화 상태 표시가 실제 결과를 더 잘 따라가도록 맞췄다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_schedule_structure_service_test.dart test/services/gpt_service_test.dart test/widgets/recurrence_selector_test.dart test/screens/settings_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, 그리고 `adb -s 192.168.0.102:42445 install -r -t --user 0 build\\app\\outputs\\flutter-apk\\app-debug.apk` / `am start -W -n com.fluxstudio.planflow/.MainActivity` 확인.
