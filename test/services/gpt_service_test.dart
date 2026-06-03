@@ -682,6 +682,17 @@ void main() {
       expect(monthlyAction['title'], '톨비 작성');
       expect(monthlyAction['recurrence_rule'], 'FREQ=MONTHLY;BYMONTHDAY=1');
 
+      final recurringStartService = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 10, 9),
+      );
+      final recurringStart =
+          await recurringStartService.parseSchedule('매월 1일 법인카드 정리 반복');
+      expect(recurringStart['title'], '법인카드 정리');
+      expect(recurringStart['recurrence_rule'], 'FREQ=MONTHLY;BYMONTHDAY=1');
+      expect(recurringStart['start_at'], '2026-05-01T09:00:00.000');
+
       final biWeekly = await service.parseSchedule('격주 금요일 영업 미팅');
       expect(biWeekly['recurrence_rule'], 'FREQ=WEEKLY;INTERVAL=2;BYDAY=FR');
 

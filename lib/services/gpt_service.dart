@@ -705,7 +705,8 @@ class GptService {
       return relative;
     }
 
-    final date = _extractDateFromText(dateTimeText, now);
+    final recurringDate = _extractMonthlyRecurringDateFromText(dateTimeText, now);
+    final date = recurringDate ?? _extractDateFromText(dateTimeText, now);
     final time = _normalizeAmbiguousLeadingTime(
       dateTimeText,
       _extractTimeFromText(dateTimeText),
@@ -730,6 +731,22 @@ class GptService {
     }
 
     return candidate;
+  }
+
+  DateTime? _extractMonthlyRecurringDateFromText(String text, DateTime now) {
+    final monthlyDay = RegExp(r'매월\s*(\d{1,2})일').firstMatch(text);
+    if (monthlyDay == null) {
+      return null;
+    }
+
+    final day = int.tryParse(monthlyDay.group(1) ?? '');
+    if (day == null || day < 1) {
+      return null;
+    }
+
+    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0).day;
+    final clampedDay = day > lastDayOfMonth ? lastDayOfMonth : day;
+    return DateTime(now.year, now.month, clampedDay);
   }
 
   _ClockTime? _normalizeAmbiguousLeadingTime(
@@ -781,6 +798,9 @@ $_scheduleSystemPrompt
     required DateTime? parsedStartAt,
     required DateTime inferredStartAt,
   }) {
+    if (_hasRecurringDateHint(rawText)) {
+      return true;
+    }
     if (parsedStartAt == null) {
       return true;
     }
@@ -789,6 +809,11 @@ $_scheduleSystemPrompt
     }
     return parsedStartAt.difference(inferredStartAt).abs() >
         const Duration(minutes: 1);
+  }
+
+  bool _hasRecurringDateHint(String rawText) {
+    final text = _normalizeKoreanText(rawText);
+    return RegExp(r'매월\s*\d{1,2}\s*일').hasMatch(text);
   }
 
   void _normalizeEventTypeFromRawText(

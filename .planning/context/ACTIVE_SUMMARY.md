@@ -1538,3 +1538,7 @@
 - Departure alarm origin lookup now tries the injected/current live location path first, then falls back to a recent SharedPreferences origin cache with a 2-hour validity window; Home resume keeps that foreground cache warm.
 - Verification passed: focused voice schedule, GPT, voice command pipeline, voice conversation controller/screen, and departure alarm tests; `scripts/flutter-local.ps1 analyze --no-pub`; `git diff --check`; `scripts/flutter-local.ps1 build apk --debug --target-platform android-arm64 --no-pub`.
 - Full `scripts/flutter-local.ps1 test --no-pub` still has unrelated existing failures in Settings/Naver, background task, voice action/input, and voice command analysis/router expectations; the focused tests for this task pass.
+## 2026-06-03 반복 시작일 정렬
+- `매월 1일 ... 반복` 입력에서 반복 규칙은 유지하되 시작일이 오늘로 밀리던 경로를 `gpt_service.dart`에서 보강했다.
+- `매월 1일 법인카드 정리 반복`에 대해 시작일이 이번 달 1일로 고정되는 회귀 테스트를 추가했다.
+- `gpt_service_test.dart`, `voice_schedule_structure_service_test.dart` focused tests, `analyze`, debug APK build, and ADB install/launch on `192.168.0.102:42445` passed.
