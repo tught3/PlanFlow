@@ -441,11 +441,25 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     try {
       debugPrint('PlanFlow operation start: confirm.pick_location');
+
+      // 좌표가 이미 고정된 경우: 현재 좌표로 바로 지도 열기
+      LocationLookupResult? lockedResult;
+      if (_locationLat != null && _locationLng != null) {
+        lockedResult = LocationLookupResult(
+          name: query.isNotEmpty ? query : '현재 위치',
+          address: query,
+          latitude: _locationLat!,
+          longitude: _locationLng!,
+          provider: LocationLookupProvider.manual,
+        );
+      }
+
       final selected = await pickLocationFromQuery(
         context: context,
         query: query,
         locationLookupService: widget.locationLookupService,
         appPermissionService: widget.permissionService,
+        lockedResult: lockedResult,
       );
 
       if (!mounted || selected == null) {

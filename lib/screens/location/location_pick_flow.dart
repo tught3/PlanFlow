@@ -16,6 +16,8 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   AppPermissionService? appPermissionService,
   String? preferredMapProvider,
   bool? canUseInAppMapOverride,
+  // 이미 좌표가 고정된 경우 검색 없이 해당 결과로 바로 지도 열기
+  LocationLookupResult? lockedResult,
 }) async {
   final trimmed = query.trim();
 
@@ -35,6 +37,26 @@ Future<LocationLookupResult?> pickLocationFromQuery({
   if (!context.mounted) {
     return null;
   }
+
+  // 좌표 고정 상태: 검색 없이 현재 위치를 지도에서 바로 표시
+  if (lockedResult != null) {
+    return Navigator.of(context).push<LocationLookupResult>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialQuery: trimmed,
+          initialResults: [lockedResult],
+          initialMapCenter: GeoPoint(
+            latitude: lockedResult.latitude,
+            longitude: lockedResult.longitude,
+          ),
+          locationLookupService: service,
+          preferredInAppMapProvider: inAppMapProvider,
+          canUseInAppMapOverride: canUseInAppMapOverride,
+        ),
+      ),
+    );
+  }
+
   final origin = permissionMessage == null
       ? await permissionService?.getLastKnownLocation()
       : null;

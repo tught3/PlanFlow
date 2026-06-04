@@ -516,6 +516,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 ? _mapUnavailableTimeoutMessage
                 : _missingMapMessage),
         query: _queryController.text,
+        preferredProvider: widget.preferredInAppMapProvider,
       );
     }
 
@@ -901,10 +902,12 @@ class _MapUnavailablePanel extends StatelessWidget {
   const _MapUnavailablePanel({
     required this.message,
     required this.query,
+    this.preferredProvider,
   });
 
   final String message;
   final String query;
+  final LocationPickerInAppMapProvider? preferredProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -923,7 +926,7 @@ class _MapUnavailablePanel extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 14),
-            _ExternalMapButtons(query: query),
+            _ExternalMapButtons(query: query, preferredProvider: preferredProvider),
           ],
         ),
       ),
@@ -1009,9 +1012,13 @@ enum _ExternalMapTarget {
 }
 
 class _ExternalMapButtons extends StatelessWidget {
-  const _ExternalMapButtons({required this.query});
+  const _ExternalMapButtons({
+    required this.query,
+    this.preferredProvider,
+  });
 
   final String query;
+  final LocationPickerInAppMapProvider? preferredProvider;
 
   Future<void> _open(BuildContext context, _ExternalMapTarget target) async {
     final trimmed = query.trim();
@@ -1034,6 +1041,54 @@ class _ExternalMapButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 선호 지도가 있으면 해당 지도를 크게, 나머지는 작게 표시
+    final preferred = switch (preferredProvider) {
+      LocationPickerInAppMapProvider.naver => _ExternalMapTarget.naver,
+      LocationPickerInAppMapProvider.google => _ExternalMapTarget.google,
+      null => null,
+    };
+
+    if (preferred != null) {
+      final others = _ExternalMapTarget.values
+          .where((t) => t != preferred)
+          .toList();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: () => _open(context, preferred),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: Text('${preferred.label}에서 열기'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (int i = 0; i < others.length; i++) ...[
+                if (i > 0) const SizedBox(width: 6),
+                Expanded(
+                  child: SizedBox(
+                    height: 36,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _open(context, others[i]),
+                      icon: const Icon(Icons.open_in_new, size: 14),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(others[i].label),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      );
+    }
+
+    // 선호 지도 미지정: 3개 동일 크기 버튼
     Widget button(_ExternalMapTarget target) {
       return Expanded(
         child: SizedBox(

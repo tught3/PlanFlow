@@ -78,6 +78,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   bool _isLoading = false;
   bool _isSaving = false;
   bool _isLookingUpLocation = false;
+  Timer? _locationDebounceTimer;
 
   bool get _isNewEvent => _loadedEvent == null && _resolvedEventId == null;
 
@@ -122,14 +123,50 @@ class _EventEditScreenState extends State<EventEditScreen> {
         trimmed == _resolvedLocationLabel!.trim()) {
       return;
     }
-    if (_locationLat == null && _locationLng == null) {
-      return;
+    if (_locationLat != null || _locationLng != null) {
+      setState(() {
+        _locationLat = null;
+        _locationLng = null;
+        _resolvedLocationLabel = null;
+      });
     }
+    _locationDebounceTimer?.cancel();
+    if (trimmed.isNotEmpty) {
+      _locationDebounceTimer = Timer(
+        const Duration(milliseconds: 800),
+        _autoResolveLocation,
+      );
+    }
+  }
+
+  Future<void> _autoResolveLocation() async {
+    final query = _locationController.text.trim();
+    if (query.isEmpty || (_locationLat != null && _locationLng != null)) return;
+    if (!mounted) return;
     setState(() {
-      _locationLat = null;
-      _locationLng = null;
-      _resolvedLocationLabel = null;
+      _isLookingUpLocation = true;
     });
+    try {
+      final results = await LocationLookupService().search(query, origin: null);
+      if (!mounted || query != _locationController.text.trim() || results.isEmpty) return;
+      final best = results.first;
+      final label = best.bestPlaceLabel.trim();
+      setState(() {
+        if (label.isNotEmpty) _locationController.text = label;
+        _locationLat = best.latitude;
+        _locationLng = best.longitude;
+        _resolvedLocationLabel = label.isNotEmpty ? label : query;
+      });
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen auto location resolve failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLookingUpLocation = false;
+        });
+      }
+    }
   }
 
   void _handleCriticalChanged(bool value) {
@@ -320,6 +357,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
   @override
   void dispose() {
+    _locationDebounceTimer?.cancel();
     _titleController.dispose();
     _locationController.dispose();
     _memoController.dispose();
@@ -935,11 +973,25 @@ class _EventEditScreenState extends State<EventEditScreen> {
     final query = _locationController.text.trim();
     try {
       debugPrint('PlanFlow operation start: event_edit.pick_location');
+
+      // 좌표가 이미 고정된 경우: 현재 좌표로 바로 지도 열기 (검색 재실행 없음)
+      LocationLookupResult? lockedResult;
+      if (_locationLat != null && _locationLng != null) {
+        lockedResult = LocationLookupResult(
+          name: query.isNotEmpty ? query : '현재 위치',
+          address: query,
+          latitude: _locationLat!,
+          longitude: _locationLng!,
+          provider: LocationLookupProvider.manual,
+        );
+      }
+
       final selected = await pickLocationFromQuery(
         context: context,
         query: query,
         locationLookupService: LocationLookupService(),
         appPermissionService: _permissionService,
+        lockedResult: lockedResult,
       );
       if (!mounted || selected == null) {
         return;
