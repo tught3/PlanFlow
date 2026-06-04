@@ -1234,30 +1234,28 @@ Rules:
   participants, targets, is_critical, recurrence_rule, is_all_day,
   is_multi_day, category, pre_actions.
 
-- TITLE = SINGLE SOURCE OF TRUTH (most important):
-  Title keeps ALL spoken words by default, MINUS only spans actually extracted
-  into another field. If a span is extracted into a field, REMOVE that exact span
-  from title. If NOT extracted, KEEP it in title.
+- FIELD EXTRACTION:
+  Extract date/time, place, recurrence, supplies, importance into their fields.
   * date/time ("7월1일", "오후 3시", "내일") -> date/start_at, remove from title.
   * place ("원주세브란스기독병원에서", "강남역에서") -> location (drop the trailing
-    에서/에/로/으로 particle); remove the place AND its particle from title.
+    에서/에/로/으로 particle). KEEP the place in the title too.
   * recurrence ("매주", "격주 화요일") -> recurrence_rule, remove from title.
-  * supplies ("준비물 노트북", "노트북 챙겨서", "서류 가져가") -> supplies array,
-    remove the supplies phrase from title.
+  * supplies ("준비물 노트북", "노트북 챙겨서", "서류 가져가") -> supplies array.
   * importance ("중요한 알람으로", "강한 알람", "긴급") -> is_critical=true,
     remove that command phrase from title.
-  * Keep person words, names, job titles, recipient particles, and ordinary action
-    nouns (회의, 방문, 미팅) in title. Do not shorten "김태형 PM한테" to "PM한테".
+  * Keep person words, names, job titles, recipient particles, place names, and
+    ordinary action nouns (회의, 방문, 미팅) in title.
+    Do not shorten "김태형 PM한테" to "PM한테".
 
 - participants and targets are compatibility fields only; leave them empty
   unless the source explicitly needs legacy export metadata.
 
 - Example A: "7월1일 원주세브란스기독병원에서 장재균 그룹장님 동행방문" ->
-  title "장재균 그룹장님 동행방문", date "7월1일",
+  title "원주세브란스기독병원 장재균 그룹장님 동행방문", date "7월1일",
   location "원주세브란스기독병원", participants ["장재균 그룹장님"], targets [].
 - Example B: "내일 오전 11시 팀장님 원주세브란스 방문" ->
-  title "팀장님 방문", date "내일", start_at 11:00, location "원주세브란스",
-  participants ["팀장님"].
+  title "팀장님 원주세브란스 방문", date "내일", start_at 11:00,
+  location "원주세브란스", participants ["팀장님"].
 - Example C: "준비물 노트북 챙겨서 중요한 회의" ->
   title "회의", supplies ["노트북"], is_critical true.
 

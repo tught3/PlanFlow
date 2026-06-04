@@ -158,8 +158,7 @@ void main() {
       expect(title, '김태형 PM한테 날짜 괜찮냐고 물어보기');
     });
 
-    test('removes leading place from title (single source of truth: '
-        'place goes to location field, not title)', () {
+    test('keeps leading place in title AND fills location field', () {
       const rawText = '강릉 건도리횟집에서 결제 사전기안';
 
       final parsedTitle = service.normalizeParsedScheduleTitle(
@@ -171,11 +170,11 @@ void main() {
         referenceText: rawText,
       );
 
-      // 장소(강릉 건도리횟집)는 location 필드로 추출되므로 제목에서 제거됨
-      expect(parsedTitle, '결제 사전기안');
-      expect(localTitle, '결제 사전기안');
+      // 장소는 제목에도 그대로 유지
+      expect(parsedTitle, '강릉 건도리횟집 결제 사전기안');
+      expect(localTitle, '강릉 건도리횟집 결제 사전기안');
 
-      // 같은 장소가 location 필드에 채워지는지 확인 (제목 제거와 일치)
+      // 동시에 location 필드에도 채워지는지 확인
       final location = service.normalizeScheduleLocation(
         location: null,
         rawText: rawText,
