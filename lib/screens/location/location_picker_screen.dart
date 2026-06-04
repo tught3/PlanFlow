@@ -553,7 +553,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             });
           }
           final selected = _selected;
-          if (selected != null && _resolvedInitialMapCenter == null) {
+          if (selected != null) {
             await _moveMapTo(selected);
           }
         },
@@ -594,7 +594,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           });
         }
         final selected = _selected;
-        if (selected != null && _resolvedInitialMapCenter == null) {
+        if (selected != null) {
           await _moveGoogleMapTo(selected);
         }
       },

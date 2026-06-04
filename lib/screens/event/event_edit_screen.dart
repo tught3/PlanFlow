@@ -150,12 +150,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
       final results = await LocationLookupService().search(query, origin: null);
       if (!mounted || query != _locationController.text.trim() || results.isEmpty) return;
       final best = results.first;
-      final label = best.bestPlaceLabel.trim();
       setState(() {
-        if (label.isNotEmpty) _locationController.text = label;
+        // 텍스트는 보존 - 사용자가 입력한 지역 컨텍스트("강릉" 등) 유지
         _locationLat = best.latitude;
         _locationLng = best.longitude;
-        _resolvedLocationLabel = label.isNotEmpty ? label : query;
+        _resolvedLocationLabel = query;
       });
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen auto location resolve failed: $error');
