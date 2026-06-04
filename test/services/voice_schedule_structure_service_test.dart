@@ -183,6 +183,26 @@ void main() {
       expect(location, '강릉 건도리횟집');
     });
 
+    test('does not include date in location (map coords)', () {
+      const rawText = '7월1일 원주세브란스기독병원에서 장재균 그룹장님 동행방문';
+
+      final location = service.normalizeScheduleLocation(
+        location: null,
+        rawText: rawText,
+        title: rawText,
+      );
+      // 날짜(7월1일)가 장소에 포함되면 안 됨
+      expect(location, '원주세브란스기독병원');
+
+      // 제목에서도 날짜 제거 확인
+      final title = service.normalizeParsedScheduleTitle(
+        rawText,
+        rawText: rawText,
+      );
+      expect(title.contains('7월'), isFalse);
+      expect(title.contains('1일'), isFalse);
+    });
+
     test('extracts location after a person name (drops person/title prefix)',
         () {
       const rawText =

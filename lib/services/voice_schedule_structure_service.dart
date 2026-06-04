@@ -661,7 +661,13 @@ class VoiceScheduleStructureService {
       }
     }
 
-    final source = normalizeText(rawText, '');
+    // 장소 추출 전 날짜/시간/반복 표현 제거 (조사 에/에서는 보존).
+    // "7월1일 원주세브란스병원에서..."가 장소에 날짜를 포함시켜
+    // 지도 좌표가 안 잡히던 문제 방지.
+    final source = stripScheduleNoise(
+      normalizeText(rawText, ''),
+      preserveRelativeDayWords: false,
+    );
     final inferredFromLeadingLocation = extractLeadingLocation(source);
     if (inferredFromLeadingLocation != null &&
         inferredFromLeadingLocation.isNotEmpty) {
@@ -932,8 +938,12 @@ class VoiceScheduleStructureService {
     if (normalized.isEmpty) {
       return normalized;
     }
-    final sourceText =
-        rawText?.trim().isNotEmpty == true ? rawText!.trim() : normalized;
+    // 장소 추출 소스에서 날짜/시간을 먼저 제거 (조사 보존).
+    // rawText 원본을 그대로 쓰면 "7월1일 원주세브란스병원"처럼 날짜가
+    // 장소로 잡혀 제목 앞에 붙던 문제 방지.
+    final sourceText = rawText?.trim().isNotEmpty == true
+        ? stripScheduleNoise(rawText!.trim(), preserveRelativeDayWords: false)
+        : normalized;
     final extractedLocation = extractLeadingLocation(sourceText);
     if (extractedLocation == null || extractedLocation.isEmpty) {
       return stripLeadingLocationPhrase(normalized);
