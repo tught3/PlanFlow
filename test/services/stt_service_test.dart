@@ -34,24 +34,28 @@ void main() {
     expect(SttService.debugConversationSilenceMs, 300000);
   });
 
-  test('Android conversation mode restarts after final results until user stop',
-      () {
+  test('Android native STT restarts after final results until user stop', () {
+    // 세그먼트 세션 방식은 폐기됨(침묵마다 끊겨 발화 유실). 현재는 모드와 무관하게
+    // onResults에서 final 후 즉시 재시작하고, user stop 시에만 정지한다.
     final source = File(
       'android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt',
     ).readAsStringSync();
 
+    // 결과 확정(final) 후 끊김 없이 재청취 재시작
     expect(
       source,
-      contains('restartSoon(reason = "conversation_final")'),
+      contains('restartSoon(reason = "final")'),
+    );
+    // 사용자가 멈추면 재시작하지 않고 stopped 이벤트 발행
+    expect(
+      source,
+      contains('if (userRequestedStop)'),
     );
     expect(
       source,
-      contains('RecognizerIntent.EXTRA_SEGMENTED_SESSION'),
+      contains('invokeIfActive("stopped"'),
     );
-    expect(
-      source,
-      contains('override fun onEndOfSegmentedSession()'),
-    );
+    // stop 시 마지막 partial을 그대로 쓰지 않고 스냅샷 텍스트를 쓴다
     expect(
       source,
       isNot(contains(
