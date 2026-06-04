@@ -88,6 +88,8 @@ class SttService {
   static const Duration _conversationListenFor = Duration(minutes: 5);
   static const Duration _conversationPauseFor = Duration(minutes: 5);
   static const int _conversationSilenceMs = 300000;
+  // 받아쓰기 침묵 허용 120초. 말하다 1분 이상 쉬어도 세션 유지 시도.
+  static const int _dictationSilenceMs = 120000;
   static const MethodChannel _nativeSttChannel =
       MethodChannel('planflow/native_stt');
   static const MethodChannel _androidPermissionsChannel =
@@ -1475,8 +1477,9 @@ class SttService {
       final started =
           await _nativeSttChannel.invokeMethod<bool>('start', <String, dynamic>{
         'mode': mode.name,
-        'silenceMs':
-            mode == SttListenMode.conversation ? _conversationSilenceMs : 30000,
+        'silenceMs': mode == SttListenMode.conversation
+            ? _conversationSilenceMs
+            : _dictationSilenceMs,
       });
       if (started != true) {
         return SttListenResult.failure(

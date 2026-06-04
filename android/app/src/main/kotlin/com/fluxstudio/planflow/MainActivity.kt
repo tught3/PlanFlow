@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -696,6 +697,45 @@ private class PlanFlowSttChannel(
     private var warmupRetryUsed = false
     private var isDisposed = false
 
+    // 음성인식 시작음(띠링) 억제용 — 세션 동안 시스템 사운드 음소거
+    private val audioManager: AudioManager? =
+        activity.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private var soundsMuted = false
+    private val mutedStreams = intArrayOf(
+        AudioManager.STREAM_SYSTEM,
+        AudioManager.STREAM_NOTIFICATION,
+        AudioManager.STREAM_MUSIC,
+    )
+
+    /** SpeechRecognizer 시작 beep 억제 — 세션 시작 시 음소거 */
+    private fun muteRecognitionSounds() {
+        if (soundsMuted) return
+        val am = audioManager ?: return
+        try {
+            for (stream in mutedStreams) {
+                am.adjustStreamVolume(stream, AudioManager.ADJUST_MUTE, 0)
+            }
+            soundsMuted = true
+        } catch (_: Exception) {
+            soundsMuted = false
+        }
+    }
+
+    /** 세션 종료 시 음소거 해제 */
+    private fun unmuteRecognitionSounds() {
+        if (!soundsMuted) return
+        val am = audioManager ?: return
+        try {
+            for (stream in mutedStreams) {
+                am.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0)
+            }
+        } catch (_: Exception) {
+            // best-effort
+        } finally {
+            soundsMuted = false
+        }
+    }
+
     /** dispose 후 호출을 무시하는 안전한 invokeMethod */
     private fun invokeIfActive(method: String, args: Any? = null) {
         if (isDisposed) return
@@ -735,6 +775,7 @@ private class PlanFlowSttChannel(
                     startGeneration += 1
                     logPhase("stop", mapOf("text" to stopSnapshotText.take(80)))
                     recognizer?.stopListening()
+                    unmuteRecognitionSounds()
                     result.success(latestPartialText)
                 }
                 "cancel" -> {
@@ -781,9 +822,11 @@ private class PlanFlowSttChannel(
             ?: if (listenMode == "conversation") {
                 300000L
             } else {
-                30000L
+                // 받아쓰기: 침묵 허용 120초. 말하다 1분 이상 쉬어도 안 끊김.
+                120000L
             }
-        segmentedSessionMode = listenMode == "conversation"
+        // 세그먼트 세션 비활성화 (침묵 끊김 방지). 항상 단일 연속 세션으로 청취.
+        segmentedSessionMode = false
         warmupRetryUsed = false
 
         listening = false
@@ -803,6 +846,7 @@ private class PlanFlowSttChannel(
         sessionId += 1
         startGeneration += 1
         logPhase("start", mapOf("silenceMs" to listenSilenceMs))
+        muteRecognitionSounds()  // 시작음(띠링) 억제
         ensureRecognizer()
         startListening(attempt = "first")
     }
@@ -843,12 +887,8 @@ private class PlanFlowSttChannel(
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 10)
-            if (segmentedSessionMode) {
-                putExtra(
-                    RecognizerIntent.EXTRA_SEGMENTED_SESSION,
-                    RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
-                )
-            }
+            // EXTRA_SEGMENTED_SESSION 제거: 세그먼트 세션이 침묵마다 세션을 끊고
+            // 재시작시키던 것이 끊김의 핵심 원인이었음. 침묵에도 한 세션을 길게 유지.
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
                 effectiveSilenceMs,
@@ -885,19 +925,16 @@ private class PlanFlowSttChannel(
             return
         }
         restartAttempts += 1
-        val maxAttempts = if (listenMode == "conversation") {
-            120
-        } else if (recreateRecognizer) {
-            4
-        } else {
-            8
-        }
+        // 연속 "빈" 재시작(실제 발화 없이)만 카운트됨 (publishText에서 0 리셋).
+        // 실제 발화가 있으면 리셋되므로 긴 받아쓰기도 무한 청취 가능.
+        val maxAttempts = if (recreateRecognizer) 6 else 120
         if (restartAttempts > maxAttempts) {
             listening = false
             logPhase(
                 "restart_exhausted",
                 mapOf("reason" to reason, "attempts" to restartAttempts),
             )
+            unmuteRecognitionSounds()
             invokeIfActive("error", mapOf("text" to latestPartialText, "sessionId" to sessionId))
             return
         }
@@ -905,24 +942,14 @@ private class PlanFlowSttChannel(
             recognizer?.cancel()
             recognizer?.destroy()
             recognizer = null
-        } else if (listenMode != "conversation") {
+        } else {
             recognizer?.cancel()
         }
         val generation = ++startGeneration
-        val baseDelay = if (recreateRecognizer) 1200L else 900L
-        val now = SystemClock.elapsedRealtime()
-        val minConversationDelay = 4500L
-        val restartDelay = if (listenMode == "conversation" && lastRestartAtMs > 0L) {
-            val elapsed = now - lastRestartAtMs
-            if (elapsed < minConversationDelay) {
-                minConversationDelay - elapsed
-            } else {
-                baseDelay
-            }
-        } else {
-            baseDelay
-        }
-        lastRestartAtMs = now
+        // 재시작 gap 최소화: recognizer 재생성이 필요할 때만 짧게 지연, 그 외엔 즉시.
+        // (기존 conversation 4.5초 지연이 발화 유실의 원인 → 제거)
+        val restartDelay = if (recreateRecognizer) 250L else 60L
+        lastRestartAtMs = SystemClock.elapsedRealtime()
         logPhase(
             "restarted",
             mapOf("reason" to reason, "recreate" to recreateRecognizer, "attempts" to restartAttempts),
@@ -955,7 +982,13 @@ private class PlanFlowSttChannel(
         startGeneration += 1
         stopSnapshotText = latestPartialText
         logPhase("cancel", mapOf("text" to latestPartialText.take(80)))
-        recognizer?.cancel()
+        // 좀비 recognizer 완전 정리 → 다음 start 시 ERROR_RECOGNIZER_BUSY 방지
+        val old = recognizer
+        recognizer = null
+        old?.setRecognitionListener(null)
+        old?.cancel()
+        old?.destroy()
+        unmuteRecognitionSounds()
         invokeIfActive("cancelled", mapOf("text" to latestPartialText, "sessionId" to sessionId))
     }
 
@@ -969,6 +1002,7 @@ private class PlanFlowSttChannel(
         old?.setRecognitionListener(null)
         old?.cancel()
         old?.destroy()
+        unmuteRecognitionSounds()
         channel.setMethodCallHandler(null)
     }
 
@@ -983,9 +1017,10 @@ private class PlanFlowSttChannel(
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() {
-        logPhase("segment_ended")
-        invokeIfActive("speechEnd", mapOf("sessionId" to sessionId))
-        invokeIfActive("segmentEnded", mapOf("sessionId" to sessionId))
+        // 침묵을 무시한다. 사용자가 말하다 잠깐 쉬어도 세션을 끊지 않는다.
+        // (예전 12875b8 동작 복원 — 끊김의 근본 원인 제거)
+        // 실제 종료는 silence 타임아웃 후 onResults 또는 사용자 완료(stop)에서만 처리.
+        logPhase("end_of_speech_ignored")
     }
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
@@ -999,6 +1034,7 @@ private class PlanFlowSttChannel(
         when (error) {
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
                 listening = false
+                unmuteRecognitionSounds()
                 invokeIfActive("error", mapOf(
                     "text" to latestPartialText,
                     "sessionId" to sessionId,
@@ -1031,20 +1067,13 @@ private class PlanFlowSttChannel(
             return
         }
         publishText(results, phase = "final")
-        if (listenMode == "conversation") {
-            stopSnapshotText = latestPartialText
-            if (segmentedSessionMode) {
-                logPhase("conversation_final_keep_alive")
-                return
-            }
-            restartSoon(reason = "conversation_final")
-            return
-        }
+        stopSnapshotText = latestPartialText
+        // 결과 확정 시 즉시(gap 최소) 재시작해 끊김 없이 청취 지속.
         restartSoon(reason = "final")
     }
 
+    // 세그먼트 세션 비활성화로 더 이상 호출되지 않지만, 인터페이스 충족용 안전 처리.
     override fun onSegmentResults(segmentResults: Bundle) {
-        logPhase("segment_results", mapOf("conversation" to (listenMode == "conversation")))
         if (userRequestedStop) {
             return
         }
@@ -1052,16 +1081,8 @@ private class PlanFlowSttChannel(
     }
 
     override fun onEndOfSegmentedSession() {
-        logPhase("segment_session_end", mapOf("conversation" to (listenMode == "conversation")))
-        if (userRequestedStop) {
-            listening = false
-            invokeIfActive("stopped", mapOf("text" to stopSnapshotText, "sessionId" to sessionId))
-            return
-        }
-        if (listenMode == "conversation") {
-            stopSnapshotText = latestPartialText
-            restartSoon(reason = "conversation_segmented_end")
-        }
+        // 세그먼트 세션 미사용 — no-op.
+        logPhase("segment_session_end_ignored")
     }
 
     override fun onPartialResults(partialResults: Bundle?) {

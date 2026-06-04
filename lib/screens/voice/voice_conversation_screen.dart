@@ -15,6 +15,7 @@ import '../../services/event_refresh_bus.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/stt_service.dart';
 import '../../services/voice_conversation_controller.dart';
+import '../location/location_pick_flow.dart';
 
 const String voiceConversationClosedResult = 'voiceConversationClosed';
 
@@ -35,6 +36,7 @@ class VoiceConversationScreen extends StatefulWidget {
     this.sttService = const SttService(),
     this.locationLookupService,
     this.permissionService,
+    this.locationPicker = pickLocationFromQuery,
     this.autoStart = false,
     this.initialText,
   });
@@ -43,6 +45,14 @@ class VoiceConversationScreen extends StatefulWidget {
   final SttService sttService;
   final LocationLookupService? locationLookupService;
   final AppPermissionService? permissionService;
+  final Future<LocationLookupResult?> Function({
+    required BuildContext context,
+    required String query,
+    LocationLookupService? locationLookupService,
+    AppPermissionService? appPermissionService,
+    String? preferredMapProvider,
+    bool? canUseInAppMapOverride,
+  }) locationPicker;
   final bool autoStart;
   final String? initialText;
 
@@ -51,7 +61,8 @@ class VoiceConversationScreen extends StatefulWidget {
       _VoiceConversationScreenState();
 }
 
-class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
+class _VoiceConversationScreenState extends State<VoiceConversationScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<_ConversationMessage> _messages = <_ConversationMessage>[
@@ -62,10 +73,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
 
   late final EventRepository _repository =
       widget.repository ?? EventRepository.supabase();
-  late final LocationLookupService _locations =
-      widget.locationLookupService ?? LocationLookupService();
-  late final AppPermissionService _permissionService =
-      widget.permissionService ?? AppPermissionService();
   late final VoiceConversationController _conversation =
       VoiceConversationController(events: const <EventModel>[]);
 
@@ -96,6 +103,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_loadEvents().then((_) => _submitInitialTextIfNeeded()));
     if (widget.autoStart && (widget.initialText ?? '').trim().isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -135,7 +143,25 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 백그라운드/전화/화면잠금 시 음성인식 즉시 종료 (좀비 세션·띠링 방지)
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _keepListening = false;
+      _voicePausedByUser = true;
+      _restartListenTimer?.cancel();
+      _conversationWatchdogTimer?.cancel();
+      if (_isListening) {
+        unawaited(widget.sttService.cancelActiveListen());
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _keepListening = false;
     _restartListenTimer?.cancel();
     _conversationWatchdogTimer?.cancel();
     unawaited(widget.sttService.cancelActiveListen());
@@ -649,25 +675,24 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     String locationText,
   ) async {
     await _stopVoiceBeforeNavigation();
-    var edited = _copyEventWithLocation(event, location: locationText);
-    try {
-      final origin = await _permissionService.getCurrentLocationWithPermission(
-        requestIfMissing: false,
-      );
-      final results = await _locations.search(locationText, origin: origin);
-      if (results.isNotEmpty) {
-        final picked = results.first;
-        final resolvedLabel = picked.bestPlaceLabel.trim();
-        edited = _copyEventWithLocation(
-          event,
-          location: resolvedLabel.isNotEmpty ? resolvedLabel : picked.label,
-          locationLat: picked.latitude,
-          locationLng: picked.longitude,
-        );
-      }
-    } catch (_) {
-      edited = _copyEventWithLocation(event, location: locationText);
+    final picked = await widget.locationPicker(
+      // ignore: use_build_context_synchronously
+      context: context,
+      query: locationText,
+      locationLookupService: widget.locationLookupService,
+      appPermissionService: widget.permissionService,
+    );
+    if (!mounted || picked == null) {
+      return;
     }
+
+    final resolvedLabel = picked.bestPlaceLabel.trim();
+    final edited = _copyEventWithLocation(
+      event,
+      location: resolvedLabel.isNotEmpty ? resolvedLabel : picked.label,
+      locationLat: picked.latitude,
+      locationLng: picked.longitude,
+    );
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -693,27 +718,23 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen> {
     var edited = event;
     final locationText = result.locationText?.trim();
     if (locationText != null && locationText.isNotEmpty) {
-      edited = _copyEventWithLocation(edited, location: locationText);
-      try {
-        final origin =
-            await _permissionService.getCurrentLocationWithPermission(
-          requestIfMissing: false,
-        );
-        final results = await _locations.search(locationText, origin: origin);
-        if (results.isNotEmpty) {
-          final picked = results.first;
-          final resolvedLabel = picked.bestPlaceLabel.trim();
-          edited = _copyEventWithLocation(
-            edited,
-            location: resolvedLabel.isNotEmpty ? resolvedLabel : picked.label,
-            locationLat: picked.latitude,
-            locationLng: picked.longitude,
-          );
-        }
-      } catch (error) {
-        debugPrint(
-            'VoiceConversationScreen location update lookup failed: $error');
+      final picked = await widget.locationPicker(
+        // ignore: use_build_context_synchronously
+        context: context,
+        query: locationText,
+        locationLookupService: widget.locationLookupService,
+        appPermissionService: widget.permissionService,
+      );
+      if (!mounted || picked == null) {
+        return false;
       }
+      final resolvedLabel = picked.bestPlaceLabel.trim();
+      edited = _copyEventWithLocation(
+        edited,
+        location: resolvedLabel.isNotEmpty ? resolvedLabel : picked.label,
+        locationLat: picked.latitude,
+        locationLng: picked.longitude,
+      );
     }
     final criticalValue = result.criticalValue;
     if (criticalValue != null) {
