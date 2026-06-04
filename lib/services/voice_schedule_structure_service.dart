@@ -668,6 +668,13 @@ class VoiceScheduleStructureService {
       return normalizeSpacingForSchedule(inferredFromLeadingLocation);
     }
 
+    // 문장 중간 장소 추출: "...원주 세브란스 기독병원에 와서..."처럼
+    // 사람 이름 뒤(문장 중간)에 장소 키워드가 오는 경우.
+    final inferredFromMid = extractMidLocation(source);
+    if (inferredFromMid != null && inferredFromMid.isNotEmpty) {
+      return normalizeSpacingForSchedule(inferredFromMid);
+    }
+
     final inferredFromDeparture = RegExp(
       r'([가-힣A-Za-z0-9·.]{2,})\s*(?:에서\s*)?출발',
     ).firstMatch(source);
@@ -848,13 +855,70 @@ class VoiceScheduleStructureService {
       return null;
     }
 
-    final location = match.group(1)?.trim();
+    final rawLocation = match.group(1)?.trim();
     final remainder = match.group(2)?.trim();
-    if (location == null ||
-        location.isEmpty ||
-        _isInvalidLocationCandidate(location) ||
-        remainder == null ||
-        remainder.isEmpty) {
+    if (rawLocation == null || rawLocation.isEmpty ||
+        remainder == null || remainder.isEmpty) {
+      return null;
+    }
+    // 앞에 사람 이름/직급이 섞여 있으면 직급 경계 이후만 장소로 사용
+    // ("장재균 그룹장님 원주 세브란스 기독병원" → "원주 세브란스 기독병원")
+    final location = _dropLeadingPersonTokens(rawLocation);
+    if (location.isEmpty || _isInvalidLocationCandidate(location)) {
+      return null;
+    }
+    return location;
+  }
+
+  /// 장소 후보 앞쪽의 사람 이름/직급 토큰을 제거한다.
+  /// "장재균 그룹장님 원주 세브란스 기독병원" → "원주 세브란스 기독병원".
+  String _dropLeadingPersonTokens(String candidate) {
+    final tokens = candidate.trim().split(RegExp(r'\s+'));
+    final titleSuffix = RegExp(
+      r'(그룹장님|그룹장|팀장님|팀장|원장님|원장|대표님|대표|이사님|이사|'
+      r'부장님|부장|과장님|과장|사장님|사장|차장님|차장|실장님|실장|'
+      r'본부장님|본부장|센터장님|센터장|선생님|교수님|님)$',
+    );
+    var startIdx = 0;
+    for (var i = 0; i < tokens.length; i++) {
+      if (titleSuffix.hasMatch(tokens[i])) {
+        startIdx = i + 1;
+      }
+    }
+    return tokens.sublist(startIdx).join(' ').trim();
+  }
+
+  /// 문장 중간의 장소를 장소 키워드(병원/센터/역 등) 기준으로 추출한다.
+  /// "장재균 그룹장님 원주 세브란스 기독병원에 와서..." → "원주 세브란스 기독병원".
+  /// 키워드 앞에 사람 이름/직급이 있으면 직급 경계 이후만 장소로 본다.
+  String? extractMidLocation(String text) {
+    final source = text.trim();
+    if (source.isEmpty) {
+      return null;
+    }
+    const placeKeywords = <String>[
+      '병원', '의원', '센터', '약국', '식당', '카페', '호텔', '학교', '학원',
+      '은행', '마트', '공원', '주차장', '지점', '건물', '오피스', '스튜디오',
+      '헬스장', '편의점', '아웃렛', '주유소', '시장', '횟집', '맛집', '가게',
+      '본점', '역', '공항', '터미널', '항', '구청', '시청', '주민센터',
+      '보건소', '회관', '체육관', '경기장', '빌딩', '타워',
+    ];
+    final keywordPattern = placeKeywords.join('|');
+    // 장소 키워드로 끝나는 구 + 조사(에/에서/로/으로)
+    final match = RegExp(
+      '([가-힣A-Za-z0-9·.]+(?:\\s+[가-힣A-Za-z0-9·.]+){0,5}'
+      '(?:$keywordPattern))\\s*(?:에서|에|로|으로)',
+    ).firstMatch(source);
+    if (match == null) {
+      return null;
+    }
+    final candidate = match.group(1)?.trim();
+    if (candidate == null || candidate.isEmpty) {
+      return null;
+    }
+    // 사람 직급/호칭 경계 이후만 장소로 사용
+    final location = _dropLeadingPersonTokens(candidate);
+    if (location.isEmpty || _isInvalidLocationCandidate(location)) {
       return null;
     }
     return location;

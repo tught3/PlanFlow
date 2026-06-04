@@ -183,6 +183,23 @@ void main() {
       expect(location, '강릉 건도리횟집');
     });
 
+    test('extracts location after a person name (drops person/title prefix)',
+        () {
+      const rawText =
+          '장재균 그룹장님 원주 세브란스 기독병원에 와서 백순구 의료원장님 만남';
+
+      // 사람 이름/직급(장재균 그룹장님)을 제외하고 장소만 추출
+      expect(service.extractLeadingLocation(rawText), '원주 세브란스 기독병원');
+      expect(service.extractMidLocation(rawText), '원주 세브란스 기독병원');
+
+      final location = service.normalizeScheduleLocation(
+        location: null,
+        rawText: rawText,
+        title: rawText,
+      );
+      expect(location, '원주 세브란스 기독병원');
+    });
+
     test('strips organization-like leading names from the title', () {
       const rawText = '우리회사에서 매월 월례 조회 메모에 주차장 B2 확인';
 
