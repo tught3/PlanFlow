@@ -1699,11 +1699,20 @@ class NaverCalDavService {
         _isNaverPlaceholderStart(startRaw) &&
         parsedEndAt != null) {
       startAt = parsedEndAt;
+      // iCalendar 표준상 all-day(VALUE=DATE)의 DTEND는 exclusive end(다음날)이다.
+      // placeholder DTSTART에서 DTEND로 복구할 때 all-day면 1일을 빼야 실제 날짜가 된다.
+      // (공휴일 +1일 밀림 원인: 현충일 DTEND:20260607 → 실제 6/6)
+      final endIsAllDay = endRaw != null &&
+          (endRaw.contains('VALUE=DATE') ||
+              RegExp(r':\d{8}$').hasMatch(endRaw.trim()));
+      if (endIsAllDay) {
+        startAt = startAt!.subtract(const Duration(days: 1));
+      }
       endAt = null;
       debugPrint(
         'Naver CalDAV recovered placeholder DTSTART from DTEND: '
         'uid=$uid, href=$href, rawStart=$startRaw, rawEnd=$endRaw, '
-        'startAt=$startAt',
+        'allDay=$endIsAllDay, startAt=$startAt',
       );
     }
 

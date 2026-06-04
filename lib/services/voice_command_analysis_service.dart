@@ -603,7 +603,9 @@ class VoiceCommandAnalysisService {
         _voiceScheduleStructureService.normalizeScheduleLocation(
       location:
           normalizedLocationText.isNotEmpty ? normalizedLocationText : null,
-      rawText: titleSource,
+      // 원본 normalizedText 전달: titleSource(정제본)는 "에서/에" 장소 패턴이
+      // 유실돼 location 추출이 실패하던 문제 수정. 제목 제거와 동일 소스로 일치.
+      rawText: normalizedText,
       title: title,
     );
 
@@ -1231,12 +1233,34 @@ Rules:
   travel_origin_lat, travel_origin_lng, travel_mode, memo, supplies,
   participants, targets, is_critical, recurrence_rule, is_all_day,
   is_multi_day, category, pre_actions.
-- Keep person words, names, job titles, and recipient particles in title.
-  Do not shorten "김태형 PM한테" to "PM한테" or move the person out of title.
+
+- TITLE = SINGLE SOURCE OF TRUTH (most important):
+  Title keeps ALL spoken words by default, MINUS only spans actually extracted
+  into another field. If a span is extracted into a field, REMOVE that exact span
+  from title. If NOT extracted, KEEP it in title.
+  * date/time ("7월1일", "오후 3시", "내일") -> date/start_at, remove from title.
+  * place ("원주세브란스기독병원에서", "강남역에서") -> location (drop the trailing
+    에서/에/로/으로 particle); remove the place AND its particle from title.
+  * recurrence ("매주", "격주 화요일") -> recurrence_rule, remove from title.
+  * supplies ("준비물 노트북", "노트북 챙겨서", "서류 가져가") -> supplies array,
+    remove the supplies phrase from title.
+  * importance ("중요한 알람으로", "강한 알람", "긴급") -> is_critical=true,
+    remove that command phrase from title.
+  * Keep person words, names, job titles, recipient particles, and ordinary action
+    nouns (회의, 방문, 미팅) in title. Do not shorten "김태형 PM한테" to "PM한테".
+
 - participants and targets are compatibility fields only; leave them empty
   unless the source explicitly needs legacy export metadata.
-- Example: "내일 오전 11시 팀장님 원주세브란스방문" -> schedule_fields.title
-  "팀장님 원주세브란스 방문", participants ["팀장님"], targets [].
+
+- Example A: "7월1일 원주세브란스기독병원에서 장재균 그룹장님 동행방문" ->
+  title "장재균 그룹장님 동행방문", date "7월1일",
+  location "원주세브란스기독병원", participants ["장재균 그룹장님"], targets [].
+- Example B: "내일 오전 11시 팀장님 원주세브란스 방문" ->
+  title "팀장님 방문", date "내일", start_at 11:00, location "원주세브란스",
+  participants ["팀장님"].
+- Example C: "준비물 노트북 챙겨서 중요한 회의" ->
+  title "회의", supplies ["노트북"], is_critical true.
+
 - For edit, delete, and query intents, use target_event_hint and
   requested_changes to identify what should be acted on.
 - Use choose when the text is too ambiguous to decide between adding a schedule

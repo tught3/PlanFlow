@@ -874,14 +874,14 @@ class VoiceScheduleStructureService {
     if (extractedLocation == null || extractedLocation.isEmpty) {
       return stripLeadingLocationPhrase(normalized);
     }
-    if (!_shouldKeepLeadingLocationInTitle(extractedLocation)) {
-      return _stripKnownLeadingLocationPrefix(normalized, extractedLocation);
-    }
-    final stripped = stripLeadingLocationPhrase(normalized);
-    if (stripped == normalized || stripped.isEmpty) {
+    // 단일 진실 원칙: 장소는 location 필드로 추출되므로 제목에서 항상 제거한다.
+    // (병원/식당이라도 제목에 남기지 않음 — 사용자 요구)
+    // 단, 제거 후 제목이 비면 원본 유지(장소만 말한 경우).
+    final stripped = _stripKnownLeadingLocationPrefix(normalized, extractedLocation);
+    if (stripped.isEmpty) {
       return normalizeSpacingForSchedule(normalized);
     }
-    return normalizeSpacingForSchedule('$extractedLocation $stripped');
+    return stripped;
   }
 
   String _stripKnownLeadingLocationPrefix(String text, String location) {

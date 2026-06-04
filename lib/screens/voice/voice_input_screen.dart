@@ -101,6 +101,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   }
 
   @override
+  void deactivate() {
+    // 페이지를 벗어나는 즉시(pop 직전) STT 무조건 종료 — dispose보다 빠른 시점
+    if (_isListening) {
+      unawaited(widget.sttService.cancelActiveListen());
+    }
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _isDisposing = true;

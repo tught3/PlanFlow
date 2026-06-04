@@ -159,6 +159,18 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   @override
+  void deactivate() {
+    // 페이지를 벗어나는 즉시(pop 직전) STT 무조건 종료
+    _keepListening = false;
+    _restartListenTimer?.cancel();
+    _conversationWatchdogTimer?.cancel();
+    if (_isListening) {
+      unawaited(widget.sttService.cancelActiveListen());
+    }
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _keepListening = false;
