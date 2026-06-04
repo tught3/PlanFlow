@@ -855,11 +855,10 @@ private class PlanFlowSttChannel(
         if (recognizer != null) {
             return
         }
-        recognizer = if (android.os.Build.VERSION.SDK_INT >= 31) {
-            SpeechRecognizer.createOnDeviceSpeechRecognizer(activity)
-        } else {
-            SpeechRecognizer.createSpeechRecognizer(activity)
-        }
+        // 기본 RecognitionService 사용 (ASI createOnDeviceSpeechRecognizer 대신).
+        // ASI 온디바이스 엔진은 짧은 발화마다 끊고 시작음(beep)을 내므로,
+        // 기본 엔진 + EXTRA_PREFER_OFFLINE=true로 끊김/beep을 줄이고 오프라인 유지.
+        recognizer = SpeechRecognizer.createSpeechRecognizer(activity)
         recognizer?.setRecognitionListener(this)
     }
 
