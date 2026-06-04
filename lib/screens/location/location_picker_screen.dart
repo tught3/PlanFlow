@@ -534,7 +534,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       return NaverMap(
         forceGesture: true,
         // ignore: invalid_use_of_visible_for_testing_member
-        forceHybridComposition: false,
+        forceHybridComposition: true,
         options: NaverMapViewOptions(
           initialCameraPosition: NCameraPosition(
             target: _initialTarget,

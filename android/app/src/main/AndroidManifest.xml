@@ -93,11 +93,7 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- Naver Maps SDK가 Impeller(Vulkan)와 충돌해 타일이 안 뜨는 문제 방지 -->
         <meta-data
-            android:name="io.flutter.embedding.android.EnableImpeller"
-            android:value="false" />
-<meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${googleMapsApiKey}" />
         <service
