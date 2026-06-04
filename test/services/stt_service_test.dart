@@ -276,6 +276,14 @@ void main() {
       '내일 오후 2시 회의',
     );
     expect(
+      SttService.normalizeVoiceTranscript('6월 7일 아니 9일 강릉 회식'),
+      '6월 9일 강릉 회식',
+    );
+    expect(
+      SttService.normalizeVoiceTranscript('7일 아니 9일'),
+      '9일',
+    );
+    expect(
       SttService.normalizeVoiceTranscript('계약 취소 확인 전화'),
       '계약 취소 확인 전화',
     );

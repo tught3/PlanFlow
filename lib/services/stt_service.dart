@@ -440,6 +440,18 @@ class SttService {
         }
       }
     }
+    // 날짜 정정: "6월 7일 아니 9일" → 교정값이 날짜 토큰이면
+    // 직전 날짜 토큰 경계부터 교체해 월/일 일부만 자연스럽게 정정한다.
+    if (_isDateToken(correction.first)) {
+      for (var index = base.length - 1; index >= 0; index -= 1) {
+        if (_isDateToken(base[index])) {
+          return <String>[
+            ...base.take(index),
+            ...correction,
+          ];
+        }
+      }
+    }
     for (var index = base.length - 1; index >= 0; index -= 1) {
       if (base[index] == correction.first ||
           correction.first.startsWith(base[index]) ||
@@ -1545,6 +1557,11 @@ const Set<String> _timePrefixTokens = <String>{
   '점심',
   '밤',
 };
+
+final RegExp _dateTokenPattern = RegExp(r'^\d+(?:월|일)$');
+
+/// "6월", "7일" 같은 숫자형 날짜 토큰인지 판별한다.
+bool _isDateToken(String token) => _dateTokenPattern.hasMatch(token);
 
 const Set<String> _undoLastWordCommandTokens = <String>{
   '아니',
