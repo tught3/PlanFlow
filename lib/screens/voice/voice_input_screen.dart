@@ -66,6 +66,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   bool _hasSubmittedVoiceCommand = false;
   bool _isDisposing = false;
   bool _isExitingVoiceInput = false;
+  bool _didDeactivateCancel = false;
   bool _isFinishingVoiceFlow = false;
   int _partialTranscriptToken = 0;
   int _listenSessionGeneration = 0;
@@ -104,6 +105,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   void deactivate() {
     // 페이지를 벗어나는 즉시(pop 직전) STT 무조건 종료 — dispose보다 빠른 시점
     if (_isListening) {
+      _didDeactivateCancel = true;
       unawaited(widget.sttService.cancelActiveListen());
     }
     super.deactivate();
@@ -117,7 +119,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     _listenSessionGeneration++;
     _draftPreparationDebounce?.cancel();
     _resetVoiceSessionState();
-    if (!_isExitingVoiceInput) {
+    // deactivate에서 이미 cancel을 호출했으면 중복 호출하지 않는다
+    if (!_isExitingVoiceInput && !_didDeactivateCancel) {
       unawaited(widget.sttService.cancelActiveListen());
     }
     _rawTextController.removeListener(_handleRawTextChanged);
@@ -362,6 +365,28 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       _isFinishingVoiceFlow = true;
       _partialTranscriptToken++;
       await widget.sttService.stopActiveListen();
+    }
+  }
+
+  /// "완료" 버튼 전용 핸들러.
+  /// STT 종료 결과(result.isSuccess)에 의존하지 않고, 화면에 인식된 텍스트가 있으면
+  /// 즉시 제출해 한 번의 클릭으로 다음 화면으로 넘어가게 한다.
+  /// (기존엔 stop만 하고 listen() result가 실패로 오면 제출이 누락되어 두 번 눌러야 했음)
+  Future<void> _handleVoiceDonePressed() async {
+    if (!_isListening) {
+      return;
+    }
+    _isFinishingVoiceFlow = true;
+    _partialTranscriptToken++;
+    await widget.sttService.stopActiveListen();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _isListening = false);
+    final text = _rawTextController.text.trim();
+    if (text.isNotEmpty) {
+      // listen() 자동 제출 경로와는 _beginVoiceCommandSubmit signature 가드로 중복 차단됨.
+      await _continueWithRawText();
     }
   }
 
@@ -1250,7 +1275,7 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
                     isListening: _isListening,
                     hasText: _rawTextController.text.trim().isNotEmpty,
                     onTapStart: _handleVoiceStartPressed,
-                    onTapFinish: _finishVoiceFlow,
+                    onTapFinish: _handleVoiceDonePressed,
                     onManualSubmit: _confirmManualText,
                   ),
                   if (_rawTextController.text.trim().isEmpty)

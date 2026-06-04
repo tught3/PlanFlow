@@ -308,6 +308,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           result.targetEvent != null &&
           result.locationText != null) {
         await _openEditWithLocation(result.targetEvent!, result.locationText!);
+      } else if (result.requiresEditScreenNavigation &&
+          result.targetEvent != null &&
+          result.locationText == null) {
+        // location 변경 외 수정(날짜·시간 이동 등): 일반 편집 화면으로 이동
+        await _openGeneralEditScreen(result.targetEvent!);
       }
 
       if (!mounted) return;
@@ -717,6 +722,14 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       ),
     );
     await context.push('${AppRoutes.eventEdit}/${edited.id}', extra: edited);
+    await _loadEvents();
+  }
+
+  /// 날짜·시간 이동 등 일반 수정: 편집 화면으로 바로 이동해 GPT 파이프라인이 처리한다.
+  Future<void> _openGeneralEditScreen(EventModel event) async {
+    await _stopVoiceBeforeNavigation();
+    if (!mounted) return;
+    await context.push('${AppRoutes.eventEdit}/${event.id}', extra: event);
     await _loadEvents();
   }
 

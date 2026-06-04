@@ -1,5 +1,6 @@
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
+import 'voice_command_router.dart';
 import 'voice_date_range_parser.dart';
 
 typedef VoiceConversationNow = DateTime Function();
@@ -142,14 +143,17 @@ class VoiceConversationController {
   const VoiceConversationController({
     Iterable<EventModel> events = const <EventModel>[],
     VoiceConversationNow? now,
+    VoiceCommandRouter? router,
   })  : _initialEvents = events,
-        _now = now;
+        _now = now,
+        _router = router ?? const VoiceCommandRouter();
 
   static final Expando<_VoiceConversationState> _states =
       Expando<_VoiceConversationState>('VoiceConversationController');
 
   final Iterable<EventModel> _initialEvents;
   final VoiceConversationNow? _now;
+  final VoiceCommandRouter _router;
 
   List<EventModel> get visibleEvents =>
       List<EventModel>.unmodifiable(_state.visibleEvents);
@@ -181,6 +185,7 @@ class VoiceConversationController {
     }
 
     final text = input.trim();
+    final route = _router.route(text);
     if (text.isEmpty) {
       return _finish(
         state,
@@ -228,7 +233,7 @@ class VoiceConversationController {
     }
 
     final multiTargets = _resolveExplicitFollowUpTargets(text, state);
-    if (_isModificationIntent(text) && multiTargets.length > 1) {
+    if (_isModificationIntent(text, route: route) && multiTargets.length > 1) {
       state
         ..visibleEvents = multiTargets
         ..selectedEvents = multiTargets
@@ -283,7 +288,7 @@ class VoiceConversationController {
       );
     }
 
-    if (_isLocationIntent(text)) {
+    if (_isLocationIntent(text, route: route)) {
       final ambiguous = _resolveAmbiguousTimeTargets(text, state);
       if (ambiguous.length > 1) {
         state
@@ -336,7 +341,7 @@ class VoiceConversationController {
       }
     }
 
-    if (_isDeleteIntent(text)) {
+    if (_isDeleteIntent(text, route: route)) {
       final ambiguous = _resolveAmbiguousTimeTargets(text, state);
       if (ambiguous.length > 1) {
         state
@@ -380,7 +385,7 @@ class VoiceConversationController {
     }
 
     final range = _parseDateRange(text);
-    if (range != null && _isQueryIntent(text)) {
+    if (range != null && _isQueryIntent(text, route: route)) {
       final matched = state.events
           .where((event) => _eventIntersectsRange(event, range))
           .toList(growable: false);
@@ -410,6 +415,22 @@ class VoiceConversationController {
       state
         ..focusedEvent = followUp
         ..selectedEvents = const <EventModel>[];
+      // 수정 의도(날짜/시간 이동 등 location·critical·delete 외)가 있으면
+      // 편집 화면으로 넘겨 GPT 파이프라인이 처리하게 한다.
+      if (_isModificationIntent(text, route: route)) {
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.openEditScreen,
+            inputText: input,
+            targetEvent: followUp,
+            selectedEvents: <EventModel>[followUp],
+            requiresEditScreenNavigation: true,
+            assistantMessage: '"${followUp.title}" 일정을 편집 화면에서 바꿔 드릴게요.',
+          ),
+        );
+      }
       return _finish(
         state,
         session,
@@ -503,8 +524,10 @@ class VoiceConversationController {
     return localStart.isBefore(range.end) && localEnd.isAfter(range.start);
   }
 
-  bool _isQueryIntent(String text) {
-    return _isAvailabilityIntent(text) ||
+  bool _isQueryIntent(String text, {VoiceCommandRouteResult? route}) {
+    final resolvedRoute = route ?? _router.route(text);
+    return resolvedRoute.intent == VoiceCommandRouteIntent.query ||
+        _isAvailabilityIntent(text) ||
         (text.contains('일정') &&
             (text.contains('보여') ||
                 text.contains('알려') ||
@@ -520,8 +543,10 @@ class VoiceConversationController {
         text.contains('있어?');
   }
 
-  bool _isLocationIntent(String text) {
-    return (text.contains('장소') || text.contains('위치')) &&
+  bool _isLocationIntent(String text, {VoiceCommandRouteResult? route}) {
+    final resolvedRoute = route ?? _router.route(text);
+    return resolvedRoute.requestedChanges.contains('location') ||
+        (text.contains('장소') || text.contains('위치')) &&
         (text.contains('추가') ||
             text.contains('변경') ||
             text.contains('수정') ||
@@ -541,8 +566,10 @@ class VoiceConversationController {
     return null;
   }
 
-  bool _isDeleteIntent(String text) {
-    return text.contains('삭제') ||
+  bool _isDeleteIntent(String text, {VoiceCommandRouteResult? route}) {
+    final resolvedRoute = route ?? _router.route(text);
+    return resolvedRoute.intent == VoiceCommandRouteIntent.delete ||
+        text.contains('삭제') ||
         text.contains('지워') ||
         text.contains('취소') ||
         text.contains('없애');
@@ -682,8 +709,11 @@ class VoiceConversationController {
     return selected.length > 1 ? selected : const <EventModel>[];
   }
 
-  bool _isModificationIntent(String text) {
-    return text.contains('바꿔') ||
+  bool _isModificationIntent(String text, {VoiceCommandRouteResult? route}) {
+    final resolvedRoute = route ?? _router.route(text);
+    return resolvedRoute.intent == VoiceCommandRouteIntent.edit ||
+        resolvedRoute.requestedChanges.isNotEmpty ||
+        text.contains('바꿔') ||
         text.contains('변경') ||
         text.contains('수정') ||
         text.contains('고쳐') ||
