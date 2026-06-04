@@ -408,7 +408,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             listenGeneration: listenGeneration,
           );
         },
-        mode: SttListenMode.conversation,
+        mode: SttListenMode.dictation,
       );
       if (!mounted) {
         return;
