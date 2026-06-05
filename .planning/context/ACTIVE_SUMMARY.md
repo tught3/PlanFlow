@@ -1557,3 +1557,7 @@
 - `김창민 만나기`처럼 사람 이름만 남아야 하는 제목에서 bare-name recipient 추출을 보강해 `만나기`만 남는 과도한 절삭을 막았다.
 - 일정 편집과 확인 화면 모두에서 시작일을 옮길 때 기간을 늘리지 않고 기존 종료 시각을 같은 delta만큼 함께 이동하도록 맞췄다.
 - 검증 통과: `test/services/voice_schedule_structure_service_test.dart`, `test/screens/event_edit_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `am start -W -n com.fluxstudio.planflow/.MainActivity`.
+## 2026-06-05 AI 일정 대화 시작시간 초안 반영
+- AI 일정 대화에서 `1번 일정 시작시간 8시반으로 해줘` 같은 시간 수정도 편집 초안으로 넘기도록 `voice_conversation_controller.dart`를 보강했다.
+- `voice_command_pipeline.dart`는 `시작시간 ... 해줘` 형태를 수정 분리로 잘라내도록 조정했고, 컨트롤러/파이프라인 회귀 테스트를 추가했다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_command_pipeline_test.dart test/services/voice_conversation_controller_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:37581 install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:37581 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.

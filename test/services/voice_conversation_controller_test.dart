@@ -124,7 +124,8 @@ void main() {
       expect(controller.focusedEvent?.id, 'third');
     });
 
-    test('relative date follow-up creates a shifted draft event for edit screen',
+    test(
+        'relative date follow-up creates a shifted draft event for edit screen',
         () {
       final controller = VoiceConversationController(
         events: <EventModel>[
@@ -148,6 +149,36 @@ void main() {
       expect(
         planflowLocal(result.draftEvent!.endAt!),
         DateTime(2026, 5, 8, 10),
+      );
+      expect(
+        planflowLocal(result.targetEvent!.startAt!),
+        DateTime(2026, 5, 7, 9),
+      );
+    });
+
+    test('time follow-up creates a shifted draft event for edit screen', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '아침 미팅', DateTime(2026, 5, 7, 9)),
+          _event('second', '점심 확인', DateTime(2026, 5, 7, 12)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result = controller.handle('1번 일정 시작시간 8시반으로 해줘');
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'first');
+      expect(result.requiresEditScreenNavigation, isTrue);
+      expect(result.draftEvent, isNotNull);
+      expect(
+        planflowLocal(result.draftEvent!.startAt!),
+        DateTime(2026, 5, 7, 8, 30),
+      );
+      expect(
+        planflowLocal(result.draftEvent!.endAt!),
+        DateTime(2026, 5, 7, 9, 30),
       );
       expect(
         planflowLocal(result.targetEvent!.startAt!),

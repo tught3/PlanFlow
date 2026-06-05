@@ -430,7 +430,7 @@ class VoiceCommandPipeline {
 
   VoiceCommandSplit? _splitDateTimeChange(String normalizedText) {
     final verbMatches = RegExp(
-      r'(?:로|으로)?\s*(?:변경|바꿔|수정|옮겨|이동|미뤄|밀어|연기|앞당겨|늦춰|당겨).*?$',
+      r'(?:로|으로)?\s*(?:변경|바꿔|수정|옮겨|이동|미뤄|밀어|연기|앞당겨|늦춰|당겨|해줘|해주세요|줘|주세요).*?$',
     ).allMatches(normalizedText).toList(growable: false);
     if (verbMatches.isEmpty) {
       return null;
@@ -441,7 +441,14 @@ class VoiceCommandPipeline {
     if (valueMatch == null) {
       return null;
     }
-    final targetText = beforeVerb.substring(0, valueMatch.start).trim();
+    final targetText = beforeVerb
+        .substring(0, valueMatch.start)
+        .replaceAll(
+          RegExp(r'(?:시작\s*시간|시작시간|시각|시간)\s*$'),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
     final changeText = normalizedText.substring(valueMatch.start).trim();
     if (targetText.isEmpty || changeText.isEmpty) {
       return null;

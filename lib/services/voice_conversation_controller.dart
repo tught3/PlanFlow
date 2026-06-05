@@ -1,5 +1,6 @@
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
+import 'gpt_service.dart';
 import 'voice_command_router.dart';
 import 'voice_date_range_parser.dart';
 
@@ -420,7 +421,7 @@ class VoiceConversationController {
       // 수정 의도(날짜/시간 이동 등 location·critical·delete 외)가 있으면
       // 편집 화면으로 넘겨 GPT 파이프라인이 처리하게 한다.
       if (_isModificationIntent(text, route: route)) {
-        final draftEvent = _draftEventForRelativeShift(
+        final draftEvent = _draftEventForRequestedStart(
           followUp,
           text,
           route: route,
@@ -556,13 +557,13 @@ class VoiceConversationController {
     final resolvedRoute = route ?? _router.route(text);
     return resolvedRoute.requestedChanges.contains('location') ||
         (text.contains('장소') || text.contains('위치')) &&
-        (text.contains('추가') ||
-            text.contains('변경') ||
-            text.contains('수정') ||
-            text.contains('바꿔') ||
-            text.contains('고쳐') ||
-            text.contains('설정') ||
-            text.contains('넣어'));
+            (text.contains('추가') ||
+                text.contains('변경') ||
+                text.contains('수정') ||
+                text.contains('바꿔') ||
+                text.contains('고쳐') ||
+                text.contains('설정') ||
+                text.contains('넣어'));
   }
 
   bool? _criticalValueFromText(String text) {
@@ -731,7 +732,7 @@ class VoiceConversationController {
         text.contains('옮겨');
   }
 
-  EventModel? _draftEventForRelativeShift(
+  EventModel? _draftEventForRequestedStart(
     EventModel event,
     String text, {
     VoiceCommandRouteResult? route,
@@ -740,6 +741,54 @@ class VoiceConversationController {
     if (!resolvedRoute.requestedChanges.contains('start_at') &&
         !_hasRelativeDateShiftCue(text)) {
       return null;
+    }
+
+    final requestedStartLocal = _inferRequestedStartLocal(
+      event,
+      text,
+      route: resolvedRoute,
+    );
+    if (requestedStartLocal != null) {
+      final originalStartLocal =
+          event.startAt == null ? null : planflowLocal(event.startAt!);
+      final originalEndLocal =
+          event.endAt == null ? null : planflowLocal(event.endAt!);
+      final duration = originalStartLocal == null || originalEndLocal == null
+          ? null
+          : originalEndLocal.difference(originalStartLocal);
+
+      return EventModel(
+        id: event.id,
+        userId: event.userId,
+        title: event.title,
+        startAt: planflowLocalDateTimeToUtc(requestedStartLocal),
+        endAt:
+            duration == null || duration.isNegative || duration == Duration.zero
+                ? event.endAt
+                : planflowLocalDateTimeToUtc(requestedStartLocal.add(duration)),
+        location: event.location,
+        locationLat: event.locationLat,
+        locationLng: event.locationLng,
+        memo: event.memo,
+        supplies: event.supplies,
+        suppliesChecked: event.suppliesChecked,
+        participants: event.participants,
+        targets: event.targets,
+        isCritical: event.isCritical,
+        recurrenceRule: event.recurrenceRule,
+        isAllDay: event.isAllDay,
+        isMultiDay: event.isMultiDay,
+        parentEventId: event.parentEventId,
+        category: event.category,
+        source: event.source,
+        externalId: event.externalId,
+        externalCalendarId: event.externalCalendarId,
+        externalEtag: event.externalEtag,
+        externalUpdatedAt: event.externalUpdatedAt,
+        lastSyncedAt: event.lastSyncedAt,
+        createdAt: event.createdAt,
+        updatedAt: event.updatedAt,
+      );
     }
 
     final shiftDays = _relativeDateShiftDays(text);
@@ -785,6 +834,131 @@ class VoiceConversationController {
     );
   }
 
+  DateTime? _inferRequestedStartLocal(
+    EventModel event,
+    String text, {
+    VoiceCommandRouteResult? route,
+  }) {
+    if (_isLocationIntent(text, route: route)) {
+      return null;
+    }
+    final changeText = route?.changeText.trim();
+    final sourceText =
+        changeText == null || changeText.isEmpty ? text : changeText;
+    final originalStartLocal =
+        event.startAt == null ? planflowNow() : planflowLocal(event.startAt!);
+    final dateCandidate =
+        _inferLastDateCandidate(sourceText, originalStartLocal);
+    final timeCandidate = _inferLastTimeCandidate(sourceText);
+    if (dateCandidate == null && timeCandidate == null) {
+      return null;
+    }
+
+    final baseDate = dateCandidate ??
+        DateTime(
+          originalStartLocal.year,
+          originalStartLocal.month,
+          originalStartLocal.day,
+        );
+    final hour = timeCandidate?.hour ?? originalStartLocal.hour;
+    final minute = timeCandidate?.minute ?? originalStartLocal.minute;
+    return DateTime(baseDate.year, baseDate.month, baseDate.day, hour, minute);
+  }
+
+  DateTime? _inferLastDateCandidate(String text, DateTime referenceLocal) {
+    final dateMatches = RegExp(
+      r'((?:그\s*)?다음\s*날(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:뒤|후)(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:전|앞)(?:으로|로|에)?|(?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일|매월\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일|매월\s*\d{1,2}\s*일',
+    ).allMatches(text).toList(growable: false);
+    if (dateMatches.isEmpty) {
+      return null;
+    }
+    final match = dateMatches.last;
+    final snippet = text.substring(
+      match.start,
+      (match.end + 20).clamp(0, text.length),
+    );
+    return GptService(now: () => referenceLocal).inferStartAtFromRawText(
+      snippet,
+    );
+  }
+
+  _VoiceRequestedTime? _inferLastTimeCandidate(String text) {
+    final matches = RegExp(
+      r'(오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*([0-9]{1,2}|[가-힣]{1,8})\s*시(?:\s*([0-9]{1,2}|[가-힣]{1,8})\s*분?|\s*(반))?',
+    ).allMatches(text).toList(growable: false);
+    if (matches.isEmpty) {
+      return null;
+    }
+    final match = matches.last;
+    final hourValue = _koreanNumber(match.group(2));
+    if (hourValue == null) {
+      return null;
+    }
+    final period = match.group(1) ?? '';
+    var hour = hourValue;
+    if (RegExp(r'(오후|낮|점심|저녁|밤)').hasMatch(period) && hour < 12) {
+      hour += 12;
+    }
+    if (period == '새벽' && hour == 12) {
+      hour = 0;
+    }
+    final valueText = match.group(0) ?? '';
+    final minute = match.group(4) != null || valueText.contains('반')
+        ? 30
+        : (_koreanNumber(match.group(3)) ?? 0);
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      return null;
+    }
+    return _VoiceRequestedTime(hour, minute);
+  }
+
+  int? _koreanNumber(String? raw) {
+    final text = raw?.trim();
+    if (text == null || text.isEmpty) {
+      return null;
+    }
+    final numeric = int.tryParse(text);
+    if (numeric != null) {
+      return numeric;
+    }
+    const numbers = <String, int>{
+      '영': 0,
+      '공': 0,
+      '한': 1,
+      '하나': 1,
+      '일': 1,
+      '두': 2,
+      '둘': 2,
+      '이': 2,
+      '세': 3,
+      '셋': 3,
+      '삼': 3,
+      '네': 4,
+      '넷': 4,
+      '사': 4,
+      '다섯': 5,
+      '오': 5,
+      '여섯': 6,
+      '육': 6,
+      '일곱': 7,
+      '칠': 7,
+      '여덟': 8,
+      '팔': 8,
+      '아홉': 9,
+      '구': 9,
+      '열': 10,
+      '십': 10,
+      '열한': 11,
+      '열하나': 11,
+      '십일': 11,
+      '열두': 12,
+      '열둘': 12,
+      '십이': 12,
+      '삼십': 30,
+    };
+    return numbers[text];
+  }
+
   bool _hasRelativeDateShiftCue(String text) {
     final normalized = _compact(text);
     return RegExp(r'(?:그)?다음날(?:로|에|으로)?').hasMatch(normalized) ||
@@ -803,12 +977,14 @@ class VoiceConversationController {
       return null;
     }
 
-    final explicitForward = RegExp(r'(\d+)일(?:뒤|후)(?:로|에|으로)?').firstMatch(normalized);
+    final explicitForward =
+        RegExp(r'(\d+)일(?:뒤|후)(?:로|에|으로)?').firstMatch(normalized);
     if (explicitForward != null) {
       return int.tryParse(explicitForward.group(1) ?? '');
     }
 
-    final explicitBackward = RegExp(r'(\d+)일(?:전|앞)(?:으로|로|에)?').firstMatch(normalized);
+    final explicitBackward =
+        RegExp(r'(\d+)일(?:전|앞)(?:으로|로|에)?').firstMatch(normalized);
     if (explicitBackward != null) {
       final parsed = int.tryParse(explicitBackward.group(1) ?? '');
       return parsed == null ? null : -parsed;
@@ -828,7 +1004,8 @@ class VoiceConversationController {
       return -1;
     }
 
-    final directionOnlyDays = RegExp(r'(?:하루|이틀|삼일|\d+일)(?:뒤|후)').firstMatch(normalized);
+    final directionOnlyDays =
+        RegExp(r'(?:하루|이틀|삼일|\d+일)(?:뒤|후)').firstMatch(normalized);
     if (directionOnlyDays != null) {
       final textValue = directionOnlyDays.group(0) ?? '';
       if (textValue.contains('이틀')) {
@@ -1067,6 +1244,13 @@ class VoiceConversationController {
       return left.id.compareTo(right.id);
     });
   }
+}
+
+class _VoiceRequestedTime {
+  const _VoiceRequestedTime(this.hour, this.minute);
+
+  final int hour;
+  final int minute;
 }
 
 class _VoiceConversationState {
