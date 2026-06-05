@@ -57,7 +57,7 @@
         <TextView
             android:id="@+id/widget_month_voice_button"
             style="@style/PlanFlowWidgetVoiceChip"
-            android:layout_width="44dp"
+            android:layout_width="84dp"
             android:layout_height="28dp"
             android:text="입력" />
     </LinearLayout>

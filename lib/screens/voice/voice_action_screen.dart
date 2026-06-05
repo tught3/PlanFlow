@@ -1249,6 +1249,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       parts.add(edited.location!.trim());
     }
 
+    if (edited.isCritical != original.isCritical) {
+      parts.add(edited.isCritical ? '중요 일정' : '중요 표시 해제');
+    }
+
     return parts.isEmpty ? null : parts.join(', ');
   }
 
@@ -1431,7 +1435,10 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   EventModel _eventWithRequestedVoiceChanges(EventModel event) {
     final requestedStartLocal = _inferRequestedStartLocal(event);
     final requestedLocation = _inferRequestedLocation();
-    if (requestedStartLocal == null && requestedLocation == null) {
+    final requestedCritical = _inferRequestedCriticalFlag();
+    if (requestedStartLocal == null &&
+        requestedLocation == null &&
+        requestedCritical == null) {
       return event;
     }
 
@@ -1465,7 +1472,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       suppliesChecked: event.suppliesChecked,
       participants: event.participants,
       targets: event.targets,
-      isCritical: event.isCritical,
+      isCritical: requestedCritical ?? event.isCritical,
       recurrenceRule: event.recurrenceRule,
       isAllDay: event.isAllDay,
       isMultiDay: event.isMultiDay,
@@ -1480,6 +1487,26 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       createdAt: event.createdAt,
       updatedAt: event.updatedAt,
     );
+  }
+
+  bool? _inferRequestedCriticalFlag() {
+    if (_requestedChanges.isEmpty) {
+      return null;
+    }
+    final requestedValue = _routeResult?.requestedFieldValues['is_critical'];
+    if (requestedValue == 'true') {
+      return true;
+    }
+    if (requestedValue == 'false') {
+      return false;
+    }
+    if (_requestedChanges.contains('is_critical_true')) {
+      return true;
+    }
+    if (_requestedChanges.contains('is_critical_false')) {
+      return false;
+    }
+    return null;
   }
 
   DateTime? _inferRequestedStartLocal(EventModel event) {

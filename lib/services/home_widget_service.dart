@@ -67,6 +67,7 @@ class HomeWidgetWeekDayData {
     this.summary,
     this.events = const <HomeWidgetListEventData>[],
     this.eventCount,
+    this.overflowPreviewTitle,
     this.hasCritical = false,
   });
 
@@ -74,6 +75,7 @@ class HomeWidgetWeekDayData {
   final String? summary;
   final List<HomeWidgetListEventData> events;
   final int? eventCount;
+  final String? overflowPreviewTitle;
   final bool hasCritical;
 }
 
@@ -85,6 +87,7 @@ class HomeWidgetMonthCellData {
     this.inMonth = false,
     this.events = const <HomeWidgetListEventData>[],
     this.overflowCount = 0,
+    this.overflowPreviewTitle,
   });
 
   final int cellIndex;
@@ -93,6 +96,7 @@ class HomeWidgetMonthCellData {
   final bool inMonth;
   final List<HomeWidgetListEventData> events;
   final int overflowCount;
+  final String? overflowPreviewTitle;
 }
 
 class HomeWidgetSchedulePayload {
@@ -365,6 +369,14 @@ class HomeWidgetSchedulePayloadBuilder {
     return List<HomeWidgetMonthCellData>.generate(42, (i) {
       final day = cellDays[i];
       final inMonth = day.year == month.year && day.month == month.month;
+      final dayEvents = _eventsForDay(events, day);
+      final visibleIds = slotMap[i]
+          .whereType<EventModel>()
+          .map((event) => event.id)
+          .toSet();
+      final hiddenEvents = dayEvents
+          .where((event) => !visibleIds.contains(event.id))
+          .toList(growable: false);
       final cellEvents = slotMap[i]
           .where((e) => e != null)
           .map((e) => _listEventForMonthCell(e!, day))
@@ -376,6 +388,11 @@ class HomeWidgetSchedulePayloadBuilder {
         inMonth: inMonth,
         events: cellEvents,
         overflowCount: overflowCounts[i],
+        overflowPreviewTitle: hiddenEvents.isEmpty
+            ? null
+            : hiddenEvents.first.title.trim().isEmpty
+                ? null
+                : hiddenEvents.first.title.trim(),
       );
     });
   }
@@ -447,10 +464,16 @@ class HomeWidgetSchedulePayloadBuilder {
     return List<HomeWidgetWeekDayData>.generate(7, (index) {
       final day = weekStart.add(Duration(days: index));
       final dayEvents = _eventsForDay(events, day);
+      final hiddenEvents = dayEvents.skip(weeklyWidgetEventRows).toList(growable: false);
       return HomeWidgetWeekDayData(
         date: day,
         summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}건',
         eventCount: dayEvents.length,
+        overflowPreviewTitle: hiddenEvents.isEmpty
+            ? null
+            : hiddenEvents.first.title.trim().isEmpty
+                ? null
+                : hiddenEvents.first.title.trim(),
         hasCritical: dayEvents.any((event) => event.isCritical),
         events: dayEvents
             .map(_listEvent)
@@ -1076,6 +1099,11 @@ class HomeWidgetService {
             cell?.overflowCount ?? 0,
           ) &&
           success;
+      success = await _saveOptionalValue(
+            '${keyPrefix}_${cellIndex}_overflow_preview_title',
+            cell?.overflowPreviewTitle,
+          ) &&
+          success;
       final events = cell?.events.take(3).toList(growable: false) ??
           const <HomeWidgetListEventData>[];
       for (var eventIndex = 0; eventIndex < 3; eventIndex += 1) {
@@ -1159,6 +1187,11 @@ class HomeWidgetService {
                 false,
           ) &&
           success;
+      success = await _saveOptionalValue(
+            '${keyPrefix}_${slot}_overflow_preview_title',
+            day?.overflowPreviewTitle,
+          ) &&
+          success;
 
       final events = day?.events
               .take(HomeWidgetSchedulePayloadBuilder.weeklyWidgetEventRows)
@@ -1207,8 +1240,10 @@ class HomeWidgetService {
     List<HomeWidgetListEventData> events,
   ) async {
     var success = true;
-    final slots = events.take(6).toList(growable: false);
-    for (var index = 0; index < 6; index += 1) {
+    // 세로 주간 위젯 최대 표시 슬롯(5) + overflow 처리
+    const maxVisible = 5;
+    final slots = events.take(maxVisible).toList(growable: false);
+    for (var index = 0; index < maxVisible; index += 1) {
       final event = index < slots.length ? slots[index] : null;
       final slot = index + 1;
       success = await _saveOptionalValue(
@@ -1232,6 +1267,15 @@ class HomeWidgetService {
           ) &&
           success;
     }
+    // 총 개수 및 overflow 미리보기 제목 저장
+    success = await _saveValue('day_offset_${offset}_count', events.length) &&
+        success;
+    final overflowTitle = events.skip(maxVisible).firstOrNull?.title.trim();
+    success = await _saveOptionalValue(
+          'day_offset_${offset}_overflow_preview_title',
+          overflowTitle == null || overflowTitle.isEmpty ? null : overflowTitle,
+        ) &&
+        success;
     return success;
   }
 

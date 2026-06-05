@@ -428,6 +428,22 @@ abstract class BasePlanFlowWidgetProvider(
         }
     }
 
+    protected fun formatOverflowLabel(
+        previewTitle: String?,
+        overflowCount: Int,
+    ): String? {
+        if (overflowCount <= 0) {
+            return null
+        }
+
+        val title = previewTitle?.trim()?.takeIf { it.isNotBlank() }
+        return when {
+            title == null -> "+$overflowCount"
+            overflowCount == 1 -> title
+            else -> "$title 외 ${overflowCount}건"
+        }
+    }
+
     protected fun bindWeekAction(context: Context, views: RemoteViews, viewId: Int, action: String, providerClass: Class<*>) {
         if (viewId == 0) return
         val intent = Intent(context, providerClass).apply { this.action = action }
@@ -711,19 +727,22 @@ class PlanFlowVerticalScheduleWidgetProvider :
         bindDayAction(context, views, R.id.widget_vertical_prev_button, ACTION_DAY_PREVIOUS)
         bindDayAction(context, views, R.id.widget_vertical_next_button, ACTION_DAY_NEXT)
 
+        val maxVisibleVertical = 5
         val eventIds = intArrayOf(
             R.id.widget_today_upcoming_event_1_title,
             R.id.widget_today_upcoming_event_2_title,
             R.id.widget_today_upcoming_event_3_title,
             R.id.widget_today_upcoming_event_4_title,
             R.id.widget_today_upcoming_event_5_title,
-            R.id.widget_today_upcoming_event_6_title,
+            // event_6 슬롯은 overflow 라벨 전용으로 사용
         )
+        val verticalOverflowViewId = R.id.widget_today_upcoming_event_6_title
 
         if (rawEvents.isNotEmpty()) {
-            val events = rawWidgetEventsForDay(rawEvents, targetDate).take(6)
+            val allDayEvents = rawWidgetEventsForDay(rawEvents, targetDate)
+            val events = allDayEvents.take(maxVisibleVertical)
             var hasAnyEvent = false
-            for (slot in 1..6) {
+            for (slot in 1..maxVisibleVertical) {
                 val eventId = eventIds[slot - 1]
                 val event = events.getOrNull(slot - 1)
                 if (event != null) {
@@ -750,6 +769,18 @@ class PlanFlowVerticalScheduleWidgetProvider :
                     views.setViewVisibility(eventId, View.GONE)
                 }
             }
+            // overflow 라벨 (6번째 슬롯)
+            val verticalOverflow = (allDayEvents.size - maxVisibleVertical).coerceAtLeast(0)
+            val verticalOverflowLabel = formatOverflowLabel(
+                allDayEvents.drop(maxVisibleVertical).firstOrNull()?.title,
+                verticalOverflow,
+            )
+            if (verticalOverflowLabel != null) {
+                views.setTextViewText(verticalOverflowViewId, verticalOverflowLabel)
+                views.setViewVisibility(verticalOverflowViewId, View.VISIBLE)
+            } else {
+                views.setViewVisibility(verticalOverflowViewId, View.GONE)
+            }
             if (hasAnyEvent) {
                 views.setViewVisibility(R.id.widget_today_upcoming_empty_message, View.GONE)
             } else {
@@ -769,9 +800,22 @@ class PlanFlowVerticalScheduleWidgetProvider :
                 emptyMessage = formatDayOffsetEmptyMessage(targetDate, dayOffset),
                 hideWeekendEvents = hideWeekendEvents,
             )
-            for (slot in 1..6) {
+            for (slot in 1..maxVisibleVertical) {
                 bindEventLinkIfAvailable(context, views, eventIds[slot - 1],
                     widgetData.getString("${dayPrefix}_${slot}_id", null))
+            }
+            // SharedPreferences 경로 overflow 라벨
+            val totalVerticalCount = widgetData.getInt("day_offset_${dayOffset}_count", 0)
+            val verticalOverflow = (totalVerticalCount - maxVisibleVertical).coerceAtLeast(0)
+            val verticalOverflowPreviewTitle =
+                widgetData.getString("day_offset_${dayOffset}_overflow_preview_title", null)
+                    ?: widgetData.getString("${dayPrefix}_6_title", null)
+            val verticalOverflowLabel = formatOverflowLabel(verticalOverflowPreviewTitle, verticalOverflow)
+            if (verticalOverflowLabel != null) {
+                views.setTextViewText(verticalOverflowViewId, verticalOverflowLabel)
+                views.setViewVisibility(verticalOverflowViewId, View.VISIBLE)
+            } else {
+                views.setViewVisibility(verticalOverflowViewId, View.GONE)
             }
         }
 
@@ -913,7 +957,12 @@ class PlanFlowWeeklyWidgetProvider :
             }
 
             if (rawEvents.isNotEmpty()) {
-                val overflow = (rawWidgetEventsForDay(rawEvents, targetDate).size - dayEvents.size).coerceAtLeast(0)
+                val fullDayEvents = rawWidgetEventsForDay(rawEvents, targetDate)
+                val overflow = (fullDayEvents.size - dayEvents.size).coerceAtLeast(0)
+                val overflowLabel = formatOverflowLabel(
+                    fullDayEvents.drop(4).firstOrNull()?.title,
+                    overflow,
+                )
                 bindEventText(
                     views,
                     event1Ids[index],
@@ -930,8 +979,8 @@ class PlanFlowWeeklyWidgetProvider :
                 dayEvents.getOrNull(2)?.let { bindEventLinkIfAvailable(context, views, event3Ids[index], it.id) }
                 dayEvents.getOrNull(3)?.let { bindEventLinkIfAvailable(context, views, event4Ids[index], it.id) }
 
-                if (overflow > 0) {
-                    views.setTextViewText(overflowIds[index], "+$overflow")
+                if (overflowLabel != null) {
+                    views.setTextViewText(overflowIds[index], overflowLabel)
                     views.setViewVisibility(overflowIds[index], View.VISIBLE)
                 } else {
                     views.setViewVisibility(overflowIds[index], View.GONE)
@@ -959,6 +1008,11 @@ class PlanFlowWeeklyWidgetProvider :
                     val totalCount = widgetData.getInt("${weekPrefix}_${slot}_count", 0)
                     overflow = (totalCount - listOf(e1Title, e2Title, e3Title, e4Title).count { !it.isNullOrBlank() }).coerceAtLeast(0)
                 }
+                val overflowLabel = formatOverflowLabel(
+                    widgetData.getString("${weekPrefix}_${slot}_overflow_preview_title", null)
+                        ?: e4Title,
+                    overflow,
+                )
 
                 bindEventText(views, event1Ids[index], e1Title, null, e1Critical,
                     emptyText = if (e1Title == null && e2Title == null && overflow == 0) "\uc77c\uc815 \uc5c6\uc74c" else null)
@@ -970,8 +1024,8 @@ class PlanFlowWeeklyWidgetProvider :
                 bindEventLinkIfAvailable(context, views, event3Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_3_id", null))
                 bindEventLinkIfAvailable(context, views, event4Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_4_id", null))
 
-                if (overflow > 0) {
-                    views.setTextViewText(overflowIds[index], "+$overflow")
+                if (overflowLabel != null) {
+                    views.setTextViewText(overflowIds[index], overflowLabel)
                     views.setViewVisibility(overflowIds[index], View.VISIBLE)
                 } else {
                     views.setViewVisibility(overflowIds[index], View.GONE)
@@ -1048,7 +1102,7 @@ class PlanFlowWeeklyListWidgetProvider :
             bindCalendarLink(context, views, rowId, targetDate)
 
             val dayEvents = if (rawEvents.isNotEmpty()) {
-                rawWidgetEventsForDay(rawEvents, targetDate).take(4)
+                rawWidgetEventsForDay(rawEvents, targetDate).take(3)
             } else {
                 emptyList()
             }
@@ -1061,10 +1115,16 @@ class PlanFlowWeeklyListWidgetProvider :
                 val e1 = widgetData.getString("${weekPrefix}_${slot}_event_1_title", null)?.takeIf { it.isNotBlank() }
                 val e2 = widgetData.getString("${weekPrefix}_${slot}_event_2_title", null)?.takeIf { it.isNotBlank() }
                 val e3 = widgetData.getString("${weekPrefix}_${slot}_event_3_title", null)?.takeIf { it.isNotBlank() }
-                val e4 = widgetData.getString("${weekPrefix}_${slot}_event_4_title", null)?.takeIf { it.isNotBlank() }
                 val totalCount = widgetData.getInt("${weekPrefix}_${slot}_count", 0)
-                (totalCount - listOf(e1, e2, e3, e4).count { !it.isNullOrBlank() }).coerceAtLeast(0)
+                (totalCount - listOf(e1, e2, e3).count { !it.isNullOrBlank() }).coerceAtLeast(0)
             }
+            val overflowPreviewTitle = if (rawEvents.isNotEmpty()) {
+                rawWidgetEventsForDay(rawEvents, targetDate).drop(3).firstOrNull()?.title
+            } else {
+                widgetData.getString("${weekPrefix}_${slot}_overflow_preview_title", null)
+                    ?: widgetData.getString("${weekPrefix}_${slot}_event_4_title", null)
+            }
+            val overflowLabel = formatOverflowLabel(overflowPreviewTitle, overflow)
 
             if (rawEvents.isNotEmpty()) {
                 val eventIds = intArrayOf(
@@ -1106,7 +1166,7 @@ class PlanFlowWeeklyListWidgetProvider :
                 }
             } else {
                 var shownCount = 0
-                for (eventSlot in 1..4) {
+                for (eventSlot in 1..3) {
                     val eventId = findViewId(context, "widget_week_list_day_${slot}_event_${eventSlot}")
                     if (eventId == 0) continue
                     val title = widgetData.getString("${weekPrefix}_${slot}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
@@ -1119,8 +1179,8 @@ class PlanFlowWeeklyListWidgetProvider :
                 }
             }
 
-            if (overflow > 0) {
-                views.setTextViewText(overflowId, "+$overflow")
+            if (overflowLabel != null) {
+                views.setTextViewText(overflowId, overflowLabel)
                 views.setViewVisibility(overflowId, View.VISIBLE)
             } else {
                 views.setViewVisibility(overflowId, View.GONE)
@@ -1302,9 +1362,19 @@ class PlanFlowMonthlyWidgetProvider :
                     }
 
                     if (overflowId != null) {
-                        val overflow = overflowCounts[slot - 1]
-                        if (overflow > 0) {
-                            views.setTextViewText(overflowId, "+$overflow")
+                        val dayEvents = rawWidgetEventsForDay(rawEvents, day)
+                        val visibleEventIds = slotMap[slot - 1]
+                            .filterNotNull()
+                            .map { it.id }
+                            .toSet()
+                        val hiddenEvents = dayEvents.filterNot { visibleEventIds.contains(it.id) }
+                        val overflow = hiddenEvents.size
+                        val overflowLabel = formatOverflowLabel(
+                            hiddenEvents.firstOrNull()?.title,
+                            overflow,
+                        )
+                        if (overflowLabel != null) {
+                            views.setTextViewText(overflowId, overflowLabel)
                             views.setViewVisibility(overflowId, View.VISIBLE)
                         } else {
                             views.setViewVisibility(overflowId, View.GONE)
@@ -1401,6 +1471,10 @@ class PlanFlowMonthlyWidgetProvider :
                 } else {
                     0
                 }
+                val overflowLabel = formatOverflowLabel(
+                    widgetData.getString("${prefix}_overflow_preview_title", null),
+                    overflow,
+                )
 
                 views.setTextViewText(dayId, dayText ?: "")
                 views.setViewVisibility(dayId, if (dayText == null) View.INVISIBLE else View.VISIBLE)
@@ -1440,8 +1514,8 @@ class PlanFlowMonthlyWidgetProvider :
                     }
                 }
 
-                if (overflow > 0) {
-                    views.setTextViewText(overflowId, "+$overflow")
+                if (overflowLabel != null) {
+                    views.setTextViewText(overflowId, overflowLabel)
                     views.setViewVisibility(overflowId, View.VISIBLE)
                 } else {
                     views.setViewVisibility(overflowId, View.GONE)
