@@ -65,6 +65,7 @@ class VoiceConversationResult {
     this.visibleEvents = const <EventModel>[],
     this.selectedEvents = const <EventModel>[],
     this.targetEvent,
+    this.draftEvent,
     this.locationText,
     this.criticalValue,
     this.pendingDelete,
@@ -83,6 +84,7 @@ class VoiceConversationResult {
   final List<EventModel> visibleEvents;
   final List<EventModel> selectedEvents;
   final EventModel? targetEvent;
+  final EventModel? draftEvent;
   final String? locationText;
   final bool? criticalValue;
   final VoiceConversationDeleteAction? pendingDelete;
@@ -418,6 +420,11 @@ class VoiceConversationController {
       // 수정 의도(날짜/시간 이동 등 location·critical·delete 외)가 있으면
       // 편집 화면으로 넘겨 GPT 파이프라인이 처리하게 한다.
       if (_isModificationIntent(text, route: route)) {
+        final draftEvent = _draftEventForRelativeShift(
+          followUp,
+          text,
+          route: route,
+        );
         return _finish(
           state,
           session,
@@ -425,6 +432,7 @@ class VoiceConversationController {
             action: VoiceConversationAction.openEditScreen,
             inputText: input,
             targetEvent: followUp,
+            draftEvent: draftEvent,
             selectedEvents: <EventModel>[followUp],
             requiresEditScreenNavigation: true,
             assistantMessage: '"${followUp.title}" 일정을 편집 화면에서 바꿔 드릴게요.',
@@ -482,6 +490,7 @@ class VoiceConversationController {
       visibleEvents: result.visibleEvents,
       selectedEvents: result.selectedEvents,
       targetEvent: result.targetEvent,
+      draftEvent: result.draftEvent,
       locationText: result.locationText,
       criticalValue: result.criticalValue,
       pendingDelete: result.pendingDelete,
@@ -720,6 +729,120 @@ class VoiceConversationController {
         text.contains('맞춰') ||
         text.contains('조정') ||
         text.contains('옮겨');
+  }
+
+  EventModel? _draftEventForRelativeShift(
+    EventModel event,
+    String text, {
+    VoiceCommandRouteResult? route,
+  }) {
+    final resolvedRoute = route ?? _router.route(text);
+    if (!resolvedRoute.requestedChanges.contains('start_at') &&
+        !_hasRelativeDateShiftCue(text)) {
+      return null;
+    }
+
+    final shiftDays = _relativeDateShiftDays(text);
+    if (shiftDays == null || event.startAt == null) {
+      return null;
+    }
+
+    final shiftedStart = planflowLocal(event.startAt!).add(
+      Duration(days: shiftDays),
+    );
+    final shiftedEnd = event.endAt == null
+        ? null
+        : planflowLocal(event.endAt!).add(Duration(days: shiftDays));
+
+    return EventModel(
+      id: event.id,
+      userId: event.userId,
+      title: event.title,
+      startAt: planflowLocalDateTimeToUtc(shiftedStart),
+      endAt: shiftedEnd == null ? null : planflowLocalDateTimeToUtc(shiftedEnd),
+      location: event.location,
+      locationLat: event.locationLat,
+      locationLng: event.locationLng,
+      memo: event.memo,
+      supplies: event.supplies,
+      suppliesChecked: event.suppliesChecked,
+      participants: event.participants,
+      targets: event.targets,
+      isCritical: event.isCritical,
+      recurrenceRule: event.recurrenceRule,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
+      parentEventId: event.parentEventId,
+      category: event.category,
+      source: event.source,
+      externalId: event.externalId,
+      externalCalendarId: event.externalCalendarId,
+      externalEtag: event.externalEtag,
+      externalUpdatedAt: event.externalUpdatedAt,
+      lastSyncedAt: event.lastSyncedAt,
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    );
+  }
+
+  bool _hasRelativeDateShiftCue(String text) {
+    final normalized = _compact(text);
+    return RegExp(r'(?:그)?다음날(?:로|에|으로)?').hasMatch(normalized) ||
+        RegExp(r'(?:하루|이틀|삼일|\d+일)(?:뒤|후)(?:로|에|으로)?').hasMatch(normalized) ||
+        RegExp(r'(?:하루|이틀|삼일|\d+일)(?:전|앞)(?:으로|로|에)?').hasMatch(normalized) ||
+        normalized.contains('미뤄') ||
+        normalized.contains('연기') ||
+        normalized.contains('앞당겨') ||
+        normalized.contains('당겨');
+  }
+
+  int? _relativeDateShiftDays(String text) {
+    final normalized = _compact(text);
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    final explicitForward = RegExp(r'(\d+)일(?:뒤|후)(?:로|에|으로)?').firstMatch(normalized);
+    if (explicitForward != null) {
+      return int.tryParse(explicitForward.group(1) ?? '');
+    }
+
+    final explicitBackward = RegExp(r'(\d+)일(?:전|앞)(?:으로|로|에)?').firstMatch(normalized);
+    if (explicitBackward != null) {
+      final parsed = int.tryParse(explicitBackward.group(1) ?? '');
+      return parsed == null ? null : -parsed;
+    }
+
+    if (RegExp(r'(?:그)?다음날(?:로|에|으로)?').hasMatch(normalized) ||
+        RegExp(r'하루(?:뒤|후)(?:로|에|으로)?').hasMatch(normalized) ||
+        normalized.contains('미뤄') ||
+        normalized.contains('연기')) {
+      return 1;
+    }
+
+    if (RegExp(r'(?:하루|이틀|삼일)(?:전|앞)(?:으로|로|에)?').hasMatch(normalized) ||
+        normalized.contains('앞당겨') ||
+        normalized.contains('당겨')) {
+      return -1;
+    }
+
+    final directionOnlyDays = RegExp(r'(?:하루|이틀|삼일|\d+일)(?:뒤|후)').firstMatch(normalized);
+    if (directionOnlyDays != null) {
+      final textValue = directionOnlyDays.group(0) ?? '';
+      if (textValue.contains('이틀')) {
+        return 2;
+      }
+      if (textValue.contains('삼일')) {
+        return 3;
+      }
+      final numberMatch = RegExp(r'(\d+)일').firstMatch(textValue);
+      if (numberMatch != null) {
+        return int.tryParse(numberMatch.group(1) ?? '');
+      }
+      return 1;
+    }
+
+    return null;
   }
 
   List<int> _parseExplicitOrdinalIndices(String text) {

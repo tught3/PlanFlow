@@ -84,6 +84,21 @@ void main() {
       expect(plan.safeDirectApply, isTrue);
     });
 
+    test('상대 날짜 이동 명령은 start_at 수정으로 분류하고 변경 문구를 분리한다', () {
+      final plan = pipeline.analyze(
+        '1번 일정 그 다음날로 변경해줘',
+        intent: VoiceCommandPipelineIntent.edit,
+        context: VoiceTextCleanupContext.edit,
+      );
+
+      expect(plan.intent, VoiceCommandPipelineIntent.edit);
+      expect(plan.requestedChanges, contains('start_at'));
+      expect(plan.targetText, contains('1번 일정'));
+      expect(plan.targetText, isNot(contains('다음날')));
+      expect(plan.changeText, contains('다음날'));
+      expect(plan.safeDirectApply, isTrue);
+    });
+
     test('일반 알림 변경 요청은 is_critical_false로 분류한다', () {
       final plan = pipeline.analyze(
         '첫번째 일정 일반 알림으로 바꿔줘',

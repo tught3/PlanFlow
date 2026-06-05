@@ -1547,3 +1547,9 @@
 - 반복 파싱과 제목 정규화가 `매주 목요일`, `매월 첫 번째 월요일`, `매월 마지막 금요일`, `매월 1일`을 함께 다루도록 확장되었고, 편집 UI의 반복 선택도 월간 숫자형/요일형을 분리해 복원되게 정리했다.
 - 설정 화면의 출발 알림 반복주기 칩 UI를 좁혀서 오버플로우를 줄였고, 네이버 일정 가져오기 안내 문구와 백그라운드 동기화 상태 표시가 실제 결과를 더 잘 따라가도록 맞췄다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_schedule_structure_service_test.dart test/services/gpt_service_test.dart test/widgets/recurrence_selector_test.dart test/screens/settings_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, 그리고 `adb -s 192.168.0.102:42445 install -r -t --user 0 build\\app\\outputs\\flutter-apk\\app-debug.apk` / `am start -W -n com.fluxstudio.planflow/.MainActivity` 확인.
+
+## 2026-06-05 AI 일정 대화 날짜 이동 초안
+- AI 일정 대화가 `1번 일정 그 다음날로 변경해줘` 같은 상대 날짜 이동을 편집 초안으로 넘기도록 `voice_command_pipeline.dart`, `voice_conversation_controller.dart`, `voice_conversation_screen.dart`를 정리했다.
+- `VoiceConversationResult`에 `draftEvent`를 추가해, 선택한 일정의 날짜를 실제 이동한 초안 이벤트를 편집 화면에 넘기고 저장 전 미리 반영되게 했다.
+- `naver_caldav_service.dart`의 불필요한 널 단언 경고를 제거해 `flutter analyze`를 0 issue로 맞췄다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_command_pipeline_test.dart --no-pub -r expanded`, `scripts/flutter-local.ps1 test test/services/voice_conversation_controller_test.dart --no-pub -r expanded`, `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub -r expanded`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, 그리고 `adb -s 192.168.0.102:33607 install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk` / `am start -W -n com.fluxstudio.planflow/.MainActivity` 확인.

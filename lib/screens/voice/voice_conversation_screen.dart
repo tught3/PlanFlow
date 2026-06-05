@@ -312,7 +312,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           result.targetEvent != null &&
           result.locationText == null) {
         // location 변경 외 수정(날짜·시간 이동 등): 일반 편집 화면으로 이동
-        await _openGeneralEditScreen(result.targetEvent!);
+        await _openGeneralEditScreen(result.draftEvent ?? result.targetEvent!);
       }
 
       if (!mounted) return;
@@ -1096,6 +1096,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         return '일정 ${result.visibleEvents.length}개를 찾았어요. 이어서 “3번째 일정에 장소 추가”, “오후 6시 일정 삭제”처럼 말할 수 있어요.';
       case VoiceConversationAction.openEditScreen:
         final title = result.targetEvent?.title ?? '선택한 일정';
+        if (result.draftEvent != null &&
+            result.draftEvent!.startAt != null &&
+            result.targetEvent?.startAt != result.draftEvent!.startAt) {
+          return '$title 일정을 옮겨서 편집 화면을 열게요. 저장은 편집 화면에서 직접 눌러 주세요.';
+        }
         final location = result.locationText ?? '장소';
         return '$title 일정의 장소에 $location 입력 화면을 열게요. 저장은 편집 화면에서 직접 눌러 주세요.';
       case VoiceConversationAction.confirmedEdit:

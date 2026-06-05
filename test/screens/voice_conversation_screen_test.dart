@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/core/local_time.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
@@ -407,6 +408,66 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('AI 일정 대화는 다음날 이동 명령을 편집 초안으로 넘긴다', (tester) async {
+    final event = EventModel(
+      id: 'event-shift',
+      userId: 'user-1',
+      title: '이동할 일정',
+      startAt: DateTime(2026, 5, 7, 9).toUtc(),
+      endAt: DateTime(2026, 5, 7, 10).toUtc(),
+    );
+    EventModel? receivedDraft;
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceConversation,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceConversation,
+          builder: (context, state) => VoiceConversationScreen(
+            repository: _FakeEventRepository(<EventModel>[event]),
+            initialText: '5월 7일 일정 알려줘',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.eventEditWithId,
+          builder: (context, state) {
+            receivedDraft = state.extra as EventModel?;
+            return const Text(
+              '편집 화면',
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp.router(
+        theme: buildPlanFlowTheme(),
+        routerConfig: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byType(TextField),
+      '1번 일정 그 다음날로 변경해줘',
+    );
+    await tester.tap(find.text('전송'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('편집 화면'), findsOneWidget);
+    expect(receivedDraft, isNotNull);
+    expect(
+      planflowLocal(receivedDraft!.startAt!),
+      DateTime(2026, 5, 8, 9),
+    );
+    expect(
+      planflowLocal(receivedDraft!.endAt!),
+      DateTime(2026, 5, 8, 10),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('AI 일정 대화는 조회 결과 카드 삭제를 확인 후 실행한다', (tester) async {
     final event = EventModel(
       id: 'event-delete',
@@ -592,6 +653,7 @@ void main() {
 
   testWidgets('AI 일정 대화는 장소 변경을 편집 화면 없이 바로 저장한다', (tester) async {
     final stt = _FakeSttService();
+    var pickerCalls = 0;
     final repository = _FakeEventRepository(<EventModel>[
       EventModel(
         id: 'event-1',
@@ -600,6 +662,23 @@ void main() {
         startAt: DateTime(2026, 5, 22, 9).toUtc(),
       ),
     ]);
+    Future<LocationLookupResult?> fakeLocationPicker({
+      required BuildContext context,
+      required String query,
+      LocationLookupService? locationLookupService,
+      AppPermissionService? appPermissionService,
+      String? preferredMapProvider,
+      bool? canUseInAppMapOverride,
+    }) async {
+      pickerCalls += 1;
+      return LocationLookupResult(
+        name: query,
+        address: query,
+        latitude: 37.7519,
+        longitude: 128.8761,
+      );
+    }
+
     final router = GoRouter(
       initialLocation: AppRoutes.voiceConversation,
       routes: [
@@ -610,6 +689,7 @@ void main() {
             repository: repository,
             locationLookupService: _FakeLocationLookupService(),
             permissionService: _NoLocationPermissionService(),
+            locationPicker: fakeLocationPicker,
             initialText: '5월 22일 일정 보여줘',
           ),
         ),
@@ -639,6 +719,7 @@ void main() {
     }
 
     expect(find.text('편집 화면'), findsNothing);
+    expect(pickerCalls, 1);
     expect(repository.updatedEvents, hasLength(1));
     expect(repository.updatedEvents.single.location, '강릉 건도리횟집');
     expect(repository.updatedEvents.single.locationLat, 37.7519);

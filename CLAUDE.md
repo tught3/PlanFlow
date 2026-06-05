@@ -112,6 +112,7 @@
 - 진행 확인은 `python E:\FluxStudio\.fluxos\run.py pipeline-audit [TASK_ID]`를 사용하고, 최소한 `Claude Code 계획` 단계가 생성됐는지 확인한 뒤 구현에 들어간다.
 - Claude Code가 인증, 한도, 연결 문제로 실패하면 FluxOS의 Codex-only fallback을 사용하되, 최종 보고에 fallback 사유를 명시한다.
 - 긴급 단순 수정으로 파이프라인을 생략한 경우에는 생략 사유, 변경 범위, 검증 결과를 최종 보고에 반드시 남긴다.
+- 프로젝트 세션을 직접 열어야 하는 경우에도 먼저 `python E:\FluxStudio\.fluxos\run.py session start --project <Project> --source <session> --label "<세션명>" --cwd "<프로젝트경로>"` 또는 기존 세션에 `session attach`로 FluxOS 메타를 붙이고, 가능하면 `FLUXOS_SESSION_ID`, `FLUXOS_SESSION_PROJECT`, `FLUXOS_SESSION_TASK_ID`, `FLUXOS_SESSION_OWNER`, `FLUXOS_SESSION_SOURCE`, `FLUXOS_SESSION_LABEL`, `FLUXOS_SESSION_NOTE`, `FLUXOS_SESSION_CWD`를 함께 전달한다.
 
 ## 기본 원칙
 - 기본 응답 언어는 한국어다.
@@ -396,6 +397,7 @@
 - Windows/PowerShell 작업에서는 `&&` 명령 체이닝을 쓰지 않는다. 명령을 분리하거나 `$LASTEXITCODE`/`if ($?)`로 성공 여부를 확인한다.
 - 한글 파일과 한국어 로그/문서는 항상 UTF-8 명시 읽기/쓰기를 사용하고, 깨진 텍스트가 보이면 저장하지 않고 UTF-8로 다시 확인한다.
 - 같은 프로젝트에 active 작업이 있으면 새 수정 지시는 프로젝트 단위 FIFO 큐에 넣고, 앞 지시사항 전체가 완료되어 release되기 전까지 시작하지 않는다.
+- 프로젝트 세션을 직접 시작해야 하면 먼저 FluxOS 세션 메타를 붙인다. 가능하면 `python E:\FluxStudio\.fluxos\run.py session start --project <Project> --source <session> --label "<세션명>" --cwd "<프로젝트경로>"` 또는 `session attach`를 사용하고, `FLUXOS_SESSION_ID`, `FLUXOS_SESSION_PROJECT`, `FLUXOS_SESSION_TASK_ID`, `FLUXOS_SESSION_OWNER`, `FLUXOS_SESSION_SOURCE`, `FLUXOS_SESSION_LABEL`, `FLUXOS_SESSION_NOTE`, `FLUXOS_SESSION_CWD`를 함께 전달한다.
 - Flutter 작업은 가능하면 `scripts/flutter-local.ps1` 같은 로컬 래퍼를 우선 사용하고, 빌드 뒤에는 Gradle daemon 정리까지 포함한다.
 - 사용자가 에뮬레이터 실행을 지시했거나 연결된 장치가 없으면 먼저 `flutter devices`로 장치 상태를 확인하고, 항상 AVD `flux_phone`의 `emulator-5554`에서 `flutter run -d emulator-5554`로 실행한다.
 - `flux_phone`/`emulator-5554`는 한 번에 하나의 세션만 사용한다. 다른 Codex/Claude/터미널 세션에서 같은 에뮬레이터 실행이 진행 중이면 새 실행을 직접 시작하지 말고 FIFO 큐에 적재해 앞 세션 종료 후 이어서 사용한다.

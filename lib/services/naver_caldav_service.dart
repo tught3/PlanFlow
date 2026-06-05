@@ -1706,7 +1706,7 @@ class NaverCalDavService {
           (endRaw.contains('VALUE=DATE') ||
               RegExp(r':\d{8}$').hasMatch(endRaw.trim()));
       if (endIsAllDay) {
-        startAt = startAt!.subtract(const Duration(days: 1));
+        startAt = startAt.subtract(const Duration(days: 1));
       }
       endAt = null;
       debugPrint(

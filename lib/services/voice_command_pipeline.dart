@@ -228,7 +228,7 @@ class VoiceCommandPipeline {
     final normalized = normalizeManagementText(text);
     final changes = <String>{};
     if (RegExp(
-      r'(시간|시각|언제|몇\s*시|오전|오후|아침|점심|저녁|밤|오늘|내일|모레|글피|이번\s*주|다음\s*주|이번주|다음주|[월화수목금토일]요일|연기|미뤄|옮겨|이동|앞당겨|늦춰|당겨|바꿔|변경|수정)',
+      r'(시간|시각|언제|몇\s*시|오전|오후|아침|점심|저녁|밤|오늘|내일|모레|글피|이번\s*주|다음\s*주|이번주|다음주|[월화수목금토일]요일|(?:그\s*)?다음\s*날|(?:하루|이틀|삼일|\d+\s*일)\s*(?:뒤|후|전|앞)|연기|미뤄|옮겨|이동|앞당겨|늦춰|당겨|바꿔|변경|수정)',
     ).hasMatch(normalized)) {
       changes.add('start_at');
     }
@@ -247,10 +247,14 @@ class VoiceCommandPipeline {
     if (RegExp(r'(하루\s*종일|하루종일|종일|온종일)').hasMatch(normalized)) {
       changes.add('is_all_day');
     }
-    if (RegExp(r'(중요|긴급|급한|critical|중요한)\s*(알람|알림|경보)').hasMatch(normalized)) {
+    if (RegExp(
+      r'(중요하게\s*표시|중요\s*표시|중요|긴급|급한|critical|중요한)\s*(알람|알림|경보|표시)?',
+    ).hasMatch(normalized)) {
       changes.add('is_critical_true');
     }
-    if (RegExp(r'(보통|일반|normal)\s*(알람|알림)').hasMatch(normalized)) {
+    if (RegExp(
+      r'(보통(?:으로)?|일반(?:으로)?|normal)\s*(알람|알림|경보|표시)?',
+    ).hasMatch(normalized)) {
       changes.add('is_critical_false');
     }
     return changes.toList(growable: false);
@@ -447,6 +451,9 @@ class VoiceCommandPipeline {
 
   RegExpMatch? _lastDateTimeValueMatch(String text) {
     final patterns = <RegExp>[
+      RegExp(
+        r'((?:그\s*)?다음\s*날(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:뒤|후)(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:전|앞)(?:으로|로|에)?)',
+      ),
       RegExp(
         r'((?:이번|다음)\s*주\s*)?[월화수목금토일]요일(?:\s*(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*(?:[0-9]{1,2}|[가-힣]{1,8})\s*시(?:\s*(?:[0-9]{1,2}|[가-힣]{1,8})\s*분?|\s*반)?)?',
       ),
