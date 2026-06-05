@@ -7,6 +7,7 @@ import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/screens/event/event_edit_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
+import 'package:planflow/widgets/calendar_style_event_editor.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
@@ -62,6 +63,36 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('26. 6. 15.(월)'), findsWidgets);
+  });
+
+  testWidgets('EventEditScreen keeps duration when start date changes',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventEditScreen(
+          event: EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '김창민 만나기',
+            startAt: DateTime.utc(2026, 6, 12, 9),
+            endAt: DateTime.utc(2026, 6, 12, 10),
+            category: '개인',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('26. 6. 12.(금)'), findsWidgets);
+
+    final editor = tester.widget<CalendarStyleEventEditor>(
+      find.byType(CalendarStyleEventEditor),
+    );
+    editor.onStartChanged(DateTime(2026, 6, 10, 9));
+    await tester.pumpAndSettle();
+
+    expect(find.text('26. 6. 10.(수)'), findsWidgets);
+    expect(find.text('26. 6. 12.(금)'), findsNothing);
   });
 
   testWidgets(

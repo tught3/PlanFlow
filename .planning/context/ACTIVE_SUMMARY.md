@@ -1553,3 +1553,7 @@
 - `VoiceConversationResult`에 `draftEvent`를 추가해, 선택한 일정의 날짜를 실제 이동한 초안 이벤트를 편집 화면에 넘기고 저장 전 미리 반영되게 했다.
 - `naver_caldav_service.dart`의 불필요한 널 단언 경고를 제거해 `flutter analyze`를 0 issue로 맞췄다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_command_pipeline_test.dart --no-pub -r expanded`, `scripts/flutter-local.ps1 test test/services/voice_conversation_controller_test.dart --no-pub -r expanded`, `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub -r expanded`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, 그리고 `adb -s 192.168.0.102:33607 install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk` / `am start -W -n com.fluxstudio.planflow/.MainActivity` 확인.
+## 2026-06-05 제목 이름 보존과 시작일 이동 보존
+- `김창민 만나기`처럼 사람 이름만 남아야 하는 제목에서 bare-name recipient 추출을 보강해 `만나기`만 남는 과도한 절삭을 막았다.
+- 일정 편집과 확인 화면 모두에서 시작일을 옮길 때 기간을 늘리지 않고 기존 종료 시각을 같은 delta만큼 함께 이동하도록 맞췄다.
+- 검증 통과: `test/services/voice_schedule_structure_service_test.dart`, `test/screens/event_edit_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `am start -W -n com.fluxstudio.planflow/.MainActivity`.

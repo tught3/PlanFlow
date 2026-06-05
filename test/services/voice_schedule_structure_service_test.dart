@@ -158,6 +158,24 @@ void main() {
       expect(title, '김태형 PM한테 날짜 괜찮냐고 물어보기');
     });
 
+    test('keeps plain person names in the title when raw text lost them', () {
+      const rawText = '7월 17일 김창민 만나기';
+
+      final parsedTitle = service.normalizeParsedScheduleTitle(
+        '만나기',
+        rawText: rawText,
+      );
+      final localTitle = service.normalizeLocalVoiceTitle(
+        rawText,
+        referenceText: rawText,
+      );
+      final people = service.extractPeopleFields(rawText);
+
+      expect(parsedTitle, '김창민 만나기');
+      expect(localTitle, '김창민 만나기');
+      expect(people.participants, contains('김창민'));
+    });
+
     test('keeps leading place in title AND fills location field', () {
       const rawText = '강릉 건도리횟집에서 결제 사전기안';
 
@@ -205,8 +223,7 @@ void main() {
 
     test('extracts location after a person name (drops person/title prefix)',
         () {
-      const rawText =
-          '장재균 그룹장님 원주 세브란스 기독병원에 와서 백순구 의료원장님 만남';
+      const rawText = '장재균 그룹장님 원주 세브란스 기독병원에 와서 백순구 의료원장님 만남';
 
       // 사람 이름/직급(장재균 그룹장님)을 제외하고 장소만 추출
       expect(service.extractLeadingLocation(rawText), '원주 세브란스 기독병원');

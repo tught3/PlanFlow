@@ -17,6 +17,7 @@ import '../../providers/auth_provider.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/app_feedback_service.dart';
+import '../../services/event_range_utils.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/calendar_auto_sync_service.dart';
 import '../../services/event_preparation_service.dart';
@@ -78,6 +79,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   bool _isLoading = false;
   bool _isSaving = false;
   bool _isLookingUpLocation = false;
+  bool _endEditedByUser = false;
   Timer? _locationDebounceTimer;
 
   bool get _isNewEvent => _loadedEvent == null && _resolvedEventId == null;
@@ -148,7 +150,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
     });
     try {
       final results = await LocationLookupService().search(query, origin: null);
-      if (!mounted || query != _locationController.text.trim() || results.isEmpty) return;
+      if (!mounted ||
+          query != _locationController.text.trim() ||
+          results.isEmpty) {
+        return;
+      }
       final best = results.first;
       setState(() {
         // 텍스트는 보존 - 사용자가 입력한 지역 컨텍스트("강릉" 등) 유지
@@ -1072,14 +1078,19 @@ class _EventEditScreenState extends State<EventEditScreen> {
                           : null,
                   onStartChanged: (value) {
                     setState(() {
+                      final previousStart = _startAt;
                       _startAt = value;
-                      if (_endAt != null && !_endAt!.isAfter(_startAt)) {
-                        _endAt = _startAt.add(const Duration(hours: 1));
-                      }
+                      _endAt = shiftEventEndWhenStartChanges(
+                        previousStart: previousStart,
+                        newStart: _startAt,
+                        currentEnd: _endAt,
+                        endEditedByUser: _endEditedByUser,
+                      );
                     });
                   },
                   onEndChanged: (value) {
                     setState(() {
+                      _endEditedByUser = true;
                       _endAt = value;
                     });
                   },

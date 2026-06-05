@@ -24,6 +24,7 @@ import '../../services/event_refresh_bus.dart';
 import '../../services/event_preparation_service.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/app_feedback_service.dart';
+import '../../services/event_range_utils.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/voice_correction_learning_service.dart';
@@ -509,10 +510,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       });
     }
     try {
-      final gpsFuture =
-          _permissionService.getCurrentLocationWithPermission(
+      final gpsFuture = _permissionService
+          .getCurrentLocationWithPermission(
         requestIfMissing: false,
-      ).catchError((Object error, StackTrace stackTrace) {
+      )
+          .catchError((Object error, StackTrace stackTrace) {
         debugPrint('ConfirmScreen background GPS lookup skipped: $error');
         debugPrintStack(stackTrace: stackTrace);
         return null;
@@ -571,10 +573,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       });
     }
     try {
-      final gpsFuture =
-          _permissionService.getCurrentLocationWithPermission(
+      final gpsFuture = _permissionService
+          .getCurrentLocationWithPermission(
         requestIfMissing: false,
-      ).catchError((Object error, StackTrace stackTrace) {
+      )
+          .catchError((Object error, StackTrace stackTrace) {
         debugPrint('ConfirmScreen save-time GPS lookup skipped: $error');
         debugPrintStack(stackTrace: stackTrace);
         return null;
@@ -1962,11 +1965,15 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         onLocationTextChanged: _handleLocationTextChanged,
                         onStartChanged: (value) {
                           setState(() {
+                            final previousStart = _startAt;
                             _startEditedByUser = true;
                             _startAt = value;
-                            if (_endAt != null && !_endAt!.isAfter(_startAt)) {
-                              _endAt = _startAt.add(const Duration(hours: 1));
-                            }
+                            _endAt = shiftEventEndWhenStartChanges(
+                              previousStart: previousStart,
+                              newStart: _startAt,
+                              currentEnd: _endAt,
+                              endEditedByUser: _endEditedByUser,
+                            );
                           });
                         },
                         onEndChanged: (value) {

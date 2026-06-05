@@ -585,6 +585,15 @@ class VoiceScheduleStructureService {
         source,
         RegExp(r'(?:^|\s)([가-힣]{2,3}?)(?:이)?\s*(?:랑|와|과|하고|함께|동행)'),
       ).where((person) => !targets.contains(person)),
+      ..._peopleNearPattern(
+        source,
+        RegExp(
+          r'(?:^|\s)([가-힣]{2,4})(?=\s*(?:만나기|만남|전화(?:해서|하고|하기)?|연락(?:해서|하고|하기)?|물어보기|물어보|묻기|보고|전달|확인|문의|상담|약속|미팅|회의|방문|진료|식사|뵙기|찾아뵙기))',
+        ),
+      ).where(
+        (person) =>
+            !targets.contains(person) && !_looksLikeNonPersonRecipient(person),
+      ),
     }.toList(growable: false);
 
     return VoiceSchedulePeopleFields(
@@ -863,8 +872,10 @@ class VoiceScheduleStructureService {
 
     final rawLocation = match.group(1)?.trim();
     final remainder = match.group(2)?.trim();
-    if (rawLocation == null || rawLocation.isEmpty ||
-        remainder == null || remainder.isEmpty) {
+    if (rawLocation == null ||
+        rawLocation.isEmpty ||
+        remainder == null ||
+        remainder.isEmpty) {
       return null;
     }
     // 앞에 사람 이름/직급이 섞여 있으면 직급 경계 이후만 장소로 사용
@@ -903,11 +914,45 @@ class VoiceScheduleStructureService {
       return null;
     }
     const placeKeywords = <String>[
-      '병원', '의원', '센터', '약국', '식당', '카페', '호텔', '학교', '학원',
-      '은행', '마트', '공원', '주차장', '지점', '건물', '오피스', '스튜디오',
-      '헬스장', '편의점', '아웃렛', '주유소', '시장', '횟집', '맛집', '가게',
-      '본점', '역', '공항', '터미널', '항', '구청', '시청', '주민센터',
-      '보건소', '회관', '체육관', '경기장', '빌딩', '타워',
+      '병원',
+      '의원',
+      '센터',
+      '약국',
+      '식당',
+      '카페',
+      '호텔',
+      '학교',
+      '학원',
+      '은행',
+      '마트',
+      '공원',
+      '주차장',
+      '지점',
+      '건물',
+      '오피스',
+      '스튜디오',
+      '헬스장',
+      '편의점',
+      '아웃렛',
+      '주유소',
+      '시장',
+      '횟집',
+      '맛집',
+      '가게',
+      '본점',
+      '역',
+      '공항',
+      '터미널',
+      '항',
+      '구청',
+      '시청',
+      '주민센터',
+      '보건소',
+      '회관',
+      '체육관',
+      '경기장',
+      '빌딩',
+      '타워',
     ];
     final keywordPattern = placeKeywords.join('|');
     // 장소 키워드로 끝나는 구 + 조사(에/에서/로/으로)
@@ -1202,6 +1247,15 @@ class VoiceScheduleStructureService {
         text.endsWith('인지') ||
         text.endsWith('할지') ||
         text.endsWith('올지');
+  }
+
+  bool _looksLikeNonPersonRecipient(String text) {
+    if (_isProbablyNonPerson(text)) {
+      return true;
+    }
+    return RegExp(
+      r'(?:동|로|길|읍|면|리|시|군|구|역|점|센터|병원|대학교|대학|공원|터미널|사무소|본사|지점|매장|공장)$',
+    ).hasMatch(text);
   }
 
   String _normalizeRelativeDayMisrecognition(String text) {
