@@ -139,7 +139,7 @@ class VoiceCommandPipeline {
     if (_hasDeleteIntentCue(normalized)) {
       return VoiceCommandPipelineIntent.delete;
     }
-    if (RegExp(r'(수정|변경|바꿔|미뤄|앞당겨|옮겨|이동|고쳐|편집|연기|늦춰|당겨)')
+    if (RegExp(r'(수정|변경|바꿔|미뤄|밀어|앞당겨|옮겨|이동|고쳐|편집|연기|늦춰|당겨)')
         .hasMatch(normalized)) {
       return VoiceCommandPipelineIntent.edit;
     }
@@ -228,7 +228,7 @@ class VoiceCommandPipeline {
     final normalized = normalizeManagementText(text);
     final changes = <String>{};
     if (RegExp(
-      r'(시간|시각|언제|몇\s*시|오전|오후|아침|점심|저녁|밤|오늘|내일|모레|글피|이번\s*주|다음\s*주|이번주|다음주|[월화수목금토일]요일|(?:그\s*)?다음\s*날|(?:하루|이틀|삼일|\d+\s*일)\s*(?:뒤|후|전|앞)|연기|미뤄|옮겨|이동|앞당겨|늦춰|당겨|바꿔|변경|수정)',
+      r'(시간|시각|언제|몇\s*시|오전|오후|아침|점심|저녁|밤|오늘|내일|모레|글피|이번\s*주|다음\s*주|이번주|다음주|[월화수목금토일]요일|(?:그\s*)?다음\s*날|(?:하루|이틀|삼일|\d+\s*일)\s*(?:뒤|후|전|앞)|연기|미뤄|밀어|옮겨|이동|앞당겨|늦춰|당겨|바꿔|변경|수정)',
     ).hasMatch(normalized)) {
       changes.add('start_at');
     }
@@ -430,7 +430,7 @@ class VoiceCommandPipeline {
 
   VoiceCommandSplit? _splitDateTimeChange(String normalizedText) {
     final verbMatches = RegExp(
-      r'(?:로|으로)?\s*(?:변경|바꿔|수정|옮겨|이동|미뤄|연기|앞당겨|늦춰|당겨).*?$',
+      r'(?:로|으로)?\s*(?:변경|바꿔|수정|옮겨|이동|미뤄|밀어|연기|앞당겨|늦춰|당겨).*?$',
     ).allMatches(normalizedText).toList(growable: false);
     if (verbMatches.isEmpty) {
       return null;
@@ -701,6 +701,7 @@ class VoiceCommandPipeline {
     '옮기',
     '미뤄',
     '미루',
+    '밀어',
     '연기',
     '앞당겨',
     '당겨',

@@ -791,6 +791,7 @@ class VoiceConversationController {
         RegExp(r'(?:하루|이틀|삼일|\d+일)(?:뒤|후)(?:로|에|으로)?').hasMatch(normalized) ||
         RegExp(r'(?:하루|이틀|삼일|\d+일)(?:전|앞)(?:으로|로|에)?').hasMatch(normalized) ||
         normalized.contains('미뤄') ||
+        normalized.contains('밀어') ||
         normalized.contains('연기') ||
         normalized.contains('앞당겨') ||
         normalized.contains('당겨');
@@ -816,6 +817,7 @@ class VoiceConversationController {
     if (RegExp(r'(?:그)?다음날(?:로|에|으로)?').hasMatch(normalized) ||
         RegExp(r'하루(?:뒤|후)(?:로|에|으로)?').hasMatch(normalized) ||
         normalized.contains('미뤄') ||
+        normalized.contains('밀어') ||
         normalized.contains('연기')) {
       return 1;
     }
