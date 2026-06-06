@@ -40,6 +40,8 @@ const _shellDestinations = <_ShellDestination>[
   ),
 ];
 
+const double _shellTabSwipeEdgeWidth = 24;
+
 class _ShellDestination {
   const _ShellDestination({
     required this.label,
@@ -407,24 +409,45 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildShellBody() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onHorizontalDragEnd: _handleTabSwipe,
-      child: IndexedStack(
-        index: _currentIndex,
-        children: [
-          HomeScreen(scrollController: _homeScrollController),
-          CalendarScreen(initialDate: widget.initialCalendarDate),
-          SettingsScreen(
-            key: ValueKey<String?>(
-              'settings-${authProvider.userId}-'
-              '${widget.initialSettingsAction?.name ?? 'none'}',
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        IndexedStack(
+          index: _currentIndex,
+          children: [
+            HomeScreen(scrollController: _homeScrollController),
+            CalendarScreen(initialDate: widget.initialCalendarDate),
+            SettingsScreen(
+              key: ValueKey<String?>(
+                'settings-${authProvider.userId}-'
+                '${widget.initialSettingsAction?.name ?? 'none'}',
+              ),
+              userId: authProvider.userId,
+              initialAction: widget.initialSettingsAction,
             ),
-            userId: authProvider.userId,
-            initialAction: widget.initialSettingsAction,
+          ],
+        ),
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: _shellTabSwipeEdgeWidth,
+          child: _ShellTabSwipeEdge(
+            key: const Key('shell-left-swipe-edge'),
+            onHorizontalDragEnd: _handleTabSwipe,
           ),
-        ],
-      ),
+        ),
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: _shellTabSwipeEdgeWidth,
+          child: _ShellTabSwipeEdge(
+            key: const Key('shell-right-swipe-edge'),
+            onHorizontalDragEnd: _handleTabSwipe,
+          ),
+        ),
+      ],
     );
   }
 
@@ -540,6 +563,24 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
           );
         },
       ),
+    );
+  }
+}
+
+class _ShellTabSwipeEdge extends StatelessWidget {
+  const _ShellTabSwipeEdge({
+    super.key,
+    required this.onHorizontalDragEnd,
+  });
+
+  final GestureDragEndCallback onHorizontalDragEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragEnd: onHorizontalDragEnd,
+      child: const SizedBox.expand(),
     );
   }
 }

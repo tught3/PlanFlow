@@ -1579,3 +1579,8 @@
 - `PackageInfo.fromPlatform()` 값을 설정탭 하단 `앱 정보` 카드에 표시해 사용자가 현재 설치 버전과 빌드 번호를 앱 안에서 확인할 수 있게 했다.
 - 현재 `pubspec.yaml` 기준 표시는 `버전 1.1.0 (빌드 3)` 형식이다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/screens/settings_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`.
+
+## 2026-06-06 shell 탭 스와이프 경계 복원
+- `ShellScreen`의 탭 전환 스와이프를 화면 전체에서 양쪽 가장자리 24px로만 제한해, 중앙 영역의 세로/가로 스크롤이 탭 전환에 끼어들지 않게 했다.
+- `test/screens/shell_swipe_gesture_test.dart`에 center drag/edge fling 회귀 테스트를 유지하고, `SharedPreferencesAsyncPlatform` 인메모리 모킹을 넣어 SettingsScreen 부수 초기화가 테스트를 깨지 않게 했다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/screens/shell_swipe_gesture_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:37369 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:37369 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
