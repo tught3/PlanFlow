@@ -231,6 +231,11 @@
 - `taskkill /f /im node.exe /t`, `taskkill /f /im postgres.exe /t`처럼 이름 기준으로 Node/PostgreSQL 전체를 강제 종료하지 않는다.
 - Node/PostgreSQL 정리는 작업 소유권과 종료 조건이 확인된 경우에만 한다. FluxOS/AI_WIKI가 실행한 작업은 작업 종료 시 해당 작업의 자식 프로세스만 정리하고, 전역 감시는 부모 프로세스가 사라졌고 TCP 리스닝 포트가 없으며 보호 대상 명령이 아닌 오래된 orphan 런타임만 자동 종료한다.
 - 포트를 열고 있는 dev server, Supabase/PostgreSQL, Vercel/Next/Vite 서버는 다른 세션이 사용 중일 수 있으므로 자동 종료하지 않고 모니터/후보 보고로 남긴다.
+- 작업이 끝난 Node는 퇴근시키는 것이 기본이다. guarded launcher로 시작한 작업은 종료 시 자식 `node.exe`/`postgres.exe`를 정리하고, 직접 실행된 Node는 부모 없음, 리스닝 포트 없음, 낮은 CPU 활동, 보호 명령 아님, 최소 age 초과 조건을 모두 만족할 때만 자동 종료한다.
+- WSL2/Docker는 `%USERPROFILE%\.wslconfig`에서 `memory=8GB` 상한을 기본으로 둔다. 기존 `kernelCommandLine` 등 사용자 설정은 보존하고, 적용은 Docker/WSL 재시작 후 이루어진다.
+- VS Code/Cursor는 `node_modules`, `.git`, `build`, `dist`, `.next`, `.dart_tool`, `.gradle`, `.gradle-local`, `coverage`, `.cache`를 watcher/search 제외 대상으로 둔다.
+- 퇴근/리셋은 `python E:\FluxStudio\.fluxos\run.py resource reset --mode safe`를 우선한다. 이 명령은 완료 작업 자식 프로세스, 확실한 orphan, idle daemon, 안전 캐시만 정리하고, active dev server/build/test는 보호한다.
+- 핸들, 스레드, 디스크 I/O, 캐시 후보, orphan 런타임은 FluxOS Monitor의 리소스 상태에서 확인한다.
 
 ## 장시간 명령 운영
 - 장시간 명령은 가능하면 타임아웃, 로그 파일, 진행 확인 방법을 붙여 실행한다.
