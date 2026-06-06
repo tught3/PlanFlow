@@ -12,6 +12,22 @@ class AppFeedbackService {
         ? null
         : Overlay.maybeOf(effectiveContext, rootOverlay: true);
     if (effectiveContext == null || overlay == null) {
+      final messenger = scaffoldMessengerKey.currentState;
+      if (messenger != null) {
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(message)));
+        return;
+      }
+      if (effectiveContext != null) {
+        final scopedMessenger = ScaffoldMessenger.maybeOf(effectiveContext);
+        if (scopedMessenger != null) {
+          scopedMessenger
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text(message)));
+          return;
+        }
+      }
       debugPrint('App feedback skipped: $message');
       return;
     }

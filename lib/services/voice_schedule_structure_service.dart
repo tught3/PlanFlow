@@ -677,6 +677,15 @@ class VoiceScheduleStructureService {
       normalizeText(rawText, ''),
       preserveRelativeDayWords: false,
     );
+    final leadingMemoPlace = RegExp(
+      r'^(.{2,40}?)에서\s+.+?\s+메모(?:에|에는|로|으로|를|은|는)?\s+',
+    ).firstMatch(source);
+    final leadingMemoLocation = leadingMemoPlace?.group(1)?.trim();
+    if (leadingMemoLocation != null &&
+        leadingMemoLocation.isNotEmpty &&
+        !_isInvalidLocationCandidate(leadingMemoLocation)) {
+      return normalizeSpacingForSchedule(leadingMemoLocation);
+    }
     final inferredFromLeadingLocation = extractLeadingLocation(source);
     if (inferredFromLeadingLocation != null &&
         inferredFromLeadingLocation.isNotEmpty) {

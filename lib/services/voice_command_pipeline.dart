@@ -597,7 +597,7 @@ class VoiceCommandPipeline {
 
   bool _hasAmbiguousQueryIntentCue(String text) {
     final normalized = normalizeManagementText(text);
-    return RegExp(r'^조회$').hasMatch(normalized);
+    return RegExp(r'^(?:일정\s*)?조회$').hasMatch(normalized);
   }
 
   bool _looksLikeScheduleContentToConfirm(String text) {

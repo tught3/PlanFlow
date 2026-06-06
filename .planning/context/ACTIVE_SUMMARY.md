@@ -1561,3 +1561,10 @@
 - AI 일정 대화에서 `1번 일정 시작시간 8시반으로 해줘` 같은 시간 수정도 편집 초안으로 넘기도록 `voice_conversation_controller.dart`를 보강했다.
 - `voice_command_pipeline.dart`는 `시작시간 ... 해줘` 형태를 수정 분리로 잘라내도록 조정했고, 컨트롤러/파이프라인 회귀 테스트를 추가했다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_command_pipeline_test.dart test/services/voice_conversation_controller_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:37581 install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:37581 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-06-06 비공개 테스트 전 회귀 복구와 브리핑 알림 진입 안정화
+- 브리핑 알림 진입 화면이 초기 세션 복구를 기다린 뒤 사용자 세션이 있을 때만 `executeBriefing(isManualTrigger: true)`를 실행하도록 정리했다. 복구 실패 시에는 “일정 없음”이 아니라 재로그인 필요 안내를 표시한다.
+- 설정탭에 브리핑 예약 상태와 출발 알림 상태 카드를 복원하고, 화면 진입/앱 복귀/브리핑 예약·테스트 후 런타임 상태를 다시 읽도록 연결했다.
+- 백그라운드 실패 안내는 overlay가 없는 widget test 환경에서도 ScaffoldMessenger fallback으로 표시되도록 보강했고, `일정 조회`는 관리 선택으로 분기되게 보정했다.
+- `우리회사에서 매월 월례 조회 메모에 주차장 B2 확인`은 제목 `월례 조회`, 장소 `우리회사`, 메모 `주차장 B2 확인`, 월간 반복으로 분리되도록 장소 추론 경계를 보강했다.
+- 검증 통과: `background_task_service_test.dart`, `voice_command_router_test.dart`, `voice_command_analysis_service_test.dart`, `voice_input_screen_test.dart`, `settings_screen_test.dart`, `briefing_launch_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build appbundle --release --no-pub`. ADB 기기는 `192.168.0.102:37581`가 offline으로 재연결 실패해 설치/실행 확인은 진행하지 못했다.

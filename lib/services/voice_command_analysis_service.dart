@@ -597,12 +597,19 @@ class VoiceCommandAnalysisService {
             referenceText: normalizedText,
             structured: structured,
           );
-    final normalizedLocationText =
-        _normalizeText(source['location']?.toString(), null);
+    final normalizedLocationText = _normalizeText(
+      source['location']?.toString(),
+      null,
+    );
+    final normalizedLocationCandidate = normalizedLocationText.isEmpty
+        ? null
+        : _trimLocationForExplicitMemoCue(
+            normalizedLocationText,
+            normalizedText,
+          );
     final inferredLocation =
         _voiceScheduleStructureService.normalizeScheduleLocation(
-      location:
-          normalizedLocationText.isNotEmpty ? normalizedLocationText : null,
+      location: normalizedLocationCandidate,
       // 원본 normalizedText 전달: titleSource(정제본)는 "에서/에" 장소 패턴이
       // 유실돼 location 추출이 실패하던 문제 수정. 제목 제거와 동일 소스로 일치.
       rawText: normalizedText,
@@ -842,6 +849,21 @@ class VoiceCommandAnalysisService {
 
   String? _extractExplicitMemo(String rawText) {
     return _voiceScheduleStructureService.extractExplicitMemo(rawText);
+  }
+
+  String _trimLocationForExplicitMemoCue(String location, String rawText) {
+    final source = _normalizeText(rawText, '');
+    final match = RegExp(
+      r'^(.{2,40}?)에서\s+.+?\s+메모(?:에|에는|로|으로|를|은|는)?\s+',
+    ).firstMatch(source);
+    final place = match?.group(1)?.trim();
+    if (place == null || place.isEmpty) {
+      return location;
+    }
+    if (!location.startsWith(place)) {
+      return location;
+    }
+    return place;
   }
 
   String _stripExplicitMemoClause(String text) {

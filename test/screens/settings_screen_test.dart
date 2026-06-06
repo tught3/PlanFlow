@@ -239,11 +239,15 @@ void main() {
 
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('settings-briefing-runtime-status-card')),
-        findsNothing);
+        findsOneWidget);
     expect(
         find.byKey(
             const ValueKey('settings-departure-alarm-runtime-status-card')),
-        findsNothing);
+        findsOneWidget);
+    expect(find.text('브리핑 예약 상태'), findsOneWidget);
+    expect(find.text('출발 알림 상태'), findsOneWidget);
+    expect(find.text('대전 성심당'), findsOneWidget);
+    expect(find.textContaining('모닝 브리핑을 재생했습니다.'), findsOneWidget);
     expect(find.byKey(const ValueKey('settings-critical-alarm-sound-button')),
         findsOneWidget);
   });

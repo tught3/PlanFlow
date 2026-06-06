@@ -3,7 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
+import '../../core/env.dart';
 import '../../core/theme.dart';
+import '../../providers/auth_provider.dart';
 import '../../services/briefing_scheduler_service.dart';
 
 class BriefingLaunchScreen extends StatefulWidget {
@@ -11,10 +13,12 @@ class BriefingLaunchScreen extends StatefulWidget {
     super.key,
     required this.isMorning,
     this.briefingSchedulerService,
+    this.authProviderOverride,
   });
 
   final bool isMorning;
   final BriefingSchedulerService? briefingSchedulerService;
+  final AuthProvider? authProviderOverride;
 
   @override
   State<BriefingLaunchScreen> createState() => _BriefingLaunchScreenState();
@@ -22,14 +26,17 @@ class BriefingLaunchScreen extends StatefulWidget {
 
 class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
   late final BriefingSchedulerService _briefingSchedulerService;
+  late final AuthProvider _authProvider;
   BriefingExecutionResult? _result;
   String? _errorMessage;
+  bool _isCheckingSession = true;
 
   @override
   void initState() {
     super.initState();
     _briefingSchedulerService =
         widget.briefingSchedulerService ?? BriefingSchedulerService();
+    _authProvider = widget.authProviderOverride ?? authProvider;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _runBriefing();
     });
@@ -37,10 +44,26 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
 
   Future<void> _runBriefing() async {
     try {
-      final userId = Supabase.instance.client.auth.currentUser?.id.trim();
+      final userId = await _resolveUserIdForBriefing();
+      if (!mounted) {
+        return;
+      }
+      final requiresAuth =
+          AppEnv.isSupabaseReady || widget.authProviderOverride != null;
+      if (requiresAuth && (userId == null || userId.isEmpty)) {
+        setState(() {
+          _isCheckingSession = false;
+          _errorMessage = '로그인 세션을 다시 확인해야 브리핑을 실행할 수 있습니다.';
+        });
+        return;
+      }
+      setState(() {
+        _isCheckingSession = false;
+      });
       final result = await _briefingSchedulerService.executeBriefing(
         isMorning: widget.isMorning,
-        userId: userId == null || userId.isEmpty ? null : userId,
+        userId: userId,
+        isManualTrigger: true,
       );
       if (!mounted) {
         return;
@@ -53,9 +76,32 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
         return;
       }
       setState(() {
+        _isCheckingSession = false;
         _errorMessage = '브리핑을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.';
       });
     }
+  }
+
+  Future<String?> _resolveUserIdForBriefing() async {
+    if (!AppEnv.isSupabaseReady && widget.authProviderOverride == null) {
+      return null;
+    }
+    await _authProvider.waitForInitialSessionResolution();
+    if (!_authProvider.isSignedIn) {
+      await _authProvider.syncCurrentSession();
+    }
+    final providerUserId = _authProvider.userId?.trim();
+    if (providerUserId != null && providerUserId.isNotEmpty) {
+      return providerUserId;
+    }
+    if (widget.authProviderOverride != null) {
+      return null;
+    }
+    final supabaseUserId = Supabase.instance.client.auth.currentUser?.id.trim();
+    if (supabaseUserId != null && supabaseUserId.isNotEmpty) {
+      return supabaseUserId;
+    }
+    return null;
   }
 
   @override
@@ -101,7 +147,9 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                     const SizedBox(height: 14),
                     Text(
                       result == null && _errorMessage == null
-                          ? '$title을 준비하고 있어요.'
+                          ? _isCheckingSession
+                              ? '로그인 세션을 확인하고 있어요.'
+                              : '$title을 준비하고 있어요.'
                           : result?.message ?? _errorMessage!,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.titleMedium?.copyWith(
@@ -112,7 +160,9 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                     const SizedBox(height: 8),
                     Text(
                       result == null && _errorMessage == null
-                          ? '오늘/내일 일정을 시간순으로 정리한 뒤 음성으로 읽어드립니다.'
+                          ? _isCheckingSession
+                              ? '브리핑을 실행하기 전에 저장된 로그인 정보를 조용히 복구합니다.'
+                              : '오늘/내일 일정을 시간순으로 정리한 뒤 음성으로 읽어드립니다.'
                           : '홈으로 돌아가 일정을 다시 확인할 수 있어요.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodySmall?.copyWith(
