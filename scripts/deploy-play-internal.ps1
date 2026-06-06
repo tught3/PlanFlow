@@ -33,9 +33,17 @@ function Assert-FileExists {
   }
 }
 
-function Test-CommandAvailable {
-  param([Parameter(Mandatory = $true)][string]$Name)
-  return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+function Invoke-Checked {
+  param(
+    [Parameter(Mandatory = $true)][scriptblock]$Action,
+    [Parameter(Mandatory = $true)][string]$Label
+  )
+
+  Write-Host $Label
+  & $Action
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Label failed with exit code $LASTEXITCODE."
+  }
 }
 
 try {
@@ -71,49 +79,16 @@ try {
   Assert-FileExists -Path (Join-Path $projectPath 'scripts\flutter-local.ps1') -Label 'scripts/flutter-local.ps1'
   Assert-FileExists -Path (Join-Path $projectPath 'scripts\bump-version-code.ps1') -Label 'scripts/bump-version-code.ps1'
   Assert-FileExists -Path (Join-Path $projectPath 'scripts\build-internal-aab.ps1') -Label 'scripts/build-internal-aab.ps1'
-
-  if (-not (Test-CommandAvailable -Name 'fastlane')) {
-    Write-Host 'fastlane가 설치되어 있지 않습니다.'
-    $rubyAvailable = Test-CommandAvailable -Name 'ruby'
-    $gemAvailable = Test-CommandAvailable -Name 'gem'
-    if (-not $rubyAvailable -or -not $gemAvailable) {
-      Write-Host 'Ruby/gem이 설치되어 있지 않아 fastlane을 바로 실행할 수 없습니다.'
-      Write-Host '먼저 Ruby를 설치한 뒤 아래 명령으로 fastlane을 설치하세요:'
-    } else {
-      Write-Host 'fastlane를 설치하려면 아래 명령을 실행하세요:'
-    }
-    Write-Host 'gem install fastlane'
-    exit 1
-  }
+  Assert-FileExists -Path (Join-Path $projectPath 'android\gradlew.bat') -Label 'android/gradlew.bat'
+  Assert-FileExists -Path (Join-Path $projectPath 'android\app\build.gradle.kts') -Label 'android/app/build.gradle.kts'
 
   Write-Stage 'Bumping version, analyzing, testing, and building AAB'
 
-  $requestedTests = @(
-    'test/services/voice_command_pipeline_test.dart',
-    'test/services/voice_conversation_controller_test.dart',
-    'test/services/manual_event_side_effect_service_test.dart',
-    'test/widgets/calendar_style_event_editor_test.dart',
-    'test/screens/event_edit_screen_test.dart',
-    'test/screens/voice_conversation_screen_test.dart'
-  )
-  $existingTests = @()
-  foreach ($relativeTest in $requestedTests) {
-    $absoluteTest = Join-Path $projectPath $relativeTest
-    if (Test-Path -LiteralPath $absoluteTest) {
-      $existingTests += $relativeTest
-    } else {
-      Write-Warning "테스트 파일이 없어 건너뜁니다: $relativeTest"
-    }
-  }
-
+  $buildScript = Join-Path $projectPath 'scripts\build-internal-aab.ps1'
+  $buildResult = $null
   Push-Location $projectPath
   try {
-    $buildScript = Join-Path $projectPath 'scripts\build-internal-aab.ps1'
-    $buildResult = if ($existingTests.Count -gt 0) {
-      & $buildScript -TestTargets $existingTests
-    } else {
-      & $buildScript -SkipTests
-    }
+    $buildResult = & $buildScript
     if ($LASTEXITCODE -ne 0) {
       throw "Internal AAB build failed with exit code $LASTEXITCODE."
     }
@@ -131,38 +106,43 @@ try {
   $resolvedAabPath = (Resolve-Path -LiteralPath $aabPath).Path
   $finalVersion = [string]$buildResult.NewVersion
 
-  if (-not $SkipUpload) {
-    Write-Stage 'Uploading to Google Play internal track'
-
-    $uploadArgs = @(
-      'supply',
-      '--aab', $resolvedAabPath,
-      '--track', $track,
-      '--package_name', $packageName,
-      '--json_key', $serviceAccountJson,
-      '--skip_upload_metadata', 'true',
-      '--skip_upload_images', 'true',
-      '--skip_upload_screenshots', 'true'
-    )
-
-    & fastlane @uploadArgs
-    if ($LASTEXITCODE -ne 0) {
-      throw "fastlane supply failed with exit code $LASTEXITCODE."
-    }
-  } else {
+  if ($SkipUpload) {
     Write-Host 'Upload was skipped because -SkipUpload was supplied.'
+  } else {
+    Write-Stage 'Publishing with Gradle Play Publisher'
+
+    $androidDir = Join-Path $projectPath 'android'
+    $gradlew = Join-Path $androidDir 'gradlew.bat'
+    $artifactDir = Split-Path -Parent $resolvedAabPath
+
+    Push-Location $androidDir
+    try {
+      Invoke-Checked {
+        & $gradlew ':app:publishReleaseBundle' '--track' $track '--artifact-dir' $artifactDir "-PplanflowPlayServiceAccountJson=$serviceAccountJson"
+      } 'android/gradlew.bat :app:publishReleaseBundle'
+    } finally {
+      Pop-Location
+    }
   }
 
   Write-Host ''
   Write-Host '========================================'
-  Write-Host 'PlanFlow Play Internal Upload Complete'
+  if ($SkipUpload) {
+    Write-Host 'PlanFlow Play Internal Validation Complete'
+  } else {
+    Write-Host 'PlanFlow Play Internal Upload Complete'
+  }
   Write-Host "Version: $finalVersion"
   Write-Host "Package: $packageName"
   Write-Host "Track: $track"
   Write-Host "AAB: $resolvedAabPath"
   Write-Host ''
   Write-Host 'Next:'
-  Write-Host 'Open Play Store on test device and update PlanFlow.'
+  if ($SkipUpload) {
+    Write-Host 'Run the same command without -SkipUpload when you are ready to upload.'
+  } else {
+    Write-Host 'Open Play Store on test device and update PlanFlow.'
+  }
   Write-Host '========================================'
 } catch {
   Write-Error $_

@@ -8,6 +8,7 @@ plugins {
     id("com.google.firebase.crashlytics")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.github.triplet.play") version "3.12.2"
 }
 
 val keystoreProperties = Properties()
@@ -32,6 +33,24 @@ if (releaseStoreFile.isBlank()) {
 if (!file(releaseStoreFile).exists()) {
     throw GradleException(
         "Release keystore file does not exist at $releaseStoreFile. Restore the PlanFlow signing files before building.",
+    )
+}
+
+val playServiceAccountPath = (
+    providers.gradleProperty("planflowPlayServiceAccountJson").orNull?.trim()
+        ?: providers.environmentVariable("ANDROID_PUBLISHER_CREDENTIALS").orNull?.trim()
+        ?: ""
+)
+
+val playPublishRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.contains("publish", ignoreCase = true) ||
+        taskName.contains("upload", ignoreCase = true) ||
+        taskName.contains("promote", ignoreCase = true)
+}
+
+if (playPublishRequested && playServiceAccountPath.isBlank()) {
+    throw GradleException(
+        "Missing Google Play service account path. Set -PplanflowPlayServiceAccountJson=... or ANDROID_PUBLISHER_CREDENTIALS before publishing.",
     )
 }
 
@@ -105,6 +124,14 @@ android {
 
 flutter {
     source = "../.."
+}
+
+play {
+    track.set("internal")
+    artifactDir.set(file("../../build/app/outputs/bundle/release"))
+    if (playServiceAccountPath.isNotBlank()) {
+        serviceAccountCredentials.set(file(playServiceAccountPath))
+    }
 }
 
 dependencies {

@@ -1594,3 +1594,9 @@
 - go_router가 `planflow://voice-launcher` 같은 플랫폼 딥링크를 기본 위치로 쓰지 않도록 `overridePlatformDefaultLocation: true`를 켜고, 앱 시작 위치를 `AppRoutes.root`로 고정했다.
 - `test/app_home_widget_route_test.dart`에 라우터가 플랫폼 기본 딥링크를 덮어쓰는지 확인하는 회귀 테스트를 추가했다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/app_home_widget_route_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:37369 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:37369 shell am start -W -a android.intent.action.VIEW -d "planflow://voice-launcher"` 및 logcat에서 `Bad state: Origin is only applicable...` 재현 없음 확인.
+
+## 2026-06-07 Play 자동 업로드 GPP 전환
+- Google Play 내부 테스트 배포 자동화의 업로드 엔진을 fastlane에서 Gradle Play Publisher(GPP)로 전환했다. `android/app/build.gradle.kts`에 `com.github.triplet.play` 플러그인과 internal track, 서비스 계정 경로 주입을 연결했고, 업로드용 Gradle property는 `planflowPlayServiceAccountJson`로 받도록 맞췄다.
+- `scripts/deploy-play-internal.ps1`는 fastlane/Ruby/gem 검사와 안내를 제거하고, version bump -> analyze -> tests -> release AAB 빌드 -> GPP publish 흐름으로 바꿨다. `-SkipUpload`면 빌드/검증만 하고 업로드는 건너뛴다.
+- `E:\FluxStudio\tools\README-play-deploy.md`와 `deploy-play.bat`도 Windows/GPP 기준으로 갱신했다.
+- 검증 통과: `scripts/flutter-local.ps1 build appbundle --release --no-pub`로 release AAB 생성 확인, PowerShell 스크립트 문법 검사 통과. GPP publish task 확인은 Gradle 스타트업이 오래 걸려 별도 업로드 실행 없이 보류했다.
