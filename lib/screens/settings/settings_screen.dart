@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
@@ -130,6 +131,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _countryCode = PlanFlowRegions.korea.countryCode;
   String _localeCode = PlanFlowRegions.korea.localeCode;
   String _timeZoneId = PlanFlowRegions.korea.timeZoneId;
+  String _appVersionLabel = '버전 확인 중...';
 
   CalendarSyncSummary? _calendarSyncSummary;
   CalendarAutoSyncSnapshot? _calendarAutoSyncSnapshot;
@@ -213,6 +215,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _naverCalendarPermissionService = widget._naverCalendarPermissionService;
 
     unawaited(_loadSettings());
+    unawaited(_loadAppVersionInfo());
     unawaited(_loadWidgetDisplaySettings());
     unawaited(_loadCalendarStatus());
     unawaited(_loadAutoSyncSnapshot());
@@ -366,6 +369,33 @@ class _SettingsScreenState extends State<SettingsScreen>
       _hideWidgetWeekends = hideWeekends;
       _departureRepeatIntervalMin = departureRepeatInterval;
     });
+  }
+
+  Future<void> _loadAppVersionInfo() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final version = packageInfo.version.trim();
+      final buildNumber = packageInfo.buildNumber.trim();
+      final label = version.isEmpty
+          ? '버전 정보를 불러오지 못했습니다.'
+          : buildNumber.isEmpty
+              ? '버전 $version'
+              : '버전 $version (빌드 $buildNumber)';
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _appVersionLabel = label;
+      });
+    } catch (error) {
+      debugPrint('Settings app version load failed: $error');
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _appVersionLabel = '버전 정보를 불러오지 못했습니다.';
+      });
+    }
   }
 
   Future<void> _loadCalendarStatus() async {
@@ -2944,6 +2974,30 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 const SizedBox(height: 16),
               ],
+              _SectionCard(
+                title: '앱 정보',
+                subtitle: '설치된 PlanFlow의 현재 버전입니다.',
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      color: PlanFlowColors.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _appVersionLabel,
+                        key: const ValueKey('settings-app-version-label'),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: PlanFlowColors.textPrimary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               _buildRegionSettings(),
             ],
           ),

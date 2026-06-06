@@ -20,6 +20,7 @@ import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:planflow/services/naver_open_api_calendar_service.dart';
 import 'package:planflow/services/notification_service.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -43,6 +44,13 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    PackageInfo.setMockInitialValues(
+      appName: 'PlanFlow',
+      packageName: 'com.fluxstudio.planflow',
+      version: '1.1.0',
+      buildNumber: '3',
+      buildSignature: '',
+    );
   });
 
   test('Naver account recheck is only shown for incomplete Naver profiles', () {
@@ -132,6 +140,10 @@ void main() {
     await _scrollUntilHitTestable(tester, feedbackButton);
     expect(find.text('문제 신고 / 의견 보내기'), findsOneWidget);
     expect(feedbackButton, findsOneWidget);
+    final versionLabel =
+        find.byKey(const ValueKey('settings-app-version-label'));
+    await _scrollUntilHitTestable(tester, versionLabel);
+    expect(find.text('버전 1.1.0 (빌드 3)'), findsOneWidget);
     expect(settingsRepository.fetchUserIds.single, 'user-1');
   });
 

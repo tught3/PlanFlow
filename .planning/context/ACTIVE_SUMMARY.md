@@ -1574,3 +1574,8 @@
 - `강한 알림`, `강한 알람`, `중요한 일정`, `중요한 알림`, `중요한 알람`, `긴급`, `급한`은 `isCritical=true`로, `일반/보통 알림`과 중요 일정 해제/끄기 표현은 `isCritical=false`로 분류되게 보강했다.
 - 장소가 있는 하루 첫 번째 외부 일정은 `SmartPreparationAlarmService.buildExternalEventPayloads()`에 `includePreparationAlarms`를 함께 넘겨 준비 시작 알림과 출발 알림이 모두 생성되게 복구했다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_command_pipeline_test.dart test/services/voice_conversation_controller_test.dart test/services/manual_event_side_effect_service_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/widgets/calendar_style_event_editor_test.dart test/screens/event_edit_screen_test.dart test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`. ADB 연결 기기가 없어 설치/실행 확인은 진행하지 못했다.
+
+## 2026-06-06 설정 화면 앱 버전 표시
+- `PackageInfo.fromPlatform()` 값을 설정탭 하단 `앱 정보` 카드에 표시해 사용자가 현재 설치 버전과 빌드 번호를 앱 안에서 확인할 수 있게 했다.
+- 현재 `pubspec.yaml` 기준 표시는 `버전 1.1.0 (빌드 3)` 형식이다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/screens/settings_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`.
