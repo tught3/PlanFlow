@@ -256,9 +256,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
       final shouldOpen = await showDialog<bool>(
             context: context,
             builder: (dialogContext) => AlertDialog(
-              title: const Text('중요 알람 권한이 필요해요'),
+              title: const Text('중요한 일정 알림 권한이 필요해요'),
               content: const Text(
-                '강한 알림을 지정한 시간에 크게 띄우려면 앱 알림, 정확한 알람, 전체 화면 알림 권한이 필요합니다. 지금 권한을 확인할게요.',
+                '중요한 일정을 시작 시점에 더 강한 소리와 진동으로 알려드리려면 앱 알림, 정확한 알람, 전체 화면 알림 권한이 필요합니다. 지금 권한을 확인할게요.',
               ),
               actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
               actions: [
@@ -283,7 +283,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
       _showMessage(
         granted
-            ? '중요 알람 권한을 확인했습니다.'
+            ? '중요한 일정 알림 권한을 확인했습니다.'
             : '설정에서 PlanFlow의 알림, 정확한 알람, 전체 화면 알림을 허용한 뒤 돌아와 주세요.',
       );
     } catch (error, stackTrace) {

@@ -222,7 +222,7 @@ void main() {
       expect(result.locationText, '원주세브란스기독병원');
     });
 
-    test('ordinal follow-up can mark an event as critical alarm', () {
+    test('ordinal follow-up can mark an event as 중요한 일정', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
           _event('first', '회의', DateTime(2026, 5, 7, 9)),
@@ -232,14 +232,14 @@ void main() {
       );
       controller.handle('오늘 일정 알려줘');
 
-      final result = controller.handle('첫번째 일정 중요한 알람으로 바꿔줘');
+      final result = controller.handle('첫번째 일정 강한 알림으로 표시해줘');
 
       expect(result.action, VoiceConversationAction.confirmedEdit);
       expect(result.targetEvent?.id, 'first');
       expect(result.criticalValue, isTrue);
     });
 
-    test('title follow-up can mark an event as critical alarm', () {
+    test('title follow-up can mark an event as 중요한 일정', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
           _event('meeting', '내일 회의', DateTime(2026, 5, 8, 9)),
@@ -249,14 +249,14 @@ void main() {
       );
       controller.handle('내일 일정 알려줘');
 
-      final result = controller.handle('내일 회의 중요 알림으로');
+      final result = controller.handle('내일 회의 중요한 일정으로 표시해줘');
 
       expect(result.action, VoiceConversationAction.confirmedEdit);
       expect(result.targetEvent?.id, 'meeting');
       expect(result.criticalValue, isTrue);
     });
 
-    test('ordinal follow-up can mark an event as normal alarm', () {
+    test('ordinal follow-up can unset 중요한 일정', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
           _event('first', '회의', DateTime(2026, 5, 7, 9)),
@@ -265,7 +265,23 @@ void main() {
       );
       controller.handle('오늘 일정 알려줘');
 
-      final result = controller.handle('첫번째 일정 일반 알림으로 바꿔줘');
+      final result = controller.handle('첫번째 일정 중요한 알림 꺼줘');
+
+      expect(result.action, VoiceConversationAction.confirmedEdit);
+      expect(result.targetEvent?.id, 'first');
+      expect(result.criticalValue, isFalse);
+    });
+
+    test('explicit "중요한 일정 해제"는 off로 처리한다', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '회의', DateTime(2026, 5, 7, 9)),
+        ],
+        now: () => DateTime(2026, 5, 7, 8),
+      );
+      controller.handle('오늘 일정 알려줘');
+
+      final result = controller.handle('첫번째 일정 중요한 일정 해제해줘');
 
       expect(result.action, VoiceConversationAction.confirmedEdit);
       expect(result.targetEvent?.id, 'first');

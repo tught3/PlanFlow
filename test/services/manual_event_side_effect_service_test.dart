@@ -148,6 +148,8 @@ void main() {
           .map((row) => row['title'].toString());
       expect(nineTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(tenTitles.any(_isDepartureExternalAlarmTitle), true);
+      expect(nineTitles.any(_isPreparationStartAlarmTitle), true);
+      expect(tenTitles.any(_isPreparationStartAlarmTitle), false);
       expect(
         notifications.cancelledNotificationIds,
         containsAll(<int>[
@@ -657,6 +659,8 @@ void main() {
           .map((row) => row['title']);
       expect(tripTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(meetingTitles.any(_isDepartureExternalAlarmTitle), true);
+      expect(tripTitles.any(_isPreparationStartAlarmTitle), true);
+      expect(meetingTitles.any(_isPreparationStartAlarmTitle), false);
       expect(
         meetingTitles,
         contains('지금 출발하세요 🚗 (이동 약 30분 — 위치 확인 불가, 기본값)'),
@@ -713,6 +717,8 @@ void main() {
           .map((row) => row['title']);
       expect(nineTitles.any(_isDepartureExternalAlarmTitle), true);
       expect(tenTitles.any(_isDepartureExternalAlarmTitle), true);
+      expect(nineTitles.any(_isPreparationStartAlarmTitle), true);
+      expect(tenTitles.any(_isPreparationStartAlarmTitle), false);
       expect(
         tenTitles,
         contains('지금 출발하세요 🚗 (이동 약 30분 — 위치 확인 불가, 기본값)'),
@@ -762,6 +768,7 @@ void main() {
           .map((row) => row['title']);
       expect(noPlaceTitles, isEmpty);
       expect(placeTitles.any(_isDepartureExternalAlarmTitle), true);
+      expect(placeTitles.any(_isPreparationStartAlarmTitle), true);
     });
   });
 }
@@ -769,6 +776,11 @@ void main() {
 bool _isDepartureExternalAlarmTitle(Object? title) {
   final text = title?.toString() ?? '';
   return text.contains('지금 출발하세요') || text.contains('출발 알림');
+}
+
+bool _isPreparationStartAlarmTitle(Object? title) {
+  final text = title?.toString() ?? '';
+  return text.contains('지금 준비 시작하세요') || text.contains('준비 시작');
 }
 
 class _FakeManualEventGateway extends ManualEventSideEffectGateway {

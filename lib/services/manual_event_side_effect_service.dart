@@ -223,6 +223,7 @@ class ManualEventSideEffectService {
         travelMinutesIsFallback: resolvedTravelMinutes.isFallback,
         departureSafetyMarginMin: departureSafetyMargin.inMinutes,
         isFirstExternalEventOfDay: isFirstExternalEventOfDay,
+        includePreparationAlarms: isFirstExternalEventOfDay,
         now: effectiveNow,
       );
       await gateway.insertPreActions(externalPreparationPayloads);
@@ -261,6 +262,7 @@ class ManualEventSideEffectService {
           travelMinutesIsFallback: resolvedTravelMinutes.isFallback,
           departureSafetyMarginMin: departureSafetyMargin.inMinutes,
           isFirstExternalEventOfDay: isFirstExternalEventOfDay,
+          includePreparationAlarms: isFirstExternalEventOfDay,
           now: effectiveNow,
         ),
       );
@@ -642,6 +644,7 @@ class ManualEventSideEffectService {
         travelMinutesIsFallback: resolvedTravelMinutes.isFallback,
         departureSafetyMarginMin: departureSafetyMargin.inMinutes,
         isFirstExternalEventOfDay: event.id == firstExternalEventId,
+        includePreparationAlarms: event.id == firstExternalEventId,
         now: now,
       );
     }

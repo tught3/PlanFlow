@@ -291,13 +291,13 @@ void main() {
     await tester.tap(find.text('알림 옵션'));
     await tester.pumpAndSettle();
     expect(find.text('미리알림'), findsOneWidget);
-    expect(find.text('강한 알림으로 예약'), findsNothing);
+    expect(find.text('중요한 일정으로 표시'), findsNothing);
 
-    await tester.ensureVisible(find.text('강한 알림'));
+    await tester.ensureVisible(find.text('중요한 일정'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('강한 알림'));
+    await tester.tap(find.text('중요한 일정'));
     await tester.pumpAndSettle();
-    expect(find.text('강한 알림으로 예약'), findsOneWidget);
+    expect(find.text('중요한 일정으로 표시'), findsOneWidget);
   });
 
   testWidgets('configured optional sections can start expanded',

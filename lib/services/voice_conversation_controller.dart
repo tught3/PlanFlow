@@ -285,8 +285,8 @@ class VoiceConversationController {
           targetEvent: target,
           criticalValue: criticalValue,
           assistantMessage: criticalValue
-              ? '"${target.title}" 일정을 중요 알림으로 변경할게요.'
-              : '"${target.title}" 일정을 일반 알림으로 변경할게요.',
+              ? '"${target.title}" 일정을 중요한 일정으로 표시할게요.'
+              : '"${target.title}" 일정을 중요한 일정으로 표시하지 않을게요.',
         ),
       );
     }
@@ -567,13 +567,29 @@ class VoiceConversationController {
   }
 
   bool? _criticalValueFromText(String text) {
-    if (RegExp(r'(중요|긴급|급한|critical|중요한)\s*(알람|알림|경보)').hasMatch(text)) {
-      return true;
-    }
-    if (RegExp(r'(보통|일반|normal)\s*(알람|알림)').hasMatch(text)) {
+    if (_isCriticalFalseCommand(text)) {
       return false;
     }
+    if (_isCriticalTrueCommand(text)) {
+      return true;
+    }
     return null;
+  }
+
+  bool _isCriticalFalseCommand(String text) {
+    return RegExp(
+      r'(일반\s*(알람|알림|일정|경보)|보통\s*(알람|알림|일정|경보)|'
+      r'중요(?:한)?\s*(일정|알림|알람|경보|표시)?\s*'
+      r'(해제|꺼\s*줘|꺼줘|꺼|끄\s*어|끄고|끄기|풀어|풀\s*어))',
+    ).hasMatch(text);
+  }
+
+  bool _isCriticalTrueCommand(String text) {
+    return RegExp(
+      r'(중요하게\s*표시|강한\s*알림|강한알림|강한\s*알람|강한알람|'
+      r'중요한\s*일정|중요\s*일정|중요\s*표시|'
+      r'중요한\s*알림|중요\s*알림|중요한\s*알람|중요\s*알람|긴급|급한|critical)',
+    ).hasMatch(text);
   }
 
   bool _isDeleteIntent(String text, {VoiceCommandRouteResult? route}) {

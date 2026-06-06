@@ -1568,3 +1568,9 @@
 - 백그라운드 실패 안내는 overlay가 없는 widget test 환경에서도 ScaffoldMessenger fallback으로 표시되도록 보강했고, `일정 조회`는 관리 선택으로 분기되게 보정했다.
 - `우리회사에서 매월 월례 조회 메모에 주차장 B2 확인`은 제목 `월례 조회`, 장소 `우리회사`, 메모 `주차장 B2 확인`, 월간 반복으로 분리되도록 장소 추론 경계를 보강했다.
 - 검증 통과: `background_task_service_test.dart`, `voice_command_router_test.dart`, `voice_command_analysis_service_test.dart`, `voice_input_screen_test.dart`, `settings_screen_test.dart`, `briefing_launch_screen_test.dart`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build appbundle --release --no-pub`. ADB 기기는 `192.168.0.102:37581`가 offline으로 재연결 실패해 설치/실행 확인은 진행하지 못했다.
+
+## 2026-06-06 중요한 일정 명칭과 첫 외부 일정 준비 알림 복구
+- 사용자-facing `강한 알림` 문구를 `중요한 일정`으로 정리하고, AI 일정 대화 응답도 `중요한 일정으로 표시했어요/표시하지 않을게요`로 통일했다.
+- `강한 알림`, `강한 알람`, `중요한 일정`, `중요한 알림`, `중요한 알람`, `긴급`, `급한`은 `isCritical=true`로, `일반/보통 알림`과 중요 일정 해제/끄기 표현은 `isCritical=false`로 분류되게 보강했다.
+- 장소가 있는 하루 첫 번째 외부 일정은 `SmartPreparationAlarmService.buildExternalEventPayloads()`에 `includePreparationAlarms`를 함께 넘겨 준비 시작 알림과 출발 알림이 모두 생성되게 복구했다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_command_pipeline_test.dart test/services/voice_conversation_controller_test.dart test/services/manual_event_side_effect_service_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/widgets/calendar_style_event_editor_test.dart test/screens/event_edit_screen_test.dart test/screens/voice_conversation_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `git diff --check`, `scripts/flutter-local.ps1 build apk --debug --no-pub`. ADB 연결 기기가 없어 설치/실행 확인은 진행하지 못했다.

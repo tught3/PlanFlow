@@ -1107,8 +1107,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         final title = result.targetEvent?.title ?? '선택한 일정';
         if (result.criticalValue != null) {
           return result.criticalValue!
-              ? '$title 일정을 중요 알림으로 변경했어요.'
-              : '$title 일정을 일반 알림으로 변경했어요.';
+              ? '$title 일정을 중요한 일정으로 표시했어요.'
+              : '$title 일정을 중요한 일정으로 표시하지 않을게요.';
         }
         if (result.locationText != null) {
           return '$title 일정의 장소를 ${result.locationText}로 변경했어요.';

@@ -728,7 +728,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('AI 일정 대화는 중요 알림 변경을 바로 저장한다', (tester) async {
+  testWidgets('AI 일정 대화는 중요한 일정 변경을 바로 저장한다', (tester) async {
     final repository = _FakeEventRepository(<EventModel>[
       EventModel(
         id: 'event-1',
@@ -748,7 +748,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), '첫번째 일정 중요한 알림으로 바꿔줘');
+    await tester.enterText(find.byType(TextField), '첫번째 일정 중요한 일정으로 표시해줘');
     await tester.tap(find.text('전송'));
     for (var i = 0; i < 20 && repository.updatedEvents.isEmpty; i += 1) {
       await tester.pump(const Duration(milliseconds: 100));

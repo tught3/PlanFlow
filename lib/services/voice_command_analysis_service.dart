@@ -1263,7 +1263,7 @@ Rules:
     에서/에/로/으로 particle). KEEP the place in the title too.
   * recurrence ("매주", "격주 화요일") -> recurrence_rule, remove from title.
   * supplies ("준비물 노트북", "노트북 챙겨서", "서류 가져가") -> supplies array.
-  * importance ("중요한 알람으로", "강한 알람", "긴급") -> is_critical=true,
+  * importance ("중요한 일정으로 표시", "강한 알림", "긴급") -> is_critical=true,
     remove that command phrase from title.
   * Keep person words, names, job titles, recipient particles, place names, and
     ordinary action nouns (회의, 방문, 미팅) in title.

@@ -126,21 +126,21 @@ void main() {
     await tester.tap(find.text('알림 옵션'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('강한 알림'),
+      find.text('중요한 일정'),
       160,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('강한 알림'));
+    await tester.tap(find.text('중요한 일정'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('강한 알림으로 예약'),
+      find.text('중요한 일정으로 표시'),
       160,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('강한 알림으로 예약'));
+    await tester.tap(find.text('중요한 일정으로 표시'));
     await tester.pumpAndSettle();
 
-    expect(find.text('중요 알람 권한이 필요해요'), findsOneWidget);
+    expect(find.text('중요한 일정 알림 권한이 필요해요'), findsOneWidget);
 
     await tester.tap(find.text('허용하러 가기'));
     await tester.pumpAndSettle();
@@ -174,7 +174,7 @@ void main() {
       (header: '반복 설정', revealed: '반복 안 함'),
       (header: '설명 · 준비물', revealed: '준비물'),
       (header: '알림 옵션', revealed: '미리알림'),
-      (header: '강한 알림', revealed: '강한 알림으로 예약'),
+      (header: '중요한 일정', revealed: '중요한 일정으로 표시'),
     ];
 
     for (final item in cases) {

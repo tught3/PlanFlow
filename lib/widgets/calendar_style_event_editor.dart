@@ -426,7 +426,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
           _EditorSection(
             key: _criticalAlarmSectionKey,
             icon: Icons.priority_high_rounded,
-            title: '강한 알림',
+            title: '중요한 일정',
             subtitle: _criticalAlarmSummary(widget.isCritical),
             collapsible: true,
             expanded: _criticalAlarmExpanded,
@@ -452,9 +452,9 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                 horizontal: 12,
                 vertical: 4,
               ),
-              title: const Text('강한 알림으로 예약'),
+              title: const Text('중요한 일정으로 표시'),
               subtitle: const Text(
-                '일정 시작 시점에 더 강한 소리와 진동으로 알려줍니다. 미리알림 시간과 별도로 동작합니다.',
+                '일정 시작 시 더 강한 소리와 진동으로 알려줍니다. 미리알림 시간과 별도로 동작합니다.',
               ),
               secondary: Icon(
                 widget.isCritical
@@ -614,7 +614,7 @@ String _alarmSummary(Duration? offset) {
 }
 
 String _criticalAlarmSummary(bool isCritical) {
-  return isCritical ? '켜짐 · 일정 시작 시 강하게 알림' : '꺼짐';
+  return isCritical ? '켜짐 · 일정 시작 시 더 강한 소리와 진동' : '꺼짐';
 }
 
 class _CalendarHeader extends StatelessWidget {

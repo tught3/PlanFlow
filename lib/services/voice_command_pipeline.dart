@@ -247,15 +247,10 @@ class VoiceCommandPipeline {
     if (RegExp(r'(하루\s*종일|하루종일|종일|온종일)').hasMatch(normalized)) {
       changes.add('is_all_day');
     }
-    if (RegExp(
-      r'(중요하게\s*표시|중요\s*표시|중요|긴급|급한|critical|중요한)\s*(알람|알림|경보|표시)?',
-    ).hasMatch(normalized)) {
-      changes.add('is_critical_true');
-    }
-    if (RegExp(
-      r'(보통(?:으로)?|일반(?:으로)?|normal)\s*(알람|알림|경보|표시)?',
-    ).hasMatch(normalized)) {
+    if (_isCriticalFalseCommand(normalized)) {
       changes.add('is_critical_false');
+    } else if (_isCriticalTrueCommand(normalized)) {
+      changes.add('is_critical_true');
     }
     return changes.toList(growable: false);
   }
@@ -277,6 +272,22 @@ class VoiceCommandPipeline {
       values['is_critical'] = 'false';
     }
     return values;
+  }
+
+  bool _isCriticalFalseCommand(String text) {
+    return RegExp(
+      r'(일반\s*(알림|알람|일정|경보)|보통\s*(알림|알람|일정|경보)|'
+      r'중요(?:한)?\s*(일정|알림|알람|경보|표시)?\s*'
+      r'(해제|꺼\s*줘|꺼줘|꺼|끄\s*어|끄고|끄기|풀어|풀\s*어))',
+    ).hasMatch(text);
+  }
+
+  bool _isCriticalTrueCommand(String text) {
+    return RegExp(
+      r'(중요하게\s*표시|중요한\s*일정|중요\s*일정|중요\s*표시|'
+      r'강한\s*알림|강한알림|강한\s*알람|강한알람|'
+      r'중요한\s*알림|중요\s*알림|중요한\s*알람|중요\s*알람|긴급|급한|critical)',
+    ).hasMatch(text);
   }
 
   List<String> searchTokens(String text) {
