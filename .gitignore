@@ -13,5 +13,6 @@ supabase/.temp/
 android/key.properties
 android/app/planflow-release.jks
 android/signing/
+secrets/
 
 CLAUDE.md

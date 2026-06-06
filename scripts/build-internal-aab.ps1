@@ -7,7 +7,8 @@
     'test/screens/event_edit_screen_test.dart',
     'test/screens/voice_conversation_screen_test.dart'
   ),
-  [switch]$SkipVersionBump
+  [switch]$SkipVersionBump,
+  [switch]$SkipTests
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,8 +69,12 @@ try {
   Invoke-Checked { & $FlutterLocal analyze --no-pub } 'scripts/flutter-local.ps1 analyze --no-pub'
 
   Write-Stage "Running focused tests"
-  $testArgs = @('test') + $TestTargets + @('--no-pub')
-  Invoke-Checked { & $FlutterLocal @testArgs } ("scripts/flutter-local.ps1 test {0} --no-pub" -f ($TestTargets -join ' '))
+  if ($SkipTests -or -not $TestTargets -or $TestTargets.Count -eq 0) {
+    Write-Host "Skipping focused tests because no requested test files were present."
+  } else {
+    $testArgs = @('test') + $TestTargets + @('--no-pub')
+    Invoke-Checked { & $FlutterLocal @testArgs } ("scripts/flutter-local.ps1 test {0} --no-pub" -f ($TestTargets -join ' '))
+  }
 
   Write-Stage "Building release appbundle"
   Invoke-Checked { & $FlutterLocal build appbundle --release --no-pub } 'scripts/flutter-local.ps1 build appbundle --release --no-pub'
