@@ -1,8 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/app.dart';
 import 'package:planflow/core/constants.dart';
+import 'package:planflow/core/router.dart';
 
 void main() {
+  test('app router overrides platform default deep link location', () {
+    expect(appRouter.overridePlatformDefaultLocation, isTrue);
+  });
+
   test('resolveHomeWidgetRoute maps voice launcher and auto-start routes', () {
     expect(
       resolveHomeWidgetRoute(Uri.parse('planflow://voice-launcher')),

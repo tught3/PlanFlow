@@ -1589,3 +1589,8 @@
 - `ShellScreen`의 탭 전환 스와이프를 화면 전체에서 양쪽 가장자리 24px로만 제한해, 중앙 영역의 세로/가로 스크롤이 탭 전환에 끼어들지 않게 했다.
 - `test/screens/shell_swipe_gesture_test.dart`에 center drag/edge fling 회귀 테스트를 유지하고, `SharedPreferencesAsyncPlatform` 인메모리 모킹을 넣어 SettingsScreen 부수 초기화가 테스트를 깨지 않게 했다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/screens/shell_swipe_gesture_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:37369 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:37369 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-06-06 custom scheme 딥링크 라우팅 크래시 완화
+- go_router가 `planflow://voice-launcher` 같은 플랫폼 딥링크를 기본 위치로 쓰지 않도록 `overridePlatformDefaultLocation: true`를 켜고, 앱 시작 위치를 `AppRoutes.root`로 고정했다.
+- `test/app_home_widget_route_test.dart`에 라우터가 플랫폼 기본 딥링크를 덮어쓰는지 확인하는 회귀 테스트를 추가했다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/app_home_widget_route_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:37369 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:37369 shell am start -W -a android.intent.action.VIEW -d "planflow://voice-launcher"` 및 logcat에서 `Bad state: Origin is only applicable...` 재현 없음 확인.

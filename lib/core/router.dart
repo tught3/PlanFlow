@@ -23,6 +23,7 @@ import '../providers/auth_provider.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: AppRoutes.root,
+  overridePlatformDefaultLocation: true,
   refreshListenable: authProvider,
   redirect: (context, state) {
     final path = state.uri.path;
