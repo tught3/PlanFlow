@@ -1,5 +1,10 @@
 # ACTIVE SUMMARY
 
+## 2026-06-06 Internal Test AAB Automation
+- Added `scripts/bump-version-code.ps1`, `scripts/build-internal-aab.ps1`, and root `deploy-planflow.bat` so one command can bump `pubspec.yaml` build number, run `flutter analyze`, run the focused smoke tests, build the release AAB, and print the upload path.
+- Added a short internal-test automation note to `docs/play-console-submission.md`, and aligned the Play submission/listing docs to the current `1.1.0+5` internal build metadata after verification.
+- Verification passed: `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts\build-internal-aab.ps1`, which completed `analyze`, the six focused tests, and `build/app/outputs/bundle/release/app-release.aab` generation at `E:\FluxStudio\PlanFlow\build\app\outputs\bundle\release\app-release.aab`.
+
 ## 2026-05-31 STT Silence And Widget Offset Cleanup
 - Conversation-mode STT silence is now 30 seconds in both the Flutter service layer and the Android fallback, so the listen loop no longer retriggers every couple of seconds during a spoken sentence.
 - Home widgets now keep raw event payloads alongside the existing summarized payload, which lets the Kotlin providers render month/week/day widgets from the actual event list and move previous/next controls without a +/-1 clamp.

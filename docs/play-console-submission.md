@@ -14,7 +14,7 @@
 - 계정 삭제 URL: `https://tught3.github.io/PlanFlow/account-deletion.html`
 - 일부 데이터 삭제 요청 URL: `https://tught3.github.io/PlanFlow/account-deletion.html#partial-data-deletion`
 - 현재 릴리즈 버전: `1.1.0`
-- 현재 내부 테스트 versionCode: `3`
+- 현재 내부 테스트 versionCode: `5`
 - 내부 테스트 AAB: `build/app/outputs/bundle/release/app-release.aab`
 
 ## 스토어 등록 문구 초안
@@ -59,6 +59,24 @@ PlanFlow 1.1.0 내부 테스트 버전입니다.
 이번 1차 내부 테스트에는 KakaoTalk/SMS 자동 감지 기능이 포함되지 않습니다. 해당 기능은 추후 별도 권한 안내와 함께 검증 후 제공할 예정입니다.
 
 테스트 중에는 로그인, 일정 저장, 캘린더 연결, 알림 권한, 출발 알림, 백업 기능을 중점적으로 확인해 주세요.
+
+## 내부 테스트 AAB 자동 생성
+
+내부 테스트용 AAB를 만들 때는 루트에서 아래 중 하나를 실행하면 됩니다.
+
+```powershell
+.\deploy-planflow.bat
+```
+
+또는
+
+```powershell
+.\scripts\build-internal-aab.ps1
+```
+
+이 스크립트는 `pubspec.yaml`의 `version`에서 빌드 번호만 1 올린 뒤,
+`flutter analyze` → 주요 테스트 → `release appbundle` 순서로 실행하고,
+마지막에 `build/app/outputs/bundle/release/app-release.aab` 전체 경로를 출력합니다.
 
 ## 앱 액세스
 
