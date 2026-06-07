@@ -1,5 +1,9 @@
 # ACTIVE SUMMARY
 
+## 2026-06-07 PlanFlow v2 planning docs
+- Created `docs/planflow-v2/README.md` and `docs/planflow-v2/team-v2-plan.md` on branch `feature/team-v2-planning` to keep team-function planning separate from the 1st-release stabilization line.
+- The new docs keep the personal MVP structure intact and outline a separate team-module direction for `teams`, `team_members`, `team_invites`, `team_events`, `projects`, `tasks`, `meeting_notes`, and `coaching_reports`.
+
 ## 2026-06-06 Internal Test AAB Automation
 - Added `scripts/bump-version-code.ps1`, `scripts/build-internal-aab.ps1`, and root `deploy-planflow.bat` so one command can bump `pubspec.yaml` build number, run `flutter analyze`, run the focused smoke tests, build the release AAB, and print the upload path.
 - Added a short internal-test automation note to `docs/play-console-submission.md`, and aligned the Play submission/listing docs to the current `1.1.0+5` internal build metadata after verification.
