@@ -54,6 +54,7 @@ class NotificationService {
       '중요 일정 알람. 일반 알림보다 강한 진동과 전용 알림음으로 구분합니다.';
   static const Color _criticalAlarmColor = Color(0xFFD32F2F);
   static const String departureAcknowledgedActionId = 'departure_ack';
+  static const String departureArrivedActionId = 'departure_arrived';
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
   );
@@ -394,6 +395,13 @@ class NotificationService {
               showsUserInterface: true,
               semanticAction: SemanticAction.none,
             ),
+            AndroidNotificationAction(
+              departureArrivedActionId,
+              '도착',
+              cancelNotification: true,
+              showsUserInterface: true,
+              semanticAction: SemanticAction.none,
+            ),
           ],
         ),
         androidScheduleMode: reminderScheduleModeForStatus(status),
@@ -645,7 +653,8 @@ class NotificationService {
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (response) {
         final route = routeForNotificationResponse(response);
-        if (response.actionId == departureAcknowledgedActionId &&
+        if ((response.actionId == departureAcknowledgedActionId ||
+                response.actionId == departureArrivedActionId) &&
             (response.payload ?? '').startsWith('departure:')) {
           final eventId =
               (response.payload ?? '').substring('departure:'.length).trim();
@@ -877,6 +886,13 @@ class NotificationService {
             showsUserInterface: true,
             semanticAction: SemanticAction.none,
           ),
+          AndroidNotificationAction(
+            departureArrivedActionId,
+            '도착',
+            cancelNotification: true,
+            showsUserInterface: true,
+            semanticAction: SemanticAction.none,
+          ),
         ],
       ),
       iOS: const DarwinNotificationDetails(
@@ -1013,7 +1029,8 @@ class NotificationService {
       }
       final eventRoute =
           '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}';
-      if (response.actionId == departureAcknowledgedActionId) {
+      if (response.actionId == departureAcknowledgedActionId ||
+          response.actionId == departureArrivedActionId) {
         return eventRoute;
       }
       return '$eventRoute?departureAction=prompt';

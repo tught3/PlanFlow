@@ -1,5 +1,11 @@
 # ACTIVE SUMMARY
 
+## 2026-06-07 TASK_20260607_030411 Widget And Voice Parsing Follow-up
+- 주간 리스트 홈 위젯이 XML의 4번째 이벤트 슬롯을 실제 일정으로 채우도록 Kotlin raw/SharedPreferences 렌더 경로를 4행 기준으로 맞췄고, 5번째부터만 overflow 라벨이 나오도록 계산을 보정했다.
+- AI 일정 대화는 `이 일정`/`이거`를 현재 focus 참조로 처리하고, 제목/참석자/대상 이름 검색을 오늘 기준 전후 1개월 범위에서 수행하도록 보강했다. 다중 후보에서는 첫 번째를 임의 선택하지 않고 번호 선택을 요구하며, 전후 1개월 밖에만 후보가 있으면 기간 확장 질문을 반환한다.
+- 음성 일정 구조 파서는 `오늘부터 2주간 ...` 같은 상대 시작일+기간 표현을 all-day multi-day 범위로 해석하고 제목에서 해당 기간 표현을 제거한다. 월말 기준 1개월 검색/기간 계산은 대상 월 마지막 날로 clamp한다.
+- 검증: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format ...`, `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe analyze <changed files>`, `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe analyze`, `git diff --check` 통과. Flutter test/build는 이 세션의 SDK cache/FluxOS lock 권한 문제와 Gradle wrapper 네트워크 차단으로 실행하지 못했다.
+
 ## 2026-06-06 Internal Test AAB Automation
 - Added `scripts/bump-version-code.ps1`, `scripts/build-internal-aab.ps1`, and root `deploy-planflow.bat` so one command can bump `pubspec.yaml` build number, run `flutter analyze`, run the focused smoke tests, build the release AAB, and print the upload path.
 - Added a short internal-test automation note to `docs/play-console-submission.md`, and aligned the Play submission/listing docs to the current `1.1.0+5` internal build metadata after verification.
@@ -1600,3 +1606,9 @@
 - `scripts/deploy-play-internal.ps1`는 fastlane/Ruby/gem 검사와 안내를 제거하고, version bump -> analyze -> tests -> release AAB 빌드 -> GPP publish 흐름으로 바꿨다. `-SkipUpload`면 빌드/검증만 하고 업로드는 건너뛴다.
 - `E:\FluxStudio\tools\README-play-deploy.md`와 `deploy-play.bat`도 Windows/GPP 기준으로 갱신했다.
 - 검증 통과: `scripts/flutter-local.ps1 build appbundle --release --no-pub`로 release AAB 생성 확인, PowerShell 스크립트 문법 검사 통과. GPP publish task 확인은 Gradle 스타트업이 오래 걸려 별도 업로드 실행 없이 보류했다.
+
+## 2026-06-07 월간 위젯 예비줄 스타일 정리와 AI 제목검색/날짜이동 복구
+- 월간 위젯의 overflow 예비줄을 다른 일정 줄과 같은 왼쪽 정렬/색상 계열로 맞춰서, 아래쪽 텍스트가 별도 안내처럼 보이지 않게 정리했다.
+- `VoiceConversationController`는 제목/사람 검색의 기본 1개월 범위와 확장 질문 흐름, 그리고 `이 일정 6월 19일로 바꿔줘` 같은 후속 날짜 이동을 현재 날짜 기준으로 제대로 해석하도록 보강했다.
+- `test/services/home_widget_service_test.dart`의 월간/주간 payload 기대값을 현재 visible row 수에 맞춰 갱신했다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_conversation_controller_test.dart test/services/home_widget_service_test.dart test/services/notification_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:46561 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:46561 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.

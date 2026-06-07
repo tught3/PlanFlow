@@ -192,6 +192,12 @@ void main() {
         actionId: NotificationService.departureAcknowledgedActionId,
         payload: 'departure:event-1',
       );
+      final arrivedDeparture = NotificationResponse(
+        notificationResponseType:
+            NotificationResponseType.selectedNotificationAction,
+        actionId: NotificationService.departureArrivedActionId,
+        payload: 'departure:event-1',
+      );
 
       expect(
         NotificationService.routeForNotificationResponse(tappedDeparture),
@@ -199,6 +205,10 @@ void main() {
       );
       expect(
         NotificationService.routeForNotificationResponse(acknowledgedDeparture),
+        '${AppRoutes.eventDetail}/event-1',
+      );
+      expect(
+        NotificationService.routeForNotificationResponse(arrivedDeparture),
         '${AppRoutes.eventDetail}/event-1',
       );
     });

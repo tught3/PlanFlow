@@ -306,6 +306,39 @@ void main() {
       );
     });
 
+    test('extracts relative duration ranges and strips title noise', () {
+      final range = service.extractDateRange(
+        '오늘부터 2주간 원주집 단기렌트하기',
+        now: DateTime(2026, 6, 7, 12),
+      );
+
+      expect(range, isNotNull);
+      expect(range!.startAt, DateTime(2026, 6, 7));
+      expect(range.endAt, DateTime(2026, 6, 20, 23, 59, 59));
+      expect(range.isAllDay, isTrue);
+      expect(range.isMultiDay, isTrue);
+      expect(
+        service.stripDateRangeExpression(
+          '오늘부터 2주간 원주집 단기렌트하기',
+          now: DateTime(2026, 6, 7, 12),
+        ),
+        '원주집 단기렌트하기',
+      );
+    });
+
+    test('clamps month duration ranges at the target month end', () {
+      final range = service.extractDateRange(
+        '오늘부터 1개월간 원주집 단기렌트하기',
+        now: DateTime(2026, 1, 31, 12),
+      );
+
+      expect(range, isNotNull);
+      expect(range!.startAt, DateTime(2026, 1, 31));
+      expect(range.endAt, DateTime(2026, 2, 28, 23, 59, 59));
+      expect(range.isAllDay, isTrue);
+      expect(range.isMultiDay, isTrue);
+    });
+
     test('does not treat same-day time ranges as all-day date ranges', () {
       final range = service.extractDateRange(
         '5월 26일 오전 9시부터 오후 3시까지 회의',
