@@ -57,8 +57,12 @@ try {
     if (-not $versionInfo) {
       throw "Version bump failed."
     }
-    Write-Host "Version name preserved: $($versionInfo.VersionName)"
-    Write-Host "Version now: $($versionInfo.NewVersion)"
+    if ($versionInfo.PSObject.Properties.Name -contains 'OldVersion' -and $versionInfo.PSObject.Properties.Name -contains 'NewVersion') {
+      Write-Host "Version changed: $($versionInfo.OldVersion) -> $($versionInfo.NewVersion)"
+    } else {
+      $currentVersion = Read-PubspecVersion -Path $PubspecPath
+      Write-Host "Version now: $currentVersion"
+    }
   } else {
     Write-Host "Skipping version bump at user request."
     $currentVersion = Read-PubspecVersion -Path $PubspecPath
@@ -84,7 +88,26 @@ try {
   }
 
   $resolvedAabPath = (Resolve-Path -LiteralPath $AabPath).Path
-  $finalVersion = if ($versionInfo) { $versionInfo.NewVersion } else { Read-PubspecVersion -Path $PubspecPath }
+  $finalVersion = $null
+  if ($versionInfo -is [System.Management.Automation.PSObject]) {
+    if ($versionInfo.PSObject.Properties.Name -contains 'NewVersion') {
+      $finalVersion = [string]$versionInfo.NewVersion
+    } elseif ($versionInfo.PSObject.Properties.Name -contains 'OldVersion') {
+      $finalVersion = [string]$versionInfo.OldVersion
+    }
+  } elseif ($versionInfo -is [array]) {
+    $objectCandidate = $versionInfo | Where-Object {
+      $_ -is [System.Management.Automation.PSObject] -and $_.PSObject.Properties.Name -contains 'NewVersion'
+    } | Select-Object -First 1
+    if ($objectCandidate) {
+      $finalVersion = [string]$objectCandidate.NewVersion
+    }
+  }
+
+  if ([string]::IsNullOrWhiteSpace($finalVersion)) {
+    $finalVersion = Read-PubspecVersion -Path $PubspecPath
+    Write-Host "Version info fallback used from pubspec.yaml: $finalVersion"
+  }
 
   Write-Host ''
   Write-Host '========================================'
@@ -96,6 +119,12 @@ try {
   Write-Host 'Next:'
   Write-Host 'Google Play Console -> PlanFlow -> 내부 테스트 -> 새 버전 만들기 -> 위 AAB 업로드'
   Write-Host '========================================'
+
+  return [pscustomobject]@{
+    OldVersion = if ($versionInfo -and $versionInfo.PSObject.Properties.Name -contains 'OldVersion') { [string]$versionInfo.OldVersion } else { $null }
+    NewVersion = $finalVersion
+    AabPath    = $resolvedAabPath
+  }
 } catch {
   Write-Error $_
   exit 1

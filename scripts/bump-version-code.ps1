@@ -54,12 +54,9 @@ try {
   Write-Utf8Text -Path $PubspecPath -Text $updated
 
   Write-Host "Updated pubspec.yaml version: $oldVersion -> $newVersion"
-  [pscustomobject]@{
-    PubspecPath = $PubspecPath
-    VersionName = $versionName
-    OldVersion  = $oldVersion
-    NewVersion  = $newVersion
-    BuildNumber  = $newBuildNumber
+  return [pscustomobject]@{
+    OldVersion = $oldVersion
+    NewVersion = $newVersion
   }
 } catch {
   Write-Error $_

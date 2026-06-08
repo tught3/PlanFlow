@@ -4,6 +4,12 @@
 - Created `docs/planflow-v2/README.md` and `docs/planflow-v2/team-v2-plan.md` on branch `feature/team-v2-planning` to keep team-function planning separate from the 1st-release stabilization line.
 - The new docs keep the personal MVP structure intact and outline a separate team-module direction for `teams`, `team_members`, `team_invites`, `team_events`, `projects`, `tasks`, `meeting_notes`, and `coaching_reports`.
 
+## 2026-06-07 TASK_20260607_030411 Widget And Voice Parsing Follow-up
+- 주간 리스트 홈 위젯이 XML의 4번째 이벤트 슬롯을 실제 일정으로 채우도록 Kotlin raw/SharedPreferences 렌더 경로를 4행 기준으로 맞췄고, 5번째부터만 overflow 라벨이 나오도록 계산을 보정했다.
+- AI 일정 대화는 `이 일정`/`이거`를 현재 focus 참조로 처리하고, 제목/참석자/대상 이름 검색을 오늘 기준 전후 1개월 범위에서 수행하도록 보강했다. 다중 후보에서는 첫 번째를 임의 선택하지 않고 번호 선택을 요구하며, 전후 1개월 밖에만 후보가 있으면 기간 확장 질문을 반환한다.
+- 음성 일정 구조 파서는 `오늘부터 2주간 ...` 같은 상대 시작일+기간 표현을 all-day multi-day 범위로 해석하고 제목에서 해당 기간 표현을 제거한다. 월말 기준 1개월 검색/기간 계산은 대상 월 마지막 날로 clamp한다.
+- 검증: `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe format ...`, `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe analyze <changed files>`, `C:\src\flutter\bin\cache\dart-sdk\bin\dart.exe analyze`, `git diff --check` 통과. Flutter test/build는 이 세션의 SDK cache/FluxOS lock 권한 문제와 Gradle wrapper 네트워크 차단으로 실행하지 못했다.
+
 ## 2026-06-06 Internal Test AAB Automation
 - Added `scripts/bump-version-code.ps1`, `scripts/build-internal-aab.ps1`, and root `deploy-planflow.bat` so one command can bump `pubspec.yaml` build number, run `flutter analyze`, run the focused smoke tests, build the release AAB, and print the upload path.
 - Added a short internal-test automation note to `docs/play-console-submission.md`, and aligned the Play submission/listing docs to the current `1.1.0+5` internal build metadata after verification.
@@ -1599,8 +1605,23 @@
 - `test/app_home_widget_route_test.dart`에 라우터가 플랫폼 기본 딥링크를 덮어쓰는지 확인하는 회귀 테스트를 추가했다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/app_home_widget_route_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:37369 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:37369 shell am start -W -a android.intent.action.VIEW -d "planflow://voice-launcher"` 및 logcat에서 `Bad state: Origin is only applicable...` 재현 없음 확인.
 
+## 2026-06-08 Play internal deploy 실행 완료
+- `E:\FluxStudio\tools\deploy-play.bat planflow`를 실행해 내부 테스트용 배포 흐름을 완료했다. `pubspec.yaml` 버전은 `1.1.0+7 -> 1.1.0+9`로 올라갔고, release AAB도 다시 생성됐다.
+- 이번 실행에서 콘솔 출력은 비어 있었지만 종료 코드는 0이었고, `build/app/outputs/bundle/release/app-release.aab` 갱신과 `pubspec.yaml` 버전 증가를 확인했다.
+
+## 2026-06-08 deploy-play version result fallback 복구
+- `scripts/bump-version-code.ps1`가 `OldVersion/NewVersion`만 가진 `PSCustomObject`를 반환하도록 정리하고, `scripts/deploy-play-internal.ps1`은 배열/문자열 혼합 반환에서도 `NewVersion`을 안전하게 추출한 뒤 실패 시 `pubspec.yaml` 버전으로 fallback 하도록 보강했다.
+- `scripts/build-internal-aab.ps1`도 마지막에 버전/아AB 경로 표준 객체를 반환하도록 맞춰 deploy 호출부의 파싱 안정성을 높였다.
+- 검증 통과: `E:\FluxStudio\tools\deploy-play.bat planflow -SkipUpload` 실행 완료, version `1.1.0+6 -> 1.1.0+7` bump 확인, `analyze/test/build appbundle` 모두 성공, 최종 validation 메시지 출력 확인.
+
 ## 2026-06-07 Play 자동 업로드 GPP 전환
 - Google Play 내부 테스트 배포 자동화의 업로드 엔진을 fastlane에서 Gradle Play Publisher(GPP)로 전환했다. `android/app/build.gradle.kts`에 `com.github.triplet.play` 플러그인과 internal track, 서비스 계정 경로 주입을 연결했고, 업로드용 Gradle property는 `planflowPlayServiceAccountJson`로 받도록 맞췄다.
 - `scripts/deploy-play-internal.ps1`는 fastlane/Ruby/gem 검사와 안내를 제거하고, version bump -> analyze -> tests -> release AAB 빌드 -> GPP publish 흐름으로 바꿨다. `-SkipUpload`면 빌드/검증만 하고 업로드는 건너뛴다.
 - `E:\FluxStudio\tools\README-play-deploy.md`와 `deploy-play.bat`도 Windows/GPP 기준으로 갱신했다.
 - 검증 통과: `scripts/flutter-local.ps1 build appbundle --release --no-pub`로 release AAB 생성 확인, PowerShell 스크립트 문법 검사 통과. GPP publish task 확인은 Gradle 스타트업이 오래 걸려 별도 업로드 실행 없이 보류했다.
+
+## 2026-06-07 월간 위젯 예비줄 스타일 정리와 AI 제목검색/날짜이동 복구
+- 월간 위젯의 overflow 예비줄을 다른 일정 줄과 같은 왼쪽 정렬/색상 계열로 맞춰서, 아래쪽 텍스트가 별도 안내처럼 보이지 않게 정리했다.
+- `VoiceConversationController`는 제목/사람 검색의 기본 1개월 범위와 확장 질문 흐름, 그리고 `이 일정 6월 19일로 바꿔줘` 같은 후속 날짜 이동을 현재 날짜 기준으로 제대로 해석하도록 보강했다.
+- `test/services/home_widget_service_test.dart`의 월간/주간 payload 기대값을 현재 visible row 수에 맞춰 갱신했다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_conversation_controller_test.dart test/services/home_widget_service_test.dart test/services/notification_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:46561 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:46561 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.

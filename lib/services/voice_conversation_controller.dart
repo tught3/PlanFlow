@@ -32,20 +32,24 @@ class VoiceConversationSession {
     this.selectedEvents = const <EventModel>[],
     this.focusedEvent,
     this.pendingDelete,
+    this.pendingTitleSearchText,
   });
 
   final List<EventModel> visibleEvents;
   final List<EventModel> selectedEvents;
   final EventModel? focusedEvent;
   final VoiceConversationDeleteAction? pendingDelete;
+  final String? pendingTitleSearchText;
 
   VoiceConversationSession copyWith({
     List<EventModel>? visibleEvents,
     List<EventModel>? selectedEvents,
     EventModel? focusedEvent,
     VoiceConversationDeleteAction? pendingDelete,
+    String? pendingTitleSearchText,
     bool clearPendingAction = false,
     bool clearFocusedEvent = false,
+    bool clearPendingTitleSearch = false,
   }) {
     return VoiceConversationSession(
       visibleEvents: visibleEvents ?? this.visibleEvents,
@@ -54,6 +58,9 @@ class VoiceConversationSession {
           clearFocusedEvent ? null : focusedEvent ?? this.focusedEvent,
       pendingDelete:
           clearPendingAction ? null : pendingDelete ?? this.pendingDelete,
+      pendingTitleSearchText: clearPendingTitleSearch
+          ? null
+          : pendingTitleSearchText ?? this.pendingTitleSearchText,
     );
   }
 }
@@ -172,7 +179,8 @@ class VoiceConversationController {
       ..visibleEvents = const <EventModel>[]
       ..selectedEvents = const <EventModel>[]
       ..focusedEvent = null
-      ..pendingDelete = null;
+      ..pendingDelete = null
+      ..pendingTitleSearchText = null;
   }
 
   VoiceConversationResult handle(
@@ -200,12 +208,94 @@ class VoiceConversationController {
       );
     }
 
+    final pendingTitleSearchText = state.pendingTitleSearchText;
+    if (pendingTitleSearchText != null) {
+      final expansion = _parseTitleSearchExpansion(text);
+      if (expansion != null) {
+        final expanded = _searchEventsByTitleOrPeople(
+          pendingTitleSearchText,
+          state,
+          windowStart: expansion.includePast
+              ? _addMonthsClamped(
+                  planflowLocal((_now ?? planflowNow)()),
+                  -expansion.months,
+                )
+              : planflowLocal((_now ?? planflowNow)()),
+          windowEnd: expansion.includeFuture
+              ? _addMonthsClamped(
+                  planflowLocal((_now ?? planflowNow)()),
+                  expansion.months,
+                ).add(const Duration(days: 1))
+              : planflowLocal((_now ?? planflowNow)()).add(
+                  const Duration(days: 1),
+                ),
+        );
+        if (expanded.inRangeMatches.isNotEmpty) {
+          final matched = expanded.inRangeMatches;
+          state
+            ..visibleEvents = matched
+            ..focusedEvent = matched.length == 1 ? matched.first : null
+            ..selectedEvents = const <EventModel>[]
+            ..pendingDelete = null
+            ..pendingTitleSearchText = null;
+          return _finish(
+            state,
+            session,
+            VoiceConversationResult(
+              action: VoiceConversationAction.showEvents,
+              inputText: input,
+              visibleEvents: matched,
+              selectedEvents: const <EventModel>[],
+              targetEvent: state.focusedEvent,
+              assistantMessage: '확장한 기간에서 ${matched.length}개의 일정을 찾았어요.',
+            ),
+          );
+        }
+        return _finish(
+          state,
+          session,
+          VoiceConversationResult(
+            action: VoiceConversationAction.none,
+            inputText: input,
+            assistantMessage: '그 범위에서는 아직 찾지 못했어요. 더 넓혀볼까요?',
+          ),
+        );
+      }
+      if (_isTitleSearchExpansionFollowUp(text)) {
+        final hasDirection = _hasExpansionDirection(text);
+        final hasMonths = _extractExpansionMonths(text) != null;
+        if (!hasDirection) {
+          return _finish(
+            state,
+            session,
+            VoiceConversationResult(
+              action: VoiceConversationAction.none,
+              inputText: input,
+              assistantMessage: '과거, 미래, 또는 양쪽 중 어디로 확장할지 말해 주세요.',
+            ),
+          );
+        }
+        if (!hasMonths) {
+          return _finish(
+            state,
+            session,
+            VoiceConversationResult(
+              action: VoiceConversationAction.none,
+              inputText: input,
+              assistantMessage: '몇 개월까지 넓혀 찾을까요?',
+            ),
+          );
+        }
+      }
+    }
+
     if (state.pendingDelete != null && _isDeleteConfirmation(text)) {
       final confirmed = state.pendingDelete!;
       state
         ..pendingDelete = null
         ..focusedEvent = confirmed.event
-        ..selectedEvents = const <EventModel>[];
+        ..selectedEvents = const <EventModel>[]
+        ..pendingTitleSearchText = null;
       return _finish(
         state,
         session,
@@ -221,7 +311,9 @@ class VoiceConversationController {
 
     if (state.pendingDelete != null && _isDeleteRejection(text)) {
       final canceled = state.pendingDelete!;
-      state.pendingDelete = null;
+      state
+        ..pendingDelete = null
+        ..pendingTitleSearchText = null;
       return _finish(
         state,
         session,
@@ -241,7 +333,8 @@ class VoiceConversationController {
         ..visibleEvents = multiTargets
         ..selectedEvents = multiTargets
         ..focusedEvent = null
-        ..pendingDelete = null;
+        ..pendingDelete = null
+        ..pendingTitleSearchText = null;
       return _finish(
         state,
         session,
@@ -260,6 +353,7 @@ class VoiceConversationController {
     if (criticalValue != null) {
       final target = _resolveFollowUpTarget(text, state);
       if (target == null) {
+        state.pendingTitleSearchText = null;
         return _finish(
           state,
           session,
@@ -276,6 +370,7 @@ class VoiceConversationController {
         ..focusedEvent = target
         ..selectedEvents = const <EventModel>[]
         ..pendingDelete = null;
+      state.pendingTitleSearchText = null;
       return _finish(
         state,
         session,
@@ -297,7 +392,8 @@ class VoiceConversationController {
         state
           ..visibleEvents = ambiguous
           ..focusedEvent = null
-          ..pendingDelete = null;
+          ..pendingDelete = null
+          ..pendingTitleSearchText = null;
         return _finish(
           state,
           session,
@@ -316,6 +412,7 @@ class VoiceConversationController {
         state
           ..focusedEvent = target
           ..selectedEvents = const <EventModel>[];
+        state.pendingTitleSearchText = null;
         return _finish(
           state,
           session,
@@ -330,6 +427,7 @@ class VoiceConversationController {
         );
       }
       if (target == null) {
+        state.pendingTitleSearchText = null;
         return _finish(
           state,
           session,
@@ -350,7 +448,8 @@ class VoiceConversationController {
         state
           ..visibleEvents = ambiguous
           ..focusedEvent = null
-          ..pendingDelete = null;
+          ..pendingDelete = null
+          ..pendingTitleSearchText = null;
         return _finish(
           state,
           session,
@@ -372,7 +471,8 @@ class VoiceConversationController {
         state
           ..focusedEvent = target
           ..pendingDelete = pending
-          ..selectedEvents = const <EventModel>[];
+          ..selectedEvents = const <EventModel>[]
+          ..pendingTitleSearchText = null;
         return _finish(
           state,
           session,
@@ -385,6 +485,7 @@ class VoiceConversationController {
           ),
         );
       }
+      state.pendingTitleSearchText = null;
     }
 
     final range = _parseDateRange(text);
@@ -397,7 +498,8 @@ class VoiceConversationController {
         ..visibleEvents = matched
         ..focusedEvent = matched.length == 1 ? matched.first : null
         ..selectedEvents = const <EventModel>[]
-        ..pendingDelete = null;
+        ..pendingDelete = null
+        ..pendingTitleSearchText = null;
       return _finish(
         state,
         session,
@@ -426,6 +528,7 @@ class VoiceConversationController {
           text,
           route: route,
         );
+        state.pendingTitleSearchText = null;
         return _finish(
           state,
           session,
@@ -440,6 +543,7 @@ class VoiceConversationController {
           ),
         );
       }
+      state.pendingTitleSearchText = null;
       return _finish(
         state,
         session,
@@ -448,6 +552,59 @@ class VoiceConversationController {
           inputText: input,
           targetEvent: followUp,
           selectedEvents: <EventModel>[followUp],
+        ),
+      );
+    }
+
+    if (_isModificationIntent(text, route: route) &&
+        _isFocusedEventReference(text) &&
+        state.focusedEvent == null &&
+        state.visibleEvents.length > 1) {
+      state.pendingTitleSearchText = null;
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.none,
+          inputText: input,
+          visibleEvents: state.visibleEvents,
+          selectedEvents: const <EventModel>[],
+          assistantMessage: '여러 일정이 보여요. 몇 번째 일정인지 말해 주세요.',
+        ),
+      );
+    }
+
+    final titleSearch = _searchEventsByTitleOrPeople(text, state);
+    if (titleSearch.inRangeMatches.isNotEmpty) {
+      final matched = titleSearch.inRangeMatches;
+      state
+        ..visibleEvents = matched
+        ..focusedEvent = matched.length == 1 ? matched.first : null
+        ..selectedEvents = const <EventModel>[]
+        ..pendingDelete = null
+        ..pendingTitleSearchText = null;
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.showEvents,
+          inputText: input,
+          visibleEvents: matched,
+          selectedEvents: const <EventModel>[],
+          targetEvent: state.focusedEvent,
+        ),
+      );
+    }
+
+    if (titleSearch.hasOutOfRangeMatches) {
+      state.pendingTitleSearchText = text;
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.none,
+          inputText: input,
+          assistantMessage: '기본 검색 기간에는 없어요. 기간을 넓혀 찾아볼까요?',
         ),
       );
     }
@@ -636,7 +793,7 @@ class VoiceConversationController {
         return state.selectedEvents[selectedOrdinal];
       }
       if (_isFocusedEventReference(text)) {
-        return state.selectedEvents.first;
+        return state.focusedEvent;
       }
     }
 
@@ -656,8 +813,10 @@ class VoiceConversationController {
     }
 
     if (_isFocusedEventReference(text)) {
-      return state.focusedEvent ??
-          (state.visibleEvents.isEmpty ? null : state.visibleEvents.first);
+      if (state.focusedEvent != null) {
+        return state.focusedEvent;
+      }
+      return state.visibleEvents.length == 1 ? state.visibleEvents.first : null;
     }
 
     final titleMatched = _matchVisibleEventByTitle(text, state.visibleEvents);
@@ -702,6 +861,150 @@ class VoiceConversationController {
       }
     }
     return matches.length == 1 ? matches.single : null;
+  }
+
+  _VoiceConversationTitleSearch _searchEventsByTitleOrPeople(
+    String text,
+    _VoiceConversationState state, {
+    DateTime? windowStart,
+    DateTime? windowEnd,
+  }) {
+    if (!_isQueryIntent(text)) {
+      return const _VoiceConversationTitleSearch();
+    }
+    final queryTokens = _queryTokensForTitleSearch(text);
+    if (queryTokens.isEmpty) {
+      return const _VoiceConversationTitleSearch();
+    }
+
+    final localNow = planflowLocal((_now ?? planflowNow)());
+    final resolvedWindowStart = windowStart ?? _addMonthsClamped(localNow, -1);
+    final resolvedWindowEnd = windowEnd ??
+        _addMonthsClamped(localNow, 1).add(const Duration(days: 1));
+
+    final allMatches = state.events
+        .where((event) => _eventMatchesTitleOrPeople(event, queryTokens))
+        .toList(growable: false);
+    final inRange = allMatches.where((event) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        return false;
+      }
+      final localStart = planflowLocal(startAt);
+      return !localStart.isBefore(resolvedWindowStart) &&
+          localStart.isBefore(resolvedWindowEnd);
+    }).toList(growable: false);
+    _sortEvents(inRange);
+    return _VoiceConversationTitleSearch(
+      inRangeMatches: inRange,
+      hasOutOfRangeMatches: allMatches.length > inRange.length,
+    );
+  }
+
+  List<String> _queryTokensForTitleSearch(String text) {
+    return text
+        .replaceAll(RegExp(r'\d+\s*(?:번째|번\s*째|번)'), ' ')
+        .replaceAll(
+          RegExp(
+            r'(일정|스케줄|찾아|검색|보여|보여줘|알려|확인|조회|해줘|줘|있어|있나|있니|전체|전부|다|모두)',
+          ),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .split(RegExp(r'\s+'))
+        .map(_compact)
+        .where((token) => !_isDateReferenceToken(token))
+        .where((token) => token.length >= 2)
+        .toList(growable: false);
+  }
+
+  bool _isTitleSearchExpansionFollowUp(String text) {
+    final normalized = _compact(text);
+    return normalized.contains('과거') ||
+        normalized.contains('미래') ||
+        normalized.contains('이전') ||
+        normalized.contains('다음') ||
+        normalized.contains('앞으로') ||
+        normalized.contains('뒤로') ||
+        normalized.contains('양쪽') ||
+        normalized.contains('둘다') ||
+        normalized.contains('둘다') ||
+        normalized.contains('개월') ||
+        normalized.contains('달') ||
+        normalized.contains('넓혀') ||
+        normalized.contains('확장');
+  }
+
+  bool _hasExpansionDirection(String text) {
+    final normalized = _compact(text);
+    return normalized.contains('과거') ||
+        normalized.contains('미래') ||
+        normalized.contains('이전') ||
+        normalized.contains('다음') ||
+        normalized.contains('앞으로') ||
+        normalized.contains('뒤로') ||
+        normalized.contains('양쪽') ||
+        normalized.contains('둘다');
+  }
+
+  int? _extractExpansionMonths(String text) {
+    final normalized = _compact(text);
+    final match = RegExp(r'(\d{1,2})\s*(?:개월|달)').firstMatch(normalized);
+    if (match == null) {
+      return null;
+    }
+    final months = int.tryParse(match.group(1)!);
+    if (months == null || months <= 0) {
+      return null;
+    }
+    return months;
+  }
+
+  _VoiceConversationTitleSearchExpansion? _parseTitleSearchExpansion(
+    String text,
+  ) {
+    final normalized = _compact(text);
+    final months = _extractExpansionMonths(normalized);
+    if (months == null) {
+      return null;
+    }
+    var includePast = false;
+    var includeFuture = false;
+    if (normalized.contains('과거') ||
+        normalized.contains('이전') ||
+        normalized.contains('뒤로')) {
+      includePast = true;
+    }
+    if (normalized.contains('미래') ||
+        normalized.contains('다음') ||
+        normalized.contains('앞으로')) {
+      includeFuture = true;
+    }
+    if (normalized.contains('양쪽') ||
+        normalized.contains('둘다') ||
+        normalized.contains('둘다') ||
+        normalized.contains('전후')) {
+      includePast = true;
+      includeFuture = true;
+    }
+    if (!includePast && !includeFuture) {
+      return null;
+    }
+    return _VoiceConversationTitleSearchExpansion(
+      includePast: includePast,
+      includeFuture: includeFuture,
+      months: months,
+    );
+  }
+
+  bool _eventMatchesTitleOrPeople(EventModel event, List<String> queryTokens) {
+    final haystack = <String>[
+      event.title,
+      ...event.participants,
+      ...event.targets,
+    ].map(_compact).join(' ');
+    return queryTokens.any(haystack.contains);
   }
 
   bool _isDateReferenceToken(String token) {
@@ -755,7 +1058,8 @@ class VoiceConversationController {
   }) {
     final resolvedRoute = route ?? _router.route(text);
     if (!resolvedRoute.requestedChanges.contains('start_at') &&
-        !_hasRelativeDateShiftCue(text)) {
+        !_hasRelativeDateShiftCue(text) &&
+        !_hasExplicitDateOrTimeCue(text)) {
       return null;
     }
 
@@ -863,8 +1167,12 @@ class VoiceConversationController {
         changeText == null || changeText.isEmpty ? text : changeText;
     final originalStartLocal =
         event.startAt == null ? planflowNow() : planflowLocal(event.startAt!);
+    final currentLocalNow = planflowLocal((_now ?? planflowNow)());
+    final parsingReferenceLocal = _hasExplicitCalendarDateCue(sourceText)
+        ? currentLocalNow
+        : originalStartLocal;
     final dateCandidate =
-        _inferLastDateCandidate(sourceText, originalStartLocal);
+        _inferLastDateCandidate(sourceText, parsingReferenceLocal);
     final timeCandidate = _inferLastTimeCandidate(sourceText);
     if (dateCandidate == null && timeCandidate == null) {
       return null;
@@ -879,6 +1187,12 @@ class VoiceConversationController {
     final hour = timeCandidate?.hour ?? originalStartLocal.hour;
     final minute = timeCandidate?.minute ?? originalStartLocal.minute;
     return DateTime(baseDate.year, baseDate.month, baseDate.day, hour, minute);
+  }
+
+  bool _hasExplicitCalendarDateCue(String text) {
+    final normalized = _compact(text);
+    return RegExp(r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일')
+        .hasMatch(normalized);
   }
 
   DateTime? _inferLastDateCandidate(String text, DateTime referenceLocal) {
@@ -985,6 +1299,14 @@ class VoiceConversationController {
         normalized.contains('연기') ||
         normalized.contains('앞당겨') ||
         normalized.contains('당겨');
+  }
+
+  bool _hasExplicitDateOrTimeCue(String text) {
+    return RegExp(r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일')
+            .hasMatch(text) ||
+        RegExp(
+          r'(오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*([0-9]{1,2}|[가-힣]{1,8})\s*시',
+        ).hasMatch(text);
   }
 
   int? _relativeDateShiftDays(String text) {
@@ -1186,8 +1508,10 @@ class VoiceConversationController {
 
   bool _isFocusedEventReference(String text) {
     return text.contains('그 일정') ||
+        text.contains('이 일정') ||
         text.contains('방금 일정') ||
         text.contains('그거') ||
+        text.contains('이거') ||
         text.contains('방금 거') ||
         text.contains('방금거');
   }
@@ -1260,6 +1584,27 @@ class VoiceConversationController {
       return left.id.compareTo(right.id);
     });
   }
+
+  DateTime _addMonthsClamped(DateTime value, int months) {
+    final targetMonthIndex = value.month + months;
+    final targetYear = value.year + ((targetMonthIndex - 1) ~/ 12);
+    final targetMonth = ((targetMonthIndex - 1) % 12) + 1;
+    final day = value.day.clamp(1, _lastDayOfMonth(targetYear, targetMonth));
+    return DateTime(
+      targetYear,
+      targetMonth,
+      day,
+      value.hour,
+      value.minute,
+      value.second,
+      value.millisecond,
+      value.microsecond,
+    );
+  }
+
+  int _lastDayOfMonth(int year, int month) {
+    return DateTime(year, month + 1, 0).day;
+  }
 }
 
 class _VoiceRequestedTime {
@@ -1269,6 +1614,28 @@ class _VoiceRequestedTime {
   final int minute;
 }
 
+class _VoiceConversationTitleSearch {
+  const _VoiceConversationTitleSearch({
+    this.inRangeMatches = const <EventModel>[],
+    this.hasOutOfRangeMatches = false,
+  });
+
+  final List<EventModel> inRangeMatches;
+  final bool hasOutOfRangeMatches;
+}
+
+class _VoiceConversationTitleSearchExpansion {
+  const _VoiceConversationTitleSearchExpansion({
+    required this.includePast,
+    required this.includeFuture,
+    required this.months,
+  });
+
+  final bool includePast;
+  final bool includeFuture;
+  final int months;
+}
+
 class _VoiceConversationState {
   _VoiceConversationState({
     required Iterable<EventModel> events,
@@ -1276,6 +1643,7 @@ class _VoiceConversationState {
     this.selectedEvents = const <EventModel>[],
     this.focusedEvent,
     this.pendingDelete,
+    this.pendingTitleSearchText,
   }) : events = List<EventModel>.of(events) {
     VoiceConversationController._sortEvents(this.events);
   }
@@ -1294,6 +1662,7 @@ class _VoiceConversationState {
       selectedEvents: session.selectedEvents,
       focusedEvent: session.focusedEvent,
       pendingDelete: session.pendingDelete,
+      pendingTitleSearchText: session.pendingTitleSearchText,
     );
   }
 
@@ -1302,6 +1671,7 @@ class _VoiceConversationState {
   List<EventModel> selectedEvents;
   EventModel? focusedEvent;
   VoiceConversationDeleteAction? pendingDelete;
+  String? pendingTitleSearchText;
 
   void replaceEvents(Iterable<EventModel> nextEvents) {
     events
@@ -1316,6 +1686,7 @@ class _VoiceConversationState {
       selectedEvents: List<EventModel>.unmodifiable(selectedEvents),
       focusedEvent: focusedEvent,
       pendingDelete: pendingDelete,
+      pendingTitleSearchText: pendingTitleSearchText,
     );
   }
 }

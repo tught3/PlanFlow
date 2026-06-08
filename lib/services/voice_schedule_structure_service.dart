@@ -188,7 +188,47 @@ class VoiceScheduleStructureService {
         isMultiDay: true,
       );
     }
+    final relativeDuration = RegExp(
+      r'(?<start>오늘|내일|모레|글피)\s*(?:부터|에서)\s*(?<amount>\d{1,2})\s*(?<unit>일|주|개월|달)\s*(?:간|동안|까지)?',
+    ).firstMatch(source);
+    if (relativeDuration != null) {
+      final amount = int.tryParse(relativeDuration.namedGroup('amount') ?? '');
+      if (amount != null && amount > 0) {
+        final today = DateTime(reference.year, reference.month, reference.day);
+        final start = switch (relativeDuration.namedGroup('start')) {
+          '내일' => today.add(const Duration(days: 1)),
+          '모레' => today.add(const Duration(days: 2)),
+          '글피' => today.add(const Duration(days: 3)),
+          _ => today,
+        };
+        final unit = relativeDuration.namedGroup('unit') ?? '';
+        final endDate = switch (unit) {
+          '주' => start.add(Duration(days: amount * 7 - 1)),
+          '개월' || '달' => _addMonthsClamped(start, amount),
+          _ => start.add(Duration(days: amount - 1)),
+        };
+        return VoiceScheduleDateRange(
+          startAt: DateTime(start.year, start.month, start.day),
+          endAt: DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59),
+          matchedText: relativeDuration.group(0)?.trim() ?? '',
+          isAllDay: true,
+          isMultiDay: true,
+        );
+      }
+    }
     return null;
+  }
+
+  DateTime _addMonthsClamped(DateTime value, int months) {
+    final targetMonthIndex = value.month + months;
+    final targetYear = value.year + ((targetMonthIndex - 1) ~/ 12);
+    final targetMonth = ((targetMonthIndex - 1) % 12) + 1;
+    final day = value.day.clamp(1, _lastDayOfMonth(targetYear, targetMonth));
+    return DateTime(targetYear, targetMonth, day);
+  }
+
+  int _lastDayOfMonth(int year, int month) {
+    return DateTime(year, month + 1, 0).day;
   }
 
   String stripDateRangeExpression(

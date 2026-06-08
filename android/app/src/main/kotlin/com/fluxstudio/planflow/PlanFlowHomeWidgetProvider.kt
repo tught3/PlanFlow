@@ -1102,7 +1102,7 @@ class PlanFlowWeeklyListWidgetProvider :
             bindCalendarLink(context, views, rowId, targetDate)
 
             val dayEvents = if (rawEvents.isNotEmpty()) {
-                rawWidgetEventsForDay(rawEvents, targetDate).take(3)
+                rawWidgetEventsForDay(rawEvents, targetDate).take(4)
             } else {
                 emptyList()
             }
@@ -1115,11 +1115,12 @@ class PlanFlowWeeklyListWidgetProvider :
                 val e1 = widgetData.getString("${weekPrefix}_${slot}_event_1_title", null)?.takeIf { it.isNotBlank() }
                 val e2 = widgetData.getString("${weekPrefix}_${slot}_event_2_title", null)?.takeIf { it.isNotBlank() }
                 val e3 = widgetData.getString("${weekPrefix}_${slot}_event_3_title", null)?.takeIf { it.isNotBlank() }
+                val e4 = widgetData.getString("${weekPrefix}_${slot}_event_4_title", null)?.takeIf { it.isNotBlank() }
                 val totalCount = widgetData.getInt("${weekPrefix}_${slot}_count", 0)
-                (totalCount - listOf(e1, e2, e3).count { !it.isNullOrBlank() }).coerceAtLeast(0)
+                (totalCount - listOf(e1, e2, e3, e4).count { !it.isNullOrBlank() }).coerceAtLeast(0)
             }
             val overflowPreviewTitle = if (rawEvents.isNotEmpty()) {
-                rawWidgetEventsForDay(rawEvents, targetDate).drop(3).firstOrNull()?.title
+                rawWidgetEventsForDay(rawEvents, targetDate).drop(4).firstOrNull()?.title
             } else {
                 widgetData.getString("${weekPrefix}_${slot}_overflow_preview_title", null)
                     ?: widgetData.getString("${weekPrefix}_${slot}_event_4_title", null)
@@ -1165,13 +1166,11 @@ class PlanFlowWeeklyListWidgetProvider :
                     }
                 }
             } else {
-                var shownCount = 0
-                for (eventSlot in 1..3) {
+                for (eventSlot in 1..4) {
                     val eventId = findViewId(context, "widget_week_list_day_${slot}_event_${eventSlot}")
                     if (eventId == 0) continue
                     val title = widgetData.getString("${weekPrefix}_${slot}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
                     val isCritical = widgetData.getBoolean("${weekPrefix}_${slot}_event_${eventSlot}_is_critical", false)
-                    if (!title.isNullOrBlank()) shownCount += 1
                     bindEventText(views, eventId, title, null, isCritical,
                         emptyText = if (eventSlot == 1) "\uc77c\uc815 \uc5c6\uc74c" else null)
                     bindEventLinkIfAvailable(context, views, eventId,
@@ -1245,7 +1244,7 @@ class PlanFlowMonthlyWidgetProvider :
 
             if (rawEvents.isNotEmpty()) {
                 val cellDays = fallbackCells.map { it.third }
-                val slotMap = List(42) { arrayOfNulls<RawWidgetEvent>(3) }
+                val slotMap = List(42) { arrayOfNulls<RawWidgetEvent>(4) }
                 val overflowCounts = IntArray(42)
                 val sortedEvents = rawEvents
                     .filter { it.startAt != null }
@@ -1269,7 +1268,7 @@ class PlanFlowMonthlyWidgetProvider :
                     if (cellIndices.isEmpty()) continue
 
                     var reserved = false
-                    for (slot in 0 until 3) {
+                    for (slot in 0 until 4) {
                         if (cellIndices.all { slotMap[it][slot] == null }) {
                             for (i in cellIndices) {
                                 slotMap[i][slot] = event
@@ -1296,7 +1295,7 @@ class PlanFlowMonthlyWidgetProvider :
                     var placedCount = 0
                     for (event in singleEvents) {
                         var placed = false
-                        for (slot in 0 until 3) {
+                        for (slot in 0 until 4) {
                             if (slotMap[index][slot] == null) {
                                 slotMap[index][slot] = event
                                 placed = true
@@ -1381,7 +1380,7 @@ class PlanFlowMonthlyWidgetProvider :
                         }
                     }
 
-                    for (eventSlot in 1..3) {
+                    for (eventSlot in 1..4) {
                         val eventId = findViewId(context, "month_cell_${slot}_event_${eventSlot}_title")
                         if (eventId == 0) continue
                         val event = slotMap[slot - 1][eventSlot - 1]
@@ -1521,7 +1520,7 @@ class PlanFlowMonthlyWidgetProvider :
                     views.setViewVisibility(overflowId, View.GONE)
                 }
 
-                for (eventSlot in 1..3) {
+                for (eventSlot in 1..4) {
                     val eventId = findViewId(context, "${prefix}_event_${eventSlot}_title")
                         .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_event_${eventSlot}_title")
                     val rawTitle = if (hasMonthCellPayload) {

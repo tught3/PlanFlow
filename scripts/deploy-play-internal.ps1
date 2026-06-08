@@ -46,6 +46,55 @@ function Invoke-Checked {
   }
 }
 
+function Read-PubspecVersion {
+  param([Parameter(Mandatory = $true)][string]$Path)
+  $encoding = [System.Text.UTF8Encoding]::new($false)
+  $content = [System.IO.File]::ReadAllText($Path, $encoding)
+  $match = [regex]::Match($content, '(?m)^\s*version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+(\d+)\s*(#.*)?$')
+  if (-not $match.Success) {
+    throw "Unable to read version from pubspec.yaml: $Path"
+  }
+  return "$($match.Groups[1].Value)+$($match.Groups[2].Value)"
+}
+
+function Get-VersionFromResult {
+  param(
+    [Parameter(Mandatory = $true)]$Result,
+    [Parameter(Mandatory = $true)][string]$PubspecPath
+  )
+
+  $candidate = $null
+
+  if ($Result -is [System.Management.Automation.PSObject]) {
+    if ($Result.PSObject.Properties.Name -contains 'NewVersion') {
+      $candidate = [string]$Result.NewVersion
+    } elseif ($Result.PSObject.Properties.Name -contains 'OldVersion') {
+      $candidate = [string]$Result.OldVersion
+    }
+  } elseif ($Result -is [array]) {
+    $candidateObject = $Result | Where-Object {
+      $_ -is [System.Management.Automation.PSObject] -and $_.PSObject.Properties.Name -contains 'NewVersion'
+    } | Select-Object -First 1
+    if ($candidateObject) {
+      $candidate = [string]$candidateObject.NewVersion
+    } else {
+      $candidateObject = $Result | Where-Object {
+        $_ -is [System.Management.Automation.PSObject] -and $_.PSObject.Properties.Name -contains 'OldVersion'
+      } | Select-Object -First 1
+      if ($candidateObject) {
+        $candidate = [string]$candidateObject.OldVersion
+      }
+    }
+  }
+
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    $candidate = Read-PubspecVersion -Path $PubspecPath
+    Write-Host "Version info fallback used from pubspec.yaml: $candidate"
+  }
+
+  return $candidate
+}
+
 try {
   Assert-FileExists -Path $ConfigPath -Label 'deploy-play-config.json'
 
@@ -104,7 +153,7 @@ try {
   }
 
   $resolvedAabPath = (Resolve-Path -LiteralPath $aabPath).Path
-  $finalVersion = [string]$buildResult.NewVersion
+  $finalVersion = Get-VersionFromResult -Result $buildResult -PubspecPath (Join-Path $projectPath 'pubspec.yaml')
 
   if ($SkipUpload) {
     Write-Host 'Upload was skipped because -SkipUpload was supplied.'

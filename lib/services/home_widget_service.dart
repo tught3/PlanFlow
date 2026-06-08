@@ -41,8 +41,10 @@ class HomeWidgetListEventData {
   final DateTime? startAt;
   final String? location;
   final bool isCritical;
+
   /// 월간 달력 셀 segment 타입: 'single' | 'start' | 'middle' | 'end'
   final String? monthSegment;
+
   /// 월간 달력에서 제목 표시 여부 (start/single=true, middle/end=false)
   final bool showTitleInMonth;
 }
@@ -123,16 +125,20 @@ class HomeWidgetSchedulePayload {
   final HomeWidgetListEventData? lastPastEvent;
   final List<HomeWidgetListEventData> todayUpcomingEvents;
   final List<HomeWidgetListEventData> tomorrowEvents;
+
   /// 어제 일정 (day_offset_-1)
   final List<HomeWidgetListEventData> yesterdayEvents;
   final List<HomeWidgetMonthDayData> monthDays;
   final List<HomeWidgetMonthCellData> monthCells;
   final List<HomeWidgetMonthCellData> previousMonthCells;
   final List<HomeWidgetMonthCellData> nextMonthCells;
+
   /// 이번 주 일정
   final List<HomeWidgetWeekDayData> weekDays;
+
   /// 지난 주 일정 (week_offset_-1)
   final List<HomeWidgetWeekDayData> previousWeekDays;
+
   /// 다음 주 일정 (week_offset_1)
   final List<HomeWidgetWeekDayData> nextWeekDays;
 }
@@ -143,6 +149,7 @@ class HomeWidgetSchedulePayloadBuilder {
   static const int todayWidgetRowCapacity = 6;
   static const int tomorrowWidgetMaxRows = 2;
   static const int weeklyWidgetEventRows = 4;
+  static const int monthlyWidgetEventRows = 4;
 
   static HomeWidgetSchedulePayload fromEvents({
     required List<EventModel> events,
@@ -291,11 +298,19 @@ class HomeWidgetSchedulePayloadBuilder {
     final startOffset = firstDay.weekday % 7;
     final firstCellDay = firstDay.subtract(Duration(days: startOffset));
     final cellDays = List<DateTime>.generate(
-      42, (i) => firstCellDay.add(Duration(days: i)),
+      42,
+      (i) => firstCellDay.add(Duration(days: i)),
     );
 
     // 셀별 슬롯: slotMap[cellIndex][slot] = EventModel?
-    final slotMap = List.generate(42, (_) => List<EventModel?>.filled(3, null, growable: false));
+    final slotMap = List.generate(
+      42,
+      (_) => List<EventModel?>.filled(
+        monthlyWidgetEventRows,
+        null,
+        growable: false,
+      ),
+    );
     final overflowCounts = List<int>.filled(42, 0);
 
     // 1단계: 멀티데이 이벤트를 startAt 기준 정렬 후 slot 예약
@@ -318,7 +333,7 @@ class HomeWidgetSchedulePayloadBuilder {
       if (cellIndices.isEmpty) continue;
       // 이 기간 전체에서 비어있는 첫 번째 slot 예약
       var reserved = false;
-      for (var slot = 0; slot < 3; slot++) {
+      for (var slot = 0; slot < monthlyWidgetEventRows; slot++) {
         if (cellIndices.every((i) => slotMap[i][slot] == null)) {
           for (final i in cellIndices) {
             slotMap[i][slot] = event;
@@ -347,14 +362,16 @@ class HomeWidgetSchedulePayloadBuilder {
         ..sort((a, b) {
           final aStart = a.startAt;
           final bStart = b.startAt;
-          if (aStart == null && bStart == null) return a.title.compareTo(b.title);
+          if (aStart == null && bStart == null) {
+            return a.title.compareTo(b.title);
+          }
           if (aStart == null) return 1;
           if (bStart == null) return -1;
           return aStart.compareTo(bStart);
         });
       for (final event in singleEvents) {
         var placed = false;
-        for (var slot = 0; slot < 3; slot++) {
+        for (var slot = 0; slot < monthlyWidgetEventRows; slot++) {
           if (slotMap[i][slot] == null) {
             slotMap[i][slot] = event;
             placed = true;
@@ -370,10 +387,8 @@ class HomeWidgetSchedulePayloadBuilder {
       final day = cellDays[i];
       final inMonth = day.year == month.year && day.month == month.month;
       final dayEvents = _eventsForDay(events, day);
-      final visibleIds = slotMap[i]
-          .whereType<EventModel>()
-          .map((event) => event.id)
-          .toSet();
+      final visibleIds =
+          slotMap[i].whereType<EventModel>().map((event) => event.id).toSet();
       final hiddenEvents = dayEvents
           .where((event) => !visibleIds.contains(event.id))
           .toList(growable: false);
@@ -423,11 +438,9 @@ class HomeWidgetSchedulePayloadBuilder {
     }
 
     // 주 경계: 일요일(0)=행 시작 시각적으로 start처럼 처리
-    final isRowStart = cellDay.weekday == DateTime.sunday ||
-        cellDay.day == 1;
+    final isRowStart = cellDay.weekday == DateTime.sunday || cellDay.day == 1;
     final isRowEnd = cellDay.weekday == DateTime.saturday ||
-        cellDay.day ==
-            DateTime(cellDay.year, cellDay.month + 1, 0).day;
+        cellDay.day == DateTime(cellDay.year, cellDay.month + 1, 0).day;
 
     final isCellFirstDay = cellDay == firstEventDay;
     final isCellLastDay = cellDay == lastEventDay;
@@ -464,7 +477,8 @@ class HomeWidgetSchedulePayloadBuilder {
     return List<HomeWidgetWeekDayData>.generate(7, (index) {
       final day = weekStart.add(Duration(days: index));
       final dayEvents = _eventsForDay(events, day);
-      final hiddenEvents = dayEvents.skip(weeklyWidgetEventRows).toList(growable: false);
+      final hiddenEvents =
+          dayEvents.skip(weeklyWidgetEventRows).toList(growable: false);
       return HomeWidgetWeekDayData(
         date: day,
         summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}건',
@@ -1104,9 +1118,13 @@ class HomeWidgetService {
             cell?.overflowPreviewTitle,
           ) &&
           success;
-      final events = cell?.events.take(3).toList(growable: false) ??
+      final events = cell?.events
+              .take(HomeWidgetSchedulePayloadBuilder.monthlyWidgetEventRows)
+              .toList(growable: false) ??
           const <HomeWidgetListEventData>[];
-      for (var eventIndex = 0; eventIndex < 3; eventIndex += 1) {
+      for (var eventIndex = 0;
+          eventIndex < HomeWidgetSchedulePayloadBuilder.monthlyWidgetEventRows;
+          eventIndex += 1) {
         final event = eventIndex < events.length ? events[eventIndex] : null;
         final eventSlot = eventIndex + 1;
         success = await _saveOptionalValue(

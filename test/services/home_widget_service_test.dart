@@ -220,6 +220,7 @@ void main() {
             ),
             const HomeWidgetListEventData(title: 'Cell event 2'),
             const HomeWidgetListEventData(title: 'Cell event 3'),
+            const HomeWidgetListEventData(title: 'Cell event 4'),
           ],
           overflowCount: 2,
         ),
@@ -295,6 +296,7 @@ void main() {
     expect(platform.savedValues['month_cell_1_event_1_id'], 'cell-1');
     expect(platform.savedValues['month_cell_1_event_1_is_critical'], isTrue);
     expect(platform.savedValues['month_cell_1_event_3_title'], 'Cell event 3');
+    expect(platform.savedValues['month_cell_1_event_4_title'], 'Cell event 4');
     expect(platform.savedValues['month_cell_1_overflow_count'], 2);
     expect(platform.savedValues['month_cell_42_day'], isNull);
     expect(platform.savedValues['month_cell_42_in_month'], isFalse);
@@ -331,6 +333,44 @@ void main() {
     expect(platform.savedValues['week_day_1_event_4_title'], isNull);
     expect(
         platform.updatedWidgets, HomeWidgetService.defaultAndroidWidgetNames);
+  });
+
+  test('weekly widget payload saves four real event rows before overflow',
+      () async {
+    final platform = _FakeHomeWidgetPlatform();
+    final service = HomeWidgetService(platform: platform);
+
+    final success = await service.updateScheduleData(
+      nextEvent: const HomeWidgetNextEventData(title: 'Next'),
+      weekDays: <HomeWidgetWeekDayData>[
+        HomeWidgetWeekDayData(
+          date: DateTime.parse('2026-05-04T00:00:00Z'),
+          eventCount: 5,
+          events: List<HomeWidgetListEventData>.generate(
+            5,
+            (index) => HomeWidgetListEventData(
+              title: 'Week event ${index + 1}',
+              eventId: 'week-${index + 1}',
+              startAt: DateTime.parse('2026-05-04T01:00:00Z')
+                  .add(Duration(hours: index)),
+            ),
+          ),
+          overflowPreviewTitle: 'Week event 5',
+        ),
+      ],
+      widgetName: 'schedule_widget',
+    );
+
+    expect(success, isTrue);
+    expect(platform.savedValues['week_day_1_event_1_title'], 'Week event 1');
+    expect(platform.savedValues['week_day_1_event_2_title'], 'Week event 2');
+    expect(platform.savedValues['week_day_1_event_3_title'], 'Week event 3');
+    expect(platform.savedValues['week_day_1_event_4_title'], 'Week event 4');
+    expect(platform.savedValues['week_day_1_overflow_count'], 1);
+    expect(
+      platform.savedValues['week_day_1_overflow_preview_title'],
+      'Week event 5',
+    );
   });
 
   test('HomeWidgetSchedulePayloadBuilder builds actual calendar payload', () {
@@ -391,8 +431,8 @@ void main() {
     final may20Cell = payload.monthCells.firstWhere((cell) => cell.day == 20);
     expect(may20Cell.inMonth, isTrue);
     expect(may20Cell.date, DateTime(2026, 5, 20));
-    expect(may20Cell.events.length, 3);
-    expect(may20Cell.overflowCount, 2);
+    expect(may20Cell.events.length, 4);
+    expect(may20Cell.overflowCount, 1);
     final wednesday = payload.weekDays[2];
     expect(wednesday.eventCount, 5);
     expect(wednesday.events.length, 4);

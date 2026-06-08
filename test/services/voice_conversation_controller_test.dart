@@ -186,6 +186,129 @@ void main() {
       );
     });
 
+    test('focused event wording can move a queried event to another date', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('target', '원주집 단기렌트', DateTime(2026, 7, 19, 9)),
+        ],
+        now: () => DateTime(2026, 6, 7, 8),
+      );
+      controller.handle('7월 19일 일정 보여줘');
+
+      final result = controller.handle('이 일정 6월 19일로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'target');
+      expect(result.draftEvent, isNotNull);
+      expect(
+        planflowLocal(result.draftEvent!.startAt!),
+        DateTime(2026, 6, 19, 9),
+      );
+      expect(
+        planflowLocal(result.draftEvent!.endAt!),
+        DateTime(2026, 6, 19, 10),
+      );
+    });
+
+    test('title or person search defaults to one month around today', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('near-title', '김태형 PM 확인전화', DateTime(2026, 7, 6, 9)),
+          _event('far-title', '김태형 PM 분기 미팅', DateTime(2026, 8, 9, 9)),
+          _eventWithPeople(
+            'near-target',
+            '납품 확인',
+            DateTime(2026, 5, 10, 9),
+            targets: const <String>['김태형'],
+          ),
+        ],
+        now: () => DateTime(2026, 6, 7, 8),
+      );
+
+      final result = controller.handle('김태형 일정 찾아줘');
+
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.visibleEvents.map((event) => event.id), <String>[
+        'near-target',
+        'near-title',
+      ]);
+    });
+
+    test('month-end title search clamps the one-month window', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('feb-last', '김태형 월말 미팅', DateTime(2026, 2, 28, 9)),
+          _event('feb-early', '김태형 초순 미팅', DateTime(2026, 2, 27, 9)),
+        ],
+        now: () => DateTime(2026, 3, 31, 8),
+      );
+
+      final result = controller.handle('김태형 일정 찾아줘');
+
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.visibleEvents.map((event) => event.id), <String>[
+        'feb-last',
+      ]);
+    });
+
+    test('focused wording does not pick the first result from multiple events',
+        () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '김태형 오전 미팅', DateTime(2026, 7, 6, 9)),
+          _event('second', '김태형 오후 미팅', DateTime(2026, 7, 6, 15)),
+        ],
+        now: () => DateTime(2026, 6, 7, 8),
+      );
+      controller.handle('김태형 일정 찾아줘');
+
+      final result = controller.handle('이 일정 6월 19일로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.none);
+      expect(result.targetEvent, isNull);
+      expect(result.draftEvent, isNull);
+      expect(result.assistantMessage, contains('몇 번째'));
+    });
+
+    test('title search asks whether to expand when one month has no match', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('far-title', '김태형 PM 분기 미팅', DateTime(2026, 8, 9, 9)),
+        ],
+        now: () => DateTime(2026, 6, 7, 8),
+      );
+
+      final result = controller.handle('김태형 일정 찾아줘');
+
+      expect(result.action, VoiceConversationAction.none);
+      expect(result.visibleEvents, isEmpty);
+      expect(result.assistantMessage, contains('기간을 넓혀'));
+      expect(result.session.pendingTitleSearchText, '김태형 일정 찾아줘');
+    });
+
+    test('pending title search expands into the requested future range', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('far-title', '김창민 만나기', DateTime(2026, 8, 9, 9)),
+          _event('future-far', '김창민 분기 미팅', DateTime(2026, 10, 9, 9)),
+        ],
+        now: () => DateTime(2026, 6, 7, 8),
+      );
+
+      final initial = controller.handle('김창민 만나기 일정 찾아줘');
+
+      expect(initial.action, VoiceConversationAction.none);
+      expect(initial.session.pendingTitleSearchText, '김창민 만나기 일정 찾아줘');
+
+      final expanded = controller.handle('미래 3개월');
+
+      expect(expanded.action, VoiceConversationAction.showEvents);
+      expect(expanded.visibleEvents.map((event) => event.id), <String>[
+        'far-title',
+      ]);
+      expect(expanded.session.pendingTitleSearchText, isNull);
+    });
+
     test('numeric ordinal particle is removed from extracted location text',
         () {
       final controller = VoiceConversationController(
@@ -353,11 +476,23 @@ void main() {
 }
 
 EventModel _event(String id, String title, DateTime localStart) {
+  return _eventWithPeople(id, title, localStart);
+}
+
+EventModel _eventWithPeople(
+  String id,
+  String title,
+  DateTime localStart, {
+  List<String> participants = const <String>[],
+  List<String> targets = const <String>[],
+}) {
   return EventModel(
     id: id,
     userId: 'user-1',
     title: title,
     startAt: planflowLocalDateTimeToUtc(localStart),
     endAt: planflowLocalDateTimeToUtc(localStart.add(const Duration(hours: 1))),
+    participants: participants,
+    targets: targets,
   );
 }
