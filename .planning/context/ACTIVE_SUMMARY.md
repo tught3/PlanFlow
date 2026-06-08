@@ -1601,6 +1601,10 @@
 - `test/app_home_widget_route_test.dart`에 라우터가 플랫폼 기본 딥링크를 덮어쓰는지 확인하는 회귀 테스트를 추가했다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/app_home_widget_route_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:37369 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:37369 shell am start -W -a android.intent.action.VIEW -d "planflow://voice-launcher"` 및 logcat에서 `Bad state: Origin is only applicable...` 재현 없음 확인.
 
+## 2026-06-08 Play internal deploy 실행 완료
+- `E:\FluxStudio\tools\deploy-play.bat planflow`를 실행해 내부 테스트용 배포 흐름을 완료했다. `pubspec.yaml` 버전은 `1.1.0+7 -> 1.1.0+9`로 올라갔고, release AAB도 다시 생성됐다.
+- 이번 실행에서 콘솔 출력은 비어 있었지만 종료 코드는 0이었고, `build/app/outputs/bundle/release/app-release.aab` 갱신과 `pubspec.yaml` 버전 증가를 확인했다.
+
 ## 2026-06-08 deploy-play version result fallback 복구
 - `scripts/bump-version-code.ps1`가 `OldVersion/NewVersion`만 가진 `PSCustomObject`를 반환하도록 정리하고, `scripts/deploy-play-internal.ps1`은 배열/문자열 혼합 반환에서도 `NewVersion`을 안전하게 추출한 뒤 실패 시 `pubspec.yaml` 버전으로 fallback 하도록 보강했다.
 - `scripts/build-internal-aab.ps1`도 마지막에 버전/아AB 경로 표준 객체를 반환하도록 맞춰 deploy 호출부의 파싱 안정성을 높였다.
