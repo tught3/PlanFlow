@@ -301,7 +301,13 @@ class VoiceCommandPipeline {
         .replaceAll(RegExp(r'[^0-9a-z가-힣\s]'), ' ')
         .split(RegExp(r'\s+'))
         .expand(tokenVariants)
-        .map(stripKoreanParticles)
+        .map((token) {
+          var value = stripKoreanParticles(token);
+          if (value.length >= 3 && value.endsWith('라')) {
+            value = value.substring(0, value.length - 1);
+          }
+          return value;
+        })
         .where(
           (token) =>
               token.length >= 2 &&
@@ -316,7 +322,13 @@ class VoiceCommandPipeline {
 
     return normalized
         .split(RegExp(r'\s+'))
-        .map(stripKoreanParticles)
+        .map((token) {
+          var value = stripKoreanParticles(token);
+          if (value.length >= 3 && value.endsWith('라')) {
+            value = value.substring(0, value.length - 1);
+          }
+          return value;
+        })
         .where((token) => token.length >= 2)
         .toList(growable: false);
   }
@@ -368,6 +380,10 @@ class VoiceCommandPipeline {
         token.replaceAll(RegExp(r'(이라고|라고|이라는|라는)$'), '');
     if (withoutQuoteEnding.length >= 2) {
       variants.add(withoutQuoteEnding);
+    }
+    final withoutTrailingRa = token.replaceAll(RegExp(r'라$'), '');
+    if (withoutTrailingRa.length >= 2) {
+      variants.add(withoutTrailingRa);
     }
     return variants.toList(growable: false);
   }
@@ -634,7 +650,7 @@ class VoiceCommandPipeline {
   bool _hasQueryIntentCueRaw(String text) {
     final normalized = normalizeManagementText(text);
     return RegExp(
-      r'(찾아\s*줘|찾아\s*주세요|검색'
+      r'(찾아\s*줘|찾아\s*주세요|찾아\s*봐|찾아봐|검색'
       r'|알려\s*줘|알려\s*주세요'
       r'|언제|언제야|언제인지|언제예요'
       r'|어디|뭐야|뭐예요|뭐가|무슨'

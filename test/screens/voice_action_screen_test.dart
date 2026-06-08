@@ -125,6 +125,51 @@ void main() {
     expect(find.text('내일 미팅'), findsNothing);
   });
 
+  testWidgets('제목 검색은 정확 일치 후보만 우선 보여주고 약한 유사 후보는 숨긴다', (
+    tester,
+  ) async {
+    final repository = _FakeEventRepository(
+      events: [
+        _event(
+          id: 'exact',
+          title: '김창민 만나기',
+          startAt: DateTime(2026, 7, 19, 9),
+        ),
+        _event(
+          id: 'weak-1',
+          title: '정윤태 만나기',
+          startAt: DateTime(2026, 4, 16, 11),
+        ),
+        _event(
+          id: 'weak-2',
+          title: '강릉아산병원 약제팀장 만나기',
+          startAt: DateTime(2026, 5, 28, 10),
+        ),
+      ],
+    );
+    final router = GoRouter(
+      initialLocation: AppRoutes.voiceAction,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voiceAction,
+          builder: (context, state) => VoiceActionScreen(
+            rawText: '김창민 만나기라는 일정 찾아봐',
+            action: VoiceScheduleAction.query,
+            eventRepository: repository,
+            userIdOverride: 'user-1',
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    expect(find.text('김창민 만나기'), findsOneWidget);
+    expect(find.text('정윤태 만나기'), findsNothing);
+    expect(find.text('강릉아산병원 약제팀장 만나기'), findsNothing);
+  });
+
   testWidgets('이번 주 금요일 조회는 주간이 아니라 금요일 하루만 보여준다', (tester) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);

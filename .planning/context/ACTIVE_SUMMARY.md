@@ -1621,3 +1621,9 @@
 - `VoiceConversationController`는 제목/사람 검색의 기본 1개월 범위와 확장 질문 흐름, 그리고 `이 일정 6월 19일로 바꿔줘` 같은 후속 날짜 이동을 현재 날짜 기준으로 제대로 해석하도록 보강했다.
 - `test/services/home_widget_service_test.dart`의 월간/주간 payload 기대값을 현재 visible row 수에 맞춰 갱신했다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_conversation_controller_test.dart test/services/home_widget_service_test.dart test/services/notification_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:46561 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:46561 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-06-08 1x1 위젯 직행과 음성 조회 후보 정밀화
+- 1x1 위젯으로 진입할 때는 앱 시작 중 로그인 화면이 잠깐 보이지 않도록 `startupRouteGate`를 추가해 widget launch pending 동안 라우터의 로그인 redirect를 억제했다.
+- 음성 입력의 `완료` 동작은 현재 입력을 캡처한 뒤 즉시 다음 단계로 이어지도록 정리해, 별도의 `현재 내용으로 입력` 재탭 없이도 다음 화면으로 넘어가게 했다.
+- `voice_action_screen.dart`의 제목/이름 검색은 `만나기라` 같은 조사 꼬리를 정규화하고, 정확 일치가 있으면 그것만 우선 보여주며 약한 유사 후보는 숨기도록 조정했다. 날짜 기반 조회는 `이번주금요일` 같은 표현이 summary 카드로 계속 보이도록 유지했다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/app_home_widget_route_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_input_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_action_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:33527 install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:33527 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.

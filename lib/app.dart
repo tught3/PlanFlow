@@ -11,6 +11,7 @@ import 'core/constants.dart';
 import 'core/env.dart';
 import 'core/region_settings.dart';
 import 'core/router.dart';
+import 'core/startup_route_gate.dart';
 import 'core/theme.dart';
 import 'data/repositories/settings_repository.dart';
 import 'providers/auth_provider.dart';
@@ -282,6 +283,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void _handleHomeWidgetUri(Uri? uri) {
     final route = resolveHomeWidgetRoute(uri);
     if (route != null) {
+      startupRouteGate.beginWidgetLaunch();
       _scheduleHomeWidgetRoute(route);
     }
   }
@@ -303,6 +305,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     }
     final route = _pendingHomeWidgetRoute;
     if (route == null) {
+      startupRouteGate.completeWidgetLaunch();
       return;
     }
     if (!authProvider.hasResolvedInitialSession && attempt < 10) {
@@ -323,8 +326,18 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         final expected = Uri.parse(route);
         if (current.path == expected.path && current.query == expected.query) {
           _pendingHomeWidgetRoute = null;
+          unawaited(
+            Future<void>.delayed(const Duration(milliseconds: 700), () {
+              if (!mounted || generation != _homeWidgetRouteGeneration) {
+                return;
+              }
+              startupRouteGate.completeWidgetLaunch();
+            }),
+          );
         } else if (attempt < 10) {
           _applyPendingHomeWidgetRoute(generation, attempt: attempt + 1);
+        } else {
+          startupRouteGate.completeWidgetLaunch();
         }
       }),
     );

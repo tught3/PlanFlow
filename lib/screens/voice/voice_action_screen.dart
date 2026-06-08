@@ -305,6 +305,7 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       final rankedCandidates = _candidateEventsForDisplay(
         rankedItems,
         filteredEvents,
+        queryText: routeResult.targetQuery,
         candidateDateRange: candidateDateRange,
         hasTargetMatchTokens: _hasTargetMatchTokens(routeResult.targetQuery),
         requiresDateMatchForTarget: requiresDateMatchForTarget,
@@ -372,12 +373,23 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
   List<_RankedEvent> _candidateEventsForDisplay(
     List<_RankedEvent> rankedItems,
     List<EventModel> filteredEvents, {
+    required String queryText,
     _DateRange? candidateDateRange,
     required bool hasTargetMatchTokens,
     required bool requiresDateMatchForTarget,
   }) {
     if (_isQuery) {
-      return rankedItems;
+      final queryCandidates = _filterQueryCandidates(
+        rankedItems,
+        queryText,
+      );
+      if (queryCandidates.isNotEmpty) {
+        return queryCandidates;
+      }
+      if (_hasQueryDateCue(queryText) || candidateDateRange != null) {
+        return rankedItems;
+      }
+      return const <_RankedEvent>[];
     }
 
     final scoredItems = rankedItems
@@ -470,6 +482,139 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       );
     });
     return fallback.take(3).toList(growable: false);
+  }
+
+  List<_RankedEvent> _filterQueryCandidates(
+    List<_RankedEvent> rankedItems,
+    String queryText,
+  ) {
+    final normalizedQuery =
+        _voiceCommandRouter.normalizeManagementText(queryText).trim();
+    final focusTokens = _queryFocusTokens(normalizedQuery);
+    if (focusTokens.isEmpty) {
+      return rankedItems;
+    }
+
+    final exactMatches = rankedItems
+        .where(
+          (item) => _isExactQueryCandidate(
+            item,
+            normalizedQuery,
+            focusTokens,
+          ),
+        )
+        .toList(growable: false);
+    if (exactMatches.isNotEmpty) {
+      return exactMatches;
+    }
+
+    final threshold = focusTokens.length <= 1
+        ? 1
+        : (focusTokens.length * 0.6).ceil();
+    final fuzzyMatches = rankedItems
+        .where(
+          (item) => _isMeaningfulQueryCandidate(
+            item,
+            focusTokens,
+            threshold: threshold,
+          ),
+        )
+        .toList(growable: false);
+    if (fuzzyMatches.isEmpty) {
+      return const <_RankedEvent>[];
+    }
+    return fuzzyMatches.take(5).toList(growable: false);
+  }
+
+  bool _isExactQueryCandidate(
+    _RankedEvent item,
+    String normalizedQuery,
+    List<String> focusTokens,
+  ) {
+    final searchable = _normalizedSearchableText(item.event);
+    final searchableTokens = _voiceCommandRouter.searchTokens(searchable);
+    if (searchable.contains(normalizedQuery)) {
+      return true;
+    }
+    return focusTokens.every(searchableTokens.contains);
+  }
+
+  bool _isMeaningfulQueryCandidate(
+    _RankedEvent item,
+    List<String> focusTokens, {
+    required int threshold,
+  }) {
+    if (focusTokens.isEmpty) {
+      return false;
+    }
+    final searchableTokens = _voiceCommandRouter.searchTokens(
+      _normalizedSearchableText(item.event),
+    );
+    final matchedTokens = focusTokens
+        .where(
+          (token) =>
+              searchableTokens.contains(token) ||
+              (!_containsDigit(token) &&
+                  (_voiceCommandRouter.hasFuzzyTokenMatch(
+                        token,
+                        searchableTokens,
+                      ) ||
+                      _voiceCommandRouter.hasPrefixMatch(
+                        token,
+                        searchableTokens,
+                      ))),
+        )
+        .length;
+    if (matchedTokens < threshold) {
+      return false;
+    }
+    final ratio = matchedTokens / focusTokens.length;
+    return ratio >= 0.6;
+  }
+
+  List<String> _queryFocusTokens(String normalizedQuery) {
+    final tokens = _voiceCommandRouter
+        .searchTokens(normalizedQuery)
+        .where(_isMeaningfulQueryToken)
+        .map((token) {
+          if (token.length >= 3 && token.endsWith('라')) {
+            return token.substring(0, token.length - 1);
+          }
+          return token;
+        })
+        .toList(growable: false);
+    final seen = <String>{};
+    return tokens.where(seen.add).toList(growable: false);
+  }
+
+  bool _isMeaningfulQueryToken(String token) {
+    final normalized = token.trim();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    if (!_isTargetMatchToken(normalized)) {
+      return false;
+    }
+    return !RegExp(
+      r'^(?:일정|스케줄|약속|조회|검색|찾아|찾아봐|찾아줘|보여|보여줘|알려|알려줘|확인|확인해|확인해줘|오늘|내일|모레|글피|이번|다음|이번주|다음주|이번\s*주|다음\s*주|있어|있나|있나요|있어요|몇\s*시|몇시|언제|어디|무엇|뭐|무슨)$',
+    ).hasMatch(normalized);
+  }
+
+  bool _hasQueryDateCue(String queryText) {
+    final normalized = _voiceCommandRouter.normalizeManagementText(queryText);
+    return RegExp(
+      r'(오늘|내일|모레|글피|이번\s*주|다음\s*주|이번주|다음주|이번\s*달|다음\s*달|이번달|다음달|'
+      r'[월화수목금토일]요일|\d+\s*월|\d+\s*일|\d+\s*시|오전|오후|아침|점심|저녁|밤|새벽)',
+    ).hasMatch(normalized);
+  }
+
+  String _normalizedSearchableText(EventModel event) {
+    return _voiceCommandRouter.normalizeManagementText([
+      event.title,
+      event.location ?? '',
+      event.memo ?? '',
+      event.supplies.join(' '),
+    ].join(' '));
   }
 
   int? _candidateMaxTake({

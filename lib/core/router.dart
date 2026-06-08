@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
@@ -20,17 +21,24 @@ import '../screens/shell_screen.dart';
 import 'constants.dart';
 import 'env.dart';
 import '../providers/auth_provider.dart';
+import 'startup_route_gate.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: AppRoutes.root,
   overridePlatformDefaultLocation: true,
-  refreshListenable: authProvider,
+  refreshListenable: Listenable.merge(<Listenable>[
+    authProvider,
+    startupRouteGate,
+  ]),
   redirect: (context, state) {
     final path = state.uri.path;
     final isAuthPath =
         path == AppRoutes.login || path == AppRoutes.resetPassword;
 
     if (path == AppRoutes.root) {
+      if (startupRouteGate.suppressLoginRedirects) {
+        return null;
+      }
       if (!authProvider.hasResolvedInitialSession) {
         return null;
       }
@@ -39,6 +47,10 @@ final GoRouter appRouter = GoRouter(
 
     if (!AppEnv.isSupabaseReady) {
       return isAuthPath ? null : AppRoutes.login;
+    }
+
+    if (startupRouteGate.suppressLoginRedirects && !isAuthPath) {
+      return null;
     }
 
     if (!authProvider.hasResolvedInitialSession && !isAuthPath) {
