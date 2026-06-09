@@ -42,7 +42,16 @@ final GoRouter appRouter = GoRouter(
       if (!authProvider.hasResolvedInitialSession) {
         return null;
       }
-      return authProvider.isSignedIn ? AppRoutes.home : AppRoutes.login;
+      if (!authProvider.isSignedIn) {
+        // 세션 갱신 중이거나 토큰만 만료된 경우: 스플래시에서 대기
+        if (authProvider.sessionStatus == AuthSessionStatus.recovering ||
+            (authProvider.sessionStatus == AuthSessionStatus.reauthRequired &&
+                authProvider.hasAccountSnapshot)) {
+          return null;
+        }
+        return AppRoutes.login;
+      }
+      return AppRoutes.home;
     }
 
     if (!AppEnv.isSupabaseReady) {

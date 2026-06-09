@@ -96,6 +96,18 @@ void main() {
       expect(deleteRoute.targetQuery, isNot(contains('삭제')));
     });
 
+    test('검색 의도 문장 끝의 조사성 라는/라 는 검색어에서 제거된다', () {
+      const router = VoiceCommandRouter();
+
+      final route = router.route('김창민 만나기라는 일정 찾아봐');
+
+      expect(route.intent, VoiceCommandRouteIntent.query);
+      expect(route.targetQuery, contains('김창민'));
+      expect(route.targetQuery, contains('만나기'));
+      expect(route.targetQuery, isNot(contains('만나기라')));
+      expect(route.targetQuery, isNot(contains('라는')));
+    });
+
     test('장소 추가 수정 검색어는 새 장소보다 기존 일정 식별어를 우선한다', () {
       const router = VoiceCommandRouter();
       final route = router.route(

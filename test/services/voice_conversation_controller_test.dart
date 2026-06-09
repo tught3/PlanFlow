@@ -234,6 +234,22 @@ void main() {
       ]);
     });
 
+    test('title search requires all name and role tokens to match', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('exact', '김태형 PM 확인전화', DateTime(2026, 7, 6, 9)),
+          _event('name-only', '김태형 미팅', DateTime(2026, 7, 6, 11)),
+          _event('role-only', 'PM 주간보고', DateTime(2026, 7, 6, 14)),
+        ],
+        now: () => DateTime(2026, 6, 7, 8),
+      );
+
+      final result = controller.handle('김태형 PM 일정 찾아줘');
+
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.visibleEvents.map((event) => event.id), <String>['exact']);
+    });
+
     test('month-end title search clamps the one-month window', () {
       final controller = VoiceConversationController(
         events: <EventModel>[

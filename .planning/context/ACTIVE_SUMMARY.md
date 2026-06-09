@@ -1,5 +1,16 @@
 # ACTIVE SUMMARY
 
+## 2026-06-09 TASK_20260608_141130 브리핑 foreground 알림 억제
+- 앱 lifecycle이 foreground/resumed일 때 브리핑 실행 알림과 예약 브리핑 시작 알림을 보내지 않도록 `BriefingSchedulerService`에 foreground suppress 경로를 추가했다.
+- `PlanFlowApp`이 resume/pause/dispose 시 foreground 상태를 SharedPreferences에 기록해 Android alarm callback isolate에서도 같은 상태를 참조할 수 있게 했다.
+- 회귀 테스트를 추가해 foreground 브리핑 실행은 TTS만 수행하고, foreground 시작 알림은 스케줄되지 않는지 확인하도록 했다.
+- 검증: `dart format` 통과, `dart analyze lib/services/briefing_scheduler_service.dart lib/app.dart test/services/briefing_scheduler_service_test.dart` 통과, `git diff --check` 통과. `scripts/flutter-local.ps1 test/analyze`는 FluxOS session lock 권한 문제로 실패했고, 원시 `flutter test`는 출력 없는 타임아웃으로 완료하지 못했다.
+
+## 2026-06-08 TASK_20260607_030411 리뷰 반영
+- AI 일정 대화의 제목/이름 검색에서 `김태형 PM 일정 찾아줘` 같은 다중 토큰 검색이 OR 매칭으로 넓어지던 위험을 줄여, 제목/참석자/대상 필드 전체에 모든 검색 토큰이 있을 때만 매칭되도록 수정했다.
+- `test/services/voice_conversation_controller_test.dart`에 이름만 맞는 일정과 직책만 맞는 일정이 섞이지 않는 회귀 테스트를 추가했다.
+- 검증: `dart format` 통과, `dart analyze lib/services/voice_conversation_controller.dart test/services/voice_conversation_controller_test.dart` 통과, `git diff --check` 통과. `scripts/flutter-local.ps1 test`는 FluxOS lock 권한 문제, 원시 `flutter test`는 출력 없는 타임아웃으로 완료하지 못했다.
+
 ## 2026-06-07 TASK_20260607_030411 Widget And Voice Parsing Follow-up
 - 주간 리스트 홈 위젯이 XML의 4번째 이벤트 슬롯을 실제 일정으로 채우도록 Kotlin raw/SharedPreferences 렌더 경로를 4행 기준으로 맞췄고, 5번째부터만 overflow 라벨이 나오도록 계산을 보정했다.
 - AI 일정 대화는 `이 일정`/`이거`를 현재 focus 참조로 처리하고, 제목/참석자/대상 이름 검색을 오늘 기준 전후 1개월 범위에서 수행하도록 보강했다. 다중 후보에서는 첫 번째를 임의 선택하지 않고 번호 선택을 요구하며, 전후 1개월 밖에만 후보가 있으면 기간 확장 질문을 반환한다.

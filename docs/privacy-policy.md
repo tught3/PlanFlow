@@ -36,6 +36,6 @@ PlanFlow는 음성 파일을 외부 서버로 전송하지 않습니다. 음성 
 
 개인정보 처리, 데이터 삭제 요청, Play Store 문의는 아래 공식 이메일로 문의해 주세요.
 
-공식 이메일: officialfluxstudio.kr@gmail.com
+공식 이메일: contact@fluxstudio.co.kr
 
 마지막 업데이트: 2026-05-10

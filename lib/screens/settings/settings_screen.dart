@@ -170,6 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isLoadingNewFeedbackReportCount = false;
   String? _lastFeedbackAdminEmail;
   final GlobalKey _calendarSyncSectionKey = GlobalKey();
+  NotificationPermissionStatus? _notificationPermissionStatus;
 
   String? get _userId => widget._userId ?? authProvider.userId;
   bool get _isFeedbackAdmin {
@@ -422,12 +423,21 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
   }
 
+  Future<void> _loadNotificationPermissionStatus() async {
+    final status = await _notificationService.checkPermissionStatus();
+    if (!mounted) return;
+    setState(() {
+      _notificationPermissionStatus = status;
+    });
+  }
+
   Future<void> _loadAlarmRuntimeStatus() async {
     if (mounted) {
       setState(() {
         _isLoadingAlarmRuntimeStatus = true;
       });
     }
+    unawaited(_loadNotificationPermissionStatus());
     final briefing = await _briefingSchedulerService.loadRuntimeStatus();
     final departure = await const DepartureAlarmService().loadRuntimeStatus();
     if (!mounted) {
@@ -2284,6 +2294,83 @@ class _SettingsScreenState extends State<SettingsScreen>
     };
   }
 
+  Widget _buildNotificationPermissionBanner() {
+    final status = _notificationPermissionStatus;
+    if (status == null || status.notificationsEnabled != false) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFFB74D)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.notifications_off_outlined,
+              color: Color(0xFFE65100), size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '앱 알림이 꺼져 있어요',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFE65100),
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '일정 알람, 출발 알람, 브리핑이 울리지 않습니다.\n기기 설정에서 PlanFlow 알림을 허용해 주세요.',
+                  style: TextStyle(
+                    color: Color(0xFF8D4000),
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () async {
+                        await _notificationService.openAppNotificationSettings();
+                        if (mounted) {
+                          unawaited(_loadNotificationPermissionStatus());
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE65100),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          '알림 설정 열기',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSmartAlarmSettings() {
     return _SectionCard(
       title: '스마트 출발 알림 설정',
@@ -2696,6 +2783,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(height: 16),
+              _buildNotificationPermissionBanner(),
               _buildSmartAlarmSettings(),
               const SizedBox(height: 16),
               KeyedSubtree(
