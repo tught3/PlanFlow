@@ -18,6 +18,7 @@ import 'providers/auth_provider.dart';
 import 'services/calendar_auto_sync_service.dart';
 import 'services/app_feedback_service.dart';
 import 'services/briefing_scheduler_service.dart';
+import 'services/event_reminder_channel_migration_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
 import 'services/oauth_callback_handler.dart';
@@ -101,12 +102,27 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
     await _syncRegionSettings();
+    unawaited(_runChannelMigrations());
     final pendingIcsPaths = await _naverIcsShareStore.takePendingPaths();
     if (pendingIcsPaths.isNotEmpty) {
       appRouter.go(AppRoutes.naverIcsImport, extra: pendingIcsPaths);
       return;
     }
     await _calendarAutoSyncService.syncConnectedCalendars(reason: reason);
+  }
+
+  Future<void> _runChannelMigrations() async {
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    try {
+      await EventReminderChannelMigrationService()
+          .migrateFutureEventRemindersIfNeeded(userId);
+    } catch (error, stackTrace) {
+      debugPrint('Channel migration skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<void> _checkForAppUpdate() async {

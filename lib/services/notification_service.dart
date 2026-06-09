@@ -39,7 +39,8 @@ class NotificationService {
 
   Future<void>? _initializationFuture;
 
-  static const String _eventReminderChannelId = 'event_reminders';
+  static const String eventReminderChannelId = 'event_reminders_v2';
+  static const String _eventReminderChannelId = eventReminderChannelId;
   static const String _eventReminderChannelName = '일정 알림';
   static const String _eventReminderChannelDescription = '다가오는 일정 알림';
   static const int _maxSmartPreparationAlarmsPerEvent = 20;
@@ -651,6 +652,8 @@ class NotificationService {
 
     await _plugin.initialize(
       settings: initializationSettings,
+      onDidReceiveBackgroundNotificationResponse:
+          _backgroundNotificationResponseCallback,
       onDidReceiveNotificationResponse: (response) {
         final route = routeForNotificationResponse(response);
         if ((response.actionId == departureAcknowledgedActionId ||
@@ -1104,6 +1107,27 @@ class NotificationService {
       return null;
     }
     return '${warnings.join(' ')} 휴대폰 설정에서 PlanFlow 알림, 알람 및 리마인더, 전체 화면 알림 허용 상태를 확인해 주세요.';
+  }
+}
+
+/// 앱이 백그라운드 상태에서 알림 액션 버튼 탭 시 호출되는 top-level 콜백.
+/// flutter_local_notifications 요구사항: @pragma('vm:entry-point') + top-level 함수.
+@pragma('vm:entry-point')
+Future<void> _backgroundNotificationResponseCallback(
+  NotificationResponse response,
+) async {
+  final payload = response.payload ?? '';
+  final actionId = response.actionId;
+  if ((actionId == NotificationService.departureAcknowledgedActionId ||
+          actionId == NotificationService.departureArrivedActionId) &&
+      payload.startsWith('departure:')) {
+    final eventId = payload.substring('departure:'.length).trim();
+    if (eventId.isNotEmpty) {
+      const store = SharedPreferencesDepartureAcknowledgementStore();
+      await store.markAcknowledged(eventId);
+      // cancelNotification: true 로 알림은 자동 취소됨
+      // 다음 모니터 실행(30분 이내)에서 isAcknowledged() → skip
+    }
   }
 }
 
