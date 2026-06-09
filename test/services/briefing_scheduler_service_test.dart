@@ -257,6 +257,56 @@ void main() {
     expect(tts.lastText, isNotNull);
   });
 
+  test('foreground briefing suppresses notification but still speaks',
+      () async {
+    AppEnv.markSupabaseInitialized();
+    final notification = _FakeNotificationService();
+    final tts = _FakeTtsService();
+    final service = BriefingSchedulerService(
+      alarmService: _FakeAlarmService(),
+      ttsService: tts,
+      notificationService: notification,
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-1',
+            userId: 'user-1',
+            title: '회의',
+            startAt: DateTime.utc(2026, 5, 12, 9),
+          ),
+        ],
+      ),
+      settingsRepository: _FakeSettingsRepository(
+        settings: UserSettingsModel.defaults(userId: 'user-1'),
+      ),
+      isAppInForeground: () => true,
+      now: () => DateTime(2026, 5, 12, 7),
+    );
+
+    final result = await service.executeBriefing(
+      isMorning: true,
+      userId: 'user-1',
+    );
+
+    expect(result.delivered, isTrue);
+    expect(notification.calls, 0);
+    expect(tts.lastText, isNotNull);
+  });
+
+  test('foreground app suppresses briefing start notification', () async {
+    final notification = _FakeNotificationService();
+    final service = BriefingSchedulerService(
+      alarmService: _FakeAlarmService(),
+      notificationService: notification,
+      eventRepository: _FakeEventRepository(),
+      isAppInForeground: () => true,
+    );
+
+    await service.showBriefingStartNotification(isMorning: true);
+
+    expect(notification.calls, 0);
+  });
+
   test('local briefing does not mention movement when events have no location',
       () async {
     AppEnv.markSupabaseInitialized();
@@ -407,6 +457,7 @@ class _FakeTtsService extends TtsService {
 }
 
 class _FakeNotificationService extends NotificationService {
+  int calls = 0;
   String? lastBody;
 
   @override
@@ -417,6 +468,7 @@ class _FakeNotificationService extends NotificationService {
     required DateTime notifyAt,
     String? payload,
   }) async {
+    calls += 1;
     lastBody = body;
   }
 }

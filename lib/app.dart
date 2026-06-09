@@ -17,6 +17,7 @@ import 'data/repositories/settings_repository.dart';
 import 'providers/auth_provider.dart';
 import 'services/calendar_auto_sync_service.dart';
 import 'services/app_feedback_service.dart';
+import 'services/briefing_scheduler_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
 import 'services/oauth_callback_handler.dart';
@@ -51,13 +52,16 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     authProvider.addListener(_onAuthProviderChange);
     _lifecycleListener = AppLifecycleListener(
       onPause: () {
+        unawaited(BriefingSchedulerService.recordAppForegroundState(false));
         unawaited(_syncCalendarInBackground());
       },
       onResume: () {
+        unawaited(BriefingSchedulerService.recordAppForegroundState(true));
         unawaited(_syncSessionAndCalendar(reason: 'resume'));
         unawaited(_checkForAppUpdate());
       },
     );
+    unawaited(BriefingSchedulerService.recordAppForegroundState(true));
     unawaited(_checkForAppUpdate());
     unawaited(_syncSessionAndCalendar(reason: 'startup'));
     unawaited(_listenForSharedIcsFiles());
@@ -162,6 +166,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _planFlowLinkSubscription?.cancel();
     _sharedIcsSubscription?.cancel();
     unawaited(_oauthCallbackHandler.dispose());
+    unawaited(BriefingSchedulerService.recordAppForegroundState(false));
     _lifecycleListener.dispose();
     super.dispose();
   }
