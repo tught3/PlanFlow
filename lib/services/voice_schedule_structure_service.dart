@@ -472,6 +472,16 @@ class VoiceScheduleStructureService {
                 )),
           ' ',
         )
+        .replaceAll(
+          RegExp(
+            r'(?:오늘|내일|모레|글피)\s*(?:부터|에서|까지)\s*\d{1,2}\s*(?:일|주|개월|달)\s*(?:간|동안)?',
+          ),
+          ' ',
+        )
+        .replaceAll(
+          RegExp(r'\d{1,2}\s*(?:일|주|개월|달)\s*(?:간|동안)'),
+          ' ',
+        )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     title = preserveLeadingLocationTitle(
