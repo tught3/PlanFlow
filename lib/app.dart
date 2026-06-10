@@ -157,6 +157,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
   void _onAuthProviderChange() {
     if (authProvider.hasResolvedInitialSession &&
+        authProvider.hasAttemptedStartupSync &&
         authProvider.needsReauthentication &&
         authProvider.hasAccountSnapshot &&
         !_reauthSnackBarShown) {

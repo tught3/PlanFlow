@@ -44,7 +44,9 @@ final GoRouter appRouter = GoRouter(
       }
       if (!authProvider.isSignedIn) {
         // 세션 갱신 중이거나 토큰만 만료된 경우: 스플래시에서 대기
+        // hasAttemptedStartupSync=false: 첫 syncCurrentSession() 전 → 아직 복구 기회가 남음
         if (authProvider.sessionStatus == AuthSessionStatus.recovering ||
+            !authProvider.hasAttemptedStartupSync ||
             (authProvider.sessionStatus == AuthSessionStatus.reauthRequired &&
                 authProvider.hasAccountSnapshot)) {
           return null;
@@ -74,7 +76,9 @@ final GoRouter appRouter = GoRouter(
       // recovering: 세션 복구 중 → 대기
       // reauthRequired + hasAccountSnapshot: 이전 로그인 계정 있음, 토큰만 만료
       //   → 로그인 화면 강제 전환 금지. 앱 내 배너로 안내.
+      // hasAttemptedStartupSync=false: 아직 첫 sync 전 → 복구 기회 남음
       if (authProvider.sessionStatus == AuthSessionStatus.recovering ||
+          !authProvider.hasAttemptedStartupSync ||
           (authProvider.sessionStatus == AuthSessionStatus.reauthRequired &&
               authProvider.hasAccountSnapshot)) {
         return null;

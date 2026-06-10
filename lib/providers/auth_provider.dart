@@ -39,6 +39,9 @@ class AuthProvider extends ChangeNotifier {
   bool _hasResolvedInitialSession = false;
   Future<void>? _refreshInFlight;
   AuthSessionStatus _sessionStatus = AuthSessionStatus.unresolved;
+  // syncCurrentSession() 최초 호출 여부 추적.
+  // false 동안은 signedOut 상태에서도 라우터가 로그인 화면 리다이렉트를 보류한다.
+  bool _hasAttemptedStartupSync = false;
 
   String? get userId => _userId;
   String? get email => _email;
@@ -47,6 +50,7 @@ class AuthProvider extends ChangeNotifier {
   String? get accountIdentifier => _accountIdentifier;
   AuthSessionStatus get sessionStatus => _sessionStatus;
   bool get hasAccountSnapshot => _userId != null;
+  bool get hasAttemptedStartupSync => _hasAttemptedStartupSync;
   bool get hasActiveSession =>
       _sessionStatus == AuthSessionStatus.active && _userId != null;
   bool get needsReauthentication =>
@@ -156,6 +160,10 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> syncCurrentSession() async {
     if (!AppEnv.isSupabaseReady) {
       return false;
+    }
+    // 최초 호출 시 플래그 설정 (notify 없이 — 직후 recovering 상태 전환이 notify함)
+    if (!_hasAttemptedStartupSync) {
+      _hasAttemptedStartupSync = true;
     }
     final service = _service;
     final inFlightRefresh = _refreshInFlight;
