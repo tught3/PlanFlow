@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
@@ -58,6 +59,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       },
       onResume: () {
         unawaited(BriefingSchedulerService.recordAppForegroundState(true));
+        // widgetClicked 스트림이 유실된 warm-start를 복구하기 위해 먼저 실행
+        unawaited(_resumeHomeWidgetCheck());
         unawaited(_syncSessionAndCalendar(reason: 'resume'));
         unawaited(_checkForAppUpdate());
       },
@@ -260,12 +263,13 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   void _retryInitialHomeWidgetLaunchProbe({required int attempt}) {
-    if (!mounted || _pendingHomeWidgetRoute != null || attempt >= 4) {
+    if (!mounted || _pendingHomeWidgetRoute != null || attempt >= 6) {
       return;
     }
+    // 첫 재시도는 50ms(플러그인 초기화 타이밍), 이후 150ms 간격
+    final delayMs = attempt == 0 ? 50 : 150 * attempt;
     unawaited(
-      Future<void>.delayed(Duration(milliseconds: 180 * (attempt + 1)),
-          () async {
+      Future<void>.delayed(Duration(milliseconds: delayMs), () async {
         if (!mounted || _pendingHomeWidgetRoute != null) {
           return;
         }
@@ -277,6 +281,26 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         _retryInitialHomeWidgetLaunchProbe(attempt: attempt + 1);
       }),
     );
+  }
+
+  static const _settingsMethodChannel = MethodChannel('planflow/android_settings');
+
+  /// 처리 완료 후 native intent action을 MAIN으로 재설정해 onResume 오탐 방지
+  Future<void> _consumeHomeWidgetLaunch() async {
+    try {
+      await _settingsMethodChannel.invokeMethod<void>('consumeHomeWidgetLaunch');
+    } catch (_) {}
+  }
+
+  /// warm-start fallback: widgetClicked 스트림이 유실된 경우 onResume에서 재확인
+  Future<void> _resumeHomeWidgetCheck() async {
+    if (_pendingHomeWidgetRoute != null) return;
+    final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+    // async 대기 중 스트림이 처리했을 수 있으므로 재확인
+    if (_pendingHomeWidgetRoute != null) return;
+    if (uri != null) {
+      _handleHomeWidgetUri(uri);
+    }
   }
 
   void _listenForPlanFlowDeepLinks() {
@@ -304,6 +328,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void _handleHomeWidgetUri(Uri? uri) {
     final route = resolveHomeWidgetRoute(uri);
     if (route != null) {
+      // native intent를 소비해 onResume fallback에서 동일 URI 중복 처리 방지
+      unawaited(_consumeHomeWidgetLaunch());
       startupRouteGate.beginWidgetLaunch();
       _scheduleHomeWidgetRoute(route);
     }
@@ -345,7 +371,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         }
         final current = appRouter.routeInformationProvider.value.uri;
         final expected = Uri.parse(route);
-        if (current.path == expected.path && current.query == expected.query) {
+        if (current.path == expected.path) {
           _pendingHomeWidgetRoute = null;
           unawaited(
             Future<void>.delayed(const Duration(milliseconds: 700), () {
