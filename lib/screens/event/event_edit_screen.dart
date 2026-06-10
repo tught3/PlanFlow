@@ -1032,6 +1032,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
       appBar: AppBar(
         title: Text(_isNewEvent ? l10n.eventCreateTitle : l10n.eventEditTitle),
         leading: BackButton(onPressed: _handleBackNavigation),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.save_outlined),
+            tooltip: '저장',
+            onPressed: _isSaving ? null : _handleSave,
+          ),
+        ],
       ),
       body: SafeArea(
         child: Form(

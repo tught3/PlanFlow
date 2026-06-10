@@ -106,6 +106,7 @@ class SttService {
   static List<String>? _activeCommittedSegments;
   static var _activeNativeSessionText = '';
   static int? _activeNativeSessionId;
+  static int? _expelledNativeSessionId;
   static var _activeListenGeneration = 0;
 
   @visibleForTesting
@@ -769,6 +770,7 @@ class SttService {
   }
 
   static void _clearActiveListenState({required bool clearHandler}) {
+    _expelledNativeSessionId = _activeNativeSessionId;
     _activeSpeech = null;
     _activeCompleter = null;
     _activeRecognizedText = null;
@@ -1292,7 +1294,13 @@ class SttService {
       if (eventSession == null) {
         return _activeNativeListen;
       }
+      if (eventSession == _expelledNativeSessionId) {
+        return false;
+      }
       _activeNativeSessionId ??= eventSession;
+      if (_activeNativeSessionId != null) {
+        _expelledNativeSessionId = null;
+      }
       return eventSession == _activeNativeSessionId;
     }
 
