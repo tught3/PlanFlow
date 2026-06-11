@@ -376,6 +376,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     if (!_isListening) {
       return;
     }
+    final capturedText = _rawTextController.text.trim().isNotEmpty
+        ? _rawTextController.text.trim()
+        : _recognizedText?.trim() ?? '';
     _isFinishingVoiceFlow = true;
     _partialTranscriptToken++;
     await widget.sttService.stopActiveListen();
@@ -383,10 +386,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       return;
     }
     setState(() => _isListening = false);
-    final text = _rawTextController.text.trim();
-    if (text.isNotEmpty) {
+    if (capturedText.isNotEmpty) {
       // listen() 자동 제출 경로와는 _beginVoiceCommandSubmit signature 가드로 중복 차단됨.
-      await _continueWithRawText();
+      await _continueWithRawText(rawTextOverride: capturedText);
     }
   }
 
@@ -583,9 +585,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         _mergeVoiceTranscript(_listenPrefixText, normalizedText));
   }
 
-  Future<void> _continueWithRawText() async {
-    final normalizedText =
-        SttService.normalizeVoiceTranscript(_rawTextController.text.trim());
+  Future<void> _continueWithRawText({String? rawTextOverride}) async {
+    final sourceText = (rawTextOverride ?? _rawTextController.text).trim();
+    final normalizedText = SttService.normalizeVoiceTranscript(sourceText);
     if (!mounted) {
       return;
     }

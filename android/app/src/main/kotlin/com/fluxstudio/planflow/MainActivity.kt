@@ -55,6 +55,18 @@ class MainActivity : FlutterActivity() {
         ).also { channel ->
             channel.setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "consumeHomeWidgetLaunch" -> {
+                        // widget intent 소비 — 처리 완료 후 중복 처리 방지용
+                        try {
+                            setIntent(Intent(intent).apply {
+                                action = Intent.ACTION_MAIN
+                                data = null
+                            })
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.success(false)
+                        }
+                    }
                     "openNotificationSettings" -> {
                         result.success(openNotificationSettings())
                     }

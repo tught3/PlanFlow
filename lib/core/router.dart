@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
@@ -20,25 +21,47 @@ import '../screens/shell_screen.dart';
 import 'constants.dart';
 import 'env.dart';
 import '../providers/auth_provider.dart';
+import 'startup_route_gate.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: AppRoutes.root,
   overridePlatformDefaultLocation: true,
-  refreshListenable: authProvider,
+  refreshListenable: Listenable.merge(<Listenable>[
+    authProvider,
+    startupRouteGate,
+  ]),
   redirect: (context, state) {
     final path = state.uri.path;
     final isAuthPath =
         path == AppRoutes.login || path == AppRoutes.resetPassword;
 
     if (path == AppRoutes.root) {
+      if (startupRouteGate.suppressLoginRedirects) {
+        return null;
+      }
       if (!authProvider.hasResolvedInitialSession) {
         return null;
       }
-      return authProvider.isSignedIn ? AppRoutes.home : AppRoutes.login;
+      if (!authProvider.isSignedIn) {
+        // 세션 갱신 중이거나 토큰만 만료된 경우: 스플래시에서 대기
+        // hasAttemptedStartupSync=false: 첫 syncCurrentSession() 전 → 아직 복구 기회가 남음
+        if (authProvider.sessionStatus == AuthSessionStatus.recovering ||
+            !authProvider.hasAttemptedStartupSync ||
+            (authProvider.sessionStatus == AuthSessionStatus.reauthRequired &&
+                authProvider.hasAccountSnapshot)) {
+          return null;
+        }
+        return AppRoutes.login;
+      }
+      return AppRoutes.home;
     }
 
     if (!AppEnv.isSupabaseReady) {
       return isAuthPath ? null : AppRoutes.login;
+    }
+
+    if (startupRouteGate.suppressLoginRedirects && !isAuthPath) {
+      return null;
     }
 
     if (!authProvider.hasResolvedInitialSession && !isAuthPath) {
@@ -53,7 +76,9 @@ final GoRouter appRouter = GoRouter(
       // recovering: 세션 복구 중 → 대기
       // reauthRequired + hasAccountSnapshot: 이전 로그인 계정 있음, 토큰만 만료
       //   → 로그인 화면 강제 전환 금지. 앱 내 배너로 안내.
+      // hasAttemptedStartupSync=false: 아직 첫 sync 전 → 복구 기회 남음
       if (authProvider.sessionStatus == AuthSessionStatus.recovering ||
+          !authProvider.hasAttemptedStartupSync ||
           (authProvider.sessionStatus == AuthSessionStatus.reauthRequired &&
               authProvider.hasAccountSnapshot)) {
         return null;

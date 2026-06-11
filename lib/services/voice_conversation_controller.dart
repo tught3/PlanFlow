@@ -1004,7 +1004,7 @@ class VoiceConversationController {
       ...event.participants,
       ...event.targets,
     ].map(_compact).join(' ');
-    return queryTokens.any(haystack.contains);
+    return queryTokens.every(haystack.contains);
   }
 
   bool _isDateReferenceToken(String token) {

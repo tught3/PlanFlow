@@ -471,8 +471,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
     }
     for (final list in result.values) {
-      list.sort((a, b) =>
-          (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0)));
+      list.sort((a, b) {
+        final aIsMulti =
+            a.isMultiDay || calendarEventSpansMultipleLocalDays(a);
+        final bIsMulti =
+            b.isMultiDay || calendarEventSpansMultipleLocalDays(b);
+        if (aIsMulti != bIsMulti) return aIsMulti ? -1 : 1;
+        return (a.startAt ?? DateTime(0)).compareTo(b.startAt ?? DateTime(0));
+      });
     }
     return result;
   }
@@ -1579,10 +1585,15 @@ class _CalendarMiniEventLabel extends StatelessWidget {
         : _categoryColor(event.category).withValues(alpha: 0.16);
     final fg = isSelected ? Colors.white : _categoryColor(event.category);
     final segment = _multiDaySegment(event, day);
+    final isMultiDay =
+        event.isMultiDay || calendarEventSpansMultipleLocalDays(event);
+    final showTitle = !isMultiDay || segment.$1;
+    final hPadding =
+        (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(top: 1),
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+      padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: 1),
       constraints: const BoxConstraints(maxHeight: 11),
       decoration: BoxDecoration(
         color: bg,
@@ -1592,11 +1603,11 @@ class _CalendarMiniEventLabel extends StatelessWidget {
         ),
       ),
       child: Text(
-        (event.isMultiDay || calendarEventSpansMultipleLocalDays(event))
-            ? '↔ ${event.title}'
-            : event.isAllDay
+        showTitle
+            ? (event.isAllDay && !isMultiDay
                 ? '종일 ${event.title}'
-                : event.title,
+                : event.title)
+            : '',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(

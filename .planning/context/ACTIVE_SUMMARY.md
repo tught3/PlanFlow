@@ -3,6 +3,16 @@
 ## 2026-06-07 PlanFlow v2 planning docs
 - Created `docs/planflow-v2/README.md` and `docs/planflow-v2/team-v2-plan.md` on branch `feature/team-v2-planning` to keep team-function planning separate from the 1st-release stabilization line.
 - The new docs keep the personal MVP structure intact and outline a separate team-module direction for `teams`, `team_members`, `team_invites`, `team_events`, `projects`, `tasks`, `meeting_notes`, and `coaching_reports`.
+## 2026-06-09 TASK_20260608_141130 브리핑 foreground 알림 억제
+- 앱 lifecycle이 foreground/resumed일 때 브리핑 실행 알림과 예약 브리핑 시작 알림을 보내지 않도록 `BriefingSchedulerService`에 foreground suppress 경로를 추가했다.
+- `PlanFlowApp`이 resume/pause/dispose 시 foreground 상태를 SharedPreferences에 기록해 Android alarm callback isolate에서도 같은 상태를 참조할 수 있게 했다.
+- 회귀 테스트를 추가해 foreground 브리핑 실행은 TTS만 수행하고, foreground 시작 알림은 스케줄되지 않는지 확인하도록 했다.
+- 검증: `dart format` 통과, `dart analyze lib/services/briefing_scheduler_service.dart lib/app.dart test/services/briefing_scheduler_service_test.dart` 통과, `git diff --check` 통과. `scripts/flutter-local.ps1 test/analyze`는 FluxOS session lock 권한 문제로 실패했고, 원시 `flutter test`는 출력 없는 타임아웃으로 완료하지 못했다.
+
+## 2026-06-08 TASK_20260607_030411 리뷰 반영
+- AI 일정 대화의 제목/이름 검색에서 `김태형 PM 일정 찾아줘` 같은 다중 토큰 검색이 OR 매칭으로 넓어지던 위험을 줄여, 제목/참석자/대상 필드 전체에 모든 검색 토큰이 있을 때만 매칭되도록 수정했다.
+- `test/services/voice_conversation_controller_test.dart`에 이름만 맞는 일정과 직책만 맞는 일정이 섞이지 않는 회귀 테스트를 추가했다.
+- 검증: `dart format` 통과, `dart analyze lib/services/voice_conversation_controller.dart test/services/voice_conversation_controller_test.dart` 통과, `git diff --check` 통과. `scripts/flutter-local.ps1 test`는 FluxOS lock 권한 문제, 원시 `flutter test`는 출력 없는 타임아웃으로 완료하지 못했다.
 
 ## 2026-06-07 TASK_20260607_030411 Widget And Voice Parsing Follow-up
 - 주간 리스트 홈 위젯이 XML의 4번째 이벤트 슬롯을 실제 일정으로 채우도록 Kotlin raw/SharedPreferences 렌더 경로를 4행 기준으로 맞췄고, 5번째부터만 overflow 라벨이 나오도록 계산을 보정했다.
@@ -1625,3 +1635,9 @@
 - `VoiceConversationController`는 제목/사람 검색의 기본 1개월 범위와 확장 질문 흐름, 그리고 `이 일정 6월 19일로 바꿔줘` 같은 후속 날짜 이동을 현재 날짜 기준으로 제대로 해석하도록 보강했다.
 - `test/services/home_widget_service_test.dart`의 월간/주간 payload 기대값을 현재 visible row 수에 맞춰 갱신했다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_conversation_controller_test.dart test/services/home_widget_service_test.dart test/services/notification_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:46561 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:46561 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-06-08 1x1 위젯 직행과 음성 조회 후보 정밀화
+- 1x1 위젯으로 진입할 때는 앱 시작 중 로그인 화면이 잠깐 보이지 않도록 `startupRouteGate`를 추가해 widget launch pending 동안 라우터의 로그인 redirect를 억제했다.
+- 음성 입력의 `완료` 동작은 현재 입력을 캡처한 뒤 즉시 다음 단계로 이어지도록 정리해, 별도의 `현재 내용으로 입력` 재탭 없이도 다음 화면으로 넘어가게 했다.
+- `voice_action_screen.dart`의 제목/이름 검색은 `만나기라` 같은 조사 꼬리를 정규화하고, 정확 일치가 있으면 그것만 우선 보여주며 약한 유사 후보는 숨기도록 조정했다. 날짜 기반 조회는 `이번주금요일` 같은 표현이 summary 카드로 계속 보이도록 유지했다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/app_home_widget_route_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_input_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_action_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:33527 install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:33527 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.

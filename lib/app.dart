@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
@@ -11,11 +12,14 @@ import 'core/constants.dart';
 import 'core/env.dart';
 import 'core/region_settings.dart';
 import 'core/router.dart';
+import 'core/startup_route_gate.dart';
 import 'core/theme.dart';
 import 'data/repositories/settings_repository.dart';
 import 'providers/auth_provider.dart';
 import 'services/calendar_auto_sync_service.dart';
 import 'services/app_feedback_service.dart';
+import 'services/briefing_scheduler_service.dart';
+import 'services/event_reminder_channel_migration_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
 import 'services/oauth_callback_handler.dart';
@@ -50,13 +54,18 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     authProvider.addListener(_onAuthProviderChange);
     _lifecycleListener = AppLifecycleListener(
       onPause: () {
+        unawaited(BriefingSchedulerService.recordAppForegroundState(false));
         unawaited(_syncCalendarInBackground());
       },
       onResume: () {
+        unawaited(BriefingSchedulerService.recordAppForegroundState(true));
+        // widgetClicked 스트림이 유실된 warm-start를 복구하기 위해 먼저 실행
+        unawaited(_resumeHomeWidgetCheck());
         unawaited(_syncSessionAndCalendar(reason: 'resume'));
         unawaited(_checkForAppUpdate());
       },
     );
+    unawaited(BriefingSchedulerService.recordAppForegroundState(true));
     unawaited(_checkForAppUpdate());
     unawaited(_syncSessionAndCalendar(reason: 'startup'));
     unawaited(_listenForSharedIcsFiles());
@@ -96,12 +105,27 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
     await _syncRegionSettings();
+    unawaited(_runChannelMigrations());
     final pendingIcsPaths = await _naverIcsShareStore.takePendingPaths();
     if (pendingIcsPaths.isNotEmpty) {
       appRouter.go(AppRoutes.naverIcsImport, extra: pendingIcsPaths);
       return;
     }
     await _calendarAutoSyncService.syncConnectedCalendars(reason: reason);
+  }
+
+  Future<void> _runChannelMigrations() async {
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    try {
+      await EventReminderChannelMigrationService()
+          .migrateFutureEventRemindersIfNeeded(userId);
+    } catch (error, stackTrace) {
+      debugPrint('Channel migration skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<void> _checkForAppUpdate() async {
@@ -133,6 +157,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
   void _onAuthProviderChange() {
     if (authProvider.hasResolvedInitialSession &&
+        authProvider.hasAttemptedStartupSync &&
         authProvider.needsReauthentication &&
         authProvider.hasAccountSnapshot &&
         !_reauthSnackBarShown) {
@@ -161,6 +186,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _planFlowLinkSubscription?.cancel();
     _sharedIcsSubscription?.cancel();
     unawaited(_oauthCallbackHandler.dispose());
+    unawaited(BriefingSchedulerService.recordAppForegroundState(false));
     _lifecycleListener.dispose();
     super.dispose();
   }
@@ -238,12 +264,13 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   void _retryInitialHomeWidgetLaunchProbe({required int attempt}) {
-    if (!mounted || _pendingHomeWidgetRoute != null || attempt >= 4) {
+    if (!mounted || _pendingHomeWidgetRoute != null || attempt >= 6) {
       return;
     }
+    // 첫 재시도는 50ms(플러그인 초기화 타이밍), 이후 150ms 간격
+    final delayMs = attempt == 0 ? 50 : 150 * attempt;
     unawaited(
-      Future<void>.delayed(Duration(milliseconds: 180 * (attempt + 1)),
-          () async {
+      Future<void>.delayed(Duration(milliseconds: delayMs), () async {
         if (!mounted || _pendingHomeWidgetRoute != null) {
           return;
         }
@@ -255,6 +282,26 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         _retryInitialHomeWidgetLaunchProbe(attempt: attempt + 1);
       }),
     );
+  }
+
+  static const _settingsMethodChannel = MethodChannel('planflow/android_settings');
+
+  /// 처리 완료 후 native intent action을 MAIN으로 재설정해 onResume 오탐 방지
+  Future<void> _consumeHomeWidgetLaunch() async {
+    try {
+      await _settingsMethodChannel.invokeMethod<void>('consumeHomeWidgetLaunch');
+    } catch (_) {}
+  }
+
+  /// warm-start fallback: widgetClicked 스트림이 유실된 경우 onResume에서 재확인
+  Future<void> _resumeHomeWidgetCheck() async {
+    if (_pendingHomeWidgetRoute != null) return;
+    final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+    // async 대기 중 스트림이 처리했을 수 있으므로 재확인
+    if (_pendingHomeWidgetRoute != null) return;
+    if (uri != null) {
+      _handleHomeWidgetUri(uri);
+    }
   }
 
   void _listenForPlanFlowDeepLinks() {
@@ -282,6 +329,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void _handleHomeWidgetUri(Uri? uri) {
     final route = resolveHomeWidgetRoute(uri);
     if (route != null) {
+      // native intent를 소비해 onResume fallback에서 동일 URI 중복 처리 방지
+      unawaited(_consumeHomeWidgetLaunch());
+      startupRouteGate.beginWidgetLaunch();
       _scheduleHomeWidgetRoute(route);
     }
   }
@@ -303,6 +353,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     }
     final route = _pendingHomeWidgetRoute;
     if (route == null) {
+      startupRouteGate.completeWidgetLaunch();
       return;
     }
     if (!authProvider.hasResolvedInitialSession && attempt < 10) {
@@ -321,10 +372,20 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         }
         final current = appRouter.routeInformationProvider.value.uri;
         final expected = Uri.parse(route);
-        if (current.path == expected.path && current.query == expected.query) {
+        if (current.path == expected.path) {
           _pendingHomeWidgetRoute = null;
+          unawaited(
+            Future<void>.delayed(const Duration(milliseconds: 700), () {
+              if (!mounted || generation != _homeWidgetRouteGeneration) {
+                return;
+              }
+              startupRouteGate.completeWidgetLaunch();
+            }),
+          );
         } else if (attempt < 10) {
           _applyPendingHomeWidgetRoute(generation, attempt: attempt + 1);
+        } else {
+          startupRouteGate.completeWidgetLaunch();
         }
       }),
     );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -95,13 +97,15 @@ class BriefingSchedulerService {
     SettingsRepository? settingsRepository,
     EventRepository? eventRepository,
     DateTime Function()? now,
+    FutureOr<bool> Function()? isAppInForeground,
   })  : _alarmService = alarmService ?? const AlarmService(),
         _gptService = gptService ?? GptService(),
         _ttsService = ttsService ?? const TtsService(),
         _notificationService = notificationService ?? NotificationService(),
         _settingsRepository = settingsRepository,
         _eventRepository = eventRepository,
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        _isAppInForeground = isAppInForeground;
 
   final AlarmService _alarmService;
   final GptService _gptService;
@@ -110,6 +114,7 @@ class BriefingSchedulerService {
   final SettingsRepository? _settingsRepository;
   final EventRepository? _eventRepository;
   final DateTime Function() _now;
+  final FutureOr<bool> Function()? _isAppInForeground;
 
   static const String _morningAlarmId = 'briefing:morning';
   static const String _eveningAlarmId = 'briefing:evening';
@@ -125,7 +130,13 @@ class BriefingSchedulerService {
       'briefing:last_execution_message';
   static const String _lastExecutionFailureReasonKey =
       'briefing:last_execution_failure_reason';
+  static const String _appForegroundKey = 'briefing:app_foreground';
   static const Duration _briefingLeadBeforePrepStart = Duration(minutes: 30);
+
+  static Future<void> recordAppForegroundState(bool isForeground) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_appForegroundKey, isForeground);
+  }
 
   Future<BriefingDailyScheduleResult> scheduleDaily({
     required String morningTime,
@@ -362,11 +373,19 @@ class BriefingSchedulerService {
 
   Future<void> showBriefingStartNotification({
     required bool isMorning,
-  }) {
+  }) async {
     final title = isMorning ? '모닝 브리핑' : '이브닝 브리핑';
     final body = isMorning
         ? '알림을 누르면 오늘 일정을 시간순으로 정리해 드릴게요.'
         : '알림을 누르면 내일 일정을 시간순으로 정리해 드릴게요.';
+    if (await _shouldSuppressNotification(false)) {
+      debugPrint(
+        'Briefing start notification suppressed: '
+        'type=${isMorning ? 'morning' : 'evening'} app_foreground=true',
+      );
+      return;
+    }
+
     return _notificationService.scheduleEventReminder(
       id: isMorning ? 91001 : 91002,
       title: title,
@@ -539,7 +558,7 @@ class BriefingSchedulerService {
     final title = isMorning ? '모닝 브리핑' : '이브닝 브리핑';
     final type = isMorning ? 'morning' : 'evening';
 
-    if (!suppressNotification) {
+    if (!await _shouldSuppressNotification(suppressNotification)) {
       try {
         await _notificationService.scheduleEventReminder(
           id: isMorning ? 90001 : 90002,
@@ -559,6 +578,20 @@ class BriefingSchedulerService {
       debugPrint('Briefing TTS failed: type=$type error=$error');
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  Future<bool> _shouldSuppressNotification(bool explicitSuppress) async {
+    if (explicitSuppress) {
+      return true;
+    }
+
+    final injected = _isAppInForeground;
+    if (injected != null) {
+      return await injected();
+    }
+
+    final preferences = await SharedPreferences.getInstance();
+    return preferences.getBool(_appForegroundKey) == true;
   }
 
   Future<bool> _rescheduleForTomorrow({

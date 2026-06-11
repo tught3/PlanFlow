@@ -755,5 +755,30 @@ void main() {
       expect(parsed['is_all_day'], isTrue);
       expect(parsed['is_multi_day'], isTrue);
     });
+
+    test('local relative duration creates an all-day multi-day schedule',
+        () async {
+      final service = VoiceCommandAnalysisService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 6, 7, 12, 0),
+        maxAiRequests: 0,
+      );
+
+      final result = await service.analyze(
+        '오늘부터 2주간 원주집 단기렌트하기',
+        stage: VoiceCommandAnalysisStage.complete,
+      );
+      final parsed = result.toParsedScheduleMap();
+
+      expect(result.method, VoiceCommandAnalysisMethod.local);
+      expect(parsed['title'], '원주집 단기렌트하기');
+      expect(parsed['start_at'], DateTime(2026, 6, 7).toIso8601String());
+      expect(
+        parsed['end_at'],
+        DateTime(2026, 6, 20, 23, 59, 59).toIso8601String(),
+      );
+      expect(parsed['is_all_day'], isTrue);
+      expect(parsed['is_multi_day'], isTrue);
+    });
   });
 }

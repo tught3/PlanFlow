@@ -1,5 +1,29 @@
 {
   "dart.flutterRunAdditionalArgs": [
     "--dart-define-from-file=env/local.json"
-  ]
+  ],
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.git/**": true,
+    "**/build/**": true,
+    "**/dist/**": true,
+    "**/.next/**": true,
+    "**/.dart_tool/**": true,
+    "**/.gradle/**": true,
+    "**/.gradle-local/**": true,
+    "**/coverage/**": true,
+    "**/.cache/**": true
+  },
+  "search.exclude": {
+    "**/node_modules/**": true,
+    "**/.git/**": true,
+    "**/build/**": true,
+    "**/dist/**": true,
+    "**/.next/**": true,
+    "**/.dart_tool/**": true,
+    "**/.gradle/**": true,
+    "**/.gradle-local/**": true,
+    "**/coverage/**": true,
+    "**/.cache/**": true
+  }
 }
