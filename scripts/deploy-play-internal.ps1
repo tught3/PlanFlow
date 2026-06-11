@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory = $true)]
   [string]$ProjectKey,
 
@@ -255,7 +255,7 @@ try {
     if ($SkipUpload) {
       Write-Host 'Upload was skipped because -SkipUpload was supplied.'
       $successTitle = '🧪 PlanFlow 내부 테스트 검증 완료'
-      $successMessage = "Version: $finalVersion`nPackage: $packageName`nTrack: $track`n`n업로드는 실행하지 않았습니다. (-SkipUpload)"
+      $successMessage = "`nVersion: $finalVersion`nPackage: $packageName`nTrack: $track`n`n검증만 수행했습니다. (-SkipUpload)"
     } else {
       Write-Stage 'Publishing with Gradle Play Publisher'
 
@@ -273,7 +273,7 @@ try {
       }
 
       $successTitle = '🚀 PlanFlow 내부 테스트 업로드 완료'
-      $successMessage = "Version: $finalVersion`nPackage: $packageName`nTrack: $track`n`nPlay 반영까지 몇 분 걸릴 수 있습니다.`n폰에서 Play 스토어 → PlanFlow → 업데이트 확인하세요."
+      $successMessage = "`nVersion: $finalVersion`nPackage: $packageName`nTrack: $track`n`nPlay 업로드 성공"
     }
 
     Write-Host ''
@@ -303,7 +303,7 @@ try {
     $failureSummary = Summarize-ErrorText -Text $errorText
     Send-DeployTelegramNotification `
       -Title '❌ PlanFlow 내부 테스트 업로드 실패' `
-      -Message "Step: $failureStage`nError: $failureSummary" `
+      -Message "`nStep: $failureStage`nError:`n$failureSummary" `
       -EnvPath $telegramEnvPath `
       -TelegramScript $telegramScript
     throw

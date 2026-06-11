@@ -4,6 +4,15 @@
 - Created `docs/planflow-v2/README.md` and `docs/planflow-v2/team-v2-plan.md` on branch `feature/team-v2-planning` to keep team-function planning separate from the 1st-release stabilization line.
 - The new docs keep the personal MVP structure intact and outline a separate team-module direction for `teams`, `team_members`, `team_invites`, `team_events`, `projects`, `tasks`, `meeting_notes`, and `coaching_reports`.
 
+## 2026-06-11 PlanFlow deploy-by-default rule update
+- `AGENTS.md`에 Flutter/Android 코드 수정 후 별도 금지 지시가 없으면 자동으로 배포 파이프라인을 이어서 수행하도록 규칙을 추가했다.
+- 배포 파이프라인 순서(`flutter analyze` -> 관련 테스트 -> versionCode 증가 -> AAB 생성 -> Play internal 업로드 -> Telegram 알림 -> 결과 보고)와 예외 문구(`배포하지 마`, `코드만 수정해`, `검증만 해`, `SkipUpload`)를 명시했다.
+- 최종 완료 보고 형식을 `[PlanFlow 배포 완료]` 블록으로 통일하도록 적었다.
+
+## 2026-06-11 Telegram UTF-8 fix
+- `scripts/deploy-play-internal.ps1`와 `scripts/send-telegram.ps1`를 UTF-8 BOM으로 다시 저장하고, Telegram 전송은 `HttpClient + UTF-8 StringContent`로 바꿔 Windows PowerShell 5.x/7.x에서 한글이 깨지지 않도록 수정했다.
+- Telegram 전송 테스트를 실제로 한 번 보내서 helper가 `Ok=True`로 응답하는지 확인했다.
+
 ## 2026-06-11 PlanFlow deploy Telegram notification hookup
 - `scripts/deploy-play-internal.ps1`에 성공/실패 Telegram 알림 후크를 추가하고, `scripts/build-internal-aab.ps1`는 단계 상태를 임시 파일로 남겨 실패 단계 식별이 가능하도록 보강했다.
 - 새 공용 헬퍼 `scripts/send-telegram.ps1`를 추가해 `E:\FluxStudio\.env`의 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`를 읽어 sendMessage를 보내게 했다.

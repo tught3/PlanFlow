@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory = $true)]
   [string]$Title,
 
@@ -48,6 +48,7 @@ function Read-EnvValue {
 }
 
 try {
+  Add-Type -AssemblyName System.Net.Http
   [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 
   $token = Read-EnvValue -Path $EnvPath -Key 'TELEGRAM_BOT_TOKEN'
@@ -67,17 +68,24 @@ try {
     disable_web_page_preview = $true
   } | ConvertTo-Json -Compress
 
-  $response = Invoke-RestMethod `
-    -Method Post `
-    -Uri "https://api.telegram.org/bot$token/sendMessage" `
-    -ContentType 'application/json; charset=utf-8' `
-    -Body $payload `
-    -TimeoutSec 5
+  $client = [System.Net.Http.HttpClient]::new()
+  try {
+    $client.Timeout = [TimeSpan]::FromSeconds(5)
+    $content = [System.Net.Http.StringContent]::new($payload, [System.Text.Encoding]::UTF8, 'application/json')
+    $response = $client.PostAsync("https://api.telegram.org/bot$token/sendMessage", $content).GetAwaiter().GetResult()
+    $responseText = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    if (-not $response.IsSuccessStatusCode) {
+      throw "Telegram HTTP $([int]$response.StatusCode): $responseText"
+    }
 
-  return [pscustomobject]@{
-    Ok      = [bool]$response.ok
-    Skipped = $false
-    Status  = 'sent'
+    $parsed = $responseText | ConvertFrom-Json
+    return [pscustomobject]@{
+      Ok      = [bool]$parsed.ok
+      Skipped = $false
+      Status  = 'sent'
+    }
+  } finally {
+    $client.Dispose()
   }
 } catch {
   return [pscustomobject]@{
