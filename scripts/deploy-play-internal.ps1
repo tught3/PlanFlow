@@ -201,7 +201,7 @@ try {
   $aabPath = Join-Path $projectPath $aabRelativePath
   $fluxRoot = Split-Path -Parent $projectPath
   $telegramEnvPath = Join-Path $fluxRoot '.env'
-  $telegramScript = Join-Path $fluxRoot 'tools\send-telegram.ps1'
+  $telegramScript = Join-Path $projectPath 'scripts\send-telegram.ps1'
 
   Write-Host "Project key: $ProjectKey"
   Write-Host "Path: $projectPath"
