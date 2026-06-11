@@ -591,7 +591,168 @@ create policy "group_members_update_leader"
     )
   );
 
--- 4. pre_actions
+create or replace function public.is_valid_group_role_delegation_permissions(
+  permissions_input jsonb
+)
+returns boolean
+language sql
+immutable
+security definer
+set search_path = public
+as $$
+  select
+    permissions_input is not null
+    and jsonb_typeof(permissions_input) = 'array'
+    and jsonb_array_length(permissions_input) > 0
+    and not exists (
+      select 1
+      from jsonb_array_elements_text(permissions_input) as permission(permission_value)
+      where permission_value not in (
+        'create_group_event',
+        'update_group_event',
+        'cancel_group_event',
+        'view_group_dashboard'
+      )
+    );
+$$;
+
+-- 4. group_role_delegations
+create table if not exists public.group_role_delegations (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  delegator_user_id uuid not null references public.users (id) on delete cascade,
+  delegate_user_id uuid not null references public.users (id) on delete cascade,
+  permissions jsonb not null default '[]'::jsonb,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  status text not null default 'active' check (status in ('active', 'expired', 'cancelled')),
+  cancelled_at timestamptz,
+  cancelled_by uuid references public.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint group_role_delegations_time_check check (ends_at > starts_at),
+  constraint group_role_delegations_permissions_check check (
+    jsonb_typeof(permissions) = 'array'
+    and jsonb_array_length(permissions) > 0
+    and public.is_valid_group_role_delegation_permissions(permissions)
+  )
+);
+
+create index if not exists group_role_delegations_group_id_idx
+  on public.group_role_delegations (group_id);
+
+create index if not exists group_role_delegations_delegator_user_id_idx
+  on public.group_role_delegations (delegator_user_id);
+
+create index if not exists group_role_delegations_delegate_user_id_idx
+  on public.group_role_delegations (delegate_user_id);
+
+create index if not exists group_role_delegations_status_idx
+  on public.group_role_delegations (status);
+
+create index if not exists group_role_delegations_starts_at_idx
+  on public.group_role_delegations (starts_at);
+
+create index if not exists group_role_delegations_ends_at_idx
+  on public.group_role_delegations (ends_at);
+
+create index if not exists group_role_delegations_group_delegate_status_idx
+  on public.group_role_delegations (group_id, delegate_user_id, status);
+
+create unique index if not exists group_role_delegations_group_delegate_active_uidx
+  on public.group_role_delegations (group_id, delegate_user_id)
+  where status = 'active';
+
+create or replace function public.prevent_group_role_delegation_immutable_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.group_id is distinct from old.group_id
+    or new.delegator_user_id is distinct from old.delegator_user_id
+    or new.delegate_user_id is distinct from old.delegate_user_id
+    or new.permissions is distinct from old.permissions
+    or new.starts_at is distinct from old.starts_at
+    or new.ends_at is distinct from old.ends_at
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'group_role_delegations immutable fields cannot change';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists group_role_delegations_set_updated_at on public.group_role_delegations;
+create trigger group_role_delegations_set_updated_at
+  before update on public.group_role_delegations
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists group_role_delegations_prevent_immutable_changes on public.group_role_delegations;
+create trigger group_role_delegations_prevent_immutable_changes
+  before update on public.group_role_delegations
+  for each row execute function public.prevent_group_role_delegation_immutable_changes();
+
+alter table public.group_role_delegations enable row level security;
+
+grant select, insert, update on table public.group_role_delegations to authenticated;
+
+drop policy if exists "group_role_delegations_select_access" on public.group_role_delegations;
+drop policy if exists "group_role_delegations_insert_leader" on public.group_role_delegations;
+drop policy if exists "group_role_delegations_update_cancel_access" on public.group_role_delegations;
+create policy "group_role_delegations_select_access"
+  on public.group_role_delegations
+  for select
+  using (
+    delegator_user_id = auth.uid()
+    or delegate_user_id = auth.uid()
+    or exists (
+      select 1
+      from public.groups
+      where groups.id = group_role_delegations.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+  );
+create policy "group_role_delegations_insert_leader"
+  on public.group_role_delegations
+  for insert
+  with check (
+    status = 'active'
+    and delegator_user_id = auth.uid()
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_role_delegations.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+  );
+create policy "group_role_delegations_update_cancel_access"
+  on public.group_role_delegations
+  for update
+  using (
+    status = 'active'
+    and (
+      delegator_user_id = auth.uid()
+      or exists (
+        select 1
+        from public.groups
+        where groups.id = group_role_delegations.group_id
+          and groups.status = 'active'
+          and public.is_group_leader(groups.id, auth.uid())
+      )
+    )
+  )
+  with check (
+    status = 'cancelled'
+    and cancelled_by = auth.uid()
+    and cancelled_at is not null
+  );
+
+-- 5. pre_actions
 create table if not exists public.pre_actions (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events (id) on delete cascade,

@@ -19,6 +19,23 @@ String? optionalStringValue(Object? value) {
   return text.isEmpty ? null : text;
 }
 
+List<String> stringListValue(Object? value) {
+  if (value == null) {
+    return const <String>[];
+  }
+  if (value is Iterable) {
+    return value
+        .map((item) => item.toString())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+  final text = stringValue(value);
+  if (text.isEmpty) {
+    return const <String>[];
+  }
+  return <String>[text];
+}
+
 DateTime? dateTimeValue(Object? value) {
   if (value == null) {
     return null;
