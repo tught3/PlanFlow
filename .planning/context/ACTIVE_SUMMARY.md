@@ -1,4 +1,4 @@
-# ACTIVE SUMMARY
+﻿# ACTIVE SUMMARY
 
 ## 2026-06-11 PlanFlow deploy-by-default rule confirmed
 - `AGENTS.md`에 Flutter/Android 코드 변경 후 별도 금지 문구가 없으면 `analyze -> tests -> versionCode bump -> Play internal upload -> Telegram`까지 자동으로 이어가도록 규칙을 반영했다.
@@ -1674,3 +1674,8 @@
 - 검증 통과: `scripts/flutter-local.ps1 test test/app_home_widget_route_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_input_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_action_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:33527 install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:33527 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
   - 이번 턴에서 이벤트 편집 저장 버튼을 더 크고 색이 있는 버튼으로 바꿨고, 음성 날짜 파서에 "28일" 단독 입력을 현재 달로 해석하는 경로를 추가했다. 또한 `VoiceScheduleStructureService`의 날짜 범위 해석이 시간 범위와 충돌하지 않도록 경계를 보강했다.
   - 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_date_range_parser_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/event_edit_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/voice_schedule_structure_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.103:45819 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.103:45819 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-06-11 달력 위젯/일정탭 가독성 정리
+- 월간 위젯과 앱 내 calendar 탭의 일정 렌더링을 packed cell 방식으로 맞춰, 남는 공간이 있으면 실제 일정을 우선 채우고 정말 부족할 때만 `+n`을 보여주도록 정리했다.
+- 연속 일정은 위젯처럼 이어지는 밴드로 보이게 바꾸고, 공휴일 날짜는 빨간색으로 강조했다.
+- 분석/테스트/디버그 빌드와 실기기 설치까지 확인해 가독성 회귀를 막았다.
