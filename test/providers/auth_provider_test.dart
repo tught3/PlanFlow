@@ -148,6 +148,28 @@ void main() {
     await service.dispose();
   });
 
+  test('allows login redirect after startup recovery finds no session',
+      () async {
+    final service = _FakeAuthService(currentSession: null);
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+
+    final resolved = await provider.waitForInitialSessionResolution(
+      timeout: const Duration(seconds: 3),
+    );
+
+    expect(resolved, isTrue);
+    expect(provider.hasResolvedInitialSession, isTrue);
+    expect(provider.hasAttemptedStartupSync, isTrue);
+    expect(provider.sessionStatus, AuthSessionStatus.signedOut);
+    expect(provider.isSignedIn, isFalse);
+    expect(service.refreshCount, 1);
+
+    provider.dispose();
+    await service.dispose();
+  });
+
   test('marks cached user without active session as needing reauth', () async {
     final service = _FakeAuthService(
       currentSession: null,

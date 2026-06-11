@@ -4,6 +4,17 @@
 - Created `docs/planflow-v2/README.md` and `docs/planflow-v2/team-v2-plan.md` on branch `feature/team-v2-planning` to keep team-function planning separate from the 1st-release stabilization line.
 - The new docs keep the personal MVP structure intact and outline a separate team-module direction for `teams`, `team_members`, `team_invites`, `team_events`, `projects`, `tasks`, `meeting_notes`, and `coaching_reports`.
 
+## 2026-06-11 PlanFlow deploy logging and Play upload follow-up
+- `scripts/build-internal-aab.ps1`에 analyze 로그 파일과 오류 excerpt를 남기는 경로를 추가해, 실패 시 `build/logs/analyze-*.log`와 실제 오류 줄이 콘솔과 Telegram에 함께 보이도록 보강했다.
+- `scripts/deploy-play-internal.ps1`는 analyze 실패 시 로그 경로와 excerpt를 읽어 Telegram 실패 메시지에 넣고, `bump-version-code.ps1`의 `NewVersion` 반환값이 없어도 `pubspec.yaml` 버전을 fallback으로 읽도록 안전하게 처리했다.
+- `flutter_local_notifications_platform_interface`를 dev dependency로 추가해 `test/screens/shell_swipe_gesture_test.dart`의 analyzer 경고를 해소했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, `E:\FluxStudio\tools\deploy-play.bat planflow` 실행 성공, `pubspec.yaml` 버전은 `1.1.0+15`로 증가했다. 실제 Play Console 반영/텔레그램 수신 여부는 이후 장치와 콘솔에서 추가 확인이 필요하다.
+
+## 2026-06-11 TASK_20260608_030311 로그인 startup redirect 복구
+- AuthProvider startup bootstrap과 Supabase 미준비 경로에서 `_hasAttemptedStartupSync`를 true로 표시해, 세션 복구 결과가 signedOut일 때 라우터가 로그인 redirect를 계속 막지 않도록 보정했다.
+- `test/providers/auth_provider_test.dart`에 세션이 없는 startup recovery 이후 로그인 redirect가 가능해야 하는 회귀 테스트를 추가했다.
+- 검증: `dart format lib/providers/auth_provider.dart test/providers/auth_provider_test.dart`, `dart analyze lib/providers/auth_provider.dart test/providers/auth_provider_test.dart`, `git diff --check` 통과. `scripts/flutter-local.ps1`와 FluxOS preflight/claim은 Python launcher/daemon 권한 문제로 실패했고, 원시 `flutter test/analyze`는 출력 없이 타임아웃되어 완료하지 못했다.
+
 ## 2026-06-11 PlanFlow deploy-by-default rule update
 - `AGENTS.md`에 Flutter/Android 코드 수정 후 별도 금지 지시가 없으면 자동으로 배포 파이프라인을 이어서 수행하도록 규칙을 추가했다.
 - 배포 파이프라인 순서(`flutter analyze` -> 관련 테스트 -> versionCode 증가 -> AAB 생성 -> Play internal 업로드 -> Telegram 알림 -> 결과 보고)와 예외 문구(`배포하지 마`, `코드만 수정해`, `검증만 해`, `SkipUpload`)를 명시했다.

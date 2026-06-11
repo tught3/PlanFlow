@@ -107,6 +107,7 @@ class AuthProvider extends ChangeNotifier {
     }
     _started = true;
     if (!AppEnv.isSupabaseReady) {
+      _hasAttemptedStartupSync = true;
       _initialSessionResolvedCompleter ??= Completer<void>();
       _completeInitialSessionResolution();
       _setSessionStatus(AuthSessionStatus.signedOut, notify: false);
@@ -541,6 +542,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _bootstrapInitialSession() async {
     final service = _service;
+    _hasAttemptedStartupSync = true;
     var snapshotUser = service.currentSession?.user ?? service.currentUser;
     if (snapshotUser == null) {
       try {
@@ -599,9 +601,8 @@ class AuthProvider extends ChangeNotifier {
     // 타임아웃 발생 시 TimeoutException이 throw되어 호출부 catch 블록에서 처리됨.
     // _bootstrapInitialSession catch → _syncProfileAndApplyUser(resolvesInitialSession: true)
     // 로 이어져 hasResolvedInitialSession = true가 보장됨.
-    final refresh = service.refreshSession().timeout(
-      const Duration(seconds: 10),
-    );
+    final refresh =
+        service.refreshSession().timeout(const Duration(seconds: 10));
     _refreshInFlight = refresh;
     return refresh.whenComplete(() {
       if (identical(_refreshInFlight, refresh)) {
