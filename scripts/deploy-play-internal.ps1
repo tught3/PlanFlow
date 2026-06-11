@@ -153,11 +153,17 @@ function Get-AnalyzeFailureDetails {
   param([Parameter(Mandatory = $true)][string]$Text)
 
   $logPath = $null
+  $issueText = $null
   $excerptLines = @()
 
   $logMatch = [regex]::Match($Text, '(?m)^Analyze log:\s*(.+)$')
   if ($logMatch.Success) {
     $logPath = $logMatch.Groups[1].Value.Trim()
+  }
+
+  $issueMatch = [regex]::Match($Text, '(?ms)^Analyze issue:\s*(.+?)(?:`nAnalyze excerpt:|$)')
+  if ($issueMatch.Success) {
+    $issueText = $issueMatch.Groups[1].Value.Trim()
   }
 
   $excerptMatch = [regex]::Match($Text, '(?ms)^Analyze excerpt:\s*(.+)$')
@@ -170,7 +176,30 @@ function Get-AnalyzeFailureDetails {
 
   return [pscustomobject]@{
     LogPath     = $logPath
+    IssueText   = $issueText
     ExcerptText = if ($excerptLines -and $excerptLines.Count -gt 0) { $excerptLines -join "`n" } else { $null }
+  }
+}
+
+function Get-BuildFailureDetails {
+  param([Parameter(Mandatory = $true)][string]$Text)
+
+  $logPath = $null
+  $issueText = $null
+
+  $logMatch = [regex]::Match($Text, '(?m)^Build log:\s*(.+)$')
+  if ($logMatch.Success) {
+    $logPath = $logMatch.Groups[1].Value.Trim()
+  }
+
+  $issueMatch = [regex]::Match($Text, '(?ms)^Build issue:\s*(.+?)(?:`nBuild excerpt:|$)')
+  if ($issueMatch.Success) {
+    $issueText = $issueMatch.Groups[1].Value.Trim()
+  }
+
+  return [pscustomobject]@{
+    LogPath   = $logPath
+    IssueText = $issueText
   }
 }
 
@@ -332,6 +361,9 @@ try {
       $analyzeDetails = Get-AnalyzeFailureDetails -Text $errorText
       if ($analyzeDetails.LogPath) {
         $failureMessage = "Step: analyze`nLog: $($analyzeDetails.LogPath)"
+        if ($analyzeDetails.IssueText) {
+          $failureMessage += "`nIssue:`n$($analyzeDetails.IssueText)"
+        }
         if ($analyzeDetails.ExcerptText) {
           $failureMessage += "`n`n$($analyzeDetails.ExcerptText)"
         } else {
@@ -342,6 +374,23 @@ try {
         if ($analyzeDetails.ExcerptText) {
           Write-Host 'Analyze excerpt:'
           $analyzeDetails.ExcerptText -split "`r?`n" | ForEach-Object { Write-Host $_ }
+        }
+      }
+    } elseif ($failureStage -eq 'build') {
+      $buildDetails = Get-BuildFailureDetails -Text $errorText
+      if ($buildDetails.LogPath) {
+        $failureMessage = "Step: build`nLog: $($buildDetails.LogPath)"
+        if ($buildDetails.IssueText) {
+          $failureMessage += "`nIssue:`n$($buildDetails.IssueText)"
+        } else {
+          $failureMessage += "`nIssue:`n실제 실패 원인을 로그에서 찾지 못했습니다. 전체 로그 확인 필요."
+        }
+        Write-Host ''
+        Write-Host "Build log: $($buildDetails.LogPath)"
+        if ($buildDetails.IssueText) {
+          Write-Host "Build issue: $($buildDetails.IssueText)"
+        } else {
+          Write-Host 'Build issue: 실제 실패 원인을 로그에서 찾지 못했습니다. 전체 로그 확인 필요.'
         }
       }
     }

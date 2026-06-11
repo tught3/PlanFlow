@@ -19,6 +19,7 @@ $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $FlutterLocal = Join-Path $PSScriptRoot 'flutter-local.ps1'
 $PubspecPath = Join-Path $WorkspaceRoot 'pubspec.yaml'
 $AabPath = Join-Path $WorkspaceRoot 'build\app\outputs\bundle\release\app-release.aab'
+$DeployLogDir = Join-Path $WorkspaceRoot '.deploy-logs'
 
 function Write-Stage([string]$Message) {
   Write-Host ""
@@ -33,6 +34,19 @@ function Write-DeployStatus {
 
   $encoding = [System.Text.UTF8Encoding]::new($false)
   [System.IO.File]::WriteAllText($StatusPath, $Stage, $encoding)
+}
+
+function Ensure-DeployLogDir {
+  if (-not (Test-Path -LiteralPath $DeployLogDir)) {
+    New-Item -ItemType Directory -Path $DeployLogDir -Force | Out-Null
+  }
+}
+
+function New-DeployLogPath {
+  param([Parameter(Mandatory = $true)][string]$Stage)
+  Ensure-DeployLogDir
+  $stamp = [DateTime]::Now.ToString('yyyyMMdd-HHmmss')
+  return Join-Path $DeployLogDir ("{0}-{1}-{2}.log" -f $Stage, $stamp, ([guid]::NewGuid().ToString('N')))
 }
 
 function New-LogExcerpt {
@@ -72,6 +86,134 @@ function New-LogExcerpt {
     $endIndex = $startIndex + $MaxLines - 1
   }
   return $lines[$startIndex..$endIndex]
+}
+
+function Get-AnalyzeIssueLine {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return $null
+  }
+
+  $encoding = [System.Text.UTF8Encoding]::new($false)
+  $lines = [System.IO.File]::ReadAllLines($Path, $encoding)
+  foreach ($line in $lines) {
+    if ($line -match '^\s*(info|warning|error)\s+-\s+.+\s+-\s+.+:\d+:\d+\s+-\s+.+$') {
+      return $line.Trim()
+    }
+  }
+
+  foreach ($line in $lines) {
+    if ($line -match '^\s*(info|warning|error)\s+-\s+') {
+      return $line.Trim()
+    }
+  }
+
+  return $null
+}
+
+function Get-BuildFailureExcerpt {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return [pscustomobject]@{
+      PrimaryLine = $null
+      ExcerptText = $null
+    }
+  }
+
+  $encoding = [System.Text.UTF8Encoding]::new($false)
+  $lines = [System.IO.File]::ReadAllLines($Path, $encoding)
+  if (-not $lines -or $lines.Count -eq 0) {
+    return [pscustomobject]@{
+      PrimaryLine = $null
+      ExcerptText = $null
+    }
+  }
+
+  $fatalPatterns = @(
+    '^\s*FAILURE:\s+Build failed with an exception\.\s*$',
+    '^\s*\*\s+What went wrong:\s*$',
+    '^\s*\*\s+Try:\s*$',
+    '^\s*Execution failed for task\s+',
+    '^\s*> Task .+ FAILED\s*$',
+    '^\s*Caused by:\s*'
+  )
+
+  $startIndex = $null
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    $line = $lines[$i]
+    $isFatal = $false
+    foreach ($pattern in $fatalPatterns) {
+      if ($line -match $pattern) {
+        $isFatal = $true
+        break
+      }
+    }
+    if ($isFatal) {
+      $startIndex = [Math]::Max(0, $i - 4)
+      break
+    }
+  }
+
+  if ($null -eq $startIndex) {
+    foreach ($i in 0..($lines.Count - 1)) {
+      $line = $lines[$i]
+      if ($line -match '^\s*error:\s+' -or $line -match '^[^:]+:\d+:\d+:\s+error:\s+' -or $line -match '^\s*Exception in thread\s+\"') {
+        $startIndex = [Math]::Max(0, $i - 4)
+        break
+      }
+    }
+  }
+
+  if ($null -eq $startIndex) {
+    return [pscustomobject]@{
+      PrimaryLine = $null
+      ExcerptText = $null
+    }
+  }
+
+  $endIndex = [Math]::Min($lines.Count - 1, $startIndex + 40)
+  if (($endIndex - $startIndex + 1) -gt 50) {
+    $endIndex = $startIndex + 49
+  }
+
+  $excerpt = $lines[$startIndex..$endIndex]
+  $primaryLine = $null
+  foreach ($line in $excerpt) {
+    if ([string]::IsNullOrWhiteSpace($line)) {
+      continue
+    }
+    if ($line -match '^\s*(Note:|warning:|Warning:|uses unchecked or unsafe operations|uses deprecated API|unchecked or unsafe operations)') {
+      continue
+    }
+    if ($line -match '^\s*FAILURE:\s+Build failed with an exception\.\s*$') {
+      continue
+    }
+    if ($line -match '^\s*\*\s+What went wrong:\s*$') {
+      continue
+    }
+    if ($line -match '^\s*\*\s+Try:\s*$') {
+      continue
+    }
+    if ($line -match '^\s*> Task .+ FAILED\s*$') {
+      continue
+    }
+    $primaryLine = $line.Trim()
+    break
+  }
+
+  if ([string]::IsNullOrWhiteSpace($primaryLine)) {
+    return [pscustomobject]@{
+      PrimaryLine = $null
+      ExcerptText = $null
+    }
+  }
+
+  return [pscustomobject]@{
+    PrimaryLine = $primaryLine
+    ExcerptText = ($excerpt -join "`n")
+  }
 }
 
 function Invoke-Checked([scriptblock]$Action, [string]$Label) {
@@ -122,20 +264,23 @@ try {
 
   Write-DeployStatus 'analyze'
   Write-Stage "Running analyze"
-  $analyzeLogDir = Join-Path $WorkspaceRoot 'build\logs'
-  if (-not (Test-Path -LiteralPath $analyzeLogDir)) {
-    New-Item -ItemType Directory -Path $analyzeLogDir -Force | Out-Null
-  }
-  $analyzeLogPath = Join-Path $analyzeLogDir ("analyze-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $analyzeLogPath = New-DeployLogPath -Stage 'analyze'
   $analyzeOutput = & $FlutterLocal analyze --no-pub 2>&1 | Tee-Object -FilePath $analyzeLogPath
   if ($LASTEXITCODE -ne 0) {
+    $analyzeIssueLine = Get-AnalyzeIssueLine -Path $analyzeLogPath
     $excerptLines = New-LogExcerpt -Path $analyzeLogPath
     $excerptText = if ($excerptLines -and $excerptLines.Count -gt 0) { $excerptLines -join "`n" } else { 'No analyze excerpt available.' }
     Write-Host ''
     Write-Host "Analyze log: $analyzeLogPath"
+    if ($analyzeIssueLine) {
+      Write-Host "Analyze issue: $analyzeIssueLine"
+    }
     Write-Host 'Analyze excerpt:'
     $excerptLines | ForEach-Object { Write-Host $_ }
-    throw "Step: analyze`nAnalyze log: $analyzeLogPath`nAnalyze excerpt:`n$excerptText"
+    if ($analyzeIssueLine) {
+      throw "Step: analyze`nAnalyze log: $analyzeLogPath`nAnalyze issue: $analyzeIssueLine`nAnalyze excerpt:`n$excerptText"
+    }
+    throw "Step: analyze`nAnalyze log: $analyzeLogPath`nAnalyze issue: 실제 오류를 로그에서 찾지 못했습니다. 전체 로그 확인 필요.`nAnalyze excerpt:`n$excerptText"
   }
 
   Write-DeployStatus 'tests'
@@ -149,7 +294,20 @@ try {
 
   Write-DeployStatus 'build'
   Write-Stage "Building release appbundle"
-  Invoke-Checked { & $FlutterLocal build appbundle --release --no-pub } 'scripts/flutter-local.ps1 build appbundle --release --no-pub'
+  $buildLogPath = New-DeployLogPath -Stage 'build'
+  $buildOutput = & $FlutterLocal build appbundle --release --no-pub 2>&1 | Tee-Object -FilePath $buildLogPath
+  if ($LASTEXITCODE -ne 0) {
+    $buildDetails = Get-BuildFailureExcerpt -Path $buildLogPath
+    Write-Host ''
+    Write-Host "Build log: $buildLogPath"
+    if ($buildDetails.PrimaryLine) {
+      Write-Host "Build issue: $($buildDetails.PrimaryLine)"
+      Write-Host 'Build excerpt:'
+      $buildDetails.ExcerptText -split "`r?`n" | ForEach-Object { Write-Host $_ }
+      throw "Step: build`nBuild log: $buildLogPath`nBuild issue: $($buildDetails.PrimaryLine)`nBuild excerpt:`n$($buildDetails.ExcerptText)"
+    }
+    throw "Step: build`nBuild log: $buildLogPath`nBuild issue: 실제 실패 원인을 로그에서 찾지 못했습니다. 전체 로그 확인 필요."
+  }
 
   if (-not (Test-Path -LiteralPath $AabPath)) {
     throw "AAB was not generated at: $AabPath"
