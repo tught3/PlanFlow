@@ -948,7 +948,87 @@ create policy "group_events_cancel_access"
     and cancelled_by = auth.uid()
   );
 
--- 6. pre_actions
+-- 6. group_backups
+create table if not exists public.group_backups (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  backup_type text not null check (backup_type in ('archive', 'delete')),
+  snapshot jsonb not null default '{}'::jsonb,
+  created_by uuid not null references public.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  restored_at timestamptz,
+  restored_by uuid references public.users (id) on delete set null
+);
+
+create index if not exists group_backups_group_id_idx
+  on public.group_backups (group_id);
+
+create index if not exists group_backups_created_by_idx
+  on public.group_backups (created_by);
+
+create index if not exists group_backups_restored_by_idx
+  on public.group_backups (restored_by);
+
+create index if not exists group_backups_created_at_idx
+  on public.group_backups (created_at);
+
+create or replace function public.prevent_group_backup_immutable_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.group_id is distinct from old.group_id
+    or new.backup_type is distinct from old.backup_type
+    or new.snapshot is distinct from old.snapshot
+    or new.created_by is distinct from old.created_by
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'group_backups immutable fields cannot change';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists group_backups_prevent_immutable_changes on public.group_backups;
+create trigger group_backups_prevent_immutable_changes
+  before update on public.group_backups
+  for each row execute function public.prevent_group_backup_immutable_changes();
+
+alter table public.group_backups enable row level security;
+
+grant select, insert, update on table public.group_backups to authenticated;
+
+drop policy if exists "group_backups_select_leader" on public.group_backups;
+drop policy if exists "group_backups_insert_leader" on public.group_backups;
+drop policy if exists "group_backups_update_restore_leader" on public.group_backups;
+create policy "group_backups_select_leader"
+  on public.group_backups
+  for select
+  using (
+    public.is_group_leader(group_id, auth.uid())
+  );
+create policy "group_backups_insert_leader"
+  on public.group_backups
+  for insert
+  with check (
+    created_by = auth.uid()
+    and public.is_group_leader(group_id, auth.uid())
+  );
+create policy "group_backups_update_restore_leader"
+  on public.group_backups
+  for update
+  using (
+    public.is_group_leader(group_id, auth.uid())
+  )
+  with check (
+    restored_by = auth.uid()
+    and restored_at is not null
+  );
+
+-- 7. pre_actions
 create table if not exists public.pre_actions (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events (id) on delete cascade,

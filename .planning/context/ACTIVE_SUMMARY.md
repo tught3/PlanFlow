@@ -1,5 +1,10 @@
 # ACTIVE SUMMARY
 
+## 2026-06-11 PlanFlow V2 group_backups implementation
+- Added `public.group_backups` and its RLS/helper layer to `supabase/schema.sql`, including archive backup creation, restore marking, and a convenience archive-with-backup flow.
+- Added `GroupBackupModel`, `GroupBackupRepository`, and a focused group backup model regression test under `test/features/groups/`.
+- Verification: `flutter analyze --no-pub`, `flutter test test/features/groups/group_backup_model_test.dart --no-pub`, `flutter test --no-pub`, and `git diff --check` all passed.
+
 ## 2026-06-11 PlanFlow V2 group_events implementation
 - Added `public.has_group_delegated_permission` and the `public.group_events` table/RLS slice to `supabase/schema.sql` for the V2 team-event layer.
 - Added `GroupEventModel` and `GroupEventRepository` under `lib/features/groups/` to match the new group event schema.
