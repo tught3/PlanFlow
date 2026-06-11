@@ -425,6 +425,104 @@ create trigger group_invites_prevent_immutable_changes
   before update on public.group_invites
   for each row execute function public.prevent_group_invite_immutable_changes();
 
+create or replace function public.accept_group_invite(invite_id_input uuid)
+returns public.group_invites
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  invite_row public.group_invites%rowtype;
+  member_id uuid;
+  updated_invite public.group_invites%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  select *
+    into invite_row
+    from public.group_invites
+   where id = invite_id_input
+   for update;
+
+  if not found then
+    raise exception 'group invite not found';
+  end if;
+
+  if invite_row.status <> 'pending' then
+    raise exception 'pending invite만 수락할 수 있습니다.';
+  end if;
+
+  if invite_row.expires_at <= now() then
+    raise exception '만료된 초대는 수락할 수 없습니다.';
+  end if;
+
+  if not public.is_group_invite_target(
+    invite_row.invited_user_id,
+    invite_row.invited_email,
+    invite_row.invited_invite_code
+  ) then
+    raise exception '내 초대만 처리할 수 있습니다.';
+  end if;
+
+  if not exists (
+    select 1
+      from public.groups
+     where id = invite_row.group_id
+       and status = 'active'
+  ) then
+    raise exception '활성화된 그룹만 초대 수락이 가능합니다.';
+  end if;
+
+  if exists (
+    select 1
+      from public.group_members
+     where group_id = invite_row.group_id
+       and user_id = auth.uid()
+       and status = 'active'
+  ) then
+    raise exception '이미 활성 멤버입니다.';
+  end if;
+
+  insert into public.group_members (
+    group_id,
+    user_id,
+    role,
+    status,
+    joined_at,
+    created_at,
+    updated_at
+  )
+  values (
+    invite_row.group_id,
+    auth.uid(),
+    'member',
+    'active',
+    now(),
+    now(),
+    now()
+  )
+  on conflict (group_id, user_id) do nothing
+  returning id into member_id;
+
+  if member_id is null then
+    raise exception '이미 활성 멤버입니다.';
+  end if;
+
+  update public.group_invites
+     set status = 'accepted',
+         accepted_at = now(),
+         acted_by = auth.uid()
+   where id = invite_row.id
+   returning * into updated_invite;
+
+  return updated_invite;
+end;
+$$;
+
+grant execute on function public.accept_group_invite(uuid) to authenticated;
+
 alter table public.group_invites enable row level security;
 
 grant select, insert, update on table public.group_invites to authenticated;

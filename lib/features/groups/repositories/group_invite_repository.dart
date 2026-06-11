@@ -29,10 +29,18 @@ abstract class GroupInviteRepository {
 }
 
 class SupabaseGroupInviteRepository extends GroupInviteRepository {
-  SupabaseGroupInviteRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+  SupabaseGroupInviteRepository({
+    SupabaseClient? client,
+    String? Function()? currentUserIdProvider,
+    Future<Map<String, dynamic>> Function(String inviteId)? acceptInviteRpc,
+  })  : _client = client ?? Supabase.instance.client,
+        _currentUserIdProvider = currentUserIdProvider,
+        _acceptInviteRpc = acceptInviteRpc;
 
   final SupabaseClient _client;
+  final String? Function()? _currentUserIdProvider;
+  final Future<Map<String, dynamic>> Function(String inviteId)?
+      _acceptInviteRpc;
 
   @override
   Future<GroupInviteModel> createInviteByInviteCode({
@@ -40,8 +48,8 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
     required String inviteCode,
   }) async {
     final normalizedInviteCode = inviteCode.trim().toLowerCase();
-    final currentUser = _requireCurrentUser();
-    await _ensureLeaderOfGroup(groupId, currentUser.id);
+    final currentUserId = _requireCurrentUserId();
+    await _ensureLeaderOfGroup(groupId, currentUserId);
     final targetUser = await _fetchUserByInviteCode(normalizedInviteCode);
     if (targetUser == null) {
       throw StateError('초대 코드를 찾을 수 없습니다.');
@@ -55,7 +63,7 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
             'invited_user_id': targetUser['id'],
             'invited_email': targetUser['email'],
             'invited_invite_code': normalizedInviteCode,
-            'invited_by': currentUser.id,
+            'invited_by': currentUserId,
             'status': 'pending',
             'expires_at': DateTime.now()
                 .toUtc()
@@ -74,8 +82,8 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
     required String email,
   }) async {
     final normalizedEmail = email.trim().toLowerCase();
-    final currentUser = _requireCurrentUser();
-    await _ensureLeaderOfGroup(groupId, currentUser.id);
+    final currentUserId = _requireCurrentUserId();
+    await _ensureLeaderOfGroup(groupId, currentUserId);
     final targetUser = await _fetchUserByEmail(normalizedEmail);
     if (targetUser != null) {
       await _ensureUserIsNotActiveMember(groupId, targetUser['id'] as String);
@@ -88,7 +96,7 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
             'invited_user_id': targetUser?['id'],
             'invited_email': normalizedEmail,
             'invited_invite_code': targetUser?['invite_code'],
-            'invited_by': currentUser.id,
+            'invited_by': currentUserId,
             'status': 'pending',
             'expires_at': DateTime.now()
                 .toUtc()
@@ -103,12 +111,12 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
 
   @override
   Future<List<GroupInviteModel>> getPendingInvitesForMe() async {
-    final currentUser = _requireCurrentUser();
+    final currentUserId = _requireCurrentUserId();
     final profile = await _fetchCurrentUserProfile();
 
     final rows = <Map<String, dynamic>>[];
     rows.addAll(
-      await _fetchPendingInvitesByColumn('invited_user_id', currentUser.id),
+      await _fetchPendingInvitesByColumn('invited_user_id', currentUserId),
     );
     if (profile['email'] != null &&
         profile['email'].toString().trim().isNotEmpty) {
@@ -142,51 +150,24 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
 
   @override
   Future<GroupInviteModel> acceptInvite(String inviteId) async {
-    final currentUser = _requireCurrentUser();
-    final profile = await _fetchCurrentUserProfile();
-    final invite = await _fetchInvite(inviteId);
-    _ensureTargetMatchesCurrentUser(invite, currentUser.id, profile);
-    await _ensureUserIsNotActiveMember(invite.groupId, currentUser.id);
-
-    final updated = await _client
-        .from('group_invites')
-        .update(
-          <String, dynamic>{
-            'status': 'accepted',
-            'accepted_at': DateTime.now().toUtc().toIso8601String(),
-            'acted_by': currentUser.id,
-          },
-        )
-        .eq('id', inviteId)
-        .select()
-        .single();
-
-    await _client.from('group_members').insert(
-      <String, dynamic>{
-        'group_id': invite.groupId,
-        'user_id': currentUser.id,
-        'role': 'member',
-        'status': 'active',
-        'joined_at': DateTime.now().toUtc().toIso8601String(),
-      },
-    );
-
-    return GroupInviteModel.fromJson(_rowAsJson(updated));
+    _requireCurrentUserId();
+    final updated = await (_acceptInviteRpc ?? _acceptInviteWithRpc)(inviteId);
+    return GroupInviteModel.fromJson(updated);
   }
 
   @override
   Future<GroupInviteModel> rejectInvite(String inviteId) async {
-    final currentUser = _requireCurrentUser();
+    final currentUserId = _requireCurrentUserId();
     final profile = await _fetchCurrentUserProfile();
     final invite = await _fetchInvite(inviteId);
-    _ensureTargetMatchesCurrentUser(invite, currentUser.id, profile);
+    _ensureTargetMatchesCurrentUser(invite, currentUserId, profile);
     final updated = await _client
         .from('group_invites')
         .update(
           <String, dynamic>{
             'status': 'rejected',
             'rejected_at': DateTime.now().toUtc().toIso8601String(),
-            'acted_by': currentUser.id,
+            'acted_by': currentUserId,
           },
         )
         .eq('id', inviteId)
@@ -197,16 +178,16 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
 
   @override
   Future<GroupInviteModel> cancelInvite(String inviteId) async {
-    final currentUser = _requireCurrentUser();
+    final currentUserId = _requireCurrentUserId();
     final invite = await _fetchInvite(inviteId);
-    await _ensureLeaderOfGroup(invite.groupId, currentUser.id);
+    await _ensureLeaderOfGroup(invite.groupId, currentUserId);
     final updated = await _client
         .from('group_invites')
         .update(
           <String, dynamic>{
             'status': 'cancelled',
             'cancelled_at': DateTime.now().toUtc().toIso8601String(),
-            'acted_by': currentUser.id,
+            'acted_by': currentUserId,
           },
         )
         .eq('id', inviteId)
@@ -215,20 +196,31 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
     return GroupInviteModel.fromJson(_rowAsJson(updated));
   }
 
-  User _requireCurrentUser() {
-    final user = _client.auth.currentUser;
-    if (user == null) {
+  String _requireCurrentUserId() {
+    final currentUserId =
+        _currentUserIdProvider?.call() ?? _client.auth.currentUser?.id;
+    if (currentUserId == null || currentUserId.trim().isEmpty) {
       throw StateError('로그인이 필요합니다.');
     }
-    return user;
+    return currentUserId;
+  }
+
+  Future<Map<String, dynamic>> _acceptInviteWithRpc(String inviteId) async {
+    final response = await _client
+        .rpc('accept_group_invite', params: <String, dynamic>{
+          'invite_id_input': inviteId,
+        })
+        .select()
+        .single();
+    return _rowAsJson(response);
   }
 
   Future<Map<String, dynamic>> _fetchCurrentUserProfile() async {
-    final currentUser = _requireCurrentUser();
+    final currentUserId = _requireCurrentUserId();
     final response = await _client
         .from('users')
         .select('id,email,invite_code')
-        .eq('id', currentUser.id)
+        .eq('id', currentUserId)
         .single();
     return _rowAsJson(response);
   }
