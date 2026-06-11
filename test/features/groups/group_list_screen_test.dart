@@ -3,8 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:planflow/features/groups/models/group_member_model.dart';
+import 'package:planflow/features/groups/models/group_invite_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
 import 'package:planflow/features/groups/providers/group_context_provider.dart';
+import 'package:planflow/features/groups/providers/group_invite_provider.dart';
+import 'package:planflow/features/groups/repositories/group_invite_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/features/groups/screens/group_list_screen.dart';
 
@@ -56,6 +59,44 @@ class FakeGroupRepository extends GroupRepository {
   }
 }
 
+class FakeGroupInviteRepository extends GroupInviteRepository {
+  @override
+  Future<GroupInviteModel> acceptInvite(String inviteId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupInviteModel> cancelInvite(String inviteId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupInviteModel> createInviteByEmail({
+    required String groupId,
+    required String email,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupInviteModel> createInviteByInviteCode({
+    required String groupId,
+    required String inviteCode,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<GroupInviteModel>> getPendingInvitesForMe() async {
+    return const <GroupInviteModel>[];
+  }
+
+  @override
+  Future<GroupInviteModel> rejectInvite(String inviteId) {
+    throw UnimplementedError();
+  }
+}
+
 GroupModel _group({
   required String id,
   required String name,
@@ -102,14 +143,27 @@ void main() {
         membersByGroupId: const <String, List<GroupMemberModel>>{},
       ),
     );
+    final inviteProvider = GroupInviteProvider(
+      repository: FakeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+      },
+    );
 
     await tester.pumpWidget(
       MaterialApp(
         home: GroupListScreen(
           provider: provider,
+          inviteProvider: inviteProvider,
           currentUserIdOverride: 'user-1',
         ),
       ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('group-list-create-button')),
+      200,
     );
     await tester.pumpAndSettle();
 
@@ -156,14 +210,27 @@ void main() {
         },
       ),
     );
+    final inviteProvider = GroupInviteProvider(
+      repository: FakeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+      },
+    );
 
     await tester.pumpWidget(
       MaterialApp(
         home: GroupListScreen(
           provider: provider,
+          inviteProvider: inviteProvider,
           currentUserIdOverride: 'user-1',
         ),
       ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('group-list-item-group-leader')),
+      300,
     );
     await tester.pumpAndSettle();
 

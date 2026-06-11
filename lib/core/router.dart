@@ -14,6 +14,7 @@ import '../screens/settings/naver_ics_import_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/splash/splash_screen.dart';
 import '../features/groups/screens/group_create_screen.dart';
+import '../features/groups/screens/group_invite_screen.dart';
 import '../features/groups/screens/group_list_screen.dart';
 import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
@@ -261,6 +262,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.groupCreate,
       builder: (context, state) => const GroupCreateScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupInvites,
+      builder: (context, state) => const GroupInviteScreen(),
     ),
   ],
   errorBuilder: (context, state) => const PlaceholderScreen(
