@@ -14,6 +14,15 @@
 - Created `docs/planflow-v2/README.md` and `docs/planflow-v2/team-v2-plan.md` on branch `feature/team-v2-planning` to keep team-function planning separate from the 1st-release stabilization line.
 - The new docs keep the personal MVP structure intact and outline a separate team-module direction for `teams`, `team_members`, `team_invites`, `team_events`, `projects`, `tasks`, `meeting_notes`, and `coaching_reports`.
 
+## 2026-06-11 PlanFlow deploy-by-default rule confirmed
+- `AGENTS.md`에 Flutter/Android 코드 변경 후 별도 금지 문구가 없으면 `analyze -> tests -> versionCode bump -> Play internal upload -> Telegram`까지 자동으로 이어가도록 규칙을 반영했다.
+- 예외는 `배포하지 마`, `SkipUpload`, `코드만 수정`으로 정리했고, 최종 보고 형식도 `[PlanFlow 배포 완료]` 블록으로 통일하도록 적었다.
+
+## 2026-06-11 PlanFlow deploy failure alert quality follow-up
+- `scripts/build-internal-aab.ps1`에서 analyze/build 로그를 `.deploy-logs\`에 저장하도록 바꾸고, analyze는 실제 analyzer issue 라인, build는 `FAILURE:`/`What went wrong`/`Execution failed` 같은 실제 실패 문맥만 추려서 던지게 보강했다.
+- `scripts/deploy-play-internal.ps1`는 analyze/build 실패 시 Telegram과 콘솔에 로그 경로, 실제 issue 라인, 그리고 필요 시 짧은 excerpt를 함께 보여주도록 개선했다.
+- `deploy-play.bat planflow -SkipUpload` 재검증이 성공했고, 버전은 `1.1.0+16`으로 증가했다. analyze는 재확인 시 `No issues found!`로 통과했고, build 로그는 `.deploy-logs\build-*.log`, analyze 로그는 `.deploy-logs\analyze-*.log`로 남았다.
+
 ## 2026-06-11 PlanFlow deploy logging and Play upload follow-up
 - `scripts/build-internal-aab.ps1`에 analyze 로그 파일과 오류 excerpt를 남기는 경로를 추가해, 실패 시 `build/logs/analyze-*.log`와 실제 오류 줄이 콘솔과 Telegram에 함께 보이도록 보강했다.
 - `scripts/deploy-play-internal.ps1`는 analyze 실패 시 로그 경로와 excerpt를 읽어 Telegram 실패 메시지에 넣고, `bump-version-code.ps1`의 `NewVersion` 반환값이 없어도 `pubspec.yaml` 버전을 fallback으로 읽도록 안전하게 처리했다.
