@@ -302,6 +302,211 @@ create policy "groups_update_leader"
     and public.is_group_leader(id, auth.uid())
   );
 
+-- 3. group_invites
+create table if not exists public.group_invites (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  invited_user_id uuid references public.users (id) on delete set null,
+  invited_email text,
+  invited_invite_code text,
+  invited_by uuid not null references public.users (id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'rejected', 'cancelled', 'expired')),
+  expires_at timestamptz not null default (now() + interval '7 days'),
+  accepted_at timestamptz,
+  rejected_at timestamptz,
+  cancelled_at timestamptz,
+  expired_at timestamptz,
+  acted_by uuid references public.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint group_invites_target_required_check
+    check (num_nonnulls(invited_user_id, invited_email, invited_invite_code) > 0)
+);
+
+create index if not exists group_invites_group_id_idx
+  on public.group_invites (group_id);
+
+create index if not exists group_invites_invited_by_idx
+  on public.group_invites (invited_by);
+
+create index if not exists group_invites_invited_user_id_idx
+  on public.group_invites (invited_user_id);
+
+create index if not exists group_invites_invited_email_idx
+  on public.group_invites (invited_email);
+
+create index if not exists group_invites_invited_invite_code_idx
+  on public.group_invites (invited_invite_code);
+
+create index if not exists group_invites_status_idx
+  on public.group_invites (status);
+
+create index if not exists group_invites_expires_at_idx
+  on public.group_invites (expires_at);
+
+create unique index if not exists group_invites_group_pending_user_uidx
+  on public.group_invites (group_id, invited_user_id)
+  where status = 'pending'
+    and invited_user_id is not null;
+
+create unique index if not exists group_invites_group_pending_email_uidx
+  on public.group_invites (group_id, lower(invited_email))
+  where status = 'pending'
+    and invited_email is not null;
+
+create unique index if not exists group_invites_group_pending_invite_code_uidx
+  on public.group_invites (group_id, lower(invited_invite_code))
+  where status = 'pending'
+    and invited_invite_code is not null;
+
+create or replace function public.is_group_invite_target(
+  invited_user_id_input uuid,
+  invited_email_input text,
+  invited_invite_code_input text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.users
+    where id = auth.uid()
+      and (
+        (
+          invited_user_id_input is not null
+          and invited_user_id_input = id
+        )
+        or (
+          invited_email_input is not null
+          and email is not null
+          and lower(invited_email_input) = lower(email)
+        )
+        or (
+          invited_invite_code_input is not null
+          and invite_code is not null
+          and lower(invited_invite_code_input) = lower(invite_code)
+        )
+      )
+  );
+$$;
+
+drop trigger if exists group_invites_set_updated_at on public.group_invites;
+create trigger group_invites_set_updated_at
+  before update on public.group_invites
+  for each row execute function public.set_updated_at();
+
+create or replace function public.prevent_group_invite_immutable_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.group_id is distinct from old.group_id
+    or new.invited_user_id is distinct from old.invited_user_id
+    or new.invited_email is distinct from old.invited_email
+    or new.invited_invite_code is distinct from old.invited_invite_code
+    or new.invited_by is distinct from old.invited_by
+    or new.expires_at is distinct from old.expires_at
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'group_invites immutable fields cannot change';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists group_invites_prevent_immutable_changes on public.group_invites;
+create trigger group_invites_prevent_immutable_changes
+  before update on public.group_invites
+  for each row execute function public.prevent_group_invite_immutable_changes();
+
+alter table public.group_invites enable row level security;
+
+grant select, insert, update on table public.group_invites to authenticated;
+
+drop policy if exists "group_invites_select_access" on public.group_invites;
+drop policy if exists "group_invites_insert_leader" on public.group_invites;
+drop policy if exists "group_invites_update_target" on public.group_invites;
+drop policy if exists "group_invites_update_leader_cancel" on public.group_invites;
+create policy "group_invites_select_access"
+  on public.group_invites
+  for select
+  using (
+    exists (
+      select 1
+      from public.groups
+      where groups.id = group_invites.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+    or invited_by = auth.uid()
+    or (
+      status = 'pending'
+      and public.is_group_invite_target(
+        invited_user_id,
+        invited_email,
+        invited_invite_code
+      )
+    )
+  );
+create policy "group_invites_insert_leader"
+  on public.group_invites
+  for insert
+  with check (
+    status = 'pending'
+    and invited_by = auth.uid()
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_invites.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+  );
+create policy "group_invites_update_target"
+  on public.group_invites
+  for update
+  using (
+    status = 'pending'
+    and public.is_group_invite_target(
+      invited_user_id,
+      invited_email,
+      invited_invite_code
+    )
+  )
+  with check (
+    status in ('accepted', 'rejected')
+    and acted_by = auth.uid()
+    and (
+      (status = 'accepted' and accepted_at is not null)
+      or (status = 'rejected' and rejected_at is not null)
+    )
+  );
+create policy "group_invites_update_leader_cancel"
+  on public.group_invites
+  for update
+  using (
+    status = 'pending'
+    and invited_by = auth.uid()
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_invites.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+  )
+  with check (
+    status = 'cancelled'
+    and acted_by = auth.uid()
+    and cancelled_at is not null
+  );
+
 drop policy if exists "group_members_select_member" on public.group_members;
 drop policy if exists "group_members_insert_leader" on public.group_members;
 drop policy if exists "group_members_update_leader" on public.group_members;
@@ -321,13 +526,33 @@ create policy "group_members_insert_leader"
   on public.group_members
   for insert
   with check (
-    exists (
+    (
+      exists (
+        select 1
+        from public.groups
+        where groups.id = group_members.group_id
+          and groups.status = 'active'
+          and public.is_group_leader(groups.id, auth.uid())
+      )
+      or exists (
+        select 1
+        from public.group_invites
+        where group_invites.group_id = group_members.group_id
+          and group_invites.status = 'accepted'
+          and public.is_group_invite_target(
+            group_invites.invited_user_id,
+            group_invites.invited_email,
+            group_invites.invited_invite_code
+          )
+      )
+    )
+    and exists (
       select 1
       from public.groups
       where groups.id = group_members.group_id
         and groups.status = 'active'
-        and public.is_group_leader(groups.id, auth.uid())
     )
+    and role = 'member'
     and status = 'active'
     and removed_at is null
     and removed_by is null
@@ -366,7 +591,7 @@ create policy "group_members_update_leader"
     )
   );
 
--- 3. pre_actions
+-- 4. pre_actions
 create table if not exists public.pre_actions (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events (id) on delete cascade,
