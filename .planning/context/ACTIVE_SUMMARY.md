@@ -1,5 +1,9 @@
 # ACTIVE SUMMARY
 
+## 2026-06-11 Telegram UTF-8 fix
+- `scripts/deploy-play-internal.ps1`와 `scripts/send-telegram.ps1`를 UTF-8 BOM으로 다시 저장하고, Telegram 전송은 `HttpClient + UTF-8 StringContent`로 바꿔 Windows PowerShell 5.x/7.x에서 한글이 깨지지 않도록 수정했다.
+- Telegram 전송 테스트를 실제로 한 번 보내서 helper가 `Ok=True`로 응답하는지 확인했다.
+
 ## 2026-06-11 PlanFlow deploy Telegram notification hookup
 - `scripts/deploy-play-internal.ps1`에 성공/실패 Telegram 알림 후크를 추가하고, `scripts/build-internal-aab.ps1`는 단계 상태를 임시 파일로 남겨 실패 단계 식별이 가능하도록 보강했다.
 - 새 공용 헬퍼 `scripts/send-telegram.ps1`를 추가해 `E:\FluxStudio\.env`의 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`를 읽어 sendMessage를 보내게 했다.
