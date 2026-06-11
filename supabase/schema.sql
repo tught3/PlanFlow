@@ -41,6 +41,22 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+alter table public.users
+  add column if not exists invite_code text;
+
+update public.users
+set invite_code = lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10))
+where invite_code is null;
+
+alter table public.users
+  alter column invite_code set default lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10));
+
+alter table public.users
+  alter column invite_code set not null;
+
+create unique index if not exists users_invite_code_uidx
+  on public.users (invite_code);
+
 -- 2. events
 create table if not exists public.events (
   id uuid primary key default gen_random_uuid(),
@@ -120,6 +136,235 @@ drop trigger if exists events_set_updated_at on public.events;
 create trigger events_set_updated_at
   before update on public.events
   for each row execute function public.set_updated_at();
+
+-- V2 groups
+create table if not exists public.groups (
+  id uuid primary key default gen_random_uuid(),
+  parent_group_id uuid references public.groups (id) on delete set null,
+  name text not null,
+  description text,
+  status text not null default 'active' check (status in ('active', 'archived', 'deleted_pending')),
+  created_by uuid not null references public.users (id) on delete restrict,
+  archived_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.group_members (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  user_id uuid not null references public.users (id) on delete cascade,
+  role text not null default 'member' check (role in ('leader', 'member')),
+  status text not null default 'active' check (status in ('active', 'removed')),
+  joined_at timestamptz not null default now(),
+  removed_at timestamptz,
+  removed_by uuid references public.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint group_members_group_user_unique unique (group_id, user_id)
+);
+
+create index if not exists groups_parent_group_id_idx
+  on public.groups (parent_group_id);
+
+create index if not exists groups_status_idx
+  on public.groups (status);
+
+create index if not exists groups_created_by_idx
+  on public.groups (created_by);
+
+create index if not exists group_members_group_id_idx
+  on public.group_members (group_id);
+
+create index if not exists group_members_user_id_idx
+  on public.group_members (user_id);
+
+create index if not exists group_members_group_id_role_idx
+  on public.group_members (group_id, role);
+
+create or replace function public.handle_new_group()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.group_members (
+    group_id,
+    user_id,
+    role,
+    status,
+    joined_at,
+    created_at,
+    updated_at
+  )
+  values (
+    new.id,
+    new.created_by,
+    'leader',
+    'active',
+    now(),
+    now(),
+    now()
+  )
+  on conflict (group_id, user_id) do update
+    set role = 'leader',
+        status = 'active',
+        removed_at = null,
+        removed_by = null,
+        joined_at = now(),
+        updated_at = now();
+
+  return new;
+end;
+$$;
+
+drop trigger if exists groups_set_updated_at on public.groups;
+create trigger groups_set_updated_at
+  before update on public.groups
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists group_members_set_updated_at on public.group_members;
+create trigger group_members_set_updated_at
+  before update on public.group_members
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists groups_handle_new_group on public.groups;
+create trigger groups_handle_new_group
+  after insert on public.groups
+  for each row execute function public.handle_new_group();
+
+alter table public.groups enable row level security;
+alter table public.group_members enable row level security;
+
+grant select, insert, update on table public.groups to authenticated;
+grant select, insert, update on table public.group_members to authenticated;
+
+create or replace function public.is_group_member(group_id_input uuid, user_id_input uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.group_members
+    where group_id = group_id_input
+      and user_id = user_id_input
+      and status = 'active'
+  );
+$$;
+
+create or replace function public.is_group_leader(group_id_input uuid, user_id_input uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.group_members
+    where group_id = group_id_input
+      and user_id = user_id_input
+      and role = 'leader'
+      and status = 'active'
+  );
+$$;
+
+drop policy if exists "groups_select_member" on public.groups;
+drop policy if exists "groups_insert_leader" on public.groups;
+drop policy if exists "groups_update_leader" on public.groups;
+create policy "groups_select_member"
+  on public.groups
+  for select
+  using (
+    status = 'active'
+    and public.is_group_member(id, auth.uid())
+  );
+create policy "groups_insert_leader"
+  on public.groups
+  for insert
+  with check (
+    auth.uid() = created_by
+    and status = 'active'
+  );
+create policy "groups_update_leader"
+  on public.groups
+  for update
+  using (
+    status = 'active'
+    and public.is_group_leader(id, auth.uid())
+  )
+  with check (
+    status = 'active'
+    and public.is_group_leader(id, auth.uid())
+  );
+
+drop policy if exists "group_members_select_member" on public.group_members;
+drop policy if exists "group_members_insert_leader" on public.group_members;
+drop policy if exists "group_members_update_leader" on public.group_members;
+create policy "group_members_select_member"
+  on public.group_members
+  for select
+  using (
+    exists (
+      select 1
+      from public.groups
+      where groups.id = group_members.group_id
+        and groups.status = 'active'
+        and public.is_group_member(groups.id, auth.uid())
+    )
+  );
+create policy "group_members_insert_leader"
+  on public.group_members
+  for insert
+  with check (
+    exists (
+      select 1
+      from public.groups
+      where groups.id = group_members.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+    and status = 'active'
+    and removed_at is null
+    and removed_by is null
+  );
+create policy "group_members_update_leader"
+  on public.group_members
+  for update
+  using (
+    exists (
+      select 1
+      from public.groups
+      where groups.id = group_members.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from public.groups
+      where groups.id = group_members.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+    and (
+      (
+        status = 'active'
+        and removed_at is null
+        and removed_by is null
+      )
+      or (
+        status = 'removed'
+        and removed_at is not null
+        and removed_by = auth.uid()
+      )
+    )
+  );
 
 -- 3. pre_actions
 create table if not exists public.pre_actions (
