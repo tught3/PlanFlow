@@ -1,5 +1,10 @@
 # ACTIVE SUMMARY
 
+## 2026-06-11 PlanFlow V2 group_events implementation
+- Added `public.has_group_delegated_permission` and the `public.group_events` table/RLS slice to `supabase/schema.sql` for the V2 team-event layer.
+- Added `GroupEventModel` and `GroupEventRepository` under `lib/features/groups/` to match the new group event schema.
+- Verification: `flutter analyze --no-pub` passed; full `flutter test --no-pub` still hits unrelated existing plugin/initialization failures in manual-event and settings-related tests.
+
 ## 2026-06-07 PlanFlow v2 planning docs
 - Created `docs/planflow-v2/README.md` and `docs/planflow-v2/team-v2-plan.md` on branch `feature/team-v2-planning` to keep team-function planning separate from the 1st-release stabilization line.
 - The new docs keep the personal MVP structure intact and outline a separate team-module direction for `teams`, `team_members`, `team_invites`, `team_events`, `projects`, `tasks`, `meeting_notes`, and `coaching_reports`.

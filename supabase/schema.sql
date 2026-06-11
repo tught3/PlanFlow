@@ -752,7 +752,203 @@ create policy "group_role_delegations_update_cancel_access"
     and cancelled_at is not null
   );
 
--- 5. pre_actions
+create or replace function public.has_group_delegated_permission(
+  group_id_input uuid,
+  user_id_input uuid,
+  permission_input text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.group_role_delegations
+    where group_id = group_id_input
+      and delegate_user_id = user_id_input
+      and status = 'active'
+      and starts_at <= now()
+      and ends_at >= now()
+      and permissions ? permission_input
+      and permission_input in (
+        'create_group_event',
+        'update_group_event',
+        'cancel_group_event',
+        'view_group_dashboard'
+      )
+      and exists (
+        select 1
+        from public.groups
+        where groups.id = group_id_input
+          and groups.status = 'active'
+      )
+  );
+$$;
+
+-- 5. group_events
+create table if not exists public.group_events (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  title text not null,
+  description text,
+  location text,
+  start_at timestamptz not null,
+  end_at timestamptz not null,
+  all_day boolean not null default false,
+  recurrence_type text not null default 'none' check (recurrence_type in ('none', 'daily', 'weekly', 'monthly')),
+  recurrence_until timestamptz,
+  created_by uuid not null references public.users (id) on delete cascade,
+  updated_by uuid references public.users (id) on delete set null,
+  cancelled_at timestamptz,
+  cancelled_by uuid references public.users (id) on delete set null,
+  status text not null default 'active' check (status in ('active', 'cancelled', 'archived')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint group_events_end_after_start_check check (end_at >= start_at)
+);
+
+create index if not exists group_events_group_id_idx
+  on public.group_events (group_id);
+
+create index if not exists group_events_created_by_idx
+  on public.group_events (created_by);
+
+create index if not exists group_events_updated_by_idx
+  on public.group_events (updated_by);
+
+create index if not exists group_events_cancelled_by_idx
+  on public.group_events (cancelled_by);
+
+create index if not exists group_events_status_idx
+  on public.group_events (status);
+
+create index if not exists group_events_start_at_idx
+  on public.group_events (start_at);
+
+create index if not exists group_events_group_start_at_idx
+  on public.group_events (group_id, start_at);
+
+create index if not exists group_events_group_status_start_at_idx
+  on public.group_events (group_id, status, start_at);
+
+create or replace function public.prevent_group_event_immutable_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.group_id is distinct from old.group_id
+    or new.created_by is distinct from old.created_by
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'group_events immutable fields cannot change';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists group_events_set_updated_at on public.group_events;
+create trigger group_events_set_updated_at
+  before update on public.group_events
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists group_events_prevent_immutable_changes on public.group_events;
+create trigger group_events_prevent_immutable_changes
+  before update on public.group_events
+  for each row execute function public.prevent_group_event_immutable_changes();
+
+alter table public.group_events enable row level security;
+
+grant select, insert, update on table public.group_events to authenticated;
+
+drop policy if exists "group_events_select_access" on public.group_events;
+drop policy if exists "group_events_insert_access" on public.group_events;
+drop policy if exists "group_events_update_access" on public.group_events;
+drop policy if exists "group_events_cancel_access" on public.group_events;
+create policy "group_events_select_access"
+  on public.group_events
+  for select
+  using (
+    status = 'active'
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_events.group_id
+        and groups.status = 'active'
+    )
+    and (
+      public.is_group_member(group_id, auth.uid())
+      or public.is_group_leader(group_id, auth.uid())
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'create_group_event')
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'update_group_event')
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'cancel_group_event')
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'view_group_dashboard')
+    )
+  );
+create policy "group_events_insert_access"
+  on public.group_events
+  for insert
+  with check (
+    status = 'active'
+    and created_by = auth.uid()
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_events.group_id
+        and groups.status = 'active'
+    )
+    and (
+      public.is_group_leader(group_id, auth.uid())
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'create_group_event')
+    )
+  );
+create policy "group_events_update_access"
+  on public.group_events
+  for update
+  using (
+    status = 'active'
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_events.group_id
+        and groups.status = 'active'
+    )
+    and (
+      public.is_group_leader(group_id, auth.uid())
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'update_group_event')
+    )
+  )
+  with check (
+    status in ('active', 'archived')
+    and updated_by = auth.uid()
+  );
+create policy "group_events_cancel_access"
+  on public.group_events
+  for update
+  using (
+    status = 'active'
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_events.group_id
+        and groups.status = 'active'
+    )
+    and (
+      public.is_group_leader(group_id, auth.uid())
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'cancel_group_event')
+    )
+  )
+  with check (
+    status = 'cancelled'
+    and cancelled_at is not null
+    and cancelled_by = auth.uid()
+  );
+
+-- 6. pre_actions
 create table if not exists public.pre_actions (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events (id) on delete cascade,
