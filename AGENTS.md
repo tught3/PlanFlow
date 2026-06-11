@@ -325,6 +325,15 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - Treat future Flow Core/shared-core files as cross-project contracts for NexusFlow and related apps. If `packages/`, `flow_core/`, shared domain models, shared repositories, shared parsing/routing services, or other Flow Core extraction targets are created or modified, stop first and get explicit user confirmation unless the user has directly requested that exact change.
 - For 1st release, do not implement billing, ads, reward ads, Kakao/SMS/call detection, or TEAM/BUSINESS features.
 - Naver Calendar is now a 1st-release working feature. Keep OAuth consent, token handling, and calendar export behavior visible and testable.
+- Unless the user explicitly says `배포하지 마`, `SkipUpload`, or `코드만 수정`, any Flutter/Android code change must continue through the deploy pipeline automatically after the change is complete: `analyze` -> related tests -> versionCode bump -> Play internal upload -> Telegram notification.
+- If the user says `배포하지 마`, `SkipUpload`, or `코드만 수정`, stop after the requested scope and do not run the deploy pipeline.
+- When deploy automation runs, keep the final report format aligned to:
+  - `[PlanFlow 배포 완료]`
+  - `Version:`
+  - `Analyze: PASS/FAIL`
+  - `Tests: PASS/FAIL`
+  - `Play Internal Upload: PASS/FAIL`
+  - `Telegram: PASS/FAIL`
 - Keep all user-facing UI text Korean unless a platform/provider brand requires otherwise.
 - If Korean text appears broken/mojibake in terminal output, re-read the file or output explicitly as UTF-8 before interpreting or editing it. Do not make decisions from broken Korean text.
 - Voice files must never be sent to external servers. Only STT text may be stored or sent for parsing.

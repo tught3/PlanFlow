@@ -1,5 +1,9 @@
 # ACTIVE SUMMARY
 
+## 2026-06-11 PlanFlow deploy-by-default rule confirmed
+- `AGENTS.md`에 Flutter/Android 코드 변경 후 별도 금지 문구가 없으면 `analyze -> tests -> versionCode bump -> Play internal upload -> Telegram`까지 자동으로 이어가도록 규칙을 반영했다.
+- 예외는 `배포하지 마`, `SkipUpload`, `코드만 수정`으로 정리했고, 최종 보고 형식도 `[PlanFlow 배포 완료]` 블록으로 통일하도록 적었다.
+
 ## 2026-06-11 PlanFlow deploy failure alert quality follow-up
 - `scripts/build-internal-aab.ps1`에서 analyze/build 로그를 `.deploy-logs\`에 저장하도록 바꾸고, analyze는 실제 analyzer issue 라인, build는 `FAILURE:`/`What went wrong`/`Execution failed` 같은 실제 실패 문맥만 추려서 던지게 보강했다.
 - `scripts/deploy-play-internal.ps1`는 analyze/build 실패 시 Telegram과 콘솔에 로그 경로, 실제 issue 라인, 그리고 필요 시 짧은 excerpt를 함께 보여주도록 개선했다.
