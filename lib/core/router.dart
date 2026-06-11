@@ -6,6 +6,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/onboarding/permission_onboarding_screen.dart';
 import '../screens/auth/reset_password_screen.dart';
 import '../data/models/event_model.dart';
+import '../features/groups/models/group_event_model.dart';
 import '../screens/briefing/briefing_launch_screen.dart';
 import '../screens/event/event_detail_screen.dart';
 import '../screens/event/event_edit_screen.dart';
@@ -14,6 +15,9 @@ import '../screens/settings/naver_ics_import_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/splash/splash_screen.dart';
 import '../features/groups/screens/group_create_screen.dart';
+import '../features/groups/screens/group_event_create_screen.dart';
+import '../features/groups/screens/group_event_detail_screen.dart';
+import '../features/groups/screens/group_event_list_screen.dart';
 import '../features/groups/screens/group_invite_screen.dart';
 import '../features/groups/screens/group_list_screen.dart';
 import '../screens/voice/confirm_screen.dart';
@@ -266,6 +270,23 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.groupInvites,
       builder: (context, state) => const GroupInviteScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEvents,
+      builder: (context, state) => const GroupEventListScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEventCreate,
+      builder: (context, state) => const GroupEventCreateScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEventDetail,
+      builder: (context, state) => GroupEventDetailScreen(
+        eventId: state.pathParameters['eventId']?.trim() ?? '',
+        event: state.extra is GroupEventModel
+            ? state.extra! as GroupEventModel
+            : null,
+      ),
     ),
   ],
   errorBuilder: (context, state) => const PlaceholderScreen(

@@ -26,6 +26,9 @@ class AppRoutes {
   static const String groups = '/groups';
   static const String groupCreate = '/groups/create';
   static const String groupInvites = '/groups/invites';
+  static const String groupEvents = '/groups/events';
+  static const String groupEventCreate = '/groups/events/create';
+  static const String groupEventDetail = '/groups/events/:eventId';
   static const String settings = '/settings';
   static const String briefing = '/briefing';
   static const String naverIcsImport = '/settings/naver-ics-import';

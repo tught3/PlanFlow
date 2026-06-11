@@ -100,6 +100,16 @@ class _GroupListScreenState extends State<GroupListScreen> {
     }
   }
 
+  Future<void> _openGroupEvents() async {
+    final result = await context.push<String>(AppRoutes.groupEvents);
+    if (!mounted) {
+      return;
+    }
+    if (result != null) {
+      await _load();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -160,6 +170,13 @@ class _GroupListScreenState extends State<GroupListScreen> {
                   onPressed: _openCreateGroup,
                   icon: const Icon(Icons.add_circle_outline),
                   label: const Text('새 그룹 만들기'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const ValueKey('group-list-events-button'),
+                  onPressed: _openGroupEvents,
+                  icon: const Icon(Icons.event_available_outlined),
+                  label: const Text('그룹 일정'),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(

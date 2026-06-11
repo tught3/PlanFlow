@@ -1685,3 +1685,8 @@
 - 음성 입력의 `완료` 동작은 현재 입력을 캡처한 뒤 즉시 다음 단계로 이어지도록 정리해, 별도의 `현재 내용으로 입력` 재탭 없이도 다음 화면으로 넘어가게 했다.
 - `voice_action_screen.dart`의 제목/이름 검색은 `만나기라` 같은 조사 꼬리를 정규화하고, 정확 일치가 있으면 그것만 우선 보여주며 약한 유사 후보는 숨기도록 조정했다. 날짜 기반 조회는 `이번주금요일` 같은 표현이 summary 카드로 계속 보이도록 유지했다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/app_home_widget_route_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_input_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_action_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:33527 install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:33527 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-06-11 GroupEvent UI baseline
+- Added GroupEventProvider, GroupEventList, GroupEventCreate, and GroupEventDetail screens plus `/groups/events` routes.
+- Wired the GroupList entry point to the new group event flow without touching the personal event screens.
+- Verified `flutter analyze --no-pub`, targeted group tests, full `flutter test --no-pub`, and `git diff --check`.

@@ -21,6 +21,8 @@ abstract class GroupEventRepository {
   Future<GroupEventModel> cancelGroupEvent(String eventId);
 
   Future<GroupEventModel> archiveGroupEvent(String eventId);
+
+  Future<GroupEventModel> fetchGroupEvent(String eventId);
 }
 
 class SupabaseGroupEventRepository extends GroupEventRepository {
@@ -131,6 +133,11 @@ class SupabaseGroupEventRepository extends GroupEventRepository {
         .select()
         .single();
     return GroupEventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<GroupEventModel> fetchGroupEvent(String eventId) async {
+    return _fetchEvent(eventId);
   }
 
   User _requireCurrentUser() {
