@@ -7,6 +7,7 @@
     'test/screens/event_edit_screen_test.dart',
     'test/screens/voice_conversation_screen_test.dart'
   ),
+  [string]$StatusPath,
   [switch]$SkipVersionBump,
   [switch]$SkipTests
 )
@@ -22,6 +23,16 @@ $AabPath = Join-Path $WorkspaceRoot 'build\app\outputs\bundle\release\app-releas
 function Write-Stage([string]$Message) {
   Write-Host ""
   Write-Host "== $Message =="
+}
+
+function Write-DeployStatus {
+  param([Parameter(Mandatory = $true)][string]$Stage)
+  if ([string]::IsNullOrWhiteSpace($StatusPath)) {
+    return
+  }
+
+  $encoding = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($StatusPath, $Stage, $encoding)
 }
 
 function Invoke-Checked([scriptblock]$Action, [string]$Label) {
@@ -52,6 +63,7 @@ try {
 
   $versionInfo = $null
   if (-not $SkipVersionBump) {
+    Write-DeployStatus 'version-bump'
     Write-Stage "Bumping version code"
     $versionInfo = & (Join-Path $PSScriptRoot 'bump-version-code.ps1') -PubspecPath $PubspecPath
     if (-not $versionInfo) {
@@ -69,9 +81,11 @@ try {
     Write-Host "Current version: $currentVersion"
   }
 
+  Write-DeployStatus 'analyze'
   Write-Stage "Running analyze"
   Invoke-Checked { & $FlutterLocal analyze --no-pub } 'scripts/flutter-local.ps1 analyze --no-pub'
 
+  Write-DeployStatus 'tests'
   Write-Stage "Running focused tests"
   if ($SkipTests -or -not $TestTargets -or $TestTargets.Count -eq 0) {
     Write-Host "Skipping focused tests because no requested test files were present."
@@ -80,6 +94,7 @@ try {
     Invoke-Checked { & $FlutterLocal @testArgs } ("scripts/flutter-local.ps1 test {0} --no-pub" -f ($TestTargets -join ' '))
   }
 
+  Write-DeployStatus 'build'
   Write-Stage "Building release appbundle"
   Invoke-Checked { & $FlutterLocal build appbundle --release --no-pub } 'scripts/flutter-local.ps1 build appbundle --release --no-pub'
 
@@ -109,6 +124,7 @@ try {
     Write-Host "Version info fallback used from pubspec.yaml: $finalVersion"
   }
 
+  Write-DeployStatus 'done'
   Write-Host ''
   Write-Host '========================================'
   Write-Host 'PlanFlow Internal Test AAB Ready'

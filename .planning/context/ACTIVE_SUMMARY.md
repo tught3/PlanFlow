@@ -1,5 +1,10 @@
 # ACTIVE SUMMARY
 
+## 2026-06-11 PlanFlow deploy Telegram notification hookup
+- `scripts/deploy-play-internal.ps1`에 성공/실패 Telegram 알림 후크를 추가하고, `scripts/build-internal-aab.ps1`는 단계 상태를 임시 파일로 남겨 실패 단계 식별이 가능하도록 보강했다.
+- 새 공용 헬퍼 `E:\FluxStudio\tools\send-telegram.ps1`를 추가해 `E:\FluxStudio\.env`의 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`를 읽어 sendMessage를 보내게 했다.
+- 파서는 세 파일 모두 통과했고, 아직 실제 Play 업로드/Telegram 발송은 실행하지 않았다.
+
 ## 2026-06-09 TASK_20260608_141130 브리핑 foreground 알림 억제
 - 앱 lifecycle이 foreground/resumed일 때 브리핑 실행 알림과 예약 브리핑 시작 알림을 보내지 않도록 `BriefingSchedulerService`에 foreground suppress 경로를 추가했다.
 - `PlanFlowApp`이 resume/pause/dispose 시 foreground 상태를 SharedPreferences에 기록해 Android alarm callback isolate에서도 같은 상태를 참조할 수 있게 했다.
