@@ -1095,6 +1095,88 @@ create trigger group_backups_prevent_immutable_changes
   before update on public.group_backups
   for each row execute function public.prevent_group_backup_immutable_changes();
 
+create or replace function public.archive_group_with_backup(group_id_input uuid)
+returns public.group_backups
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  group_row public.groups%rowtype;
+  backup_row public.group_backups%rowtype;
+  snapshot_payload jsonb;
+begin
+  if current_user_id is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  select *
+    into group_row
+    from public.groups
+   where id = group_id_input
+   for update;
+
+  if not found then
+    raise exception 'group not found';
+  end if;
+
+  if group_row.status <> 'active' then
+    raise exception 'active group만 보관할 수 있습니다.';
+  end if;
+
+  if not public.is_group_leader(group_row.id, current_user_id) then
+    raise exception '팀 리더만 그룹을 보관할 수 있습니다.';
+  end if;
+
+  snapshot_payload := jsonb_build_object(
+    'group', to_jsonb(group_row),
+    'active_members',
+    coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'user_id', group_members.user_id,
+            'role', group_members.role,
+            'joined_at', group_members.joined_at,
+            'created_at', group_members.created_at
+          )
+        )
+        from public.group_members
+        where group_members.group_id = group_row.id
+          and group_members.status = 'active'
+      ),
+      '[]'::jsonb
+    )
+  );
+
+  insert into public.group_backups (
+    group_id,
+    backup_type,
+    snapshot,
+    created_by,
+    created_at
+  )
+  values (
+    group_row.id,
+    'archive',
+    snapshot_payload,
+    current_user_id,
+    now()
+  )
+  returning * into backup_row;
+
+  update public.groups
+     set status = 'archived',
+         archived_at = now()
+   where id = group_row.id;
+
+  return backup_row;
+end;
+$$;
+
+grant execute on function public.archive_group_with_backup(uuid) to authenticated;
+
 alter table public.group_backups enable row level security;
 
 grant select, insert, update on table public.group_backups to authenticated;

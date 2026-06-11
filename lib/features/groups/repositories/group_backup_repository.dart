@@ -19,23 +19,31 @@ abstract class GroupBackupRepository {
 
   Future<GroupBackupModel> archiveGroupWithBackup(
     String groupId,
-    Map<String, dynamic> snapshot,
   );
 }
 
 class SupabaseGroupBackupRepository extends GroupBackupRepository {
-  SupabaseGroupBackupRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+  SupabaseGroupBackupRepository({
+    SupabaseClient? client,
+    String? Function()? currentUserIdProvider,
+    Future<Map<String, dynamic>> Function(String groupId)?
+        archiveGroupWithBackupRpc,
+  })  : _client = client ?? Supabase.instance.client,
+        _currentUserIdProvider = currentUserIdProvider,
+        _archiveGroupWithBackupRpc = archiveGroupWithBackupRpc;
 
   final SupabaseClient _client;
+  final String? Function()? _currentUserIdProvider;
+  final Future<Map<String, dynamic>> Function(String groupId)?
+      _archiveGroupWithBackupRpc;
 
   @override
   Future<GroupBackupModel> createArchiveBackup(
     String groupId,
     Map<String, dynamic> snapshot,
   ) async {
-    final currentUser = _requireCurrentUser();
-    await _ensureActiveGroupAndLeader(groupId, currentUser.id);
+    final currentUserId = _requireCurrentUserId();
+    await _ensureActiveGroupAndLeader(groupId, currentUserId);
 
     final response = await _client
         .from('group_backups')
@@ -44,7 +52,7 @@ class SupabaseGroupBackupRepository extends GroupBackupRepository {
             'group_id': groupId,
             'backup_type': 'archive',
             'snapshot': snapshot,
-            'created_by': currentUser.id,
+            'created_by': currentUserId,
           },
         )
         .select()
@@ -54,8 +62,8 @@ class SupabaseGroupBackupRepository extends GroupBackupRepository {
 
   @override
   Future<List<GroupBackupModel>> getBackupsForGroup(String groupId) async {
-    final currentUser = _requireCurrentUser();
-    await _ensureLeaderOfGroup(groupId, currentUser.id);
+    final currentUserId = _requireCurrentUserId();
+    await _ensureLeaderOfGroup(groupId, currentUserId);
 
     final response = await _client
         .from('group_backups')
@@ -71,9 +79,9 @@ class SupabaseGroupBackupRepository extends GroupBackupRepository {
 
   @override
   Future<GroupBackupModel> markBackupRestored(String backupId) async {
-    final currentUser = _requireCurrentUser();
+    final currentUserId = _requireCurrentUserId();
     final backup = await _fetchBackup(backupId);
-    await _ensureLeaderOfGroup(backup.groupId, currentUser.id);
+    await _ensureLeaderOfGroup(backup.groupId, currentUserId);
 
     if (backup.isRestored) {
       throw StateError('이미 복원된 백업입니다.');
@@ -84,7 +92,7 @@ class SupabaseGroupBackupRepository extends GroupBackupRepository {
         .update(
           <String, dynamic>{
             'restored_at': DateTime.now().toUtc().toIso8601String(),
-            'restored_by': currentUser.id,
+            'restored_by': currentUserId,
           },
         )
         .eq('id', backupId)
@@ -96,34 +104,34 @@ class SupabaseGroupBackupRepository extends GroupBackupRepository {
   @override
   Future<GroupBackupModel> archiveGroupWithBackup(
     String groupId,
-    Map<String, dynamic> snapshot,
   ) async {
-    final currentUser = _requireCurrentUser();
-    await _ensureActiveGroupAndLeader(groupId, currentUser.id);
-    final backup = await createArchiveBackup(groupId, snapshot);
-
-    await _client
-        .from('groups')
-        .update(
-          <String, dynamic>{
-            'status': 'archived',
-            'archived_at': DateTime.now().toUtc().toIso8601String(),
-          },
-        )
-        .eq('id', groupId)
-        .eq('status', 'active')
-        .select('id')
-        .single();
-
-    return backup;
+    _requireCurrentUserId();
+    final response =
+        await (_archiveGroupWithBackupRpc ?? _archiveGroupWithBackupWithRpc)(
+      groupId,
+    );
+    return GroupBackupModel.fromJson(response);
   }
 
-  User _requireCurrentUser() {
-    final user = _client.auth.currentUser;
-    if (user == null) {
+  String _requireCurrentUserId() {
+    final currentUserId =
+        _currentUserIdProvider?.call() ?? _client.auth.currentUser?.id;
+    if (currentUserId == null || currentUserId.trim().isEmpty) {
       throw StateError('로그인이 필요합니다.');
     }
-    return user;
+    return currentUserId;
+  }
+
+  Future<Map<String, dynamic>> _archiveGroupWithBackupWithRpc(
+    String groupId,
+  ) async {
+    final response = await _client
+        .rpc('archive_group_with_backup', params: <String, dynamic>{
+          'group_id_input': groupId,
+        })
+        .select()
+        .single();
+    return _rowAsJson(response);
   }
 
   Future<void> _ensureLeaderOfGroup(String groupId, String userId) async {
