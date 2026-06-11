@@ -149,6 +149,31 @@ function Summarize-ErrorText {
   return $summary.Substring(0, $Limit - 3) + '...'
 }
 
+function Get-AnalyzeFailureDetails {
+  param([Parameter(Mandatory = $true)][string]$Text)
+
+  $logPath = $null
+  $excerptLines = @()
+
+  $logMatch = [regex]::Match($Text, '(?m)^Analyze log:\s*(.+)$')
+  if ($logMatch.Success) {
+    $logPath = $logMatch.Groups[1].Value.Trim()
+  }
+
+  $excerptMatch = [regex]::Match($Text, '(?ms)^Analyze excerpt:\s*(.+)$')
+  if ($excerptMatch.Success) {
+    $rawExcerpt = $excerptMatch.Groups[1].Value.Trim()
+    if ($rawExcerpt) {
+      $excerptLines = $rawExcerpt -split "`r?`n"
+    }
+  }
+
+  return [pscustomobject]@{
+    LogPath     = $logPath
+    ExcerptText = if ($excerptLines -and $excerptLines.Count -gt 0) { $excerptLines -join "`n" } else { $null }
+  }
+}
+
 function Send-DeployTelegramNotification {
   param(
     [Parameter(Mandatory = $true)][string]$Title,
@@ -301,9 +326,29 @@ try {
     $errorText = $_.Exception.Message
     $failureStage = Get-FailureStage -FallbackStage 'build' -StatusPath $statusPath -ErrorText $errorText
     $failureSummary = Summarize-ErrorText -Text $errorText
+    $failureMessage = "Step: $failureStage`nError:`n$failureSummary"
+
+    if ($failureStage -eq 'analyze') {
+      $analyzeDetails = Get-AnalyzeFailureDetails -Text $errorText
+      if ($analyzeDetails.LogPath) {
+        $failureMessage = "Step: analyze`nLog: $($analyzeDetails.LogPath)"
+        if ($analyzeDetails.ExcerptText) {
+          $failureMessage += "`n`n$($analyzeDetails.ExcerptText)"
+        } else {
+          $failureMessage += "`n`n$failureSummary"
+        }
+        Write-Host ''
+        Write-Host "Analyze log: $($analyzeDetails.LogPath)"
+        if ($analyzeDetails.ExcerptText) {
+          Write-Host 'Analyze excerpt:'
+          $analyzeDetails.ExcerptText -split "`r?`n" | ForEach-Object { Write-Host $_ }
+        }
+      }
+    }
+
     Send-DeployTelegramNotification `
       -Title '❌ PlanFlow 내부 테스트 업로드 실패' `
-      -Message "`nStep: $failureStage`nError:`n$failureSummary" `
+      -Message "`n$failureMessage" `
       -EnvPath $telegramEnvPath `
       -TelegramScript $telegramScript
     throw

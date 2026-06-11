@@ -35,6 +35,45 @@ function Write-DeployStatus {
   [System.IO.File]::WriteAllText($StatusPath, $Stage, $encoding)
 }
 
+function New-LogExcerpt {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [int]$Before = 12,
+    [int]$After = 24,
+    [int]$MaxLines = 50
+  )
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return @()
+  }
+
+  $encoding = [System.Text.UTF8Encoding]::new($false)
+  $lines = [System.IO.File]::ReadAllLines($Path, $encoding)
+  if (-not $lines -or $lines.Count -eq 0) {
+    return @()
+  }
+
+  $matchIndex = $null
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    if ($lines[$i] -match '^\s*(info|warning|error)\s+-\s+') {
+      $matchIndex = $i
+      break
+    }
+  }
+
+  if ($null -eq $matchIndex) {
+    $start = [Math]::Max(0, $lines.Count - $MaxLines)
+    return $lines[$start..($lines.Count - 1)]
+  }
+
+  $startIndex = [Math]::Max(0, $matchIndex - $Before)
+  $endIndex = [Math]::Min($lines.Count - 1, $matchIndex + $After)
+  if (($endIndex - $startIndex + 1) -gt $MaxLines) {
+    $endIndex = $startIndex + $MaxLines - 1
+  }
+  return $lines[$startIndex..$endIndex]
+}
+
 function Invoke-Checked([scriptblock]$Action, [string]$Label) {
   Write-Host $Label
   & $Action
@@ -83,7 +122,21 @@ try {
 
   Write-DeployStatus 'analyze'
   Write-Stage "Running analyze"
-  Invoke-Checked { & $FlutterLocal analyze --no-pub } 'scripts/flutter-local.ps1 analyze --no-pub'
+  $analyzeLogDir = Join-Path $WorkspaceRoot 'build\logs'
+  if (-not (Test-Path -LiteralPath $analyzeLogDir)) {
+    New-Item -ItemType Directory -Path $analyzeLogDir -Force | Out-Null
+  }
+  $analyzeLogPath = Join-Path $analyzeLogDir ("analyze-{0}.log" -f ([guid]::NewGuid().ToString('N')))
+  $analyzeOutput = & $FlutterLocal analyze --no-pub 2>&1 | Tee-Object -FilePath $analyzeLogPath
+  if ($LASTEXITCODE -ne 0) {
+    $excerptLines = New-LogExcerpt -Path $analyzeLogPath
+    $excerptText = if ($excerptLines -and $excerptLines.Count -gt 0) { $excerptLines -join "`n" } else { 'No analyze excerpt available.' }
+    Write-Host ''
+    Write-Host "Analyze log: $analyzeLogPath"
+    Write-Host 'Analyze excerpt:'
+    $excerptLines | ForEach-Object { Write-Host $_ }
+    throw "Step: analyze`nAnalyze log: $analyzeLogPath`nAnalyze excerpt:`n$excerptText"
+  }
 
   Write-DeployStatus 'tests'
   Write-Stage "Running focused tests"
