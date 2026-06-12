@@ -1697,3 +1697,8 @@
 - 앱 내 일정탭 월간 그리드의 연속 일정 밴드가 인접 날짜에서 살짝 겹치며 중간이 진해 보이던 문제를 보정했다.
 - 날짜 칸 좌우 1.5px 여백만큼만 확장하도록 조정해, 밴드가 끊기지 않고 맞닿되 투명도 중첩으로 진해지지 않게 했다.
 - 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, debug APK 산출물 갱신 확인, ADB install/launch 및 앱 PID 확인.
+
+## 2026-06-12 연속 일정 색상 구분 적용
+- 앱 내 일정탭과 Android 월간 위젯의 연속 일정은 연한 세이지 그린 배경과 짙은 그린 텍스트로 표시하도록 맞췄다.
+- 중요+연속 일정은 세이지 그린 배경을 유지하고 상단 코랄 포인트 라인을 얹어, 기간 의미와 중요 표시가 동시에 보이게 했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, ADB install/launch 및 앱 PID 확인.

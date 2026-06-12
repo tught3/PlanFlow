@@ -25,6 +25,9 @@ enum _CalendarLoadState {
 }
 
 const calendarCriticalEventMarkerColor = Color(0xFFB42318);
+const calendarMultiDayEventBackgroundColor = Color(0xFFDDEFE6);
+const calendarMultiDayEventTextColor = Color(0xFF174F4A);
+const calendarCriticalMultiDayAccentColor = Color(0xFFE98B86);
 
 Color _categoryColor(String category) {
   return PlanFlowEventCategories.colorOf(category);
@@ -1641,26 +1644,27 @@ class _MiniCalendarGrid extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.start,
                             children: [
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 3),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 3),
                                 child: Text(
-                                '$dayNumber',
-                                key: ValueKey(
-                                  'calendar-mini-day-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
+                                  '$dayNumber',
+                                  key: ValueKey(
+                                    'calendar-mini-day-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: isToday || isSelected
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : isToday
+                                            ? PlanFlowColors.primaryMid
+                                            : cell.isHoliday
+                                                ? calendarCriticalEventMarkerColor
+                                                : PlanFlowColors.textPrimary,
+                                  ),
                                 ),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: isToday || isSelected
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : isToday
-                                          ? PlanFlowColors.primaryMid
-                                          : cell.isHoliday
-                                              ? calendarCriticalEventMarkerColor
-                                              : PlanFlowColors.textPrimary,
-                                ),
-                              ),
                               ),
                               const SizedBox(height: 2),
                               Expanded(
@@ -1712,13 +1716,17 @@ class _CalendarMiniEventList extends StatelessWidget {
     final requiresOverflowLabel =
         overflowCount > 0 || events.length > _calendarMiniMonthEventRows;
     final maxVisibleEvents = requiresOverflowLabel
-        ? (_calendarMiniMonthEventRows - 1).clamp(1, _calendarMiniMonthEventRows)
+        ? (_calendarMiniMonthEventRows - 1)
+            .clamp(1, _calendarMiniMonthEventRows)
         : _calendarMiniMonthEventRows;
     final displayEvents = events.length > maxVisibleEvents
         ? events.take(maxVisibleEvents).toList(growable: false)
         : events;
-    final hiddenCount =
-        requiresOverflowLabel ? (overflowCount > 0 ? overflowCount : events.length - displayEvents.length) : 0;
+    final hiddenCount = requiresOverflowLabel
+        ? (overflowCount > 0
+            ? overflowCount
+            : events.length - displayEvents.length)
+        : 0;
     return Column(
       mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1771,19 +1779,23 @@ class _CalendarMiniEventLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = isSelected
-        ? Colors.white.withValues(alpha: 0.18)
-        : event.isCritical
-            ? const Color(0xFFB42318).withValues(alpha: 0.12)
-            : _categoryColor(event.category).withValues(alpha: 0.16);
-    final fg = isSelected
-        ? Colors.white
-        : event.isCritical
-            ? const Color(0xFFB42318)
-            : _categoryColor(event.category);
     final segment = _multiDaySegment(event, day);
     final isMultiDay =
         event.isMultiDay || calendarEventSpansMultipleLocalDays(event);
+    final bg = isSelected
+        ? Colors.white.withValues(alpha: 0.18)
+        : isMultiDay
+            ? calendarMultiDayEventBackgroundColor
+            : event.isCritical
+                ? const Color(0xFFB42318).withValues(alpha: 0.12)
+                : _categoryColor(event.category).withValues(alpha: 0.16);
+    final fg = isSelected
+        ? Colors.white
+        : isMultiDay
+            ? calendarMultiDayEventTextColor
+            : event.isCritical
+                ? const Color(0xFFB42318)
+                : _categoryColor(event.category);
     final showTitle = !isMultiDay || segment.$1;
     final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
     // Neighboring day cells have 1.5px margins on each side, so extending
@@ -1802,6 +1814,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
             bottom: 0,
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: hPadding),
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: bg,
                 borderRadius: BorderRadius.horizontal(
@@ -1810,21 +1823,38 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                 ),
               ),
               alignment: Alignment.centerLeft,
-              child: Text(
-                showTitle
-                    ? (event.isAllDay && !isMultiDay
-                        ? '종일 ${event.title}'
-                        : event.title)
-                    : '',
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 6.8,
-                  height: 1.0,
-                  color: fg,
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Stack(
+                children: [
+                  if (isMultiDay && event.isCritical && !isSelected)
+                    const Positioned(
+                      left: 0,
+                      top: 0,
+                      right: 0,
+                      height: 1.4,
+                      child: ColoredBox(
+                        color: calendarCriticalMultiDayAccentColor,
+                      ),
+                    ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      showTitle
+                          ? (event.isAllDay && !isMultiDay
+                              ? '종일 ${event.title}'
+                              : event.title)
+                          : '',
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 6.8,
+                        height: 1.0,
+                        color: fg,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
