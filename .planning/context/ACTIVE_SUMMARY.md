@@ -1702,3 +1702,8 @@
 - 앱 내 일정탭과 Android 월간 위젯의 연속 일정은 연한 세이지 그린 배경과 짙은 그린 텍스트로 표시하도록 맞췄다.
 - 중요+연속 일정은 세이지 그린 배경을 유지하고 상단 코랄 포인트 라인을 얹어, 기간 의미와 중요 표시가 동시에 보이게 했다.
 - 검증: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, ADB install/launch 및 앱 PID 확인.
+
+## 2026-06-12 중요+연속 일정 텍스트 위치 보정
+- 중요+연속 일정의 코랄 상단 라인이 제목 윗부분을 가려 보이지 않도록, 해당 케이스에서만 제목을 1px 아래로 내렸다.
+- Android 월간 위젯도 같은 조건에서 텍스트 top padding을 1px 적용해 앱 안 일정탭과 시각 흐름을 맞췄다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub`, debug APK 산출물 갱신, ADB install/launch 및 앱 PID 확인.

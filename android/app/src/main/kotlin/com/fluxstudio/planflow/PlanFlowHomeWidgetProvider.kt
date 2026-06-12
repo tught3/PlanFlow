@@ -1453,6 +1453,13 @@ class PlanFlowMonthlyWidgetProvider :
                         val showTitle = segment == "single" || segment == "start"
                         val bgRes = monthRangeBackground(segment, event.isCritical)
                         views.setInt(eventId, "setBackgroundResource", bgRes)
+                        views.setViewPadding(
+                            eventId,
+                            0,
+                            if (event.isCritical && isMonthRangeSegment(segment) && showTitle) 1 else 0,
+                            0,
+                            0,
+                        )
                         if (showTitle) {
                             bindEventText(
                                 views,
@@ -1595,6 +1602,13 @@ class PlanFlowMonthlyWidgetProvider :
                         // segment 배경 적용 (single은 배경 없음)
                         val bgRes = monthRangeBackground(segment, eventCritical)
                         views.setInt(eventId, "setBackgroundResource", bgRes)
+                        views.setViewPadding(
+                            eventId,
+                            0,
+                            if (eventCritical && isMonthRangeSegment(segment) && showTitle) 1 else 0,
+                            0,
+                            0,
+                        )
 
                         // middle/end 셀: 빈 텍스트로 배경 bar만 표시 (GONE 방지)
                         val isBarContinuation = !showTitle && (segment == "middle" || segment == "end")

@@ -1782,6 +1782,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final segment = _multiDaySegment(event, day);
     final isMultiDay =
         event.isMultiDay || calendarEventSpansMultipleLocalDays(event);
+    final isCriticalMultiDay = isMultiDay && event.isCritical && !isSelected;
     final bg = isSelected
         ? Colors.white.withValues(alpha: 0.18)
         : isMultiDay
@@ -1825,7 +1826,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Stack(
                 children: [
-                  if (isMultiDay && event.isCritical && !isSelected)
+                  if (isCriticalMultiDay)
                     const Positioned(
                       left: 0,
                       top: 0,
@@ -1837,20 +1838,25 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                     ),
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      showTitle
-                          ? (event.isAllDay && !isMultiDay
-                              ? '종일 ${event.title}'
-                              : event.title)
-                          : '',
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 6.8,
-                        height: 1.0,
-                        color: fg,
-                        fontWeight: FontWeight.w700,
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        top: isCriticalMultiDay && showTitle ? 1.0 : 0.0,
+                      ),
+                      child: Text(
+                        showTitle
+                            ? (event.isAllDay && !isMultiDay
+                                ? '종일 ${event.title}'
+                                : event.title)
+                            : '',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 6.8,
+                          height: 1.0,
+                          color: fg,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
