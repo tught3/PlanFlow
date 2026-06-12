@@ -1717,3 +1717,8 @@
 - 앱 내 일정탭 월간 그리드가 일요일 시작 달력인데 연속 일정 세그먼트는 월요일 시작 기준으로 끊고 있어, 일요일마다 밴드가 끝나는 문제를 수정했다.
 - 연속 일정의 주 시작/끝 판단을 일요일 시작, 토요일 끝으로 맞춰 일요일 칸에서도 다음 날짜로 이어지는 밴드처럼 보이게 했다.
 - 검증: `scripts/flutter-local.ps1 test test/screens/calendar_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, debug APK 산출물 갱신, ADB install/launch 및 앱 PID 확인.
+
+## 2026-06-12 중요 연속 일정 코랄 라인 연결 보정
+- 중요+연속 일정의 상단 코랄 라인이 텍스트용 좌우 padding 안에서 그려져, 초록 밴드는 이어져도 빨간선만 날짜 칸마다 끊겨 보이던 문제를 수정했다.
+- 밴드 컨테이너 padding을 제거하고 텍스트에만 좌우 padding을 적용해, 코랄 라인이 초록 밴드와 같은 폭으로 이어지게 했다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/calendar_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, ADB install/launch 확인.

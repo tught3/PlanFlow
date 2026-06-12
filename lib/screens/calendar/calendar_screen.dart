@@ -1814,7 +1814,6 @@ class _CalendarMiniEventLabel extends StatelessWidget {
             top: 1,
             bottom: 0,
             child: Container(
-              padding: EdgeInsets.symmetric(horizontal: hPadding),
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: bg,
@@ -1839,7 +1838,9 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
-                      padding: EdgeInsets.only(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: hPadding,
+                      ).copyWith(
                         top: isCriticalMultiDay && showTitle ? 1.0 : 0.0,
                       ),
                       child: Text(
