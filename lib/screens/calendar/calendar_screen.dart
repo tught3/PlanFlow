@@ -1786,8 +1786,10 @@ class _CalendarMiniEventLabel extends StatelessWidget {
         event.isMultiDay || calendarEventSpansMultipleLocalDays(event);
     final showTitle = !isMultiDay || segment.$1;
     final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
-    final extendLeft = isMultiDay && !segment.$1 ? 2.5 : 0.0;
-    final extendRight = isMultiDay && !segment.$2 ? 2.5 : 0.0;
+    // Neighboring day cells have 1.5px margins on each side, so extending
+    // halfway into that gap lets range bars touch without alpha overlap.
+    final extendLeft = isMultiDay && !segment.$1 ? 1.5 : 0.0;
+    final extendRight = isMultiDay && !segment.$2 ? 1.5 : 0.0;
     return SizedBox(
       height: 9,
       child: Stack(
