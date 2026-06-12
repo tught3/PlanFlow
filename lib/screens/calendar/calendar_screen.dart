@@ -1782,18 +1782,18 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final segment = _multiDaySegment(event, day);
     final isMultiDay =
         event.isMultiDay || calendarEventSpansMultipleLocalDays(event);
-    final isCriticalMultiDay = isMultiDay && event.isCritical && !isSelected;
-    final bg = isSelected
-        ? Colors.white.withValues(alpha: 0.18)
-        : isMultiDay
-            ? calendarMultiDayEventBackgroundColor
+    final isCriticalMultiDay = isMultiDay && event.isCritical;
+    final bg = isMultiDay
+        ? calendarMultiDayEventBackgroundColor
+        : isSelected
+            ? Colors.white.withValues(alpha: 0.18)
             : event.isCritical
                 ? const Color(0xFFB42318).withValues(alpha: 0.12)
                 : _categoryColor(event.category).withValues(alpha: 0.16);
-    final fg = isSelected
-        ? Colors.white
-        : isMultiDay
-            ? calendarMultiDayEventTextColor
+    final fg = isMultiDay
+        ? calendarMultiDayEventTextColor
+        : isSelected
+            ? Colors.white
             : event.isCritical
                 ? const Color(0xFFB42318)
                 : _categoryColor(event.category);

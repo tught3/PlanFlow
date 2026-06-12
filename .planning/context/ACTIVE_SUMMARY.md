@@ -1707,3 +1707,8 @@
 - 중요+연속 일정의 코랄 상단 라인이 제목 윗부분을 가려 보이지 않도록, 해당 케이스에서만 제목을 1px 아래로 내렸다.
 - Android 월간 위젯도 같은 조건에서 텍스트 top padding을 1px 적용해 앱 안 일정탭과 시각 흐름을 맞췄다.
 - 검증: `scripts/flutter-local.ps1 analyze --no-pub`, debug APK 산출물 갱신, ADB install/launch 및 앱 PID 확인.
+
+## 2026-06-12 선택된 연속 일정 밴드 연결 보정
+- 앱 내 일정탭에서 선택된 날짜의 연속 일정 라벨이 흰 반투명 스타일로 바뀌며 주 경계처럼 끊겨 보이던 문제를 수정했다.
+- 선택된 날짜라도 연속 일정은 세이지 그린 밴드와 텍스트 색을 유지하게 해, 일요일 시작 구간과 다음 월요일 구간이 같은 일정으로 이어져 보이게 했다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/calendar_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `git diff --check`. ADB 기기가 없어 설치/실행은 진행하지 못했다.
