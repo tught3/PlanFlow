@@ -76,6 +76,16 @@ class _GroupListScreenState extends State<GroupListScreen> {
     }
   }
 
+  Future<void> _openDashboard() async {
+    final result = await context.push<String>(AppRoutes.groupDashboard);
+    if (!mounted) {
+      return;
+    }
+    if (result != null) {
+      await _load();
+    }
+  }
+
   Future<void> _selectGroup(GroupModel group) async {
     await _provider.selectGroup(group.id);
   }
@@ -170,6 +180,13 @@ class _GroupListScreenState extends State<GroupListScreen> {
                   onPressed: _openCreateGroup,
                   icon: const Icon(Icons.add_circle_outline),
                   label: const Text('새 그룹 만들기'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const ValueKey('group-list-dashboard-button'),
+                  onPressed: _openDashboard,
+                  icon: const Icon(Icons.dashboard_outlined),
+                  label: const Text('그룹 대시보드'),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(

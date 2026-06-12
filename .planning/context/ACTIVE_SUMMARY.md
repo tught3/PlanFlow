@@ -1704,3 +1704,8 @@
 - 월간 위젯과 일정탭의 여분 슬롯 표시를 조정하고, +n 표시와 일정 밴드 스타일을 손봤다.
 - AI 일정 대화의 키보드 인셋 대응, 날짜 단독 입력(28일) 해석, 제목/이름 검색 정규화를 보강했다.
 - focused test/analyze/build/install까지는 통과했고, 실기기에서는 PlanFlow 홈 화면까지 재진입을 확인했다. 달력 화면의 시각 확인은 다음 재진입 때 추가 점검이 필요하다.
+
+## 2026-06-12 GroupDashboard baseline
+- Added GroupDashboardRepository, GroupDashboardProvider, GroupDashboardState, and GroupDashboardScreen for leader-oriented summary counts and upcoming events.
+- Wired a minimal GroupList dashboard entry point without touching calendar overlay or personal event screens.
+- Verified `flutter analyze --no-pub`, targeted dashboard/group tests, full `flutter test --no-pub`, and `git diff --check`.

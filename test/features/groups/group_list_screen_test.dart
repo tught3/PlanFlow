@@ -170,6 +170,8 @@ void main() {
     expect(find.text('아직 속한 그룹이 없어요'), findsOneWidget);
     expect(
         find.byKey(const ValueKey('group-list-create-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('group-list-dashboard-button')),
+        findsOneWidget);
     expect(
         find.byKey(const ValueKey('group-list-events-button')), findsOneWidget);
   });

@@ -14,6 +14,7 @@ import '../screens/placeholder_screen.dart';
 import '../screens/settings/naver_ics_import_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/splash/splash_screen.dart';
+import '../features/groups/screens/group_dashboard_screen.dart';
 import '../features/groups/screens/group_create_screen.dart';
 import '../features/groups/screens/group_event_create_screen.dart';
 import '../features/groups/screens/group_event_detail_screen.dart';
@@ -274,6 +275,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.groupEvents,
       builder: (context, state) => const GroupEventListScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupDashboard,
+      builder: (context, state) => const GroupDashboardScreen(),
     ),
     GoRoute(
       path: AppRoutes.groupEventCreate,
