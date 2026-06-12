@@ -1385,6 +1385,7 @@ title, date, start_at, end_at, location, location_lat, location_lng, travel_orig
 start_at and end_at must be ISO-8601 date-time strings when possible.
 Keep date, time, recurrence, and reminder expressions out of title and memo; put them only into the structured fields.
 For Korean relative and colloquial time expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", "열두시반", "오후 두시 반", and "저녁 일곱시 삼십분", resolve them from the current local date and time.
+For day-only expressions like "28일" or "28일로", resolve to the 28th of the current month. If that date has already passed, use the 28th of the next month instead. Always output the full date in ISO-8601 format.
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.
 For recurring schedules, return recurrence_rule as an iCal RRULE such as "FREQ=WEEKLY;BYDAY=TU". Otherwise return null.
 For all-day schedules, set is_all_day true. For multi-day schedules such as "5월 1일부터 3일까지", set is_multi_day true and return both start_at and end_at.

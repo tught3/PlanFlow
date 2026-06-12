@@ -798,10 +798,15 @@ class VoiceConversationController {
     }
 
     final ordinalIndex = _parseOrdinalIndex(text);
-    if (ordinalIndex != null &&
-        ordinalIndex >= 0 &&
-        ordinalIndex < state.visibleEvents.length) {
-      return state.visibleEvents[ordinalIndex];
+    if (ordinalIndex != null) {
+      final pool = state.visibleEvents.isNotEmpty
+          ? state.visibleEvents
+          : (List<EventModel>.from(state.events)
+              ..sort((a, b) => (a.startAt ?? DateTime.now())
+                  .compareTo(b.startAt ?? DateTime.now())));
+      if (ordinalIndex >= 0 && ordinalIndex < pool.length) {
+        return pool[ordinalIndex];
+      }
     }
 
     final time = _parseTimeReference(text);

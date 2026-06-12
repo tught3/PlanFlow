@@ -1627,7 +1627,6 @@ class _MiniCalendarGrid extends StatelessWidget {
                           height: 74,
                           margin: const EdgeInsets.all(1.5),
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 3,
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
@@ -1641,7 +1640,9 @@ class _MiniCalendarGrid extends StatelessWidget {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.start,
                             children: [
-                              Text(
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 3),
+                                child: Text(
                                 '$dayNumber',
                                 key: ValueKey(
                                   'calendar-mini-day-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
@@ -1659,6 +1660,7 @@ class _MiniCalendarGrid extends StatelessWidget {
                                               ? calendarCriticalEventMarkerColor
                                               : PlanFlowColors.textPrimary,
                                 ),
+                              ),
                               ),
                               const SizedBox(height: 2),
                               Expanded(
@@ -1735,10 +1737,10 @@ class _CalendarMiniEventList extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerRight,
               child: Text(
-                '+$hiddenCount',
+                '+$hiddenCount개',
                 maxLines: 1,
                 textAlign: TextAlign.right,
-                overflow: TextOverflow.clip,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 7.5,
                   height: 1,
@@ -1769,8 +1771,14 @@ class _CalendarMiniEventLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = isSelected
         ? Colors.white.withValues(alpha: 0.18)
-        : _categoryColor(event.category).withValues(alpha: 0.16);
-    final fg = isSelected ? Colors.white : _categoryColor(event.category);
+        : event.isCritical
+            ? const Color(0xFFB42318).withValues(alpha: 0.12)
+            : _categoryColor(event.category).withValues(alpha: 0.16);
+    final fg = isSelected
+        ? Colors.white
+        : event.isCritical
+            ? const Color(0xFFB42318)
+            : _categoryColor(event.category);
     final segment = _multiDaySegment(event, day);
     final isMultiDay =
         event.isMultiDay || calendarEventSpansMultipleLocalDays(event);

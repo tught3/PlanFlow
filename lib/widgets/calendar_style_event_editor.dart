@@ -1056,7 +1056,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
   }
 }
 
-class _Wheel<T> extends StatelessWidget {
+class _Wheel<T> extends StatefulWidget {
   const _Wheel({
     required this.values,
     required this.selected,
@@ -1075,28 +1075,64 @@ class _Wheel<T> extends StatelessWidget {
   final bool looping;
 
   @override
+  State<_Wheel<T>> createState() => _WheelState<T>();
+}
+
+class _WheelState<T> extends State<_Wheel<T>> {
+  late FixedExtentScrollController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = FixedExtentScrollController(
+      initialItem: widget.values.indexOf(widget.selected).clamp(0, widget.values.length - 1),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _Wheel<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selected != widget.selected) {
+      final newIndex = widget.values.indexOf(widget.selected).clamp(0, widget.values.length - 1);
+      if (_controller.hasClients && _controller.selectedItem != newIndex) {
+        _controller.animateToItem(
+          newIndex,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final initialItem = values.indexOf(selected).clamp(0, values.length - 1);
     return CupertinoPicker(
-      scrollController: FixedExtentScrollController(initialItem: initialItem),
-      itemExtent: itemExtent,
+      scrollController: _controller,
+      itemExtent: widget.itemExtent,
       magnification: 1.05,
       squeeze: 1.08,
       useMagnifier: true,
       selectionOverlay: const SizedBox.shrink(),
-      looping: looping,
-      onSelectedItemChanged: (index) => onChanged(values[index]),
-      children: values
+      looping: widget.looping,
+      onSelectedItemChanged: (index) => widget.onChanged(widget.values[index]),
+      children: widget.values
           .map(
             (value) => Center(
               child: Text(
-                labelBuilder(value),
+                widget.labelBuilder(value),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontWeight:
-                          value == selected ? FontWeight.w900 : FontWeight.w600,
-                      color: value == selected
+                      fontWeight: value == widget.selected
+                          ? FontWeight.w900
+                          : FontWeight.w600,
+                      color: value == widget.selected
                           ? PlanFlowColors.primary
                           : PlanFlowColors.textSecondary,
                     ),
