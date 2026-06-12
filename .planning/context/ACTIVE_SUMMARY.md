@@ -1712,3 +1712,8 @@
 - 앱 내 일정탭에서 선택된 날짜의 연속 일정 라벨이 흰 반투명 스타일로 바뀌며 주 경계처럼 끊겨 보이던 문제를 수정했다.
 - 선택된 날짜라도 연속 일정은 세이지 그린 밴드와 텍스트 색을 유지하게 해, 일요일 시작 구간과 다음 월요일 구간이 같은 일정으로 이어져 보이게 했다.
 - 검증: `scripts/flutter-local.ps1 test test/screens/calendar_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `git diff --check`. ADB 기기가 없어 설치/실행은 진행하지 못했다.
+
+## 2026-06-12 일정탭 주 경계 기준 수정
+- 앱 내 일정탭 월간 그리드가 일요일 시작 달력인데 연속 일정 세그먼트는 월요일 시작 기준으로 끊고 있어, 일요일마다 밴드가 끝나는 문제를 수정했다.
+- 연속 일정의 주 시작/끝 판단을 일요일 시작, 토요일 끝으로 맞춰 일요일 칸에서도 다음 날짜로 이어지는 밴드처럼 보이게 했다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/calendar_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, debug APK 산출물 갱신, ADB install/launch 및 앱 PID 확인.

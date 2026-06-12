@@ -1879,8 +1879,8 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final first = planflowLocalDay(event.startAt!);
     final last = _calendarDisplayEndDay(event.startAt!, event.endAt!);
     return (
-      current == first || current.weekday == DateTime.monday,
-      current == last || current.weekday == DateTime.sunday
+      current == first || current.weekday == DateTime.sunday,
+      current == last || current.weekday == DateTime.saturday
     );
   }
 }
