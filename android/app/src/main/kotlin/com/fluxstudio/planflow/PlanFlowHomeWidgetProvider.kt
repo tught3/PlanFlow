@@ -26,6 +26,7 @@ import java.util.Locale
 private const val DEFAULT_TEXT_COLOR = 0xFF203A57.toInt()
 private const val MUTED_TEXT_COLOR = 0xFF8FA4B7.toInt()
 private const val CRITICAL_TEXT_COLOR = 0xFFD94444.toInt()
+private const val HOLIDAY_TEXT_COLOR = 0xFFB42318.toInt()
 private const val PLANFLOW_SCHEME = "planflow"
 private const val PLANFLOW_CALENDAR_HOST = "calendar"
 private const val PLANFLOW_EVENT_HOST = "event"
@@ -195,6 +196,39 @@ abstract class BasePlanFlowWidgetProvider(
     protected fun isWeekend(date: LocalDate?): Boolean {
         return date?.dayOfWeek == java.time.DayOfWeek.SATURDAY ||
             date?.dayOfWeek == java.time.DayOfWeek.SUNDAY
+    }
+
+    protected fun looksLikeHolidayTitle(title: String?): Boolean {
+        val normalized = title?.trim().orEmpty()
+            .replace("\\s+".toRegex(), "")
+            .lowercase(Locale.KOREA)
+        if (normalized.isBlank()) {
+            return false
+        }
+        val keywords = listOf(
+            "공휴일",
+            "대체공휴일",
+            "임시공휴일",
+            "신정",
+            "설날",
+            "추석",
+            "삼일절",
+            "어린이날",
+            "현충일",
+            "광복절",
+            "개천절",
+            "한글날",
+            "성탄절",
+            "부처님오신날",
+            "휴일",
+        )
+        return keywords.any { keyword ->
+            normalized.contains(keyword.replace("\\s+".toRegex(), "").lowercase(Locale.KOREA))
+        }
+    }
+
+    protected fun hasHolidayEvent(events: List<RawWidgetEvent>, day: LocalDate): Boolean {
+        return rawWidgetEventsForDay(events, day).any { looksLikeHolidayTitle(it.title) }
     }
 
     protected fun formatTime(raw: String?): String {
@@ -1292,14 +1326,12 @@ class PlanFlowMonthlyWidgetProvider :
                         val lastDay = rawWidgetEventDisplayEndDay(event)
                         !lastDay.isAfter(firstDay) && firstDay == day
                     }
-                    var placedCount = 0
                     for (event in singleEvents) {
                         var placed = false
                         for (slot in 0 until 4) {
                             if (slotMap[index][slot] == null) {
                                 slotMap[index][slot] = event
                                 placed = true
-                                placedCount += 1
                                 break
                             }
                         }
@@ -1335,10 +1367,12 @@ class PlanFlowMonthlyWidgetProvider :
                         views.setTextViewText(dayId, day.dayOfMonth.toString())
                         views.setViewVisibility(dayId, View.VISIBLE)
                         val isToday = day == todayDate()
+                        val isHoliday = hasHolidayEvent(rawEvents, day)
                         views.setTextColor(
                             dayId,
                             when {
                                 isToday -> 0xFFFFFFFF.toInt()
+                                isHoliday -> HOLIDAY_TEXT_COLOR
                                 inMonth -> DEFAULT_TEXT_COLOR
                                 else -> MUTED_TEXT_COLOR
                             },
@@ -1478,10 +1512,12 @@ class PlanFlowMonthlyWidgetProvider :
                 views.setTextViewText(dayId, dayText ?: "")
                 views.setViewVisibility(dayId, if (dayText == null) View.INVISIBLE else View.VISIBLE)
                 val isToday = targetDate == todayDate()
+                val isHoliday = hasHolidayEvent(rawEvents, targetDate)
                 views.setTextColor(
                     dayId,
                     when {
                         isToday -> 0xFFFFFFFF.toInt()
+                        isHoliday -> HOLIDAY_TEXT_COLOR
                         inMonth -> DEFAULT_TEXT_COLOR
                         else -> MUTED_TEXT_COLOR
                     },

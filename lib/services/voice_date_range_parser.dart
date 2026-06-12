@@ -34,6 +34,11 @@ class VoiceDateRangeParser {
       return _singleDay(absolute, '${absolute.month}월 ${absolute.day}일');
     }
 
+    final dayOnly = _parseDayOnlyDate(normalized, today);
+    if (dayOnly != null) {
+      return _singleDay(dayOnly, '${dayOnly.month}월 ${dayOnly.day}일');
+    }
+
     if (compact.contains('글피')) {
       final start = today.add(const Duration(days: 3));
       return _singleDay(start, '글피');
@@ -92,6 +97,24 @@ class VoiceDateRangeParser {
     }
     final start = DateTime(year, month, day);
     if (start.year != year || start.month != month || start.day != day) {
+      return null;
+    }
+    return start;
+  }
+
+  static DateTime? _parseDayOnlyDate(String normalized, DateTime today) {
+    final match = RegExp(
+      r'(^|\s)(\d{1,2})\s*일(?=\s|$)',
+    ).firstMatch(normalized);
+    if (match == null) {
+      return null;
+    }
+    final day = int.tryParse(match.group(2) ?? '');
+    if (day == null) {
+      return null;
+    }
+    final start = DateTime(today.year, today.month, day);
+    if (start.year != today.year || start.month != today.month || start.day != day) {
       return null;
     }
     return start;

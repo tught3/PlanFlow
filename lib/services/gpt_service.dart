@@ -696,6 +696,16 @@ class GptService {
       now: now,
     );
     if (localRange != null) {
+      if (localRange.isAllDay &&
+          !localRange.isMultiDay &&
+          !_hasExplicitTimeCue(normalized)) {
+        return DateTime(
+          localRange.startAt.year,
+          localRange.startAt.month,
+          localRange.startAt.day,
+          9,
+        );
+      }
       return localRange.startAt;
     }
 
@@ -731,6 +741,11 @@ class GptService {
     }
 
     return candidate;
+  }
+
+  bool _hasExplicitTimeCue(String text) {
+    return _extractTimeFromText(text) != null ||
+        RegExp(r'\d{1,3}\s*(분|시간)\s*(뒤|후|있다가|이따)').hasMatch(text);
   }
 
   DateTime? _extractMonthlyRecurringDateFromText(String text, DateTime now) {
@@ -910,7 +925,17 @@ $_scheduleSystemPrompt
     if (range == null) {
       return;
     }
-    schedule['start_at'] = range.startAt.toIso8601String();
+    final shouldDefaultToMorning =
+        range.isAllDay && !range.isMultiDay && !_hasExplicitTimeCue(rawText);
+    final startAt = shouldDefaultToMorning
+        ? DateTime(
+            range.startAt.year,
+            range.startAt.month,
+            range.startAt.day,
+            9,
+          )
+        : range.startAt;
+    schedule['start_at'] = startAt.toIso8601String();
     schedule['end_at'] = range.endAt.toIso8601String();
     schedule['is_all_day'] = range.isAllDay;
     schedule['is_multi_day'] = range.isMultiDay;
@@ -1133,11 +1158,38 @@ $_scheduleSystemPrompt
       }
     }
 
+    final dayOnly = RegExp(r'(?<!\d)(?<day>\d{1,2})일(?:로|에|부터|까지)?')
+        .firstMatch(text);
+    if (dayOnly != null) {
+      final day = int.tryParse(dayOnly.namedGroup('day') ?? '');
+      if (day != null && day >= 1) {
+        final candidate = _resolveDayOnlyDate(now, day);
+        if (candidate != null) {
+          return candidate;
+        }
+      }
+    }
+
     final weekDay = _extractWeekdayOffset(text);
     if (weekDay != null) {
       return weekDay;
     }
 
+    return null;
+  }
+
+  DateTime? _resolveDayOnlyDate(DateTime now, int day) {
+    final today = DateTime(now.year, now.month, now.day);
+    for (var monthOffset = 0; monthOffset < 12; monthOffset += 1) {
+      final candidate = DateTime(now.year, now.month + monthOffset, day);
+      if (candidate.day != day) {
+        continue;
+      }
+      if (candidate.isBefore(today)) {
+        continue;
+      }
+      return DateTime(candidate.year, candidate.month, candidate.day, 9);
+    }
     return null;
   }
 
@@ -1333,6 +1385,7 @@ title, date, start_at, end_at, location, location_lat, location_lng, travel_orig
 start_at and end_at must be ISO-8601 date-time strings when possible.
 Keep date, time, recurrence, and reminder expressions out of title and memo; put them only into the structured fields.
 For Korean relative and colloquial time expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", "열두시반", "오후 두시 반", and "저녁 일곱시 삼십분", resolve them from the current local date and time.
+For day-only expressions like "28일" or "28일로", resolve to the 28th of the current month. If that date has already passed, use the 28th of the next month instead. Always output the full date in ISO-8601 format.
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.
 For recurring schedules, return recurrence_rule as an iCal RRULE such as "FREQ=WEEKLY;BYDAY=TU". Otherwise return null.
 For all-day schedules, set is_all_day true. For multi-day schedules such as "5월 1일부터 3일까지", set is_multi_day true and return both start_at and end_at.

@@ -1,4 +1,4 @@
-# ACTIVE SUMMARY
+﻿# ACTIVE SUMMARY
 
 ## 2026-06-11 PlanFlow V2 group_backups implementation
 - Added `public.group_backups` and its RLS/helper layer to `supabase/schema.sql`, including archive backup creation, restore marking, and a convenience archive-with-backup flow.
@@ -1690,3 +1690,17 @@
 - Added GroupEventProvider, GroupEventList, GroupEventCreate, and GroupEventDetail screens plus `/groups/events` routes.
 - Wired the GroupList entry point to the new group event flow without touching the personal event screens.
 - Verified `flutter analyze --no-pub`, targeted group tests, full `flutter test --no-pub`, and `git diff --check`.
+
+## 2026-06-11 voice / event_edit polish
+- 이번 턴에서 이벤트 편집 저장 버튼을 더 크고 색이 있는 버튼으로 바꿨고, 음성 날짜 파서에 "28일" 단독 입력을 현재 달로 해석하는 경로를 추가했다. 또한 `VoiceScheduleStructureService`의 날짜 범위 해석이 시간 범위와 충돌하지 않도록 경계를 보강했다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_date_range_parser_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/event_edit_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/voice_schedule_structure_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.103:45819 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.103:45819 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-06-11 달력 위젯/일정탭 가독성 정리
+- 월간 위젯과 앱 내 calendar 탭의 일정 렌더링을 packed cell 방식으로 맞춰, 남는 공간이 있으면 실제 일정을 우선 채우고 정말 부족할 때만 `+n`을 보여주도록 정리했다.
+- 연속 일정은 위젯처럼 이어지는 밴드로 보이게 바꾸고, 공휴일 날짜는 빨간색으로 강조했다.
+- 분석/테스트/디버그 빌드와 실기기 설치까지 확인해 가독성 회귀를 막았다.
+
+## 2026-06-12 PlanFlow main 브랜치: 달력/음성 검색/키보드 정리 진행 중
+- 월간 위젯과 일정탭의 여분 슬롯 표시를 조정하고, +n 표시와 일정 밴드 스타일을 손봤다.
+- AI 일정 대화의 키보드 인셋 대응, 날짜 단독 입력(28일) 해석, 제목/이름 검색 정규화를 보강했다.
+- focused test/analyze/build/install까지는 통과했고, 실기기에서는 PlanFlow 홈 화면까지 재진입을 확인했다. 달력 화면의 시각 확인은 다음 재진입 때 추가 점검이 필요하다.

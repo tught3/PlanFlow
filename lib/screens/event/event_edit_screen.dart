@@ -1033,10 +1033,25 @@ class _EventEditScreenState extends State<EventEditScreen> {
         title: Text(_isNewEvent ? l10n.eventCreateTitle : l10n.eventEditTitle),
         leading: BackButton(onPressed: _handleBackNavigation),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.save_outlined),
-            tooltip: '저장',
-            onPressed: _isSaving ? null : _handleSave,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton.icon(
+              onPressed: _isSaving ? null : _handleSave,
+              icon: _isSaving
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined, size: 18),
+              label: const Text('저장'),
+              style: FilledButton.styleFrom(
+                backgroundColor: PlanFlowColors.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(92, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
           ),
         ],
       ),

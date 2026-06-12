@@ -798,10 +798,15 @@ class VoiceConversationController {
     }
 
     final ordinalIndex = _parseOrdinalIndex(text);
-    if (ordinalIndex != null &&
-        ordinalIndex >= 0 &&
-        ordinalIndex < state.visibleEvents.length) {
-      return state.visibleEvents[ordinalIndex];
+    if (ordinalIndex != null) {
+      final pool = state.visibleEvents.isNotEmpty
+          ? state.visibleEvents
+          : (List<EventModel>.from(state.events)
+              ..sort((a, b) => (a.startAt ?? DateTime.now())
+                  .compareTo(b.startAt ?? DateTime.now())));
+      if (ordinalIndex >= 0 && ordinalIndex < pool.length) {
+        return pool[ordinalIndex];
+      }
     }
 
     final time = _parseTimeReference(text);
@@ -913,10 +918,17 @@ class VoiceConversationController {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim()
         .split(RegExp(r'\s+'))
-        .map(_compact)
+        .map(_normalizeTitleSearchToken)
         .where((token) => !_isDateReferenceToken(token))
         .where((token) => token.length >= 2)
         .toList(growable: false);
+  }
+
+  String _normalizeTitleSearchToken(String token) {
+    var value = _compact(token);
+    value = value.replaceAll(RegExp(r'(이라고|라고|이라는|라는|이란|란)$'), '');
+    value = value.replaceAll(RegExp(r'라$'), '');
+    return value;
   }
 
   bool _isTitleSearchExpansionFollowUp(String text) {
@@ -1192,12 +1204,14 @@ class VoiceConversationController {
   bool _hasExplicitCalendarDateCue(String text) {
     final normalized = _compact(text);
     return RegExp(r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일')
-        .hasMatch(normalized);
+            .hasMatch(normalized) ||
+        RegExp(r'(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?')
+            .hasMatch(normalized);
   }
 
   DateTime? _inferLastDateCandidate(String text, DateTime referenceLocal) {
     final dateMatches = RegExp(
-      r'((?:그\s*)?다음\s*날(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:뒤|후)(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:전|앞)(?:으로|로|에)?|(?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일|매월\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일|매월\s*\d{1,2}\s*일',
+      r'((?:그\s*)?다음\s*날(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:뒤|후)(?:로|에|으로)?|(?:하루|이틀|삼일|\d+\s*일)\s*(?:전|앞)(?:으로|로|에)?|(?:이번|다음)\s*주\s*)?[월화수목금토일]요일|오늘|내일|모레|글피|(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일|(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?|매월\s*(?:첫\s*번째|첫째|두\s*번째|둘째|세\s*번째|셋째|네\s*번째|넷째|마지막)\s*[월화수목금토일]\s*요일|매월\s*\d{1,2}\s*일',
     ).allMatches(text).toList(growable: false);
     if (dateMatches.isEmpty) {
       return null;
@@ -1304,6 +1318,7 @@ class VoiceConversationController {
   bool _hasExplicitDateOrTimeCue(String text) {
     return RegExp(r'(?:\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일')
             .hasMatch(text) ||
+        RegExp(r'(?<!\d)\d{1,2}\s*일(?:로|에|부터|까지)?').hasMatch(text) ||
         RegExp(
           r'(오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*([0-9]{1,2}|[가-힣]{1,8})\s*시',
         ).hasMatch(text);

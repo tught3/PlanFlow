@@ -368,24 +368,27 @@ class VoiceCommandPipeline {
     if (token.isEmpty) {
       return const <String>[];
     }
-    final variants = <String>{token};
+    final variants = <String>[];
+    void addVariant(String value) {
+      if (value.length < 2 || variants.contains(value)) {
+        return;
+      }
+      variants.add(value);
+    }
+
     final withoutSchedule = token.replaceAll(RegExp(r'(일정|스케줄)$'), '');
-    if (withoutSchedule.length >= 2) {
-      variants.add(withoutSchedule);
-    }
-    if (token.endsWith('전달일정')) {
-      variants.add(token.replaceFirst(RegExp(r'일정$'), ''));
-    }
     final withoutQuoteEnding =
         token.replaceAll(RegExp(r'(이라고|라고|이라는|라는)$'), '');
-    if (withoutQuoteEnding.length >= 2) {
-      variants.add(withoutQuoteEnding);
-    }
     final withoutTrailingRa = token.replaceAll(RegExp(r'라$'), '');
-    if (withoutTrailingRa.length >= 2) {
-      variants.add(withoutTrailingRa);
+
+    addVariant(withoutQuoteEnding);
+    addVariant(withoutTrailingRa);
+    addVariant(withoutSchedule);
+    if (token.endsWith('전달일정')) {
+      addVariant(token.replaceFirst(RegExp(r'일정$'), ''));
     }
-    return variants.toList(growable: false);
+    addVariant(token);
+    return variants;
   }
 
   String stripKoreanParticles(String token) {
@@ -727,7 +730,12 @@ class VoiceCommandPipeline {
     '추가',
     '등록',
     '보여',
+    '보여줘',
+    '보여주세요',
     '찾아',
+    '찾아봐',
+    '찾아줘',
+    '찾아주세요',
     '조회',
     '바꾸',
     '옮겨',
@@ -777,6 +785,8 @@ class VoiceCommandPipeline {
     '밤',
     '무엇',
     '뭐',
+    '알려줘',
+    '알려주세요',
     '되어',
     '있는',
     '이라고',

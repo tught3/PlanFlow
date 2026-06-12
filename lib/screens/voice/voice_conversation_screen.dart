@@ -171,6 +171,14 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.of(context).viewInsets.bottom > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    }
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _keepListening = false;
@@ -1155,6 +1163,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         }
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         appBar: AppBar(
           title: const Text('AI 일정 대화'),
           leading: IconButton(
@@ -1201,23 +1210,23 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                   itemCount: _messages.length + (_isSubmitting ? 1 : 0),
                 ),
               ),
+              SafeArea(
+                top: false,
+                child: _ConversationInputBar(
+                  controller: _inputController,
+                  isSubmitting: _isSubmitting,
+                  isListening: _isListening,
+                  keepListening: _keepListening,
+                  voicePausedByUser: _voicePausedByUser,
+                  isRestartPending: _isRestartPending,
+                  statusText: _conversationStatus,
+                  onListen: () => _startConversationListen(resetRetryPolicy: true),
+                  onStopListening: _pauseVoiceInput,
+                  onSubmit: () => _submitText(null),
+                  onChanged: _handleInputChanged,
+                ),
+              ),
             ],
-          ),
-        ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: _ConversationInputBar(
-            controller: _inputController,
-            isSubmitting: _isSubmitting,
-            isListening: _isListening,
-            keepListening: _keepListening,
-            voicePausedByUser: _voicePausedByUser,
-            isRestartPending: _isRestartPending,
-            statusText: _conversationStatus,
-            onListen: () => _startConversationListen(resetRetryPolicy: true),
-            onStopListening: _pauseVoiceInput,
-            onSubmit: () => _submitText(null),
-            onChanged: _handleInputChanged,
           ),
         ),
       ),

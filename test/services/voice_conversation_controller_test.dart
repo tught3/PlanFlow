@@ -156,6 +156,33 @@ void main() {
       );
     });
 
+    test(
+        'day-only follow-up shifts the selected event to this month or next month',
+        () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('first', '계룡 엄마 만나기', DateTime(2026, 6, 19, 9)),
+          _event('second', '다른 일정', DateTime(2026, 6, 19, 12)),
+        ],
+        now: () => DateTime(2026, 6, 10, 8),
+      );
+      controller.handle('6월 19일 일정 보여줘');
+
+      final result = controller.handle('1번 일정의 날짜를 28일로 바꿔줘');
+
+      expect(result.action, VoiceConversationAction.openEditScreen);
+      expect(result.targetEvent?.id, 'first');
+      expect(result.draftEvent, isNotNull);
+      expect(
+        planflowLocal(result.draftEvent!.startAt!),
+        DateTime(2026, 6, 28, 9),
+      );
+      expect(
+        planflowLocal(result.draftEvent!.endAt!),
+        DateTime(2026, 6, 28, 10),
+      );
+    });
+
     test('time follow-up creates a shifted draft event for edit screen', () {
       final controller = VoiceConversationController(
         events: <EventModel>[
@@ -232,6 +259,22 @@ void main() {
         'near-target',
         'near-title',
       ]);
+    });
+
+    test('title search trims trailing quoted particles before searching', () {
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('match', '김창민 만나기', DateTime(2026, 6, 19, 9)),
+          _event('noise', '김창민 다른 미팅', DateTime(2026, 6, 20, 9)),
+        ],
+        now: () => DateTime(2026, 6, 7, 8),
+      );
+
+      final result = controller.handle('김창민 만나기라는 일정 찾아봐');
+
+      expect(result.action, VoiceConversationAction.showEvents);
+      expect(result.visibleEvents.map((event) => event.id), <String>['match']);
+      expect(result.visibleEvents.single.title, '김창민 만나기');
     });
 
     test('title search requires all name and role tokens to match', () {

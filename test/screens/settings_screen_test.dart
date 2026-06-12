@@ -203,7 +203,7 @@ void main() {
     expect(find.text('Google Calendar 다시 동기화'), findsOneWidget);
   });
 
-  testWidgets('SettingsScreen shows briefing and departure runtime status',
+  testWidgets('SettingsScreen hides briefing and departure runtime status',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -251,15 +251,13 @@ void main() {
 
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('settings-briefing-runtime-status-card')),
-        findsOneWidget);
+        findsNothing);
     expect(
         find.byKey(
             const ValueKey('settings-departure-alarm-runtime-status-card')),
-        findsOneWidget);
-    expect(find.text('브리핑 예약 상태'), findsOneWidget);
-    expect(find.text('출발 알림 상태'), findsOneWidget);
-    expect(find.text('대전 성심당'), findsOneWidget);
-    expect(find.textContaining('모닝 브리핑을 재생했습니다.'), findsOneWidget);
+        findsNothing);
+    expect(find.text('브리핑 예약 상태'), findsNothing);
+    expect(find.text('출발 알림 상태'), findsNothing);
     expect(find.byKey(const ValueKey('settings-critical-alarm-sound-button')),
         findsOneWidget);
   });

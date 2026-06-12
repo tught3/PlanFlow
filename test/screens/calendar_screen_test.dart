@@ -209,6 +209,61 @@ void main() {
     expect(markers[23], isNull);
   });
 
+  test(
+      'calendar mini month cells reserve multi-day bands and overflow after five slots',
+      () {
+    final cells = buildCalendarMiniMonthCells(
+      focusedMonth: DateTime(2026, 6),
+      events: <EventModel>[
+        EventModel(
+          id: 'multi',
+          userId: 'user-1',
+          title: '연속 일정',
+          startAt: DateTime(2026, 6, 1, 9),
+          endAt: DateTime(2026, 6, 3, 9),
+          isMultiDay: true,
+        ),
+        _event('a', 'A', DateTime(2026, 6, 1, 10)),
+        _event('b', 'B', DateTime(2026, 6, 1, 11)),
+        _event('c', 'C', DateTime(2026, 6, 1, 12)),
+        _event('d', 'D', DateTime(2026, 6, 1, 13)),
+        _event('e', 'E', DateTime(2026, 6, 1, 14)),
+      ],
+    );
+
+    final day1 = cells.firstWhere((cell) => cell.dayNumber == 1);
+    final day2 = cells.firstWhere((cell) => cell.dayNumber == 2);
+
+    expect(day1.events.length, 5);
+    expect(day1.events.first.id, 'multi');
+    expect(day1.overflowCount, 1);
+    expect(day2.events.first.id, 'multi');
+  });
+
+  testWidgets('CalendarScreen paints holiday day numbers red', (tester) async {
+    final repository = _AsyncEventRepository([
+      Future.value([
+        _event('holiday', '현충일', DateTime(2026, 6, 6, 9)),
+      ]),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: DateTime(2026, 6, 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final dayLabel = tester.widget<Text>(
+      find.byKey(const ValueKey('calendar-mini-day-2026-6-6')),
+    );
+    expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
+  });
+
   testWidgets('CalendarScreen shows cross-month range on selected end day',
       (tester) async {
     final selectedDay = DateTime(2026, 6);

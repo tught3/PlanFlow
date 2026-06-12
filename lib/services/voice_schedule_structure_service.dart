@@ -69,6 +69,7 @@ class VoiceScheduleStructureService {
 
   static final List<RegExp> _cuePatterns = <RegExp>[
     RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일'),
+    RegExp(r'(?:(?:\d{4})\s*년\s*)?\d{1,2}\s*일'),
     RegExp(r'(?:지금으로부터\s*)?\d{1,2}\s*(?:개월|달|월)\s*(?:뒤|후)'),
     RegExp(r'(?:오늘|내일|모레|글피)'),
     RegExp(r'(?:오전|오후|아침|점심|저녁|밤|새벽)'),
@@ -188,6 +189,14 @@ class VoiceScheduleStructureService {
         isMultiDay: true,
       );
     }
+    final singleAbsoluteDate = _extractSingleAbsoluteDate(source, reference);
+    if (singleAbsoluteDate != null) {
+      return singleAbsoluteDate;
+    }
+    final dayOnlyDate = _extractDayOnlyDate(source, reference);
+    if (dayOnlyDate != null) {
+      return dayOnlyDate;
+    }
     final relativeDuration = RegExp(
       r'(?<start>오늘|내일|모레|글피)\s*(?:부터|에서)\s*(?<amount>\d{1,2})\s*(?<unit>일|주|개월|달)\s*(?:간|동안|까지)?',
     ).firstMatch(source);
@@ -217,6 +226,90 @@ class VoiceScheduleStructureService {
       }
     }
     return null;
+  }
+
+  VoiceScheduleDateRange? _extractSingleAbsoluteDate(
+    String source,
+    DateTime reference,
+  ) {
+    final match = RegExp(
+      r'(?:(?<year>\d{4})\s*년\s*)?(?<month>\d{1,2})\s*월\s*(?<day>\d{1,2})\s*일(?:에|부터|까지)?',
+    ).firstMatch(source);
+    if (match == null) {
+      return null;
+    }
+    final month = int.tryParse(match.namedGroup('month') ?? '');
+    final day = int.tryParse(match.namedGroup('day') ?? '');
+    if (month == null || day == null) {
+      return null;
+    }
+    final year =
+        int.tryParse(match.namedGroup('year') ?? '') ?? reference.year;
+    final start = DateTime(year, month, day);
+    if (start.year != year || start.month != month || start.day != day) {
+      return null;
+    }
+    final remainder = source.substring(match.end);
+    if (RegExp(
+      r'^\s*(?:(?:오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?\d{1,2}\s*시',
+    ).hasMatch(remainder)) {
+      return null;
+    }
+    return VoiceScheduleDateRange(
+      startAt: DateTime(start.year, start.month, start.day),
+      endAt: DateTime(start.year, start.month, start.day, 23, 59, 59),
+      matchedText: match.group(0)?.trim() ?? '',
+      isAllDay: true,
+      isMultiDay: false,
+    );
+  }
+
+  VoiceScheduleDateRange? _extractDayOnlyDate(
+    String source,
+    DateTime reference,
+  ) {
+    final match = RegExp(r'(^|\s)(?<day>\d{1,2})\s*일(?:에|부터|까지)?')
+        .firstMatch(source);
+    if (match == null) {
+      return null;
+    }
+    final day = int.tryParse(match.namedGroup('day') ?? '');
+    if (day == null) {
+      return null;
+    }
+    final prefix = source.substring(0, match.start);
+    if (RegExp(r'\d{1,2}\s*월\s*$').hasMatch(prefix)) {
+      return null;
+    }
+    final remainder = source.substring(match.end);
+    if (RegExp(
+      r'^\s*(?:(?:오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?\d{1,2}\s*시',
+    ).hasMatch(remainder)) {
+      return null;
+    }
+    final today = DateTime(reference.year, reference.month, reference.day);
+    DateTime? start;
+    for (var monthOffset = 0; monthOffset < 12; monthOffset += 1) {
+      final candidate = DateTime(reference.year, reference.month + monthOffset, day);
+      if (candidate.day != day) {
+        continue;
+      }
+      if (candidate.isBefore(today)) {
+        continue;
+      }
+      start = candidate;
+      break;
+    }
+    if (start == null) {
+      return null;
+    }
+    return VoiceScheduleDateRange(
+      startAt: DateTime(start.year, start.month, start.day),
+      endAt: DateTime(start.year, start.month, start.day, 23, 59, 59),
+      matchedText: match.group(0)?.trim() ?? '',
+      isAllDay: true,
+      isMultiDay: false,
+    );
   }
 
   DateTime _addMonthsClamped(DateTime value, int months) {
@@ -456,6 +549,10 @@ class VoiceScheduleStructureService {
           ' ',
         )
         .replaceAll(
+          RegExp(r'(?:(?:\d{4})년\s*)?\d{1,2}\s*일'),
+          ' ',
+        )
+        .replaceAll(
           RegExp(
             r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?[가-힣0-9]{1,8}\s*시(?:\s*[가-힣0-9]{1,8}\s*분?|\s*반)?',
           ),
@@ -584,6 +681,9 @@ class VoiceScheduleStructureService {
       ),
       RegExp(
         r'^\s*매년\s*\d{1,2}\s*월\s*\d{1,2}\s*일(?:\s+|$)',
+      ),
+      RegExp(
+        r'^\s*(?:\d{4}\s*년\s*)?\d{1,2}\s*일(?:\s*(?:오전|오후|아침|낮|점심|저녁|밤|새벽)?\s*(?:\d{1,2}|[가-힣]{1,8})\s*시(?:\s*(?:\d{1,2}|[가-힣]{1,8})\s*분?|\s*반)?)?(?:에|부터)?\s*',
       ),
       RegExp(
         r'^\s*(?:반복\s*설정|반복설정|반복\s*예약|반복\s*알림|반복)(?:\s+|$)',
