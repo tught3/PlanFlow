@@ -144,7 +144,7 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
   return markerColors;
 }
 
-const _calendarMiniMonthEventRows = 5;
+const _calendarMiniMonthEventRows = 4;
 
 const _holidayTitleKeywords = <String>[
   '공휴일',
@@ -1722,7 +1722,7 @@ class _CalendarMiniEventList extends StatelessWidget {
     final hiddenCount =
         requiresOverflowLabel ? (overflowCount > 0 ? overflowCount : events.length - displayEvents.length) : 0;
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final event in displayEvents)
@@ -1732,21 +1732,25 @@ class _CalendarMiniEventList extends StatelessWidget {
             day: day,
           ),
         if (hiddenCount > 0)
-          Padding(
-            padding: const EdgeInsets.only(top: 1),
+          SizedBox(
+            height: 9,
             child: Align(
               alignment: Alignment.centerRight,
-              child: Text(
-                '+$hiddenCount개',
-                maxLines: 1,
-                textAlign: TextAlign.right,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 7.5,
-                  height: 1,
-                  color:
-                      isSelected ? Colors.white : PlanFlowColors.textSecondary,
-                  fontWeight: FontWeight.w700,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 1),
+                child: Text(
+                  '+$hiddenCount개',
+                  maxLines: 1,
+                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 7,
+                    height: 1,
+                    color: isSelected
+                        ? Colors.white
+                        : PlanFlowColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
@@ -1783,33 +1787,41 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final isMultiDay =
         event.isMultiDay || calendarEventSpansMultipleLocalDays(event);
     final showTitle = !isMultiDay || segment.$1;
+    final segmentText = segment.$1
+        ? event.title
+        : segment.$2
+            ? '-->'
+            : '----';
     final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(top: 1),
-      padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: 1),
-      constraints: const BoxConstraints(maxHeight: 10),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.horizontal(
-          left: Radius.circular(segment.$1 ? 3 : 0),
-          right: Radius.circular(segment.$2 ? 3 : 0),
+    return SizedBox(
+      height: 9,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 1),
+        padding: EdgeInsets.symmetric(horizontal: hPadding),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.horizontal(
+            left: Radius.circular(segment.$1 ? 3 : 0),
+            right: Radius.circular(segment.$2 ? 3 : 0),
+          ),
         ),
-      ),
-      child: Text(
-        showTitle
-            ? (event.isAllDay && !isMultiDay
-                ? '종일 ${event.title}'
-                : event.title)
-            : '',
-        maxLines: 1,
-        softWrap: false,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 7.2,
-          height: 1.0,
-          color: fg,
-          fontWeight: FontWeight.w700,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          showTitle
+              ? (event.isAllDay && !isMultiDay
+                  ? '종일 ${event.title}'
+                  : segmentText)
+              : segmentText,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 6.8,
+            height: 1.0,
+            color: fg,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
