@@ -16,3 +16,22 @@ android/signing/
 secrets/
 
 CLAUDE.md
+
+# AI 세션 작업 중 생성되는 임시 파일 (자동 무시)
+.tmp_*
+*.tmp
+임시*
+.deploy-logs/
+.tmp/
+*.tmp.log
+*.tmp.png
+*.tmp.txt
+
+# 스크린샷·캡처 (테스트용)
+planflow-*.png
+*.screenshot.png
+
+# FluxOS 태스크 파일이 프로젝트 루트에 잘못 생성된 경우
+TASK_2[0-9]*_done.md
+TASK_2[0-9]*_plan.md
+TASK_2[0-9]*_review.md
