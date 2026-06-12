@@ -210,7 +210,7 @@ void main() {
   });
 
   test(
-      'calendar mini month cells reserve multi-day bands and overflow after four slots',
+      'calendar mini month cells reserve multi-day bands and overflow after five slots',
       () {
     final cells = buildCalendarMiniMonthCells(
       focusedMonth: DateTime(2026, 6),
@@ -234,9 +234,9 @@ void main() {
     final day1 = cells.firstWhere((cell) => cell.dayNumber == 1);
     final day2 = cells.firstWhere((cell) => cell.dayNumber == 2);
 
-    expect(day1.events.length, 4);
+    expect(day1.events.length, 5);
     expect(day1.events.first.id, 'multi');
-    expect(day1.overflowCount, 2);
+    expect(day1.overflowCount, 1);
     expect(day2.events.first.id, 'multi');
   });
 

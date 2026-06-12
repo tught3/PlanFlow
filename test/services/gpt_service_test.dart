@@ -664,6 +664,27 @@ void main() {
       );
     });
 
+    test('public local inference treats day-only dates as this month or next month',
+        () {
+      final now = DateTime(2026, 6, 10, 9, 30);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('28일 계룡으로 엄마 만나러 가기'),
+        DateTime(2026, 6, 28, 9),
+      );
+      expect(
+        GptService(
+          endpoint: Uri.parse(_proxyEndpoint),
+          now: () => DateTime(2026, 6, 30, 9, 30),
+        ).inferStartAtFromRawText('29일 계룡으로 엄마 만나러 가기'),
+        DateTime(2026, 7, 29, 9),
+      );
+    });
+
     test('locally infers all-day, multi-day, category, and recurrence hints',
         () async {
       final client = MockClient((request) async {
@@ -725,7 +746,7 @@ void main() {
           await recurringStartService.parseSchedule('매월 1일 법인카드 정리 반복');
       expect(recurringStart['title'], '법인카드 정리');
       expect(recurringStart['recurrence_rule'], 'FREQ=MONTHLY;BYMONTHDAY=1');
-      expect(recurringStart['start_at'], '2026-05-01T09:00:00.000');
+      expect(recurringStart['start_at'], '2026-06-01T09:00:00.000');
 
       final biWeekly = await service.parseSchedule('격주 금요일 영업 미팅');
       expect(biWeekly['recurrence_rule'], 'FREQ=WEEKLY;INTERVAL=2;BYDAY=FR');

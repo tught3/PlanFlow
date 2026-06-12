@@ -90,6 +90,25 @@ void main() {
       expect(structure.explicitFieldClauses['recurrence_rule'], '매월');
     });
 
+    test('keeps day-only date cues as this month or next month when needed', () {
+      final currentMonth = service.extractDateRange(
+        '28일 계룡으로 엄마 만나러 가기',
+        now: DateTime(2026, 6, 10, 12),
+      );
+      final nextMonth = service.extractDateRange(
+        '28일 계룡으로 엄마 만나러 가기',
+        now: DateTime(2026, 6, 29, 12),
+      );
+
+      expect(currentMonth, isNotNull);
+      expect(currentMonth!.startAt, DateTime(2026, 6, 28));
+      expect(currentMonth.endAt, DateTime(2026, 6, 28, 23, 59, 59));
+
+      expect(nextMonth, isNotNull);
+      expect(nextMonth!.startAt, DateTime(2026, 7, 28));
+      expect(nextMonth.endAt, DateTime(2026, 7, 28, 23, 59, 59));
+    });
+
     test('removes ordinal monthly recurrence phrase from the title', () {
       const rawText = '매월 첫 번째 월요일 법인카드 정리 반복';
       final structure = service.analyze(rawText);

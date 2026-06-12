@@ -244,6 +244,27 @@ void main() {
     expect(find.text('듣고 있어요...'), findsNothing);
   });
 
+  testWidgets('AI 일정 대화 input bar follows the keyboard inset', (tester) async {
+    final stt = _FakeSttService();
+    await pumpConversation(
+      tester,
+      VoiceConversationScreen(sttService: stt),
+    );
+
+    final before = tester.getBottomLeft(find.byType(TextField)).dy;
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pumpAndSettle();
+
+    final after = tester.getBottomLeft(find.byType(TextField)).dy;
+
+    expect(after, lessThan(before));
+    addTearDown(
+      () => tester.view.viewInsets = FakeViewPadding.zero,
+    );
+  });
+
   testWidgets('AI 일정 대화는 STT 실패 시 바로 재시도하고 실패 문구를 남기지 않는다', (tester) async {
     final stt = _FakeSttService();
     await pumpConversation(

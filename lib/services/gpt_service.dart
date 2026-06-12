@@ -696,6 +696,16 @@ class GptService {
       now: now,
     );
     if (localRange != null) {
+      if (localRange.isAllDay &&
+          !localRange.isMultiDay &&
+          !_hasExplicitTimeCue(normalized)) {
+        return DateTime(
+          localRange.startAt.year,
+          localRange.startAt.month,
+          localRange.startAt.day,
+          9,
+        );
+      }
       return localRange.startAt;
     }
 
@@ -731,6 +741,11 @@ class GptService {
     }
 
     return candidate;
+  }
+
+  bool _hasExplicitTimeCue(String text) {
+    return _extractTimeFromText(text) != null ||
+        RegExp(r'\d{1,3}\s*(분|시간)\s*(뒤|후|있다가|이따)').hasMatch(text);
   }
 
   DateTime? _extractMonthlyRecurringDateFromText(String text, DateTime now) {
@@ -910,7 +925,17 @@ $_scheduleSystemPrompt
     if (range == null) {
       return;
     }
-    schedule['start_at'] = range.startAt.toIso8601String();
+    final shouldDefaultToMorning =
+        range.isAllDay && !range.isMultiDay && !_hasExplicitTimeCue(rawText);
+    final startAt = shouldDefaultToMorning
+        ? DateTime(
+            range.startAt.year,
+            range.startAt.month,
+            range.startAt.day,
+            9,
+          )
+        : range.startAt;
+    schedule['start_at'] = startAt.toIso8601String();
     schedule['end_at'] = range.endAt.toIso8601String();
     schedule['is_all_day'] = range.isAllDay;
     schedule['is_multi_day'] = range.isMultiDay;
@@ -1133,11 +1158,38 @@ $_scheduleSystemPrompt
       }
     }
 
+    final dayOnly = RegExp(r'(?<!\d)(?<day>\d{1,2})일(?:로|에|부터|까지)?')
+        .firstMatch(text);
+    if (dayOnly != null) {
+      final day = int.tryParse(dayOnly.namedGroup('day') ?? '');
+      if (day != null && day >= 1) {
+        final candidate = _resolveDayOnlyDate(now, day);
+        if (candidate != null) {
+          return candidate;
+        }
+      }
+    }
+
     final weekDay = _extractWeekdayOffset(text);
     if (weekDay != null) {
       return weekDay;
     }
 
+    return null;
+  }
+
+  DateTime? _resolveDayOnlyDate(DateTime now, int day) {
+    final today = DateTime(now.year, now.month, now.day);
+    for (var monthOffset = 0; monthOffset < 12; monthOffset += 1) {
+      final candidate = DateTime(now.year, now.month + monthOffset, day);
+      if (candidate.day != day) {
+        continue;
+      }
+      if (candidate.isBefore(today)) {
+        continue;
+      }
+      return DateTime(candidate.year, candidate.month, candidate.day, 9);
+    }
     return null;
   }
 

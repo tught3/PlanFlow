@@ -287,10 +287,20 @@ class VoiceScheduleStructureService {
     ).hasMatch(remainder)) {
       return null;
     }
-    final start = DateTime(reference.year, reference.month, day);
-    if (start.year != reference.year ||
-        start.month != reference.month ||
-        start.day != day) {
+    final today = DateTime(reference.year, reference.month, reference.day);
+    DateTime? start;
+    for (var monthOffset = 0; monthOffset < 12; monthOffset += 1) {
+      final candidate = DateTime(reference.year, reference.month + monthOffset, day);
+      if (candidate.day != day) {
+        continue;
+      }
+      if (candidate.isBefore(today)) {
+        continue;
+      }
+      start = candidate;
+      break;
+    }
+    if (start == null) {
       return null;
     }
     return VoiceScheduleDateRange(

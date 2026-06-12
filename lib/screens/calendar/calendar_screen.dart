@@ -144,7 +144,7 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
   return markerColors;
 }
 
-const _calendarMiniMonthEventRows = 4;
+const _calendarMiniMonthEventRows = 5;
 
 const _holidayTitleKeywords = <String>[
   '공휴일',
@@ -1706,25 +1706,36 @@ class _CalendarMiniEventList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (events.isEmpty) {
+    if (events.isEmpty && overflowCount <= 0) {
       return const SizedBox.shrink();
     }
+    final requiresOverflowLabel =
+        overflowCount > 0 || events.length > _calendarMiniMonthEventRows;
+    final maxVisibleEvents = requiresOverflowLabel
+        ? (_calendarMiniMonthEventRows - 1).clamp(1, _calendarMiniMonthEventRows)
+        : _calendarMiniMonthEventRows;
+    final displayEvents = events.length > maxVisibleEvents
+        ? events.take(maxVisibleEvents).toList(growable: false)
+        : events;
+    final hiddenCount =
+        requiresOverflowLabel ? (overflowCount > 0 ? overflowCount : events.length - displayEvents.length) : 0;
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final event in events)
+        for (final event in displayEvents)
           _CalendarMiniEventLabel(
             event: event,
             isSelected: isSelected,
             day: day,
           ),
-        if (overflowCount > 0)
-          Align(
-            alignment: Alignment.centerRight,
-            child: SizedBox(
-              height: 9,
+        if (hiddenCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Align(
+              alignment: Alignment.centerRight,
               child: Text(
-                '+$overflowCount',
+                '+$hiddenCount',
                 maxLines: 1,
                 textAlign: TextAlign.right,
                 overflow: TextOverflow.clip,
@@ -1733,6 +1744,7 @@ class _CalendarMiniEventList extends StatelessWidget {
                   height: 1,
                   color:
                       isSelected ? Colors.white : PlanFlowColors.textSecondary,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -1768,7 +1780,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
       width: double.infinity,
       margin: const EdgeInsets.only(top: 1),
       padding: EdgeInsets.symmetric(horizontal: hPadding, vertical: 1),
-      constraints: const BoxConstraints(maxHeight: 11),
+      constraints: const BoxConstraints(maxHeight: 10),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.horizontal(
@@ -1783,10 +1795,11 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                 : event.title)
             : '',
         maxLines: 1,
+        softWrap: false,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 7.5,
-          height: 1.1,
+          fontSize: 7.2,
+          height: 1.0,
           color: fg,
           fontWeight: FontWeight.w700,
         ),
@@ -1826,17 +1839,18 @@ class _EventAgendaCard extends StatelessWidget {
     final startAt = event.startAt;
     final endAt = event.endAt;
     final timeLabel = _formatTimeRange(startAt, endAt);
+    final accentColor = event.isCritical
+        ? const Color(0xFFB42318)
+        : _categoryColor(event.category);
 
     return Card(
-      color: PlanFlowColors.surface,
+      color: accentColor.withValues(alpha: 0.08),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
-          color: event.isCritical
-              ? const Color(0xFFB42318).withValues(alpha: 0.4)
-              : PlanFlowColors.primaryFaint,
-          width: event.isCritical ? 1.5 : 0.5,
+          color: accentColor.withValues(alpha: 0.26),
+          width: event.isCritical ? 1.2 : 0.8,
         ),
       ),
       child: InkWell(
@@ -1848,19 +1862,11 @@ class _EventAgendaCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 44,
+                width: 8,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: event.isCritical
-                      ? const Color(0xFFFFE3DD)
-                      : PlanFlowColors.background,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  event.isCritical ? Icons.priority_high : Icons.event_outlined,
-                  color: event.isCritical
-                      ? const Color(0xFFB42318)
-                      : PlanFlowColors.primaryMid,
+                  color: accentColor,
+                  borderRadius: BorderRadius.circular(8),
                 ),
               ),
               const SizedBox(width: 12),

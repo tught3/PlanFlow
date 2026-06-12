@@ -1155,6 +1155,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         }
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         appBar: AppBar(
           title: const Text('AI 일정 대화'),
           leading: IconButton(
@@ -1204,20 +1205,27 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             ],
           ),
         ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: _ConversationInputBar(
-            controller: _inputController,
-            isSubmitting: _isSubmitting,
-            isListening: _isListening,
-            keepListening: _keepListening,
-            voicePausedByUser: _voicePausedByUser,
-            isRestartPending: _isRestartPending,
-            statusText: _conversationStatus,
-            onListen: () => _startConversationListen(resetRetryPolicy: true),
-            onStopListening: _pauseVoiceInput,
-            onSubmit: () => _submitText(null),
-            onChanged: _handleInputChanged,
+        bottomNavigationBar: AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: SafeArea(
+            top: false,
+            child: _ConversationInputBar(
+              controller: _inputController,
+              isSubmitting: _isSubmitting,
+              isListening: _isListening,
+              keepListening: _keepListening,
+              voicePausedByUser: _voicePausedByUser,
+              isRestartPending: _isRestartPending,
+              statusText: _conversationStatus,
+              onListen: () => _startConversationListen(resetRetryPolicy: true),
+              onStopListening: _pauseVoiceInput,
+              onSubmit: () => _submitText(null),
+              onChanged: _handleInputChanged,
+            ),
           ),
         ),
       ),

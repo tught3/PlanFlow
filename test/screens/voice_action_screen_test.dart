@@ -165,6 +165,8 @@ void main() {
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
 
+    expect(find.textContaining('검색어: 김창민 만나기라'), findsNothing);
+    expect(find.textContaining('검색어: 김창민 만나기'), findsOneWidget);
     expect(find.text('김창민 만나기'), findsOneWidget);
     expect(find.text('정윤태 만나기'), findsNothing);
     expect(find.text('강릉아산병원 약제팀장 만나기'), findsNothing);
