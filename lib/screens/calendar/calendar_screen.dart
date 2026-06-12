@@ -1664,16 +1664,14 @@ class _MiniCalendarGrid extends StatelessWidget {
                               ),
                               const SizedBox(height: 2),
                               Expanded(
-                                child: ClipRect(
-                                  child: _CalendarMiniEventList(
-                                    key: ValueKey(
-                                      'calendar-mini-events-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
-                                    ),
-                                    events: cell.events,
-                                    overflowCount: cell.overflowCount,
-                                    isSelected: isSelected,
-                                    day: dayDate,
+                                child: _CalendarMiniEventList(
+                                  key: ValueKey(
+                                    'calendar-mini-events-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
                                   ),
+                                  events: cell.events,
+                                  overflowCount: cell.overflowCount,
+                                  isSelected: isSelected,
+                                  day: dayDate,
                                 ),
                               ),
                             ],
@@ -1787,42 +1785,48 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final isMultiDay =
         event.isMultiDay || calendarEventSpansMultipleLocalDays(event);
     final showTitle = !isMultiDay || segment.$1;
-    final segmentText = segment.$1
-        ? event.title
-        : segment.$2
-            ? '-->'
-            : '----';
     final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
+    final extendLeft = isMultiDay && !segment.$1 ? 2.5 : 0.0;
+    final extendRight = isMultiDay && !segment.$2 ? 2.5 : 0.0;
     return SizedBox(
       height: 9,
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(top: 1),
-        padding: EdgeInsets.symmetric(horizontal: hPadding),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.horizontal(
-            left: Radius.circular(segment.$1 ? 3 : 0),
-            right: Radius.circular(segment.$2 ? 3 : 0),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: -extendLeft,
+            right: -extendRight,
+            top: 1,
+            bottom: 0,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: hPadding),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.horizontal(
+                  left: Radius.circular(segment.$1 ? 3 : 0),
+                  right: Radius.circular(segment.$2 ? 3 : 0),
+                ),
+              ),
+              alignment: Alignment.centerLeft,
+              child: Text(
+                showTitle
+                    ? (event.isAllDay && !isMultiDay
+                        ? '종일 ${event.title}'
+                        : event.title)
+                    : '',
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 6.8,
+                  height: 1.0,
+                  color: fg,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           ),
-        ),
-        alignment: Alignment.centerLeft,
-        child: Text(
-          showTitle
-              ? (event.isAllDay && !isMultiDay
-                  ? '종일 ${event.title}'
-                  : segmentText)
-              : segmentText,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 6.8,
-            height: 1.0,
-            color: fg,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        ],
       ),
     );
   }
