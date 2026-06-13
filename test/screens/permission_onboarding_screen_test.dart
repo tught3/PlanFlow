@@ -174,6 +174,46 @@ void main() {
   );
 
   testWidgets(
+    'PermissionOnboardingScreen does not treat a cutout as a foldable display feature',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final permissionService = _FakePermissionService();
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: MediaQueryData(
+            size: const Size(390, 844),
+            displayFeatures: <ui.DisplayFeature>[
+              ui.DisplayFeature(
+                bounds: const Rect.fromLTWH(180, 0, 30, 24),
+                type: ui.DisplayFeatureType.unknown,
+                state: ui.DisplayFeatureState.postureFlat,
+              ),
+            ],
+          ),
+          child: MaterialApp(
+            home: PermissionOnboardingScreen(
+              permissionService: permissionService,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('permission-onboarding-full-screen-intent-tile')),
+        findsNothing,
+      );
+      expect(permissionService.fullScreenIntentRequests, isZero);
+    },
+  );
+
+  testWidgets(
     'PermissionOnboardingScreen shows full-screen intent permission as required on foldables',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =

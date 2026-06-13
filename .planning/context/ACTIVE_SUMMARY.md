@@ -1753,3 +1753,8 @@
 - 일반 폰에서는 전체 화면 알림 권한을 온보딩에서 숨기고, 폴드/플립처럼 display feature가 있는 기기에서만 필수 권한으로 노출하도록 정리했다.
 - 온보딩의 완료 판정과 요청 흐름도 같은 디바이스 분기를 따르도록 맞췄다.
 - 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub -v`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t build\\app\\outputs\\flutter-apk\\app-debug.apk`, `adb shell monkey -p com.fluxstudio.planflow -c android.intent.category.LAUNCHER 1`.
+
+## 2026-06-14 폴드/플립 판정 cutout 오인 방지 보강
+- 전체 화면 알림 노출 조건을 `displayFeatures` 중에서도 hinge/fold 타입만 인정하도록 좁혀, 일반폰의 cutout/기타 특이 display feature가 foldable로 오인되지 않게 보강했다.
+- 회귀 테스트에 unknown display feature 케이스를 추가해, 폴드/플립 전용 노출이 아닌 경우는 계속 숨겨지도록 확인했다.
+- 검증: `flutter test test/screens/permission_onboarding_screen_test.dart --no-pub`, `flutter analyze --no-pub`, `flutter build apk --debug --no-pub`, `adb install -r -t build\\app\\outputs\\flutter-apk\\app-debug.apk`, `adb shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
