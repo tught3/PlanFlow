@@ -1,4 +1,9 @@
-﻿# ACTIVE SUMMARY
+# ACTIVE SUMMARY
+## 2026-06-13 V2 E2E QA checklist draft
+- Added docs/planflow-v2/18-v2-e2e-qa-checklist.md to consolidate V2 end-to-end QA coverage across personal flow, group flow, DB/RLS/RPC, and main-merge risks.
+- The checklist marks merge blockers as real DB/RLS validation, atomic RPC verification, and manual overlay/context refresh checks rather than further code changes.
+- Verification in this turn: git fetch origin, git merge origin/main (Already up to date.), flutter analyze --no-pub before docs write, and flutter test --no-pub remains passing from the current branch state.
+
 ## 2026-06-13 Play versionCode 23 collision recovery
 - Play Console에서 `versionCode=23`이 이미 사용되었다는 오류가 나서 `pubspec.yaml` 버전을 `1.1.0+24`로 올려 재시도했다.
 - release AAB는 이미 재생성된 상태였고, `android/gradlew.bat :app:publishReleaseBundle --track alpha --artifact-dir ..\build\app\outputs\bundle\release -PplanflowPlayServiceAccountJson=E:\FluxStudio\secrets\planflow-495007-dbe93d413189.json` 실행이 `BUILD SUCCESSFUL`로 끝나 Play 전송 단계가 완료되었다.
