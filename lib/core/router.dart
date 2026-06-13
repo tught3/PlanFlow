@@ -21,6 +21,7 @@ import '../features/groups/screens/group_event_detail_screen.dart';
 import '../features/groups/screens/group_event_list_screen.dart';
 import '../features/groups/screens/group_invite_screen.dart';
 import '../features/groups/screens/group_list_screen.dart';
+import '../features/groups/screens/group_member_screen.dart';
 import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
@@ -271,6 +272,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.groupInvites,
       builder: (context, state) => const GroupInviteScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupMembers,
+      builder: (context, state) => const GroupMemberScreen(),
     ),
     GoRoute(
       path: AppRoutes.groupEvents,

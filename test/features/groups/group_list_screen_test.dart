@@ -174,6 +174,8 @@ void main() {
         findsOneWidget);
     expect(
         find.byKey(const ValueKey('group-list-events-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('group-list-members-button')),
+        findsOneWidget);
   });
 
   testWidgets('highlights the selected leader group and changes selection',

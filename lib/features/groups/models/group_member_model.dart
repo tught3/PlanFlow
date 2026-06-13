@@ -48,6 +48,37 @@ class GroupMemberModel {
 
   bool get isActive => status == 'active';
 
+  GroupMemberModel copyWith({
+    String? id,
+    String? groupId,
+    String? userId,
+    String? role,
+    String? status,
+    DateTime? joinedAt,
+    bool clearJoinedAt = false,
+    DateTime? removedAt,
+    bool clearRemovedAt = false,
+    String? removedBy,
+    bool clearRemovedBy = false,
+    DateTime? createdAt,
+    bool clearCreatedAt = false,
+    DateTime? updatedAt,
+    bool clearUpdatedAt = false,
+  }) {
+    return GroupMemberModel(
+      id: id ?? this.id,
+      groupId: groupId ?? this.groupId,
+      userId: userId ?? this.userId,
+      role: role ?? this.role,
+      status: status ?? this.status,
+      joinedAt: clearJoinedAt ? null : joinedAt ?? this.joinedAt,
+      removedAt: clearRemovedAt ? null : removedAt ?? this.removedAt,
+      removedBy: clearRemovedBy ? null : removedBy ?? this.removedBy,
+      createdAt: clearCreatedAt ? null : createdAt ?? this.createdAt,
+      updatedAt: clearUpdatedAt ? null : updatedAt ?? this.updatedAt,
+    );
+  }
+
   Map<String, dynamic> toJson({bool includeId = true}) {
     return <String, dynamic>{
       if (includeId) 'id': id,

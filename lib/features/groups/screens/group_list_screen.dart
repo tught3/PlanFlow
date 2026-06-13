@@ -120,6 +120,14 @@ class _GroupListScreenState extends State<GroupListScreen> {
     }
   }
 
+  Future<void> _openGroupMembers() async {
+    await context.push<String>(AppRoutes.groupMembers);
+    if (!mounted) {
+      return;
+    }
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -201,6 +209,13 @@ class _GroupListScreenState extends State<GroupListScreen> {
                   onPressed: _openInviteManagement,
                   icon: const Icon(Icons.mail_outline),
                   label: const Text('초대 관리'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const ValueKey('group-list-members-button'),
+                  onPressed: _openGroupMembers,
+                  icon: const Icon(Icons.groups_2_outlined),
+                  label: const Text('멤버 관리'),
                 ),
                 const SizedBox(height: 12),
                 Text(
