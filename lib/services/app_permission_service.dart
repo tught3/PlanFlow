@@ -11,8 +11,9 @@ class AppPermissionService {
   })  : _notificationService = notificationService ?? NotificationService(),
         _preferences = preferences;
 
-  static const MethodChannel _androidPermissionsChannel =
-      MethodChannel('planflow/android_permissions');
+  static const MethodChannel _androidPermissionsChannel = MethodChannel(
+    'planflow/android_permissions',
+  );
   static const String _onboardingPrefix = 'planflow_permissions_onboarded_v1';
 
   final NotificationService _notificationService;
@@ -283,20 +284,19 @@ class AppPermissionSnapshot {
       notificationStatus.fullScreenIntentStatus ==
           PermissionCheckState.unsupported;
 
+  bool get fullScreenIntentUnsupported =>
+      notificationStatus.fullScreenIntentStatus ==
+      PermissionCheckState.unsupported;
+
   bool get requiredPermissionsGranted =>
       microphoneGranted &&
       notificationsGranted &&
       exactAlarmsGranted &&
-      fullScreenIntentGranted &&
-      locationGranted &&
-      calendarGranted;
+      fullScreenIntentGranted;
 }
 
 class GeoPoint {
-  const GeoPoint({
-    required this.latitude,
-    required this.longitude,
-  });
+  const GeoPoint({required this.latitude, required this.longitude});
 
   final double latitude;
   final double longitude;

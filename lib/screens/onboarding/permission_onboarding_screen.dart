@@ -218,32 +218,17 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     )) {
       return;
     }
-    if (!await _runPermissionStep(
-      key: 'fullScreenIntent',
-      label: '전체 화면 알림',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
-      request: _permissionService.requestFullScreenIntentPermission,
-    )) {
-      return;
-    }
-    if (!await _runPermissionStep(
-      key: 'location',
-      label: '위치',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.locationGranted,
-      request: _permissionService.requestLocationPermission,
-    )) {
-      return;
-    }
-    if (!await _runPermissionStep(
-      key: 'calendar',
-      label: '기기 캘린더',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.calendarGranted,
-      request: _permissionService.requestCalendarPermission,
-    )) {
-      return;
+    final snapshotForFullScreenIntent = await _safeCheckAll();
+    if (snapshotForFullScreenIntent?.fullScreenIntentUnsupported != true) {
+      if (!await _runPermissionStep(
+        key: 'fullScreenIntent',
+        label: '전체 화면 알림',
+        failures: failures,
+        isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
+        request: _permissionService.requestFullScreenIntentPermission,
+      )) {
+        return;
+      }
     }
 
     await _refresh();
@@ -282,16 +267,17 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     }
 
     try {
-      final granted = await _withPermissionTimeout(request,
-          timeout: const Duration(seconds: 12));
+      final granted = await _withPermissionTimeout(
+        request,
+        timeout: const Duration(seconds: 12),
+      );
       if (!granted && openSettings != null) {
         final opened = await _withPermissionTimeout(openSettings);
         if (opened) {
           _resumeRequestAll = true;
           if (mounted) {
             setState(() {
-              _message =
-                  '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
+              _message = '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
             });
           }
           return false;
@@ -306,8 +292,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           _resumeRequestAll = true;
           if (mounted) {
             setState(() {
-              _message =
-                  '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
+              _message = '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
             });
           }
           return false;
@@ -512,26 +497,29 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   openSettings: _permissionService.openAppSettings,
                 ),
               ),
-              const SizedBox(height: 9),
-              _PermissionTile(
-                icon: Icons.open_in_full_outlined,
-                title: '전체 화면 알림',
-                description: '중요 알람을 잠금화면과 폴드/플립 겉화면에 크게 띄우기 위해 필요합니다.',
-                descriptionMaxLines: 2,
-                granted: snapshot?.fullScreenIntentGranted == true,
-                isRequesting: _activeRequestKey == 'fullScreenIntent',
-                key: const ValueKey(
-                  'permission-onboarding-full-screen-intent-tile',
+              if (snapshot?.fullScreenIntentUnsupported != true) ...[
+                const SizedBox(height: 9),
+                _PermissionTile(
+                  icon: Icons.open_in_full_outlined,
+                  title: '전체 화면 알림',
+                  description: '중요 알람을 잠금화면과 폴드/플립 겉화면에 크게 띄우기 위해 필요합니다.',
+                  descriptionMaxLines: 2,
+                  granted: snapshot?.fullScreenIntentGranted == true,
+                  isRequesting: _activeRequestKey == 'fullScreenIntent',
+                  key: const ValueKey(
+                    'permission-onboarding-full-screen-intent-tile',
+                  ),
+                  onRequest: () => _requestOne(
+                    key: 'fullScreenIntent',
+                    grantedMessage: '전체 화면 알림 권한 상태를 다시 확인했습니다.',
+                    deniedMessage:
+                        '전체 화면 알림이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 전체 화면 알림을 허용해 주세요.',
+                    isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
+                    request:
+                        _permissionService.requestFullScreenIntentPermission,
+                  ),
                 ),
-                onRequest: () => _requestOne(
-                  key: 'fullScreenIntent',
-                  grantedMessage: '전체 화면 알림 권한 상태를 다시 확인했습니다.',
-                  deniedMessage:
-                      '전체 화면 알림이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 전체 화면 알림을 허용해 주세요.',
-                  isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
-                  request: _permissionService.requestFullScreenIntentPermission,
-                ),
-              ),
+              ],
               const SizedBox(height: 16),
               const _SectionHeader(
                 label: '선택 권한',
@@ -633,10 +621,7 @@ class _IntroCard extends StatelessWidget {
 }
 
 class _PrepTimeCard extends StatelessWidget {
-  const _PrepTimeCard({
-    required this.value,
-    required this.onChanged,
-  });
+  const _PrepTimeCard({required this.value, required this.onChanged});
 
   final int value;
   final ValueChanged<int> onChanged;
@@ -667,8 +652,10 @@ class _PrepTimeCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 1,
+                  ),
                   decoration: BoxDecoration(
                     color: PlanFlowColors.primaryFaint,
                     borderRadius: BorderRadius.circular(20),
@@ -836,10 +823,7 @@ class _PermissionTile extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             else
-              TextButton(
-                onPressed: onRequest,
-                child: const Text('요청'),
-              ),
+              TextButton(onPressed: onRequest, child: const Text('요청')),
           ],
         ),
       ),

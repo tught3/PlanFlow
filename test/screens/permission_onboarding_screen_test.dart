@@ -35,9 +35,7 @@ void main() {
 
       expect(
         find
-            .byKey(
-              const ValueKey('permission-onboarding-request-all-button'),
-            )
+            .byKey(const ValueKey('permission-onboarding-request-all-button'))
             .hitTestable(),
         findsOneWidget,
       );
@@ -117,7 +115,7 @@ void main() {
   );
 
   testWidgets(
-    'PermissionOnboardingScreen includes exact alarm and full-screen alarm in request-all flow',
+    'PermissionOnboardingScreen request-all asks only required permissions sequentially',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
@@ -141,30 +139,116 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(permissionService.requestLog, <String>[
+        'microphone',
+        'notification',
+        'exactAlarm',
+      ]);
+      expect(permissionService.microphoneGranted, isTrue);
+      expect(permissionService.notificationGranted, isTrue);
       expect(permissionService.exactAlarmGranted, isTrue);
-      expect(permissionService.fullScreenIntentGranted, isTrue);
+      expect(permissionService.locationGranted, isFalse);
+      expect(permissionService.calendarGranted, isFalse);
+      expect(
+        (await permissionService.checkAll()).requiredPermissionsGranted,
+        isTrue,
+      );
+      expect(permissionService.microphoneRequests, 1);
       expect(permissionService.notificationRequests, 1);
       expect(permissionService.exactAlarmRequests, 1);
-      expect(
-        find.descendant(
-          of: find.byKey(
-            const ValueKey('permission-onboarding-exact-alarm-tile'),
+      expect(permissionService.locationRequests, isZero);
+      expect(permissionService.calendarRequests, isZero);
+      expect(permissionService.fullScreenIntentRequests, isZero);
+      expect(find.text('시작하기'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'PermissionOnboardingScreen hides full-screen intent from first-install onboarding',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PermissionOnboardingScreen(
+            permissionService: _FakePermissionService()
+              ..fullScreenIntentStatus = PermissionCheckState.unsupported,
           ),
-          matching: find.byIcon(Icons.check_circle_outline),
         ),
-        findsOneWidget,
       );
+      await tester.pumpAndSettle();
+
       expect(
-        find.descendant(
-          of: find.byKey(
-            const ValueKey(
-              'permission-onboarding-full-screen-intent-tile',
-            ),
-          ),
-          matching: find.byIcon(Icons.check_circle_outline),
+        find.byKey(
+          const ValueKey('permission-onboarding-full-screen-intent-tile'),
         ),
-        findsOneWidget,
+        findsNothing,
       );
+      expect(find.textContaining('폴드'), findsNothing);
+      expect(find.textContaining('플립'), findsNothing);
+      expect(find.textContaining('겉화면'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'PermissionOnboardingScreen treats optional permissions as non-blocking',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+      final permissionService = _FakePermissionService()
+        ..microphoneGranted = true
+        ..notificationGranted = true
+        ..exactAlarmGranted = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home:
+              PermissionOnboardingScreen(permissionService: permissionService),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('시작하기'), findsOneWidget);
+      expect(permissionService.locationRequests, isZero);
+      expect(permissionService.calendarRequests, isZero);
+    },
+  );
+
+  testWidgets(
+    'PermissionOnboardingScreen requests full-screen intent when device supports it',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+      final permissionService = _FakePermissionService()
+        ..fullScreenIntentStatus = PermissionCheckState.denied;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home:
+              PermissionOnboardingScreen(permissionService: permissionService),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(permissionService.requestLog, <String>[
+        'microphone',
+        'notification',
+        'exactAlarm',
+        'fullScreenIntent',
+      ]);
+      expect(permissionService.fullScreenIntentRequests, 1);
+      expect(find.text('시작하기'), findsOneWidget);
     },
   );
 
@@ -273,11 +357,17 @@ class _FakePermissionService extends AppPermissionService {
 
   bool exactAlarmGranted = false;
   bool fullScreenIntentGranted = false;
+  bool microphoneGranted = false;
+  bool locationGranted = false;
+  bool calendarGranted = false;
   bool notificationGranted = false;
   bool notificationRequestGranted = true;
   bool exactAlarmRequestGranted = true;
+  PermissionCheckState fullScreenIntentStatus =
+      PermissionCheckState.unsupported;
   bool notificationSettingsOpened = false;
   bool appSettingsOpened = false;
+  final List<String> requestLog = <String>[];
   int microphoneRequests = 0;
   int locationRequests = 0;
   int calendarRequests = 0;
@@ -297,15 +387,15 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<AppPermissionSnapshot> checkAll() async {
     return AppPermissionSnapshot(
-      microphoneGranted: false,
-      locationGranted: false,
-      calendarGranted: false,
+      microphoneGranted: microphoneGranted,
+      locationGranted: locationGranted,
+      calendarGranted: calendarGranted,
       notificationStatus: NotificationPermissionStatus(
         notificationsEnabled: notificationGranted,
         exactAlarmsEnabled: exactAlarmGranted,
         fullScreenIntentStatus: fullScreenIntentGranted
             ? PermissionCheckState.granted
-            : PermissionCheckState.denied,
+            : fullScreenIntentStatus,
       ),
     );
   }
@@ -313,19 +403,25 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestMicrophonePermission() async {
     microphoneRequests += 1;
-    return false;
+    requestLog.add('microphone');
+    microphoneGranted = true;
+    return true;
   }
 
   @override
   Future<bool> requestLocationPermission() async {
     locationRequests += 1;
-    return false;
+    requestLog.add('location');
+    locationGranted = true;
+    return true;
   }
 
   @override
   Future<bool> requestCalendarPermission() async {
     calendarRequests += 1;
-    return false;
+    requestLog.add('calendar');
+    calendarGranted = true;
+    return true;
   }
 
   @override
@@ -342,6 +438,7 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestNotificationPermission() async {
     notificationRequests += 1;
+    requestLog.add('notification');
     notificationGranted = notificationRequestGranted;
     return notificationRequestGranted;
   }
@@ -349,6 +446,7 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestExactAlarmPermission() async {
     exactAlarmRequests += 1;
+    requestLog.add('exactAlarm');
     exactAlarmGranted = exactAlarmRequestGranted;
     return exactAlarmRequestGranted;
   }
@@ -356,6 +454,7 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestFullScreenIntentPermission() async {
     fullScreenIntentRequests += 1;
+    requestLog.add('fullScreenIntent');
     fullScreenIntentGranted = true;
     return true;
   }
