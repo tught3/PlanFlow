@@ -284,7 +284,11 @@ class AppPermissionSnapshot {
           PermissionCheckState.unsupported;
 
   bool get requiredPermissionsGranted =>
-      microphoneGranted && notificationsGranted;
+      microphoneGranted &&
+      notificationsGranted &&
+      exactAlarmsGranted &&
+      locationGranted &&
+      calendarGranted;
 }
 
 class GeoPoint {

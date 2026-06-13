@@ -117,7 +117,7 @@ void main() {
   );
 
   testWidgets(
-    'PermissionOnboardingScreen request-all flow only asks microphone and app notifications',
+    'PermissionOnboardingScreen request-all flow asks required permissions but leaves full-screen optional',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
@@ -143,9 +143,11 @@ void main() {
 
       expect(permissionService.microphoneRequests, 1);
       expect(permissionService.notificationRequests, 1);
-      expect(permissionService.exactAlarmRequests, 0);
+      expect(permissionService.exactAlarmRequests, 1);
+      expect(permissionService.locationRequests, 1);
+      expect(permissionService.calendarRequests, 1);
       expect(permissionService.fullScreenIntentRequests, 0);
-      expect(permissionService.exactAlarmGranted, isFalse);
+      expect(permissionService.exactAlarmGranted, isTrue);
       expect(permissionService.fullScreenIntentGranted, isFalse);
       expect(
         find.byKey(const ValueKey('permission-onboarding-request-all-button')),
@@ -281,6 +283,9 @@ class _FakePermissionService extends AppPermissionService {
   _FakePermissionService()
       : super(notificationService: _FakeNotificationService());
 
+  bool microphoneGranted = false;
+  bool locationGranted = false;
+  bool calendarGranted = false;
   bool exactAlarmGranted = false;
   bool fullScreenIntentGranted = false;
   bool notificationGranted = false;
@@ -307,9 +312,9 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<AppPermissionSnapshot> checkAll() async {
     return AppPermissionSnapshot(
-      microphoneGranted: false,
-      locationGranted: false,
-      calendarGranted: false,
+      microphoneGranted: microphoneGranted,
+      locationGranted: locationGranted,
+      calendarGranted: calendarGranted,
       notificationStatus: NotificationPermissionStatus(
         notificationsEnabled: notificationGranted,
         exactAlarmsEnabled: exactAlarmGranted,
@@ -323,19 +328,22 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestMicrophonePermission() async {
     microphoneRequests += 1;
+    microphoneGranted = true;
     return true;
   }
 
   @override
   Future<bool> requestLocationPermission() async {
     locationRequests += 1;
-    return false;
+    locationGranted = true;
+    return true;
   }
 
   @override
   Future<bool> requestCalendarPermission() async {
     calendarRequests += 1;
-    return false;
+    calendarGranted = true;
+    return true;
   }
 
   @override

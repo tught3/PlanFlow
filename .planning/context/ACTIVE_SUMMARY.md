@@ -1745,3 +1745,7 @@
 - 초기 온보딩에서 필수 권한을 마이크+앱 알림으로 줄이고, 위치/캘린더/정확한 알람/전체 화면 알림은 선택 권한으로 내렸다.
 - 앱이 처음 시작할 때는 기본 권한만 요청하고, 나머지는 각각 선택적으로 열어보게 바꿨다.
 - 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub` 통과, `scripts/flutter-local.ps1 analyze --no-pub`는 이미 통과 상태 유지.
+## 2026-06-13 권한 온보딩 필수 범위 재조정
+- 사용자 의도에 맞춰 필수 권한은 마이크/앱 알림/정확한 알람/위치/기기 캘린더로 복구하고, 폴드/플립 겉화면용 전체 화면 알림만 선택 권한으로 유지했다.
+- `필수 권한 차례대로 요청` 버튼은 위에서부터 각 권한을 순서대로 요청하고, 전체 화면 알림은 자동 요청 흐름에서 제외한다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub` 통과.
