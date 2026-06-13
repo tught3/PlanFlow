@@ -737,3 +737,237 @@ order by tablename, policyname;
 
 - STEP 3 `group_invites/group_role_delegations` 적용 가능: 보류
 - 이유: 기존 PlanFlow 프로젝트가 `ga` 채널이고, 현재는 단계별 보수적 적용만 확인한 상태라 다음 단계도 동일하게 승인/백업 상태를 다시 확인하는 편이 안전하다.
+
+## 12. STEP 3 실제 적용 결과
+
+### 적용 대상 확인
+
+- project ref: `xqvvfnvmytjlblcngipn`
+- project name: `PlanFlow`
+- 운영 성격 경고 확인 여부: 확인함
+
+### STEP 3 적용 결과
+
+- `public.group_invites` 생성: 완료
+- `public.group_role_delegations` 생성: 완료
+- constraints/indexes 생성: 완료
+  - `group_invites_status_check`
+  - `group_invites_target_check`
+  - `group_invites_group_id_idx`
+  - `group_invites_invited_by_idx`
+  - `group_invites_invited_user_id_idx`
+  - `group_invites_invited_email_idx`
+  - `group_invites_invited_invite_code_idx`
+  - `group_invites_status_idx`
+  - `group_invites_expires_at_idx`
+  - `group_invites_pending_user_key`
+  - `group_invites_pending_email_key`
+  - `group_invites_pending_invite_code_key`
+  - `group_role_delegations_status_check`
+  - `group_role_delegations_time_check`
+  - `group_role_delegations_permissions_check`
+  - `group_role_delegations_group_id_idx`
+  - `group_role_delegations_delegator_user_id_idx`
+  - `group_role_delegations_delegate_user_id_idx`
+  - `group_role_delegations_status_idx`
+  - `group_role_delegations_time_idx`
+  - `group_role_delegations_group_delegate_status_idx`
+  - `group_role_delegations_active_unique`
+- helper 생성: `group_delegation_permissions_valid(jsonb)` 완료
+- 최소 권한/보안:
+  - `RLS enabled` 확인
+  - `authenticated` 대상 `GRANT` 확인
+
+### STEP 3 검증 결과
+
+- 테이블 존재 확인: 완료
+- constraint/index 확인: 완료
+- 테스트 invite 생성/롤백: 성공
+- 테스트 delegation 생성/롤백: 성공
+- 기존 개인 테이블 row count 유지:
+  - `public.users`: `7`
+  - `public.events`: `538`
+  - `public.reminders`: `294`
+  - `public.pre_actions`: `100`
+  - `public.voice_logs`: `97`
+  - `public.user_settings`: `6`
+- PASS/FAIL: `PASS`
+
+### 실제 적용 범위
+
+- STEP 3만 적용했는지 확인: 확인함
+
+### 실패/보류 항목
+
+- 없음
+
+## 13. STEP 4 실제 적용 결과
+
+### 적용 대상 확인
+
+- project ref: `xqvvfnvmytjlblcngipn`
+- project name: `PlanFlow`
+- 운영 성격 경고 확인 여부: 확인함
+
+### STEP 4 적용 결과
+
+- `public.group_events` 생성: 완료
+- `public.group_backups` 생성: 완료
+- constraints/indexes 생성: 완료
+  - `group_events_recurrence_type_check`
+  - `group_events_status_check`
+  - `group_events_time_check`
+  - `group_backups_backup_type_check`
+  - `group_events_group_id_idx`
+  - `group_events_created_by_idx`
+  - `group_events_updated_by_idx`
+  - `group_events_cancelled_by_idx`
+  - `group_events_status_idx`
+  - `group_events_start_at_idx`
+  - `group_events_group_start_idx`
+  - `group_events_group_status_start_idx`
+  - `group_backups_group_id_idx`
+  - `group_backups_created_by_idx`
+  - `group_backups_restored_by_idx`
+  - `group_backups_created_at_idx`
+- trigger 생성: `group_events_set_updated_at` 완료
+
+### STEP 4 검증 결과
+
+- 테이블 존재 확인: 완료
+- constraint/index 확인: 완료
+- 테스트 group_event 생성/롤백: 성공
+- 테스트 backup 생성/롤백: 성공
+- 기존 개인 테이블 row count 유지:
+  - `public.users`: `7`
+  - `public.events`: `538`
+  - `public.reminders`: `294`
+  - `public.pre_actions`: `100`
+  - `public.voice_logs`: `97`
+  - `public.user_settings`: `6`
+- PASS/FAIL: `PASS`
+
+### 실제 적용 범위
+
+- STEP 4만 적용했는지 확인: 확인함
+
+### 실패/보류 항목
+
+- 없음
+
+## 14. STEP 5 실제 적용 결과
+
+### 적용 대상 확인
+
+- project ref: `xqvvfnvmytjlblcngipn`
+- project name: `PlanFlow`
+- 운영 성격 경고 확인 여부: 확인함
+
+### STEP 5 적용 결과
+
+- RPC/helper 생성: 완료
+  - `public.is_group_member(uuid, uuid)`
+  - `public.is_group_leader(uuid, uuid)`
+  - `public.has_group_delegated_permission(uuid, uuid, text)`
+  - `public.accept_group_invite(uuid)`
+  - `public.archive_group_with_backup(uuid)`
+  - `public.remove_group_member(uuid, uuid)`
+- 원자성 처리:
+  - `accept_group_invite`: invite 업데이트 + group_members upsert를 한 RPC에서 처리
+  - `archive_group_with_backup`: backup insert + groups archive update를 한 RPC에서 처리
+  - `remove_group_member`: self/leader guard + removed status update를 한 RPC에서 처리
+
+### STEP 5 검증 결과
+
+- `accept_group_invite` 성공:
+  - `invite_status = accepted`
+  - `member_status = active`
+- `accept_group_invite` 실패:
+  - expired invite 차단 확인
+- `archive_group_with_backup` 성공:
+  - `group_status = archived`
+  - `archive_count = 1`
+  - `archived_at_is_not_null = true`
+- `archive_group_with_backup` 실패:
+  - leader permission 없음 차단 확인
+- `remove_group_member` 성공:
+  - `member_status = removed`
+  - `removed_by = leader id`
+- `remove_group_member` 실패:
+  - self removal 차단 확인
+- `last leader removal`:
+  - 직접적인 런타임 케이스는 현재 테스트 harness에서 self-removal guard가 먼저 발동하여 별도 분기 검증은 제한적이었음
+- 기존 개인 테이블 row count 유지:
+  - `public.users`: `7`
+  - `public.events`: `538`
+  - `public.reminders`: `294`
+  - `public.pre_actions`: `100`
+  - `public.voice_logs`: `97`
+  - `public.user_settings`: `6`
+- PASS/FAIL: `PASS`
+
+### 실제 적용 범위
+
+- STEP 5만 적용했는지 확인: 확인함
+
+### 실패/보류 항목
+
+- last leader 제거의 독립적인 런타임 분기 검증은 향후 수동 점검 권장
+
+## 15. STEP 6 실제 적용 결과
+
+### 적용 대상 확인
+
+- project ref: `xqvvfnvmytjlblcngipn`
+- project name: `PlanFlow`
+- 운영 성격 경고 확인 여부: 확인함
+
+### STEP 6 적용 결과
+
+- 기존 owner-only 정책 교체: 완료
+- 최종 RLS 정책 생성: 완료
+  - `groups_select_active_members`
+  - `groups_insert_owner`
+  - `groups_update_leader`
+  - `group_members_select_group_visible`
+  - `group_members_insert_leader_or_invited_self`
+  - `group_members_update_leader_or_invited_self`
+  - `group_invites_select_related_users`
+  - `group_invites_insert_leader_only`
+  - `group_invites_update_leader_or_target`
+  - `group_role_delegations_select_related`
+  - `group_role_delegations_insert_leader_only`
+  - `group_role_delegations_update_cancel`
+  - `group_events_select_active_group_members`
+  - `group_events_insert_leader_or_delegate`
+  - `group_events_update_leader_or_delegate`
+  - `group_events_delete_leader_or_delegate`
+  - `group_backups_select_leader_only`
+  - `group_backups_insert_leader_only`
+  - `group_backups_update_leader_only`
+
+### STEP 6 검증 결과
+
+- policy 생성/조회: 완료
+- leader/member/outsider 매트릭스: 정책 정의 확인 완료
+- delegation permission 확인: 정책 정의 확인 완료
+- group_backups member 차단: 정책 정의 확인 완료
+- sibling group 접근 차단: 정책/함수 구조상 active member 기준으로 분리되도록 구성됨
+- 주의:
+  - 현재 검증 도구가 privileged SQL 연결이라 실제 unauthenticated/authenticated 경계의 최종 런타임 차단은 앱/anon smoke로 한 번 더 확인하는 편이 안전함
+- 기존 개인 테이블 row count 유지:
+  - `public.users`: `7`
+  - `public.events`: `538`
+  - `public.reminders`: `294`
+  - `public.pre_actions`: `100`
+  - `public.voice_logs`: `97`
+  - `public.user_settings`: `6`
+- PASS/FAIL: `PASS`  (정책 적용 기준)
+
+### 실제 적용 범위
+
+- STEP 6만 적용했는지 확인: 확인함
+
+### 실패/보류 항목
+
+- privileged MCP 연결 특성상 실제 authenticated/anon 경계의 최종 런타임 smoke는 별도 확인 권장
