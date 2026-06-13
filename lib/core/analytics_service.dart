@@ -1,59 +1,20 @@
-import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
 /// PlanFlow Analytics 이벤트 헬퍼.
 ///
-/// 모든 이벤트는 static 메서드로 호출한다.
+/// 1차 배포에서는 광고 ID 선언과 충돌하지 않도록 외부 Analytics SDK를
+/// 포함하지 않는다. 호출부 호환을 위해 이벤트 메서드는 유지하되 no-op 처리한다.
 class AnalyticsService {
   AnalyticsService._();
-
-  static FirebaseAnalytics? get _analytics {
-    if (Firebase.apps.isEmpty) {
-      return null;
-    }
-    return FirebaseAnalytics.instance;
-  }
 
   static Future<void> _logEvent(
     String name, {
     Map<String, Object?>? parameters,
   }) {
-    try {
-      final analytics = _analytics;
-      if (analytics == null) {
-        return Future.value();
-      }
-      return analytics
-          .logEvent(
-        name: name,
-        parameters: _sanitizeParameters(parameters),
-      )
-          .catchError((Object error, StackTrace stackTrace) {
-        debugPrint('Analytics event skipped ($name): $error');
-      });
-    } catch (error) {
-      debugPrint('Analytics event skipped ($name): $error');
-      return Future.value();
+    if (kDebugMode) {
+      debugPrint('Analytics event skipped ($name): analytics disabled');
     }
-  }
-
-  static Map<String, Object>? _sanitizeParameters(
-    Map<String, Object?>? parameters,
-  ) {
-    if (parameters == null || parameters.isEmpty) {
-      return null;
-    }
-    return parameters.map((key, value) {
-      final sanitizedValue = switch (value) {
-        null => '',
-        bool() => value ? 1 : 0,
-        num() => value,
-        String() => value,
-        _ => value.toString(),
-      };
-      return MapEntry(key, sanitizedValue);
-    });
+    return Future.value();
   }
 
   // ── 음성 입력 퍼널 ──────────────────────────────────────────
@@ -119,11 +80,15 @@ class AnalyticsService {
       _logEvent('departure_alarm_triggered');
 
   // ── 인증 ─────────────────────────────────────────────────────
-  static Future<void> logLogin({required String method}) =>
-      _analytics?.logLogin(loginMethod: method) ?? Future.value();
+  static Future<void> logLogin({required String method}) => _logEvent(
+        'login',
+        parameters: <String, Object>{'method': method},
+      );
 
-  static Future<void> logSignUp({required String method}) =>
-      _analytics?.logSignUp(signUpMethod: method) ?? Future.value();
+  static Future<void> logSignUp({required String method}) => _logEvent(
+        'sign_up',
+        parameters: <String, Object>{'method': method},
+      );
 
   // ── 얼리버드 ─────────────────────────────────────────────────
   static Future<void> logEarlyBirdSubmitted() =>

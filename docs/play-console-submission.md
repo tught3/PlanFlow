@@ -14,31 +14,30 @@
 - 계정 삭제 URL: `https://tught3.github.io/PlanFlow/account-deletion.html`
 - 일부 데이터 삭제 요청 URL: `https://tught3.github.io/PlanFlow/account-deletion.html#partial-data-deletion`
 - 현재 릴리즈 버전: `1.1.0`
-- 현재 내부 테스트 versionCode: `5`
+- 현재 내부 테스트 versionCode: `18`
 - 내부 테스트 AAB: `build/app/outputs/bundle/release/app-release.aab`
 
 ## 스토어 등록 문구 초안
 
 ### 짧은 설명
 
-음성으로 일정을 만들고, 캘린더 동기화와 출발 알림까지 챙기는 스마트 일정 관리 앱
+말하면 일정이 됩니다. AI 음성으로 일정 등록, 캘린더 연동, 출발 알림까지 자동으로.
 
 ### 전체 설명
 
-PlanFlow는 바쁜 일정을 놓치지 않도록 도와주는 스마트 일정 관리 앱입니다.
+PlanFlow는 음성으로 일정을 입력하고, 약속 장소까지 이동 시간을 계산해 출발 시각까지 알려주는 AI 일정 관리 앱입니다.
 
-음성으로 일정을 말하면 날짜, 시간, 장소, 준비할 일을 정리하고, 중요한 일정과 출발 시점을 알림으로 챙겨줍니다. Google Calendar, Naver CalDAV, 휴대폰 내부 캘린더와의 연동 상태를 확인하고, 필요한 경우 일정을 가져오거나 내보낼 수 있습니다.
+"내일 오후 2시 강남 미팅"처럼 말하면 날짜, 시간, 장소, 제목을 자동으로 파악해 일정으로 저장합니다. Google 캘린더·Naver 캘린더와 연동하고, 출발 알림·아침저녁 브리핑까지 자동으로 챙겨줍니다.
 
 주요 기능:
 
-- 한국어 음성 일정 입력
-- 오늘 일정과 다가오는 일정 확인
-- Google Calendar, Naver CalDAV, 휴대폰 내부 캘린더 동기화
-- 장소 기반 이동시간 확인과 출발 알림
-- 모닝/이브닝 브리핑 알림
-- 중요 일정 알림과 정확한 알람 권한 안내
+- AI 음성 일정 입력 (말 한마디로 등록)
+- 이동시간 자동 계산 · 출발 알림
+- Google Calendar, Naver CalDAV, 휴대폰 내부 캘린더 연동
+- 아침·저녁 브리핑 (AI 음성 요약)
+- 스마트 준비 알림 (역산 알림)
+- Android 홈 위젯 (잠금 해제 없이 바로 입력)
 - 일정 백업 및 복원
-- Android 홈 위젯
 
 PlanFlow는 음성 파일을 외부 서버로 전송하지 않습니다. 기기에서 변환된 텍스트만 일정 파싱과 브리핑 생성에 사용합니다.
 
@@ -177,10 +176,10 @@ Play Console의 실제 질문 문구는 계정 상태와 정책 업데이트에 
 - [ ] 앱 생성 완료
 - [ ] 개인정보처리방침 URL 입력
 - [ ] Google/Naver/Kakao/OpenAI 콘솔 설정 완료
-- [ ] Play Console에 이미 올라간 가장 높은 versionCode보다 현재 versionCode `3`이 큰지 확인
+- [ ] Play Console에 이미 올라간 가장 높은 versionCode보다 현재 versionCode `18`이 큰지 확인
 - [ ] Supabase schema/RLS/RPC 확인
 - [ ] `build/app/outputs/bundle/release/app-release.aab` 업로드
 - [ ] 이메일 로그인 테스트 계정 준비
 - [ ] 실기기에서 일정 저장, 알림, 캘린더 동기화, 백업 확인
 
-마지막 업데이트: 2026-05-25
+마지막 업데이트: 2026-06-12

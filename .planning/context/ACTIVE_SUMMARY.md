@@ -1723,3 +1723,34 @@
 - 앱 내 일정탭 월간 그리드의 연속 일정 밴드가 인접 날짜에서 살짝 겹치며 중간이 진해 보이던 문제를 보정했다.
 - 날짜 칸 좌우 1.5px 여백만큼만 확장하도록 조정해, 밴드가 끊기지 않고 맞닿되 투명도 중첩으로 진해지지 않게 했다.
 - 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, debug APK 산출물 갱신 확인, ADB install/launch 및 앱 PID 확인.
+
+## 2026-06-12 연속 일정 색상 구분 적용
+- 앱 내 일정탭과 Android 월간 위젯의 연속 일정은 연한 세이지 그린 배경과 짙은 그린 텍스트로 표시하도록 맞췄다.
+- 중요+연속 일정은 세이지 그린 배경을 유지하고 상단 코랄 포인트 라인을 얹어, 기간 의미와 중요 표시가 동시에 보이게 했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, ADB install/launch 및 앱 PID 확인.
+
+## 2026-06-12 중요+연속 일정 텍스트 위치 보정
+- 중요+연속 일정의 코랄 상단 라인이 제목 윗부분을 가려 보이지 않도록, 해당 케이스에서만 제목을 1px 아래로 내렸다.
+- Android 월간 위젯도 같은 조건에서 텍스트 top padding을 1px 적용해 앱 안 일정탭과 시각 흐름을 맞췄다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub`, debug APK 산출물 갱신, ADB install/launch 및 앱 PID 확인.
+
+## 2026-06-12 선택된 연속 일정 밴드 연결 보정
+- 앱 내 일정탭에서 선택된 날짜의 연속 일정 라벨이 흰 반투명 스타일로 바뀌며 주 경계처럼 끊겨 보이던 문제를 수정했다.
+- 선택된 날짜라도 연속 일정은 세이지 그린 밴드와 텍스트 색을 유지하게 해, 일요일 시작 구간과 다음 월요일 구간이 같은 일정으로 이어져 보이게 했다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/calendar_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `git diff --check`. ADB 기기가 없어 설치/실행은 진행하지 못했다.
+
+## 2026-06-12 일정탭 주 경계 기준 수정
+- 앱 내 일정탭 월간 그리드가 일요일 시작 달력인데 연속 일정 세그먼트는 월요일 시작 기준으로 끊고 있어, 일요일마다 밴드가 끝나는 문제를 수정했다.
+- 연속 일정의 주 시작/끝 판단을 일요일 시작, 토요일 끝으로 맞춰 일요일 칸에서도 다음 날짜로 이어지는 밴드처럼 보이게 했다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/calendar_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, debug APK 산출물 갱신, ADB install/launch 및 앱 PID 확인.
+
+## 2026-06-12 중요 연속 일정 코랄 라인 연결 보정
+- 중요+연속 일정의 상단 코랄 라인이 텍스트용 좌우 padding 안에서 그려져, 초록 밴드는 이어져도 빨간선만 날짜 칸마다 끊겨 보이던 문제를 수정했다.
+- 밴드 컨테이너 padding을 제거하고 텍스트에만 좌우 padding을 적용해, 코랄 라인이 초록 밴드와 같은 폭으로 이어지게 했다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/calendar_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, ADB install/launch 확인.
+
+## 2026-06-13 Play 광고 ID 선언 대응
+- 광고 기능을 넣지 않았는데 Play Console에서 광고 ID 선언 오류가 나는 원인을 `firebase_analytics` -> Google measurement SDK의 AD_ID/AdServices 권한 주입으로 확인했다.
+- `firebase_analytics` 의존성과 초기화를 제거하고, 기존 `AnalyticsService` 호출부는 no-op으로 유지해 앱 기능 코드의 호출 계약은 보존했다.
+- Android manifest에는 AD_ID/AdServices 권한 제거 지시를 남겨 향후 transitive SDK가 들어와도 광고 ID 권한이 병합되지 않게 했다.
+- 검증: `flutter pub get`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build appbundle --release --no-pub`, 릴리즈 AAB/manifest 문자열 검사에서 AD_ID/ACCESS_ADSERVICES/play-services-measurement 미검출. Play commit은 기존 alpha/보류 변경의 광고 ID 선언 상태로 계속 차단됨.

@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
@@ -20,6 +20,12 @@ import 'services/event_prefetch_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kReleaseMode) {
+    debugPrint = (String? message, {int? wrapWidth}) {};
+  }
+  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+    DeviceOrientation.portraitUp,
+  ]);
   FlutterError.onError = FlutterError.presentError;
 
   runApp(const ProviderScope(child: PlanFlowApp()));
@@ -38,7 +44,6 @@ Future<void> _initializeFirebaseServices() async {
       options: DefaultFirebaseOptions.currentPlatform,
     ).timeout(const Duration(seconds: 8));
     await RemoteConfigService.initialize();
-    FirebaseAnalytics.instance;
     FlutterError.onError = (FlutterErrorDetails details) {
       FlutterError.presentError(details);
       unawaited(FirebaseCrashlytics.instance.recordFlutterFatalError(details));

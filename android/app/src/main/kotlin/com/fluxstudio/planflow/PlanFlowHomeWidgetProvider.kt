@@ -27,6 +27,7 @@ private const val DEFAULT_TEXT_COLOR = 0xFF203A57.toInt()
 private const val MUTED_TEXT_COLOR = 0xFF8FA4B7.toInt()
 private const val CRITICAL_TEXT_COLOR = 0xFFD94444.toInt()
 private const val HOLIDAY_TEXT_COLOR = 0xFFB42318.toInt()
+private const val MULTI_DAY_TEXT_COLOR = 0xFF174F4A.toInt()
 private const val PLANFLOW_SCHEME = "planflow"
 private const val PLANFLOW_CALENDAR_HOST = "calendar"
 private const val PLANFLOW_EVENT_HOST = "event"
@@ -596,6 +597,31 @@ abstract class BasePlanFlowWidgetProvider(
             cellDay == firstEventDay || isRowStart -> "start"
             cellDay == lastEventDay || isRowEnd -> "end"
             else -> "middle"
+        }
+    }
+
+    protected fun isMonthRangeSegment(segment: String?): Boolean {
+        return segment == "start" || segment == "middle" || segment == "end"
+    }
+
+    protected fun monthRangeBackground(segment: String?, isCritical: Boolean): Int {
+        return when (segment) {
+            "start" -> if (isCritical) {
+                R.drawable.widget_month_event_critical_start
+            } else {
+                R.drawable.widget_month_event_start
+            }
+            "middle" -> if (isCritical) {
+                R.drawable.widget_month_event_critical_middle
+            } else {
+                R.drawable.widget_month_event_middle
+            }
+            "end" -> if (isCritical) {
+                R.drawable.widget_month_event_critical_end
+            } else {
+                R.drawable.widget_month_event_end
+            }
+            else -> android.R.color.transparent
         }
     }
 
@@ -1425,13 +1451,15 @@ class PlanFlowMonthlyWidgetProvider :
 
                         val segment = rawWidgetMonthSegment(event, day)
                         val showTitle = segment == "single" || segment == "start"
-                        val bgRes = when (segment) {
-                            "start" -> R.drawable.widget_month_event_start
-                            "middle" -> R.drawable.widget_month_event_middle
-                            "end" -> R.drawable.widget_month_event_end
-                            else -> android.R.color.transparent
-                        }
+                        val bgRes = monthRangeBackground(segment, event.isCritical)
                         views.setInt(eventId, "setBackgroundResource", bgRes)
+                        views.setViewPadding(
+                            eventId,
+                            0,
+                            if (event.isCritical && isMonthRangeSegment(segment) && showTitle) 1 else 0,
+                            0,
+                            0,
+                        )
                         if (showTitle) {
                             bindEventText(
                                 views,
@@ -1441,12 +1469,14 @@ class PlanFlowMonthlyWidgetProvider :
                                 event.isCritical,
                                 isMuted = !inMonth,
                             )
-                            if (event.isCritical && inMonth) {
-                                views.setTextColor(eventId, 0xFF9C5C71.toInt())
+                            if (isMonthRangeSegment(segment) && inMonth) {
+                                views.setTextColor(eventId, MULTI_DAY_TEXT_COLOR)
+                            } else if (event.isCritical && inMonth) {
+                                views.setTextColor(eventId, CRITICAL_TEXT_COLOR)
                             }
                         } else {
                             views.setTextViewText(eventId, "")
-                            views.setTextColor(eventId, if (inMonth) DEFAULT_TEXT_COLOR else MUTED_TEXT_COLOR)
+                            views.setTextColor(eventId, if (inMonth) MULTI_DAY_TEXT_COLOR else MUTED_TEXT_COLOR)
                             views.setViewVisibility(eventId, View.VISIBLE)
                         }
                     }
@@ -1570,13 +1600,15 @@ class PlanFlowMonthlyWidgetProvider :
 
                     if (eventId != 0) {
                         // segment 배경 적용 (single은 배경 없음)
-                        val bgRes = when (segment) {
-                            "start" -> R.drawable.widget_month_event_start
-                            "middle" -> R.drawable.widget_month_event_middle
-                            "end" -> R.drawable.widget_month_event_end
-                            else -> android.R.color.transparent
-                        }
+                        val bgRes = monthRangeBackground(segment, eventCritical)
                         views.setInt(eventId, "setBackgroundResource", bgRes)
+                        views.setViewPadding(
+                            eventId,
+                            0,
+                            if (eventCritical && isMonthRangeSegment(segment) && showTitle) 1 else 0,
+                            0,
+                            0,
+                        )
 
                         // middle/end 셀: 빈 텍스트로 배경 bar만 표시 (GONE 방지)
                         val isBarContinuation = !showTitle && (segment == "middle" || segment == "end")
@@ -1585,8 +1617,10 @@ class PlanFlowMonthlyWidgetProvider :
                             views.setViewVisibility(eventId, View.VISIBLE)
                         } else {
                             bindEventText(views, eventId, rawTitle, null, isCritical = eventCritical, isMuted = !inMonth)
-                            if (eventCritical && inMonth) {
-                                views.setTextColor(eventId, 0xFF9C5C71.toInt())
+                            if (isMonthRangeSegment(segment) && inMonth) {
+                                views.setTextColor(eventId, MULTI_DAY_TEXT_COLOR)
+                            } else if (eventCritical && inMonth) {
+                                views.setTextColor(eventId, CRITICAL_TEXT_COLOR)
                             }
                         }
                     }
