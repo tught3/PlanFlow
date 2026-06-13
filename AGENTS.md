@@ -325,8 +325,9 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - Treat future Flow Core/shared-core files as cross-project contracts for NexusFlow and related apps. If `packages/`, `flow_core/`, shared domain models, shared repositories, shared parsing/routing services, or other Flow Core extraction targets are created or modified, stop first and get explicit user confirmation unless the user has directly requested that exact change.
 - For 1st release, do not implement billing, ads, reward ads, Kakao/SMS/call detection, or TEAM/BUSINESS features.
 - Naver Calendar is now a 1st-release working feature. Keep OAuth consent, token handling, and calendar export behavior visible and testable.
-- Unless the user explicitly says `배포하지 마`, `SkipUpload`, or `코드만 수정`, any Flutter/Android code change must continue through the deploy pipeline automatically after the change is complete: `analyze` -> related tests -> versionCode bump -> Play internal upload -> Telegram notification.
-- If the user says `배포하지 마`, `SkipUpload`, or `코드만 수정`, stop after the requested scope and do not run the deploy pipeline.
+- Flutter/Android 코드 수정은 기본적으로 **코드 수정까지만** 수행한다.
+- 배포 파이프라인(`analyze` -> related tests -> versionCode bump -> Play internal upload -> Telegram notification)은 사용자가 **명시적으로 배포를 요청했을 때만** 실행한다.
+- 사용자가 `배포하지 마`, `SkipUpload`, `코드만 수정`이라고 말한 경우는 물론, 배포 요청이 없으면 항상 배포를 생략한다.
 - When deploy automation runs, keep the final report format aligned to:
   - `[PlanFlow 배포 완료]`
   - `Version:`

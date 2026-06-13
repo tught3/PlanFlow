@@ -1,6 +1,6 @@
 # PlanFlow — Google Play 스토어 등록정보
 
-> 마지막 수정: 2026-06-13 | 버전: 1.1.0+27 | ASO 감사: 2026-06-13
+> 마지막 수정: 2026-06-13 | 버전: 1.1.0+28 | ASO 감사: 2026-06-13
 
 ---
 
@@ -10,7 +10,7 @@
 |------|------|
 | **앱 이름** | PlanFlow - AI 음성 일정관리 스케줄 |
 | **패키지명** | com.fluxstudio.planflow |
-| **버전** | 1.1.0 (versionCode 27) |
+| **버전** | 1.1.0 (versionCode 28) |
 | **카테고리** | 생산성 |
 | **콘텐츠 등급** | 전체 이용가 |
 | **기본 언어** | 한국어 |
@@ -111,22 +111,14 @@ PlanFlow에서 입력한 일정은 연결된 캘린더에도 자동으로 반영
 | 파일 | 용도 | 해상도 | 상태 |
 |------|------|--------|------|
 | `screenshots/01_home.png` | 폰 — 홈 화면 | 1080×2316 | ✅ |
-| `screenshots/04_settings.png` | 폰 — 설정 화면 | 1080×2316 | ✅ |
+| `screenshots/02_voice_input.png` | 폰 — 음성 입력 화면 | 1080×2316 | ✅ |
+| `screenshots/03_event_edit.png` | 폰 — 일정 편집 화면 | 1080×2316 | ✅ |
+| `screenshots/04_calendar.png` | 폰 — 캘린더 화면 | 1080×2316 | ✅ |
+| `screenshots/05_settings.png` | 폰 — 설정 화면 | 1080×2316 | ✅ |
 | `screenshots/tablet_10inch_home.png` | 10인치 탭 — 홈 화면 | 2560×1600 | ✅ |
 | `screenshots/tablet_7inch_home.png` | 7인치 탭 — 홈 화면 | 1920×1200 | ✅ |
 | `screenshots/tablet_settings.png` | 탭 — 설정 화면 | 2560×1600 | ✅ |
 | `screenshots/feature_graphic_1024x500.png` | 피처 그래픽 | 1024×500 | ✅ |
-
-### 추가 필요 (폰 스크린샷)
-
-| 파일명 (예정) | 화면 내용 | 핵심 메시지 |
-|-------------|----------|-----------|
-| `screenshots/02_voice_input.png` | 음성 입력 중 + AI 파싱 결과 확인 | "말하는 순간 일정이 완성" |
-| `screenshots/03_departure_alarm.png` | 출발 알림 · 이동시간 계산 화면 | "지금 출발 안내" |
-| `screenshots/05_briefing.png` | 아침 브리핑 화면 | "하루 일정 한눈에" |
-| `screenshots/06_calendar_sync.png` | 구글·네이버 캘린더 연동 화면 | "기존 캘린더 그대로" |
-| `screenshots/07_widget.png` | 홈 위젯 화면 | "홈에서 바로 입력" |
-| `screenshots/08_smart_prep.png` | 스마트 준비 알림 | "지각 걱정 끝" |
 
 > 스크린샷 내 개인정보 처리: tught3@gmail.com → planflow.user@gmail.com 교체 완료
 
@@ -161,7 +153,8 @@ PlanFlow에서 입력한 일정은 연결된 캘린더에도 자동으로 반영
 | 날짜 | 버전 | 트랙 | 내용 |
 |------|------|------|------|
 | 2026-06-12 | 1.1.0+18 | 내부 테스트 | 배포 전 최종 점검 완료 |
-| 2026-06-13 | 1.1.0+27 | 비공개 테스트 대기 | 딥링크 버그 수정, 스마트준비알람 마이그레이션, ASO 등록정보 개선 |
+| 2026-06-13 | 1.1.0+27 | 비공개 테스트 | 딥링크 버그 수정, 스마트준비알람 마이그레이션, ASO 등록정보 개선 |
+| 2026-06-13 | 1.1.0+28 | 비공개 테스트 | 권한 온보딩 화면 필수/선택 섹션 구분 |
 
 ---
 

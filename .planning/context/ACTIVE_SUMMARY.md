@@ -1781,3 +1781,7 @@
 - `group_members` 제거 경로를 UI/provider의 직접 update에서 `remove_group_member` RPC로 옮겨 서버 측에서 자기 자신 제거와 마지막 리더 제거를 함께 차단했다.
 - `group_members` RLS는 직접 `removed` 갱신 경로를 좁히고, 리포지토리 테스트에는 RPC 주입 훅과 리더 검증 훅을 추가해 호출 경로를 안정적으로 검증했다.
 - 검증: `flutter analyze --no-pub`, `flutter test --no-pub test/features/groups -r compact`, `flutter test --no-pub`, `git diff --check`.
+
+## 2026-06-13 배포 자동화 기본 정책 변경
+- 앞으로 Flutter/Android 코드 수정 후 배포 파이프라인은 자동 실행하지 않고, 사용자가 명시적으로 배포를 요청할 때만 수행하도록 프로젝트 운영 규칙을 바꿨다.
+- 변경 대상은 AGENTS.md의 배포 규칙이며, 앱 코드/스키마/Android 파일은 건드리지 않았다.

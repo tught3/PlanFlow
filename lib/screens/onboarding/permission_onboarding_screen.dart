@@ -454,6 +454,8 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   });
                 },
               ),
+              const SizedBox(height: 16),
+              const _SectionHeader(label: '필수 권한'),
               const SizedBox(height: 9),
               _PermissionTile(
                 icon: Icons.mic_none,
@@ -529,6 +531,11 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
                   request: _permissionService.requestFullScreenIntentPermission,
                 ),
+              ),
+              const SizedBox(height: 16),
+              const _SectionHeader(
+                label: '선택 권한',
+                subtitle: '허용 안 해도 기본 기능 사용 가능',
               ),
               const SizedBox(height: 9),
               _PermissionTile(
@@ -705,6 +712,43 @@ class _PrepTimeCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.label, this.subtitle});
+
+  final String label;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: PlanFlowColors.primaryMid,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              subtitle!,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
