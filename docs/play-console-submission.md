@@ -14,7 +14,7 @@
 - 계정 삭제 URL: `https://tught3.github.io/PlanFlow/account-deletion.html`
 - 일부 데이터 삭제 요청 URL: `https://tught3.github.io/PlanFlow/account-deletion.html#partial-data-deletion`
 - 현재 릴리즈 버전: `1.1.0`
-- 현재 내부 테스트 versionCode: `18`
+- 현재 비공개 테스트 versionCode: `27`
 - 내부 테스트 AAB: `build/app/outputs/bundle/release/app-release.aab`
 
 ## 스토어 등록 문구 초안
@@ -176,7 +176,7 @@ Play Console의 실제 질문 문구는 계정 상태와 정책 업데이트에 
 - [ ] 앱 생성 완료
 - [ ] 개인정보처리방침 URL 입력
 - [ ] Google/Naver/Kakao/OpenAI 콘솔 설정 완료
-- [ ] Play Console에 이미 올라간 가장 높은 versionCode보다 현재 versionCode `18`이 큰지 확인
+- [ ] Play Console에 이미 올라간 가장 높은 versionCode보다 현재 versionCode `27`이 큰지 확인
 - [ ] Supabase schema/RLS/RPC 확인
 - [ ] `build/app/outputs/bundle/release/app-release.aab` 업로드
 - [ ] 이메일 로그인 테스트 계정 준비
