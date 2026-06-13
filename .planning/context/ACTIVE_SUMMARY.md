@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-13 V2 Supabase verification SQL draft
+- Added `docs/planflow-v2/20-v2-supabase-verification-sql.md` with staging/dev-only SQL for schema, index/constraint, RPC, RLS, rollback, and manual overlay checks.
+- The document keeps production Supabase out of scope and focuses on verification order plus expected PASS criteria before any live apply.
+- Verification this turn: `git fetch origin`, `git merge origin/main` (merge commit `3702006`), and `flutter analyze --no-pub` all completed successfully after resolving the ACTIVE_SUMMARY conflict.
 ## 2026-06-13 V2 Supabase deployment plan draft
 - Added `docs/planflow-v2/19-v2-supabase-deployment-plan.md` to document schema/RPC/RLS validation order, rollback plan, and live Supabase readiness checks before any production apply.
 - The plan keeps actual DB application out of scope and frames the remaining work as validation and controlled rollout only.
