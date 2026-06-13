@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-13 V2 Supabase deployment plan draft
+- Added `docs/planflow-v2/19-v2-supabase-deployment-plan.md` to document schema/RPC/RLS validation order, rollback plan, and live Supabase readiness checks before any production apply.
+- The plan keeps actual DB application out of scope and frames the remaining work as validation and controlled rollout only.
+- Verification this turn: `git fetch origin`, `git merge origin/main` after resolving the ACTIVE_SUMMARY conflict, `flutter analyze --no-pub`, and `flutter test --no-pub test/features/groups -r compact` remained passing.
 ## 2026-06-13 V2 E2E QA checklist draft
 - Added `docs/planflow-v2/18-v2-e2e-qa-checklist.md` to consolidate V2 end-to-end QA coverage across personal flow, group flow, DB/RLS/RPC, and main-merge risks.
 - The checklist marks merge blockers as real DB/RLS validation, atomic RPC verification, and manual overlay/context refresh checks rather than further code changes.
