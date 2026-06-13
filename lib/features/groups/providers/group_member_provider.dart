@@ -103,13 +103,9 @@ class GroupMemberProvider extends ChangeNotifier {
       ),
     );
     try {
-      final updated = await _repository.updateMember(
-        member.copyWith(
-          status: 'removed',
-          removedAt: DateTime.now().toUtc(),
-          removedBy: currentUserId,
-          updatedAt: DateTime.now().toUtc(),
-        ),
+      final updated = await _repository.removeGroupMember(
+        _requireSelectedGroup().id,
+        member.userId,
       );
       await _reloadMembers();
       return updated;

@@ -71,6 +71,30 @@ class FakeGroupRepository extends GroupRepository {
     groupMembers[index] = member;
     return member;
   }
+
+  @override
+  Future<GroupMemberModel> removeGroupMember(
+    String groupId,
+    String userId,
+  ) async {
+    final groupMembers = membersByGroupId[groupId];
+    if (groupMembers == null) {
+      throw StateError('missing group members');
+    }
+    final index = groupMembers.indexWhere((item) => item.userId == userId);
+    if (index == -1) {
+      throw StateError('missing member');
+    }
+    final current = groupMembers[index];
+    final removed = current.copyWith(
+      status: 'removed',
+      removedAt: DateTime.utc(2026, 6, 13),
+      removedBy: 'user-1',
+      updatedAt: DateTime.utc(2026, 6, 13),
+    );
+    groupMembers[index] = removed;
+    return removed;
+  }
 }
 
 GroupModel _group({

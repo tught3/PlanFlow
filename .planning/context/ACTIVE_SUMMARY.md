@@ -1758,3 +1758,8 @@
 - `firebase_analytics` 의존성과 초기화를 제거하고, 기존 `AnalyticsService` 호출부는 no-op으로 유지해 앱 기능 코드의 호출 계약은 보존했다.
 - Android manifest에는 AD_ID/AdServices 권한 제거 지시를 남겨 향후 transitive SDK가 들어와도 광고 ID 권한이 병합되지 않게 했다.
 - 검증: `flutter pub get`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build appbundle --release --no-pub`, 릴리즈 AAB/manifest 문자열 검사에서 AD_ID/ACCESS_ADSERVICES/play-services-measurement 미검출. Play commit은 기존 alpha/보류 변경의 광고 ID 선언 상태로 계속 차단됨.
+
+## 2026-06-13 Group member remove RPC 보강
+- `group_members` 제거 경로를 UI/provider의 직접 update에서 `remove_group_member` RPC로 옮겨 서버 측에서 자기 자신 제거와 마지막 리더 제거를 함께 차단했다.
+- `group_members` RLS는 직접 `removed` 갱신 경로를 좁히고, 리포지토리 테스트에는 RPC 주입 훅과 리더 검증 훅을 추가해 호출 경로를 안정적으로 검증했다.
+- 검증: `flutter analyze --no-pub`, `flutter test --no-pub test/features/groups -r compact`, `flutter test --no-pub`, `git diff --check`.

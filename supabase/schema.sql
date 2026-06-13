@@ -675,19 +675,94 @@ create policy "group_members_update_leader"
         and groups.status = 'active'
         and public.is_group_leader(groups.id, auth.uid())
     )
-    and (
-      (
-        status = 'active'
-        and removed_at is null
-        and removed_by is null
-      )
-      or (
-        status = 'removed'
-        and removed_at is not null
-        and removed_by = auth.uid()
-      )
-    )
+    and status = 'active'
+    and removed_at is null
+    and removed_by is null
   );
+
+create or replace function public.remove_group_member(
+  group_id_input uuid,
+  member_user_id_input uuid
+)
+returns public.group_members
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  group_row public.groups%rowtype;
+  target_member public.group_members%rowtype;
+  updated_member public.group_members%rowtype;
+  active_leader_count integer;
+begin
+  if current_user_id is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  if member_user_id_input = current_user_id then
+    raise exception '자기 자신은 제거할 수 없습니다.';
+  end if;
+
+  select *
+    into group_row
+    from public.groups
+   where id = group_id_input
+   for update;
+
+  if not found then
+    raise exception 'group not found';
+  end if;
+
+  if group_row.status <> 'active' then
+    raise exception 'active group만 멤버를 제거할 수 있습니다.';
+  end if;
+
+  if not public.is_group_leader(group_row.id, current_user_id) then
+    raise exception '팀 리더만 멤버를 제거할 수 있습니다.';
+  end if;
+
+  select *
+    into target_member
+    from public.group_members
+   where group_id = group_row.id
+     and user_id = member_user_id_input
+   for update;
+
+  if not found then
+    raise exception 'group member not found';
+  end if;
+
+  if target_member.status <> 'active' then
+    raise exception 'active 멤버만 제거할 수 있습니다.';
+  end if;
+
+  if target_member.role = 'leader' then
+    select count(*)
+      into active_leader_count
+      from public.group_members
+     where group_id = group_row.id
+       and role = 'leader'
+       and status = 'active';
+
+    if active_leader_count <= 1 then
+      raise exception '마지막 리더는 제거할 수 없습니다.';
+    end if;
+  end if;
+
+  update public.group_members
+     set status = 'removed',
+         removed_at = now(),
+         removed_by = current_user_id,
+         updated_at = now()
+   where id = target_member.id
+   returning * into updated_member;
+
+  return updated_member;
+end;
+$$;
+
+grant execute on function public.remove_group_member(uuid, uuid) to authenticated;
 
 create or replace function public.is_valid_group_role_delegation_permissions(
   permissions_input jsonb

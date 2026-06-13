@@ -22,13 +22,37 @@ abstract class GroupRepository {
   Future<GroupMemberModel> addMember(GroupMemberModel member);
 
   Future<GroupMemberModel> updateMember(GroupMemberModel member);
+
+  Future<GroupMemberModel> removeGroupMember(
+    String groupId,
+    String userId,
+  ) async {
+    throw UnimplementedError();
+  }
 }
 
 class SupabaseGroupRepository extends GroupRepository {
-  SupabaseGroupRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+  SupabaseGroupRepository({
+    SupabaseClient? client,
+    String? Function()? currentUserIdProvider,
+    Future<void> Function(String groupId, String userId)? ensureLeaderOfGroup,
+    Future<Map<String, dynamic>> Function(
+      String groupId,
+      String userId,
+    )? removeGroupMemberRpc,
+  })  : _client = client ?? Supabase.instance.client,
+        _currentUserIdProvider = currentUserIdProvider,
+        _ensureLeaderOfGroupOverride = ensureLeaderOfGroup,
+        _removeGroupMemberRpc = removeGroupMemberRpc;
 
   final SupabaseClient _client;
+  final String? Function()? _currentUserIdProvider;
+  final Future<void> Function(String groupId, String userId)?
+      _ensureLeaderOfGroupOverride;
+  final Future<Map<String, dynamic>> Function(
+    String groupId,
+    String userId,
+  )? _removeGroupMemberRpc;
 
   @override
   Future<List<GroupModel>> listGroups() async {
@@ -105,6 +129,61 @@ class SupabaseGroupRepository extends GroupRepository {
         .select()
         .single();
     return GroupMemberModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<GroupMemberModel> removeGroupMember(
+    String groupId,
+    String userId,
+  ) async {
+    final currentUserId = _requireCurrentUserId();
+    await (_ensureLeaderOfGroupOverride ?? _ensureLeaderOfGroup)(
+      groupId,
+      currentUserId,
+    );
+    final response =
+        await (_removeGroupMemberRpc ?? _removeGroupMemberWithRpc)(
+      groupId,
+      userId,
+    );
+    return GroupMemberModel.fromJson(response);
+  }
+
+  String _requireCurrentUserId() {
+    final currentUserId =
+        _currentUserIdProvider?.call() ?? _client.auth.currentUser?.id;
+    if (currentUserId == null || currentUserId.trim().isEmpty) {
+      throw StateError('로그인이 필요합니다.');
+    }
+    return currentUserId;
+  }
+
+  Future<Map<String, dynamic>> _removeGroupMemberWithRpc(
+    String groupId,
+    String userId,
+  ) async {
+    final response = await _client
+        .rpc('remove_group_member', params: <String, dynamic>{
+          'group_id_input': groupId,
+          'member_user_id_input': userId,
+        })
+        .select()
+        .single();
+    return _rowAsJson(response);
+  }
+
+  Future<void> _ensureLeaderOfGroup(String groupId, String userId) async {
+    final response = await _client
+        .from('group_members')
+        .select('id')
+        .eq('group_id', groupId)
+        .eq('user_id', userId)
+        .eq('role', 'leader')
+        .eq('status', 'active')
+        .maybeSingle();
+    if (response == null) {
+      throw StateError('팀 리더만 멤버를 제거할 수 있습니다.');
+    }
   }
 
   Map<String, dynamic> _rowAsJson(Object row) {
