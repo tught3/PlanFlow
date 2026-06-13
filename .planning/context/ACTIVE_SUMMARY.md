@@ -1737,3 +1737,7 @@
 - `firebase_analytics` 의존성과 초기화를 제거하고, 기존 `AnalyticsService` 호출부는 no-op으로 유지해 앱 기능 코드의 호출 계약은 보존했다.
 - Android manifest에는 AD_ID/AdServices 권한 제거 지시를 남겨 향후 transitive SDK가 들어와도 광고 ID 권한이 병합되지 않게 했다.
 - 검증: `flutter pub get`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build appbundle --release --no-pub`, 릴리즈 AAB/manifest 문자열 검사에서 AD_ID/ACCESS_ADSERVICES/play-services-measurement 미검출. Play commit은 기존 alpha/보류 변경의 광고 ID 선언 상태로 계속 차단됨.
+
+## 2026-06-13 배포 자동화 기본 정책 변경
+- 앞으로 Flutter/Android 코드 수정 후 배포 파이프라인은 자동 실행하지 않고, 사용자가 명시적으로 배포를 요청할 때만 수행하도록 프로젝트 운영 규칙을 바꿨다.
+- 변경 대상은 AGENTS.md의 배포 규칙이며, 앱 코드/스키마/Android 파일은 건드리지 않았다.
