@@ -1,4 +1,8 @@
 ﻿# ACTIVE SUMMARY
+## 2026-06-13 Play versionCode 23 collision recovery
+- Play Console에서 `versionCode=23`이 이미 사용되었다는 오류가 나서 `pubspec.yaml` 버전을 `1.1.0+24`로 올려 재시도했다.
+- release AAB는 이미 재생성된 상태였고, `android/gradlew.bat :app:publishReleaseBundle --track alpha --artifact-dir ..\build\app\outputs\bundle\release -PplanflowPlayServiceAccountJson=E:\FluxStudio\secrets\planflow-495007-dbe93d413189.json` 실행이 `BUILD SUCCESSFUL`로 끝나 Play 전송 단계가 완료되었다.
+- 남은 확인은 Play Console에서 새 릴리스를 열어 `versionCode=24` 반영과 테스터 배포 상태를 보는 것이다.
 
 ## 2026-06-11 PlanFlow deploy-by-default rule confirmed
 - `AGENTS.md`에 Flutter/Android 코드 변경 후 별도 금지 문구가 없으면 `analyze -> tests -> versionCode bump -> Play internal upload -> Telegram`까지 자동으로 이어가도록 규칙을 반영했다.
