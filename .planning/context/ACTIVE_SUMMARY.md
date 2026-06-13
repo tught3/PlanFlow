@@ -1,8 +1,13 @@
 # ACTIVE SUMMARY
 ## 2026-06-13 V2 E2E QA checklist draft
-- Added docs/planflow-v2/18-v2-e2e-qa-checklist.md to consolidate V2 end-to-end QA coverage across personal flow, group flow, DB/RLS/RPC, and main-merge risks.
+- Added `docs/planflow-v2/18-v2-e2e-qa-checklist.md` to consolidate V2 end-to-end QA coverage across personal flow, group flow, DB/RLS/RPC, and main-merge risks.
 - The checklist marks merge blockers as real DB/RLS validation, atomic RPC verification, and manual overlay/context refresh checks rather than further code changes.
-- Verification in this turn: git fetch origin, git merge origin/main (Already up to date.), flutter analyze --no-pub before docs write, and flutter test --no-pub remains passing from the current branch state.
+- Verification in this turn: `git fetch origin`, `git merge origin/main` (`Already up to date.`), `flutter analyze --no-pub` before docs write, and `flutter test --no-pub` remains passing from the current branch state.
+
+## 2026-06-13 PlanFlow 딥링크 우선 진입 및 업데이트 복원
+- 앱 시작 시 업데이트 확인을 뒤로 미루고, 위젯/알람/딥링크 진입 화면을 먼저 안착시킨 뒤에 업데이트를 검사하도록 `lib/app.dart`와 `lib/services/update_service.dart`를 정리했다.
+- 업데이트 안내가 떠도 현재 route와 query를 저장해뒀다가, 업데이트 뒤에 원래 들어가려던 화면으로 복원되도록 했다.
+- 검증: `scripts/flutter-local.ps1 test test/services/update_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub` 통과, 실기기 `192.168.0.103:36245`에 APK 설치 및 실행 확인, `E:\FluxStudio\tools\deploy-play.bat planflow -SkipUpload` 검증 성공, 이어서 `E:\FluxStudio\tools\deploy-play.bat planflow`로 Play 내부 업로드까지 완료했다. 최종 버전은 `1.1.0+27`이다.
 
 ## 2026-06-13 Play versionCode 23 collision recovery
 - Play Console에서 `versionCode=23`이 이미 사용되었다는 오류가 나서 `pubspec.yaml` 버전을 `1.1.0+24`로 올려 재시도했다.

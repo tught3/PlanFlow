@@ -44,10 +44,11 @@ void main() {
         skipInDebug: false,
       );
 
-      await UpdateService.checkAndPrompt();
+      final started = await UpdateService.checkAndPrompt();
 
       expect(postUpdateHook.runCount, 1);
       expect(versionTracker.stored, 120);
+      expect(started, isTrue);
     });
 
     test('does not rerun post-update hook when version unchanged', () async {
@@ -67,10 +68,11 @@ void main() {
         skipInDebug: false,
       );
 
-      await UpdateService.checkAndPrompt();
+      final started = await UpdateService.checkAndPrompt();
 
       expect(postUpdateHook.runCount, 0);
       expect(versionTracker.stored, 120);
+      expect(started, isTrue);
     });
 
     test('uses immediate update for forced update when available', () async {
@@ -115,12 +117,13 @@ void main() {
         skipInDebug: false,
       );
 
-      await UpdateService.checkAndPrompt();
+      final started = await UpdateService.checkAndPrompt();
 
       expect(updateFlow.immediateCallCount, 0);
       expect(updateFlow.flexibleStartCallCount, 1);
       expect(updateFlow.flexibleCompleteCallCount, 1);
       expect(playStoreLauncher.openedPackages, isEmpty);
+      expect(started, isTrue);
     });
 
     test('falls back to Play Store when forced update has no in-app path',
