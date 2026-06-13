@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/settings_repository.dart';
@@ -188,6 +189,8 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
 
   Future<void> _requestAllSteps() async {
     final failures = <String>[];
+    final requiresFullScreenIntent =
+        mounted && context.planflowWindowInfo.hasSeparatingDisplayFeature;
 
     if (!await _runPermissionStep(
       key: 'microphone',
@@ -236,13 +239,26 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     )) {
       return;
     }
+    if (requiresFullScreenIntent &&
+        !await _runPermissionStep(
+          key: 'fullScreenIntent',
+          label: '전체 화면 알림',
+          failures: failures,
+          isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
+          request: _permissionService.requestFullScreenIntentPermission,
+        )) {
+      return;
+    }
 
     await _refresh();
     if (!mounted) {
       return;
     }
     final snapshot = _snapshot;
-    final allGranted = snapshot?.requiredPermissionsGranted == true;
+    final allGranted = _isOnboardingReady(
+      snapshot,
+      requiresFullScreenIntent: requiresFullScreenIntent,
+    );
     setState(() {
       _message = allGranted
           ? '필요 권한이 모두 준비되었습니다.'
@@ -370,7 +386,12 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
   @override
   Widget build(BuildContext context) {
     final snapshot = _snapshot;
-    final ready = snapshot?.requiredPermissionsGranted == true;
+    final showFullScreenIntentPermission =
+        context.planflowWindowInfo.hasSeparatingDisplayFeature;
+    final ready = _isOnboardingReady(
+      snapshot,
+      requiresFullScreenIntent: showFullScreenIntentPermission,
+    );
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -446,7 +467,8 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
               const SizedBox(height: 16),
               const _SectionHeader(
                 label: '필수 권한',
-                subtitle: '위에서부터 하나씩 허용하면 바로 시작할 수 있어요',
+                subtitle:
+                    '위에서부터 하나씩 허용하면 바로 시작할 수 있어요. 폴드/플립에서는 전체 화면 알림도 함께 켜 주세요.',
               ),
               const SizedBox(height: 9),
               _PermissionTile(
@@ -539,31 +561,29 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   request: _permissionService.requestCalendarPermission,
                 ),
               ),
-              const SizedBox(height: 16),
-              const _SectionHeader(
-                label: '선택 권한',
-                subtitle: '폴드/플립 겉화면 알림이 필요할 때만 켜도 괜찮아요',
-              ),
-              const SizedBox(height: 9),
-              _PermissionTile(
-                icon: Icons.open_in_full_outlined,
-                title: '전체 화면 알림',
-                description: '중요 알람을 잠금화면과 폴드/플립 겉화면에 크게 띄우고 싶을 때 사용할 수 있어요.',
-                descriptionMaxLines: 2,
-                granted: snapshot?.fullScreenIntentGranted == true,
-                isRequesting: _activeRequestKey == 'fullScreenIntent',
-                key: const ValueKey(
-                  'permission-onboarding-full-screen-intent-tile',
+              if (showFullScreenIntentPermission) ...[
+                const SizedBox(height: 9),
+                _PermissionTile(
+                  icon: Icons.open_in_full_outlined,
+                  title: '전체 화면 알림',
+                  description: '중요 알람을 잠금화면과 폴드/플립 겉화면에 크게 띄우려면 필요합니다.',
+                  descriptionMaxLines: 2,
+                  granted: snapshot?.fullScreenIntentGranted == true,
+                  isRequesting: _activeRequestKey == 'fullScreenIntent',
+                  key: const ValueKey(
+                    'permission-onboarding-full-screen-intent-tile',
+                  ),
+                  onRequest: () => _requestOne(
+                    key: 'fullScreenIntent',
+                    grantedMessage: '전체 화면 알림 권한 상태를 다시 확인했습니다.',
+                    deniedMessage:
+                        '전체 화면 알림이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 전체 화면 알림을 허용해 주세요.',
+                    isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
+                    request:
+                        _permissionService.requestFullScreenIntentPermission,
+                  ),
                 ),
-                onRequest: () => _requestOne(
-                  key: 'fullScreenIntent',
-                  grantedMessage: '전체 화면 알림 권한 상태를 다시 확인했습니다.',
-                  deniedMessage:
-                      '전체 화면 알림이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 전체 화면 알림을 허용해 주세요.',
-                  isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
-                  request: _permissionService.requestFullScreenIntentPermission,
-                ),
-              ),
+              ],
             ],
             if (_message != null) ...[
               const SizedBox(height: 10),
@@ -578,6 +598,20 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         ),
       ),
     );
+  }
+
+  bool _isOnboardingReady(
+    AppPermissionSnapshot? snapshot, {
+    required bool requiresFullScreenIntent,
+  }) {
+    if (snapshot == null) {
+      return false;
+    }
+    final baseReady = snapshot.requiredPermissionsGranted;
+    if (!requiresFullScreenIntent) {
+      return baseReady;
+    }
+    return baseReady && snapshot.fullScreenIntentGranted;
   }
 }
 

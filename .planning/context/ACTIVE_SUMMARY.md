@@ -1749,3 +1749,7 @@
 - 사용자 의도에 맞춰 필수 권한은 마이크/앱 알림/정확한 알람/위치/기기 캘린더로 복구하고, 폴드/플립 겉화면용 전체 화면 알림만 선택 권한으로 유지했다.
 - `필수 권한 차례대로 요청` 버튼은 위에서부터 각 권한을 순서대로 요청하고, 전체 화면 알림은 자동 요청 흐름에서 제외한다.
 - 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub` 통과.
+## 2026-06-14 폴드/플립 전용 전체 화면 알림 재조정
+- 일반 폰에서는 전체 화면 알림 권한을 온보딩에서 숨기고, 폴드/플립처럼 display feature가 있는 기기에서만 필수 권한으로 노출하도록 정리했다.
+- 온보딩의 완료 판정과 요청 흐름도 같은 디바이스 분기를 따르도록 맞췄다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub -v`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t build\\app\\outputs\\flutter-apk\\app-debug.apk`, `adb shell monkey -p com.fluxstudio.planflow -c android.intent.category.LAUNCHER 1`.

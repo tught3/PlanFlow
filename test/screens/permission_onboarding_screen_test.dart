@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -117,7 +119,7 @@ void main() {
   );
 
   testWidgets(
-    'PermissionOnboardingScreen request-all flow asks required permissions but leaves full-screen optional',
+    'PermissionOnboardingScreen hides full-screen intent permission on normal phones',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
@@ -167,12 +169,59 @@ void main() {
       final fullScreenIntentTile = find.byKey(
         const ValueKey('permission-onboarding-full-screen-intent-tile'),
       );
+      expect(fullScreenIntentTile, findsNothing);
+    },
+  );
+
+  testWidgets(
+    'PermissionOnboardingScreen shows full-screen intent permission as required on foldables',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+      await tester.binding.setSurfaceSize(const Size(1000, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final permissionService = _FakePermissionService();
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(1000, 800),
+            displayFeatures: <ui.DisplayFeature>[
+              ui.DisplayFeature(
+                bounds: Rect.fromLTWH(495, 0, 10, 800),
+                type: ui.DisplayFeatureType.hinge,
+                state: ui.DisplayFeatureState.postureHalfOpened,
+              ),
+            ],
+          ),
+          child: MaterialApp(
+            home: PermissionOnboardingScreen(
+              permissionService: permissionService,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final fullScreenIntentTile = find.byKey(
+        const ValueKey('permission-onboarding-full-screen-intent-tile'),
+      );
       await tester.scrollUntilVisible(
         fullScreenIntentTile,
         300,
         scrollable: find.byType(Scrollable).first,
       );
       expect(fullScreenIntentTile, findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(permissionService.fullScreenIntentRequests, 1);
+      expect(permissionService.fullScreenIntentGranted, isTrue);
     },
   );
 
