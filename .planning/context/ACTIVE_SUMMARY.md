@@ -1741,3 +1741,7 @@
 ## 2026-06-13 배포 자동화 기본 정책 변경
 - 앞으로 Flutter/Android 코드 수정 후 배포 파이프라인은 자동 실행하지 않고, 사용자가 명시적으로 배포를 요청할 때만 수행하도록 프로젝트 운영 규칙을 바꿨다.
 - 변경 대상은 AGENTS.md의 배포 규칙이며, 앱 코드/스키마/Android 파일은 건드리지 않았다.
+## 2026-06-13 권한 온보딩 기본/선택 분리
+- 초기 온보딩에서 필수 권한을 마이크+앱 알림으로 줄이고, 위치/캘린더/정확한 알람/전체 화면 알림은 선택 권한으로 내렸다.
+- 앱이 처음 시작할 때는 기본 권한만 요청하고, 나머지는 각각 선택적으로 열어보게 바꿨다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub` 통과, `scripts/flutter-local.ps1 analyze --no-pub`는 이미 통과 상태 유지.

@@ -117,7 +117,7 @@ void main() {
   );
 
   testWidgets(
-    'PermissionOnboardingScreen includes exact alarm and full-screen alarm in request-all flow',
+    'PermissionOnboardingScreen request-all flow only asks microphone and app notifications',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
@@ -141,30 +141,36 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(permissionService.exactAlarmGranted, isTrue);
-      expect(permissionService.fullScreenIntentGranted, isTrue);
+      expect(permissionService.microphoneRequests, 1);
       expect(permissionService.notificationRequests, 1);
-      expect(permissionService.exactAlarmRequests, 1);
+      expect(permissionService.exactAlarmRequests, 0);
+      expect(permissionService.fullScreenIntentRequests, 0);
+      expect(permissionService.exactAlarmGranted, isFalse);
+      expect(permissionService.fullScreenIntentGranted, isFalse);
       expect(
-        find.descendant(
-          of: find.byKey(
-            const ValueKey('permission-onboarding-exact-alarm-tile'),
-          ),
-          matching: find.byIcon(Icons.check_circle_outline),
-        ),
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
         findsOneWidget,
       );
-      expect(
-        find.descendant(
-          of: find.byKey(
-            const ValueKey(
-              'permission-onboarding-full-screen-intent-tile',
-            ),
-          ),
-          matching: find.byIcon(Icons.check_circle_outline),
-        ),
-        findsOneWidget,
+
+      final exactAlarmTile = find.byKey(
+        const ValueKey('permission-onboarding-exact-alarm-tile'),
       );
+      await tester.scrollUntilVisible(
+        exactAlarmTile,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(exactAlarmTile, findsOneWidget);
+
+      final fullScreenIntentTile = find.byKey(
+        const ValueKey('permission-onboarding-full-screen-intent-tile'),
+      );
+      await tester.scrollUntilVisible(
+        fullScreenIntentTile,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(fullScreenIntentTile, findsOneWidget);
     },
   );
 
@@ -241,10 +247,14 @@ void main() {
         ),
         matching: find.byType(TextButton),
       );
-      await tester.drag(find.byType(ListView), const Offset(0, -300));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(requestButton);
-      await tester.tap(requestButton);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('permission-onboarding-exact-alarm-tile')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final buttonWidget = tester.widget<TextButton>(requestButton);
+      expect(buttonWidget.onPressed, isNotNull);
+      buttonWidget.onPressed!();
       await tester.pumpAndSettle();
 
       expect(permissionService.appSettingsOpened, isTrue);
@@ -313,7 +323,7 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestMicrophonePermission() async {
     microphoneRequests += 1;
-    return false;
+    return true;
   }
 
   @override

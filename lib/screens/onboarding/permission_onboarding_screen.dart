@@ -208,43 +208,6 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     )) {
       return;
     }
-    if (!await _runPermissionStep(
-      key: 'exactAlarm',
-      label: '정확한 알람',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.exactAlarmsGranted,
-      request: _permissionService.requestExactAlarmPermission,
-      openSettings: _permissionService.openAppSettings,
-    )) {
-      return;
-    }
-    if (!await _runPermissionStep(
-      key: 'fullScreenIntent',
-      label: '전체 화면 알림',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
-      request: _permissionService.requestFullScreenIntentPermission,
-    )) {
-      return;
-    }
-    if (!await _runPermissionStep(
-      key: 'location',
-      label: '위치',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.locationGranted,
-      request: _permissionService.requestLocationPermission,
-    )) {
-      return;
-    }
-    if (!await _runPermissionStep(
-      key: 'calendar',
-      label: '기기 캘린더',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.calendarGranted,
-      request: _permissionService.requestCalendarPermission,
-    )) {
-      return;
-    }
 
     await _refresh();
     if (!mounted) {
@@ -290,8 +253,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           _resumeRequestAll = true;
           if (mounted) {
             setState(() {
-              _message =
-                  '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
+              _message = '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
             });
           }
           return false;
@@ -306,8 +268,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           _resumeRequestAll = true;
           if (mounted) {
             setState(() {
-              _message =
-                  '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
+              _message = '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
             });
           }
           return false;
@@ -418,7 +379,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                     ? '권한 요청 중...'
                     : ready
                         ? '시작하기'
-                        : '필요 권한 모두 요청',
+                        : '기본 권한 모두 요청',
               ),
             ),
             const SizedBox(height: 6),
@@ -455,7 +416,10 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 },
               ),
               const SizedBox(height: 16),
-              const _SectionHeader(label: '필수 권한'),
+              const _SectionHeader(
+                label: '기본 권한',
+                subtitle: '처음 시작할 때 꼭 필요한 권한만 먼저 요청합니다',
+              ),
               const SizedBox(height: 9),
               _PermissionTile(
                 icon: Icons.mic_none,
@@ -492,50 +456,10 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   openSettings: _permissionService.openNotificationSettings,
                 ),
               ),
-              const SizedBox(height: 9),
-              _PermissionTile(
-                icon: Icons.alarm_on_outlined,
-                title: '정확한 알람',
-                description:
-                    '중요 일정 알림을 지정한 시간에 맞춰 울리기 위해 필요합니다. Android에서는 설정 화면으로 이동할 수 있습니다.',
-                descriptionMaxLines: 2,
-                granted: snapshot?.exactAlarmsGranted == true,
-                isRequesting: _activeRequestKey == 'exactAlarm',
-                key: const ValueKey('permission-onboarding-exact-alarm-tile'),
-                onRequest: () => _requestOne(
-                  key: 'exactAlarm',
-                  grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
-                  deniedMessage:
-                      '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요. 중요 알람의 잠금화면 표시에도 영향을 줍니다.',
-                  isGranted: (snapshot) => snapshot.exactAlarmsGranted,
-                  request: _permissionService.requestExactAlarmPermission,
-                  openSettings: _permissionService.openAppSettings,
-                ),
-              ),
-              const SizedBox(height: 9),
-              _PermissionTile(
-                icon: Icons.open_in_full_outlined,
-                title: '전체 화면 알림',
-                description: '중요 알람을 잠금화면과 폴드/플립 겉화면에 크게 띄우기 위해 필요합니다.',
-                descriptionMaxLines: 2,
-                granted: snapshot?.fullScreenIntentGranted == true,
-                isRequesting: _activeRequestKey == 'fullScreenIntent',
-                key: const ValueKey(
-                  'permission-onboarding-full-screen-intent-tile',
-                ),
-                onRequest: () => _requestOne(
-                  key: 'fullScreenIntent',
-                  grantedMessage: '전체 화면 알림 권한 상태를 다시 확인했습니다.',
-                  deniedMessage:
-                      '전체 화면 알림이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 전체 화면 알림을 허용해 주세요.',
-                  isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
-                  request: _permissionService.requestFullScreenIntentPermission,
-                ),
-              ),
               const SizedBox(height: 16),
               const _SectionHeader(
                 label: '선택 권한',
-                subtitle: '허용 안 해도 기본 기능 사용 가능',
+                subtitle: '허용 안 해도 기본 사용은 가능해요',
               ),
               const SizedBox(height: 9),
               _PermissionTile(
@@ -570,6 +494,46 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                       '기기 캘린더 권한이 아직 허용되지 않았습니다. Android 앱 설정에서 PlanFlow 캘린더 권한을 켜 주세요.',
                   isGranted: (snapshot) => snapshot.calendarGranted,
                   request: _permissionService.requestCalendarPermission,
+                ),
+              ),
+              const SizedBox(height: 9),
+              _PermissionTile(
+                icon: Icons.alarm_on_outlined,
+                title: '정확한 알람',
+                description:
+                    '중요 일정 알림을 더 정확하게 울리고 싶을 때 사용할 수 있어요. Android에서는 설정 화면으로 이동할 수 있습니다.',
+                descriptionMaxLines: 2,
+                granted: snapshot?.exactAlarmsGranted == true,
+                isRequesting: _activeRequestKey == 'exactAlarm',
+                key: const ValueKey('permission-onboarding-exact-alarm-tile'),
+                onRequest: () => _requestOne(
+                  key: 'exactAlarm',
+                  grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
+                  deniedMessage:
+                      '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요. 중요 알람의 잠금화면 표시에도 영향을 줍니다.',
+                  isGranted: (snapshot) => snapshot.exactAlarmsGranted,
+                  request: _permissionService.requestExactAlarmPermission,
+                  openSettings: _permissionService.openAppSettings,
+                ),
+              ),
+              const SizedBox(height: 9),
+              _PermissionTile(
+                icon: Icons.open_in_full_outlined,
+                title: '전체 화면 알림',
+                description: '중요 알람을 잠금화면과 폴드/플립 겉화면에 크게 띄우고 싶을 때 사용할 수 있어요.',
+                descriptionMaxLines: 2,
+                granted: snapshot?.fullScreenIntentGranted == true,
+                isRequesting: _activeRequestKey == 'fullScreenIntent',
+                key: const ValueKey(
+                  'permission-onboarding-full-screen-intent-tile',
+                ),
+                onRequest: () => _requestOne(
+                  key: 'fullScreenIntent',
+                  grantedMessage: '전체 화면 알림 권한 상태를 다시 확인했습니다.',
+                  deniedMessage:
+                      '전체 화면 알림이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 전체 화면 알림을 허용해 주세요.',
+                  isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
+                  request: _permissionService.requestFullScreenIntentPermission,
                 ),
               ),
             ],
@@ -618,7 +582,8 @@ class _IntroCard extends StatelessWidget {
             const SizedBox(height: 7),
             Text(
               'AI가 날짜·시간·장소를 파악해 첫 일정을 빠르게 만들어 줍니다. '
-              '아래 권한만 허용하면 바로 시작할 수 있어요.',
+              '기본 권한만 먼저 허용하면 바로 시작할 수 있어요. '
+              '나머지 권한은 나중에 선택할 수 있어요.',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
