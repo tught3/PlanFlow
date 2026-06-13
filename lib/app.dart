@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:planflow/l10n/app_localizations.dart';
 
 import 'core/constants.dart';
@@ -34,10 +35,15 @@ class PlanFlowApp extends StatefulWidget {
 }
 
 class _PlanFlowAppState extends State<PlanFlowApp> {
+  static const String _pendingUpdateRestoreRouteKey =
+      'startup:update_restore_route';
+
   StreamSubscription<Uri?>? _homeWidgetClickSubscription;
   StreamSubscription<Uri>? _planFlowLinkSubscription;
   StreamSubscription<List<SharedMediaFile>>? _sharedIcsSubscription;
   bool _reauthSnackBarShown = false;
+  bool _startupUpdateCheckRunning = false;
+  int _startupUpdateCheckGeneration = 0;
   final AppLinks _appLinks = AppLinks();
   final OAuthCallbackHandler _oauthCallbackHandler = OAuthCallbackHandler();
   final CalendarAutoSyncService _calendarAutoSyncService =
@@ -53,6 +59,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     super.initState();
     _oauthCallbackHandler.start();
     authProvider.addListener(_onAuthProviderChange);
+    startupRouteGate.addListener(_onStartupRouteGateChange);
     _lifecycleListener = AppLifecycleListener(
       onPause: () {
         unawaited(BriefingSchedulerService.recordAppForegroundState(false));
@@ -63,11 +70,10 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         // widgetClicked 스트림이 유실된 warm-start를 복구하기 위해 먼저 실행
         unawaited(_resumeHomeWidgetCheck());
         unawaited(_syncSessionAndCalendar(reason: 'resume'));
-        unawaited(_checkForAppUpdate());
+        unawaited(_scheduleDeferredUpdateCheck());
       },
     );
     unawaited(BriefingSchedulerService.recordAppForegroundState(true));
-    unawaited(_checkForAppUpdate());
     unawaited(_syncSessionAndCalendar(reason: 'startup'));
     unawaited(_listenForSharedIcsFiles());
     unawaited(_notificationService.scheduleMonthlyNaverIcsReminder());
@@ -76,6 +82,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _homeWidgetClickSubscription = HomeWidget.widgetClicked.listen(
       _handleHomeWidgetUri,
     );
+    unawaited(_scheduleDeferredUpdateCheck());
   }
 
   Future<void> _syncCalendarInBackground() async {
@@ -135,8 +142,132 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     }
   }
 
-  Future<void> _checkForAppUpdate() async {
-    await UpdateService.checkAndPrompt();
+  Future<void> _scheduleDeferredUpdateCheck() async {
+    if (!mounted) {
+      return;
+    }
+    final generation = ++_startupUpdateCheckGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _runDeferredUpdateCheck(generation, attempt: 0);
+    });
+  }
+
+  void _runDeferredUpdateCheck(
+    int generation, {
+    required int attempt,
+  }) {
+    if (!mounted || generation != _startupUpdateCheckGeneration) {
+      return;
+    }
+    if (_startupUpdateCheckRunning) {
+      return;
+    }
+
+    if (!authProvider.hasResolvedInitialSession ||
+        startupRouteGate.widgetLaunchPending) {
+      _retryDeferredUpdateCheck(generation, attempt: attempt);
+      return;
+    }
+
+    final currentRoute = _currentRouteLocation();
+    if (currentRoute == null || currentRoute == AppRoutes.root) {
+      _retryDeferredUpdateCheck(generation, attempt: attempt);
+      return;
+    }
+
+    unawaited(() async {
+      final restoreRoute = await _loadPendingUpdateRestoreRoute();
+      if (!mounted || generation != _startupUpdateCheckGeneration) {
+        return;
+      }
+
+      if (!authProvider.isSignedIn) {
+        if (restoreRoute != null) {
+          await _clearPendingUpdateRestoreRoute();
+        }
+      } else if (restoreRoute != null && restoreRoute != currentRoute) {
+        appRouter.go(restoreRoute);
+        _retryDeferredUpdateCheck(generation, attempt: attempt + 1);
+        return;
+      }
+
+      _startupUpdateCheckRunning = true;
+      try {
+        final persistRoute =
+            _isPersistableRoute(currentRoute) ? currentRoute : null;
+        if (persistRoute != null) {
+          await _savePendingUpdateRestoreRoute(persistRoute);
+        }
+        final started = await UpdateService.checkAndPrompt();
+        if (!started) {
+          await _clearPendingUpdateRestoreRoute();
+        }
+      } catch (error, stackTrace) {
+        debugPrint('Deferred update check skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      } finally {
+        _startupUpdateCheckRunning = false;
+      }
+    }());
+  }
+
+  void _retryDeferredUpdateCheck(
+    int generation, {
+    required int attempt,
+  }) {
+    if (!mounted || generation != _startupUpdateCheckGeneration) {
+      return;
+    }
+    if (attempt >= 20) {
+      return;
+    }
+    final delay = Duration(milliseconds: attempt == 0 ? 80 : 160);
+    unawaited(
+      Future<void>.delayed(delay, () {
+        _runDeferredUpdateCheck(generation, attempt: attempt + 1);
+      }),
+    );
+  }
+
+  String? _currentRouteLocation() {
+    try {
+      final uri = appRouter.routeInformationProvider.value.uri;
+      final path = uri.path.trim();
+      if (path.isEmpty) {
+        return null;
+      }
+      final query = uri.hasQuery ? '?${uri.query}' : '';
+      return '$path$query';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isPersistableRoute(String route) {
+    return route.isNotEmpty &&
+        route != AppRoutes.root &&
+        route != AppRoutes.login &&
+        route != AppRoutes.permissionOnboarding &&
+        route != AppRoutes.resetPassword;
+  }
+
+  Future<String?> _loadPendingUpdateRestoreRoute() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString(_pendingUpdateRestoreRouteKey)?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
+  }
+
+  Future<void> _savePendingUpdateRestoreRoute(String route) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingUpdateRestoreRouteKey, route);
+  }
+
+  Future<void> _clearPendingUpdateRestoreRoute() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingUpdateRestoreRouteKey);
   }
 
   Future<void> _syncRegionSettings() async {
@@ -184,11 +315,17 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       // 정상 로그인 복구 시 플래그 리셋
       _reauthSnackBarShown = false;
     }
+    unawaited(_scheduleDeferredUpdateCheck());
+  }
+
+  void _onStartupRouteGateChange() {
+    unawaited(_scheduleDeferredUpdateCheck());
   }
 
   @override
   void dispose() {
     authProvider.removeListener(_onAuthProviderChange);
+    startupRouteGate.removeListener(_onStartupRouteGateChange);
     _homeWidgetClickSubscription?.cancel();
     _planFlowLinkSubscription?.cancel();
     _sharedIcsSubscription?.cancel();
@@ -291,12 +428,14 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     );
   }
 
-  static const _settingsMethodChannel = MethodChannel('planflow/android_settings');
+  static const _settingsMethodChannel =
+      MethodChannel('planflow/android_settings');
 
   /// 처리 완료 후 native intent action을 MAIN으로 재설정해 onResume 오탐 방지
   Future<void> _consumeHomeWidgetLaunch() async {
     try {
-      await _settingsMethodChannel.invokeMethod<void>('consumeHomeWidgetLaunch');
+      await _settingsMethodChannel
+          .invokeMethod<void>('consumeHomeWidgetLaunch');
     } catch (_) {}
   }
 

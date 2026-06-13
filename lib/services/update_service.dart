@@ -70,18 +70,22 @@ class UpdateService {
     _instance = _defaultInstance;
   }
 
-  static Future<void> checkAndPrompt() async {
-    await _instance._checkAndPrompt();
+  static Future<bool> checkAndPrompt({
+    void Function(UpdatePromptOutcome outcome)? onOutcome,
+  }) async {
+    return _instance._checkAndPrompt(onOutcome: onOutcome);
   }
 
-  Future<void> _checkAndPrompt() async {
+  Future<bool> _checkAndPrompt({
+    void Function(UpdatePromptOutcome outcome)? onOutcome,
+  }) async {
     if (_inFlightCheck != null) {
-      return _inFlightCheck;
+      return _inFlightCheck!;
     }
-    final check = _checkAndPromptLocked();
+    final check = _checkAndPromptLocked(onOutcome: onOutcome);
     _inFlightCheck = check;
     try {
-      await check;
+      return await check;
     } finally {
       if (identical(_inFlightCheck, check)) {
         _inFlightCheck = null;
@@ -89,15 +93,22 @@ class UpdateService {
     }
   }
 
-  Future<void> _checkAndPromptLocked() async {
+  Future<bool> _checkAndPromptLocked({
+    void Function(UpdatePromptOutcome outcome)? onOutcome,
+  }) async {
+    UpdatePromptOutcome report(UpdatePromptOutcome outcome) {
+      onOutcome?.call(outcome);
+      return outcome;
+    }
+
     if (_skipInDebug && kDebugMode) {
-      return;
+      return report(UpdatePromptOutcome.noAction).didStartUpdateFlow;
     }
 
     final metadata = await _versionMetadataProvider.load();
     if (metadata == null) {
       debugPrint('UpdateService skipped: version metadata unavailable.');
-      return;
+      return report(UpdatePromptOutcome.noAction).didStartUpdateFlow;
     }
 
     await _runPostUpdateHook(metadata);
@@ -113,33 +124,40 @@ class UpdateService {
       if (info.updateAvailability != UpdateAvailabilityState.available) {
         if (shouldForceUpdate) {
           await _fallbackToPlayStore(metadata.packageName);
+          return report(UpdatePromptOutcome.playStoreOpened).didStartUpdateFlow;
         }
-        return;
+        return report(UpdatePromptOutcome.noAction).didStartUpdateFlow;
       }
 
       if (shouldForceUpdate && info.immediateUpdateAllowed) {
         await _updateFlow.performImmediateUpdate();
-        return;
+        return report(UpdatePromptOutcome.immediateUpdateStarted)
+            .didStartUpdateFlow;
       }
 
       if (info.flexibleUpdateAllowed) {
         await _updateFlow.startFlexibleUpdate();
         await _updateFlow.completeFlexibleUpdate();
-        return;
+        return report(UpdatePromptOutcome.flexibleUpdateStarted)
+            .didStartUpdateFlow;
       }
 
       if (shouldForceUpdate) {
         await _fallbackToPlayStore(metadata.packageName);
+        return report(UpdatePromptOutcome.playStoreOpened).didStartUpdateFlow;
       } else {
         debugPrint(
           'Update available but no update path is currently available.',
         );
+        return report(UpdatePromptOutcome.noAction).didStartUpdateFlow;
       }
     } catch (error) {
       debugPrint('In-app update check skipped: $error');
       if (shouldForceUpdate) {
         await _fallbackToPlayStore(metadata.packageName);
+        return report(UpdatePromptOutcome.playStoreOpened).didStartUpdateFlow;
       }
+      return report(UpdatePromptOutcome.noAction).didStartUpdateFlow;
     }
   }
 
@@ -189,7 +207,16 @@ class UpdateService {
   final int Function() _minRequiredVersionProvider;
   final Duration _checkTimeout;
   final bool _skipInDebug;
-  Future<void>? _inFlightCheck;
+  Future<bool>? _inFlightCheck;
+}
+
+enum UpdatePromptOutcome {
+  noAction,
+  immediateUpdateStarted,
+  flexibleUpdateStarted,
+  playStoreOpened;
+
+  bool get didStartUpdateFlow => this != UpdatePromptOutcome.noAction;
 }
 
 class AppVersionMetadata {
