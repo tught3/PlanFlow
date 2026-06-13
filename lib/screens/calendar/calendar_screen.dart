@@ -12,6 +12,8 @@ import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../features/groups/models/calendar_overlay_item.dart';
+import '../../features/groups/providers/group_calendar_overlay_provider.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
@@ -212,6 +214,7 @@ class CalendarMiniMonthCellData {
     required this.dayNumber,
     required this.inMonth,
     required this.events,
+    required this.overlayEvents,
     required this.overflowCount,
     required this.isHoliday,
   });
@@ -221,6 +224,7 @@ class CalendarMiniMonthCellData {
   final int? dayNumber;
   final bool inMonth;
   final List<EventModel> events;
+  final List<CalendarOverlayItem> overlayEvents;
   final int overflowCount;
   final bool isHoliday;
 }
@@ -229,6 +233,7 @@ class CalendarMiniMonthCellData {
 List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
   required Iterable<EventModel> events,
   required DateTime focusedMonth,
+  Iterable<CalendarOverlayItem> overlayEvents = const <CalendarOverlayItem>[],
 }) {
   final monthStart = DateTime(focusedMonth.year, focusedMonth.month);
   final firstDayOfMonth = monthStart;
@@ -245,6 +250,11 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     ),
   );
   final overflowCounts = List<int>.filled(cellCount, 0);
+  final overlayItemsByCell = List<List<CalendarOverlayItem>>.generate(
+    cellCount,
+    (_) => <CalendarOverlayItem>[],
+    growable: false,
+  );
   final cellDates = List<DateTime?>.generate(cellCount, (index) {
     final dayNumber = index - startWeekday + 1;
     if (dayNumber < 1 || dayNumber > lastDay) {
@@ -252,6 +262,30 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     }
     return DateTime(monthStart.year, monthStart.month, dayNumber);
   }, growable: false);
+
+  final visibleOverlayEvents = overlayEvents
+      .where((event) {
+        final startAt = event.startAt;
+        if (startAt == null) {
+          return false;
+        }
+        final endAt = event.endAt ?? startAt;
+        final monthStart = DateTime(focusedMonth.year, focusedMonth.month);
+        final monthEnd = DateTime(focusedMonth.year, focusedMonth.month + 1);
+        final localStart = planflowLocalDay(startAt);
+        final localEnd = planflowLocalDay(endAt);
+        return !localStart.isAfter(monthEnd) && !localEnd.isBefore(monthStart);
+      })
+      .toList(growable: false)
+    ..sort((a, b) {
+      final aStart = a.startAt ?? DateTime(0);
+      final bStart = b.startAt ?? DateTime(0);
+      final byStart = aStart.compareTo(bStart);
+      if (byStart != 0) {
+        return byStart;
+      }
+      return a.title.compareTo(b.title);
+    });
 
   final sortedEvents = events
       .where((event) => event.startAt != null)
@@ -335,6 +369,16 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     }
   }
 
+  for (final event in visibleOverlayEvents) {
+    for (var index = 0; index < cellDates.length; index += 1) {
+      final day = cellDates[index];
+      if (day == null || !event.spansLocalDay(day)) {
+        continue;
+      }
+      overlayItemsByCell[index].add(event);
+    }
+  }
+
   return List.generate(cellCount, (index) {
     final day = cellDates[index];
     final visibleEvents =
@@ -347,6 +391,7 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
           day.year == monthStart.year &&
           day.month == monthStart.month,
       events: visibleEvents,
+      overlayEvents: overlayItemsByCell[index],
       overflowCount: overflowCounts[index],
       isHoliday: day != null &&
           _eventsForLocalDay(sortedEvents, day)
@@ -361,11 +406,13 @@ class CalendarScreen extends StatefulWidget {
     this.initialDate,
     this.eventRepository,
     this.userId,
+    this.groupCalendarOverlayProvider,
   });
 
   final DateTime? initialDate;
   final EventRepository? eventRepository;
   final String? userId;
+  final GroupCalendarOverlayProvider? groupCalendarOverlayProvider;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -375,6 +422,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _selectedDate;
   late DateTime _focusedMonth;
   List<EventModel> _allEvents = const <EventModel>[];
+  GroupCalendarOverlayProvider? _groupOverlayProvider;
   _CalendarLoadState _loadState = _CalendarLoadState.ready;
   String? _loadMessage;
   bool _isSearching = false;
@@ -418,6 +466,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void dispose() {
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
+    _groupOverlayProvider?.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -509,6 +558,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           _loadMessage = null;
         });
       }
+      await _loadGroupOverlay(userId: userId);
       if (shouldOpenDaySheet && daySheetDate != null && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -587,11 +637,52 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }).toList(growable: false);
   }
 
+  List<CalendarOverlayItem> get _overlayEventsForSelectedDate {
+    return _visibleGroupOverlayEvents.where((event) {
+      return event.spansLocalDay(_selectedDate);
+    }).toList(growable: false);
+  }
+
+  List<CalendarOverlayItem> _overlayEventsForDay(DateTime day) {
+    return _visibleGroupOverlayEvents.where((event) {
+      return event.spansLocalDay(day);
+    }).toList(growable: false);
+  }
+
   List<CalendarMiniMonthCellData> get _miniMonthCells {
     return buildCalendarMiniMonthCells(
       events: _visibleEvents,
       focusedMonth: _focusedMonth,
+      overlayEvents: _visibleGroupOverlayEvents,
     );
+  }
+
+  List<CalendarOverlayItem> get _visibleGroupOverlayEvents {
+    final groupOverlayProvider = _groupOverlayProvider;
+    if (groupOverlayProvider == null) {
+      return const <CalendarOverlayItem>[];
+    }
+    final monthStart = DateTime(_focusedMonth.year, _focusedMonth.month);
+    final monthEnd = DateTime(_focusedMonth.year, _focusedMonth.month + 1);
+    return groupOverlayProvider.items
+        .where((event) {
+          final start = event.startAt;
+          if (start == null) {
+            return false;
+          }
+          final end = event.endAt ?? start;
+          return !start.isAfter(monthEnd) && !end.isBefore(monthStart);
+        })
+        .toList(growable: false)
+      ..sort((a, b) {
+        final aStart = a.startAt ?? DateTime(0);
+        final bStart = b.startAt ?? DateTime(0);
+        final byStart = aStart.compareTo(bStart);
+        if (byStart != 0) {
+          return byStart;
+        }
+        return a.title.compareTo(b.title);
+      });
   }
 
   List<EventModel> get _filteredEvents {
@@ -880,6 +971,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final events = _visibleEvents.where((event) {
       return _eventIntersectsDay(event, day);
     }).toList(growable: false);
+    final groupOverlayProvider = _groupOverlayProvider;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -894,26 +986,45 @@ class _CalendarScreenState extends State<CalendarScreen> {
         initialChildSize: 0.84,
         minChildSize: 0.58,
         maxChildSize: 0.97,
-        builder: (context, scrollController) => DayEventsSheet(
-          day: day,
-          events: events,
-          scrollController: scrollController,
-          onAdd: () {
-            Navigator.of(context).pop();
-            context.push(_eventEditRouteForDay(day));
-          },
-          onVoice: () {
-            Navigator.of(context).pop();
-            context.push(AppRoutes.voice);
-          },
-          onEventTap: (event) {
-            Navigator.of(context).pop();
-            context.push(
-              '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-              extra: event,
+        builder: (context, scrollController) {
+          Widget sheetBuilder() {
+            return DayEventsSheet(
+              day: day,
+              personalEvents: events,
+              groupEvents: _overlayEventsForDay(day),
+              scrollController: scrollController,
+              onAdd: () {
+                Navigator.of(context).pop();
+                context.push(_eventEditRouteForDay(day));
+              },
+              onVoice: () {
+                Navigator.of(context).pop();
+                context.push(AppRoutes.voice);
+              },
+              onEventTap: (event) {
+                Navigator.of(context).pop();
+                context.push(
+                  '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                  extra: event,
+                );
+              },
+              onGroupEventTap: (event) {
+                Navigator.of(context).pop();
+                context.push(
+                  '${AppRoutes.groupEvents}/${Uri.encodeComponent(event.id)}',
+                );
+              },
             );
-          },
-        ),
+          }
+
+          if (groupOverlayProvider == null) {
+            return sheetBuilder();
+          }
+          return AnimatedBuilder(
+            animation: groupOverlayProvider,
+            builder: (context, _) => sheetBuilder(),
+          );
+        },
       ),
     );
   }
@@ -925,6 +1036,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _focusedMonth.month + delta,
       );
     });
+    unawaited(_loadGroupOverlay());
   }
 
   void _handleMonthSwipe(DragEndDetails details) {
@@ -939,11 +1051,47 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  Future<void> _loadGroupOverlay({String? userId}) async {
+    if (!AppEnv.isSupabaseReady && widget.groupCalendarOverlayProvider == null) {
+      _groupOverlayProvider?.clear();
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+    _groupOverlayProvider ??=
+        widget.groupCalendarOverlayProvider ?? GroupCalendarOverlayProvider();
+    final resolvedUserId = userId ?? _resolveCalendarUserId();
+    if (resolvedUserId == null || resolvedUserId.isEmpty) {
+      await _groupOverlayProvider!.clear();
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+    await _groupOverlayProvider!.loadForMonth(resolvedUserId, _focusedMonth);
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  String? _resolveCalendarUserId() {
+    final explicitUserId = widget.userId?.trim();
+    if (explicitUserId != null && explicitUserId.isNotEmpty) {
+      return explicitUserId;
+    }
+    return Supabase.instance.client.auth.currentUser?.id;
+  }
+
   @override
   Widget build(BuildContext context) {
     final monthLabel = '${_focusedMonth.year}년 ${_focusedMonth.month}월';
     final selectedDateLabel = _koreanDateLabel(_selectedDate);
     final dayEvents = _eventsForSelectedDate;
+    final groupDayEvents = _overlayEventsForSelectedDate;
+    final totalDayEventCount = dayEvents.length + groupDayEvents.length;
+    final selectedGroupLabel =
+        _groupOverlayProvider?.selectedGroup?.name ?? '개인 모드';
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -997,11 +1145,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             _focusedMonth = DateTime.now();
                             _selectedDate = DateTime.now();
                           });
+                          unawaited(_loadGroupOverlay());
                         },
                       ),
-                      const SizedBox(height: 12),
-                      _MiniCalendarGrid(
-                        focusedMonth: _focusedMonth,
+                    const SizedBox(height: 8),
+                    _CalendarGroupContextChip(label: selectedGroupLabel),
+                    const SizedBox(height: 12),
+                    _MiniCalendarGrid(
+                      focusedMonth: _focusedMonth,
                         selectedDate: _selectedDate,
                         monthCells: _miniMonthCells,
                         onDaySelected: (day) {
@@ -1021,29 +1172,64 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   children: [
                     _CalendarSelectedDateHeader(
                       selectedDateLabel: selectedDateLabel,
-                      eventCount: dayEvents.length,
+                      eventCount: totalDayEventCount,
                       onAdd: () =>
                           context.push(_eventEditRouteForDay(_selectedDate)),
                       onVoice: () => context.push(AppRoutes.voice),
                     ),
+                    const SizedBox(height: 8),
+                    _CalendarGroupContextChip(label: selectedGroupLabel),
+                    if (_groupOverlayProvider?.error != null) ...[
+                      const SizedBox(height: 8),
+                      _CalendarOverlayErrorBanner(
+                        message: '그룹 일정만 불러오지 못했어요.',
+                      ),
+                    ],
                     const SizedBox(height: 12),
-                    if (dayEvents.isEmpty)
+                    if (dayEvents.isEmpty && groupDayEvents.isEmpty)
                       _EmptyAgendaCard(
                         onVoice: () => context.push(AppRoutes.voice),
                       )
-                    else
-                      ...dayEvents.map(
-                        (event) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _EventAgendaCard(
-                            event: event,
-                            onTap: () => context.push(
-                              '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-                              extra: event,
+                    else ...[
+                      if (dayEvents.isNotEmpty) ...[
+                        _AgendaSectionHeader(
+                          title: '개인 일정',
+                          count: dayEvents.length,
+                        ),
+                        const SizedBox(height: 8),
+                        ...dayEvents.map(
+                          (event) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _EventAgendaCard(
+                              event: event,
+                              onTap: () => context.push(
+                                '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                                extra: event,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
+                      if (groupDayEvents.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        _AgendaSectionHeader(
+                          title: '그룹 일정',
+                          count: groupDayEvents.length,
+                        ),
+                        const SizedBox(height: 8),
+                        ...groupDayEvents.map(
+                          (event) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _GroupOverlayAgendaCard(
+                              event: event,
+                              onTap: () => context.push(
+                                '${AppRoutes.groupEvents}/${Uri.encodeComponent(event.id)}',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ],
                 );
 
@@ -1226,24 +1412,29 @@ class DayEventsSheet extends StatelessWidget {
   const DayEventsSheet({
     super.key,
     required this.day,
-    required this.events,
+    required this.personalEvents,
+    required this.groupEvents,
     required this.onAdd,
     required this.onVoice,
     required this.onEventTap,
+    required this.onGroupEventTap,
     this.scrollController,
   });
 
   final DateTime day;
-  final List<EventModel> events;
+  final List<EventModel> personalEvents;
+  final List<CalendarOverlayItem> groupEvents;
   final VoidCallback onAdd;
   final VoidCallback onVoice;
   final ValueChanged<EventModel> onEventTap;
+  final ValueChanged<CalendarOverlayItem> onGroupEventTap;
   final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final title = _koreanDateLabel(day);
+    final totalCount = personalEvents.length + groupEvents.length;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
@@ -1271,7 +1462,7 @@ class DayEventsSheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(color: PlanFlowColors.primaryFaint),
                   ),
-                  child: Text('${events.length}개'),
+                  child: Text('$totalCount개'),
                 ),
               ],
             ),
@@ -1306,24 +1497,54 @@ class DayEventsSheet extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: events.isEmpty
+              child: personalEvents.isEmpty && groupEvents.isEmpty
                   ? ListView(
                       key: const ValueKey('calendar-day-events-empty-scroll'),
                       controller: scrollController,
                       children: const [_SheetEmptyState()],
                     )
-                  : ListView.separated(
+                  : ListView(
                       key: const ValueKey('calendar-day-events-list'),
                       controller: scrollController,
-                      itemCount: events.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final event = events[index];
-                        return _EventAgendaCard(
-                          event: event,
-                          onTap: () => onEventTap(event),
-                        );
-                      },
+                      children: [
+                        if (personalEvents.isNotEmpty) ...[
+                          const _AgendaSectionHeader(
+                            title: '개인 일정',
+                            count: 0,
+                          ),
+                          const SizedBox(height: 10),
+                          ...personalEvents.map(
+                            (event) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _EventAgendaCard(
+                                event: event,
+                                onTap: () => onEventTap(event),
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (groupEvents.isNotEmpty) ...[
+                          if (personalEvents.isNotEmpty)
+                            const SizedBox(height: 4),
+                          _AgendaSectionHeader(
+                            title: '그룹 일정',
+                            count: groupEvents.length,
+                          ),
+                          const SizedBox(height: 10),
+                          ...groupEvents.map(
+                            (event) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _GroupOverlayAgendaCard(
+                                key: ValueKey(
+                                  'calendar-group-overlay-event-${event.id}',
+                                ),
+                                event: event,
+                                onTap: () => onGroupEventTap(event),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
             ),
           ],
@@ -1673,6 +1894,7 @@ class _MiniCalendarGrid extends StatelessWidget {
                                     'calendar-mini-events-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
                                   ),
                                   events: cell.events,
+                                  overlayEvents: cell.overlayEvents,
                                   overflowCount: cell.overflowCount,
                                   isSelected: isSelected,
                                   day: dayDate,
@@ -1698,12 +1920,14 @@ class _CalendarMiniEventList extends StatelessWidget {
   const _CalendarMiniEventList({
     super.key,
     required this.events,
+    required this.overlayEvents,
     required this.overflowCount,
     required this.isSelected,
     required this.day,
   });
 
   final List<EventModel> events;
+  final List<CalendarOverlayItem> overlayEvents;
   final int overflowCount;
   final bool isSelected;
   final DateTime day;
@@ -1737,6 +1961,12 @@ class _CalendarMiniEventList extends StatelessWidget {
             isSelected: isSelected,
             day: day,
           ),
+        for (final event in overlayEvents)
+          _CalendarMiniOverlayLabel(
+            event: event,
+            isSelected: isSelected,
+            day: day,
+          ),
         if (hiddenCount > 0)
           SizedBox(
             height: 9,
@@ -1762,6 +1992,224 @@ class _CalendarMiniEventList extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _CalendarGroupContextChip extends StatelessWidget {
+  const _CalendarGroupContextChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: PlanFlowColors.surface,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: PlanFlowColors.primaryFaint),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              label == '개인 모드'
+                  ? Icons.person_outline
+                  : Icons.groups_outlined,
+              size: 14,
+              color: PlanFlowColors.primaryMid,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: PlanFlowColors.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AgendaSectionHeader extends StatelessWidget {
+  const _AgendaSectionHeader({
+    required this.title,
+    required this.count,
+  });
+
+  final String title;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: PlanFlowColors.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        if (count > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: PlanFlowColors.surface,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: PlanFlowColors.primaryFaint),
+            ),
+            child: Text(
+              '$count',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: PlanFlowColors.primaryMid,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _CalendarOverlayErrorBanner extends StatelessWidget {
+  const _CalendarOverlayErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF2F0),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF8C8C0)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.warning_amber_outlined,
+            size: 16,
+            color: Color(0xFFB42318),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Color(0xFF7A271A),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CalendarMiniOverlayLabel extends StatelessWidget {
+  const _CalendarMiniOverlayLabel({
+    required this.event,
+    required this.isSelected,
+    required this.day,
+  });
+
+  final CalendarOverlayItem event;
+  final bool isSelected;
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    final segment = _multiDaySegment(event, day);
+    final isMultiDay = event.isMultiDay;
+    final bg = isMultiDay
+        ? const Color(0xFFD9E9FF)
+        : isSelected
+            ? Colors.white.withValues(alpha: 0.2)
+            : const Color(0xFFD9E9FF);
+    final fg = isSelected ? Colors.white : PlanFlowColors.primary;
+    final showTitle = !isMultiDay || segment.$1;
+    final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
+    final extendLeft = isMultiDay && !segment.$1 ? 1.5 : 0.0;
+    final extendRight = isMultiDay && !segment.$2 ? 1.5 : 0.0;
+    return SizedBox(
+      height: 9,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: -extendLeft,
+            right: -extendRight,
+            top: 1,
+            bottom: 0,
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.horizontal(
+                  left: Radius.circular(segment.$1 ? 3 : 0),
+                  right: Radius.circular(segment.$2 ? 3 : 0),
+                ),
+                border: Border.all(
+                  color: PlanFlowColors.primaryMid.withValues(alpha: 0.18),
+                  width: 0.4,
+                ),
+              ),
+              alignment: Alignment.centerLeft,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: hPadding,
+                  ),
+                  child: Text(
+                    showTitle
+                        ? (event.groupName != null && event.groupName!.isNotEmpty
+                            ? '팀 ${event.title}'
+                            : event.title)
+                        : '',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 6.8,
+                      height: 1.0,
+                      color: fg,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  (bool, bool) _multiDaySegment(CalendarOverlayItem event, DateTime day) {
+    if (!event.isMultiDay || event.startAt == null || event.endAt == null) {
+      return (true, true);
+    }
+    final current = DateTime(day.year, day.month, day.day);
+    final first = event.localStart;
+    final last = event.localEnd;
+    return (
+      current == first || current.weekday == DateTime.sunday,
+      current == last || current.weekday == DateTime.saturday
     );
   }
 }
@@ -2030,6 +2478,159 @@ class _EventAgendaCard extends StatelessWidget {
   }
 
   String? _formatTimeRange(DateTime? start, DateTime? end) {
+    if (start == null) {
+      return null;
+    }
+    final localStart = planflowLocal(start);
+    final startStr =
+        '${localStart.hour.toString().padLeft(2, '0')}:${localStart.minute.toString().padLeft(2, '0')}';
+    if (end == null) {
+      return startStr;
+    }
+    final localEnd = planflowLocal(end);
+    final endStr =
+        '${localEnd.hour.toString().padLeft(2, '0')}:${localEnd.minute.toString().padLeft(2, '0')}';
+    return '$startStr - $endStr';
+  }
+}
+
+class _GroupOverlayAgendaCard extends StatelessWidget {
+  const _GroupOverlayAgendaCard({
+    super.key,
+    required this.event,
+    this.onTap,
+  });
+
+  final CalendarOverlayItem event;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final startAt = event.startAt;
+    final endAt = event.endAt;
+    final timeLabel = _formatOverlayTimeRange(startAt, endAt);
+    final accentColor = const Color(0xFF2E6DA4);
+
+    return Card(
+      color: accentColor.withValues(alpha: 0.08),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: accentColor.withValues(alpha: 0.28),
+          width: event.isMultiDay ? 1.0 : 0.8,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 8,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            '그룹',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: PlanFlowColors.primaryMid,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if ((event.groupName ?? '').trim().isNotEmpty)
+                          Text(
+                            event.groupName!,
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: PlanFlowColors.primaryMid,
+                              fontSize: 10,
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (timeLabel != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        timeLabel,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: PlanFlowColors.primaryMid,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                    if (timeLabel != null) const SizedBox(height: 4),
+                    Text(
+                      event.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (event.location != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 12,
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              event.location!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: PlanFlowColors.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right, color: PlanFlowColors.primaryMid),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String? _formatOverlayTimeRange(DateTime? start, DateTime? end) {
     if (start == null) {
       return null;
     }
