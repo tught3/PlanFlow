@@ -1,4 +1,7 @@
 # ACTIVE SUMMARY
+## 2026-06-14 V2 real-device smoke test guide
+- Added `docs/planflow-v2/22-v2-real-device-smoke-test.md` to document the 3-account leader/member/outsider device layout, step-by-step smoke flow, failure checkpoints, bug log template, and PASS criteria.
+- The guide is documentation only and keeps code and DB changes out of scope for this turn.
 ## 2026-06-13 V2 Supabase verification SQL draft
 - Added `docs/planflow-v2/20-v2-supabase-verification-sql.md` with staging/dev-only SQL for schema, index/constraint, RPC, RLS, rollback, and manual overlay checks.
 - The document keeps production Supabase out of scope and focuses on verification order plus expected PASS criteria before any live apply.
