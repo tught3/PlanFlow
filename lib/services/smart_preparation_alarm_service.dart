@@ -346,7 +346,9 @@ class SmartPreparationAlarmService {
     required String eventTitle,
     required List<Map<String, dynamic>> payloads,
     String notificationKeyPrefix = 'smart_preparation',
+    String? eventSource,
   }) async {
+    final sourceLabel = _calendarSourceLabel(eventSource);
     for (var index = 0; index < payloads.length; index += 1) {
       final payload = payloads[index];
       final notifyAt = _dateTimeValue(payload['notify_at']);
@@ -354,14 +356,32 @@ class SmartPreparationAlarmService {
         continue;
       }
       final title = _stringValue(payload['title']) ?? label;
+      final bodySuffix = sourceLabel.isNotEmpty ? ' ($sourceLabel)' : '';
       await _notifications.scheduleEventReminder(
         id: _notifications.notificationIdFor(
           '$eventId:$notificationKeyPrefix:$index',
         ),
         title: label,
-        body: '$label: $title\n$eventTitle 일정 전에 필요한 준비를 확인해 주세요.',
+        body: '$label: $title\n$eventTitle 일정 전에 필요한 준비를 확인해 주세요.$bodySuffix',
         notifyAt: notifyAt,
+        payload: 'event:$eventId',
       );
+    }
+  }
+
+  static String _calendarSourceLabel(String? source) {
+    switch (source) {
+      case 'google':
+        return '구글 캘린더';
+      case 'naver':
+      case 'naver_caldav':
+      case 'naver_ics':
+      case 'naver_device':
+        return '네이버 캘린더';
+      case 'device_calendar':
+        return '기기 캘린더';
+      default:
+        return '';
     }
   }
 

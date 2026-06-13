@@ -249,6 +249,7 @@ class ManualEventSideEffectService {
       await const SmartPreparationAlarmService().schedulePayloads(
         eventId: event.id,
         eventTitle: event.title,
+        eventSource: event.source,
         payloads: SmartPreparationAlarmService().buildExternalEventPayloads(
           eventId: event.id,
           userId: userId,
@@ -666,6 +667,7 @@ class ManualEventSideEffectService {
         await smartService.schedulePayloads(
           eventId: entry.key.id,
           eventTitle: entry.key.title,
+          eventSource: entry.key.source,
           payloads: entry.value,
         );
       }
