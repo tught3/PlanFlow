@@ -20,6 +20,7 @@ import 'services/calendar_auto_sync_service.dart';
 import 'services/app_feedback_service.dart';
 import 'services/briefing_scheduler_service.dart';
 import 'services/event_reminder_channel_migration_service.dart';
+import 'services/smart_preparation_payload_migration_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
 import 'services/oauth_callback_handler.dart';
@@ -124,6 +125,12 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
           .migrateFutureEventRemindersIfNeeded(userId);
     } catch (error, stackTrace) {
       debugPrint('Channel migration skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+    try {
+      await SmartPreparationPayloadMigrationService().migrateIfNeeded(userId);
+    } catch (error, stackTrace) {
+      debugPrint('Smart preparation migration skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
   }
