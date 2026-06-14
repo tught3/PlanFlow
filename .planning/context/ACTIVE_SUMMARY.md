@@ -1763,3 +1763,9 @@
 - 전체 화면 알림 노출 조건을 `displayFeatures` 중에서도 hinge/fold 타입만 인정하도록 좁혀, 일반폰의 cutout/기타 특이 display feature가 foldable로 오인되지 않게 보강했다.
 - 회귀 테스트에 unknown display feature 케이스를 추가해, 폴드/플립 전용 노출이 아닌 경우는 계속 숨겨지도록 확인했다.
 - 검증: `flutter test test/screens/permission_onboarding_screen_test.dart --no-pub`, `flutter analyze --no-pub`, `flutter build apk --debug --no-pub`, `adb install -r -t build\\app\\outputs\\flutter-apk\\app-debug.apk`, `adb shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-06-14 권한 온보딩 재진입 루프 차단
+- 권한 온보딩이 설정 화면으로 되돌아갔다가 같은 단계로 다시 진입하는 루프를 막기 위해, resume 후에는 열린 설정 단계를 재개할 때 다음 단계부터 이어서 처리하도록 바꿨다.
+- 요청 전체 재실행 대신 현재 단계의 실제 허용 상태를 확인하고, 아직 거절된 단계는 다시 설정으로 보내지 않게 정리했다.
+- 정상 폰에서는 폴드/플립 전용 전체 화면 알림은 계속 숨김 상태를 유지한다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub` 통과.

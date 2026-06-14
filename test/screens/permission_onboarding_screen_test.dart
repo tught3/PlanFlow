@@ -314,6 +314,41 @@ void main() {
   );
 
   testWidgets(
+    'PermissionOnboardingScreen does not reopen notification settings in a loop after resume when still denied',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+      final permissionService = _FakePermissionService()
+        ..notificationRequestGranted = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PermissionOnboardingScreen(
+            permissionService: permissionService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(permissionService.notificationSettingsOpened, isTrue);
+      expect(permissionService.notificationRequests, 1);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(permissionService.notificationSettingsOpened, isTrue);
+      expect(permissionService.notificationRequests, 1);
+    },
+  );
+
+  testWidgets(
     'PermissionOnboardingScreen opens app settings when exact alarm stays denied',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
