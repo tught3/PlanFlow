@@ -238,7 +238,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     );
     setState(() {
       _message = allGranted
-          ? '필요 권한이 모두 준비되었습니다.'
+          ? snapshot?.exactAlarmsGranted == false
+              ? '필수 권한은 준비되었습니다. 정확한 알람은 꺼져 있어 일부 알림이 조금 늦게 울릴 수 있어요.'
+              : '필요 권한이 모두 준비되었습니다.'
           : failures.isEmpty
               ? '권한 요청을 마쳤습니다. 허용되지 않은 항목은 아래 상태를 확인한 뒤 Android 설정에서 다시 켤 수 있어요.'
               : '일부 권한을 아직 확인하지 못했습니다: ${failures.join(', ')}. 설정에서 켠 뒤 돌아오면 다음 단계부터 이어집니다.';
@@ -273,10 +275,10 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         label: '정확한 알람',
         grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
         deniedMessage:
-            '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요. 중요 알람의 잠금화면 표시에도 영향을 줍니다.',
+            '정확한 알람 권한을 바로 켤 수 없었습니다. 알림은 계속 예약되지만 Android가 몇 분 늦게 울릴 수 있어요.',
         isGranted: (snapshot) => snapshot.exactAlarmsGranted,
         request: _permissionService.requestExactAlarmPermission,
-        openSettings: _permissionService.openAppSettings,
+        blocksOnboarding: false,
       ),
       _PermissionStep(
         key: 'location',
@@ -355,7 +357,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       }
     } catch (error) {
       debugPrint('Permission request step failed: ${step.key} $error');
-      failures.add(step.label);
+      if (step.blocksOnboarding) {
+        failures.add(step.label);
+      }
       if (step.openSettings != null) {
         final opened = await _withPermissionTimeout(step.openSettings!);
         if (opened) {
@@ -371,7 +375,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
           return false;
         }
       }
-      if (step.openSettings == null) {
+      if (step.openSettings == null && step.blocksOnboarding) {
         _resumeRequestAll = true;
         if (mounted) {
           setState(() {
@@ -394,7 +398,10 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       }
     }
 
-    if (before != null && !step.isGranted(before) && step.openSettings == null) {
+    if (before != null &&
+        !step.isGranted(before) &&
+        step.openSettings == null &&
+        step.blocksOnboarding) {
       failures.add(step.label);
     }
     return true;
@@ -595,7 +602,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                 icon: Icons.alarm_on_outlined,
                 title: '정확한 알람',
                 description:
-                    '중요 일정 알림을 지정한 시간에 맞춰 울리기 위해 필요합니다. Android에서는 설정 화면으로 이동할 수 있습니다.',
+                    '브리핑과 출발 알림을 더 정확한 시간에 울리게 합니다. 꺼져 있어도 알림은 예약됩니다.',
                 descriptionMaxLines: 2,
                 granted: snapshot?.exactAlarmsGranted == true,
                 isRequesting: _activeRequestKey == 'exactAlarm',
@@ -604,10 +611,9 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   key: 'exactAlarm',
                   grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
                   deniedMessage:
-                      '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요. 중요 알람의 잠금화면 표시에도 영향을 줍니다.',
+                      '정확한 알람 권한을 바로 켤 수 없었습니다. 알림은 계속 예약되지만 Android가 몇 분 늦게 울릴 수 있어요.',
                   isGranted: (snapshot) => snapshot.exactAlarmsGranted,
                   request: _permissionService.requestExactAlarmPermission,
-                  openSettings: _permissionService.openAppSettings,
                 ),
               ),
               const SizedBox(height: 9),
@@ -691,7 +697,10 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     if (snapshot == null) {
       return false;
     }
-    final baseReady = snapshot.requiredPermissionsGranted;
+    final baseReady = snapshot.microphoneGranted &&
+        snapshot.notificationsGranted &&
+        snapshot.locationGranted &&
+        snapshot.calendarGranted;
     if (!requiresFullScreenIntent) {
       return baseReady;
     }
@@ -837,6 +846,7 @@ class _PermissionStep {
     required this.isGranted,
     required this.request,
     this.openSettings,
+    this.blocksOnboarding = true,
   });
 
   final String key;
@@ -846,6 +856,7 @@ class _PermissionStep {
   final bool Function(AppPermissionSnapshot snapshot) isGranted;
   final Future<bool> Function() request;
   final Future<bool> Function()? openSettings;
+  final bool blocksOnboarding;
 }
 
 class _SectionHeader extends StatelessWidget {

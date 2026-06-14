@@ -349,7 +349,7 @@ void main() {
   );
 
   testWidgets(
-    'PermissionOnboardingScreen opens app settings when exact alarm stays denied',
+    'PermissionOnboardingScreen does not open generic app settings when exact alarm stays denied',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
@@ -383,20 +383,10 @@ void main() {
       buttonWidget.onPressed!();
       await tester.pumpAndSettle();
 
-      expect(permissionService.appSettingsOpened, isTrue);
+      expect(permissionService.appSettingsOpened, isFalse);
       expect(permissionService.exactAlarmGranted, isFalse);
-
-      permissionService.exactAlarmGranted = true;
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pumpAndSettle();
-
       expect(
-        find.descendant(
-          of: find.byKey(
-            const ValueKey('permission-onboarding-exact-alarm-tile'),
-          ),
-          matching: find.byIcon(Icons.check_circle_outline),
-        ),
+        find.textContaining('Android가 몇 분 늦게 울릴 수 있어요'),
         findsOneWidget,
       );
     },

@@ -1774,3 +1774,8 @@
 - 배포 경로에서 `flutter-local.ps1`의 FluxOS 세션 부트스트랩을 건너뛰도록 `PLANFLOW_SKIP_FLUXOS_SESSION` 플래그와 `SkipFluxOsSession` 스위치를 추가했다.
 - 이 변경으로 `deploy-play-internal.ps1` -> `build-internal-aab.ps1` -> `flutter-local.ps1` 경로에서 세션 객체 파싱 오류가 재발하지 않도록 정리했다.
 - 검증: `E:\FluxStudio\tools\deploy-play.bat planflow` 실행 성공, `1.1.0+36` AAB가 Play 비공개 테스트 `alpha` 트랙에 업로드됨.
+
+## 2026-06-14 정확한 알람 온보딩 비차단 처리
+- 정확한 알람 권한 요청이 실패할 때 삼성 일반 앱 정보 화면으로 빠져 사용자가 할 수 없는 루프가 생기던 흐름을 제거했다.
+- 정확한 알람은 브리핑/출발 알림의 정밀도를 높이는 권한으로 안내하되, 꺼져 있어도 필수 온보딩 완료를 막지 않게 바꿨다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub` 통과. debug APK는 갱신됐지만 wrapper가 외부 종료 코드 137로 끊겨 exit code는 확보하지 못했다.
