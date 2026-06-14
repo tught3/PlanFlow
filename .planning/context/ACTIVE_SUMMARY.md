@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-14 PlanFlow exact-alarm UX fix deploy
+- 정확한 알람을 필수 권한 순차 요청에서 선택 권한으로 분리해, 일반 폰에서 온보딩이 막히지 않게 정리했다.
+- `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`가 통과했고, 이어서 `E:\FluxStudio\tools\deploy-play.bat planflow`를 실행해 `1.1.0+39`를 Play `alpha` 트랙에 업로드했다.
+
 ## 2026-06-14 PlanFlow deploy wrapper binding fix and Play upload completion
 - `scripts/deploy-play-internal.ps1`가 `build-internal-aab.ps1`를 배열 splat로 호출하면서 `-StatusPath`가 테스트 인자로 새는 문제를 hashtable splat로 고쳤다. 이로써 `-SkipVersionBump` / `-SkipUpload`가 정상적으로 바인딩된다.
 - `deploy-play.bat planflow -SkipUpload` 검증에서 version bump 없이 `1.1.0+33` 기준으로 analyze, focused tests, release AAB build가 정상 통과하는 것을 확인했다.
