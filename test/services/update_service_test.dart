@@ -222,6 +222,39 @@ void main() {
       expect(updateFlow.flexibleStartCallCount, 1);
       expect(updateFlow.flexibleCompleteCallCount, 1);
     });
+
+    test('exposes update ui states during the update flow', () async {
+      versionTracker.stored = 100;
+      updateFlow.result = const UpdateCheckResult(
+        updateAvailability: UpdateAvailabilityState.available,
+        immediateUpdateAllowed: false,
+        flexibleUpdateAllowed: true,
+      );
+      updateFlow.checkCompleter = Completer<UpdateCheckResult>();
+      updateFlow.flexibleStartCompleter = Completer<void>();
+      UpdateService.instance = UpdateService(
+        updateFlow: updateFlow,
+        versionMetadataProvider: metadataProvider,
+        versionTracker: versionTracker,
+        playStoreLauncher: playStoreLauncher,
+        postUpdateHook: postUpdateHook,
+        minRequiredVersionProvider: () => 100,
+        skipInDebug: false,
+      );
+
+      final check = UpdateService.checkAndPrompt();
+      await Future<void>.delayed(Duration.zero);
+      expect(UpdateService.instance.uiState.value, UpdateUiState.checking);
+
+      updateFlow.checkCompleter!.complete(updateFlow.result);
+      await Future<void>.delayed(Duration.zero);
+      expect(UpdateService.instance.uiState.value, UpdateUiState.updating);
+
+      updateFlow.flexibleStartCompleter!.complete();
+      await check;
+
+      expect(UpdateService.instance.uiState.value, UpdateUiState.idle);
+    });
   });
 }
 
@@ -240,6 +273,7 @@ class FakeUpdateFlowGateway implements UpdateFlowGateway {
   int immediateCallCount = 0;
   int flexibleStartCallCount = 0;
   int flexibleCompleteCallCount = 0;
+  Completer<void>? flexibleStartCompleter;
 
   @override
   Future<UpdateCheckResult> checkForUpdate() async {
@@ -263,6 +297,10 @@ class FakeUpdateFlowGateway implements UpdateFlowGateway {
   @override
   Future<void> startFlexibleUpdate() async {
     flexibleStartCallCount += 1;
+    final completer = flexibleStartCompleter;
+    if (completer != null) {
+      await completer.future;
+    }
   }
 
   @override

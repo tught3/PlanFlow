@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-14 PlanFlow in-app update progress overlay
+- `UpdateService`에 `checking / updating / openingPlayStore` UI 상태를 추가하고, `lib/app.dart`에서 이 상태를 전체 앱 위에 모달 로더로 보여주도록 붙였다.
+- 업데이트 흐름 동안 사용자가 화면을 계속 조작하지 못하도록 `ModalBarrier`로 입력을 막았고, `test/services/update_service_test.dart`에 상태 전이 회귀 테스트를 추가했다.
+- 검증: `scripts/flutter-local.ps1 test test/services/update_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub` 통과.
+
 ## 2026-06-14 PlanFlow exact-alarm UX fix deploy
 - 정확한 알람을 필수 권한 순차 요청에서 선택 권한으로 분리해, 일반 폰에서 온보딩이 막히지 않게 정리했다.
 - `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`가 통과했고, 이어서 `E:\FluxStudio\tools\deploy-play.bat planflow`를 실행해 `1.1.0+39`를 Play `alpha` 트랙에 업로드했다.
