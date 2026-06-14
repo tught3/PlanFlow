@@ -288,6 +288,7 @@ try {
     try {
       $buildArgs = @{
         StatusPath = $statusPath
+        SkipFluxOsSession = $true
       }
       if ($SkipVersionBump) {
         $buildArgs.SkipVersionBump = $true

@@ -1769,3 +1769,8 @@
 - 요청 전체 재실행 대신 현재 단계의 실제 허용 상태를 확인하고, 아직 거절된 단계는 다시 설정으로 보내지 않게 정리했다.
 - 정상 폰에서는 폴드/플립 전용 전체 화면 알림은 계속 숨김 상태를 유지한다.
 - 검증: `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub` 통과.
+
+## 2026-06-14 배포 래퍼 FluxOS 세션 분리
+- 배포 경로에서 `flutter-local.ps1`의 FluxOS 세션 부트스트랩을 건너뛰도록 `PLANFLOW_SKIP_FLUXOS_SESSION` 플래그와 `SkipFluxOsSession` 스위치를 추가했다.
+- 이 변경으로 `deploy-play-internal.ps1` -> `build-internal-aab.ps1` -> `flutter-local.ps1` 경로에서 세션 객체 파싱 오류가 재발하지 않도록 정리했다.
+- 검증: `E:\FluxStudio\tools\deploy-play.bat planflow` 실행 성공, `1.1.0+36` AAB가 Play 비공개 테스트 `alpha` 트랙에 업로드됨.

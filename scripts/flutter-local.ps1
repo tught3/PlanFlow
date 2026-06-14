@@ -4,12 +4,17 @@ param(
 )
 
 $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-. (Join-Path $WorkspaceRoot '.fluxos\scripts\fluxos-session-bootstrap.ps1')
+$SkipFluxOsSession = $env:PLANFLOW_SKIP_FLUXOS_SESSION -in @('1', 'true', 'TRUE', 'yes', 'YES')
+if (-not $SkipFluxOsSession) {
+  . (Join-Path $WorkspaceRoot '.fluxos\scripts\fluxos-session-bootstrap.ps1')
+}
 
 $session = $null
 $exitCode = 0
 try {
-  $session = Start-FluxOsProjectSession -Project 'PlanFlow' -Source 'flutter-local' -Owner 'PlanFlow-local' -Label 'PlanFlow Flutter 런처' -Note ("flutter {0}" -f (($Args -join ' ').Trim())) -Cwd (Resolve-Path (Join-Path $PSScriptRoot '..')).Path -PreferCurrentProjectSession
+  if (-not $SkipFluxOsSession) {
+    $session = Start-FluxOsProjectSession -Project 'PlanFlow' -Source 'flutter-local' -Owner 'PlanFlow-local' -Label 'PlanFlow Flutter 런처' -Note ("flutter {0}" -f (($Args -join ' ').Trim())) -Cwd (Resolve-Path (Join-Path $PSScriptRoot '..')).Path -PreferCurrentProjectSession
+  }
 
   $defineFile = Join-Path $PSScriptRoot '..\env\local.json'
 

@@ -9,7 +9,8 @@
   ),
   [string]$StatusPath,
   [switch]$SkipVersionBump,
-  [switch]$SkipTests
+  [switch]$SkipTests,
+  [switch]$SkipFluxOsSession
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,6 +21,10 @@ $FlutterLocal = Join-Path $PSScriptRoot 'flutter-local.ps1'
 $PubspecPath = Join-Path $WorkspaceRoot 'pubspec.yaml'
 $AabPath = Join-Path $WorkspaceRoot 'build\app\outputs\bundle\release\app-release.aab'
 $DeployLogDir = Join-Path $WorkspaceRoot '.deploy-logs'
+$PreviousPlanFlowSkipFluxOsSession = $env:PLANFLOW_SKIP_FLUXOS_SESSION
+if ($SkipFluxOsSession) {
+  $env:PLANFLOW_SKIP_FLUXOS_SESSION = '1'
+}
 
 function Write-Stage([string]$Message) {
   Write-Host ""
@@ -355,4 +360,12 @@ try {
 } catch {
   Write-Error $_
   exit 1
+} finally {
+  if ($SkipFluxOsSession) {
+    if ($null -eq $PreviousPlanFlowSkipFluxOsSession) {
+      Remove-Item Env:PLANFLOW_SKIP_FLUXOS_SESSION -ErrorAction SilentlyContinue
+    } else {
+      $env:PLANFLOW_SKIP_FLUXOS_SESSION = $PreviousPlanFlowSkipFluxOsSession
+    }
+  }
 }
