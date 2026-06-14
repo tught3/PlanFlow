@@ -1779,3 +1779,8 @@
 - 정확한 알람 권한 요청이 실패할 때 삼성 일반 앱 정보 화면으로 빠져 사용자가 할 수 없는 루프가 생기던 흐름을 제거했다.
 - 정확한 알람은 브리핑/출발 알림의 정밀도를 높이는 권한으로 안내하되, 꺼져 있어도 필수 온보딩 완료를 막지 않게 바꿨다.
 - 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub` 통과. debug APK는 갱신됐지만 wrapper가 외부 종료 코드 137로 끊겨 exit code는 확보하지 못했다.
+
+## 2026-06-14 - 정확한 알람 선택 권한 분리
+- 정확한 알람은 Android 특수 권한이라 필수 권한 순차 요청에서 제외하고 선택 권한 섹션으로 이동했다.
+- 필수 권한 완료 후 정확한 알람이 꺼져 있어도 시작할 수 있으며, 요청 버튼은 상태 확인과 안내만 수행한다.
+- 검증: permission_onboarding_screen_test 통과, analyze 통과.

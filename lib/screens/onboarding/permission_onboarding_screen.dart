@@ -271,16 +271,6 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         openSettings: _permissionService.openNotificationSettings,
       ),
       _PermissionStep(
-        key: 'exactAlarm',
-        label: '정확한 알람',
-        grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
-        deniedMessage:
-            '정확한 알람 권한을 바로 켤 수 없었습니다. 알림은 계속 예약되지만 Android가 몇 분 늦게 울릴 수 있어요.',
-        isGranted: (snapshot) => snapshot.exactAlarmsGranted,
-        request: _permissionService.requestExactAlarmPermission,
-        blocksOnboarding: false,
-      ),
-      _PermissionStep(
         key: 'location',
         label: '위치',
         grantedMessage: '위치 권한이 허용되었습니다.',
@@ -599,25 +589,6 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
               ),
               const SizedBox(height: 9),
               _PermissionTile(
-                icon: Icons.alarm_on_outlined,
-                title: '정확한 알람',
-                description:
-                    '브리핑과 출발 알림을 더 정확한 시간에 울리게 합니다. 꺼져 있어도 알림은 예약됩니다.',
-                descriptionMaxLines: 2,
-                granted: snapshot?.exactAlarmsGranted == true,
-                isRequesting: _activeRequestKey == 'exactAlarm',
-                key: const ValueKey('permission-onboarding-exact-alarm-tile'),
-                onRequest: () => _requestOne(
-                  key: 'exactAlarm',
-                  grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
-                  deniedMessage:
-                      '정확한 알람 권한을 바로 켤 수 없었습니다. 알림은 계속 예약되지만 Android가 몇 분 늦게 울릴 수 있어요.',
-                  isGranted: (snapshot) => snapshot.exactAlarmsGranted,
-                  request: _permissionService.requestExactAlarmPermission,
-                ),
-              ),
-              const SizedBox(height: 9),
-              _PermissionTile(
                 icon: Icons.my_location_outlined,
                 title: '위치',
                 description: '현재 위치를 출발지 후보로 사용해 이동시간과 출발 알림을 더 정확히 계산합니다.',
@@ -674,6 +645,31 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   ),
                 ),
               ],
+              const SizedBox(height: 18),
+              const _SectionHeader(
+                label: '선택 권한',
+                subtitle:
+                    '꺼져 있어도 시작할 수 있어요. Android가 허용 화면을 제공하지 않는 기기에서는 상태 확인만 됩니다.',
+              ),
+              const SizedBox(height: 9),
+              _PermissionTile(
+                icon: Icons.alarm_on_outlined,
+                title: '정확한 알람',
+                description:
+                    '브리핑과 출발 알림을 더 정확한 시간에 울리게 합니다. 꺼져 있어도 알림은 예약됩니다.',
+                descriptionMaxLines: 2,
+                granted: snapshot?.exactAlarmsGranted == true,
+                isRequesting: _activeRequestKey == 'exactAlarm',
+                key: const ValueKey('permission-onboarding-exact-alarm-tile'),
+                onRequest: () => _requestOne(
+                  key: 'exactAlarm',
+                  grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
+                  deniedMessage:
+                      '이 기기에서는 정확한 알람을 앱에서 바로 켤 수 없어요. 알림은 계속 예약되지만 Android가 몇 분 늦게 울릴 수 있습니다.',
+                  isGranted: (snapshot) => snapshot.exactAlarmsGranted,
+                  request: _permissionService.requestExactAlarmPermission,
+                ),
+              ),
             ],
             if (_message != null) ...[
               const SizedBox(height: 10),
@@ -846,7 +842,6 @@ class _PermissionStep {
     required this.isGranted,
     required this.request,
     this.openSettings,
-    this.blocksOnboarding = true,
   });
 
   final String key;
@@ -856,7 +851,7 @@ class _PermissionStep {
   final bool Function(AppPermissionSnapshot snapshot) isGranted;
   final Future<bool> Function() request;
   final Future<bool> Function()? openSettings;
-  final bool blocksOnboarding;
+  bool get blocksOnboarding => true;
 }
 
 class _SectionHeader extends StatelessWidget {

@@ -145,11 +145,11 @@ void main() {
 
       expect(permissionService.microphoneRequests, 1);
       expect(permissionService.notificationRequests, 1);
-      expect(permissionService.exactAlarmRequests, 1);
+      expect(permissionService.exactAlarmRequests, 0);
       expect(permissionService.locationRequests, 1);
       expect(permissionService.calendarRequests, 1);
       expect(permissionService.fullScreenIntentRequests, 0);
-      expect(permissionService.exactAlarmGranted, isTrue);
+      expect(permissionService.exactAlarmGranted, isFalse);
       expect(permissionService.fullScreenIntentGranted, isFalse);
       expect(
         find.byKey(const ValueKey('permission-onboarding-request-all-button')),
@@ -386,7 +386,7 @@ void main() {
       expect(permissionService.appSettingsOpened, isFalse);
       expect(permissionService.exactAlarmGranted, isFalse);
       expect(
-        find.textContaining('Android가 몇 분 늦게 울릴 수 있어요'),
+        find.textContaining('앱에서 바로 켤 수 없어요'),
         findsOneWidget,
       );
     },
