@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-14 PlanFlow deploy wrapper binding fix and Play upload completion
+- `scripts/deploy-play-internal.ps1`가 `build-internal-aab.ps1`를 배열 splat로 호출하면서 `-StatusPath`가 테스트 인자로 새는 문제를 hashtable splat로 고쳤다. 이로써 `-SkipVersionBump` / `-SkipUpload`가 정상적으로 바인딩된다.
+- `deploy-play.bat planflow -SkipUpload` 검증에서 version bump 없이 `1.1.0+33` 기준으로 analyze, focused tests, release AAB build가 정상 통과하는 것을 확인했다.
+- 이어서 실제 `E:\FluxStudio\tools\deploy-play.bat planflow` 실행이 성공했고, Play alpha track에 `versionCode 34` 업로드 및 release commit까지 완료되었다. 최종 AAB는 `E:\FluxStudio\PlanFlow\build\app\outputs\bundle\release\app-release.aab`이다.
+
 ## 2026-06-13 PlanFlow 딥링크 우선 진입 및 업데이트 복원
 - 앱 시작 시 업데이트 확인을 뒤로 미루고, 위젯/알람/딥링크 진입 화면을 먼저 안착시킨 뒤에 업데이트를 검사하도록 lib/app.dart와 lib/services/update_service.dart를 정리했다.
 - 업데이트 안내가 떠도 현재 route와 query를 저장해뒀다가, 업데이트 뒤에 원래 들어가려던 화면으로 복원되도록 했다.
