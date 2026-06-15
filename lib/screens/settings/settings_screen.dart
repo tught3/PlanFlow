@@ -532,22 +532,75 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (context) {
         return AlertDialog(
+          titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+          contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
           title: Text('$providerName 연동 해제'),
           content: const Text(
             '가져온 일정을 PlanFlow에 남겨둘지, 해당 공급자 일정과 함께 정리할지 선택해 주세요.',
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(null),
-              child: const Text('취소'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('일정 유지'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('공급자 일정 삭제'),
+            SizedBox(
+              width: double.infinity,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(null),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(
+                            color: Color(0xFF94A3B8),
+                          ),
+                          foregroundColor: PlanFlowColors.textPrimary,
+                        ),
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('취소'),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(
+                            color: Color(0xFF3B82F6),
+                          ),
+                          foregroundColor: const Color(0xFF2563EB),
+                        ),
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('일정 유지'),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: SizedBox(
+                      height: 44,
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFB91C1C),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('공급자 일정 삭제'),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         );
@@ -3264,14 +3317,16 @@ class _SettingsScreenState extends State<SettingsScreen>
     return '네이버 캘린더 연결 안 됨';
   }
 
-  CalendarAutoSyncProviderSnapshot? get _naverCalendarAutoSyncSnapshot {
+  CalendarAutoSyncProviderSnapshot? _autoSyncProviderSnapshot(
+    Iterable<String> providerKeys,
+  ) {
     final snapshot = _calendarAutoSyncSnapshot;
     if (snapshot == null) {
       return null;
     }
+    final keys = providerKeys.toSet();
     final providers = snapshot.providers.where((provider) {
-      return provider.key == 'naver_caldav_auto_import' ||
-          provider.key == 'naver_api_auto_export';
+      return keys.contains(provider.key);
     }).toList(growable: false);
     if (providers.isEmpty) {
       return null;
@@ -3288,45 +3343,40 @@ class _SettingsScreenState extends State<SettingsScreen>
     return providers.first;
   }
 
+  CalendarAutoSyncProviderSnapshot? get _googleCalendarAutoSyncSnapshot {
+    return _autoSyncProviderSnapshot(const ['google_auto_sync']);
+  }
+
+  CalendarAutoSyncProviderSnapshot? get _naverCalendarAutoSyncSnapshot {
+    return _autoSyncProviderSnapshot(const [
+      'naver_caldav_auto_import',
+      'naver_api_auto_export',
+    ]);
+  }
+
   bool _isNaverCalendarConfigured() {
     final summary = _calendarSyncSummary?.naver;
     if (summary != null) {
-      return switch (summary.status) {
-        CalendarIntegrationStatus.ready ||
-        CalendarIntegrationStatus.syncing ||
-        CalendarIntegrationStatus.synced ||
-        CalendarIntegrationStatus.reauthRequired =>
-          true,
-        CalendarIntegrationStatus.signedOut ||
-        CalendarIntegrationStatus.notConfigured ||
-        CalendarIntegrationStatus.unsupported ||
-        CalendarIntegrationStatus.failed =>
-          false,
-      };
+      if (summary.status == CalendarIntegrationStatus.synced) {
+        return true;
+      }
     }
     final snapshot = _naverCalendarAutoSyncSnapshot;
-    if (snapshot != null) {
-      return snapshot.isHealthy;
+    if (snapshot?.lastSuccessAt != null) {
+      return true;
     }
-    return _hasNaverCalDavCredentials || _hasNaverOpenApiAccess;
+    return false;
   }
 
   bool _isCalendarConfigured(CalendarIntegrationResult? result) {
     if (result == null) {
       return false;
     }
-    return switch (result.status) {
-      CalendarIntegrationStatus.ready ||
-      CalendarIntegrationStatus.syncing ||
-      CalendarIntegrationStatus.synced ||
-      CalendarIntegrationStatus.reauthRequired =>
-        true,
-      CalendarIntegrationStatus.signedOut ||
-      CalendarIntegrationStatus.notConfigured ||
-      CalendarIntegrationStatus.unsupported ||
-      CalendarIntegrationStatus.failed =>
-        false,
-    };
+    if (result.status == CalendarIntegrationStatus.synced) {
+      return true;
+    }
+    final snapshot = _googleCalendarAutoSyncSnapshot;
+    return snapshot?.lastSuccessAt != null;
   }
 
   bool _canDisconnectCalendar(CalendarIntegrationResult? result) {

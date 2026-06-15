@@ -1804,3 +1804,7 @@
 - `E:\FluxStudio\tools\deploy-play.bat planflow` 실행으로 내부 테스트 AAB 업로드를 완료했고 버전은 `1.1.0+40`까지 올랐다.
 - Gradle Play Publisher가 `com.fluxstudio.planflow`의 `alpha` 트랙에 번들을 업로드했고, 배포 후 `pubspec.yaml` 버전 bump만 별도 커밋으로 정리했다.
 - 검증: release AAB 생성 및 Play 업로드 성공, `git push` 완료.
+## 2026-06-15 설정 화면 동기화 체크 의미 정리
+- Google/Naver 설정의 초록 체크를 '실제 sync 성공 기록이 있을 때만' 표시하도록 좁혔다.
+- 연동 해제 모달을 가로 버튼 3개로 바꾸고, 취소/일정 유지 버튼에 테두리를 넣었다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, settings_screen_test 추가 검증 진행 중.
