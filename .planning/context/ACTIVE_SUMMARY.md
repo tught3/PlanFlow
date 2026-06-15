@@ -1814,3 +1814,8 @@
 - 네이버 재권한 확인 경로가 항상 email,calendar scope로 열리게 수정하고 OAuth callback에서 provider token capture 실패를 안전하게 처리했다.
 - Google Sign-In 실패는 PlanFlowGoogleAuth 로그와 ApiException 10 전용 안내로 package/SHA-1/google-services.json 불일치를 바로 확인할 수 있게 했다.
 - 검증: calendar_sync_service_test, settings_screen_test, analyze 통과.
+
+## 2026-06-15 Play internal upload refresh after Google config alignment
+- 새 `google-services.json`을 반영한 뒤 `E:\FluxStudio\tools\deploy-play.bat planflow`를 실행해 `1.1.0+41`을 Play `alpha` 트랙에 업로드했다.
+- `scripts/flutter-local.ps1 build apk --debug --no-pub`도 통과했고, 에뮬레이터 `emulator-5554`에 debug APK 설치까지 확인했다.
+- 현재 작업트리에는 사용자가 이미 갖고 있던 unrelated dirty files가 남아 있으므로, 배포 관련 변경은 `pubspec.yaml`과 체크포인트만 분리해 처리한다.
