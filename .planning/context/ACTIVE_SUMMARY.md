@@ -1793,3 +1793,9 @@
 - 정확한 알람은 Android 특수 권한이라 필수 권한 순차 요청에서 제외하고 선택 권한 섹션으로 이동했다.
 - 필수 권한 완료 후 정확한 알람이 꺼져 있어도 시작할 수 있으며, 요청 버튼은 상태 확인과 안내만 수행한다.
 - 검증: permission_onboarding_screen_test 통과, analyze 통과.
+
+## 2026-06-15 네이버 캘린더 권한/가져오기 경로 분리
+- 설정 화면에서 네이버 Open API 권한 확인과 CalDAV 자격증명 보유 상태를 별도로 관리하도록 분리했다.
+- CalDAV 자격증명이 없고 Open API 권한이 확인되면 CalDAV 가져오기가 아니라 `NaverOpenApiCalendarService.syncAll()`로 바로 일정을 가져오게 했다.
+- OAuth 권한 동의 후 앱으로 돌아오면 권한을 재확인하고 자동 가져오기를 이어가며, 일반 4xx 응답을 권한 허용으로 오판하지 않도록 네이버 권한 판정을 보강했다.
+- 검증: `scripts\flutter-local.ps1 test test/services/naver_calendar_permission_service_test.dart --no-pub`, `scripts\flutter-local.ps1 test test/screens/settings_screen_test.dart --no-pub`, `scripts\flutter-local.ps1 test test/services/naver_open_api_calendar_service_test.dart --no-pub`, `scripts\flutter-local.ps1 analyze --no-pub`, `scripts\flutter-local.ps1 build apk --debug --no-pub` 통과.

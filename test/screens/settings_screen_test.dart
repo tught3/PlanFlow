@@ -599,21 +599,12 @@ void main() {
         find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
     await _scrollUntilHitTestable(tester, syncButton);
     await tester.tap(syncButton.hitTestable().first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    expect(find.text('네이버 일정 가져오기'), findsOneWidget);
-    expect(
-      find.textContaining('앱을 백그라운드로 보내도 계속 진행됩니다.'),
-      findsOneWidget,
-    );
-
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
 
     expect(calendarSyncService.naverSyncCallCount, 0);
-    expect(naverCalDavService.syncCallCount, 1);
-    expect(naverImportService.syncCallCount, 0);
+    expect(naverCalDavService.syncCallCount, 0);
+    expect(naverImportService.syncCallCount, 1);
   });
 
   testWidgets('initial Naver calendar action triggers OAuth connect flow',
@@ -702,9 +693,11 @@ void main() {
       findsNothing,
     );
     expect(
-      find.textContaining('캘린더 권한을 허용하고 PlanFlow로 돌아온 뒤 다시 동기화'),
+      find.textContaining('캘린더 권한을 허용하고 돌아오면 자동으로 일정을 가져옵니다'),
       findsWidgets,
     );
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('logout does not clear saved Naver calendar credentials',

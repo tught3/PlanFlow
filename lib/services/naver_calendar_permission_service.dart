@@ -310,11 +310,19 @@ class NaverCalendarPermissionService {
       );
     }
 
-    if (statusCode >= 200 && statusCode < 500) {
+    if (statusCode >= 200 && statusCode < 300) {
       return NaverCalendarPermissionResult(
         status: NaverCalendarPermissionStatus.granted,
         statusCode: statusCode,
         message: '네이버 캘린더 권한을 확인했습니다.',
+      );
+    }
+
+    if (statusCode >= 400 && statusCode < 500) {
+      return NaverCalendarPermissionResult(
+        status: NaverCalendarPermissionStatus.unknown,
+        statusCode: statusCode,
+        message: '네이버 캘린더 권한 확인 응답을 해석하지 못했습니다.',
       );
     }
 
