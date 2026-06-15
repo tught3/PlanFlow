@@ -306,7 +306,7 @@ void main() {
       expect(googleSignIn.signInCallCount, 1);
     });
 
-    test('non-interactive Google sync keeps existing connection on token miss',
+    test('non-interactive Google sync marks connection reauth on token miss',
         () async {
       final connectionRepository = _FakeCalendarConnectionRepository(
         initial: const CalendarConnectionModel(
@@ -329,7 +329,7 @@ void main() {
 
       expect(result.status, CalendarIntegrationStatus.reauthRequired);
       expect(connectionRepository.connection?.status,
-          CalendarConnectionStatus.connected);
+          CalendarConnectionStatus.reauthRequired);
       expect(connectionRepository.connection?.providerAccountEmail,
           'user@example.com');
     });

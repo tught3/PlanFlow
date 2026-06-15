@@ -1830,3 +1830,8 @@
 - 네이버 캘린더 연결/재동의 OAuth 시작 시 pending purpose를 `calendar-link`로 기록하도록 중앙화했다.
 - OAuth callback 처리에서 기존 로그인 세션이 있어도 pending calendar-link 콜백이면 `getSessionFromUrl()`을 실행해 provider token을 교환/캡처하도록 수정했다.
 - 검증: `scripts\flutter-local.ps1 test test\services\oauth_callback_handler_test.dart --no-pub -r expanded`, `scripts\flutter-local.ps1 test test\services\naver_calendar_permission_service_test.dart test\services\calendar_sync_service_test.dart --no-pub -r expanded`, `scripts\flutter-local.ps1 analyze --no-pub`, `scripts\flutter-local.ps1 build apk --debug --no-pub` 통과.
+
+## 2026-06-16 Google/Naver 캘린더 토큰 상태 오판 수정
+- Google Calendar 자동 동기화에서 기존 연결이 있어도 silent sign-in 토큰을 못 받으면 연결됨으로 남기지 않고 `reauthRequired`로 저장하게 했다.
+- Naver Calendar pending calendar-link 콜백에서 받은 provider token은 Naver 로그인 identity 여부와 별개로 캘린더 토큰으로 저장할 수 있게 좁게 허용했다.
+- 검증: `scripts\flutter-local.ps1 test test\services\calendar_sync_service_test.dart test\services\oauth_callback_handler_test.dart test\services\naver_calendar_permission_service_test.dart --no-pub -r expanded`, `scripts\flutter-local.ps1 analyze --no-pub`, `scripts\flutter-local.ps1 build apk --debug --no-pub` 통과.

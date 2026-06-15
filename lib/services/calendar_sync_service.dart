@@ -541,6 +541,12 @@ class CalendarSyncService {
           'lastAccount=$_lastGoogleAccountEmail',
         );
         if (!interactive && existingConnection?.isConnected == true) {
+          await _saveConnection(
+            CalendarProvider.google,
+            status: CalendarConnectionStatus.reauthRequired,
+            providerAccountEmail: existingConnection?.providerAccountEmail,
+            lastError: 'Google silent sign-in token missing',
+          );
           return CalendarIntegrationResult.reauthRequired(
             CalendarProvider.google,
             message:

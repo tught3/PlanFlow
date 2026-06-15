@@ -135,6 +135,30 @@ void main() {
       );
     });
 
+    test('trusts provider token only for Naver calendar link callback', () {
+      expect(
+        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
+          pendingPurpose: OAuthCallbackPurpose.calendarLink,
+          pendingMethod: 'naver',
+        ),
+        isTrue,
+      );
+      expect(
+        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
+          pendingPurpose: OAuthCallbackPurpose.login,
+          pendingMethod: 'naver',
+        ),
+        isFalse,
+      );
+      expect(
+        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
+          pendingPurpose: OAuthCallbackPurpose.calendarLink,
+          pendingMethod: 'google',
+        ),
+        isFalse,
+      );
+    });
+
     test('does not re-exchange normal callbacks after a session exists', () {
       expect(
         OAuthCallbackHandler.shouldExchangeOAuthCallback(

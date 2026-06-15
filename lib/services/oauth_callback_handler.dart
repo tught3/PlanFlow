@@ -184,6 +184,13 @@ class OAuthCallbackHandler {
     }
 
     latestUserMessage.value = null;
+    final pendingPurpose = _pendingPurpose;
+    final pendingMethod = _pendingMethod;
+    final isPendingNaverCalendarLink =
+        shouldTrustProviderTokenForNaverCalendarLink(
+      pendingPurpose: pendingPurpose,
+      pendingMethod: pendingMethod,
+    );
     final normalizedUri = _normalizeAuthCallbackUri(uri);
     final isPasswordRecovery = isPasswordRecoveryCallback(normalizedUri);
     final isEmailConfirmation = isEmailConfirmationCallback(normalizedUri) ||
@@ -237,7 +244,9 @@ class OAuthCallbackHandler {
 
     if (!shouldExchangeCallback) {
       debugPrint('OAuth callback already produced a Supabase session.');
-      await _captureNaverProviderTokenIfAny();
+      await _captureNaverProviderTokenIfAny(
+        allowWithoutNaverIdentity: isPendingNaverCalendarLink,
+      );
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
         if (isEmailConfirmation) {
@@ -257,7 +266,10 @@ class OAuthCallbackHandler {
       debugPrint(
         'OAuth callback exchange completed: user=${response.session.user.id}',
       );
-      await _captureNaverProviderTokenIfAny();
+      await _captureNaverProviderTokenIfAny(
+        explicitProviderToken: response.session.providerToken,
+        allowWithoutNaverIdentity: isPendingNaverCalendarLink,
+      );
       // Google 로그인 시 Google Calendar interactive sync
       final loginSession = client.auth.currentSession;
       final loginProvider =
@@ -434,13 +446,36 @@ class OAuthCallbackHandler {
     return AppEnv.isSupabaseReady;
   }
 
-  Future<void> _captureNaverProviderTokenIfAny() async {
+  Future<void> _captureNaverProviderTokenIfAny({
+    String? explicitProviderToken,
+    bool allowWithoutNaverIdentity = false,
+  }) async {
     try {
-      await NaverCalendarPermissionService().captureCurrentProviderToken();
+      final permissionService = NaverCalendarPermissionService();
+      final token = explicitProviderToken?.trim();
+      if (token != null && token.isNotEmpty) {
+        await permissionService.captureProviderToken(
+          token,
+          allowWithoutNaverIdentity: allowWithoutNaverIdentity,
+        );
+        return;
+      }
+      await permissionService.captureCurrentProviderToken(
+        allowWithoutNaverIdentity: allowWithoutNaverIdentity,
+      );
     } catch (error, stackTrace) {
       debugPrint('Naver provider token capture skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  @visibleForTesting
+  static bool shouldTrustProviderTokenForNaverCalendarLink({
+    required OAuthCallbackPurpose? pendingPurpose,
+    required String? pendingMethod,
+  }) {
+    return pendingPurpose == OAuthCallbackPurpose.calendarLink &&
+        pendingMethod == 'naver';
   }
 
   @visibleForTesting
