@@ -130,7 +130,11 @@ class AuthService implements AuthSessionClient {
   }
 
   Future<bool> recheckNaverAccountConsent() {
-    return signInWithOAuth(PlanFlowOAuthProvider.naver, forceConsent: true);
+    return signInWithOAuth(
+      PlanFlowOAuthProvider.naver,
+      forceConsent: true,
+      forCalendar: true,
+    );
   }
 
   Future<bool> connectCalendarProvider(PlanFlowOAuthProvider provider) async {

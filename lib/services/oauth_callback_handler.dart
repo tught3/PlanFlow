@@ -200,6 +200,7 @@ class OAuthCallbackHandler {
 
     if (client.auth.currentSession != null && !isPasswordRecovery) {
       debugPrint('OAuth callback already produced a Supabase session.');
+      await _captureNaverProviderTokenIfAny();
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
         if (isEmailConfirmation) {
@@ -219,9 +220,7 @@ class OAuthCallbackHandler {
       debugPrint(
         'OAuth callback exchange completed: user=${response.session.user.id}',
       );
-      unawaited(
-        NaverCalendarPermissionService().captureCurrentProviderToken(),
-      );
+      await _captureNaverProviderTokenIfAny();
       // Google 로그인 시 Google Calendar interactive sync
       final loginSession = client.auth.currentSession;
       final loginProvider =
@@ -396,6 +395,15 @@ class OAuthCallbackHandler {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     return AppEnv.isSupabaseReady;
+  }
+
+  Future<void> _captureNaverProviderTokenIfAny() async {
+    try {
+      await NaverCalendarPermissionService().captureCurrentProviderToken();
+    } catch (error, stackTrace) {
+      debugPrint('Naver provider token capture skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   @visibleForTesting

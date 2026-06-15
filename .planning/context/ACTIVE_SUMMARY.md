@@ -1808,3 +1808,9 @@
 - Google/Naver 설정의 초록 체크를 '실제 sync 성공 기록이 있을 때만' 표시하도록 좁혔다.
 - 연동 해제 모달을 가로 버튼 3개로 바꾸고, 취소/일정 유지 버튼에 테두리를 넣었다.
 - 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, settings_screen_test 추가 검증 진행 중.
+
+## 2026-06-15 캘린더 연동 실제 성공 판정 보강
+- 네이버 권한이 granted여도 provider token이 없으면 connected/ready로 오판하지 않고 reauthRequired + 재동의 안내로 처리했다.
+- 네이버 재권한 확인 경로가 항상 email,calendar scope로 열리게 수정하고 OAuth callback에서 provider token capture 실패를 안전하게 처리했다.
+- Google Sign-In 실패는 PlanFlowGoogleAuth 로그와 ApiException 10 전용 안내로 package/SHA-1/google-services.json 불일치를 바로 확인할 수 있게 했다.
+- 검증: calendar_sync_service_test, settings_screen_test, analyze 통과.

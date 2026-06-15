@@ -281,12 +281,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     ]);
     if (_pendingNaverOpenApiImportAfterConsent &&
         mounted &&
-        _hasNaverOpenApiAccess &&
         !_isTestingNaverCalDav &&
         !_isImportingNaverCalDav) {
-      _pendingNaverOpenApiImportAfterConsent = false;
-      _showSnack('네이버 캘린더 권한을 확인했습니다. 일정을 가져옵니다.');
-      unawaited(_importNaverCalDavEvents(skipIntro: true, useOpenApi: true));
+      unawaited(_verifyNaverOpenApiAccessAndImportAfterOAuth());
     }
   }
 
@@ -678,11 +675,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (hasCalDavCredentials) {
       if (!mounted) return false;
       _showSnack('네이버 캘린더 동기화를 시작합니다.');
-      await _markNaverCalDavConnection(
-        status: CalendarConnectionStatus.connected,
-        lastError: null,
-      );
-      await _loadCalendarStatus();
       if (!mounted) return false;
       final imported = await _importNaverCalDavEvents(skipIntro: true);
       return imported?.success ?? false;
@@ -747,11 +739,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       _hasNaverOpenApiAccess = true;
       _pendingNaverOpenApiImportAfterConsent = false;
     });
-    await _markNaverCalDavConnection(
-      status: CalendarConnectionStatus.connected,
-      lastError: null,
-    );
-    await _loadCalendarStatus();
     if (!mounted) return false;
     final imported =
         await _importNaverCalDavEvents(skipIntro: true, useOpenApi: true);
@@ -776,16 +763,26 @@ class _SettingsScreenState extends State<SettingsScreen>
         _pendingNaverOpenApiImportAfterConsent = false;
       });
       _showSnack('네이버 캘린더 권한을 확인했습니다. 일정을 가져옵니다.');
-      await _markNaverCalDavConnection(
-        status: CalendarConnectionStatus.connected,
-        lastError: null,
-      );
-      await _loadCalendarStatus();
       if (!mounted) {
         return;
       }
       await _importNaverCalDavEvents(skipIntro: true, useOpenApi: true);
       return;
+    }
+    if (!mounted || !_pendingNaverOpenApiImportAfterConsent) {
+      return;
+    }
+    setState(() {
+      _hasNaverOpenApiAccess = false;
+      _pendingNaverOpenApiImportAfterConsent = false;
+    });
+    await _markNaverCalDavConnection(
+      status: CalendarConnectionStatus.reauthRequired,
+      lastError: 'Naver Calendar permission was not granted after OAuth.',
+    );
+    if (mounted) {
+      await _loadCalendarStatus();
+      _showSnack('네이버 캘린더 권한을 확인하지 못했습니다. 동의 화면에서 캘린더 권한을 허용해 주세요.');
     }
   }
 
@@ -3309,10 +3306,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       return summary.message;
     }
     if (_hasNaverCalDavCredentials) {
-      return _lastNaverCalDavResult?.message ?? '네이버 캘린더 연결됨';
+      return _lastNaverCalDavResult?.message ?? '네이버 CalDAV 자격증명이 저장되어 있습니다. 동기화를 눌러 확인해 주세요.';
     }
     if (_hasNaverOpenApiAccess) {
-      return _lastNaverCalDavResult?.message ?? '네이버 캘린더 권한 확인됨';
+      return _lastNaverCalDavResult?.message ?? '네이버 캘린더 권한은 확인됐습니다. 동기화를 눌러 일정을 가져오세요.';
     }
     return '네이버 캘린더 연결 안 됨';
   }
