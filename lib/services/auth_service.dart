@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/env.dart';
 import '../core/supabase_auth_options.dart';
+import 'oauth_callback_handler.dart';
 
 enum PlanFlowOAuthProvider {
   google,
@@ -105,7 +106,7 @@ class AuthService implements AuthSessionClient {
       appProvider: provider,
       supabaseProvider: _oauthProvider(provider),
       queryParams: queryParams,
-      purpose: 'sign-in',
+      purpose: forCalendar ? 'calendar-link' : 'sign-in',
     );
   }
 
@@ -261,11 +262,30 @@ class AuthService implements AuthSessionClient {
       'scopes=${oauthScopesFor(appProvider) ?? 'default'} '
       'queryParams=${queryParams?.keys.join(',') ?? 'none'}',
     );
-    return launchUrl(
+    _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
+    final launched = await launchUrl(
       uri,
       mode: launchMode,
       webOnlyWindowName: '_self',
     );
+    if (!launched) {
+      OAuthCallbackHandler.clearPendingCallback();
+    }
+    return launched;
+  }
+
+  void _markPendingOAuthCallback({
+    required PlanFlowOAuthProvider appProvider,
+    required String purpose,
+  }) {
+    switch (purpose) {
+      case 'calendar-link':
+        OAuthCallbackHandler.markPendingCalendarLink(appProvider);
+        break;
+      case 'sign-in':
+        OAuthCallbackHandler.markPendingLogin(appProvider);
+        break;
+    }
   }
 
   @override

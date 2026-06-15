@@ -96,6 +96,16 @@ class OAuthCallbackHandler {
         DateTime.now().difference(startedAt) <= maxAge;
   }
 
+  static bool hasPendingCalendarLink({
+    Duration maxAge = const Duration(minutes: 10),
+  }) {
+    final startedAt = _pendingStartedAt;
+    return _pendingPurpose == OAuthCallbackPurpose.calendarLink &&
+        _pendingMethod != null &&
+        startedAt != null &&
+        DateTime.now().difference(startedAt) <= maxAge;
+  }
+
   static bool hasPendingEmailConfirmation({
     Duration maxAge = const Duration(hours: 24),
   }) {
@@ -111,6 +121,21 @@ class OAuthCallbackHandler {
       return null;
     }
     return _pendingMethod;
+  }
+
+  @visibleForTesting
+  static bool shouldExchangeOAuthCallback({
+    required bool currentSessionPresent,
+    required bool isPasswordRecovery,
+    required bool hasPendingCalendarLink,
+  }) {
+    if (isPasswordRecovery) {
+      return true;
+    }
+    if (hasPendingCalendarLink) {
+      return true;
+    }
+    return !currentSessionPresent;
   }
 
   void start() {
@@ -197,8 +222,20 @@ class OAuthCallbackHandler {
     }
 
     final client = Supabase.instance.client;
+    final shouldExchangeCallback = shouldExchangeOAuthCallback(
+      currentSessionPresent: client.auth.currentSession != null,
+      isPasswordRecovery: isPasswordRecovery,
+      hasPendingCalendarLink: hasPendingCalendarLink(),
+    );
 
-    if (client.auth.currentSession != null && !isPasswordRecovery) {
+    debugPrint(
+      'OAuth callback routing: pendingPurpose=$_pendingPurpose '
+      'pendingMethod=$_pendingMethod '
+      'currentSessionPresent=${client.auth.currentSession != null} '
+      'shouldExchange=$shouldExchangeCallback',
+    );
+
+    if (!shouldExchangeCallback) {
       debugPrint('OAuth callback already produced a Supabase session.');
       await _captureNaverProviderTokenIfAny();
       final signedIn = await _syncAndRouteHome();

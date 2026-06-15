@@ -1825,3 +1825,8 @@
 - 네이버 권한 확인 경로에 `PlanFlowNaverCalendar` 로그를 추가해 토큰 출처, probe HTTP status, 응답 body 일부, missing token/network/denied 원인을 구분할 수 있게 했다.
 - Google Calendar 실패는 현재 코드보다 Google Cloud/Firebase 프로젝트와 OAuth client/google-services.json 정합성 문제로 분리했으며, 앱에는 기존 `PlanFlowGoogleAuth` 로그와 ApiException 10 안내를 유지한다.
 - 검증: settings_screen_test, naver_calendar_permission_service_test, naver_open_api_calendar_service_test, analyze, debug APK build 통과.
+
+## 2026-06-15 네이버 OAuth provider token 교환 누락 수정
+- 네이버 캘린더 연결/재동의 OAuth 시작 시 pending purpose를 `calendar-link`로 기록하도록 중앙화했다.
+- OAuth callback 처리에서 기존 로그인 세션이 있어도 pending calendar-link 콜백이면 `getSessionFromUrl()`을 실행해 provider token을 교환/캡처하도록 수정했다.
+- 검증: `scripts\flutter-local.ps1 test test\services\oauth_callback_handler_test.dart --no-pub -r expanded`, `scripts\flutter-local.ps1 test test\services\naver_calendar_permission_service_test.dart test\services\calendar_sync_service_test.dart --no-pub -r expanded`, `scripts\flutter-local.ps1 analyze --no-pub`, `scripts\flutter-local.ps1 build apk --debug --no-pub` 통과.
