@@ -1799,3 +1799,8 @@
 - CalDAV 자격증명이 없고 Open API 권한이 확인되면 CalDAV 가져오기가 아니라 `NaverOpenApiCalendarService.syncAll()`로 바로 일정을 가져오게 했다.
 - OAuth 권한 동의 후 앱으로 돌아오면 권한을 재확인하고 자동 가져오기를 이어가며, 일반 4xx 응답을 권한 허용으로 오판하지 않도록 네이버 권한 판정을 보강했다.
 - 검증: `scripts\flutter-local.ps1 test test/services/naver_calendar_permission_service_test.dart --no-pub`, `scripts\flutter-local.ps1 test test/screens/settings_screen_test.dart --no-pub`, `scripts\flutter-local.ps1 test test/services/naver_open_api_calendar_service_test.dart --no-pub`, `scripts\flutter-local.ps1 analyze --no-pub`, `scripts\flutter-local.ps1 build apk --debug --no-pub` 통과.
+
+## 2026-06-15 PlanFlow 내부 테스트 배포
+- `E:\FluxStudio\tools\deploy-play.bat planflow` 실행으로 내부 테스트 AAB 업로드를 완료했고 버전은 `1.1.0+40`까지 올랐다.
+- Gradle Play Publisher가 `com.fluxstudio.planflow`의 `alpha` 트랙에 번들을 업로드했고, 배포 후 `pubspec.yaml` 버전 bump만 별도 커밋으로 정리했다.
+- 검증: release AAB 생성 및 Play 업로드 성공, `git push` 완료.
