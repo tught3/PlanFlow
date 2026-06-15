@@ -240,6 +240,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   void dispose() {
+    _pendingNaverOpenApiImportAfterConsent = false;
     WidgetsBinding.instance.removeObserver(this);
     if (AppEnv.isSupabaseReady) {
       authProvider.removeListener(_handleFeedbackAdminAuthChanged);
@@ -715,7 +716,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             _pendingNaverOpenApiImportAfterConsent = true;
           });
           _showSnack(
-            '네이버 권한 동의가 열렸습니다. 캘린더 권한을 허용하고 돌아오면 자동으로 일정을 가져옵니다.',
+            '네이버 권한 화면을 열었습니다. 동의 후 PlanFlow로 돌아오면 자동으로 권한을 확인합니다.',
           );
           unawaited(_verifyNaverOpenApiAccessAndImportAfterOAuth());
           return false;
@@ -746,16 +747,24 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _verifyNaverOpenApiAccessAndImportAfterOAuth() async {
-    for (var attempt = 0; attempt < 4; attempt += 1) {
-      await Future<void>.delayed(const Duration(milliseconds: 800));
+    NaverCalendarPermissionResult? lastPermission;
+    final maxAttempts = widget._naverImportService != null ? 1 : 12;
+    final retryDelay = widget._naverImportService != null
+        ? Duration.zero
+        : const Duration(seconds: 1);
+    for (var attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (retryDelay > Duration.zero) {
+        await Future<void>.delayed(retryDelay);
+      }
       if (!mounted || !_pendingNaverOpenApiImportAfterConsent) {
         return;
       }
-      final hasAccess = await _naverImportService.hasCalendarAccess();
+      final permission = await _refreshNaverCalendarPermissionForSettings();
+      lastPermission = permission;
       if (!mounted || !_pendingNaverOpenApiImportAfterConsent) {
         return;
       }
-      if (!hasAccess) {
+      if (!permission.isGranted) {
         continue;
       }
       setState(() {
@@ -778,12 +787,49 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
     await _markNaverCalDavConnection(
       status: CalendarConnectionStatus.reauthRequired,
-      lastError: 'Naver Calendar permission was not granted after OAuth.',
+      lastError: lastPermission?.message ??
+          'Naver Calendar permission was not granted after OAuth.',
     );
     if (mounted) {
       await _loadCalendarStatus();
-      _showSnack('네이버 캘린더 권한을 확인하지 못했습니다. 동의 화면에서 캘린더 권한을 허용해 주세요.');
+      _showSnack(_naverOpenApiFailureMessage(lastPermission));
     }
+  }
+
+  Future<NaverCalendarPermissionResult>
+      _refreshNaverCalendarPermissionForSettings() async {
+    if (widget._naverCalendarPermissionService != null ||
+        _ownsNaverImportService) {
+      return _naverCalendarPermissionServiceInstance.refreshStatus();
+    }
+
+    final hasAccess = await _naverImportService.hasCalendarAccess();
+    if (hasAccess) {
+      return const NaverCalendarPermissionResult(
+        status: NaverCalendarPermissionStatus.granted,
+        message: '네이버 캘린더 권한을 확인했습니다.',
+      );
+    }
+    return const NaverCalendarPermissionResult(
+      status: NaverCalendarPermissionStatus.unknown,
+      message: '네이버 캘린더 권한을 아직 확인하지 못했습니다.',
+    );
+  }
+
+  String _naverOpenApiFailureMessage(
+    NaverCalendarPermissionResult? permission,
+  ) {
+    final status = permission?.status;
+    if (status == NaverCalendarPermissionStatus.denied) {
+      return '네이버 캘린더 권한이 아직 허용되지 않았습니다. 동의 화면에서 캘린더 권한을 허용해 주세요.';
+    }
+    if (status == NaverCalendarPermissionStatus.networkError) {
+      return permission?.message ?? '네이버 캘린더 권한 확인 중 네트워크 문제가 발생했습니다.';
+    }
+    if (permission?.message.contains('토큰') == true) {
+      return '네이버 로그인은 됐지만 캘린더 토큰을 받지 못했습니다. 네이버 provider scope가 email,calendar인지 확인해 주세요.';
+    }
+    return permission?.message ?? '네이버 캘린더 권한을 확인하지 못했습니다. 다시 연결해 주세요.';
   }
 
   Future<NaverCalDavSyncResult?> _importNaverCalDavEvents({
@@ -3306,10 +3352,12 @@ class _SettingsScreenState extends State<SettingsScreen>
       return summary.message;
     }
     if (_hasNaverCalDavCredentials) {
-      return _lastNaverCalDavResult?.message ?? '네이버 CalDAV 자격증명이 저장되어 있습니다. 동기화를 눌러 확인해 주세요.';
+      return _lastNaverCalDavResult?.message ??
+          '네이버 CalDAV 자격증명이 저장되어 있습니다. 동기화를 눌러 확인해 주세요.';
     }
     if (_hasNaverOpenApiAccess) {
-      return _lastNaverCalDavResult?.message ?? '네이버 캘린더 권한은 확인됐습니다. 동기화를 눌러 일정을 가져오세요.';
+      return _lastNaverCalDavResult?.message ??
+          '네이버 캘린더 권한은 확인됐습니다. 동기화를 눌러 일정을 가져오세요.';
     }
     return '네이버 캘린더 연결 안 됨';
   }

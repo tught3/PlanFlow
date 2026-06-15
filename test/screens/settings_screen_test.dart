@@ -693,7 +693,7 @@ void main() {
       findsNothing,
     );
     expect(
-      find.textContaining('캘린더 권한을 허용하고 돌아오면 자동으로 일정을 가져옵니다'),
+      find.textContaining('동의 후 PlanFlow로 돌아오면 자동으로 권한을 확인합니다'),
       findsWidgets,
     );
     await tester.pump(const Duration(seconds: 4));

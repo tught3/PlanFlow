@@ -1819,3 +1819,9 @@
 - 새 `google-services.json`을 반영한 뒤 `E:\FluxStudio\tools\deploy-play.bat planflow`를 실행해 `1.1.0+41`을 Play `alpha` 트랙에 업로드했다.
 - `scripts/flutter-local.ps1 build apk --debug --no-pub`도 통과했고, 에뮬레이터 `emulator-5554`에 debug APK 설치까지 확인했다.
 - 현재 작업트리에는 사용자가 이미 갖고 있던 unrelated dirty files가 남아 있으므로, 배포 관련 변경은 `pubspec.yaml`과 체크포인트만 분리해 처리한다.
+
+## 2026-06-15 Google/Naver 캘린더 실패 진단 보강
+- 네이버 OAuth 복귀 후 권한 확인을 즉시 실패 처리하지 않고 실제 런타임에서는 최대 12초 동안 재확인한 뒤 가져오기를 이어가도록 보강했다.
+- 네이버 권한 확인 경로에 `PlanFlowNaverCalendar` 로그를 추가해 토큰 출처, probe HTTP status, 응답 body 일부, missing token/network/denied 원인을 구분할 수 있게 했다.
+- Google Calendar 실패는 현재 코드보다 Google Cloud/Firebase 프로젝트와 OAuth client/google-services.json 정합성 문제로 분리했으며, 앱에는 기존 `PlanFlowGoogleAuth` 로그와 ApiException 10 안내를 유지한다.
+- 검증: settings_screen_test, naver_calendar_permission_service_test, naver_open_api_calendar_service_test, analyze, debug APK build 통과.
