@@ -1850,3 +1850,8 @@
 - 사용자가 요청한 실제 비공개 테스트 트랙은 Play/GPP 기준 `alpha`이므로 `E:\FluxStudio\tools\deploy-play.bat planflow`를 다시 실행해 `1.1.0+44`로 bump했다.
 - 배포 래퍼가 `Track: alpha` 설정으로 analyze, focused tests, release AAB build, Gradle Play Publisher 업로드를 완료했다.
 - 검증: `:app:publishReleaseBundle` 출력에서 `Updating [completed] release (com.fluxstudio.planflow:[44]) in track 'alpha'` 확인, Telegram 비공개 테스트 업로드 완료 알림 전송 확인.
+
+## 2026-06-16 Google/Naver 캘린더 연동 진단 로그 보강
+- Google Calendar 연결/상태/동기화 경로에 `PlanFlowGoogleAuth` 로그를 추가해 sign-in, access token, Supabase 세션, API fetch, connection 저장 단계를 분리해 볼 수 있게 했다.
+- Naver Calendar OAuth/콜백/권한 확인/Open API 가져오기/설정 화면 상태 경로에 `PlanFlowNaverCalendar` 로그를 추가해 consent URL, callback pending 복원, provider token capture, permission probe, HTTP status/body shape, import 결과를 추적할 수 있게 했다.
+- 검증: `scripts\flutter-local.ps1 analyze --no-pub`, `scripts\flutter-local.ps1 build apk --debug --no-pub` 통과. 현재 ADB 연결 기기가 없어 설치 검증은 미실행.

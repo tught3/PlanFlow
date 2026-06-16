@@ -32,10 +32,34 @@ class OAuthCallbackHandler {
   static const _storedPendingPurposeKey = 'oauth_callback_pending_purpose';
   static const _storedPendingMethodKey = 'oauth_callback_pending_method';
   static const _storedPendingStartedAtKey = 'oauth_callback_pending_started_at';
+  static const _naverCalendarLogTag = 'PlanFlowNaverCalendar';
 
   final AppLinks _appLinks;
   StreamSubscription<Uri>? _subscription;
   bool _initialLinkHandled = false;
+
+  static void _logNaverCalendar(String message) {
+    debugPrint('[$_naverCalendarLogTag] oauth $message');
+  }
+
+  static String _safeUriSummary(Uri uri) {
+    Map<String, String> fragmentParameters = const <String, String>{};
+    if (uri.fragment.isNotEmpty) {
+      try {
+        fragmentParameters = Uri.splitQueryString(
+          uri.fragment.startsWith('#')
+              ? uri.fragment.substring(1)
+              : uri.fragment,
+        );
+      } catch (_) {
+        fragmentParameters = const <String, String>{};
+      }
+    }
+    return 'scheme=${uri.scheme} host=${uri.host} path=${uri.path} '
+        'queryKeys=${uri.queryParameters.keys.join(',')} '
+        'fragmentPresent=${uri.fragment.isNotEmpty} '
+        'fragmentKeys=${fragmentParameters.keys.join(',')}';
+  }
 
   static void markPendingLogin(PlanFlowOAuthProvider provider) {
     clearLatestUserMessage();
@@ -58,6 +82,9 @@ class OAuthCallbackHandler {
       PlanFlowOAuthProvider.naver => 'naver',
     };
     _pendingStartedAt = DateTime.now();
+    if (provider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendar('markPendingCalendarLink provider=naver');
+    }
     unawaited(persistCurrentPendingCallback());
   }
 
@@ -84,6 +111,11 @@ class OAuthCallbackHandler {
   }
 
   static void clearPendingCallback() {
+    if (_pendingMethod == 'naver') {
+      _logNaverCalendar(
+        'clearPendingCallback purpose=$_pendingPurpose method=$_pendingMethod',
+      );
+    }
     _pendingPurpose = null;
     _pendingMethod = null;
     _pendingStartedAt = null;
@@ -148,6 +180,11 @@ class OAuthCallbackHandler {
         _storedPendingStartedAtKey,
         startedAt.millisecondsSinceEpoch,
       );
+      if (method == 'naver') {
+        _logNaverCalendar(
+          'persistPendingCallback purpose=$purpose method=$method',
+        );
+      }
     } catch (error) {
       debugPrint('OAuth pending callback persist skipped: $error');
     }
@@ -159,6 +196,7 @@ class OAuthCallbackHandler {
       await prefs.remove(_storedPendingPurposeKey);
       await prefs.remove(_storedPendingMethodKey);
       await prefs.remove(_storedPendingStartedAtKey);
+      _logNaverCalendar('clearStoredPendingCallback completed');
     } catch (error) {
       debugPrint('OAuth pending callback clear skipped: $error');
     }
@@ -173,6 +211,7 @@ class OAuthCallbackHandler {
       final method = prefs.getString(_storedPendingMethodKey);
       final startedAtMillis = prefs.getInt(_storedPendingStartedAtKey);
       if (purposeName == null || method == null || startedAtMillis == null) {
+        _logNaverCalendar('readStoredPendingCallback empty');
         return null;
       }
 
@@ -185,10 +224,20 @@ class OAuthCallbackHandler {
       }
       final startedAt = DateTime.fromMillisecondsSinceEpoch(startedAtMillis);
       if (purpose == null || DateTime.now().difference(startedAt) > maxAge) {
+        if (method == 'naver') {
+          _logNaverCalendar(
+            'readStoredPendingCallback expiredOrInvalid purpose=$purposeName',
+          );
+        }
         await _clearStoredPendingCallback();
         return null;
       }
 
+      if (method == 'naver') {
+        _logNaverCalendar(
+          'readStoredPendingCallback restored purpose=$purpose method=$method',
+        );
+      }
       return _StoredOAuthPending(
         purpose: purpose,
         method: method,
@@ -223,12 +272,18 @@ class OAuthCallbackHandler {
         inMemoryStartedAt != null &&
         DateTime.now().difference(inMemoryStartedAt) <=
             const Duration(minutes: 10)) {
+      if (_pendingMethod == 'naver') {
+        _logNaverCalendar(
+          'resolvePendingCallback source=memory purpose=$_pendingPurpose',
+        );
+      }
       return _StoredOAuthPending(
         purpose: _pendingPurpose!,
         method: _pendingMethod!,
         startedAt: inMemoryStartedAt,
       );
     }
+    _logNaverCalendar('resolvePendingCallback source=stored');
     return _readStoredPendingCallback();
   }
 
@@ -279,6 +334,7 @@ class OAuthCallbackHandler {
     try {
       final uri = await _appLinks.getInitialLink();
       if (uri != null) {
+        _logNaverCalendar('initialLink observed ${_safeUriSummary(uri)}');
         await _handleUri(uri);
       }
     } catch (error, stackTrace) {
@@ -312,6 +368,16 @@ class OAuthCallbackHandler {
       'emailConfirmation=$isEmailConfirmation '
       'pendingPurpose=$pendingPurpose pendingMethod=$pendingMethod',
     );
+    if (pendingMethod == 'naver') {
+      _logNaverCalendar(
+        'handleUri observed original=${_safeUriSummary(uri)} '
+        'normalized=${_safeUriSummary(normalizedUri)} '
+        'pendingPurpose=$pendingPurpose pendingMethod=$pendingMethod '
+        'trustProviderToken=$isPendingNaverCalendarLink '
+        'passwordRecovery=$isPasswordRecovery '
+        'emailConfirmation=$isEmailConfirmation',
+      );
+    }
 
     final callbackErrorMessage = callbackErrorMessageFor(
       normalizedUri,
@@ -325,12 +391,24 @@ class OAuthCallbackHandler {
         'errorCode=${normalizedUri.queryParameters['error_code']} '
         'description=${normalizedUri.queryParameters['error_description']}',
       );
+      if (pendingMethod == 'naver') {
+        _logNaverCalendar(
+          'callback error '
+          'error=${normalizedUri.queryParameters['error']} '
+          'errorCode=${normalizedUri.queryParameters['error_code']} '
+          'descriptionPresent='
+          '${normalizedUri.queryParameters['error_description']?.isNotEmpty == true}',
+        );
+      }
       clearPendingCallback();
       latestUserMessage.value = callbackErrorMessage;
       return;
     }
 
     final ready = await _waitForSupabaseReady();
+    if (pendingMethod == 'naver') {
+      _logNaverCalendar('supabaseReady=$ready');
+    }
     if (!ready) {
       debugPrint('OAuth callback skipped: Supabase was not ready in time.');
       clearPendingCallback();
@@ -364,6 +442,9 @@ class OAuthCallbackHandler {
 
     if (!shouldExchangeCallback) {
       debugPrint('OAuth callback already produced a Supabase session.');
+      if (pendingMethod == 'naver') {
+        _logNaverCalendar('no exchange path: capture provider token');
+      }
       await _captureNaverProviderTokenIfAny(
         allowWithoutNaverIdentity: isPendingNaverCalendarLink,
       );
@@ -382,6 +463,9 @@ class OAuthCallbackHandler {
     }
 
     try {
+      if (pendingMethod == 'naver') {
+        _logNaverCalendar('exchange start');
+      }
       final response = await client.auth.getSessionFromUrl(normalizedUri);
       debugPrint(
         'OAuth callback exchange completed: user=${response.session.user.id}',
@@ -427,11 +511,22 @@ class OAuthCallbackHandler {
         'code=${error.code} status=${error.statusCode}',
       );
       clearPendingCallback();
+      if (pendingMethod == 'naver') {
+        _logNaverCalendar(
+          'exchange authException message=${error.message} '
+          'code=${error.code} status=${error.statusCode}',
+        );
+      }
       latestUserMessage.value = isEmailConfirmation
           ? _messageForEmailConfirmationException(error)
           : _messageForAuthException(error);
     } catch (error) {
       debugPrint('OAuth callback exchange failed: $error');
+      if (pendingMethod == 'naver') {
+        _logNaverCalendar(
+          'exchange failed type=${error.runtimeType} error=$error',
+        );
+      }
       clearPendingCallback();
       latestUserMessage.value = isEmailConfirmation
           ? '이메일 인증을 확인하지 못했습니다. 인증 링크가 만료되었거나 이미 사용되었을 수 있습니다. 로그인으로 다시 시도해 주세요.'
@@ -578,6 +673,11 @@ class OAuthCallbackHandler {
     bool allowWithoutNaverIdentity = false,
   }) async {
     try {
+      _logNaverCalendar(
+        'provider token capture start '
+        'explicitTokenPresent=${explicitProviderToken?.trim().isNotEmpty == true} '
+        'allowWithoutNaverIdentity=$allowWithoutNaverIdentity',
+      );
       final permissionService = NaverCalendarPermissionService();
       final token = explicitProviderToken?.trim();
       if (token != null && token.isNotEmpty) {
@@ -585,13 +685,17 @@ class OAuthCallbackHandler {
           token,
           allowWithoutNaverIdentity: allowWithoutNaverIdentity,
         );
+        _logNaverCalendar('provider token capture completed source=explicit');
         return;
       }
       await permissionService.captureCurrentProviderToken(
         allowWithoutNaverIdentity: allowWithoutNaverIdentity,
       );
+      _logNaverCalendar('provider token capture completed source=session');
     } catch (error, stackTrace) {
-      debugPrint('Naver provider token capture skipped: $error');
+      _logNaverCalendar(
+        'provider token capture skipped type=${error.runtimeType} error=$error',
+      );
       debugPrintStack(stackTrace: stackTrace);
     }
   }

@@ -27,7 +27,13 @@ class AuthService implements AuthSessionClient {
   AuthService({SupabaseClient? client})
       : _client = client ?? Supabase.instance.client;
 
+  static const String _naverCalendarLogTag = 'PlanFlowNaverCalendar';
+
   final SupabaseClient _client;
+
+  static void _logNaverCalendarAuth(String message) {
+    debugPrint('[$_naverCalendarLogTag] auth $message');
+  }
 
   @override
   Session? get currentSession => _client.auth.currentSession;
@@ -92,6 +98,13 @@ class AuthService implements AuthSessionClient {
     bool forceConsent = false,
     bool forCalendar = false,
   }) async {
+    if (provider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'signInWithOAuth start forCalendar=$forCalendar '
+        'forceConsent=$forceConsent '
+        'sessionPresent=${_client.auth.currentSession != null}',
+      );
+    }
     final uri = await buildOAuthSignInUri(
       provider,
       forceConsent: forceConsent,
@@ -101,6 +114,14 @@ class AuthService implements AuthSessionClient {
       provider,
       forceConsent: forceConsent,
     );
+    if (provider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'signInWithOAuth built uri host=${uri.host} path=${uri.path} '
+        'queryKeys=${uri.queryParameters.keys.join(',')} '
+        'scopes=${oauthScopesFor(provider, forCalendar: forCalendar) ?? 'default'} '
+        'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
+      );
+    }
     return _launchOAuthUrl(
       uri: uri,
       appProvider: provider,
@@ -121,6 +142,13 @@ class AuthService implements AuthSessionClient {
       provider,
       forceConsent: forceConsent,
     );
+    if (provider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'buildOAuthSignInUri request forCalendar=$forCalendar '
+        'forceConsent=$forceConsent scopes=${scopes ?? 'default'} '
+        'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
+      );
+    }
     final response = await _client.auth.getOAuthSignInUrl(
       provider: oauthProvider,
       redirectTo: AppEnv.authRedirectUrl,
@@ -140,7 +168,18 @@ class AuthService implements AuthSessionClient {
 
   Future<bool> connectCalendarProvider(PlanFlowOAuthProvider provider) async {
     final oauthProvider = _oauthProvider(provider);
+    if (provider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'connectCalendarProvider start sessionPresent=${_client.auth.currentSession != null} '
+        'currentUserPresent=${_client.auth.currentUser != null}',
+      );
+    }
     if (_client.auth.currentSession == null) {
+      if (provider == PlanFlowOAuthProvider.naver) {
+        _logNaverCalendarAuth(
+          'connectCalendarProvider no Supabase session -> signInWithOAuth for calendar',
+        );
+      }
       return signInWithOAuth(
         provider,
         forCalendar: provider == PlanFlowOAuthProvider.naver,
@@ -149,6 +188,9 @@ class AuthService implements AuthSessionClient {
 
     if (provider == PlanFlowOAuthProvider.naver &&
         await _hasLinkedIdentity('naver')) {
+      _logNaverCalendarAuth(
+        'connectCalendarProvider linked identity exists -> fresh consent signIn',
+      );
       debugPrint(
         'OAuth calendar link fallback: provider=naver already linked, '
         'requesting fresh consent instead of identity link',
@@ -158,6 +200,13 @@ class AuthService implements AuthSessionClient {
 
     final queryParams = oauthQueryParamsFor(provider);
     try {
+      if (provider == PlanFlowOAuthProvider.naver) {
+        _logNaverCalendarAuth(
+          'connectCalendarProvider getLinkIdentityUrl scopes='
+          '${oauthScopesFor(provider, forCalendar: true) ?? 'default'} '
+          'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
+        );
+      }
       final response = await _client.auth.getLinkIdentityUrl(
         oauthProvider,
         redirectTo: AppEnv.authRedirectUrl,
@@ -174,6 +223,9 @@ class AuthService implements AuthSessionClient {
     } catch (error, stackTrace) {
       if (provider == PlanFlowOAuthProvider.naver &&
           _isIdentityAlreadyExistsError(error)) {
+        _logNaverCalendarAuth(
+          'connectCalendarProvider identity_already_exists -> fresh consent signIn',
+        );
         debugPrint(
           'OAuth calendar link already exists: falling back to '
           'fresh Naver consent flow',
@@ -222,10 +274,16 @@ class AuthService implements AuthSessionClient {
   Future<bool> _hasLinkedIdentity(String providerKey) async {
     try {
       final identities = await _client.auth.getUserIdentities();
-      return identities.any((identity) {
+      final hasIdentity = identities.any((identity) {
         final provider = identity.provider.toLowerCase();
         return provider.contains(providerKey.toLowerCase());
       });
+      if (providerKey.toLowerCase().contains('naver')) {
+        _logNaverCalendarAuth(
+          'linked identity lookup count=${identities.length} hasNaver=$hasIdentity',
+        );
+      }
+      return hasIdentity;
     } catch (error, stackTrace) {
       debugPrint('OAuth linked identity lookup skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -256,12 +314,24 @@ class AuthService implements AuthSessionClient {
       PlanFlowOAuthProvider.kakao => LaunchMode.inAppBrowserView,
       PlanFlowOAuthProvider.naver => LaunchMode.inAppBrowserView,
     };
+    final forCalendar = purpose == 'calendar-link';
+    final effectiveScopes =
+        oauthScopesFor(appProvider, forCalendar: forCalendar) ?? 'default';
     debugPrint(
       'OAuth launch: purpose=$purpose appProvider=$appProvider '
       'supabaseProvider=$supabaseProvider host=${uri.host} path=${uri.path} '
-      'scopes=${oauthScopesFor(appProvider) ?? 'default'} '
+      'scopes=$effectiveScopes '
       'queryParams=${queryParams?.keys.join(',') ?? 'none'}',
     );
+    if (appProvider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'launchOAuthUrl purpose=$purpose mode=$launchMode '
+        'host=${uri.host} path=${uri.path} '
+        'queryKeys=${uri.queryParameters.keys.join(',')} '
+        'scopes=$effectiveScopes '
+        'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
+      );
+    }
     _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
     await OAuthCallbackHandler.persistCurrentPendingCallback();
     final launched = await launchUrl(
@@ -270,7 +340,13 @@ class AuthService implements AuthSessionClient {
       webOnlyWindowName: '_self',
     );
     if (!launched) {
+      if (appProvider == PlanFlowOAuthProvider.naver) {
+        _logNaverCalendarAuth('launchOAuthUrl failed launched=false');
+      }
       OAuthCallbackHandler.clearPendingCallback();
+    }
+    if (appProvider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth('launchOAuthUrl result launched=$launched');
     }
     return launched;
   }

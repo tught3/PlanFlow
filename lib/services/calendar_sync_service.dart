@@ -421,8 +421,16 @@ class CalendarSyncService {
   }
 
   Future<CalendarIntegrationResult> getGoogleStatus() async {
+    _logGoogleAuth(
+      'getGoogleStatus start platform=${defaultTargetPlatform.name} '
+      'isAndroid=$_isAndroidGoogleSignIn '
+      'clientIdSet=${_hasText(_googleClientId)} '
+      'serverClientIdSet=${_hasText(_googleServerClientId)}',
+    );
     final configurationIssue = _googleConfigurationIssue;
     if (configurationIssue != null) {
+      _logGoogleAuth(
+          'getGoogleStatus blocked by configuration: $configurationIssue');
       return CalendarIntegrationResult.notConfigured(
         CalendarProvider.google,
         message: configurationIssue,
@@ -430,6 +438,7 @@ class CalendarSyncService {
     }
 
     if (!_isGooglePlatformSupported) {
+      _logGoogleAuth('getGoogleStatus unsupported platform');
       return CalendarIntegrationResult.unsupported(
         CalendarProvider.google,
         message: '현재 기기에서는 Google Calendar 로그인을 아직 지원하지 않습니다.',
@@ -438,6 +447,11 @@ class CalendarSyncService {
 
     try {
       final connection = await _fetchConnection(CalendarProvider.google);
+      _logGoogleAuth(
+        'getGoogleStatus connection status=${connection?.status.name} '
+        'connected=${connection?.isConnected == true} '
+        'providerAccountEmail=${connection?.providerAccountEmail ?? "(null)"}',
+      );
       if (connection == null || !connection.isConnected) {
         return CalendarIntegrationResult.signedOut(
           CalendarProvider.google,
@@ -450,6 +464,7 @@ class CalendarSyncService {
         suppressErrors: true,
       );
       if (account == null) {
+        _logGoogleAuth('getGoogleStatus silentSignIn account=null');
         return CalendarIntegrationResult.ready(
           CalendarProvider.google,
           message:
@@ -457,13 +472,17 @@ class CalendarSyncService {
         );
       }
 
+      _logGoogleAuth('getGoogleStatus silentSignIn email=${account.email}');
       return CalendarIntegrationResult.ready(
         CalendarProvider.google,
         message: 'Google Calendar 연결이 정상입니다.',
       );
     } catch (error, stackTrace) {
-      debugPrint('Google Calendar status check failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      _logGoogleAuthError(
+        'Google Calendar status check failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
       return CalendarIntegrationResult.failed(
         CalendarProvider.google,
         error: error,
@@ -495,6 +514,7 @@ class CalendarSyncService {
     }
 
     if (!_isGooglePlatformSupported) {
+      _logGoogleAuth('syncGoogleCalendar unsupported platform');
       return CalendarIntegrationResult.unsupported(
         CalendarProvider.google,
         message: '현재 기기에서는 Google Calendar 동기화를 아직 지원하지 않습니다.',
@@ -534,6 +554,10 @@ class CalendarSyncService {
       final accessToken = await _fetchGoogleAccessToken(
         interactive: interactive,
       );
+      _logGoogleAuth(
+        'Google access token fetched present=${accessToken?.trim().isNotEmpty == true} '
+        'lastAccount=${_lastGoogleAccountEmail ?? "(null)"}',
+      );
       if (accessToken == null || accessToken.isEmpty) {
         _logGoogleAuth(
           'Google access token is empty. interactive=$interactive '
@@ -565,11 +589,17 @@ class CalendarSyncService {
         );
       }
 
+      _logGoogleAuth('checking Supabase session before calendar write');
       await _ensureSupabaseSessionForCalendarWrite();
+      _logGoogleAuth('Supabase session ready for calendar write');
 
       if (existingConnection?.providerAccountEmail != null &&
           _lastGoogleAccountEmail != null &&
           existingConnection!.providerAccountEmail != _lastGoogleAccountEmail) {
+        _logGoogleAuth(
+          'Google account mismatch existing=${existingConnection.providerAccountEmail} '
+          'selected=$_lastGoogleAccountEmail',
+        );
         await _saveConnection(
           CalendarProvider.google,
           status: CalendarConnectionStatus.reauthRequired,
@@ -600,10 +630,17 @@ class CalendarSyncService {
 
       try {
         final api = gcal.CalendarApi(client);
+        _logGoogleAuth('Google Calendar API fetch start');
         final googleEvents = await _googleCalendarEventsFetcher(api);
+        _logGoogleAuth(
+            'Google Calendar API fetch completed count=${googleEvents.length}');
         final importedItems = await _persistGoogleEvents(googleEvents);
         final exportedItems = await _exportPlanFlowEventsToGoogle(api);
         final syncedItems = importedItems + exportedItems;
+        _logGoogleAuth(
+          'Google Calendar sync counts imported=$importedItems '
+          'exported=$exportedItems total=$syncedItems',
+        );
         await _saveConnection(
           CalendarProvider.google,
           status: CalendarConnectionStatus.connected,
@@ -612,6 +649,7 @@ class CalendarSyncService {
           accessToken: accessToken,
           lastSyncedAt: DateTime.now().toUtc(),
         );
+        _logGoogleAuth('Google Calendar connection saved status=connected');
 
         return CalendarIntegrationResult.synced(
           CalendarProvider.google,
@@ -979,6 +1017,18 @@ class CalendarSyncService {
   }) async {
     try {
       final existing = await _fetchConnection(provider);
+      final logTag = provider == CalendarProvider.google
+          ? _googleAuthLogTag
+          : 'PlanFlowNaverCalendar';
+      debugPrint(
+        '[$logTag] saveConnection provider=${_providerKey(provider)} '
+        'status=${status.name} '
+        'email=${providerAccountEmail ?? existing?.providerAccountEmail ?? "(null)"} '
+        'accessTokenPresent=${accessToken?.trim().isNotEmpty == true || existing?.accessToken?.trim().isNotEmpty == true} '
+        'refreshTokenPresent=${refreshToken?.trim().isNotEmpty == true || existing?.refreshToken?.trim().isNotEmpty == true} '
+        'lastSyncedAtSet=${lastSyncedAt != null || existing?.lastSyncedAt != null} '
+        'lastErrorPresent=${lastError?.trim().isNotEmpty == true}',
+      );
       await _calendarConnectionRepository.upsertConnection(
         CalendarConnectionModel(
           userId: _currentUserId(),
@@ -992,9 +1042,22 @@ class CalendarSyncService {
           lastError: lastError,
         ),
       );
+      debugPrint(
+        '[$logTag] saveConnection completed provider=${_providerKey(provider)} '
+        'status=${status.name}',
+      );
     } catch (error, stackTrace) {
-      debugPrint('Calendar connection save skipped: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      if (provider == CalendarProvider.google) {
+        _logGoogleAuthError(
+          'Calendar connection save skipped',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      } else {
+        debugPrint(
+            '[PlanFlowNaverCalendar] saveConnection skipped error=$error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
     }
   }
 
@@ -1602,26 +1665,42 @@ class CalendarSyncService {
 
   Future<void> _ensureSupabaseSessionForCalendarWrite() async {
     if (_currentUserIdOverride != null) {
+      _logGoogleAuth(
+          'Supabase session check skipped: currentUserIdOverride present');
       return;
     }
 
     final auth = Supabase.instance.client.auth;
+    _logGoogleAuth(
+      'Supabase session check start sessionPresent=${auth.currentSession != null} '
+      'userPresent=${auth.currentUser != null}',
+    );
     if (auth.currentSession == null) {
       throw StateError('캘린더 일정을 저장하려면 PlanFlow 로그인이 필요합니다.');
     }
 
     try {
       await auth.getUser();
+      _logGoogleAuth('Supabase getUser succeeded before refresh');
       return;
-    } catch (error) {
-      debugPrint('Calendar Supabase user check failed: $error');
+    } catch (error, stackTrace) {
+      _logGoogleAuthError(
+        'Calendar Supabase user check failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
 
     try {
       await auth.refreshSession();
       await auth.getUser();
-    } catch (error) {
-      debugPrint('Calendar Supabase session refresh failed: $error');
+      _logGoogleAuth('Supabase refreshSession and getUser succeeded');
+    } catch (error, stackTrace) {
+      _logGoogleAuthError(
+        'Calendar Supabase session refresh failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
       throw StateError(
         'PlanFlow 로그인 세션을 확인하지 못했습니다. 로그아웃 후 다시 로그인해 주세요.',
       );

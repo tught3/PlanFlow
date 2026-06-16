@@ -57,6 +57,20 @@ class NaverOpenApiCalendarService {
   final Uri _findSchedulesUri;
   final Duration _timeout;
 
+  static const String _logTag = 'PlanFlowNaverCalendar';
+
+  void _log(String message) {
+    debugPrint('[$_logTag] openApi $message');
+  }
+
+  static String _safeBodyExcerpt(String body) {
+    final compact = body.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.length <= 500) {
+      return compact;
+    }
+    return '${compact.substring(0, 500)}...';
+  }
+
   // ---------------------------------------------------------------------------
   // 공개 API
   // ---------------------------------------------------------------------------
@@ -76,7 +90,15 @@ class NaverOpenApiCalendarService {
     final range = _resolveSyncRange(mode: mode, from: from, to: to);
     final diagnostics = _MutableDiagnostics();
 
+    _log(
+      'syncAll start userPresent=${resolvedUserId?.isNotEmpty == true} '
+      'mode=$mode from=${range.from?.toIso8601String() ?? "(null)"} '
+      'to=${range.to?.toIso8601String() ?? "(null)"} '
+      'skipUnchanged=$skipUnchanged diagnosticImport=$diagnosticImport',
+    );
+
     if (resolvedUserId == null || resolvedUserId.isEmpty) {
+      _log('syncAll blocked: no PlanFlow user');
       return NaverCalDavSyncResult(
         success: false,
         message: '먼저 PlanFlow에 로그인해 주세요.',
@@ -97,6 +119,8 @@ class NaverOpenApiCalendarService {
       ));
 
       final accessToken = await _resolveAccessToken();
+      _log(
+          'syncAll accessTokenPresent=${accessToken?.trim().isNotEmpty == true}');
       if (accessToken == null || accessToken.trim().isEmpty) {
         return NaverCalDavSyncResult(
           success: false,
@@ -122,6 +146,7 @@ class NaverOpenApiCalendarService {
         to: range.to,
         diagnostics: diagnostics,
       );
+      _log('syncAll fetched schedules count=${schedules.length}');
 
       emit(NaverCalDavSyncProgress(
         mode: mode,
@@ -259,8 +284,10 @@ class NaverOpenApiCalendarService {
       ));
 
       final frozenDiagnostics = diagnostics.freeze();
-      debugPrint(
-        'Naver Open API diagnostics: ${frozenDiagnostics.toSummaryMessage()}',
+      _log(
+        'syncAll completed success=${failedCount == 0 || savedCount > 0 || skippedCount > 0} '
+        'read=${schedules.length} saved=$savedCount skipped=$skippedCount '
+        'failed=$failedCount diagnostics=${frozenDiagnostics.toSummaryMessage()}',
       );
 
       return NaverCalDavSyncResult(
@@ -283,7 +310,10 @@ class NaverOpenApiCalendarService {
         diagnostics: frozenDiagnostics,
       );
     } catch (error, stackTrace) {
-      debugPrint('Naver Open API sync failed: $error');
+      _log(
+        'syncAll failed type=${error.runtimeType} error=$error '
+        'diagnostics=${diagnostics.freeze().toSummaryMessage()}',
+      );
       debugPrintStack(stackTrace: stackTrace);
       return NaverCalDavSyncResult(
         success: false,
@@ -300,14 +330,22 @@ class NaverOpenApiCalendarService {
   /// OAuth 토큰 기반 캘린더 접근 가능 여부.
   Future<bool> hasCalendarAccess() async {
     try {
+      _log('hasCalendarAccess start');
       final permission = await (_permissionServiceOverride ??
               NaverCalendarPermissionService(
                 supabaseClient: _supabaseClientOverride,
                 accessTokenProvider: _accessTokenProviderOverride,
               ))
           .refreshStatus();
+      _log(
+        'hasCalendarAccess result status=${permission.status.name} '
+        'isGranted=${permission.isGranted} statusCode=${permission.statusCode} '
+        'message=${permission.message} errorType=${permission.error?.runtimeType}',
+      );
       return permission.isGranted;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      _log('hasCalendarAccess failed type=${error.runtimeType} error=$error');
+      debugPrintStack(stackTrace: stackTrace);
       return false;
     }
   }
@@ -344,6 +382,10 @@ class NaverOpenApiCalendarService {
       windowStart = windowEnd;
     }
 
+    _log(
+      'fetchSchedules range from=${effectiveFrom.toIso8601String()} '
+      'to=${effectiveTo.toIso8601String()} windows=${windows.length}',
+    );
     final all = <_NaverApiSchedule>[];
     for (final window in windows) {
       final windowSchedules = await _fetchWindow(
@@ -352,8 +394,13 @@ class NaverOpenApiCalendarService {
         to: window.to,
         diagnostics: diagnostics,
       );
+      _log(
+        'fetchSchedules window from=${window.from.toIso8601String()} '
+        'to=${window.to.toIso8601String()} count=${windowSchedules.length}',
+      );
       all.addAll(windowSchedules);
     }
+    _log('fetchSchedules total=${all.length}');
     return all;
   }
 
@@ -379,6 +426,11 @@ class NaverOpenApiCalendarService {
         },
       );
 
+      _log(
+        'fetchWindow request host=${uri.host} path=${uri.path} '
+        'startIndex=$startIndex count=$pageSize '
+        'from=${from.toIso8601String()} to=${to.toIso8601String()}',
+      );
       late http.Response response;
       try {
         response = await _httpClient.get(
@@ -399,19 +451,35 @@ class NaverOpenApiCalendarService {
           isNetworkError: true,
         );
       }
+      _log(
+        'fetchWindow response status=${response.statusCode} '
+        'bodyLength=${response.body.length} startIndex=$startIndex',
+      );
 
       if (response.statusCode == 401 || response.statusCode == 403) {
+        _log(
+          'fetchWindow permission error status=${response.statusCode} '
+          'body=${_safeBodyExcerpt(response.body)}',
+        );
         throw const _NaverApiException(
           '네이버 캘린더 권한이 연결되지 않았습니다. 설정에서 다시 연결해 주세요.',
           isPermissionError: true,
         );
       }
       if (response.statusCode >= 500) {
+        _log(
+          'fetchWindow server error status=${response.statusCode} '
+          'body=${_safeBodyExcerpt(response.body)}',
+        );
         throw _NaverApiException(
           '네이버 캘린더 서버 오류(${response.statusCode})가 발생했습니다. 잠시 후 다시 시도해 주세요.',
         );
       }
       if (response.statusCode < 200 || response.statusCode >= 400) {
+        _log(
+          'fetchWindow api error status=${response.statusCode} '
+          'body=${_safeBodyExcerpt(response.body)}',
+        );
         throw _NaverApiException(
           '네이버 캘린더 API 오류(${response.statusCode})가 발생했습니다.',
         );
@@ -421,18 +489,17 @@ class NaverOpenApiCalendarService {
       try {
         body = jsonDecode(response.body) as Map<String, dynamic>;
       } catch (_) {
-        debugPrint(
-          'Naver Open API JSON parse failed. '
-          'status=${response.statusCode}, body=${response.body}',
+        _log(
+          'fetchWindow json parse failed status=${response.statusCode} '
+          'body=${_safeBodyExcerpt(response.body)}',
         );
         break;
       }
 
       // diagnostic 덤프: 첫 응답 구조 확인용
       if (startIndex == 1) {
-        debugPrint(
-          'Naver Open API response (first page): '
-          'status=${response.statusCode}, '
+        _log(
+          'fetchWindow first page status=${response.statusCode} '
           'keys=${body.keys.toList()}',
         );
       }
@@ -440,11 +507,16 @@ class NaverOpenApiCalendarService {
       final scheduleList = _extractScheduleList(body);
       if (scheduleList == null) {
         // 응답 구조가 예상과 다를 경우 전체 응답 덤프
-        debugPrint(
-          'Naver Open API: unexpected response shape — full body: ${response.body}',
+        _log(
+          'fetchWindow unexpected response shape '
+          'body=${_safeBodyExcerpt(response.body)}',
         );
         break;
       }
+      _log(
+        'fetchWindow scheduleListLength=${scheduleList.length} '
+        'startIndex=$startIndex',
+      );
 
       for (final item in scheduleList) {
         if (item is! Map<String, dynamic>) {
@@ -724,13 +796,21 @@ class NaverOpenApiCalendarService {
 
   Future<String?> _resolveAccessToken() async {
     if (_accessTokenProviderOverride != null) {
-      return _accessTokenProviderOverride();
+      _log('resolveAccessToken source=override');
+      final token = await _accessTokenProviderOverride();
+      _log(
+          'resolveAccessToken override tokenPresent=${token?.trim().isNotEmpty == true}');
+      return token;
     }
     final permService = _permissionServiceOverride ??
         NaverCalendarPermissionService(
           supabaseClient: _supabaseClientOrNull,
         );
-    return permService.resolveAccessTokenForCalendar();
+    _log('resolveAccessToken source=permissionService');
+    final token = await permService.resolveAccessTokenForCalendar();
+    _log(
+        'resolveAccessToken permissionService tokenPresent=${token?.trim().isNotEmpty == true}');
+    return token;
   }
 
   ({DateTime? from, DateTime? to}) _resolveSyncRange({
