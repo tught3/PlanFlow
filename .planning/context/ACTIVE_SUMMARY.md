@@ -1845,3 +1845,8 @@
 - `1.1.0+42` 업로드 재시도는 Play에서 이미 사용된 versionCode로 거부되어 `1.1.0+43`으로 bump 후 release AAB를 다시 생성했다.
 - Gradle Play Publisher로 `com.fluxstudio.planflow` internal 트랙에 `app-release.aab` 업로드 및 edit commit을 완료했다.
 - 검증: deploy 래퍼의 analyze/focused tests 단계 통과, `scripts\flutter-local.ps1 build appbundle --release --no-pub` 통과, `:app:publishReleaseBundle --track internal` 성공, Telegram 성공 알림 전송 확인.
+
+## 2026-06-16 PlanFlow 비공개 테스트 Alpha 배포 1.1.0+44
+- 사용자가 요청한 실제 비공개 테스트 트랙은 Play/GPP 기준 `alpha`이므로 `E:\FluxStudio\tools\deploy-play.bat planflow`를 다시 실행해 `1.1.0+44`로 bump했다.
+- 배포 래퍼가 `Track: alpha` 설정으로 analyze, focused tests, release AAB build, Gradle Play Publisher 업로드를 완료했다.
+- 검증: `:app:publishReleaseBundle` 출력에서 `Updating [completed] release (com.fluxstudio.planflow:[44]) in track 'alpha'` 확인, Telegram 비공개 테스트 업로드 완료 알림 전송 확인.
