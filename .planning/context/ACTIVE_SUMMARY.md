@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-16 Naver auth log mojibake cleanup
+- `PlanFlowNaverCalendar` 계열 adb 로그에서 한국어 `message=` 본문과 응답 body excerpt를 제거하고, `status/statusCode/errorType/bodyLength`만 남기도록 바꿔 PowerShell/logcat 경로의 mojibake를 줄였다.
+- `lib/screens/settings/settings_screen.dart`, `lib/services/naver_open_api_calendar_service.dart`, `lib/services/naver_calendar_permission_service.dart`를 정리했고, `scripts/flutter-local.ps1 analyze --no-pub`는 통과했다.
+- 실제 기기 설치는 현재 ADB 연결이 끊겨 있어 재연결이 필요하다.
+
 ## 2026-06-14 PlanFlow in-app update progress overlay
 - `UpdateService`에 `checking / updating / openingPlayStore` UI 상태를 추가하고, `lib/app.dart`에서 이 상태를 전체 앱 위에 모달 로더로 보여주도록 붙였다.
 - 업데이트 흐름 동안 사용자가 화면을 계속 조작하지 못하도록 `ModalBarrier`로 입력을 막았고, `test/services/update_service_test.dart`에 상태 전이 회귀 테스트를 추가했다.

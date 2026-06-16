@@ -434,12 +434,14 @@ class _SettingsScreenState extends State<SettingsScreen>
     _logSettingsGoogleCalendar(
       'loadCalendarStatus google status=${summary.google.status.name} '
       'success=${summary.google.isSuccess} '
-      'syncedItems=${summary.google.syncedItems} message=${summary.google.message}',
+      'syncedItems=${summary.google.syncedItems} '
+      'errorType=${summary.google.error?.runtimeType}',
     );
     _logSettingsNaverCalendar(
       'loadCalendarStatus naver status=${summary.naver.status.name} '
       'success=${summary.naver.isSuccess} '
-      'syncedItems=${summary.naver.syncedItems} message=${summary.naver.message}',
+      'syncedItems=${summary.naver.syncedItems} '
+      'errorType=${summary.naver.error?.runtimeType}',
     );
     if (!mounted) {
       return;
@@ -519,7 +521,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _logSettingsGoogleCalendar(
       'syncGoogleCalendar result status=${result.status.name} '
       'success=${result.isSuccess} syncedItems=${result.syncedItems} '
-      'message=${result.message} errorType=${result.error?.runtimeType}',
+      'errorType=${result.error?.runtimeType}',
     );
     if (!mounted) {
       return;
@@ -837,7 +839,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _logSettingsNaverCalendar(
         'verifyOpenApiAfterOAuth attempt=${attempt + 1}/$maxAttempts '
         'status=${permission.status.name} isGranted=${permission.isGranted} '
-        'statusCode=${permission.statusCode} message=${permission.message} '
+        'statusCode=${permission.statusCode} '
         'errorType=${permission.error?.runtimeType}',
       );
       if (!mounted || !_pendingNaverOpenApiImportAfterConsent) {
@@ -871,7 +873,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     _logSettingsNaverCalendar(
       'verifyOpenApiAfterOAuth failed finalStatus=${lastPermission?.status.name} '
-      'message=${lastPermission?.message} statusCode=${lastPermission?.statusCode} '
+      'statusCode=${lastPermission?.statusCode} '
       'errorType=${lastPermission?.error?.runtimeType}',
     );
     setState(() {
@@ -903,7 +905,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _logSettingsNaverCalendar(
         'refreshPermissionForSettings result status=${result.status.name} '
         'isGranted=${result.isGranted} statusCode=${result.statusCode} '
-        'message=${result.message} errorType=${result.error?.runtimeType}',
+        'errorType=${result.error?.runtimeType}',
       );
       return result;
     }
@@ -1050,7 +1052,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _logSettingsNaverCalendar(
       'runImport result success=${result.success} events=${result.events} '
       'createdOrUpdated=${result.createdOrUpdated} skipped=${result.skipped} '
-      'failed=${result.failed} message=${result.message}',
+      'failed=${result.failed} errorType=${result.error?.runtimeType}',
     );
     if (!mounted) {
       return result;

@@ -164,7 +164,7 @@ class NaverCalendarPermissionService {
       final result = _classifyResponse(response);
       _log(
         'permission probe status=${response.statusCode} '
-        'result=${result.status.name} body=${_safeBodyExcerpt(response.body)}',
+        'result=${result.status.name} bodyLength=${response.body.length}',
       );
       if (result.isGranted) {
         await _persistCurrentProviderToken();
@@ -393,14 +393,6 @@ class NaverCalendarPermissionService {
 
   static void _log(String message) {
     debugPrint('[$_logTag] $message');
-  }
-
-  static String _safeBodyExcerpt(String body) {
-    final compact = body.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (compact.length <= 160) {
-      return compact;
-    }
-    return '${compact.substring(0, 160)}...';
   }
 
   static NaverCalendarPermissionStatus _parseStatus(String? value) {

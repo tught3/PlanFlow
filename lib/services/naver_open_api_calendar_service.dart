@@ -63,14 +63,6 @@ class NaverOpenApiCalendarService {
     debugPrint('[$_logTag] openApi $message');
   }
 
-  static String _safeBodyExcerpt(String body) {
-    final compact = body.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (compact.length <= 500) {
-      return compact;
-    }
-    return '${compact.substring(0, 500)}...';
-  }
-
   // ---------------------------------------------------------------------------
   // 공개 API
   // ---------------------------------------------------------------------------
@@ -340,7 +332,7 @@ class NaverOpenApiCalendarService {
       _log(
         'hasCalendarAccess result status=${permission.status.name} '
         'isGranted=${permission.isGranted} statusCode=${permission.statusCode} '
-        'message=${permission.message} errorType=${permission.error?.runtimeType}',
+        'errorType=${permission.error?.runtimeType}',
       );
       return permission.isGranted;
     } catch (error, stackTrace) {
@@ -459,7 +451,7 @@ class NaverOpenApiCalendarService {
       if (response.statusCode == 401 || response.statusCode == 403) {
         _log(
           'fetchWindow permission error status=${response.statusCode} '
-          'body=${_safeBodyExcerpt(response.body)}',
+          'bodyLength=${response.body.length}',
         );
         throw const _NaverApiException(
           '네이버 캘린더 권한이 연결되지 않았습니다. 설정에서 다시 연결해 주세요.',
@@ -469,7 +461,7 @@ class NaverOpenApiCalendarService {
       if (response.statusCode >= 500) {
         _log(
           'fetchWindow server error status=${response.statusCode} '
-          'body=${_safeBodyExcerpt(response.body)}',
+          'bodyLength=${response.body.length}',
         );
         throw _NaverApiException(
           '네이버 캘린더 서버 오류(${response.statusCode})가 발생했습니다. 잠시 후 다시 시도해 주세요.',
@@ -478,7 +470,7 @@ class NaverOpenApiCalendarService {
       if (response.statusCode < 200 || response.statusCode >= 400) {
         _log(
           'fetchWindow api error status=${response.statusCode} '
-          'body=${_safeBodyExcerpt(response.body)}',
+          'bodyLength=${response.body.length}',
         );
         throw _NaverApiException(
           '네이버 캘린더 API 오류(${response.statusCode})가 발생했습니다.',
@@ -491,7 +483,7 @@ class NaverOpenApiCalendarService {
       } catch (_) {
         _log(
           'fetchWindow json parse failed status=${response.statusCode} '
-          'body=${_safeBodyExcerpt(response.body)}',
+          'bodyLength=${response.body.length}',
         );
         break;
       }
@@ -509,7 +501,7 @@ class NaverOpenApiCalendarService {
         // 응답 구조가 예상과 다를 경우 전체 응답 덤프
         _log(
           'fetchWindow unexpected response shape '
-          'body=${_safeBodyExcerpt(response.body)}',
+          'bodyLength=${response.body.length}',
         );
         break;
       }
