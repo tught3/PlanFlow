@@ -263,6 +263,7 @@ class AuthService implements AuthSessionClient {
       'queryParams=${queryParams?.keys.join(',') ?? 'none'}',
     );
     _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
+    await OAuthCallbackHandler.persistCurrentPendingCallback();
     final launched = await launchUrl(
       uri,
       mode: launchMode,

@@ -1835,3 +1835,8 @@
 - Google Calendar 자동 동기화에서 기존 연결이 있어도 silent sign-in 토큰을 못 받으면 연결됨으로 남기지 않고 `reauthRequired`로 저장하게 했다.
 - Naver Calendar pending calendar-link 콜백에서 받은 provider token은 Naver 로그인 identity 여부와 별개로 캘린더 토큰으로 저장할 수 있게 좁게 허용했다.
 - 검증: `scripts\flutter-local.ps1 test test\services\calendar_sync_service_test.dart test\services\oauth_callback_handler_test.dart test\services\naver_calendar_permission_service_test.dart --no-pub -r expanded`, `scripts\flutter-local.ps1 analyze --no-pub`, `scripts\flutter-local.ps1 build apk --debug --no-pub` 통과.
+
+## 2026-06-16 네이버 캘린더 OAuth 콜백 상태 복원
+- 네이버 캘린더 권한 동의가 브라우저/앱 전환 중 기존 Supabase 세션 때문에 calendar-link 콜백으로 인식되지 않던 문제를 막기 위해 pending OAuth purpose/method를 SharedPreferences에도 저장하도록 했다.
+- OAuth callback 처리 시 인메모리 상태가 비어 있어도 저장된 pending calendar-link 상태를 복원하고, 기존 세션이 있어도 `getSessionFromUrl()`을 실행해 provider token 교환/캡처를 시도한다.
+- 검증: `scripts\flutter-local.ps1 test test\services\oauth_callback_handler_test.dart --no-pub -r expanded`, `scripts\flutter-local.ps1 test test\services\naver_calendar_permission_service_test.dart --no-pub -r expanded`, `scripts\flutter-local.ps1 analyze --no-pub`, `scripts\flutter-local.ps1 build apk --debug --no-pub` 통과. 현재 ADB 연결 기기가 없어 설치 검증은 미실행.

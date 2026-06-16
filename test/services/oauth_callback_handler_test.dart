@@ -1,10 +1,16 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/services/auth_service.dart';
 import 'package:planflow/services/oauth_callback_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('OAuthCallbackHandler', () {
-    tearDown(OAuthCallbackHandler.clearPendingCallback);
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      OAuthCallbackHandler.clearInMemoryPendingCallbackForTest();
+    });
+
+    tearDown(OAuthCallbackHandler.clearInMemoryPendingCallbackForTest);
 
     test('detects Supabase password recovery callback type', () {
       expect(
@@ -122,6 +128,21 @@ void main() {
 
       expect(OAuthCallbackHandler.hasPendingCalendarLink(), isTrue);
       expect(OAuthCallbackHandler.hasPendingLogin(), isFalse);
+    });
+
+    test('restores pending Naver calendar link callback from storage',
+        () async {
+      OAuthCallbackHandler.markPendingCalendarLink(
+        PlanFlowOAuthProvider.naver,
+      );
+      await OAuthCallbackHandler.persistCurrentPendingCallback();
+      OAuthCallbackHandler.clearInMemoryPendingCallbackForTest();
+
+      expect(
+        await OAuthCallbackHandler
+            .hasRecoverableNaverCalendarLinkCallbackForTest(),
+        isTrue,
+      );
     });
 
     test('exchanges calendar link callbacks even with an active session', () {

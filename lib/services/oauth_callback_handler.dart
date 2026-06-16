@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/constants.dart';
@@ -28,6 +29,9 @@ class OAuthCallbackHandler {
   static OAuthCallbackPurpose? _pendingPurpose;
   static String? _pendingMethod;
   static DateTime? _pendingStartedAt;
+  static const _storedPendingPurposeKey = 'oauth_callback_pending_purpose';
+  static const _storedPendingMethodKey = 'oauth_callback_pending_method';
+  static const _storedPendingStartedAtKey = 'oauth_callback_pending_started_at';
 
   final AppLinks _appLinks;
   StreamSubscription<Uri>? _subscription;
@@ -42,6 +46,7 @@ class OAuthCallbackHandler {
       PlanFlowOAuthProvider.naver => 'naver',
     };
     _pendingStartedAt = DateTime.now();
+    unawaited(persistCurrentPendingCallback());
   }
 
   static void markPendingCalendarLink(PlanFlowOAuthProvider provider) {
@@ -53,6 +58,7 @@ class OAuthCallbackHandler {
       PlanFlowOAuthProvider.naver => 'naver',
     };
     _pendingStartedAt = DateTime.now();
+    unawaited(persistCurrentPendingCallback());
   }
 
   static void markPendingEmailConfirmation() {
@@ -60,6 +66,7 @@ class OAuthCallbackHandler {
     _pendingPurpose = OAuthCallbackPurpose.emailConfirmation;
     _pendingMethod = 'email';
     _pendingStartedAt = DateTime.now();
+    unawaited(persistCurrentPendingCallback());
   }
 
   static String? consumePendingLoginMethod() {
@@ -80,6 +87,7 @@ class OAuthCallbackHandler {
     _pendingPurpose = null;
     _pendingMethod = null;
     _pendingStartedAt = null;
+    unawaited(_clearStoredPendingCallback());
   }
 
   static void clearLatestUserMessage() {
@@ -121,6 +129,107 @@ class OAuthCallbackHandler {
       return null;
     }
     return _pendingMethod;
+  }
+
+  static Future<void> persistCurrentPendingCallback() async {
+    final purpose = _pendingPurpose;
+    final method = _pendingMethod;
+    final startedAt = _pendingStartedAt;
+    if (purpose == null || method == null || startedAt == null) {
+      await _clearStoredPendingCallback();
+      return;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_storedPendingPurposeKey, purpose.name);
+      await prefs.setString(_storedPendingMethodKey, method);
+      await prefs.setInt(
+        _storedPendingStartedAtKey,
+        startedAt.millisecondsSinceEpoch,
+      );
+    } catch (error) {
+      debugPrint('OAuth pending callback persist skipped: $error');
+    }
+  }
+
+  static Future<void> _clearStoredPendingCallback() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_storedPendingPurposeKey);
+      await prefs.remove(_storedPendingMethodKey);
+      await prefs.remove(_storedPendingStartedAtKey);
+    } catch (error) {
+      debugPrint('OAuth pending callback clear skipped: $error');
+    }
+  }
+
+  static Future<_StoredOAuthPending?> _readStoredPendingCallback({
+    Duration maxAge = const Duration(minutes: 10),
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final purposeName = prefs.getString(_storedPendingPurposeKey);
+      final method = prefs.getString(_storedPendingMethodKey);
+      final startedAtMillis = prefs.getInt(_storedPendingStartedAtKey);
+      if (purposeName == null || method == null || startedAtMillis == null) {
+        return null;
+      }
+
+      OAuthCallbackPurpose? purpose;
+      for (final value in OAuthCallbackPurpose.values) {
+        if (value.name == purposeName) {
+          purpose = value;
+          break;
+        }
+      }
+      final startedAt = DateTime.fromMillisecondsSinceEpoch(startedAtMillis);
+      if (purpose == null || DateTime.now().difference(startedAt) > maxAge) {
+        await _clearStoredPendingCallback();
+        return null;
+      }
+
+      return _StoredOAuthPending(
+        purpose: purpose,
+        method: method,
+        startedAt: startedAt,
+      );
+    } catch (error) {
+      debugPrint('OAuth pending callback restore skipped: $error');
+      return null;
+    }
+  }
+
+  @visibleForTesting
+  static void clearInMemoryPendingCallbackForTest() {
+    _pendingPurpose = null;
+    _pendingMethod = null;
+    _pendingStartedAt = null;
+  }
+
+  @visibleForTesting
+  static Future<bool> hasRecoverableNaverCalendarLinkCallbackForTest() async {
+    final pending = await _resolvePendingCallback();
+    return shouldTrustProviderTokenForNaverCalendarLink(
+      pendingPurpose: pending?.purpose,
+      pendingMethod: pending?.method,
+    );
+  }
+
+  static Future<_StoredOAuthPending?> _resolvePendingCallback() async {
+    final inMemoryStartedAt = _pendingStartedAt;
+    if (_pendingPurpose != null &&
+        _pendingMethod != null &&
+        inMemoryStartedAt != null &&
+        DateTime.now().difference(inMemoryStartedAt) <=
+            const Duration(minutes: 10)) {
+      return _StoredOAuthPending(
+        purpose: _pendingPurpose!,
+        method: _pendingMethod!,
+        startedAt: inMemoryStartedAt,
+      );
+    }
+    return _readStoredPendingCallback();
   }
 
   @visibleForTesting
@@ -184,8 +293,9 @@ class OAuthCallbackHandler {
     }
 
     latestUserMessage.value = null;
-    final pendingPurpose = _pendingPurpose;
-    final pendingMethod = _pendingMethod;
+    final resolvedPending = await _resolvePendingCallback();
+    final pendingPurpose = resolvedPending?.purpose;
+    final pendingMethod = resolvedPending?.method;
     final isPendingNaverCalendarLink =
         shouldTrustProviderTokenForNaverCalendarLink(
       pendingPurpose: pendingPurpose,
@@ -199,13 +309,14 @@ class OAuthCallbackHandler {
       'OAuth callback observed: host=${uri.host} '
       'queryKeys=${normalizedUri.queryParameters.keys.join(',')} '
       'passwordRecovery=$isPasswordRecovery '
-      'emailConfirmation=$isEmailConfirmation',
+      'emailConfirmation=$isEmailConfirmation '
+      'pendingPurpose=$pendingPurpose pendingMethod=$pendingMethod',
     );
 
     final callbackErrorMessage = callbackErrorMessageFor(
       normalizedUri,
       isEmailConfirmation: isEmailConfirmation,
-      pendingMethod: _pendingMethod,
+      pendingMethod: pendingMethod,
     );
     if (callbackErrorMessage != null) {
       debugPrint(
@@ -232,15 +343,24 @@ class OAuthCallbackHandler {
     final shouldExchangeCallback = shouldExchangeOAuthCallback(
       currentSessionPresent: client.auth.currentSession != null,
       isPasswordRecovery: isPasswordRecovery,
-      hasPendingCalendarLink: hasPendingCalendarLink(),
+      hasPendingCalendarLink:
+          pendingPurpose == OAuthCallbackPurpose.calendarLink,
     );
 
     debugPrint(
-      'OAuth callback routing: pendingPurpose=$_pendingPurpose '
-      'pendingMethod=$_pendingMethod '
+      'OAuth callback routing: pendingPurpose=$pendingPurpose '
+      'pendingMethod=$pendingMethod '
       'currentSessionPresent=${client.auth.currentSession != null} '
       'shouldExchange=$shouldExchangeCallback',
     );
+    if (pendingMethod == 'naver') {
+      debugPrint(
+        '[PlanFlowNaverCalendar] oauth callback routing '
+        'calendarLink=${pendingPurpose == OAuthCallbackPurpose.calendarLink} '
+        'currentSessionPresent=${client.auth.currentSession != null} '
+        'shouldExchange=$shouldExchangeCallback',
+      );
+    }
 
     if (!shouldExchangeCallback) {
       debugPrint('OAuth callback already produced a Supabase session.');
@@ -266,6 +386,13 @@ class OAuthCallbackHandler {
       debugPrint(
         'OAuth callback exchange completed: user=${response.session.user.id}',
       );
+      if (pendingMethod == 'naver') {
+        debugPrint(
+          '[PlanFlowNaverCalendar] oauth callback exchange completed '
+          'providerTokenPresent='
+          '${response.session.providerToken?.trim().isNotEmpty == true}',
+        );
+      }
       await _captureNaverProviderTokenIfAny(
         explicitProviderToken: response.session.providerToken,
         allowWithoutNaverIdentity: isPendingNaverCalendarLink,
@@ -538,4 +665,16 @@ class OAuthCallbackHandler {
     await _subscription?.cancel();
     _subscription = null;
   }
+}
+
+class _StoredOAuthPending {
+  const _StoredOAuthPending({
+    required this.purpose,
+    required this.method,
+    required this.startedAt,
+  });
+
+  final OAuthCallbackPurpose purpose;
+  final String method;
+  final DateTime startedAt;
 }
