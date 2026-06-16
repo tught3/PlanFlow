@@ -1840,3 +1840,8 @@
 - 네이버 캘린더 권한 동의가 브라우저/앱 전환 중 기존 Supabase 세션 때문에 calendar-link 콜백으로 인식되지 않던 문제를 막기 위해 pending OAuth purpose/method를 SharedPreferences에도 저장하도록 했다.
 - OAuth callback 처리 시 인메모리 상태가 비어 있어도 저장된 pending calendar-link 상태를 복원하고, 기존 세션이 있어도 `getSessionFromUrl()`을 실행해 provider token 교환/캡처를 시도한다.
 - 검증: `scripts\flutter-local.ps1 test test\services\oauth_callback_handler_test.dart --no-pub -r expanded`, `scripts\flutter-local.ps1 test test\services\naver_calendar_permission_service_test.dart --no-pub -r expanded`, `scripts\flutter-local.ps1 analyze --no-pub`, `scripts\flutter-local.ps1 build apk --debug --no-pub` 통과. 현재 ADB 연결 기기가 없어 설치 검증은 미실행.
+
+## 2026-06-16 PlanFlow 내부 테스트 배포 1.1.0+43
+- `1.1.0+42` 업로드 재시도는 Play에서 이미 사용된 versionCode로 거부되어 `1.1.0+43`으로 bump 후 release AAB를 다시 생성했다.
+- Gradle Play Publisher로 `com.fluxstudio.planflow` internal 트랙에 `app-release.aab` 업로드 및 edit commit을 완료했다.
+- 검증: deploy 래퍼의 analyze/focused tests 단계 통과, `scripts\flutter-local.ps1 build appbundle --release --no-pub` 통과, `:app:publishReleaseBundle --track internal` 성공, Telegram 성공 알림 전송 확인.
