@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/env.dart';
+import '../core/log_text.dart';
 import '../core/supabase_auth_options.dart';
 import 'oauth_callback_handler.dart';
 
@@ -32,7 +33,7 @@ class AuthService implements AuthSessionClient {
   final SupabaseClient _client;
 
   static void _logNaverCalendarAuth(String message) {
-    debugPrint('[$_naverCalendarLogTag] auth $message');
+    debugPrint('[$_naverCalendarLogTag] auth ${logSafeText(message)}');
   }
 
   @override
@@ -198,7 +199,11 @@ class AuthService implements AuthSessionClient {
       return signInWithOAuth(provider, forceConsent: true, forCalendar: true);
     }
 
-    final queryParams = oauthQueryParamsFor(provider);
+    // Naver는 항상 auth_type=reprompt 포함 → 매번 동의 페이지 표시
+    final queryParams = oauthQueryParamsFor(
+      provider,
+      forceConsent: provider == PlanFlowOAuthProvider.naver,
+    );
     try {
       if (provider == PlanFlowOAuthProvider.naver) {
         _logNaverCalendarAuth(
@@ -265,7 +270,7 @@ class AuthService implements AuthSessionClient {
       await _client.auth.unlinkIdentity(naverIdentity);
       return true;
     } catch (error, stackTrace) {
-      debugPrint('Naver calendar disconnect failed: $error');
+      debugPrint('Naver calendar disconnect failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       return false;
     }
@@ -285,7 +290,9 @@ class AuthService implements AuthSessionClient {
       }
       return hasIdentity;
     } catch (error, stackTrace) {
-      debugPrint('OAuth linked identity lookup skipped: $error');
+      debugPrint(
+        'OAuth linked identity lookup skipped: ${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
       return false;
     }
@@ -400,7 +407,7 @@ class AuthService implements AuthSessionClient {
     try {
       await ensureProfile(user);
     } catch (error) {
-      debugPrint('Profile sync skipped: $error');
+      debugPrint('Profile sync skipped: ${logSafeText(error)}');
     }
   }
 

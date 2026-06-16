@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/constants.dart';
 import '../core/analytics_service.dart';
 import '../core/env.dart';
+import '../core/log_text.dart';
 import '../core/router.dart';
 import '../providers/auth_provider.dart';
 import 'auth_service.dart';
@@ -39,7 +40,7 @@ class OAuthCallbackHandler {
   bool _initialLinkHandled = false;
 
   static void _logNaverCalendar(String message) {
-    debugPrint('[$_naverCalendarLogTag] oauth $message');
+    debugPrint('[$_naverCalendarLogTag] oauth ${logSafeText(message)}');
   }
 
   static String _safeUriSummary(Uri uri) {
@@ -186,7 +187,9 @@ class OAuthCallbackHandler {
         );
       }
     } catch (error) {
-      debugPrint('OAuth pending callback persist skipped: $error');
+      debugPrint(
+        'OAuth pending callback persist skipped: ${logSafeText(error)}',
+      );
     }
   }
 
@@ -198,7 +201,9 @@ class OAuthCallbackHandler {
       await prefs.remove(_storedPendingStartedAtKey);
       _logNaverCalendar('clearStoredPendingCallback completed');
     } catch (error) {
-      debugPrint('OAuth pending callback clear skipped: $error');
+      debugPrint(
+        'OAuth pending callback clear skipped: ${logSafeText(error)}',
+      );
     }
   }
 
@@ -244,7 +249,9 @@ class OAuthCallbackHandler {
         startedAt: startedAt,
       );
     } catch (error) {
-      debugPrint('OAuth pending callback restore skipped: $error');
+      debugPrint(
+        'OAuth pending callback restore skipped: ${logSafeText(error)}',
+      );
       return null;
     }
   }
@@ -316,7 +323,9 @@ class OAuthCallbackHandler {
     _subscription = _appLinks.uriLinkStream.listen(
       (uri) => unawaited(_handleUri(uri)),
       onError: (Object error, StackTrace stackTrace) {
-        debugPrint('OAuth callback listener error: $error');
+        debugPrint(
+          'OAuth callback listener error: ${logSafeText(error)}',
+        );
       },
     );
   }
@@ -338,7 +347,9 @@ class OAuthCallbackHandler {
         await _handleUri(uri);
       }
     } catch (error, stackTrace) {
-      debugPrint('OAuth initial callback read failed: $error');
+      debugPrint(
+        'OAuth initial callback read failed: ${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
     }
   }
@@ -387,9 +398,9 @@ class OAuthCallbackHandler {
     if (callbackErrorMessage != null) {
       debugPrint(
         'OAuth callback reported error: '
-        'error=${normalizedUri.queryParameters['error']} '
-        'errorCode=${normalizedUri.queryParameters['error_code']} '
-        'description=${normalizedUri.queryParameters['error_description']}',
+        'error=${logSafeText(normalizedUri.queryParameters['error'])} '
+        'errorCode=${logSafeText(normalizedUri.queryParameters['error_code'])} '
+        'description=${logSafeText(normalizedUri.queryParameters['error_description'])}',
       );
       if (pendingMethod == 'naver') {
         _logNaverCalendar(
@@ -445,7 +456,18 @@ class OAuthCallbackHandler {
       if (pendingMethod == 'naver') {
         _logNaverCalendar('no exchange path: capture provider token');
       }
+      // getLinkIdentityUrl 콜백: URL fragment에서 직접 provider_token 추출
+      final urlProviderToken = isPendingNaverCalendarLink
+          ? normalizedUri.queryParameters['provider_token']
+          : null;
+      if (isPendingNaverCalendarLink) {
+        _logNaverCalendar(
+          'no exchange path: urlProviderToken present='
+          '${urlProviderToken?.trim().isNotEmpty == true}',
+        );
+      }
       await _captureNaverProviderTokenIfAny(
+        explicitProviderToken: urlProviderToken,
         allowWithoutNaverIdentity: isPendingNaverCalendarLink,
       );
       final signedIn = await _syncAndRouteHome();
@@ -456,6 +478,29 @@ class OAuthCallbackHandler {
         } else {
           await _logPendingLoginIfNeeded();
         }
+      } else {
+        clearPendingCallback();
+      }
+      return;
+    }
+
+    // Naver 캘린더 연동 콜백: getSessionFromUrl 호출 금지 → Google 세션 보존
+    if (isPendingNaverCalendarLink) {
+      _logNaverCalendar(
+        'exchange path: skipping session exchange to preserve existing Google session',
+      );
+      final naverToken = normalizedUri.queryParameters['provider_token'];
+      _logNaverCalendar(
+        'exchange path: urlProviderToken present='
+        '${naverToken?.trim().isNotEmpty == true}',
+      );
+      await _captureNaverProviderTokenIfAny(
+        explicitProviderToken: naverToken,
+        allowWithoutNaverIdentity: true,
+      );
+      final signedIn = await _syncAndRouteHome();
+      if (signedIn) {
+        await _logPendingLoginIfNeeded();
       } else {
         clearPendingCallback();
       }
@@ -507,13 +552,13 @@ class OAuthCallbackHandler {
       }
     } on AuthException catch (error) {
       debugPrint(
-        'OAuth callback exchange failed: ${error.message} '
+        'OAuth callback exchange failed: ${logSafeText(error.message)} '
         'code=${error.code} status=${error.statusCode}',
       );
       clearPendingCallback();
       if (pendingMethod == 'naver') {
         _logNaverCalendar(
-          'exchange authException message=${error.message} '
+          'exchange authException message=${logSafeText(error.message)} '
           'code=${error.code} status=${error.statusCode}',
         );
       }
@@ -521,10 +566,11 @@ class OAuthCallbackHandler {
           ? _messageForEmailConfirmationException(error)
           : _messageForAuthException(error);
     } catch (error) {
-      debugPrint('OAuth callback exchange failed: $error');
+      debugPrint('OAuth callback exchange failed: ${logSafeText(error)}');
       if (pendingMethod == 'naver') {
         _logNaverCalendar(
-          'exchange failed type=${error.runtimeType} error=$error',
+          'exchange failed type=${error.runtimeType} '
+          'error=${logSafeText(error)}',
         );
       }
       clearPendingCallback();
@@ -694,7 +740,8 @@ class OAuthCallbackHandler {
       _logNaverCalendar('provider token capture completed source=session');
     } catch (error, stackTrace) {
       _logNaverCalendar(
-        'provider token capture skipped type=${error.runtimeType} error=$error',
+        'provider token capture skipped type=${error.runtimeType} '
+        'error=${logSafeText(error)}',
       );
       debugPrintStack(stackTrace: stackTrace);
     }
