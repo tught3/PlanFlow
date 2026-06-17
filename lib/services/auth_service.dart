@@ -187,31 +187,17 @@ class AuthService implements AuthSessionClient {
       );
     }
 
-    if (provider == PlanFlowOAuthProvider.naver &&
-        await _hasLinkedIdentity('naver')) {
+    // Naver 캘린더: getLinkIdentityUrl은 provider_token을 콜백 URL에 포함하지 않음.
+    // full OAuth(signInWithOAuth)만 provider_token을 제공하므로 항상 이 경로 사용.
+    if (provider == PlanFlowOAuthProvider.naver) {
       _logNaverCalendarAuth(
-        'connectCalendarProvider linked identity exists -> fresh consent signIn',
-      );
-      debugPrint(
-        'OAuth calendar link fallback: provider=naver already linked, '
-        'requesting fresh consent instead of identity link',
+        'connectCalendarProvider naver -> signInWithOAuth forceConsent=true forCalendar=true',
       );
       return signInWithOAuth(provider, forceConsent: true, forCalendar: true);
     }
 
-    // Naver는 항상 auth_type=reprompt 포함 → 매번 동의 페이지 표시
-    final queryParams = oauthQueryParamsFor(
-      provider,
-      forceConsent: provider == PlanFlowOAuthProvider.naver,
-    );
+    final queryParams = oauthQueryParamsFor(provider);
     try {
-      if (provider == PlanFlowOAuthProvider.naver) {
-        _logNaverCalendarAuth(
-          'connectCalendarProvider getLinkIdentityUrl scopes='
-          '${oauthScopesFor(provider, forCalendar: true) ?? 'default'} '
-          'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
-        );
-      }
       final response = await _client.auth.getLinkIdentityUrl(
         oauthProvider,
         redirectTo: AppEnv.authRedirectUrl,
@@ -225,19 +211,7 @@ class AuthService implements AuthSessionClient {
         queryParams: queryParams,
         purpose: 'calendar-link',
       );
-    } catch (error, stackTrace) {
-      if (provider == PlanFlowOAuthProvider.naver &&
-          _isIdentityAlreadyExistsError(error)) {
-        _logNaverCalendarAuth(
-          'connectCalendarProvider identity_already_exists -> fresh consent signIn',
-        );
-        debugPrint(
-          'OAuth calendar link already exists: falling back to '
-          'fresh Naver consent flow',
-        );
-        debugPrintStack(stackTrace: stackTrace);
-        return signInWithOAuth(provider, forceConsent: true, forCalendar: true);
-      }
+    } catch (_) {
       rethrow;
     }
   }
@@ -274,39 +248,6 @@ class AuthService implements AuthSessionClient {
       debugPrintStack(stackTrace: stackTrace);
       return false;
     }
-  }
-
-  Future<bool> _hasLinkedIdentity(String providerKey) async {
-    try {
-      final identities = await _client.auth.getUserIdentities();
-      final hasIdentity = identities.any((identity) {
-        final provider = identity.provider.toLowerCase();
-        return provider.contains(providerKey.toLowerCase());
-      });
-      if (providerKey.toLowerCase().contains('naver')) {
-        _logNaverCalendarAuth(
-          'linked identity lookup count=${identities.length} hasNaver=$hasIdentity',
-        );
-      }
-      return hasIdentity;
-    } catch (error, stackTrace) {
-      debugPrint(
-        'OAuth linked identity lookup skipped: ${logSafeText(error)}',
-      );
-      debugPrintStack(stackTrace: stackTrace);
-      return false;
-    }
-  }
-
-  bool _isIdentityAlreadyExistsError(Object error) {
-    if (error is AuthException) {
-      final message = error.message.toLowerCase();
-      final code = error.code?.toLowerCase() ?? '';
-      return message.contains('identity_already_exists') ||
-          code.contains('identity_already_exists');
-    }
-    final text = error.toString().toLowerCase();
-    return text.contains('identity_already_exists');
   }
 
   Future<bool> _launchOAuthUrl({
