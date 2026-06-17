@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/constants.dart';
 import '../core/analytics_service.dart';
+import '../core/diag_logger.dart';
 import '../core/env.dart';
 import '../core/log_text.dart';
 import '../core/router.dart';
@@ -361,6 +362,7 @@ class OAuthCallbackHandler {
 
     latestUserMessage.value = null;
     final resolvedPending = await _resolvePendingCallback();
+    DiagLogger.log('DIAG', 'resolvePending purpose=${resolvedPending?.purpose} method=${resolvedPending?.method}');
     final pendingPurpose = resolvedPending?.purpose;
     final pendingMethod = resolvedPending?.method;
     final isPendingNaverCalendarLink =
@@ -368,6 +370,7 @@ class OAuthCallbackHandler {
       pendingPurpose: pendingPurpose,
       pendingMethod: pendingMethod,
     );
+    DiagLogger.log('DIAG', 'isPendingNaverCalendarLink=$isPendingNaverCalendarLink');
     final normalizedUri = _normalizeAuthCallbackUri(uri);
     final isPasswordRecovery = isPasswordRecoveryCallback(normalizedUri);
     final isEmailConfirmation = isEmailConfirmationCallback(normalizedUri) ||
@@ -435,6 +438,7 @@ class OAuthCallbackHandler {
       hasPendingCalendarLink:
           pendingPurpose == OAuthCallbackPurpose.calendarLink,
     );
+    DiagLogger.log('DIAG', 'shouldExchange=$shouldExchangeCallback currentSession=${client.auth.currentSession != null}');
 
     debugPrint(
       'OAuth callback routing: pendingPurpose=$pendingPurpose '
@@ -486,6 +490,7 @@ class OAuthCallbackHandler {
 
     // Naver 캘린더 연동 콜백: getSessionFromUrl 호출 금지 → Google 세션 보존
     if (isPendingNaverCalendarLink) {
+      DiagLogger.log('DIAG', 'exchange bypass entered naverToken present=${normalizedUri.queryParameters.containsKey("provider_token")}');
       _logNaverCalendar(
         'exchange path: skipping session exchange to preserve existing Google session',
       );
@@ -719,6 +724,7 @@ class OAuthCallbackHandler {
     bool allowWithoutNaverIdentity = false,
   }) async {
     try {
+      DiagLogger.log('DIAG', 'captureToken explicit=${explicitProviderToken?.trim().isNotEmpty == true} allowWithout=$allowWithoutNaverIdentity');
       _logNaverCalendar(
         'provider token capture start '
         'explicitTokenPresent=${explicitProviderToken?.trim().isNotEmpty == true} '

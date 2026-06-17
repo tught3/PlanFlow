@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/log_text.dart';
 import '../../core/region_settings.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
@@ -35,6 +36,7 @@ import '../../services/naver_caldav_service.dart';
 import '../../services/naver_calendar_permission_service.dart';
 import '../../services/naver_open_api_calendar_service.dart';
 import '../../services/notification_service.dart';
+import '../../core/diag_logger.dart';
 import '../../services/oauth_callback_handler.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
@@ -181,11 +183,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   void _logSettingsGoogleCalendar(String message) {
-    debugPrint('[PlanFlowGoogleAuth] settings $message');
+    debugPrint('[PlanFlowGoogleAuth] settings ${logSafeText(message)}');
   }
 
   void _logSettingsNaverCalendar(String message) {
-    debugPrint('[PlanFlowNaverCalendar] settings $message');
+    debugPrint('[PlanFlowNaverCalendar] settings ${logSafeText(message)}');
   }
 
   @override
@@ -281,15 +283,21 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
     await Future.wait<void>([
       _loadCalendarStatus().catchError((error, stackTrace) {
-        debugPrint('Calendar status refresh skipped: $error');
+        debugPrint(
+          'Calendar status refresh skipped: ${logSafeText(error)}',
+        );
         debugPrintStack(stackTrace: stackTrace);
       }),
       _loadAutoSyncSnapshot().catchError((error, stackTrace) {
-        debugPrint('Calendar auto-sync snapshot refresh skipped: $error');
+        debugPrint(
+          'Calendar auto-sync snapshot refresh skipped: ${logSafeText(error)}',
+        );
         debugPrintStack(stackTrace: stackTrace);
       }),
       _loadNaverCalDavState().catchError((error, stackTrace) {
-        debugPrint('Naver CalDAV state refresh skipped: $error');
+        debugPrint(
+          'Naver CalDAV state refresh skipped: ${logSafeText(error)}',
+        );
         debugPrintStack(stackTrace: stackTrace);
       }),
     ]);
@@ -341,7 +349,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         _isLoadingNewFeedbackReportCount = false;
       });
     } on FeedbackSubmissionException catch (error) {
-      debugPrint('Feedback admin badge unavailable: ${error.message}');
+      debugPrint(
+        'Feedback admin badge unavailable: ${logSafeText(error.message)}',
+      );
       if (!mounted) {
         return;
       }
@@ -350,7 +360,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         _isLoadingNewFeedbackReportCount = false;
       });
     } catch (error) {
-      debugPrint('Feedback admin badge unavailable: $error');
+      debugPrint('Feedback admin badge unavailable: ${logSafeText(error)}');
       if (!mounted) {
         return;
       }
@@ -414,7 +424,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         _appVersionLabel = label;
       });
     } catch (error) {
-      debugPrint('Settings app version load failed: $error');
+      debugPrint('Settings app version load failed: ${logSafeText(error)}');
       if (!mounted) {
         return;
       }
@@ -487,7 +497,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     try {
       hasCalDavCredentials = await _naverCalDavService.hasCredentials();
     } catch (error, stackTrace) {
-      _logSettingsNaverCalendar('CalDAV credential check skipped error=$error');
+      _logSettingsNaverCalendar(
+        'CalDAV credential check skipped error=${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
     }
     final hasOpenApiAccess = await _naverImportService.hasCalendarAccess();
@@ -560,7 +572,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       await _loadCalendarStatus();
       _showSnack('Google Calendar 연동을 해제했습니다.');
     } catch (error, stackTrace) {
-      debugPrint('Google calendar disconnect failed: $error');
+      debugPrint('Google calendar disconnect failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       _showSnack('Google Calendar 연동 해제에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
@@ -701,7 +713,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         '휴대폰 내부 캘린더 연동 정보를 초기화했습니다. 다음 가져오기 때 다시 권한과 저장소를 확인합니다.',
       );
     } catch (error, stackTrace) {
-      debugPrint('Device calendar disconnect failed: $error');
+      debugPrint('Device calendar disconnect failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       _showSnack('휴대폰 내부 캘린더 연동 해제에 실패했습니다. 다시 시도해 주세요.');
     } finally {
@@ -785,7 +797,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         }
       } catch (error, stackTrace) {
         _logSettingsNaverCalendar(
-          'connectAndImport failed type=${error.runtimeType} error=$error',
+          'connectAndImport failed type=${error.runtimeType} error=${logSafeText(error)}',
         );
         debugPrintStack(stackTrace: stackTrace);
         if (mounted) {
@@ -1285,7 +1297,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       );
     } catch (error, stackTrace) {
-      debugPrint('Naver CalDAV connection state save skipped: $error');
+      debugPrint(
+        'Naver CalDAV connection state save skipped: ${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
     }
   }
@@ -1928,7 +1942,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
     } catch (error, stackTrace) {
       OAuthCallbackHandler.clearPendingCallback();
-      debugPrint('Naver account recheck failed: $error');
+      debugPrint('Naver account recheck failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       _showSnack('네이버 계정 정보 확인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.');
     }
@@ -1981,7 +1995,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         unlinked ? '네이버 연동을 해제했습니다.' : '네이버 연동 정보를 정리했습니다. 다시 동기화하면 새로 연결됩니다.',
       );
     } catch (error, stackTrace) {
-      debugPrint('Naver calendar disconnect failed: $error');
+      debugPrint('Naver calendar disconnect failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       _showSnack('네이버 연동 해제에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
@@ -2095,7 +2109,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         }
       }
     } catch (error, stackTrace) {
-      debugPrint('Settings save failed: $error');
+      debugPrint('Settings save failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       _showSnack('설정 저장에 실패했습니다. Supabase 연결을 확인해 주세요.');
     } finally {
@@ -2138,7 +2152,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
       return result;
     } catch (error, stackTrace) {
-      debugPrint('Briefing schedule failed ($reason): $error');
+      debugPrint(
+        'Briefing schedule failed ($reason): ${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
       if (mounted && reason == 'settings_saved') {
         _showSnack('설정은 저장했지만 브리핑 예약에 실패했습니다. Android 알람 설정을 확인해 주세요.');
@@ -2180,7 +2196,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
       _showSnack(result.message);
     } catch (error, stackTrace) {
-      debugPrint('Briefing test failed: $error');
+      debugPrint('Briefing test failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       _showSnack('브리핑 테스트 재생에 실패했습니다. 알림/TTS 설정을 확인해 주세요.');
     } finally {
@@ -2215,7 +2231,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             current.naverCalendarToken ?? latest.naverCalendarToken,
       );
     } catch (error, stackTrace) {
-      debugPrint('Settings token refresh before save failed: $error');
+      debugPrint(
+        'Settings token refresh before save failed: ${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
     }
     return current;
@@ -2274,7 +2292,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
       return false;
     } catch (error, stackTrace) {
-      debugPrint('Backup list failed: $error');
+      debugPrint('Backup list failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
         _showSnack('백업 목록을 불러오지 못했습니다. 네트워크와 Supabase 설정을 확인해 주세요.');
@@ -2303,7 +2321,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         await _loadBackups();
       }
     } catch (error, stackTrace) {
-      debugPrint('Automatic backup setup skipped: $error');
+      debugPrint('Automatic backup setup skipped: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
     }
   }
@@ -2326,7 +2344,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     } on BackupSchemaException catch (error) {
       _showSnack(error.message);
     } catch (error, stackTrace) {
-      debugPrint('Backup create failed: $error');
+      debugPrint('Backup create failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       _showSnack('백업 생성에 실패했습니다. 네트워크와 Supabase 설정을 확인해 주세요.');
     } finally {
@@ -2373,7 +2391,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     } on BackupSchemaException catch (error) {
       _showSnack(error.message);
     } catch (error, stackTrace) {
-      debugPrint('Backup restore failed: $error');
+      debugPrint('Backup restore failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       _showSnack('백업 복원에 실패했습니다. Supabase 권한과 스키마를 확인해 주세요.');
     } finally {
@@ -3342,6 +3360,39 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              _SectionCard(
+                title: '진단 로그',
+                subtitle: '버그 진단용 로그를 화면에 표시합니다.',
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final log = DiagLogger.dump();
+                    showDialog<void>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('진단 로그'),
+                        content: SingleChildScrollView(
+                          child: SelectableText(
+                            log,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            child: const Text('닫기'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.bug_report_outlined),
+                  label: const Text('진단 로그 보기'),
                 ),
               ),
               const SizedBox(height: 16),
