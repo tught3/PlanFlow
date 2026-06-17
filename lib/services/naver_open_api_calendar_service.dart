@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/log_text.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart'
@@ -60,7 +61,7 @@ class NaverOpenApiCalendarService {
   static const String _logTag = 'PlanFlowNaverCalendar';
 
   void _log(String message) {
-    debugPrint('[$_logTag] openApi $message');
+    debugPrint('[$_logTag] openApi ${logSafeText(message)}');
   }
 
   // ---------------------------------------------------------------------------
@@ -247,7 +248,9 @@ class NaverOpenApiCalendarService {
           diagnostics.addSkipReason('Supabase 저장 실패');
           debugPrint(
             'Naver Open API event save failed: '
-            'uid="${schedule.uid}", title="${schedule.summary}", error=$error',
+            'uid="${logSafeText(schedule.uid)}", '
+            'title="${logSafeText(schedule.summary)}", '
+            'error=${logSafeText(error)}',
           );
           debugPrintStack(stackTrace: stackTrace);
         }
@@ -303,8 +306,9 @@ class NaverOpenApiCalendarService {
       );
     } catch (error, stackTrace) {
       _log(
-        'syncAll failed type=${error.runtimeType} error=$error '
-        'diagnostics=${diagnostics.freeze().toSummaryMessage()}',
+        'syncAll failed type=${error.runtimeType} '
+        'error=${logSafeText(error)} '
+        'diagnostics=${logSafeText(diagnostics.freeze().toSummaryMessage())}',
       );
       debugPrintStack(stackTrace: stackTrace);
       return NaverCalDavSyncResult(
@@ -336,7 +340,10 @@ class NaverOpenApiCalendarService {
       );
       return permission.isGranted;
     } catch (error, stackTrace) {
-      _log('hasCalendarAccess failed type=${error.runtimeType} error=$error');
+      _log(
+        'hasCalendarAccess failed type=${error.runtimeType} '
+        'error=${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
       return false;
     }
@@ -583,7 +590,9 @@ class NaverOpenApiCalendarService {
       if (startAt != null && _isSuspiciousDate(startAt) && endAt != null) {
         debugPrint(
           'Naver Open API: recovered placeholder dtStart from dtEnd '
-          'calId=$calId, rawStart=$rawStart, rawEnd=$rawEnd',
+          'calId=${logSafeText(calId)}, '
+          'rawStart=${logSafeText(rawStart)}, '
+          'rawEnd=${logSafeText(rawEnd)}',
         );
         startAt = endAt;
         endAt = null;
@@ -592,7 +601,8 @@ class NaverOpenApiCalendarService {
       if (startAt == null) {
         debugPrint(
           'Naver Open API: skip event with unparseable dtStart '
-          'calId=$calId, rawStart=$rawStart',
+          'calId=${logSafeText(calId)}, '
+          'rawStart=${logSafeText(rawStart)}',
         );
         return null;
       }
@@ -600,7 +610,8 @@ class NaverOpenApiCalendarService {
       if (_isSuspiciousDate(startAt)) {
         debugPrint(
           'Naver Open API: skip suspicious start date '
-          'calId=$calId, startAt=$startAt',
+          'calId=${logSafeText(calId)}, '
+          'startAt=${logSafeText(startAt)}',
         );
         return null;
       }
@@ -629,7 +640,9 @@ class NaverOpenApiCalendarService {
         uid: uid,
       );
     } catch (error, stackTrace) {
-      debugPrint('Naver Open API schedule parse error: $error');
+      debugPrint(
+        'Naver Open API schedule parse error: ${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
       return null;
     }
@@ -902,7 +915,9 @@ class NaverOpenApiCalendarService {
       } catch (_) {}
     }
 
-    debugPrint('Naver Open API: unable to parse datetime "$raw"');
+    debugPrint(
+      'Naver Open API: unable to parse datetime "${logSafeText(raw)}"',
+    );
     return null;
   }
 

@@ -10,6 +10,7 @@ import 'package:googleapis_auth/googleapis_auth.dart' as gauth;
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/log_text.dart';
 import '../core/local_time.dart';
 import '../data/models/calendar_connection_model.dart';
 import '../data/models/event_model.dart';
@@ -289,8 +290,9 @@ class CalendarSyncService {
   bool _hasText(String? value) => value != null && value.trim().isNotEmpty;
 
   void _logGoogleAuth(String message) {
-    developer.log(message, name: _googleAuthLogTag);
-    debugPrint('[$_googleAuthLogTag] $message');
+    final safeMessage = logSafeText(message);
+    developer.log(safeMessage, name: _googleAuthLogTag);
+    debugPrint('[$_googleAuthLogTag] $safeMessage');
   }
 
   void _logGoogleAuthError(
@@ -298,24 +300,30 @@ class CalendarSyncService {
     Object? error,
     StackTrace? stackTrace,
   }) {
+    final safeMessage = logSafeText(message);
+    final safeError = logSafeText(error);
     developer.log(
-      message,
+      safeMessage,
       name: _googleAuthLogTag,
-      error: error,
+      error: safeError,
       stackTrace: stackTrace,
     );
-    debugPrint('[$_googleAuthLogTag] $message');
+    debugPrint('[$_googleAuthLogTag] $safeMessage');
     if (error != null) {
       debugPrint('[$_googleAuthLogTag] errorType=${error.runtimeType}');
-      debugPrint('[$_googleAuthLogTag] error=$error');
+      debugPrint('[$_googleAuthLogTag] error=$safeError');
       if (error is PlatformException) {
         debugPrint('[$_googleAuthLogTag] platformCode=${error.code}');
-        debugPrint('[$_googleAuthLogTag] platformMessage=${error.message}');
-        debugPrint('[$_googleAuthLogTag] platformDetails=${error.details}');
+        debugPrint(
+          '[$_googleAuthLogTag] platformMessage=${logSafeText(error.message)}',
+        );
+        debugPrint(
+          '[$_googleAuthLogTag] platformDetails=${logSafeText(error.details)}',
+        );
       }
     }
     if (stackTrace != null) {
-      debugPrint('[$_googleAuthLogTag] stackTrace=$stackTrace');
+      debugPrint('[$_googleAuthLogTag] stackTrace=${logSafeText(stackTrace)}');
     }
   }
 
@@ -782,7 +790,7 @@ class CalendarSyncService {
         client.close();
       }
     } catch (error, stackTrace) {
-      debugPrint('Google Calendar event export failed: $error');
+      debugPrint('Google Calendar event export failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       return CalendarIntegrationResult.failed(
         CalendarProvider.google,
@@ -955,7 +963,7 @@ class CalendarSyncService {
         syncedItems: syncedItems,
       );
     } catch (error, stackTrace) {
-      debugPrint('Naver Calendar sync failed: $error');
+      debugPrint('Naver Calendar sync failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       return CalendarIntegrationResult.failed(
         CalendarProvider.naver,
@@ -1000,7 +1008,7 @@ class CalendarSyncService {
         provider: _providerKey(provider),
       );
     } catch (error, stackTrace) {
-      debugPrint('Calendar connection fetch skipped: $error');
+      debugPrint('Calendar connection fetch skipped: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       return null;
     }
@@ -1055,7 +1063,8 @@ class CalendarSyncService {
         );
       } else {
         debugPrint(
-            '[PlanFlowNaverCalendar] saveConnection skipped error=$error');
+          '[PlanFlowNaverCalendar] saveConnection skipped error=${logSafeText(error)}',
+        );
         debugPrintStack(stackTrace: stackTrace);
       }
     }
@@ -1473,7 +1482,7 @@ class CalendarSyncService {
           );
           debugPrint(
             'Google import reflected PlanFlow event handled: '
-            'incoming="${model.title}" ${model.startAt} '
+            'incoming="${logSafeText(model.title)}" ${model.startAt} '
             'existing=${planFlowOrigin.id} linked=${linked != null}',
           );
           syncedItems += 1;
@@ -1492,7 +1501,7 @@ class CalendarSyncService {
           );
           debugPrint(
             'Google import duplicate handled by title/start: '
-            'incoming="${model.title}" ${model.startAt} '
+            'incoming="${logSafeText(model.title)}" ${model.startAt} '
             'existing=${duplicate.id} source=${duplicate.source} '
             'linked=${linked != null}',
           );
@@ -1654,7 +1663,7 @@ class CalendarSyncService {
       final auth = Supabase.instance.client.auth;
       userId = auth.currentSession?.user.id ?? auth.currentUser?.id;
     } catch (error) {
-      debugPrint('Calendar current user lookup failed: $error');
+      debugPrint('Calendar current user lookup failed: ${logSafeText(error)}');
     }
 
     if (userId == null || userId.isEmpty) {
