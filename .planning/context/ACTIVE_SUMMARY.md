@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-17 TASK_20260617_122839 Naver OAuth 토큰 저장 대상 보정
+- 네이버 캘린더 OAuth `calendar-link` 콜백에서 PKCE code 교환 직후 provider token을 즉시 저장하지 않고 문자열로만 보관하도록 바꿨다.
+- 기존 Google 세션 복원 후 `restoredUserId == googleUserId`이고 토큰이 비어 있지 않을 때만 저장하며, preExchange/postExchange/restore-check/persist-target DIAG 로그를 추가했다.
+- 검증: `flutter analyze lib/services/oauth_callback_handler.dart --no-pub`, `flutter test test/services/oauth_callback_handler_test.dart --no-pub -r expanded`, `flutter test test/services/naver_calendar_permission_service_test.dart test/services/calendar_sync_service_test.dart --no-pub -r expanded`, `flutter analyze --no-pub` 통과. `flutter build apk --debug --no-pub`는 worktree의 `android/key.properties` 부재로 Gradle 진입 초기에 실패했고, Android 기기는 감지되지 않았다.
+
 ## 2026-06-16 Naver auth log mojibake cleanup
 - `PlanFlowNaverCalendar` 계열 adb 로그에서 한국어 `message=` 본문과 응답 body excerpt를 제거하고, `status/statusCode/errorType/bodyLength`만 남기도록 바꿔 PowerShell/logcat 경로의 mojibake를 줄였다.
 - `lib/screens/settings/settings_screen.dart`, `lib/services/naver_open_api_calendar_service.dart`, `lib/services/naver_calendar_permission_service.dart`를 정리했고, `scripts/flutter-local.ps1 analyze --no-pub`는 통과했다.

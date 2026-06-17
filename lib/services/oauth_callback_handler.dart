@@ -491,12 +491,14 @@ class OAuthCallbackHandler {
     // Naver 캘린더 연동 콜백: PKCE code는 교환하되 기존 Google 세션은 복원한다.
     if (isPendingNaverCalendarLink) {
       final previousSession = client.auth.currentSession;
+      final googleUserId = previousSession?.user.id;
       final rawAuthCode = normalizedUri.queryParameters['code'];
       final authCode = rawAuthCode?.trim();
       DiagLogger.log(
         'DIAG',
-        'naver code exchange entered codePresent=${authCode?.isNotEmpty == true} '
-        'previousSessionPresent=${previousSession != null}',
+        'naver preExchange googleUserId=${googleUserId ?? "null"} '
+            'previousSessionPresent=${previousSession != null} '
+            'codePresent=${authCode?.isNotEmpty == true}',
       );
       _logNaverCalendar(
         'exchange path: using PKCE code exchange and restoring previous session '
@@ -510,23 +512,22 @@ class OAuthCallbackHandler {
         return;
       }
       final normalizedAuthCode = authCode;
+      String? naverProviderToken;
 
       try {
-        final response =
-            await client.auth.exchangeCodeForSession(normalizedAuthCode);
+        final response = await client.auth.exchangeCodeForSession(
+          normalizedAuthCode,
+        );
+        naverProviderToken = response.session.providerToken?.trim();
         DiagLogger.log(
           'DIAG',
-          'naver code exchange completed providerTokenPresent='
-          '${response.session.providerToken?.trim().isNotEmpty == true}',
+          'naver postExchange providerTokenPresent='
+              '${naverProviderToken?.isNotEmpty == true}',
         );
         _logNaverCalendar(
           'exchange path: code exchange completed '
           'providerTokenPresent='
-          '${response.session.providerToken?.trim().isNotEmpty == true}',
-        );
-        await _captureNaverProviderTokenIfAny(
-          explicitProviderToken: response.session.providerToken,
-          allowWithoutNaverIdentity: true,
+          '${naverProviderToken?.isNotEmpty == true}',
         );
       } finally {
         if (previousSession != null) {
@@ -565,6 +566,34 @@ class OAuthCallbackHandler {
             debugPrintStack(stackTrace: stackTrace);
           }
         }
+      }
+      final restoredUserId = client.auth.currentSession?.user.id;
+      final restoredMatchesGoogle =
+          restoredUserId != null && restoredUserId == googleUserId;
+      DiagLogger.log(
+        'DIAG',
+        'naver restore-check restoredUserId=${restoredUserId ?? "null"} '
+            'googleUserId=${googleUserId ?? "null"} match=$restoredMatchesGoogle',
+      );
+      if (restoredMatchesGoogle &&
+          naverProviderToken != null &&
+          naverProviderToken.isNotEmpty) {
+        DiagLogger.log(
+          'DIAG',
+          'naver persist-target persisting token for user=$restoredUserId',
+        );
+        await _captureNaverProviderTokenIfAny(
+          explicitProviderToken: naverProviderToken,
+          allowWithoutNaverIdentity: true,
+        );
+      } else {
+        final skipReason = restoredUserId == null
+            ? 'no_restored_session'
+            : (!restoredMatchesGoogle ? 'user_mismatch' : 'empty_token');
+        DiagLogger.log(
+          'DIAG',
+          'naver persist-target SKIPPED reason=$skipReason',
+        );
       }
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
