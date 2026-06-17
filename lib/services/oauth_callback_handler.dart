@@ -488,21 +488,84 @@ class OAuthCallbackHandler {
       return;
     }
 
-    // Naver 캘린더 연동 콜백: getSessionFromUrl 호출 금지 → Google 세션 보존
+    // Naver 캘린더 연동 콜백: PKCE code는 교환하되 기존 Google 세션은 복원한다.
     if (isPendingNaverCalendarLink) {
-      DiagLogger.log('DIAG', 'exchange bypass entered naverToken present=${normalizedUri.queryParameters.containsKey("provider_token")}');
+      final previousSession = client.auth.currentSession;
+      final rawAuthCode = normalizedUri.queryParameters['code'];
+      final authCode = rawAuthCode?.trim();
+      DiagLogger.log(
+        'DIAG',
+        'naver code exchange entered codePresent=${authCode?.isNotEmpty == true} '
+        'previousSessionPresent=${previousSession != null}',
+      );
       _logNaverCalendar(
-        'exchange path: skipping session exchange to preserve existing Google session',
+        'exchange path: using PKCE code exchange and restoring previous session '
+        'previousSessionPresent=${previousSession != null}',
       );
-      final naverToken = normalizedUri.queryParameters['provider_token'];
-      _logNaverCalendar(
-        'exchange path: urlProviderToken present='
-        '${naverToken?.trim().isNotEmpty == true}',
-      );
-      await _captureNaverProviderTokenIfAny(
-        explicitProviderToken: naverToken,
-        allowWithoutNaverIdentity: true,
-      );
+      if (authCode == null || authCode.isEmpty) {
+        _logNaverCalendar('exchange path: missing auth code in callback url');
+        clearPendingCallback();
+        latestUserMessage.value =
+            '네이버 권한 동의는 열렸지만 인증 코드가 전달되지 않았습니다. 다시 시도해 주세요.';
+        return;
+      }
+      final normalizedAuthCode = authCode;
+
+      try {
+        final response =
+            await client.auth.exchangeCodeForSession(normalizedAuthCode);
+        DiagLogger.log(
+          'DIAG',
+          'naver code exchange completed providerTokenPresent='
+          '${response.session.providerToken?.trim().isNotEmpty == true}',
+        );
+        _logNaverCalendar(
+          'exchange path: code exchange completed '
+          'providerTokenPresent='
+          '${response.session.providerToken?.trim().isNotEmpty == true}',
+        );
+        await _captureNaverProviderTokenIfAny(
+          explicitProviderToken: response.session.providerToken,
+          allowWithoutNaverIdentity: true,
+        );
+      } finally {
+        if (previousSession != null) {
+          try {
+            final previousRefreshToken = previousSession.refreshToken?.trim();
+            if (previousRefreshToken == null || previousRefreshToken.isEmpty) {
+              DiagLogger.log(
+                'DIAG',
+                'naver previous session restore skipped reason=missing_refresh_token',
+              );
+              _logNaverCalendar(
+                'exchange path: previous session restore skipped reason=missing_refresh_token',
+              );
+            } else {
+              await client.auth.setSession(
+                previousRefreshToken,
+                accessToken: previousSession.accessToken,
+              );
+              DiagLogger.log(
+                'DIAG',
+                'naver previous session restored user=${previousSession.user.id}',
+              );
+              _logNaverCalendar(
+                'exchange path: previous session restored user=${previousSession.user.id}',
+              );
+            }
+          } catch (error, stackTrace) {
+            DiagLogger.log(
+              'DIAG',
+              'naver previous session restore failed type=${error.runtimeType} error=$error',
+            );
+            _logNaverCalendar(
+              'exchange path: previous session restore failed '
+              'type=${error.runtimeType} error=${logSafeText(error)}',
+            );
+            debugPrintStack(stackTrace: stackTrace);
+          }
+        }
+      }
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
         await _logPendingLoginIfNeeded();

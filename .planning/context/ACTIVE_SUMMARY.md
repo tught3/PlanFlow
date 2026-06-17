@@ -1860,3 +1860,13 @@
 - Google Calendar 연결/상태/동기화 경로에 `PlanFlowGoogleAuth` 로그를 추가해 sign-in, access token, Supabase 세션, API fetch, connection 저장 단계를 분리해 볼 수 있게 했다.
 - Naver Calendar OAuth/콜백/권한 확인/Open API 가져오기/설정 화면 상태 경로에 `PlanFlowNaverCalendar` 로그를 추가해 consent URL, callback pending 복원, provider token capture, permission probe, HTTP status/body shape, import 결과를 추적할 수 있게 했다.
 - 검증: `scripts\flutter-local.ps1 analyze --no-pub`, `scripts\flutter-local.ps1 build apk --debug --no-pub` 통과. 현재 ADB 연결 기기가 없어 설치 검증은 미실행.
+
+## 2026-06-16 로그 mojibake 완화
+- Google 로그인 플로우는 유지한 채 Naver/Auth/Settings 디버그 로그에 `logSafeText`를 적용해 adb logcat/PowerShell에서 한글이 깨져 보이던 경로를 ASCII-safe하게 정리했다.
+- `PlanFlowGoogleAuth`와 `PlanFlowNaverCalendar` 로그 출력만 손봤고, 실제 인증/동기화 동작은 건드리지 않았다.
+- 검증: `scripts\\flutter-local.ps1 analyze --no-pub` 통과.
+
+## 2026-06-16 Naver 캘린더 토큰 저장 복구
+- Naver 캘린더 콜백이 PKCE `code`를 우회하던 경로를 제거하고, `exchangeCodeForSession()`으로 실제 토큰을 받은 뒤 기존 Google 세션은 `setSession()`으로 복원하도록 바꿨다.
+- `provider_token`이 없는 Naver 콜백에서도 저장 단계가 지나가도록 진단 로그를 추가해 토큰 미저장 원인을 추적 가능하게 했다.
+- 검증: `scripts\\flutter-local.ps1 analyze --no-pub`, `scripts\\flutter-local.ps1 test test/services/oauth_callback_handler_test.dart --no-pub` 통과.
