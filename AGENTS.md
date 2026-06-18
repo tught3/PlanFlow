@@ -295,6 +295,7 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - Every completed task/logical change must end with verification, a planning-context checkpoint, a Git commit, and a push to the remote repository.
 - Every completed task/logical change must also end with a fresh build and, when the target device is available, a real run/launch check before reporting completion.
 - For any Flutter run/build/test command in this repo, prefer `scripts/flutter-local.ps1` so `env/local.json` and the local `--dart-define` set are injected automatically. Do not fall back to raw `flutter` unless the wrapper is missing or the user explicitly asks.
+- **APK 빌드는 반드시 `--release`만 사용한다.** `flutter build apk --debug` 또는 `flutter build apk` (mode 미지정) 절대 금지. 디버그 키스토어와 릴리즈 키스토어 서명이 달라 OS가 앱 데이터를 삭제하므로 사용자 세션이 소실된다. 올바른 명령: `scripts\flutter-local.ps1 build apk --release`
 - Before starting work, check `.planning/STATE.md` and `.planning/context/ACTIVE_SUMMARY.md`.
 - Run `node scripts/gsd-context-hygiene.mjs` at session start, before long work, and before final report. If the script is missing, record that and continue.
 - After every completed logical change, update `.planning/context/ACTIVE_SUMMARY.md` with a short checkpoint.
