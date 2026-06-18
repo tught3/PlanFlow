@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/diag_logger.dart';
 import '../core/env.dart';
+import '../core/log_text.dart';
 import '../core/supabase_auth_options.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
@@ -119,6 +121,11 @@ class CalendarAutoSyncService {
     String reason = 'app_lifecycle',
     bool force = false,
   }) async {
+    DiagLogger.log(
+      'DIAG',
+      'autoSync enter method=syncConnectedCalendars reason=${logSafeText(reason)} '
+          'force=$force currentUser=${logSafeText(_currentSupabaseUserId())}',
+    );
     if (!_canSync) {
       await _recordProviderStatus(
         'all',

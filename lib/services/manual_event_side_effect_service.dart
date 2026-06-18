@@ -190,6 +190,7 @@ class ManualEventSideEffectService {
     var remindersSynced = false;
     var notificationsSynced = false;
     var preActionsCleared = !clearPreActions;
+    var reminderEvent = event;
     final effectiveNow = _currentTime;
     final resolvedTravelMinutes = await _resolveTravelMinutesForEvent(
       event,
@@ -227,9 +228,13 @@ class ManualEventSideEffectService {
         now: effectiveNow,
       );
       await gateway.insertPreActions(externalPreparationPayloads);
+      reminderEvent = await _syncEventCriticalFlagForPreActions(
+        event,
+        hasPreActions: externalPreparationPayloads.isNotEmpty,
+      );
       await gateway.insertReminders(
         buildReminderPayloads(
-          event: event,
+          event: reminderEvent,
           userId: userId,
           reminderOffset: reminderOffset,
           criticalAlarmOffset: criticalAlarmOffset ?? reminderOffset,
@@ -242,7 +247,7 @@ class ManualEventSideEffectService {
 
     try {
       await scheduleLocalNotifications(
-        event,
+        reminderEvent,
         reminderOffset: reminderOffset,
         criticalAlarmOffset: criticalAlarmOffset ?? reminderOffset,
       );
@@ -284,6 +289,27 @@ class ManualEventSideEffectService {
       notificationsSynced: notificationsSynced,
       preActionsCleared: preActionsCleared,
     );
+  }
+
+  Future<EventModel> _syncEventCriticalFlagForPreActions(
+    EventModel event, {
+    required bool hasPreActions,
+  }) async {
+    final nextIsCritical = event.isCritical || hasPreActions;
+    if (event.isCritical == nextIsCritical) {
+      return event;
+    }
+    final updatedEvent = _copyEventWithCritical(
+      event,
+      isCritical: nextIsCritical,
+    );
+    try {
+      return await _events.updateEvent(updatedEvent);
+    } catch (error, stackTrace) {
+      debugPrint('Event critical flag sync skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return updatedEvent;
+    }
   }
 
   Future<void> cleanupAfterDelete(
@@ -1041,6 +1067,41 @@ EventModel _copyEventWithLocationCoordinates(
     participants: event.participants,
     targets: event.targets,
     isCritical: event.isCritical,
+    recurrenceRule: event.recurrenceRule,
+    isAllDay: event.isAllDay,
+    isMultiDay: event.isMultiDay,
+    parentEventId: event.parentEventId,
+    category: event.category,
+    source: event.source,
+    externalId: event.externalId,
+    externalCalendarId: event.externalCalendarId,
+    externalEtag: event.externalEtag,
+    externalUpdatedAt: event.externalUpdatedAt,
+    lastSyncedAt: event.lastSyncedAt,
+    createdAt: event.createdAt,
+    updatedAt: event.updatedAt,
+  );
+}
+
+EventModel _copyEventWithCritical(
+  EventModel event, {
+  required bool isCritical,
+}) {
+  return EventModel(
+    id: event.id,
+    userId: event.userId,
+    title: event.title,
+    startAt: event.startAt,
+    endAt: event.endAt,
+    location: event.location,
+    locationLat: event.locationLat,
+    locationLng: event.locationLng,
+    memo: event.memo,
+    supplies: event.supplies,
+    suppliesChecked: event.suppliesChecked,
+    participants: event.participants,
+    targets: event.targets,
+    isCritical: isCritical,
     recurrenceRule: event.recurrenceRule,
     isAllDay: event.isAllDay,
     isMultiDay: event.isMultiDay,

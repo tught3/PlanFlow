@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/app_permission_service.dart';
@@ -84,6 +84,48 @@ void main() {
         notifications.scheduledCriticalNotifyAts.single,
         event.startAt!.subtract(const Duration(minutes: 60)),
       );
+    });
+
+    test('marks event critical when generated pre-actions exist', () async {
+      final gateway = _FakeManualEventGateway();
+      final repository = _FakeEventRepository();
+      final notifications = _FakeNotificationService();
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        eventRepository: repository,
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: notifications,
+        travelTimeBufferService: _FakeTravelTimeBufferService(routeMinutes: 20),
+        currentLocationProvider: () async => const GeoPoint(
+          latitude: 37.5,
+          longitude: 127,
+        ),
+      );
+      final event = EventModel(
+        id: 'event-critical-by-pre-action',
+        userId: 'user-1',
+        title: '외부 미팅',
+        startAt: DateTime.now().add(const Duration(hours: 3)),
+        location: '강남역',
+        locationLat: 37.4979,
+        locationLng: 127.0276,
+        isCritical: false,
+      );
+
+      await service.syncAfterSave(
+        event: event,
+        userId: 'user-1',
+      );
+
+      expect(gateway.insertedPreActions, isNotEmpty);
+      expect(repository.updatedEvents, hasLength(1));
+      expect(repository.updatedEvents.single.id, event.id);
+      expect(repository.updatedEvents.single.isCritical, isTrue);
+      expect(
+        gateway.insertedReminders.map((row) => row['type']),
+        containsAll(<String>['push', 'system_alarm']),
+      );
+      expect(notifications.scheduledCriticalAlarmIds, hasLength(1));
     });
 
     test('delete cleanup cancels local notifications for the event', () async {
@@ -892,9 +934,10 @@ class _FakeLocationLookupService extends LocationLookupService {
 }
 
 class _FakeEventRepository extends EventRepository {
-  const _FakeEventRepository({this.events = const <EventModel>[]});
+  _FakeEventRepository({this.events = const <EventModel>[]});
 
   final List<EventModel> events;
+  final List<EventModel> updatedEvents = <EventModel>[];
 
   @override
   Future<EventModel> createEvent(EventModel event) async => event;
@@ -915,7 +958,10 @@ class _FakeEventRepository extends EventRepository {
   }
 
   @override
-  Future<EventModel> updateEvent(EventModel event) async => event;
+  Future<EventModel> updateEvent(EventModel event) async {
+    updatedEvents.add(event);
+    return event;
+  }
 }
 
 class _FakeNotificationService extends NotificationService {

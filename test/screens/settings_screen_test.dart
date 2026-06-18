@@ -607,10 +607,14 @@ void main() {
     expect(naverImportService.syncCallCount, 1);
   });
 
-  testWidgets('initial Naver calendar action triggers OAuth connect flow',
+  testWidgets(
+      'Naver calendar sync does not show permission failure when fallback starts',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => authProvider.setUser(null));
+
+    authProvider.setUser('user-1');
 
     await tester.pumpWidget(
       MaterialApp(
@@ -628,30 +632,40 @@ void main() {
             ),
           ),
           notificationService: _FakeNotificationService(),
+          authService: _FakeAuthService(connectCalendarResult: false),
+          naverCalDavService: _FakeNaverCalDavService(),
           naverImportService: _FakeNaverOpenApiCalendarService(
             initialHasAccess: false,
           ),
           userId: 'user-1',
-          initialAction: SettingsInitialAction.naverCalDav,
         ),
       ),
     );
 
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
+    final syncButton =
+        find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
+    await _scrollUntilHitTestable(tester, syncButton);
+    await tester.tap(syncButton.hitTestable().first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    // Open API 전환 후: CalDAV 앱비번 다이얼로그 대신 Supabase 미설정 안내가 표시됨
-    // (테스트 환경에서 authService가 null → Supabase 설정 안내 스낵바)
-    expect(find.text('네이버 ID'), findsNothing);
-    expect(find.text('앱 비밀번호'), findsNothing);
+    expect(
+      find.textContaining('권한 동의가 확인되지 않았습니다'),
+      findsNothing,
+    );
+    expect(find.text('네이버 캘린더 연결'), findsOneWidget);
+    expect(find.text('네이버 ID'), findsOneWidget);
+    expect(find.text('앱 비밀번호'), findsOneWidget);
   });
 
   testWidgets('Naver OAuth launch does not immediately fail permission check',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => authProvider.setUser(null));
 
+    authProvider.setUser('user-1');
     final authService = _FakeAuthService(connectCalendarResult: true);
 
     await tester.pumpWidget(
@@ -691,10 +705,6 @@ void main() {
     expect(
       find.textContaining('권한 동의가 확인되지 않았습니다'),
       findsNothing,
-    );
-    expect(
-      find.textContaining('동의 후 PlanFlow로 돌아오면 자동으로 권한을 확인합니다'),
-      findsWidgets,
     );
     await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
@@ -804,6 +814,65 @@ void main() {
     expect(deviceCalendarService.importCallCount, 1);
     expect(
       find.textContaining('휴대폰 내부 캘린더 일정 2개를 PlanFlow로 가져왔습니다.'),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('device Naver calendar import shows long-running progress dialog',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final deviceCalendarService = _FakeDeviceCalendarService(
+      result: const DeviceCalendarImportResult(
+        status: DeviceCalendarImportStatus.imported,
+        message: '휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.',
+        importedCount: 1,
+      ),
+      delay: const Duration(seconds: 4),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+            ),
+          ),
+          deviceCalendarService: deviceCalendarService,
+          notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final importButton = find.byKey(
+      const ValueKey('settings-device-calendar-import-button'),
+    );
+    await _scrollUntilHitTestable(tester, importButton);
+    await tester.tap(importButton.hitTestable().first);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+
+    expect(find.text('휴대폰 내부 캘린더 가져오기'), findsOneWidget);
+    expect(
+      find.textContaining('일정이 많아 조금 걸리고 있습니다'),
+      findsWidgets,
+    );
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('휴대폰 내부 캘린더 가져오기'), findsNothing);
+    expect(deviceCalendarService.importCallCount, 1);
+    expect(
+      find.textContaining('휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.'),
       findsWidgets,
     );
   });
@@ -1078,14 +1147,17 @@ class _FakeNotificationService extends NotificationService {
 }
 
 class _FakeDeviceCalendarService extends DeviceCalendarService {
-  _FakeDeviceCalendarService({required this.result})
-      : super(
+  _FakeDeviceCalendarService({
+    required this.result,
+    this.delay = Duration.zero,
+  }) : super(
           gateway: _FakeDeviceCalendarGateway(),
           eventRepository: _FakeDeviceEventRepository(),
           currentUserId: 'user-1',
         );
 
   final DeviceCalendarImportResult result;
+  final Duration delay;
   int importCallCount = 0;
 
   @override
@@ -1095,6 +1167,9 @@ class _FakeDeviceCalendarService extends DeviceCalendarService {
     DateTime? endAt,
   }) async {
     importCallCount += 1;
+    if (delay > Duration.zero) {
+      await Future<void>.delayed(delay);
+    }
     return result;
   }
 }
