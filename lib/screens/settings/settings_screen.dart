@@ -1358,66 +1358,38 @@ class _SettingsScreenState extends State<SettingsScreen>
         canPop: dismissible,
         child: AlertDialog(
           title: const Text('네이버 일정 가져오기'),
-          content: ValueListenableBuilder<bool>(
-            valueListenable: _naverCalDavLongRunning,
-            builder: (context, isLongRunning, _) {
-              return ValueListenableBuilder<NaverCalDavSyncProgress?>(
-                valueListenable: _naverCalDavProgress,
-                builder: (context, progress, _) {
-                  final processed = progress?.processedEvents ?? 0;
-                  final total = progress?.totalEvents ?? 0;
-                  final isSaving =
-                      progress?.stage == NaverCalDavSyncStage.saving;
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Center(child: CircularProgressIndicator()),
-                      const SizedBox(height: 16),
-                      Text(
-                        isLongRunning
-                            ? '일정이 많아서 조금 오래 걸리고 있습니다. 앱을 닫아도 진행은 계속돼요.'
-                            : '가져오는 중입니다. 잠시만 기다려 주세요.',
-                      ),
-                      const SizedBox(height: 12),
-                      Text(progress?.message ?? '캘린더 확인 중입니다.'),
-                      Text(
-                        '앱을 백그라운드로 보내도 계속 진행됩니다. 완료되면 알려드릴게요.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: PlanFlowColors.textSecondary,
-                            ),
-                      ),
-                      if (progress?.currentCalendar != null) ...[
-                        const SizedBox(height: 8),
-                        Text('현재 캘린더: ${progress!.currentCalendar}'),
-                      ],
-                      const SizedBox(height: 8),
-                      Text(
-                        isSaving
-                            ? '$processed / $total개 처리 중'
-                            : '저장이 시작되면 00/00개 처리 중으로 표시됩니다.',
-                      ),
-                      if (total > 0 && !isSaving) ...[
-                        const SizedBox(height: 8),
-                        Text('조회된 일정 $total개'),
-                      ],
-                      const SizedBox(height: 8),
-                      Text(
-                        '저장 ${progress?.savedEvents ?? 0}개 · '
-                        '건너뜀 ${progress?.skippedEvents ?? 0}개 · '
-                        '실패 ${progress?.failedEvents ?? 0}개',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      if (dismissible) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          '이 창을 닫아도 계속 진행됩니다.',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ],
-                  );
-                },
+          content: ValueListenableBuilder<NaverCalDavSyncProgress?>(
+            valueListenable: _naverCalDavProgress,
+            builder: (context, progress, _) {
+              final stage = progress?.stage;
+              final processed = progress?.processedEvents ?? 0;
+              final total = progress?.totalEvents ?? 0;
+              final calIdx = progress?.currentCalendarIndex ?? 0;
+              final calTotal = progress?.totalCalendars ?? 0;
+              final statusText = switch (stage) {
+                NaverCalDavSyncStage.preparing => '네이버 CalDAV 연결 확인 중...',
+                NaverCalDavSyncStage.calendars =>
+                  calTotal > 0 ? '캘린더 확인 중 ($calIdx/$calTotal개)' : '캘린더 확인 중...',
+                NaverCalDavSyncStage.querying =>
+                  total > 0 ? '일정 목록 조회 중 ($total개)' : '일정 목록 조회 중...',
+                NaverCalDavSyncStage.saving =>
+                  total > 0 ? 'PlanFlow에 저장 중 ($processed/$total개)' : 'PlanFlow에 저장 중...',
+                NaverCalDavSyncStage.completed => '마무리 중...',
+                null => '준비 중...',
+              };
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 8),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 20),
+                  Text(
+                    statusText,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                ],
               );
             },
           ),
@@ -3598,6 +3570,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   bool _isNaverCalendarConfigured() {
+    if (_hasNaverCalDavCredentials) {
+      return true;
+    }
     final summary = _calendarSyncSummary?.naver;
     if (summary != null) {
       if (summary.status == CalendarIntegrationStatus.synced) {
