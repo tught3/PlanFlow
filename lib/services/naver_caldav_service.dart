@@ -709,9 +709,7 @@ class NaverCalDavService {
     final homePaths = await _discoverCalendarHomePaths(credentials);
     debugPrint('Naver CalDAV 캘린더 홈 후보: $homePaths');
     Object? lastError;
-    var pathAttempt = 0;
     for (final path in homePaths) {
-      pathAttempt += 1;
       final endpoint = _baseUri.replace(path: path);
       try {
         final response = await _sendXmlRequest(
@@ -723,7 +721,7 @@ class NaverCalDavService {
         );
         DiagLogger.log(
           'NaverCalDav',
-          'PROPFIND status=${response.statusCode} attempt=$pathAttempt',
+          'getCalendars propfind status=${response.statusCode}',
         );
         if (response.statusCode == 404) {
           lastError = StateError('CalDAV calendar-home not found: $endpoint');
@@ -743,6 +741,10 @@ class NaverCalDavService {
         }
       } catch (error) {
         lastError = error;
+        DiagLogger.log(
+          'NaverCalDav',
+          'getCalendars pathFailed error=${error.runtimeType}',
+        );
         debugPrint('Naver CalDAV calendar path failed: $path / $error');
       }
     }

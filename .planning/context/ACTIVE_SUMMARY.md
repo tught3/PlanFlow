@@ -2,7 +2,9 @@
 ## 2026-06-18 TASK_20260618_014121 Google Calendar 복구 + Naver CalDAV 진단
 - worktree HEAD에 포함된 `011c9dc`/`9255f74`로 네이버 캘린더 CalDAV 직접 연결 전환과 CalDAV 다이얼로그 ID 자동 채우기 변경을 유지했다.
 - `NaverCalDavService`에 릴리즈 진단용 DiagLogger를 추가해 PROPFIND HTTP status, syncAll 캘린더 개수, 실패 error type을 기록한다. 네이버 ID/앱비밀번호/ICS 본문 노출을 피하려고 path/error 원문은 기록하지 않는다.
+- Claude 재검토 지적에 따라 PROPFIND/pathFailed DiagLogger 문구에서 CalDAV path를 제거했고, `syncAll calendars=...` 로그가 `getCalendars()` 직후 남아 있는지 재확인했다.
 - 검증: `flutter test test/services/naver_caldav_service_test.dart test/services/naver_caldav_credential_store_test.dart --no-pub -r expanded`, `flutter analyze --no-pub`, `git diff --check -- lib/services/naver_caldav_service.dart`, `flutter build apk --release --no-pub` 통과. `scripts/flutter-local.ps1 analyze --no-pub`는 worktree 상위 `.fluxos` bootstrap 경로 부재로 Flutter 실행 전 실패했다. ADB 기기가 없어 설치/실행 검증은 미실행.
+- 재검증: 로그 리다이렉트 방식으로 `flutter analyze --no-pub`, `flutter analyze lib/services/naver_caldav_service.dart --no-pub`, `flutter test test/services/naver_caldav_service_test.dart --no-pub -r compact`, `git diff --check -- lib/services/naver_caldav_service.dart` 통과.
 
 ## 2026-06-18 TASK_20260617_160808 Naver OAuth 실패 시 CalDAV fallback 검증 보정
 - 네이버 캘린더 연결에서 OAuth 동의 화면 launch 실패, OAuth 예외, 동의 후 권한 확인 실패 시 CalDAV 직접 연결 다이얼로그로 전환되도록 연결했다.
