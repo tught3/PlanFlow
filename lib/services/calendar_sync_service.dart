@@ -804,6 +804,16 @@ class CalendarSyncService {
   Future<CalendarIntegrationResult> getNaverStatus() async {
     final connection = await _fetchConnection(CalendarProvider.naver);
 
+    // CalDAV 수동 가져오기로 연결된 경우: Open API 체크 불필요
+    if (connection != null &&
+        connection.isConnected &&
+        connection.lastSyncedAt != null) {
+      return CalendarIntegrationResult.ready(
+        CalendarProvider.naver,
+        message: 'Naver CalDAV 캘린더가 연결되어 있습니다.',
+      );
+    }
+
     final permission = await _refreshNaverStatus();
     if (permission.isGranted) {
       final token = await _resolveNaverAccessToken();
@@ -841,11 +851,14 @@ class CalendarSyncService {
     }
     if (permission.isDenied ||
         permission.status == NaverCalendarPermissionStatus.unknown) {
-      await _saveConnection(
-        CalendarProvider.naver,
-        status: CalendarConnectionStatus.reauthRequired,
-        lastError: permission.message,
-      );
+      // CalDAV로 연결된 경우(lastSyncedAt 있음) Open API 실패로 덮어쓰지 않음
+      if (connection?.lastSyncedAt == null) {
+        await _saveConnection(
+          CalendarProvider.naver,
+          status: CalendarConnectionStatus.reauthRequired,
+          lastError: permission.message,
+        );
+      }
     }
     return switch (permission.status) {
       NaverCalendarPermissionStatus.granted => CalendarIntegrationResult.ready(

@@ -571,6 +571,10 @@ class _SettingsScreenState extends State<SettingsScreen>
         return;
       }
       await _loadCalendarStatus();
+      if (!mounted) {
+        return;
+      }
+      await _loadAutoSyncSnapshot();
       _showSnack('Google Calendar 연동을 해제했습니다.');
     } catch (error, stackTrace) {
       debugPrint('Google calendar disconnect failed: ${logSafeText(error)}');
@@ -1966,6 +1970,10 @@ class _SettingsScreenState extends State<SettingsScreen>
         return;
       }
       await _loadCalendarStatus();
+      if (!mounted) {
+        return;
+      }
+      await _loadAutoSyncSnapshot();
       if (!mounted) {
         return;
       }
@@ -3560,12 +3568,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   bool _isNaverCalendarConfigured() {
-    if (_hasNaverCalDavCredentials) {
-      return true;
-    }
     final summary = _calendarSyncSummary?.naver;
     if (summary != null) {
-      if (summary.status == CalendarIntegrationStatus.synced) {
+      if (summary.status == CalendarIntegrationStatus.synced ||
+          summary.status == CalendarIntegrationStatus.ready) {
         return true;
       }
     }
