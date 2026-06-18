@@ -21,6 +21,14 @@ abstract class EventRepository {
     return Future<EventModel?>.value(null);
   }
 
+  /// 특정 source의 external_id 전체를 Set으로 일괄 조회 (중복 스킵용 사전 조회)
+  Future<Set<String>> fetchExternalIdsBySource({
+    required String source,
+    String? userId,
+  }) {
+    return Future.value(<String>{});
+  }
+
   Future<List<EventModel>> findOverlappingEvents({
     required DateTime rangeStart,
     required DateTime rangeEnd,
@@ -582,6 +590,28 @@ class SupabaseEventRepository extends EventRepository {
       return null;
     }
     return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<Set<String>> fetchExternalIdsBySource({
+    required String source,
+    String? userId,
+  }) async {
+    final resolvedUserId = _resolveUserId(userId);
+    final normalizedSource = source.trim();
+    if (normalizedSource.isEmpty) {
+      return <String>{};
+    }
+    final rows = await _client
+        .from(_tableName)
+        .select('external_id')
+        .eq('user_id', resolvedUserId)
+        .eq('source', normalizedSource)
+        .not('external_id', 'is', null);
+    return {
+      for (final row in rows)
+        if (row['external_id'] != null) row['external_id'] as String,
+    };
   }
 
   @override

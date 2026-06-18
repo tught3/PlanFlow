@@ -1158,6 +1158,12 @@ class NaverCalDavService {
       var skippedCount = 0;
       var failedCount = 0;
 
+      // 기존에 가져온 Naver 이벤트 external_id 사전 일괄 조회 (per-event DB 쿼리 제거)
+      final existingNaverIds = await _eventRepository.fetchExternalIdsBySource(
+        source: 'naver_caldav',
+        userId: resolvedUserId,
+      );
+
       // 모든 캘린더에서 이벤트 병렬 조회
       emit(NaverCalDavSyncProgress(
         mode: mode,
@@ -1294,6 +1300,29 @@ class NaverCalDavService {
                 'title="${event.title}", reason=$broadDuplicateReason',
               );
             }
+          }
+          // 사전 조회된 Set으로 먼저 빠르게 체크 (DB 쿼리 없이)
+          final externalId = eventModel.externalId;
+          if (skipUnchanged &&
+              externalId != null &&
+              existingNaverIds.contains(externalId)) {
+            skippedCount += 1;
+            diagnostics.unchangedSkipped += 1;
+            diagnostics.addSkipReason('이미 가져온 일정 (캐시)');
+            emit(NaverCalDavSyncProgress(
+              mode: mode,
+              stage: NaverCalDavSyncStage.saving,
+              message: '이미 가져온 일정은 건너뛰는 중입니다.',
+              currentCalendar: calendar.displayName,
+              currentCalendarIndex: calendarNumber,
+              totalCalendars: calendars.length,
+              processedEvents: eventIndex + 1,
+              totalEvents: events.length,
+              savedEvents: savedCount,
+              skippedEvents: skippedCount,
+              failedEvents: failedCount,
+            ));
+            continue;
           }
           final skipReason =
               skipUnchanged ? await _skipUnchangedReason(eventModel) : null;
