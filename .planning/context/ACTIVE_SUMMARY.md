@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-18 TASK_20260618_014121 Naver CalDAV 진단 로그 보강
+- main 워킹트리에서 Naver CalDAV DiagLogger 태그를 `NaverCalDav`로 통일하고, PROPFIND/path 실패 로그에서 CalDAV path를 제거했으며 syncAll 캘린더 개수 로그를 추가했다.
+- catch 진단 로그는 에러 타입만 남겨 토큰/앱 비밀번호가 error message로 노출될 위험을 줄였다.
+- 검증: `dart analyze lib/services/naver_caldav_service.dart`, `scripts/flutter-local.ps1 test test/services/naver_caldav_service_test.dart --no-pub -r expanded`, `git diff --check` 통과. 전체 `flutter analyze --no-pub`와 wrapper build 명령은 출력 없이 타임아웃됐지만 release APK 산출물은 갱신됨.
+
 ## 2026-06-16 Naver auth log mojibake cleanup
 - `PlanFlowNaverCalendar` 계열 adb 로그에서 한국어 `message=` 본문과 응답 body excerpt를 제거하고, `status/statusCode/errorType/bodyLength`만 남기도록 바꿔 PowerShell/logcat 경로의 mojibake를 줄였다.
 - `lib/screens/settings/settings_screen.dart`, `lib/services/naver_open_api_calendar_service.dart`, `lib/services/naver_calendar_permission_service.dart`를 정리했고, `scripts/flutter-local.ps1 analyze --no-pub`는 통과했다.
