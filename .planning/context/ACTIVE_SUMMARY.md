@@ -5,7 +5,7 @@
 - 외부 일정 critical 판정을 priority 1~5 및 pre-action 존재 기준으로 확장하고, pre-action 생성 후 event critical flag를 갱신하며 기존 pre-action 보유 이벤트 backfill migration(`20260618000000_backfill_is_critical_from_pre_actions.sql`)을 추가했다.
 - 재검토 중 네이버 Open API 권한이 없을 때 OAuth 시작 경로가 CalDAV fallback으로 우회되는 회귀를 확인해, 권한 보유 시 Open API import / 미보유 시 OAuth 시작 / launch 실패 시 CalDAV fallback 순서로 복구했다.
 - 재검토 후 보정: 휴대폰 내부 캘린더 가져오기 장기 진행 상태를 명시 필드/타이머/버튼 안내로 보강했고, settings 테스트의 오래된 OAuth/CalDAV fallback 기대값을 현재 동작에 맞췄다.
-- 재검증: classifier/manual/settings focused tests와 변경 파일 단위 `dart analyze`는 통과했다. 전체 `flutter analyze --no-pub`는 출력 없이 타임아웃됐고, `flutter build apk --debug --no-pub`/`android/gradlew.bat :app:assembleDebug --stacktrace`는 E: worktree build dir와 C: Pub cache 플러그인 소스 간 Gradle `different roots` 오류로 PASS 확정하지 못했다. 기존 debug APK 산출물 존재는 확인했다. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
+- 재검증: `flutter analyze --no-pub`, classifier/manual/settings/device focused tests 통과. `flutter build apk --debug --no-pub`는 APK/sha1 산출 후 Flutter/Gradle 프로세스가 종료되지 않아 exit code를 확보하지 못했고 잔여 build PID를 정리했다. 산출 APK 기준 `adb ... am start -W`, `pidof=2259` 실행 확인. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
 
 ## 2026-06-18 TASK_20260618_112655 캘린더 상태/CalDAV 성능 보정
 - 설정 화면에서 네이버 연결 체크는 CalDAV 자격증명 또는 OpenAPI 접근이 있을 때만 과거 sync/ready/synced 판정을 쓰게 하고, Google은 `signedOut`/`notConfigured` 상태에서 과거 성공 스냅샷으로 초록 체크가 남지 않게 보정했다.
