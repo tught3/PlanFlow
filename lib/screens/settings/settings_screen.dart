@@ -734,8 +734,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       return false;
     }
 
-    _logSettingsNaverCalendar('connectAndImport start');
-    // CalDAV 자격증명이 있으면 Open API 체크 없이 바로 동기화
+    _logSettingsNaverCalendar('connectAndImport start -> CalDAV direct');
+    // CalDAV 자격증명이 있으면 바로 동기화
     final hasCalDavCredentials = await _naverCalDavService.hasCredentials();
     _logSettingsNaverCalendar(
       'connectAndImport hasCalDavCredentials=$hasCalDavCredentials',
@@ -748,89 +748,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       return imported?.success ?? false;
     }
 
-    // CalDAV 자격증명 없을 때만 Open API 경로 시도
-    final hasAccess = await _naverImportService.hasCalendarAccess();
-    _logSettingsNaverCalendar('connectAndImport openApiAccess=$hasAccess');
-    if (!hasAccess) {
-      setState(() {
-        _isTestingNaverCalDav = true;
-        _lastNaverCalDavResult = null;
-      });
-
-      final authService = _authService;
-      if (authService == null) {
-        _logSettingsNaverCalendar(
-          'connectAndImport fallback: authService=null',
-        );
-        setState(() {
-          _isTestingNaverCalDav = false;
-        });
-        return _connectNaverCalDavFallbackAndImport();
-      }
-
-      try {
-        _logSettingsNaverCalendar('connectAndImport launching Naver OAuth');
-        final launched = await authService
-            .connectCalendarProvider(PlanFlowOAuthProvider.naver);
-        _logSettingsNaverCalendar('connectAndImport launch result=$launched');
-        if (!launched) {
-          if (mounted) {
-            setState(() {
-              _isTestingNaverCalDav = false;
-            });
-            _logSettingsNaverCalendar(
-              'connectAndImport launch failed -> CalDAV fallback',
-            );
-            _showSnack('네이버 권한 동의 화면을 열지 못해 CalDAV 직접 연결로 전환합니다.');
-          }
-          if (!mounted) return false;
-          return _connectNaverCalDavFallbackAndImport();
-        }
-        if (mounted) {
-          setState(() {
-            _isTestingNaverCalDav = false;
-            _pendingNaverOpenApiImportAfterConsent = true;
-          });
-          _logSettingsNaverCalendar(
-            'connectAndImport pendingOpenApiImport=true after launch',
-          );
-          _showSnack(
-            '네이버 권한 화면을 열었습니다. 동의 후 PlanFlow로 돌아오면 자동으로 권한을 확인합니다.',
-          );
-          unawaited(_verifyNaverOpenApiAccessAndImportAfterOAuth());
-          return false;
-        }
-      } catch (error, stackTrace) {
-        _logSettingsNaverCalendar(
-          'connectAndImport failed type=${error.runtimeType} error=${logSafeText(error)}',
-        );
-        debugPrintStack(stackTrace: stackTrace);
-        if (mounted) {
-          setState(() {
-            _isTestingNaverCalDav = false;
-          });
-          _logSettingsNaverCalendar(
-            'connectAndImport exception -> CalDAV fallback',
-          );
-          _showSnack('네이버 OAuth 연결에 실패해 CalDAV 직접 연결로 전환합니다.');
-        }
-        if (!mounted) return false;
-        return _connectNaverCalDavFallbackAndImport();
-      }
-    }
-
-    if (!mounted) return false;
-    _showSnack('네이버 캘린더 연결에 성공했습니다. 이제 일정을 가져옵니다.');
-    _logSettingsNaverCalendar(
-        'connectAndImport access already granted -> import');
-    setState(() {
-      _hasNaverOpenApiAccess = true;
-      _pendingNaverOpenApiImportAfterConsent = false;
-    });
-    if (!mounted) return false;
-    final imported =
-        await _importNaverCalDavEvents(skipIntro: true, useOpenApi: true);
-    return imported?.success ?? false;
+    // 자격증명 없으면 CalDAV 앱 비밀번호 다이얼로그로 직접 연결
+    return _connectNaverCalDavFallbackAndImport();
   }
 
   Future<void> _verifyNaverOpenApiAccessAndImportAfterOAuth() async {
@@ -1948,8 +1867,6 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     if (_hasNaverCalDavCredentials) {
       await _importNaverCalDavEvents(skipIntro: true);
-    } else if (_hasNaverOpenApiAccess) {
-      await _importNaverCalDavEvents(skipIntro: true, useOpenApi: true);
     } else {
       await _connectNaverCalDavAndImport();
     }
