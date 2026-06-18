@@ -18,12 +18,6 @@
 @import file_picker;
 #endif
 
-#if __has_include(<firebase_analytics/FirebaseAnalyticsPlugin.h>)
-#import <firebase_analytics/FirebaseAnalyticsPlugin.h>
-#else
-@import firebase_analytics;
-#endif
-
 #if __has_include(<firebase_core/FLTFirebaseCorePlugin.h>)
 #import <firebase_core/FLTFirebaseCorePlugin.h>
 #else
@@ -34,12 +28,6 @@
 #import <firebase_crashlytics/FLTFirebaseCrashlyticsPlugin.h>
 #else
 @import firebase_crashlytics;
-#endif
-
-#if __has_include(<firebase_performance/FLTFirebasePerformancePlugin.h>)
-#import <firebase_performance/FLTFirebasePerformancePlugin.h>
-#else
-@import firebase_performance;
 #endif
 
 #if __has_include(<firebase_remote_config/FirebaseRemoteConfigPlugin.h>)
@@ -126,15 +114,19 @@
 @import url_launcher_ios;
 #endif
 
+#if __has_include(<webview_flutter_wkwebview/WebViewFlutterPlugin.h>)
+#import <webview_flutter_wkwebview/WebViewFlutterPlugin.h>
+#else
+@import webview_flutter_wkwebview;
+#endif
+
 @implementation GeneratedPluginRegistrant
 
 + (void)registerWithRegistry:(NSObject<FlutterPluginRegistry>*)registry {
   [AppLinksIosPlugin registerWithRegistrar:[registry registrarForPlugin:@"AppLinksIosPlugin"]];
   [FilePickerPlugin registerWithRegistrar:[registry registrarForPlugin:@"FilePickerPlugin"]];
-  [FirebaseAnalyticsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FirebaseAnalyticsPlugin"]];
   [FLTFirebaseCorePlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTFirebaseCorePlugin"]];
   [FLTFirebaseCrashlyticsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTFirebaseCrashlyticsPlugin"]];
-  [FLTFirebasePerformancePlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTFirebasePerformancePlugin"]];
   [FirebaseRemoteConfigPlugin registerWithRegistrar:[registry registrarForPlugin:@"FirebaseRemoteConfigPlugin"]];
   [FlutterLocalNotificationsPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterLocalNotificationsPlugin"]];
   [SwiftFlutterNaverMapPlugin registerWithRegistrar:[registry registrarForPlugin:@"SwiftFlutterNaverMapPlugin"]];
@@ -149,6 +141,7 @@
   [SharedPreferencesPlugin registerWithRegistrar:[registry registrarForPlugin:@"SharedPreferencesPlugin"]];
   [SpeechToTextPlugin registerWithRegistrar:[registry registrarForPlugin:@"SpeechToTextPlugin"]];
   [URLLauncherPlugin registerWithRegistrar:[registry registrarForPlugin:@"URLLauncherPlugin"]];
+  [WebViewFlutterPlugin registerWithRegistrar:[registry registrarForPlugin:@"WebViewFlutterPlugin"]];
 }
 
 @end

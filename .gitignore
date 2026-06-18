@@ -30,8 +30,14 @@ CLAUDE.md
 # 스크린샷·캡처 (테스트용)
 planflow-*.png
 *.screenshot.png
+_device_screen*.png
 
 # FluxOS 태스크 파일이 프로젝트 루트에 잘못 생성된 경우
 TASK_2[0-9]*_done.md
 TASK_2[0-9]*_plan.md
 TASK_2[0-9]*_review.md
+
+# 배포/진단 산출물
+build_diag*.log
+deploy.log
+linux/flutter/ephemeral/
