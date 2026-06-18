@@ -613,10 +613,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           ),
                           foregroundColor: PlanFlowColors.textPrimary,
                         ),
-                        child: const FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('취소'),
-                        ),
+                        child: const Text('취소'),
                       ),
                     ),
                   ),
@@ -632,16 +629,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                           ),
                           foregroundColor: const Color(0xFF2563EB),
                         ),
-                        child: const FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('일정 유지'),
-                        ),
+                        child: const Text('일정 유지'),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    flex: 2,
                     child: SizedBox(
                       height: 44,
                       child: FilledButton(
@@ -650,10 +643,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                           backgroundColor: const Color(0xFFB91C1C),
                           foregroundColor: Colors.white,
                         ),
-                        child: const FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('공급자 일정 삭제'),
-                        ),
+                        child: const Text('일정 삭제'),
                       ),
                     ),
                   ),
