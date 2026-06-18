@@ -1949,9 +1949,11 @@ class _EventAgendaCard extends StatelessWidget {
                     Text(
                       event.title,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: PlanFlowColors.primary,
+                        color: accentColor,
                         fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: event.isCritical
+                            ? FontWeight.w600
+                            : FontWeight.w500,
                       ),
                     ),
                     if (event.location != null) ...[

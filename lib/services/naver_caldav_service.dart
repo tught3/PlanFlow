@@ -1157,33 +1157,37 @@ class NaverCalDavService {
       var savedCount = 0;
       var skippedCount = 0;
       var failedCount = 0;
+
+      // 모든 캘린더에서 이벤트 병렬 조회
+      emit(NaverCalDavSyncProgress(
+        mode: mode,
+        stage: NaverCalDavSyncStage.querying,
+        message: '${calendars.length}개 캘린더 일정을 조회하는 중입니다.',
+        totalCalendars: calendars.length,
+        savedEvents: 0,
+        skippedEvents: 0,
+        failedEvents: 0,
+      ));
+      final allCalendarEvents = await Future.wait(
+        calendars.map((calendar) => getEvents(
+              calendarPath: calendar.path,
+              from: range.from,
+              to: range.to,
+              allowFullFallback: true,
+              allowResourceFallback: true,
+              parseStats: NaverCalDavParseStats._(
+                calendarPath: calendar.path,
+                diagnostics: diagnostics,
+                from: range.from,
+                to: range.to,
+              ),
+            )),
+      );
+
       for (var index = 0; index < calendars.length; index += 1) {
         final calendar = calendars[index];
         final calendarNumber = index + 1;
-        emit(NaverCalDavSyncProgress(
-          mode: mode,
-          stage: NaverCalDavSyncStage.querying,
-          message: '일정을 조회하는 중입니다.',
-          currentCalendar: calendar.displayName,
-          currentCalendarIndex: calendarNumber,
-          totalCalendars: calendars.length,
-          savedEvents: savedCount,
-          skippedEvents: skippedCount,
-          failedEvents: failedCount,
-        ));
-        final events = await getEvents(
-          calendarPath: calendar.path,
-          from: range.from,
-          to: range.to,
-          allowFullFallback: true,
-          allowResourceFallback: true,
-          parseStats: NaverCalDavParseStats._(
-            calendarPath: calendar.path,
-            diagnostics: diagnostics,
-            from: range.from,
-            to: range.to,
-          ),
-        );
+        final events = allCalendarEvents[index];
         eventCount += events.length;
         for (var eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
           final event = events[eventIndex];

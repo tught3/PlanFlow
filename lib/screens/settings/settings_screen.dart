@@ -1371,6 +1371,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                 NaverCalDavSyncStage.completed => '마무리 중...',
                 null => '준비 중...',
               };
+              final isSlowStage = stage == NaverCalDavSyncStage.querying ||
+                  stage == NaverCalDavSyncStage.saving;
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1382,7 +1384,22 @@ class _SettingsScreenState extends State<SettingsScreen>
                     style: Theme.of(context).textTheme.bodyMedium,
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 8),
+                  if (isSlowStage) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '일정이 많으면 시간이 걸릴 수 있습니다',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('백그라운드에서 계속'),
+                    ),
+                  ] else
+                    const SizedBox(height: 8),
                 ],
               );
             },
@@ -3126,8 +3143,20 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   ? null
                                   : _syncGoogleCalendar,
                               style: _settingsSkyButtonStyle(),
-                              icon: const Icon(Icons.sync),
-                              label: Text(_googleCalendarActionLabel()),
+                              icon: _isSyncingGoogleCalendar
+                                  ? const SizedBox.square(
+                                      dimension: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.sync),
+                              label: Text(
+                                _isSyncingGoogleCalendar
+                                    ? '동기화 중...'
+                                    : _googleCalendarActionLabel(),
+                              ),
                             ),
                           ),
                         ],
@@ -3568,6 +3597,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   bool _isNaverCalendarConfigured() {
+    // 로컬 CalDAV 자격증명이 없으면 DB 상태와 무관하게 미연결
+    if (!_hasNaverCalDavCredentials && !_hasNaverOpenApiAccess) return false;
     final summary = _calendarSyncSummary?.naver;
     if (summary != null) {
       if (summary.status == CalendarIntegrationStatus.synced ||
@@ -3583,7 +3614,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   bool _isCalendarConfigured(CalendarIntegrationResult? result) {
-    if (result == null) {
+    if (result == null) return false;
+    // signedOut/notConfigured 상태에서는 과거 성공 스냅샷으로 연결된 것처럼 표시하지 않음
+    if (result.status == CalendarIntegrationStatus.signedOut ||
+        result.status == CalendarIntegrationStatus.notConfigured) {
       return false;
     }
     if (result.status == CalendarIntegrationStatus.synced) {
