@@ -374,7 +374,11 @@ class AuthService implements AuthSessionClient {
       // enabled in Kakao Developers. Keep login on profile-only scopes; email
       // can be added later only after the Kakao consent item is approved.
       PlanFlowOAuthProvider.kakao => 'openid,profile_nickname,profile_image',
-      PlanFlowOAuthProvider.naver => forCalendar ? 'email,calendar' : 'email',
+      // Login uses the base email scope. Calendar connection still requests
+      // calendar consent, and the settings flow falls back to CalDAV if launch
+      // or permission verification does not complete.
+      PlanFlowOAuthProvider.naver when forCalendar => 'email,calendar',
+      PlanFlowOAuthProvider.naver => 'email',
     };
   }
 

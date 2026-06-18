@@ -607,7 +607,8 @@ void main() {
     expect(naverImportService.syncCallCount, 1);
   });
 
-  testWidgets('initial Naver calendar action triggers OAuth connect flow',
+  testWidgets(
+      'Naver calendar sync opens CalDAV fallback when OAuth cannot launch',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -628,23 +629,27 @@ void main() {
             ),
           ),
           notificationService: _FakeNotificationService(),
+          authService: _FakeAuthService(connectCalendarResult: false),
+          naverCalDavService: _FakeNaverCalDavService(),
           naverImportService: _FakeNaverOpenApiCalendarService(
             initialHasAccess: false,
           ),
           userId: 'user-1',
-          initialAction: SettingsInitialAction.naverCalDav,
         ),
       ),
     );
 
+    await tester.pumpAndSettle();
+    final syncButton =
+        find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
+    await _scrollUntilHitTestable(tester, syncButton);
+    await tester.tap(syncButton.hitTestable().first);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
 
-    // Open API 전환 후: CalDAV 앱비번 다이얼로그 대신 Supabase 미설정 안내가 표시됨
-    // (테스트 환경에서 authService가 null → Supabase 설정 안내 스낵바)
-    expect(find.text('네이버 ID'), findsNothing);
-    expect(find.text('앱 비밀번호'), findsNothing);
+    expect(find.text('네이버 캘린더 연결'), findsOneWidget);
+    expect(find.text('네이버 ID'), findsOneWidget);
+    expect(find.text('앱 비밀번호'), findsOneWidget);
   });
 
   testWidgets('Naver OAuth launch does not immediately fail permission check',

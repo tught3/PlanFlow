@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/diag_logger.dart';
 import '../core/log_text.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
@@ -327,6 +328,7 @@ class NaverOpenApiCalendarService {
   Future<bool> hasCalendarAccess() async {
     try {
       _log('hasCalendarAccess start');
+      DiagLogger.log('DIAG', 'naver hasCalendarAccess start');
       final permission = await (_permissionServiceOverride ??
               NaverCalendarPermissionService(
                 supabaseClient: _supabaseClientOverride,
@@ -338,11 +340,22 @@ class NaverOpenApiCalendarService {
         'isGranted=${permission.isGranted} statusCode=${permission.statusCode} '
         'errorType=${permission.error?.runtimeType}',
       );
+      DiagLogger.log(
+        'DIAG',
+        'naver hasCalendarAccess result status=${logSafeText(permission.status.name)} '
+            'isGranted=${permission.isGranted} statusCode=${permission.statusCode} '
+            'errorType=${logSafeText(permission.error?.runtimeType)}',
+      );
       return permission.isGranted;
     } catch (error, stackTrace) {
       _log(
         'hasCalendarAccess failed type=${error.runtimeType} '
         'error=${logSafeText(error)}',
+      );
+      DiagLogger.log(
+        'DIAG',
+        'naver hasCalendarAccess failed type=${logSafeText(error.runtimeType)} '
+            'error=${logSafeText(error)}',
       );
       debugPrintStack(stackTrace: stackTrace);
       return false;
@@ -453,6 +466,12 @@ class NaverOpenApiCalendarService {
       _log(
         'fetchWindow response status=${response.statusCode} '
         'bodyLength=${response.body.length} startIndex=$startIndex',
+      );
+      DiagLogger.log(
+        'DIAG',
+        'naver fetchWindow status=${response.statusCode} '
+            'startIndex=$startIndex '
+            'bodyLength=${response.body.length}',
       );
 
       if (response.statusCode == 401 || response.statusCode == 403) {

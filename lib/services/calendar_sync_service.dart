@@ -10,6 +10,7 @@ import 'package:googleapis_auth/googleapis_auth.dart' as gauth;
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/diag_logger.dart';
 import '../core/log_text.dart';
 import '../core/local_time.dart';
 import '../data/models/calendar_connection_model.dart';
@@ -436,6 +437,7 @@ class CalendarSyncService {
       'serverClientIdSet=${_hasText(_googleServerClientId)}',
     );
     final configurationIssue = _googleConfigurationIssue;
+    DiagLogger.log('DIAG', 'google getStatus serverClientIdSet=${logSafeText(_hasText(_googleServerClientId))} configurationIssue=${logSafeText(configurationIssue)}');
     if (configurationIssue != null) {
       _logGoogleAuth(
           'getGoogleStatus blocked by configuration: $configurationIssue');
@@ -460,6 +462,13 @@ class CalendarSyncService {
         'connected=${connection?.isConnected == true} '
         'providerAccountEmail=${connection?.providerAccountEmail ?? "(null)"}',
       );
+      // DiagLogger 진단 로그
+      try {
+        final userId = _currentUserId();
+        DiagLogger.log('DIAG', 'google getStatus fetchConn userId=${logSafeText(userId)} connStatus=${logSafeText(connection?.status.name)} connected=${connection?.isConnected == true} email=${logSafeText(connection?.providerAccountEmail)}');
+      } catch (e) {
+        DiagLogger.log('DIAG', 'google getStatus fetchConn userIdFailed=${logSafeText(e)} connStatus=${logSafeText(connection?.status.name)} connected=${connection?.isConnected == true}');
+      }
       if (connection == null || !connection.isConnected) {
         return CalendarIntegrationResult.signedOut(
           CalendarProvider.google,
@@ -473,6 +482,7 @@ class CalendarSyncService {
       );
       if (account == null) {
         _logGoogleAuth('getGoogleStatus silentSignIn account=null');
+        DiagLogger.log('DIAG', 'google getStatus silentSignIn accountNull=true');
         return CalendarIntegrationResult.ready(
           CalendarProvider.google,
           message:
@@ -481,6 +491,7 @@ class CalendarSyncService {
       }
 
       _logGoogleAuth('getGoogleStatus silentSignIn email=${account.email}');
+      DiagLogger.log('DIAG', 'google getStatus silentSignIn accountEmail=${logSafeText(account.email)}');
       return CalendarIntegrationResult.ready(
         CalendarProvider.google,
         message: 'Google Calendar 연결이 정상입니다.',
@@ -511,6 +522,7 @@ class CalendarSyncService {
       'serverClientIdSet=${_hasText(_googleServerClientId)}',
     );
     final configurationIssue = _googleConfigurationIssue;
+    DiagLogger.log('DIAG', 'google syncCalendar serverClientIdSet=${logSafeText(_hasText(_googleServerClientId))} configurationIssue=${logSafeText(configurationIssue)}');
     if (configurationIssue != null) {
       _logGoogleAuth(
         'syncGoogleCalendar blocked by configuration: $configurationIssue',
@@ -573,6 +585,12 @@ class CalendarSyncService {
           'lastAccount=$_lastGoogleAccountEmail',
         );
         if (!interactive && existingConnection?.isConnected == true) {
+          try {
+            final userId = _currentUserId();
+            DiagLogger.log('DIAG', 'google syncCalendar saveConn_1 userId=${logSafeText(userId)} status=reauthRequired');
+          } catch (e) {
+            DiagLogger.log('DIAG', 'google syncCalendar saveConn_1 userIdFailed=${logSafeText(e)} status=reauthRequired');
+          }
           await _saveConnection(
             CalendarProvider.google,
             status: CalendarConnectionStatus.reauthRequired,
@@ -584,6 +602,12 @@ class CalendarSyncService {
             message:
                 'Google Calendar 연결은 유지되어 있지만 현재 기기에서 자동 로그인 토큰을 바로 확인하지 못해 자동 동기화를 건너뜁니다. 필요하면 다시 동기화를 눌러 주세요.',
           );
+        }
+        try {
+          final userId = _currentUserId();
+          DiagLogger.log('DIAG', 'google syncCalendar saveConn_2 userId=${logSafeText(userId)} status=reauthRequired');
+        } catch (e) {
+          DiagLogger.log('DIAG', 'google syncCalendar saveConn_2 userIdFailed=${logSafeText(e)} status=reauthRequired');
         }
         await _saveConnection(
           CalendarProvider.google,

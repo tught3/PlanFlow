@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-18 TASK_20260617_160808 Naver OAuth 실패 시 CalDAV fallback 검증 보정
+- 네이버 캘린더 연결에서 OAuth 동의 화면 launch 실패, OAuth 예외, 동의 후 권한 확인 실패 시 CalDAV 직접 연결 다이얼로그로 전환되도록 연결했다.
+- `Naver calendar sync opens CalDAV fallback when OAuth cannot launch` 위젯 테스트를 실제 존재하는 테스트로 추가/교체했고, 네이버 캘린더 연결 스코프는 로그인과 달리 `email,calendar`를 유지하도록 보고/테스트 의미를 맞췄다.
+- 검증: `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"`, `flutter test test/services/auth_service_test.dart -r compact -j 1`, `flutter analyze lib/screens/settings/settings_screen.dart lib/services/auth_service.dart test/screens/settings_screen_test.dart test/services/auth_service_test.dart`, `flutter build apk --debug` 통과. scoped `git diff --check`는 line-ending 경고만 출력했다. `scripts/flutter-local.ps1`는 worktree `.fluxos` bootstrap 경로 탐색 실패, skip 모드에서는 `env/local.json` 부재로 실행되지 않아 원시 Flutter 명령으로 대체했다. `flutter devices`/`adb devices -l`에서 Android 기기가 없어 설치/실행 검증은 미실행.
+
 ## 2026-06-17 TASK_20260617_122839 Naver OAuth 토큰 저장 대상 보정
 - 네이버 캘린더 OAuth `calendar-link` 콜백에서 PKCE code 교환 직후 provider token을 즉시 저장하지 않고 문자열로만 보관하도록 바꿨다.
 - 기존 Google 세션 복원 후 `restoredUserId == googleUserId`이고 토큰이 비어 있지 않을 때만 저장하며, preExchange/postExchange/restore-check/persist-target DIAG 로그를 추가했다.
