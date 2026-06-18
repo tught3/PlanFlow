@@ -1,4 +1,22 @@
 # ACTIVE SUMMARY
+## 2026-06-18 TASK_20260618_123620 PlanFlow 2차 버그/개선 6종
+- 연동 해제 모달을 X 닫기 + 일정 유지/삭제 2버튼으로 정리했고, 네이버 CalDAV 진행/진단 다이얼로그는 짧은 상태와 상세 info 진입으로 분리했다.
+- 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 모달을 표시하고 성공 상태를 저장/복원하며, 서비스 import 루프는 6개 단위 제한 병렬 처리와 결과 집계 방식으로 바꿨다.
+- 외부 일정 critical 판정을 priority 1~5 및 pre-action 존재 기준으로 확장하고, pre-action 생성 후 event critical flag를 갱신하며 기존 pre-action 보유 이벤트 backfill migration을 추가했다.
+- 재검토 중 네이버 Open API 권한이 없을 때 OAuth 시작 경로가 CalDAV fallback으로 우회되는 회귀를 확인해, 권한 보유 시 Open API import / 미보유 시 OAuth 시작 / launch 실패 시 CalDAV fallback 순서로 복구했다.
+- 검증: `flutter analyze --no-pub`, classifier/settings/manual/device/CalDAV focused tests, `flutter build apk --debug --no-pub`, `flutter install -d 192.168.0.103:39685 --debug`, `adb shell monkey ...`, `pidof=19078` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
+
+## 2026-06-18 TASK_20260618_112655 캘린더 상태/CalDAV 성능 보정
+- 설정 화면에서 네이버 연결 체크는 CalDAV 자격증명 또는 OpenAPI 접근이 있을 때만 과거 sync/ready/synced 판정을 쓰게 하고, Google은 `signedOut`/`notConfigured` 상태에서 과거 성공 스냅샷으로 초록 체크가 남지 않게 보정했다.
+- Google 동기화 버튼에 진행 스피너와 `동기화 중...` 라벨을 추가했고, 네이버 CalDAV 진행 다이얼로그에 querying/saving 단계 안내와 `백그라운드에서 계속` 버튼을 추가했다. OpenAPI 접근만 있는 네이버 연결은 CalDAV fallback 대신 OpenAPI import로 바로 진행한다.
+- 일정탭 중요 일정 제목 색상을 기존 카드 accent 색상과 맞췄고, CalDAV sync는 캘린더별 이벤트 조회를 병렬화하며 `naver_caldav` external ID를 1회 일괄 조회해 신규 external ID의 중복/변경 조회를 건너뛰도록 했다.
+- 검증: `dart analyze ...` focused 통과, `flutter analyze --no-pub` 통과, `flutter test test/services/naver_caldav_service_test.dart test/data/repositories/event_repository_external_import_test.dart test/data/repositories/event_repository_overlap_test.dart --no-pub -r compact` 통과, settings OpenAPI quick sync focused 테스트 통과, `flutter build apk --debug --no-pub` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 실패했고, Android 기기가 없어 실행 검증은 미실행.
+
+## 2026-06-18 TASK_20260618_031436 Naver CalDAV 설정 표시와 진행 모달 단순화
+- `settings_screen.dart`에서 CalDAV 자격증명이 있으면 네이버 캘린더 상태 체크가 연결됨으로 표시되도록 `_isNaverCalendarConfigured()` 판정을 보정했다.
+- 네이버 일정 가져오기 진행 모달을 스피너와 단계별 단일 상태 텍스트 중심으로 단순화하고, 더 이상 쓰지 않는 장기 실행 안내 ValueNotifier/Timer를 제거했다.
+- 검증: `flutter analyze lib/screens/settings/settings_screen.dart --no-pub`, `flutter analyze --no-pub`, `flutter build apk --release --no-pub`, `git diff --check -- lib/screens/settings/settings_screen.dart` 통과. `scripts/flutter-local.ps1 analyze ...`는 worktree 상위 `.fluxos` bootstrap 경로 부재로 Flutter 실행 전 PowerShell 오류가 났다. `flutter test test/screens/settings_screen_test.dart --no-pub -r compact -j 1`는 기존 Open API 경로 기대값 2개가 실패했다. Android 기기는 감지되지 않아 설치/실행 검증은 미실행.
+
 ## 2026-06-18 TASK_20260618_014121 Google Calendar 복구 + Naver CalDAV 진단
 - worktree HEAD에 포함된 `011c9dc`/`9255f74`로 네이버 캘린더 CalDAV 직접 연결 전환과 CalDAV 다이얼로그 ID 자동 채우기 변경을 유지했다.
 - `NaverCalDavService`에 릴리즈 진단용 DiagLogger를 추가해 PROPFIND HTTP status, syncAll 캘린더 개수, 실패 error type을 기록한다. 네이버 ID/앱비밀번호/ICS 본문 노출을 피하려고 path/error 원문은 기록하지 않는다.
@@ -1887,3 +1905,9 @@
 - Naver 캘린더 콜백이 PKCE `code`를 우회하던 경로를 제거하고, `exchangeCodeForSession()`으로 실제 토큰을 받은 뒤 기존 Google 세션은 `setSession()`으로 복원하도록 바꿨다.
 - `provider_token`이 없는 Naver 콜백에서도 저장 단계가 지나가도록 진단 로그를 추가해 토큰 미저장 원인을 추적 가능하게 했다.
 - 검증: `scripts\\flutter-local.ps1 analyze --no-pub`, `scripts\\flutter-local.ps1 test test/services/oauth_callback_handler_test.dart --no-pub` 통과.
+
+## 2026-06-18 TASK_20260618_123620 재검토 보완
+- 외부 캘린더 priority 1~5와 pre-action 보유 일정을 중요 일정으로 판정하고, pre-action 생성 후 `is_critical`을 동기화하도록 보강했다.
+- 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 안내를 표시하고, 이벤트 저장은 6개 단위 병렬 배치로 처리한다.
+- 기존 pre_actions 보유 이벤트를 `is_critical = true`로 보정하는 migration을 추가했다.
+- 검증: `flutter test` 4개 타깃, `flutter analyze --no-pub`, `flutter build apk --debug --no-pub` 통과. `scripts/flutter-local.ps1`는 worktree `.fluxos` bootstrap 경로 누락으로 실패해 raw `flutter`로 fallback했다.

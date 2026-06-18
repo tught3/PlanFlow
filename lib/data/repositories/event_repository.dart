@@ -21,6 +21,13 @@ abstract class EventRepository {
     return Future<EventModel?>.value(null);
   }
 
+  Future<Set<String>> fetchExternalIdSet({
+    required String source,
+    String? userId,
+  }) {
+    return Future<Set<String>>.value(<String>{});
+  }
+
   Future<List<EventModel>> findOverlappingEvents({
     required DateTime rangeStart,
     required DateTime rangeEnd,
@@ -585,6 +592,36 @@ class SupabaseEventRepository extends EventRepository {
   }
 
   @override
+  Future<Set<String>> fetchExternalIdSet({
+    required String source,
+    String? userId,
+  }) async {
+    final resolvedUserId = _resolveUserId(userId);
+    final normalizedSource = source.trim();
+    if (normalizedSource.isEmpty) {
+      return <String>{};
+    }
+
+    try {
+      final response = await _client
+          .from(_tableName)
+          .select('external_id')
+          .eq('user_id', resolvedUserId)
+          .eq('source', normalizedSource);
+      return response
+          .map((row) => _rowAsJson(row)['external_id']?.toString().trim())
+          .whereType<String>()
+          .where((externalId) => externalId.isNotEmpty)
+          .toSet();
+    } on PostgrestException catch (error) {
+      if (!_isMissingExternalIdSetSchemaError(error)) {
+        rethrow;
+      }
+      return <String>{};
+    }
+  }
+
+  @override
   Future<List<EventModel>> findOverlappingEvents({
     required DateTime rangeStart,
     required DateTime rangeEnd,
@@ -979,6 +1016,15 @@ class SupabaseEventRepository extends EventRepository {
         text.contains('parent_event_id') ||
         text.contains('category') ||
         text.contains('updated_at') ||
+        text.contains('pgrst204') ||
+        text.contains('42703');
+  }
+
+  bool _isMissingExternalIdSetSchemaError(PostgrestException error) {
+    final text =
+        '${error.code} ${error.message} ${error.details}'.toLowerCase();
+    return text.contains('external_id') ||
+        text.contains('source') ||
         text.contains('pgrst204') ||
         text.contains('42703');
   }

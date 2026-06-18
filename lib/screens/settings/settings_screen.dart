@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
@@ -99,6 +100,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
+  static const String _deviceCalendarSyncedPrefsKey =
+      'settings:device_calendar_synced';
+
   late final SettingsRepository _settingsRepository;
   late final SettingsProvider _settingsProvider;
   late final BriefingSchedulerService _briefingSchedulerService;
@@ -145,7 +149,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isDisconnectingGoogleCalendar = false;
   bool _isDisconnectingNaverCalendar = false;
   bool _isImportingDeviceNaverCalendar = false;
+  bool _deviceCalendarImportLongRunning = false;
+  bool _isDeviceCalendarImportProgressDialogOpen = false;
   bool _isDisconnectingDeviceCalendar = false;
+  bool _hasDeviceCalendarSynced = false;
   bool _isTestingNaverCalDav = false;
   bool _isImportingNaverCalDav = false;
   bool _hasNaverCalDavCredentials = false;
@@ -164,9 +171,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   NaverCalDavConnectionResult? _lastNaverCalDavResult;
   final ValueNotifier<NaverCalDavSyncProgress?> _naverCalDavProgress =
       ValueNotifier<NaverCalDavSyncProgress?>(null);
-  final ValueNotifier<bool> _naverCalDavLongRunning =
-      ValueNotifier<bool>(false);
-  Timer? _naverCalDavLongRunningTimer;
+  Timer? _deviceCalendarImportTimer;
   bool _isNaverCalDavProgressDialogOpen = false;
   int? _newFeedbackReportCount;
   bool _isLoadingNewFeedbackReportCount = false;
@@ -230,6 +235,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     unawaited(_loadWidgetDisplaySettings());
     unawaited(_loadCalendarStatus());
     unawaited(_loadAutoSyncSnapshot());
+    unawaited(_loadDeviceCalendarSyncedState());
     final naverCalDavStateLoaded = _loadNaverCalDavState();
     unawaited(naverCalDavStateLoaded);
     if (widget._initialAction != null) {
@@ -263,9 +269,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (_ownsNaverImportService) {
       _naverImportService.dispose();
     }
-    _naverCalDavLongRunningTimer?.cancel();
+    _deviceCalendarImportTimer?.cancel();
     _naverCalDavProgress.dispose();
-    _naverCalDavLongRunning.dispose();
     super.dispose();
   }
 
@@ -460,6 +465,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() {
       _calendarSyncSummary = summary;
       _isLoadingCalendarStatus = false;
+      _hasDeviceCalendarSynced = _hasSyncedDeviceCalendar(summary);
     });
   }
 
@@ -470,6 +476,19 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     setState(() {
       _calendarAutoSyncSnapshot = snapshot;
+      _hasDeviceCalendarSynced = _hasDeviceCalendarSynced ||
+          _deviceCalendarAutoSyncSnapshot?.lastSuccessAt != null;
+    });
+  }
+
+  Future<void> _loadDeviceCalendarSyncedState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getBool(_deviceCalendarSyncedPrefsKey) ?? false;
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _hasDeviceCalendarSynced = _hasDeviceCalendarSynced || stored;
     });
   }
 
@@ -593,34 +612,24 @@ class _SettingsScreenState extends State<SettingsScreen>
           titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
           contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
           actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-          title: Text('$providerName 연동 해제'),
+          title: Row(
+            children: [
+              Expanded(child: Text('$providerName 연동 해제')),
+              IconButton(
+                tooltip: '닫기',
+                onPressed: () => Navigator.of(context).pop(null),
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
           content: const Text(
-            '가져온 일정을 PlanFlow에 남겨둘지, 해당 공급자 일정과 함께 정리할지 선택해 주세요.',
+            '연동만 해제하고 가져온 일정은 유지할지, 공급자에서 가져온 일정도 함께 삭제할지 선택해 주세요.',
           ),
           actions: [
             SizedBox(
               width: double.infinity,
               child: Row(
                 children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 44,
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(null),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(
-                            color: Color(0xFF94A3B8),
-                          ),
-                          foregroundColor: PlanFlowColors.textPrimary,
-                        ),
-                        child: const FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('취소'),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: SizedBox(
                       height: 44,
@@ -641,7 +650,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    flex: 2,
                     child: SizedBox(
                       height: 44,
                       child: FilledButton(
@@ -652,7 +660,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         ),
                         child: const FittedBox(
                           fit: BoxFit.scaleDown,
-                          child: Text('공급자 일정 삭제'),
+                          child: Text('일정 삭제'),
                         ),
                       ),
                     ),
@@ -682,16 +690,57 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     setState(() {
       _isImportingDeviceNaverCalendar = true;
+      _deviceCalendarImportLongRunning = false;
     });
-    final result = await _deviceCalendarService.importNaverEvents(
-      userId: userId,
-    );
+    DeviceCalendarImportResult result;
+    try {
+      _deviceCalendarImportTimer?.cancel();
+      final importFuture = _deviceCalendarService.importNaverEvents(
+        userId: userId,
+      );
+      _deviceCalendarImportTimer = Timer(const Duration(seconds: 3), () {
+        if (!mounted || !_isImportingDeviceNaverCalendar) {
+          return;
+        }
+        setState(() {
+          _deviceCalendarImportLongRunning = true;
+        });
+        unawaited(_showDeviceCalendarImportProgressDialog());
+      });
+      result = await importFuture;
+    } catch (error, stackTrace) {
+      debugPrint('Device calendar import UI failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      result = DeviceCalendarImportResult(
+        status: DeviceCalendarImportStatus.failed,
+        message: '휴대폰 내부 캘린더 일정 가져오기에 실패했습니다. 권한과 캘린더 동기화 상태를 확인해 주세요.',
+        error: error,
+      );
+    } finally {
+      _deviceCalendarImportTimer?.cancel();
+      _deviceCalendarImportTimer = null;
+      if (mounted) {
+        if (_isDeviceCalendarImportProgressDialogOpen &&
+            Navigator.of(context, rootNavigator: true).canPop()) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+        setState(() {
+          _isImportingDeviceNaverCalendar = false;
+          _deviceCalendarImportLongRunning = false;
+        });
+      }
+    }
     if (!mounted) {
       return;
     }
-    setState(() {
-      _isImportingDeviceNaverCalendar = false;
-    });
+    if (result.status == DeviceCalendarImportStatus.imported) {
+      setState(() {
+        _hasDeviceCalendarSynced = true;
+      });
+    }
+    if (result.status == DeviceCalendarImportStatus.imported) {
+      await _saveDeviceCalendarSyncedState(true);
+    }
     _showSnack(result.message);
     if (result.isSuccess) {
       EventRefreshBus.instance.notifyChanged(reason: 'device_naver_import');
@@ -721,9 +770,16 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (mounted) {
         setState(() {
           _isDisconnectingDeviceCalendar = false;
+          _hasDeviceCalendarSynced = false;
         });
       }
+      await _saveDeviceCalendarSyncedState(false);
     }
+  }
+
+  Future<void> _saveDeviceCalendarSyncedState(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_deviceCalendarSyncedPrefsKey, value);
   }
 
   Future<bool> _connectNaverCalDavAndImport() async {
@@ -735,7 +791,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       return false;
     }
 
-    _logSettingsNaverCalendar('connectAndImport start -> CalDAV direct');
+    if (_hasNaverOpenApiAccess && !_hasNaverCalDavCredentials) {
+      _logSettingsNaverCalendar('connectAndImport start -> Open API import');
+      final imported = await _importNaverCalDavEvents(
+        skipIntro: true,
+        useOpenApi: true,
+      );
+      return imported?.success ?? false;
+    }
+
     // CalDAV 자격증명이 있으면 바로 동기화
     final hasCalDavCredentials = await _naverCalDavService.hasCredentials();
     _logSettingsNaverCalendar(
@@ -749,8 +813,33 @@ class _SettingsScreenState extends State<SettingsScreen>
       return imported?.success ?? false;
     }
 
-    // 자격증명 없으면 CalDAV 앱 비밀번호 다이얼로그로 직접 연결
-    return _connectNaverCalDavFallbackAndImport();
+    final authService = _authService;
+    if (authService == null || !authProvider.isSignedIn) {
+      _logSettingsNaverCalendar(
+        'connectAndImport OAuth unavailable -> CalDAV fallback '
+        'hasAuthService=${authService != null} signedIn=${authProvider.isSignedIn}',
+      );
+      _showSnack('네이버 동의 화면을 열 수 없어 CalDAV 직접 연결로 전환합니다.');
+      return _connectNaverCalDavFallbackAndImport();
+    }
+
+    _logSettingsNaverCalendar('connectAndImport start -> Naver OAuth');
+    final launched = await authService.connectCalendarProvider(
+      PlanFlowOAuthProvider.naver,
+    );
+    if (!mounted) {
+      return false;
+    }
+    if (!launched) {
+      _showSnack('네이버 동의 화면을 열지 못했습니다. CalDAV 직접 연결로 전환합니다.');
+      return _connectNaverCalDavFallbackAndImport();
+    }
+    setState(() {
+      _pendingNaverOpenApiImportAfterConsent = true;
+    });
+    _showSnack('동의 후 PlanFlow로 돌아오면 자동으로 권한을 확인합니다.');
+    unawaited(_verifyNaverOpenApiAccessAndImportAfterOAuth());
+    return true;
   }
 
   Future<void> _verifyNaverOpenApiAccessAndImportAfterOAuth() async {
@@ -1048,11 +1137,6 @@ class _SettingsScreenState extends State<SettingsScreen>
           ? '네이버 캘린더에 연결 중입니다. 데이터가 많으면 1~2분 정도 걸릴 수 있어요.'
           : '$additionalLabel 범위의 일정을 추가로 가져옵니다.',
     );
-    _naverCalDavLongRunning.value = false;
-    _naverCalDavLongRunningTimer?.cancel();
-    _naverCalDavLongRunningTimer = Timer(const Duration(seconds: 10), () {
-      _naverCalDavLongRunning.value = true;
-    });
     if (!_isNaverCalDavProgressDialogOpen) {
       unawaited(_showNaverCalDavProgressDialog(dismissible: true));
     }
@@ -1085,8 +1169,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               _naverCalDavProgress.value = progress;
             },
           );
-    _naverCalDavLongRunningTimer?.cancel();
-    _naverCalDavLongRunning.value = false;
     _logSettingsNaverCalendar(
       'runImport result success=${result.success} events=${result.events} '
       'createdOrUpdated=${result.createdOrUpdated} skipped=${result.skipped} '
@@ -1159,14 +1241,47 @@ class _SettingsScreenState extends State<SettingsScreen>
     NaverCalDavSyncResult result,
   ) {
     final diagnostics = result.diagnostics;
+    final reasonText = _naverCalDavDiagnosticReasonText(diagnostics);
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Expanded(child: Text('네이버 동기화 진단 결과')),
+            IconButton(
+              tooltip: '상세 진단',
+              onPressed: () => _showNaverCalDavDiagnosticDetails(diagnostics),
+              icon: const Icon(Icons.info_outline),
+            ),
+          ],
+        ),
+        content: Text(
+          reasonText,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        actions: [
+          _buildDialogButtonBar(
+            onCancel: () => Navigator.of(context).pop(),
+            onConfirm: () => Navigator.of(context).pop(),
+            cancelLabel: '닫기',
+            confirmLabel: '확인',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showNaverCalDavDiagnosticDetails(
+    NaverCalDavSyncDiagnostics diagnostics,
+  ) {
     final samples = diagnostics.samples;
     final invalidSamples = diagnostics.invalidSamples;
-    final reasonText = _naverCalDavDiagnosticReasonText(diagnostics);
     var query = '';
     return showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('네이버 동기화 진단 결과'),
+        title: const Text('상세 진단'),
         content: StatefulBuilder(
           builder: (context, setDialogState) {
             bool sampleMatches(Object sample) {
@@ -1201,13 +1316,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                         ),
                   ),
                   const SizedBox(height: 12),
-                  Text(reasonText,
-                      style: Theme.of(context).textTheme.bodySmall),
-                  const SizedBox(height: 10),
                   TextField(
                     decoration: const InputDecoration(
                       labelText: '찾는 일정 제목 검색',
-                      hintText: '예: 태불릿계, 공임나라',
+                      hintText: '예: 태블릿계, 공임나라',
                       prefixIcon: Icon(Icons.search),
                     ),
                     onChanged: (value) {
@@ -1227,8 +1339,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ),
                   if (visibleSamples.isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    Text('저장 범위 안 샘플 일정',
-                        style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      '저장 범위 안 샘플 일정',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     const SizedBox(height: 8),
                     ...visibleSamples.map(
                       (sample) => Padding(
@@ -1244,8 +1358,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ],
                   if (visibleInvalidSamples.isNotEmpty) ...[
                     const SizedBox(height: 16),
-                    Text('파싱 실패 샘플',
-                        style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      '파싱 실패 샘플',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     const SizedBox(height: 8),
                     ...visibleInvalidSamples.map(
                       (sample) => Padding(
@@ -1265,17 +1381,35 @@ class _SettingsScreenState extends State<SettingsScreen>
             );
           },
         ),
-        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
         actions: [
-          _buildDialogButtonBar(
-            onCancel: () => Navigator.of(context).pop(),
-            onConfirm: () => Navigator.of(context).pop(),
-            cancelLabel: '닫기',
-            confirmLabel: '확인',
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('닫기'),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _showDeviceCalendarImportProgressDialog() {
+    _isDeviceCalendarImportProgressDialogOpen = true;
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => const AlertDialog(
+        title: Text('휴대폰 내부 캘린더 가져오기'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('일정이 많아 조금 걸리고 있습니다. 앱을 전환해도 가져오기는 계속됩니다.'),
+          ],
+        ),
+      ),
+    ).whenComplete(() {
+      _isDeviceCalendarImportProgressDialogOpen = false;
+    });
   }
 
   String _naverCalDavDiagnosticReasonText(
@@ -1351,76 +1485,42 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _showNaverCalDavProgressDialog({
-    required bool dismissible,
+    bool dismissible = true,
   }) {
     _isNaverCalDavProgressDialogOpen = true;
     return showDialog<void>(
       context: context,
-      barrierDismissible: dismissible,
+      barrierDismissible: true,
       builder: (context) => PopScope(
-        canPop: dismissible,
+        canPop: true,
         child: AlertDialog(
           title: const Text('네이버 일정 가져오기'),
-          content: ValueListenableBuilder<bool>(
-            valueListenable: _naverCalDavLongRunning,
-            builder: (context, isLongRunning, _) {
-              return ValueListenableBuilder<NaverCalDavSyncProgress?>(
-                valueListenable: _naverCalDavProgress,
-                builder: (context, progress, _) {
-                  final processed = progress?.processedEvents ?? 0;
-                  final total = progress?.totalEvents ?? 0;
-                  final isSaving =
-                      progress?.stage == NaverCalDavSyncStage.saving;
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Center(child: CircularProgressIndicator()),
-                      const SizedBox(height: 16),
-                      Text(
-                        isLongRunning
-                            ? '일정이 많아서 조금 오래 걸리고 있습니다. 앱을 닫아도 진행은 계속돼요.'
-                            : '가져오는 중입니다. 잠시만 기다려 주세요.',
-                      ),
-                      const SizedBox(height: 12),
-                      Text(progress?.message ?? '캘린더 확인 중입니다.'),
-                      Text(
-                        '앱을 백그라운드로 보내도 계속 진행됩니다. 완료되면 알려드릴게요.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: PlanFlowColors.textSecondary,
-                            ),
-                      ),
-                      if (progress?.currentCalendar != null) ...[
-                        const SizedBox(height: 8),
-                        Text('현재 캘린더: ${progress!.currentCalendar}'),
-                      ],
-                      const SizedBox(height: 8),
-                      Text(
-                        isSaving
-                            ? '$processed / $total개 처리 중'
-                            : '저장이 시작되면 00/00개 처리 중으로 표시됩니다.',
-                      ),
-                      if (total > 0 && !isSaving) ...[
-                        const SizedBox(height: 8),
-                        Text('조회된 일정 $total개'),
-                      ],
-                      const SizedBox(height: 8),
-                      Text(
-                        '저장 ${progress?.savedEvents ?? 0}개 · '
-                        '건너뜀 ${progress?.skippedEvents ?? 0}개 · '
-                        '실패 ${progress?.failedEvents ?? 0}개',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      if (dismissible) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          '이 창을 닫아도 계속 진행됩니다.',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ],
-                  );
-                },
+          content: ValueListenableBuilder<NaverCalDavSyncProgress?>(
+            valueListenable: _naverCalDavProgress,
+            builder: (context, progress, _) {
+              final stage = progress?.stage;
+              final showBackgroundHint =
+                  stage == NaverCalDavSyncStage.querying ||
+                      stage == NaverCalDavSyncStage.saving;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Center(child: CircularProgressIndicator()),
+                  const SizedBox(height: 16),
+                  Text(
+                    _naverCalDavProgressStatusText(progress),
+                  ),
+                  if (showBackgroundHint) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      '앱을 전환해도 동기화는 계속됩니다.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                    ),
+                  ],
+                ],
               );
             },
           ),
@@ -1429,6 +1529,28 @@ class _SettingsScreenState extends State<SettingsScreen>
     ).whenComplete(() {
       _isNaverCalDavProgressDialogOpen = false;
     });
+  }
+
+  String _naverCalDavProgressStatusText(NaverCalDavSyncProgress? progress) {
+    final processed = progress?.processedEvents ?? 0;
+    final total = progress?.totalEvents ?? 0;
+    switch (progress?.stage) {
+      case NaverCalDavSyncStage.preparing:
+        return '연결 확인 중';
+      case NaverCalDavSyncStage.calendars:
+        return '캘린더 확인 중';
+      case NaverCalDavSyncStage.querying:
+        if (total > 0) {
+          return '일정 가져오는 중($processed/$total개)';
+        }
+        return '일정 목록 조회 중';
+      case NaverCalDavSyncStage.saving:
+        return 'PlanFlow에 저장 중($processed/$total개)';
+      case NaverCalDavSyncStage.completed:
+        return '마무리 중';
+      case null:
+        return '연결 확인 중';
+    }
   }
 
   Widget _buildDialogButtonBar({
@@ -3158,8 +3280,19 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   ? null
                                   : _syncGoogleCalendar,
                               style: _settingsSkyButtonStyle(),
-                              icon: const Icon(Icons.sync),
-                              label: Text(_googleCalendarActionLabel()),
+                              icon: _isSyncingGoogleCalendar
+                                  ? const SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.sync),
+                              label: Text(
+                                _isSyncingGoogleCalendar
+                                    ? '동기화 중...'
+                                    : _googleCalendarActionLabel(),
+                              ),
                             ),
                           ),
                         ],
@@ -3260,7 +3393,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 'settings-device-calendar-disconnect-button',
                               ),
                               onPressed: _isDisconnectingDeviceCalendar ||
-                                      _isImportingDeviceNaverCalendar
+                                      _isImportingDeviceNaverCalendar ||
+                                      !_hasDeviceCalendarSynced
                                   ? null
                                   : _disconnectDeviceCalendarImport,
                               icon: _isDisconnectingDeviceCalendar
@@ -3297,6 +3431,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                           ),
                         ],
                       ),
+                      if (_deviceCalendarImportLongRunning) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '일정이 많아 조금 걸리고 있습니다. 가져오기는 계속 진행 중입니다.',
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: PlanFlowColors.textSecondary,
+                                  ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -3599,10 +3743,18 @@ class _SettingsScreenState extends State<SettingsScreen>
     ]);
   }
 
+  CalendarAutoSyncProviderSnapshot? get _deviceCalendarAutoSyncSnapshot {
+    return _autoSyncProviderSnapshot(const ['device_calendar_auto_import']);
+  }
+
   bool _isNaverCalendarConfigured() {
+    if (!_hasNaverCalDavCredentials && !_hasNaverOpenApiAccess) {
+      return false;
+    }
     final summary = _calendarSyncSummary?.naver;
     if (summary != null) {
-      if (summary.status == CalendarIntegrationStatus.synced) {
+      if (summary.status == CalendarIntegrationStatus.synced ||
+          summary.status == CalendarIntegrationStatus.ready) {
         return true;
       }
     }
@@ -3613,8 +3765,22 @@ class _SettingsScreenState extends State<SettingsScreen>
     return false;
   }
 
+  bool _hasSyncedDeviceCalendar(CalendarSyncSummary summary) {
+    final snapshot = _deviceCalendarAutoSyncSnapshot;
+    if (snapshot?.lastSuccessAt != null) {
+      return true;
+    }
+    return summary.naver.isSuccess &&
+        summary.naver.syncedItems > 0 &&
+        _hasDeviceCalendarSynced;
+  }
+
   bool _isCalendarConfigured(CalendarIntegrationResult? result) {
     if (result == null) {
+      return false;
+    }
+    if (result.status == CalendarIntegrationStatus.signedOut ||
+        result.status == CalendarIntegrationStatus.notConfigured) {
       return false;
     }
     if (result.status == CalendarIntegrationStatus.synced) {

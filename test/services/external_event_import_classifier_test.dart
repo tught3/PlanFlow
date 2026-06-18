@@ -11,6 +11,23 @@ void main() {
         ),
         isTrue,
       );
+      expect(
+        ExternalEventImportClassifier.isCritical(
+          title: '외부 중요 일정',
+          priority: 5,
+        ),
+        isTrue,
+      );
+    });
+
+    test('treats pre-actions as critical', () {
+      expect(
+        ExternalEventImportClassifier.isCritical(
+          title: '출발 준비가 필요한 일정',
+          hasPreActions: true,
+        ),
+        isTrue,
+      );
     });
 
     test('treats important or Naver booking buckets as critical', () {

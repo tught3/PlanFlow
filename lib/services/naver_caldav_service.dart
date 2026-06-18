@@ -1145,37 +1145,60 @@ class NaverCalDavService {
         totalCalendars: calendars.length,
       ));
       final syncedAt = DateTime.now().toUtc();
+      final existingExternalIds = await _eventRepository.fetchExternalIdSet(
+        source: 'naver_caldav',
+        userId: resolvedUserId,
+      );
       var eventCount = 0;
       var savedCount = 0;
       var skippedCount = 0;
       var failedCount = 0;
-      for (var index = 0; index < calendars.length; index += 1) {
-        final calendar = calendars[index];
-        final calendarNumber = index + 1;
-        emit(NaverCalDavSyncProgress(
-          mode: mode,
-          stage: NaverCalDavSyncStage.querying,
-          message: '일정을 조회하는 중입니다.',
-          currentCalendar: calendar.displayName,
-          currentCalendarIndex: calendarNumber,
-          totalCalendars: calendars.length,
-          savedEvents: savedCount,
-          skippedEvents: skippedCount,
-          failedEvents: failedCount,
-        ));
-        final events = await getEvents(
-          calendarPath: calendar.path,
-          from: range.from,
-          to: range.to,
-          allowFullFallback: true,
-          allowResourceFallback: true,
-          parseStats: NaverCalDavParseStats._(
+      final calendarEventResults = await Future.wait(
+        List<
+            Future<
+                ({
+                  NaverCalDavCalendar calendar,
+                  int calendarNumber,
+                  List<NaverCalDavEvent> events,
+                })>>.generate(calendars.length, (index) async {
+          final calendar = calendars[index];
+          final calendarNumber = index + 1;
+          emit(NaverCalDavSyncProgress(
+            mode: mode,
+            stage: NaverCalDavSyncStage.querying,
+            message: '일정을 조회하는 중입니다.',
+            currentCalendar: calendar.displayName,
+            currentCalendarIndex: calendarNumber,
+            totalCalendars: calendars.length,
+            savedEvents: savedCount,
+            skippedEvents: skippedCount,
+            failedEvents: failedCount,
+          ));
+          final events = await getEvents(
             calendarPath: calendar.path,
-            diagnostics: diagnostics,
             from: range.from,
             to: range.to,
-          ),
-        );
+            allowFullFallback: true,
+            allowResourceFallback: true,
+            parseStats: NaverCalDavParseStats._(
+              calendarPath: calendar.path,
+              diagnostics: diagnostics,
+              from: range.from,
+              to: range.to,
+            ),
+          );
+          return (
+            calendar: calendar,
+            calendarNumber: calendarNumber,
+            events: events,
+          );
+        }),
+      );
+
+      for (final calendarResult in calendarEventResults) {
+        final calendar = calendarResult.calendar;
+        final calendarNumber = calendarResult.calendarNumber;
+        final events = calendarResult.events;
         eventCount += events.length;
         for (var eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
           final event = events[eventIndex];
@@ -1233,7 +1256,11 @@ class NaverCalDavService {
             continue;
           }
 
-          final duplicateReason = diagnosticImport
+          final externalId = eventModel.externalId?.trim();
+          final isNewExternalId = externalId != null &&
+              externalId.isNotEmpty &&
+              !existingExternalIds.contains(externalId);
+          final duplicateReason = diagnosticImport || isNewExternalId
               ? null
               : await _sameTitleStartDuplicateReason(eventModel);
           if (duplicateReason != null) {
@@ -1271,7 +1298,7 @@ class NaverCalDavService {
               failedEvents: failedCount,
             ));
             continue;
-          } else if (diagnosticImport) {
+          } else if (diagnosticImport && !isNewExternalId) {
             final broadDuplicateReason =
                 await _sameTitleStartDuplicateReason(eventModel);
             if (broadDuplicateReason != null) {
@@ -1283,8 +1310,9 @@ class NaverCalDavService {
               );
             }
           }
-          final skipReason =
-              skipUnchanged ? await _skipUnchangedReason(eventModel) : null;
+          final skipReason = skipUnchanged && !isNewExternalId
+              ? await _skipUnchangedReason(eventModel)
+              : null;
           if (skipReason != null) {
             skippedCount += 1;
             diagnostics.unchangedSkipped += 1;
@@ -1315,6 +1343,9 @@ class NaverCalDavService {
           diagnostics.saveCandidates += 1;
           try {
             await _eventRepository.upsertEventBySourceExternalId(eventModel);
+            if (externalId != null && externalId.isNotEmpty) {
+              existingExternalIds.add(externalId);
+            }
             savedCount += 1;
             diagnostics.saved += 1;
           } catch (error, stackTrace) {
