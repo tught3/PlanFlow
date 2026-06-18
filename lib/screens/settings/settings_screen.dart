@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
@@ -734,8 +735,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       return false;
     }
 
-    _logSettingsNaverCalendar('connectAndImport start');
-    // CalDAV 자격증명이 있으면 Open API 체크 없이 바로 동기화
+    _logSettingsNaverCalendar('connectAndImport start -> CalDAV direct');
+    // CalDAV 자격증명이 있으면 바로 동기화
     final hasCalDavCredentials = await _naverCalDavService.hasCredentials();
     _logSettingsNaverCalendar(
       'connectAndImport hasCalDavCredentials=$hasCalDavCredentials',
@@ -748,79 +749,101 @@ class _SettingsScreenState extends State<SettingsScreen>
       return imported?.success ?? false;
     }
 
-    // CalDAV 자격증명 없을 때만 Open API 경로 시도
-    final hasAccess = await _naverImportService.hasCalendarAccess();
-    _logSettingsNaverCalendar('connectAndImport openApiAccess=$hasAccess');
-    if (!hasAccess) {
-      setState(() {
-        _isTestingNaverCalDav = true;
-        _lastNaverCalDavResult = null;
-      });
+    // 자격증명 없으면 CalDAV 앱 비밀번호 다이얼로그로 직접 연결
+    return _connectNaverCalDavFallbackAndImport();
+  }
 
-      final authService = _authService;
-      if (authService == null) {
-        _logSettingsNaverCalendar('connectAndImport blocked: authService=null');
-        setState(() {
-          _isTestingNaverCalDav = false;
-        });
-        _showSnack('Supabase 설정 후 네이버 캘린더를 연결할 수 있습니다.');
-        return false;
-      }
-
-      try {
-        _logSettingsNaverCalendar('connectAndImport launching Naver OAuth');
-        final launched = await authService
-            .connectCalendarProvider(PlanFlowOAuthProvider.naver);
-        _logSettingsNaverCalendar('connectAndImport launch result=$launched');
-        if (!launched) {
-          if (mounted) {
-            setState(() {
-              _isTestingNaverCalDav = false;
-            });
-            _showSnack('네이버 캘린더 권한 동의 화면을 열지 못했습니다. 다시 시도해 주세요.');
-          }
-          return false;
-        }
-        if (mounted) {
-          setState(() {
-            _isTestingNaverCalDav = false;
-            _pendingNaverOpenApiImportAfterConsent = true;
-          });
-          _logSettingsNaverCalendar(
-            'connectAndImport pendingOpenApiImport=true after launch',
-          );
-          _showSnack(
-            '네이버 권한 화면을 열었습니다. 동의 후 PlanFlow로 돌아오면 자동으로 권한을 확인합니다.',
-          );
-          unawaited(_verifyNaverOpenApiAccessAndImportAfterOAuth());
-          return false;
-        }
-      } catch (error, stackTrace) {
-        _logSettingsNaverCalendar(
-          'connectAndImport failed type=${error.runtimeType} error=${logSafeText(error)}',
-        );
-        debugPrintStack(stackTrace: stackTrace);
-        if (mounted) {
-          setState(() {
-            _isTestingNaverCalDav = false;
-          });
-          _showSnack('네이버 캘린더 연결에 실패했습니다. 다시 시도해 주세요.');
-        }
-        return false;
-      }
+  Future<bool> _connectNaverCalDavFallbackAndImport() async {
+    if (!mounted) {
+      return false;
     }
 
-    if (!mounted) return false;
-    _showSnack('네이버 캘린더 연결에 성공했습니다. 이제 일정을 가져옵니다.');
-    _logSettingsNaverCalendar(
-        'connectAndImport access already granted -> import');
+    // Naver OAuth identity에서 ID 추출해 다이얼로그에 pre-fill
+    String? naverIdentityId;
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    for (final identity in currentUser?.identities ?? const <UserIdentity>[]) {
+      if (identity.provider.toLowerCase().contains('naver')) {
+        final data = identity.identityData ?? const <String, dynamic>{};
+        final dataId = (data['id'] as String?)?.trim();
+        naverIdentityId = (dataId?.isNotEmpty == true)
+            ? dataId
+            : identity.identityId.trim().isNotEmpty
+                ? identity.identityId.trim()
+                : null;
+        break;
+      }
+    }
+    DiagLogger.log(
+      'DIAG',
+      'caldavFallback naverIdFound=${naverIdentityId != null}',
+    );
+
+    final credentials = await _showNaverCalDavDialog(
+      initialNaverId: naverIdentityId,
+    );
+    if (credentials == null) {
+      return false;
+    }
+    if (!mounted) {
+      return false;
+    }
+
     setState(() {
-      _hasNaverOpenApiAccess = true;
-      _pendingNaverOpenApiImportAfterConsent = false;
+      _isTestingNaverCalDav = true;
+      _lastNaverCalDavResult = null;
     });
-    if (!mounted) return false;
-    final imported =
-        await _importNaverCalDavEvents(skipIntro: true, useOpenApi: true);
+
+    NaverCalDavConnectionResult result;
+    try {
+      result = await _naverCalDavService.testConnection(
+        naverId: credentials.naverId,
+        appPassword: credentials.appPassword,
+        saveOnSuccess: true,
+      );
+      DiagLogger.log(
+        'DIAG',
+        'caldav testConnection status=${result.status.name} '
+            'isSuccess=${result.isSuccess} statusCode=${result.statusCode}',
+      );
+    } catch (error, stackTrace) {
+      DiagLogger.log(
+        'DIAG',
+        'caldav testConnection exception ${logSafeText(error.runtimeType)}',
+      );
+      debugPrint('Naver CalDAV connect failed: ${logSafeText(error)}');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        setState(() {
+          _isTestingNaverCalDav = false;
+          _hasNaverCalDavCredentials = false;
+        });
+        _showSnack('네이버 CalDAV 연결 테스트에 실패했습니다. ID와 앱 비밀번호를 확인해 주세요.');
+      }
+      return false;
+    }
+
+    if (!mounted) {
+      return false;
+    }
+    setState(() {
+      _isTestingNaverCalDav = false;
+      _hasNaverCalDavCredentials = result.isSuccess;
+      _lastNaverCalDavResult = result;
+    });
+    _showSnack(result.message);
+    if (!result.isSuccess) {
+      return false;
+    }
+
+    await _markNaverCalDavConnection(
+      status: CalendarConnectionStatus.connected,
+      lastError: null,
+    );
+    await _loadCalendarStatus();
+    if (!mounted) {
+      return false;
+    }
+    final imported = await _importNaverCalDavEvents(skipIntro: true);
     return imported?.success ?? false;
   }
 
@@ -1668,10 +1691,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   // Legacy CalDAV 앱 비밀번호 다이얼로그 — Open API 전환 후 미사용.
-  // 롤백 시 참조용으로 보존.
-  // ignore: unused_element
-  Future<_NaverCalDavCredentials?> _showNaverCalDavDialog() {
-    final idController = TextEditingController();
+  // OAuth 연결이 열리지 않거나 권한 확인이 끝나지 않을 때 CalDAV 직접 연결로 전환한다.
+  Future<_NaverCalDavCredentials?> _showNaverCalDavDialog({
+    String? initialNaverId,
+  }) {
+    final idController = TextEditingController(text: initialNaverId ?? '');
     final passwordController = TextEditingController();
     final idFocusNode = FocusNode();
     final passwordFocusNode = FocusNode();
@@ -1876,8 +1900,6 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     if (_hasNaverCalDavCredentials) {
       await _importNaverCalDavEvents(skipIntro: true);
-    } else if (_hasNaverOpenApiAccess) {
-      await _importNaverCalDavEvents(skipIntro: true, useOpenApi: true);
     } else {
       await _connectNaverCalDavAndImport();
     }
