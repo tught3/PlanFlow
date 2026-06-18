@@ -1911,4 +1911,4 @@
 - 외부 캘린더 priority 1~5와 pre-action 보유 일정을 중요 일정으로 판정하고, pre-action 생성 후 `is_critical`을 동기화하도록 보강했다.
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 안내를 표시하고, 이벤트 저장은 6개 단위 병렬 배치로 처리한다.
 - 기존 pre_actions 보유 이벤트를 `is_critical = true`로 보정하는 migration을 추가했다.
-- 검증: classifier/manual/settings focused tests와 변경 파일 단위 `dart analyze`는 통과했다. 전체 `flutter analyze --no-pub`는 출력 없이 타임아웃됐고, `flutter build apk --debug --no-pub`/`android\gradlew.bat :app:assembleDebug --stacktrace`는 E: worktree build dir와 C: Pub cache 플러그인 소스 간 Gradle `different roots` 오류로 PASS 확정하지 못했다. `scripts/flutter-local.ps1`는 worktree `.fluxos` bootstrap 경로 누락으로 실패했다.
+- 검증: classifier/manual/settings focused tests와 `flutter analyze --no-pub`가 통과했다. PowerShell에서 `flutter build apk --debug --no-pub`는 Gradle client disconnect로 `-1` 조기 종료됐지만, `cmd.exe /d /s /c "flutter build apk --debug --no-pub"` 경로는 통과해 `build\app\outputs\flutter-apk\app-debug.apk`를 생성했다. `flutter install -d 192.168.0.103:39685 --debug`와 `adb ... monkey` 실행 확인도 통과했고 PID는 `2259`였다. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
