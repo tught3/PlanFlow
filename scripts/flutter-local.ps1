@@ -39,8 +39,9 @@ try {
 
   $command = $Args[0]
   $flutterArgs = @($Args)
+  $defineSupportedCommands = @('build', 'run', 'test', 'drive')
 
-  if ($defineArgs.Count -gt 0 -and $command -ne 'analyze') {
+  if ($defineArgs.Count -gt 0 -and ($defineSupportedCommands -contains $command)) {
     if ($command -eq 'build' -and $Args.Count -ge 2) {
       $flutterArgs = @($command, $Args[1]) + $defineArgs + $Args[2..($Args.Count - 1)]
     } elseif ($Args.Count -gt 1) {
