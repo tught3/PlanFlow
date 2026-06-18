@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:xml/xml.dart';
 
+import '../core/diag_logger.dart';
 import '../core/env.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
@@ -708,7 +709,9 @@ class NaverCalDavService {
     final homePaths = await _discoverCalendarHomePaths(credentials);
     debugPrint('Naver CalDAV 캘린더 홈 후보: $homePaths');
     Object? lastError;
+    var pathAttempt = 0;
     for (final path in homePaths) {
+      pathAttempt += 1;
       final endpoint = _baseUri.replace(path: path);
       try {
         final response = await _sendXmlRequest(
@@ -717,6 +720,10 @@ class NaverCalDavService {
           naverId: credentials.naverId,
           appPassword: credentials.appPassword,
           body: _calendarListPropfindBody,
+        );
+        DiagLogger.log(
+          'NaverCalDav',
+          'PROPFIND status=${response.statusCode} attempt=$pathAttempt',
         );
         if (response.statusCode == 404) {
           lastError = StateError('CalDAV calendar-home not found: $endpoint');
@@ -1118,6 +1125,7 @@ class NaverCalDavService {
         message: '네이버 CalDAV 연결을 확인하는 중입니다.',
       ));
       final calendars = await getCalendars();
+      DiagLogger.log('NaverCalDav', 'syncAll calendars=${calendars.length}');
       if (calendars.isEmpty) {
         return NaverCalDavSyncResult(
           success: false,
@@ -1381,6 +1389,10 @@ class NaverCalDavService {
         diagnostics: frozenDiagnostics,
       );
     } catch (error, stackTrace) {
+      DiagLogger.log(
+        'NaverCalDav',
+        'syncAll FAILED type=${error.runtimeType}',
+      );
       debugPrint('Naver CalDAV sync failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return NaverCalDavSyncResult(
