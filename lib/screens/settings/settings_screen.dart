@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
@@ -891,7 +892,30 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (!mounted) {
       return false;
     }
-    final credentials = await _showNaverCalDavDialog();
+
+    // Naver OAuth identity에서 ID 추출해 다이얼로그에 pre-fill
+    String? naverIdentityId;
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    for (final identity in currentUser?.identities ?? const <UserIdentity>[]) {
+      if (identity.provider.toLowerCase().contains('naver')) {
+        final data = identity.identityData ?? const <String, dynamic>{};
+        final dataId = (data['id'] as String?)?.trim();
+        naverIdentityId = (dataId?.isNotEmpty == true)
+            ? dataId
+            : identity.identityId.trim().isNotEmpty
+                ? identity.identityId.trim()
+                : null;
+        break;
+      }
+    }
+    DiagLogger.log(
+      'DIAG',
+      'caldavFallback naverIdFound=${naverIdentityId != null}',
+    );
+
+    final credentials = await _showNaverCalDavDialog(
+      initialNaverId: naverIdentityId,
+    );
     if (credentials == null) {
       return false;
     }
@@ -911,7 +935,16 @@ class _SettingsScreenState extends State<SettingsScreen>
         appPassword: credentials.appPassword,
         saveOnSuccess: true,
       );
+      DiagLogger.log(
+        'DIAG',
+        'caldav testConnection status=${result.status.name} '
+            'isSuccess=${result.isSuccess} statusCode=${result.statusCode}',
+      );
     } catch (error, stackTrace) {
+      DiagLogger.log(
+        'DIAG',
+        'caldav testConnection exception ${logSafeText(error.runtimeType)}',
+      );
       debugPrint('Naver CalDAV connect failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
@@ -1661,8 +1694,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   // OAuth 연결이 열리지 않거나 권한 확인이 끝나지 않을 때 CalDAV 직접 연결로 전환한다.
-  Future<_NaverCalDavCredentials?> _showNaverCalDavDialog() {
-    final idController = TextEditingController();
+  Future<_NaverCalDavCredentials?> _showNaverCalDavDialog({
+    String? initialNaverId,
+  }) {
+    final idController = TextEditingController(text: initialNaverId ?? '');
     final passwordController = TextEditingController();
     final idFocusNode = FocusNode();
     final passwordFocusNode = FocusNode();
