@@ -654,10 +654,9 @@ void main() {
       find.textContaining('권한 동의가 확인되지 않았습니다'),
       findsNothing,
     );
-    expect(
-      find.textContaining('동의 후 PlanFlow로 돌아오면 자동으로 권한을 확인합니다'),
-      findsWidgets,
-    );
+    expect(find.text('네이버 캘린더 연결'), findsOneWidget);
+    expect(find.text('네이버 ID'), findsOneWidget);
+    expect(find.text('앱 비밀번호'), findsOneWidget);
   });
 
   testWidgets('Naver OAuth launch does not immediately fail permission check',

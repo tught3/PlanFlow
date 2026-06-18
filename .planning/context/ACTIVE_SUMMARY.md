@@ -2,9 +2,10 @@
 ## 2026-06-18 TASK_20260618_123620 PlanFlow 2차 버그/개선 6종
 - 연동 해제 모달을 X 닫기 + 일정 유지/삭제 2버튼으로 정리했고, 네이버 CalDAV 진행/진단 다이얼로그는 짧은 상태와 상세 info 진입으로 분리했다.
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 모달을 표시하고 성공 상태를 저장/복원하며, 서비스 import 루프는 6개 단위 제한 병렬 처리와 결과 집계 방식으로 바꿨다.
-- 외부 일정 critical 판정을 priority 1~5 및 pre-action 존재 기준으로 확장하고, pre-action 생성 후 event critical flag를 갱신하며 기존 pre-action 보유 이벤트 backfill migration을 추가했다.
+- 외부 일정 critical 판정을 priority 1~5 및 pre-action 존재 기준으로 확장하고, pre-action 생성 후 event critical flag를 갱신하며 기존 pre-action 보유 이벤트 backfill migration(`20260618000000_backfill_is_critical_from_pre_actions.sql`)을 추가했다.
 - 재검토 중 네이버 Open API 권한이 없을 때 OAuth 시작 경로가 CalDAV fallback으로 우회되는 회귀를 확인해, 권한 보유 시 Open API import / 미보유 시 OAuth 시작 / launch 실패 시 CalDAV fallback 순서로 복구했다.
-- 검증: `flutter analyze --no-pub`, classifier/settings/manual/device/CalDAV focused tests, `flutter build apk --debug --no-pub`, `flutter install -d 192.168.0.103:39685 --debug`, `adb shell monkey ...`, `pidof=19078` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
+- 재검토 후 보정: 휴대폰 내부 캘린더 가져오기 장기 진행 상태를 명시 필드/타이머/버튼 안내로 보강했고, settings 테스트의 오래된 OAuth/CalDAV fallback 기대값을 현재 동작에 맞췄다.
+- 검증: `flutter analyze --no-pub`, classifier/manual/settings focused tests, `flutter build apk --debug --no-pub`, `flutter install -d 192.168.0.103:39685 --debug`, `adb shell am start -W ...`, `pidof=24106` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
 
 ## 2026-06-18 TASK_20260618_112655 캘린더 상태/CalDAV 성능 보정
 - 설정 화면에서 네이버 연결 체크는 CalDAV 자격증명 또는 OpenAPI 접근이 있을 때만 과거 sync/ready/synced 판정을 쓰게 하고, Google은 `signedOut`/`notConfigured` 상태에서 과거 성공 스냅샷으로 초록 체크가 남지 않게 보정했다.
