@@ -1020,7 +1020,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     _manualEditInterruptedListening = false;
     _didRetryConversationEarlyFailure = false;
     if (!mounted) return;
-    context.pop(voiceConversationClosedResult);
+    context.go(AppRoutes.home);
   }
 
   void _handleInputChanged(String value) {

@@ -18,6 +18,7 @@ import '../../services/briefing_scheduler_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/event_prefetch_service.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/location_lookup_service.dart';
 import '../../services/home_header_summary_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/remote_config_service.dart';
@@ -288,6 +289,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final allEvents = await repository.listEvents(userId: userId);
       EventPrefetchService().store(userId, allEvents);
       await _applyHomeEvents(userId, allEvents);
+      unawaited(_resolveEventsMissingCoords(allEvents, repository));
     } catch (error) {
       if (mounted && showLoading) {
         setState(() {
@@ -363,6 +365,66 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (refreshHomeWidget) {
       _scheduleHomeWidgetRefresh(allEvents, now: now);
+    }
+  }
+
+  Future<void> _resolveEventsMissingCoords(
+    List<EventModel> allEvents,
+    EventRepository repository,
+  ) async {
+    final missing = allEvents
+        .where(
+          (e) =>
+              e.location != null &&
+              e.location!.trim().isNotEmpty &&
+              e.locationLat == null,
+        )
+        .toList();
+    if (missing.isEmpty) return;
+    final service = LocationLookupService();
+    for (final event in missing) {
+      try {
+        final results = await service.search(event.location!, origin: null);
+        if (results.isEmpty) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          continue;
+        }
+        final best = results.first;
+        await repository.updateEvent(EventModel(
+          id: event.id,
+          userId: event.userId,
+          title: event.title,
+          startAt: event.startAt,
+          endAt: event.endAt,
+          location: event.location,
+          locationLat: best.latitude,
+          locationLng: best.longitude,
+          memo: event.memo,
+          supplies: event.supplies,
+          suppliesChecked: event.suppliesChecked,
+          participants: event.participants,
+          targets: event.targets,
+          isCritical: event.isCritical,
+          useStrongAlarm: event.useStrongAlarm,
+          recurrenceRule: event.recurrenceRule,
+          isAllDay: event.isAllDay,
+          isMultiDay: event.isMultiDay,
+          parentEventId: event.parentEventId,
+          category: event.category,
+          source: event.source,
+          externalId: event.externalId,
+          externalCalendarId: event.externalCalendarId,
+          externalEtag: event.externalEtag,
+          externalUpdatedAt: event.externalUpdatedAt,
+          lastSyncedAt: event.lastSyncedAt,
+          createdAt: event.createdAt,
+          updatedAt: event.updatedAt,
+        ));
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+    if (mounted) {
+      EventRefreshBus.instance.notifyChanged(reason: 'location_resolved');
     }
   }
 

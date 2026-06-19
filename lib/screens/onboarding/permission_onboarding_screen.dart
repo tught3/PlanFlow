@@ -296,7 +296,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
             '정확한 알람 권한이 없으면 중요 일정 알림이 지연될 수 있습니다. 설정에서 PlanFlow의 정확한 알람을 허용해 주세요.',
         isGranted: (snapshot) => snapshot.exactAlarmsGranted,
         request: _permissionService.requestExactAlarmPermission,
-        openSettings: _permissionService.openAppSettings,
+        openSettings: _permissionService.openAlarmSettings,
       ),
       if (requiresFullScreenIntent)
         _PermissionStep(

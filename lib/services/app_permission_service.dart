@@ -242,6 +242,22 @@ class AppPermissionService {
     }
   }
 
+  Future<bool> openAlarmSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return false;
+    }
+    try {
+      return await _androidPermissionsChannel.invokeMethod<bool>(
+            'openAlarmSettings',
+          ) ??
+          false;
+    } catch (error, stackTrace) {
+      debugPrint('Open alarm settings failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return openAppSettings();
+    }
+  }
+
   Future<bool> openNotificationSettings() {
     return _notificationService.openAppNotificationSettings();
   }

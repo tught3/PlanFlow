@@ -71,6 +71,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   double? _locationLng;
   String? _resolvedLocationLabel;
   late bool _critical;
+  late bool _strongAlarm;
   late RecurrenceSelection _recurrenceSelection;
   bool _isAllDay = false;
   String _category = '기타';
@@ -177,6 +178,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
   void _handleCriticalChanged(bool value) {
     setState(() {
       _critical = value;
+      if (!value) _strongAlarm = false;
+    });
+  }
+
+  void _handleStrongAlarmChanged(bool value) {
+    setState(() {
+      _strongAlarm = value;
     });
     if (value) {
       unawaited(_ensureCriticalAlarmPermissions());
@@ -258,7 +266,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
             builder: (dialogContext) => AlertDialog(
               title: const Text('중요한 일정 알림 권한이 필요해요'),
               content: const Text(
-                '중요한 일정을 시작 시점에 더 강한 소리와 진동으로 알려드리려면 앱 알림, 정확한 알람, 전체 화면 알림 권한이 필요합니다. 지금 권한을 확인할게요.',
+                '강한 알람을 울리려면 앱 알림과 정확한 알람 권한이 필요합니다. 지금 권한을 확인할게요.',
               ),
               actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               actions: [
@@ -294,8 +302,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
       _showMessage(
         granted
-            ? '중요한 일정 알림 권한을 확인했습니다.'
-            : '설정에서 PlanFlow의 알림, 정확한 알람, 전체 화면 알림을 허용한 뒤 돌아와 주세요.',
+            ? '강한 알람 권한을 확인했습니다.'
+            : '설정에서 PlanFlow의 알림과 정확한 알람을 허용한 뒤 돌아와 주세요.',
       );
     } catch (error, stackTrace) {
       debugPrint('Critical alarm permission request skipped: $error');
@@ -304,9 +312,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   bool _criticalAlarmPermissionsReady(AppPermissionSnapshot snapshot) {
-    return snapshot.notificationsGranted &&
-        snapshot.exactAlarmsGranted &&
-        snapshot.fullScreenIntentGranted;
+    return snapshot.notificationsGranted && snapshot.exactAlarmsGranted;
   }
 
   Future<bool> _requestCriticalAlarmPermissions() async {
@@ -317,15 +323,18 @@ class _EventEditScreenState extends State<EventEditScreen> {
     final exactAlarmsGranted = notificationStatus.exactAlarmsEnabled == true ||
         await _permissionService.requestExactAlarmPermission();
     if (!exactAlarmsGranted && mounted) {
-      await _permissionService.openAppSettings();
+      await _permissionService.openAlarmSettings();
     }
-    final fullScreenIntentGranted = notificationStatus.fullScreenIntentStatus ==
-            PermissionCheckState.granted ||
-        await _permissionService.requestFullScreenIntentPermission();
+    // fullScreenIntent는 향상된 기능(잠금화면 오버레이)이며 필수 아님 — 가능하면 요청
+    if (notificationStatus.fullScreenIntentStatus !=
+            PermissionCheckState.granted &&
+        notificationStatus.fullScreenIntentStatus !=
+            PermissionCheckState.unsupported) {
+      unawaited(_permissionService.requestFullScreenIntentPermission());
+    }
     final latest = await _permissionService.checkAll();
     return notificationsGranted &&
         exactAlarmsGranted &&
-        fullScreenIntentGranted &&
         _criticalAlarmPermissionsReady(latest);
   }
 
@@ -350,6 +359,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       _resolvedLocationLabel = _locationController.text.trim();
     }
     _critical = event?.isCritical ?? false;
+    _strongAlarm = event?.useStrongAlarm ?? false;
     _recurrenceSelection = RecurrenceSelection.fromRRule(event?.recurrenceRule);
     _isAllDay = event?.isAllDay ?? false;
     _category = event?.category ?? '기타';
@@ -453,6 +463,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         participants: _loadedEvent?.participants ?? const <String>[],
         targets: _loadedEvent?.targets ?? const <String>[],
         isCritical: _critical,
+        useStrongAlarm: _strongAlarm,
         recurrenceRule: _recurrenceSelection.toRRule(),
         isAllDay: _isAllDay,
         isMultiDay: isMultiDayByRange,
@@ -723,6 +734,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
             event.startAt == null ? _startAt : planflowLocal(event.startAt!);
         _endAt = event.endAt == null ? null : planflowLocal(event.endAt!);
         _critical = event.isCritical;
+        _strongAlarm = event.useStrongAlarm;
         _recurrenceSelection =
             RecurrenceSelection.fromRRule(event.recurrenceRule);
         _isAllDay = event.isAllDay;
@@ -1099,6 +1111,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   recurrence: _recurrenceSelection,
                   reminderOffset: _reminderOffset,
                   isCritical: _critical,
+                  useStrongAlarm: _strongAlarm,
                   locationLat: _locationLat,
                   locationLng: _locationLng,
                   memoMaxLines: 5,
@@ -1161,6 +1174,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                     });
                   },
                   onCriticalChanged: _handleCriticalChanged,
+                  onStrongAlarmChanged: _handleStrongAlarmChanged,
                   onLocationTextChanged: _handleLocationTextChanged,
                   onLocationPick: _pickLocationOnMap,
                   isSearchingLocation: _isLookingUpLocation,

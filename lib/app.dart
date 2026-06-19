@@ -563,7 +563,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
               ],
               routerConfig: appRouter,
               builder: (context, child) {
-                final showUpdateOverlay = updateState != UpdateUiState.idle;
+                final showUpdateOverlay = updateState == UpdateUiState.updating ||
+                    updateState == UpdateUiState.openingPlayStore;
                 return Stack(
                   children: <Widget>[
                     child ?? const SizedBox.shrink(),

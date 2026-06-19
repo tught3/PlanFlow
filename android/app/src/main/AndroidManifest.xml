@@ -30,6 +30,16 @@
 
     <queries>
         <package android:name="com.nhn.android.calendar" />
+        <package android:name="com.nhn.android.nmap" />
+        <package android:name="com.skt.tmap.po" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="nmap" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="tmap" />
+        </intent>
     </queries>
 
     <application
