@@ -437,7 +437,8 @@ class CalendarSyncService {
       'serverClientIdSet=${_hasText(_googleServerClientId)}',
     );
     final configurationIssue = _googleConfigurationIssue;
-    DiagLogger.log('DIAG', 'google getStatus serverClientIdSet=${logSafeText(_hasText(_googleServerClientId))} configurationIssue=${logSafeText(configurationIssue)}');
+    DiagLogger.log('DIAG',
+        'google getStatus serverClientIdSet=${logSafeText(_hasText(_googleServerClientId))} configurationIssue=${logSafeText(configurationIssue)}');
     if (configurationIssue != null) {
       _logGoogleAuth(
           'getGoogleStatus blocked by configuration: $configurationIssue');
@@ -465,9 +466,11 @@ class CalendarSyncService {
       // DiagLogger 진단 로그
       try {
         final userId = _currentUserId();
-        DiagLogger.log('DIAG', 'google getStatus fetchConn userId=${logSafeText(userId)} connStatus=${logSafeText(connection?.status.name)} connected=${connection?.isConnected == true} email=${logSafeText(connection?.providerAccountEmail)}');
+        DiagLogger.log('DIAG',
+            'google getStatus fetchConn userId=${logSafeText(userId)} connStatus=${logSafeText(connection?.status.name)} connected=${connection?.isConnected == true} email=${logSafeText(connection?.providerAccountEmail)}');
       } catch (e) {
-        DiagLogger.log('DIAG', 'google getStatus fetchConn userIdFailed=${logSafeText(e)} connStatus=${logSafeText(connection?.status.name)} connected=${connection?.isConnected == true}');
+        DiagLogger.log('DIAG',
+            'google getStatus fetchConn userIdFailed=${logSafeText(e)} connStatus=${logSafeText(connection?.status.name)} connected=${connection?.isConnected == true}');
       }
       if (connection == null || !connection.isConnected) {
         return CalendarIntegrationResult.signedOut(
@@ -482,7 +485,8 @@ class CalendarSyncService {
       );
       if (account == null) {
         _logGoogleAuth('getGoogleStatus silentSignIn account=null');
-        DiagLogger.log('DIAG', 'google getStatus silentSignIn accountNull=true');
+        DiagLogger.log(
+            'DIAG', 'google getStatus silentSignIn accountNull=true');
         return CalendarIntegrationResult.ready(
           CalendarProvider.google,
           message:
@@ -491,7 +495,8 @@ class CalendarSyncService {
       }
 
       _logGoogleAuth('getGoogleStatus silentSignIn email=${account.email}');
-      DiagLogger.log('DIAG', 'google getStatus silentSignIn accountEmail=${logSafeText(account.email)}');
+      DiagLogger.log('DIAG',
+          'google getStatus silentSignIn accountEmail=${logSafeText(account.email)}');
       return CalendarIntegrationResult.ready(
         CalendarProvider.google,
         message: 'Google Calendar 연결이 정상입니다.',
@@ -522,7 +527,8 @@ class CalendarSyncService {
       'serverClientIdSet=${_hasText(_googleServerClientId)}',
     );
     final configurationIssue = _googleConfigurationIssue;
-    DiagLogger.log('DIAG', 'google syncCalendar serverClientIdSet=${logSafeText(_hasText(_googleServerClientId))} configurationIssue=${logSafeText(configurationIssue)}');
+    DiagLogger.log('DIAG',
+        'google syncCalendar serverClientIdSet=${logSafeText(_hasText(_googleServerClientId))} configurationIssue=${logSafeText(configurationIssue)}');
     if (configurationIssue != null) {
       _logGoogleAuth(
         'syncGoogleCalendar blocked by configuration: $configurationIssue',
@@ -549,6 +555,23 @@ class CalendarSyncService {
         'connected=${existingConnection?.isConnected == true} '
         'providerAccountEmail=${existingConnection?.providerAccountEmail ?? "(null)"}',
       );
+      try {
+        final userId = _currentUserId();
+        DiagLogger.log(
+          'DIAG',
+          'google syncCalendar fetchConn userId=${logSafeText(userId)} '
+              'connStatus=${logSafeText(existingConnection?.status.name)} '
+              'connected=${existingConnection?.isConnected == true} '
+              'email=${logSafeText(existingConnection?.providerAccountEmail)}',
+        );
+      } catch (error) {
+        DiagLogger.log(
+          'DIAG',
+          'google syncCalendar fetchConn userIdFailed=${logSafeText(error)} '
+              'connStatus=${logSafeText(existingConnection?.status.name)} '
+              'connected=${existingConnection?.isConnected == true}',
+        );
+      }
       if (!interactive &&
           (existingConnection == null || !existingConnection.isConnected)) {
         _logGoogleAuth(
@@ -587,9 +610,11 @@ class CalendarSyncService {
         if (!interactive && existingConnection?.isConnected == true) {
           try {
             final userId = _currentUserId();
-            DiagLogger.log('DIAG', 'google syncCalendar saveConn_1 userId=${logSafeText(userId)} status=reauthRequired');
+            DiagLogger.log('DIAG',
+                'google syncCalendar saveConn_1 userId=${logSafeText(userId)} status=reauthRequired');
           } catch (e) {
-            DiagLogger.log('DIAG', 'google syncCalendar saveConn_1 userIdFailed=${logSafeText(e)} status=reauthRequired');
+            DiagLogger.log('DIAG',
+                'google syncCalendar saveConn_1 userIdFailed=${logSafeText(e)} status=reauthRequired');
           }
           await _saveConnection(
             CalendarProvider.google,
@@ -605,9 +630,11 @@ class CalendarSyncService {
         }
         try {
           final userId = _currentUserId();
-          DiagLogger.log('DIAG', 'google syncCalendar saveConn_2 userId=${logSafeText(userId)} status=reauthRequired');
+          DiagLogger.log('DIAG',
+              'google syncCalendar saveConn_2 userId=${logSafeText(userId)} status=reauthRequired');
         } catch (e) {
-          DiagLogger.log('DIAG', 'google syncCalendar saveConn_2 userIdFailed=${logSafeText(e)} status=reauthRequired');
+          DiagLogger.log('DIAG',
+              'google syncCalendar saveConn_2 userIdFailed=${logSafeText(e)} status=reauthRequired');
         }
         await _saveConnection(
           CalendarProvider.google,
@@ -1408,10 +1435,20 @@ class CalendarSyncService {
             ? 'GoogleSignIn.signIn returned null - likely user cancelled account picker or closed the consent flow'
             : 'GoogleSignIn.signInSilently returned null - no cached Google account or silent sign-in unavailable',
       );
+      DiagLogger.log(
+        'DIAG',
+        'google fetchAccessToken method=${interactive ? 'signIn' : 'signInSilently'} '
+            'accountNull=true',
+      );
       return null;
     }
 
     _lastGoogleAccountEmail = account.email;
+    DiagLogger.log(
+      'DIAG',
+      'google fetchAccessToken method=${interactive ? 'signIn' : 'signInSilently'} '
+          'accountNull=false email=${logSafeText(account.email)}',
+    );
     _logGoogleAuth(
       'GoogleSignIn returned account email=${account.email} '
       'displayName=${account.displayName ?? "(null)"} '

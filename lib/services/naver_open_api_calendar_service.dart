@@ -471,7 +471,8 @@ class NaverOpenApiCalendarService {
         'DIAG',
         'naver fetchWindow status=${response.statusCode} '
             'startIndex=$startIndex '
-            'bodyLength=${response.body.length}',
+            'bodyLength=${response.body.length} '
+            'bodyHead=${response.statusCode >= 200 && response.statusCode < 400 ? 'omitted_success_body' : logSafeText(response.body.length > 240 ? response.body.substring(0, 240) : response.body)}',
       );
 
       if (response.statusCode == 401 || response.statusCode == 403) {

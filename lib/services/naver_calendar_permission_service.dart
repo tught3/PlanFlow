@@ -226,18 +226,30 @@ class NaverCalendarPermissionService {
       final token = await provider();
       _log(
           'accessToken source=injected present=${token?.trim().isNotEmpty == true}');
+      DiagLogger.log(
+        'DIAG',
+        'naver accessToken source=injected present=${token?.trim().isNotEmpty == true}',
+      );
       return token;
     }
 
     final providerToken = _currentProviderToken();
     if (providerToken != null && providerToken.trim().isNotEmpty) {
       _log('accessToken source=current_provider_token present=true');
+      DiagLogger.log(
+        'DIAG',
+        'naver accessToken source=session_providerToken present=true',
+      );
       return providerToken;
     }
 
     final storedToken = await _storedNaverCalendarToken();
     _log(
         'accessToken source=stored_token present=${storedToken?.trim().isNotEmpty == true}');
+    DiagLogger.log(
+      'DIAG',
+      'naver accessToken source=stored_naver_calendar_token present=${storedToken?.trim().isNotEmpty == true}',
+    );
     return storedToken;
   }
 
@@ -301,7 +313,8 @@ class NaverCalendarPermissionService {
         'tokenPresent=$tokenPresent '
         'calendarLinkToken=$allowWithoutNaverIdentity',
       );
-      DiagLogger.log('DIAG', 'persistToken SKIPPED clientPresent=${client != null} userPresent=${userId?.trim().isNotEmpty == true} naverSignedIn=$naverSignedIn tokenPresent=$tokenPresent calendarLinkToken=$allowWithoutNaverIdentity');
+      DiagLogger.log('DIAG',
+          'persistToken SKIPPED clientPresent=${client != null} userPresent=${userId?.trim().isNotEmpty == true} naverSignedIn=$naverSignedIn tokenPresent=$tokenPresent calendarLinkToken=$allowWithoutNaverIdentity');
       return false;
     }
 
@@ -315,7 +328,8 @@ class NaverCalendarPermissionService {
       );
       _log(
           'provider token captured calendarLinkToken=$allowWithoutNaverIdentity.');
-      DiagLogger.log('DIAG', 'persistToken SAVED calendarLinkToken=$allowWithoutNaverIdentity');
+      DiagLogger.log('DIAG',
+          'persistToken SAVED calendarLinkToken=$allowWithoutNaverIdentity');
       return true;
     } catch (error, stackTrace) {
       _log(
