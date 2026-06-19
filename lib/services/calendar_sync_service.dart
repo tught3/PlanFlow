@@ -585,22 +585,23 @@ class CalendarSyncService {
           'lastAccount=$_lastGoogleAccountEmail',
         );
         if (!interactive && existingConnection?.isConnected == true) {
+          // clearAuthCache 재시도 후에도 null → 일시적 Play Services 문제이므로
+          // status를 reauthRequired로 바꾸지 않고 lastError만 기록 후 skip
           try {
             final userId = _currentUserId();
-            DiagLogger.log('DIAG', 'google syncCalendar saveConn_1 userId=${logSafeText(userId)} status=reauthRequired');
+            DiagLogger.log('DIAG', 'google syncCalendar saveConn_1 userId=${logSafeText(userId)} silentTokenMissing - skip without status change');
           } catch (e) {
-            DiagLogger.log('DIAG', 'google syncCalendar saveConn_1 userIdFailed=${logSafeText(e)} status=reauthRequired');
+            DiagLogger.log('DIAG', 'google syncCalendar saveConn_1 userIdFailed=${logSafeText(e)} silentTokenMissing - skip without status change');
           }
           await _saveConnection(
             CalendarProvider.google,
-            status: CalendarConnectionStatus.reauthRequired,
-            providerAccountEmail: existingConnection?.providerAccountEmail,
-            lastError: 'Google silent sign-in token missing',
+            status: existingConnection!.status,
+            providerAccountEmail: existingConnection.providerAccountEmail,
+            lastError: 'Google silent sign-in token unavailable (transient) - status unchanged',
           );
-          return CalendarIntegrationResult.reauthRequired(
+          return CalendarIntegrationResult.ready(
             CalendarProvider.google,
-            message:
-                'Google Calendar 연결은 유지되어 있지만 현재 기기에서 자동 로그인 토큰을 바로 확인하지 못해 자동 동기화를 건너뜁니다. 필요하면 다시 동기화를 눌러 주세요.',
+            message: 'Google Calendar 자동 동기화를 일시적으로 건너뜁니다. 연결 상태는 유지됩니다.',
           );
         }
         try {
@@ -1432,11 +1433,21 @@ class CalendarSyncService {
     );
     try {
       final authentication = await account.authentication;
-      final accessToken = authentication.accessToken;
+      var accessToken = authentication.accessToken;
       _logGoogleAuth(
         'Google account authentication resolved accessTokenPresent=${accessToken != null && accessToken.isNotEmpty} '
         'idTokenPresent=${authentication.idToken != null && authentication.idToken!.isNotEmpty}',
       );
+      // accessToken이 null이면 Play Services 토큰 캐시가 만료됐을 수 있음 → clearAuthCache 후 1회 재시도
+      if (accessToken == null || accessToken.isEmpty) {
+        _logGoogleAuth('accessToken null on first attempt, calling clearAuthCache and retrying');
+        await account.clearAuthCache();
+        final retryAuth = await account.authentication;
+        accessToken = retryAuth.accessToken;
+        _logGoogleAuth(
+          'retry after clearAuthCache: accessTokenPresent=${accessToken != null && accessToken.isNotEmpty}',
+        );
+      }
       return accessToken;
     } catch (error, stackTrace) {
       _logGoogleAuthError(
