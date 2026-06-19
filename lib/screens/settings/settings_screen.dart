@@ -831,6 +831,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       return false;
     }
     if (!launched) {
+      _logSettingsNaverCalendar(
+        'connectAndImport launch failed -> CalDAV fallback',
+      );
       _showSnack('네이버 동의 화면을 열지 못했습니다. CalDAV 직접 연결로 전환합니다.');
       return _connectNaverCalDavFallbackAndImport();
     }

@@ -1,8 +1,9 @@
 # ACTIVE SUMMARY
 ## 2026-06-19 TASK_20260617_160808 재검토 검증 재확인
 - 현재 worktree에는 네이버 OAuth launch 실패 시 CalDAV fallback 전환과 동일 이름의 focused 위젯 테스트가 이미 반영되어 있음을 확인했다.
+- launch 실패 fallback 진입 직전에 `connectAndImport launch failed -> CalDAV fallback` 설정 로그를 남기도록 보강했다.
 - `Naver calendar sync opens CalDAV fallback when OAuth cannot launch` 테스트가 실제 `+1`로 실행되어 CalDAV 다이얼로그의 `네이버 ID`/`앱 비밀번호` 표시를 검증했다.
-- 검증: `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"`, `flutter test test/services/auth_service_test.dart -r compact -j 1`, scoped `git diff --check` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 경로 부재로 Flutter 실행 전 실패했다.
+- 검증: `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"`, `flutter test test/services/auth_service_test.dart -r compact -j 1`, focused `flutter analyze ... --no-pub`, scoped `git diff --check`, `flutter build apk --debug --no-pub` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 경로 부재로 Flutter 실행 전 실패했고, Android 기기는 감지되지 않아 실행 검증은 미실행했다.
 
 ## 2026-06-19 TASK_20260617_140443 캘린더 2차 진단 로그 보강
 - Google Calendar 상태/동기화 경로에 serverClientId/configurationIssue, 현재 userId, connection status/email, GoogleSignIn null/email DIAG 로그를 보강했다.
