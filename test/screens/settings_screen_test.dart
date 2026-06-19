@@ -615,6 +615,7 @@ void main() {
     addTearDown(() => authProvider.setUser(null));
 
     authProvider.setUser('user-1');
+    final naverCalDavService = _FakeNaverCalDavService();
 
     await tester.pumpWidget(
       MaterialApp(
@@ -633,7 +634,7 @@ void main() {
           ),
           notificationService: _FakeNotificationService(),
           authService: _FakeAuthService(connectCalendarResult: false),
-          naverCalDavService: _FakeNaverCalDavService(),
+          naverCalDavService: naverCalDavService,
           naverImportService: _FakeNaverOpenApiCalendarService(
             initialHasAccess: false,
           ),
@@ -657,6 +658,18 @@ void main() {
     expect(find.text('네이버 캘린더 연결'), findsOneWidget);
     expect(find.text('네이버 ID'), findsOneWidget);
     expect(find.text('앱 비밀번호'), findsOneWidget);
+
+    final dialogTextFields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(dialogTextFields.at(0), 'planflow_naver');
+    await tester.enterText(dialogTextFields.at(1), 'app-password-1234');
+    await tester.tap(find.text('연결하고 가져오기'));
+    await tester.pumpAndSettle();
+
+    expect(naverCalDavService.lastTestNaverId, 'planflow_naver');
+    expect(naverCalDavService.lastTestAppPassword, 'app-password-1234');
   });
 
   testWidgets('Naver OAuth launch does not immediately fail permission check',
@@ -1264,6 +1277,8 @@ class _FakeNaverCalDavService extends NaverCalDavService {
   final NaverCalDavSyncResult syncResult;
   int syncCallCount = 0;
   int clearCallCount = 0;
+  String? lastTestNaverId;
+  String? lastTestAppPassword;
 
   @override
   Future<bool> hasCredentials() async => initialHasCredentials;
@@ -1274,6 +1289,8 @@ class _FakeNaverCalDavService extends NaverCalDavService {
     required String appPassword,
     bool saveOnSuccess = false,
   }) async {
+    lastTestNaverId = naverId;
+    lastTestAppPassword = appPassword;
     return const NaverCalDavConnectionResult(
       status: NaverCalDavConnectionStatus.success,
       message: '네이버 CalDAV 연결 테스트에 성공했습니다.',
