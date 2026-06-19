@@ -1786,14 +1786,18 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final bg = isMultiDay
         ? calendarMultiDayEventBackgroundColor
         : isSelected
-            ? Colors.white.withValues(alpha: 0.18)
+            ? event.isCritical
+                ? const Color(0xFFE53935).withValues(alpha: 0.35)
+                : Colors.white.withValues(alpha: 0.18)
             : event.isCritical
                 ? const Color(0xFFE53935).withValues(alpha: 0.20)
                 : _categoryColor(event.category).withValues(alpha: 0.16);
     final fg = isMultiDay
         ? calendarMultiDayEventTextColor
         : isSelected
-            ? Colors.white
+            ? event.isCritical
+                ? const Color(0xFFFF6B6B)
+                : Colors.white
             : event.isCritical
                 ? const Color(0xFFE53935)
                 : _categoryColor(event.category);
@@ -1847,9 +1851,7 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                         showTitle
                             ? (event.isAllDay && !isMultiDay
                                 ? '종일 ${event.title}'
-                                : event.isCritical
-                                    ? '★ ${event.title}'
-                                    : event.title)
+                                : event.title)
                             : '',
                         maxLines: 1,
                         softWrap: false,

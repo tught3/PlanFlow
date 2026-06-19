@@ -260,15 +260,26 @@ class _EventEditScreenState extends State<EventEditScreen> {
               content: const Text(
                 '중요한 일정을 시작 시점에 더 강한 소리와 진동으로 알려드리려면 앱 알림, 정확한 알람, 전체 화면 알림 권한이 필요합니다. 지금 권한을 확인할게요.',
               ),
-              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('나중에'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text('허용하러 가기'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () =>
+                            Navigator.of(dialogContext).pop(false),
+                        child: const Text('나중에'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () =>
+                            Navigator.of(dialogContext).pop(true),
+                        child: const Text('허용하러 가기'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -305,6 +316,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
         notificationStatus.notificationsEnabled == true;
     final exactAlarmsGranted = notificationStatus.exactAlarmsEnabled == true ||
         await _permissionService.requestExactAlarmPermission();
+    if (!exactAlarmsGranted && mounted) {
+      await _permissionService.openAppSettings();
+    }
     final fullScreenIntentGranted = notificationStatus.fullScreenIntentStatus ==
             PermissionCheckState.granted ||
         await _permissionService.requestFullScreenIntentPermission();
@@ -396,10 +410,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
       if (user == null) {
         _showMessage('로그인 후 저장할 수 있습니다.');
         return;
-      }
-
-      if (_critical) {
-        await _ensureCriticalAlarmPermissions();
       }
 
       String? recurrenceScope;
