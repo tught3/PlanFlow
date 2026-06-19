@@ -2,7 +2,7 @@
 ## 2026-06-19 TASK_20260617_160808 closed-loop 최종 확인
 - 현재 코드 기준으로 네이버 OAuth launch 실패 경로가 `connectAndImport launch failed -> CalDAV fallback` 로그 후 `_connectNaverCalDavFallbackAndImport()`로 이어지고, CalDAV 다이얼로그가 실제 연결되어 있음을 재확인했다.
 - `Naver calendar sync opens CalDAV fallback when OAuth cannot launch` 테스트가 실제 파일에 존재하며 `네이버 ID`/`앱 비밀번호` 다이얼로그 표시를 검증하고, Naver 로그인 scope `email` / 캘린더 연결 scope `email,calendar` 분리 의미도 재확인했다.
-- 검증: `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"` `+1`, `flutter test test/services/auth_service_test.dart -r compact -j 1` `+4`, focused `flutter analyze ... --no-pub`, `flutter build apk --debug --no-pub` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했고, Android 기기/에뮬레이터는 감지되지 않아 설치/실행 검증은 미실행했다.
+- 검증: `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"` `+1`, `flutter test test/services/auth_service_test.dart -r compact -j 1` `+4`, focused `flutter analyze ... --no-pub`, scoped `git diff --check`, `flutter build apk --debug --no-pub` 통과. 별도 리뷰어 PASS. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했고, Android 기기/에뮬레이터는 감지되지 않아 설치/실행 검증은 미실행했다.
 
 ## 2026-06-19 TASK_20260617_160808 closed-loop 재실행 확인
 - FluxOS `pipeline-adopt`로 TASK_20260617_160808을 현재 세션에 인계했고, deep preflight는 기준 저장소의 기존 dirty/generated 상태 때문에 PROTECTED를 보고했지만 현재 worktree는 clean 상태로 확인했다.
