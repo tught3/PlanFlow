@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-19 TASK_20260617_160808 closed-loop Codex 구현 단계 최신 완료
+- 재검토 지시 기준으로 Naver OAuth launch 실패/사용 불가 경로, CalDAV fallback 다이얼로그, 입력값 전달 테스트, Naver scope 분리를 다시 대조했다. 현재 코드가 요구 상태를 충족해 기능 코드 추가 수정은 없었다.
+- 검증: `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"`는 실제 `+1`로 통과했고, `flutter test test/services/auth_service_test.dart -r compact -j 1`는 `+4`로 통과했다. focused `flutter analyze --no-pub`, scoped `git diff --check`, `flutter build apk --debug --no-pub`도 통과했다.
+- `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패해 원시 Flutter 명령으로 대체했다. `flutter devices`는 Chrome/Edge만 감지해 Android 설치/실행 검증은 미실행했다. 별도 리뷰어 PASS.
+
 ## 2026-06-19 TASK_20260617_160808 closed-loop Codex 구현 단계 재확인
 - 재검토 지시 기준으로 현재 코드/테스트를 다시 대조했다. `lib/screens/settings/settings_screen.dart`는 네이버 OAuth launch 실패 시 `connectAndImport launch failed -> CalDAV fallback` 로그 후 `_connectNaverCalDavFallbackAndImport()`로 전환하며, CalDAV 다이얼로그는 실제 사용 경로에 연결되어 있다.
 - focused 테스트 `Naver calendar sync opens CalDAV fallback when OAuth cannot launch`는 실제 파일에 존재하고 `네이버 ID`/`앱 비밀번호` 다이얼로그 표시 및 입력값 전달을 검증한다. `AuthService.oauthScopesFor`는 Naver 일반 로그인 `email`, 캘린더 연결 `email,calendar` 목적별 scope 분리 상태다.
