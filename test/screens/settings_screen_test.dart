@@ -608,7 +608,7 @@ void main() {
   });
 
   testWidgets(
-      'Naver calendar sync does not show permission failure when fallback starts',
+      'Naver calendar sync opens CalDAV fallback when OAuth cannot launch',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));

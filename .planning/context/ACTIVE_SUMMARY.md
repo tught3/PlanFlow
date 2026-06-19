@@ -1,4 +1,14 @@
 # ACTIVE SUMMARY
+## 2026-06-19 TASK_20260617_140443 캘린더 2차 진단 로그 보강
+- Google Calendar 상태/동기화 경로에 serverClientId/configurationIssue, 현재 userId, connection status/email, GoogleSignIn null/email DIAG 로그를 보강했다.
+- Naver OpenAPI 권한/조회 경로에 접근 토큰 출처 DIAG 로그와 findSchedules 응답 status/bodyLength/bodyHead 진단 로그를 보강했다. 성공 응답 본문은 일정 개인정보 노출을 피하려고 `omitted_success_body`로 기록한다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했고, 원시 `flutter analyze --no-pub`와 scoped `git diff --check`는 통과했다.
+
+## 2026-06-19 TASK_20260617_160808 재검토 보완
+- 네이버 OAuth launch 실패 시 CalDAV fallback을 검증하는 settings 위젯 테스트명을 실제 검증 명령의 `--plain-name`과 일치하도록 정정했다.
+- 기능 코드는 이미 OAuth launch 실패, 인증 경로 미가용, 권한 확인 실패에서 CalDAV 직접 연결로 전환되고 있어 추가 변경하지 않았다.
+- 검증: `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"`, `flutter test test/services/auth_service_test.dart -r compact -j 1`, focused `flutter analyze --no-pub`, `git diff --check` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 경로 부재로 Flutter 실행 전 실패해 원시 Flutter로 대체했다.
+
 ## 2026-06-18 TASK_20260618_123620 PlanFlow 2차 버그/개선 6종
 - 연동 해제 모달을 X 닫기 + 일정 유지/삭제 2버튼으로 정리했고, 네이버 CalDAV 진행/진단 다이얼로그는 짧은 상태와 상세 info 진입으로 분리했다.
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 모달을 표시하고 성공 상태를 저장/복원하며, 서비스 import 루프는 6개 단위 제한 병렬 처리와 결과 집계 방식으로 바꿨다.
