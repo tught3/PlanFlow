@@ -648,8 +648,12 @@ void main() {
         find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
     await _scrollUntilHitTestable(tester, syncButton);
     await tester.tap(syncButton.hitTestable().first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    for (var i = 0; i < 20; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+      if (find.byType(AlertDialog).evaluate().isNotEmpty) {
+        break;
+      }
+    }
 
     expect(
       find.textContaining('권한 동의가 확인되지 않았습니다'),
