@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-19 TASK_20260617_160808 closed-loop 재검증 완료
+- 재검토 지시 기준으로 현재 코드와 테스트를 다시 대조했다. 네이버 OAuth launch 실패는 `connectAndImport launch failed -> CalDAV fallback` 로그 후 `_connectNaverCalDavFallbackAndImport()`로 이어지고, CalDAV 다이얼로그의 `네이버 ID`/`앱 비밀번호` 필드가 실제 테스트에서 확인된다.
+- `AuthService.oauthScopesFor`는 Naver 로그인 `email`, 캘린더 연결 `email,calendar` 분리 상태를 유지한다. 따라서 calendar scope 제거가 아니라 목적별 scope 분리로 보고해야 한다.
+- 검증: `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"` `+1`, `flutter test test/services/auth_service_test.dart -r compact -j 1` `+4`, focused `flutter analyze ... --no-pub`, scoped `git diff --check`, `flutter build apk --debug --no-pub` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했고, Android 기기/에뮬레이터는 감지되지 않아 설치/실행 검증은 미실행했다.
+
 ## 2026-06-19 TASK_20260617_160808 closed-loop fresh verification
 - 재검토 지시 기준으로 현재 코드와 테스트를 다시 대조했다. 네이버 OAuth launch 실패는 `_connectNaverCalDavFallbackAndImport()`로 연결되고, CalDAV 다이얼로그는 `네이버 ID`/`앱 비밀번호` 필드로 실제 노출된다.
 - `AuthService.oauthScopesFor`는 로그인 `email`, 캘린더 연결 `email,calendar` 분리 상태를 유지한다. 따라서 calendar scope 제거가 아니라 연결 목적별 scope 분리로 보고해야 한다.
