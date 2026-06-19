@@ -1788,14 +1788,14 @@ class _CalendarMiniEventLabel extends StatelessWidget {
         : isSelected
             ? Colors.white.withValues(alpha: 0.18)
             : event.isCritical
-                ? const Color(0xFFB42318).withValues(alpha: 0.12)
+                ? const Color(0xFFE53935).withValues(alpha: 0.20)
                 : _categoryColor(event.category).withValues(alpha: 0.16);
     final fg = isMultiDay
         ? calendarMultiDayEventTextColor
         : isSelected
             ? Colors.white
             : event.isCritical
-                ? const Color(0xFFB42318)
+                ? const Color(0xFFE53935)
                 : _categoryColor(event.category);
     final showTitle = !isMultiDay || segment.$1;
     final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
@@ -1847,7 +1847,9 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                         showTitle
                             ? (event.isAllDay && !isMultiDay
                                 ? '종일 ${event.title}'
-                                : event.title)
+                                : event.isCritical
+                                    ? '★ ${event.title}'
+                                    : event.title)
                             : '',
                         maxLines: 1,
                         softWrap: false,
@@ -1903,7 +1905,7 @@ class _EventAgendaCard extends StatelessWidget {
     final endAt = event.endAt;
     final timeLabel = _formatTimeRange(startAt, endAt);
     final accentColor = event.isCritical
-        ? const Color(0xFFB42318)
+        ? const Color(0xFFE53935)
         : _categoryColor(event.category);
 
     return Card(
