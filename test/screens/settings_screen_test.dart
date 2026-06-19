@@ -648,6 +648,8 @@ void main() {
         find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
     await _scrollUntilHitTestable(tester, syncButton);
     await tester.tap(syncButton.hitTestable().first);
+    await tester.idle();
+    await tester.pump();
     for (var i = 0; i < 20; i += 1) {
       await tester.pump(const Duration(milliseconds: 100));
       if (find.byType(AlertDialog).evaluate().isNotEmpty) {
