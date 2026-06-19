@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-19 TASK_20260617_160808 closed-loop 재검토 완료
+- 리뷰 지적을 현재 코드 기준으로 재대조했고, 네이버 OAuth launch 실패 경로가 `_connectNaverCalDavFallbackAndImport()`로 연결되어 CalDAV 직접 연결 다이얼로그를 여는 상태임을 확인했다.
+- `Naver calendar sync opens CalDAV fallback when OAuth cannot launch` 테스트가 실제 파일에 존재하며 `+1`로 실행되는 것을 재검증했고, auth scope 테스트는 Naver 로그인 `email` / 캘린더 연결 `email,calendar` 분리를 `+4`로 확인했다.
+- 검증: wrapper는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했지만, 원시 `flutter test` 2개, focused `flutter analyze ... --no-pub`, `git diff --check`, `flutter build apk --debug --no-pub` 통과. Android 기기/에뮬레이터는 없어 설치/실행 검증은 미실행했다.
+
 ## 2026-06-19 TASK_20260617_160808 closed-loop 재검증
 - 현재 코드에서 네이버 OAuth launch 실패 시 `_connectNaverCalDavFallbackAndImport()`로 전환되고, CalDAV 다이얼로그가 열리는 테스트가 실제 존재함을 재확인했다.
 - 검증: wrapper는 worktree `.fluxos` bootstrap 부재로 실패했지만, 원시 `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"`는 `+1`, `flutter test test/services/auth_service_test.dart -r compact -j 1`는 `+4`로 통과했다.
