@@ -1,4 +1,10 @@
 # ACTIVE SUMMARY
+## 2026-06-20 TASK_20260617_160808 closed-loop fresh 실행
+- FluxOS `pipeline-audit`, `pipeline-adopt`, deep preflight, 파일 claim `L1584` 후 Claude 재검토 지시를 현재 코드/테스트와 다시 대조했다. 기능 소스는 이미 요구 상태라 추가 소스 수정은 없었다.
+- 네이버 OAuth launch 실패는 `connectAndImport launch failed -> CalDAV fallback` 로그 후 `_connectNaverCalDavFallbackAndImport()`로 이어지고, CalDAV 다이얼로그의 `네이버 ID`/`앱 비밀번호` 입력값이 fake CalDAV service로 전달된다.
+- Naver OAuth scope는 제거가 아니라 목적별 분리다. 일반 로그인은 `email`, 캘린더 연결은 `email,calendar`를 유지한다.
+- 검증: wrapper `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패성 출력이 발생했다. 원시 `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"`는 `+1`, `flutter test test/services/auth_service_test.dart -r compact -j 1`는 `+4`로 통과했다. 별도 리뷰어 PASS.
+
 ## 2026-06-20 TASK_20260617_160808 closed-loop 테스트 대기 보정 완료
 - 재검토 지시의 핵심 경로를 실제 테스트로 재검증했다. 네이버 OAuth launch 실패는 `connectAndImport launch failed -> CalDAV fallback` 후 CalDAV 다이얼로그로 이어지며, focused 테스트가 `네이버 ID`/`앱 비밀번호` 입력값 전달까지 확인한다.
 - 기존 focused 테스트는 tap 이후 고정 300ms만 기다려 fallback 다이얼로그가 늦게 렌더링되면 실패할 수 있어, AlertDialog가 나타날 때까지 짧게 pump를 반복하도록 보강했다.
