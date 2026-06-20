@@ -2053,3 +2053,9 @@
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 안내를 표시하고, 이벤트 저장은 6개 단위 병렬 배치로 처리한다.
 - 기존 pre_actions 보유 이벤트를 `is_critical = true`로 보정하는 migration을 추가했다.
 - 검증: classifier/manual/settings focused tests와 `flutter analyze --no-pub`가 통과했다. PowerShell에서 `flutter build apk --debug --no-pub`는 Gradle client disconnect로 `-1` 조기 종료됐지만, `cmd.exe /d /s /c "flutter build apk --debug --no-pub"` 경로는 통과해 `build\app\outputs\flutter-apk\app-debug.apk`를 생성했다. `flutter install -d 192.168.0.103:39685 --debug`와 `adb ... monkey` 실행 확인도 통과했고 PID는 `2259`였다. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
+
+## 2026-06-20 TASK_20260617_160808 closed-loop 재검증
+- Claude 재검토 지시 기준으로 Naver OAuth launch 실패 경로, CalDAV fallback 다이얼로그, 입력값 전달 테스트, Naver OAuth scope 분리를 다시 대조했다. 현재 소스는 요구 상태를 충족해 기능 파일 추가 수정은 없었다.
+- `settings_screen.dart`는 OAuth launch 실패 시 `connectAndImport launch failed -> CalDAV fallback` 로그 후 `_connectNaverCalDavFallbackAndImport()`로 전환하고, `_showNaverCalDavDialog()`는 실제 fallback 경로에서 사용된다.
+- focused 테스트 `Naver calendar sync opens CalDAV fallback when OAuth cannot launch`는 실제 파일에 존재하며 `+1`로 실행되어 `네이버 ID`/`앱 비밀번호` 입력값이 fake CalDAV service까지 전달됨을 검증했다. `AuthService.oauthScopesFor`는 Naver 로그인 `email`, 캘린더 연결 `email,calendar` 목적별 분리 상태다.
+- 검증: `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch"` `+1`, `flutter test test/services/auth_service_test.dart -r compact -j 1` `+4`, focused `flutter analyze ... --no-pub`, scoped `git diff --check`, `flutter build apk --debug --no-pub` 통과. `scripts/flutter-local.ps1 test ...`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했고, `flutter devices`는 Chrome/Edge만 감지해 Android 설치/실행 검증은 미실행했다.
