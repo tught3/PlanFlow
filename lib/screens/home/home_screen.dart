@@ -1585,23 +1585,32 @@ class _TodayEventCard extends StatelessWidget {
         : '';
     final multiDayLabel = _multiDayProgressLabel(event);
 
-    final borderColor = event.isCritical && !isPast
+    final isMultiDay = event.isMultiDay;
+    final borderColor = !isPast && event.isCritical
         ? const Color(0xFFB42318).withValues(alpha: 0.4)
-        : PlanFlowColors.primaryFaint;
+        : !isPast && isMultiDay
+            ? const Color(0xFF174F4A).withValues(alpha: 0.3)
+            : PlanFlowColors.primaryFaint;
     final accentColor = isPast
         ? PlanFlowColors.textSecondary
         : event.isCritical
             ? const Color(0xFFB42318)
-            : PlanFlowColors.primaryMid;
+            : isMultiDay
+                ? const Color(0xFF174F4A)
+                : PlanFlowColors.primaryMid;
 
     return Card(
-      color: isPast ? PlanFlowColors.surfaceFaint : PlanFlowColors.surface,
+      color: isPast
+          ? PlanFlowColors.surfaceFaint
+          : isMultiDay
+              ? const Color(0xFFDDEFE6)
+              : PlanFlowColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
           color: borderColor,
-          width: event.isCritical && !isPast ? 1.5 : 0.5,
+          width: (event.isCritical || isMultiDay) && !isPast ? 1.5 : 0.5,
         ),
       ),
       child: InkWell(
@@ -1619,7 +1628,9 @@ class _TodayEventCard extends StatelessWidget {
                       ? PlanFlowColors.tagDoneBg
                       : event.isCritical
                           ? const Color(0xFFFFE3DD)
-                          : PlanFlowColors.primaryFaint,
+                          : isMultiDay
+                              ? const Color(0xFFBEE3CC)
+                              : PlanFlowColors.primaryFaint,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Center(
@@ -1643,7 +1654,9 @@ class _TodayEventCard extends StatelessWidget {
                       style: theme.textTheme.titleMedium?.copyWith(
                         color: isPast
                             ? PlanFlowColors.textSecondary
-                            : PlanFlowColors.primary,
+                            : isMultiDay
+                                ? const Color(0xFF174F4A)
+                                : PlanFlowColors.primary,
                         fontWeight: FontWeight.w500,
                       ),
                       maxLines: 1,
@@ -1668,7 +1681,7 @@ class _TodayEventCard extends StatelessWidget {
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: isPast
                                 ? PlanFlowColors.textDisabled
-                                : PlanFlowColors.primaryMid,
+                                : const Color(0xFF174F4A),
                             fontWeight: FontWeight.w700,
                           ),
                         ),

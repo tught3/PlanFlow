@@ -382,6 +382,17 @@ class HomeWidgetSchedulePayloadBuilder {
       }
     }
 
+    // 2.5단계: overflow > 0인 셀에서 마지막 슬롯을 overflow로 이동
+    // XML 레이아웃(event_1~4 + overflow_count)에서 overflow_count와 event_4가
+    // 동시에 표시되면 5행이 돼 레이아웃이 깨짐 → 마지막 슬롯을 비워 overflow에 합산
+    for (var i = 0; i < 42; i++) {
+      if (overflowCounts[i] > 0 &&
+          slotMap[i][monthlyWidgetEventRows - 1] != null) {
+        slotMap[i][monthlyWidgetEventRows - 1] = null;
+        overflowCounts[i]++;
+      }
+    }
+
     // 3단계: HomeWidgetMonthCellData 생성
     return List<HomeWidgetMonthCellData>.generate(42, (i) {
       final day = cellDays[i];

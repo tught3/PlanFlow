@@ -261,6 +261,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
       if (_criticalAlarmPermissionsReady(snapshot) || !mounted) {
         return;
       }
+      // exactAlarm은 허용됐지만 알림 권한만 없는 경우: 조용히 요청 후 재확인
+      if (snapshot.exactAlarmsGranted && !snapshot.notificationsGranted) {
+        await _permissionService.requestNotificationPermissions();
+        if (!mounted) return;
+        final refreshed = await _permissionService.checkAll();
+        if (_criticalAlarmPermissionsReady(refreshed) || !mounted) return;
+      }
       final shouldOpen = await showDialog<bool>(
             context: context,
             builder: (dialogContext) => AlertDialog(

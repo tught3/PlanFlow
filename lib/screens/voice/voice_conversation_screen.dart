@@ -1402,8 +1402,12 @@ class _ConversationEventCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 15,
-                backgroundColor: PlanFlowColors.primaryFaint,
-                foregroundColor: PlanFlowColors.primary,
+                backgroundColor: event.isCritical
+                    ? const Color(0xFFFFE3DD)
+                    : PlanFlowColors.primaryFaint,
+                foregroundColor: event.isCritical
+                    ? const Color(0xFFB42318)
+                    : PlanFlowColors.primary,
                 child: Text('$index'),
               ),
               const SizedBox(width: 10),
@@ -1416,7 +1420,9 @@ class _ConversationEventCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: PlanFlowColors.primary,
+                            color: event.isCritical
+                                ? const Color(0xFFB42318)
+                                : PlanFlowColors.primary,
                             fontWeight: FontWeight.w800,
                           ),
                     ),
