@@ -187,7 +187,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
         userId: userId,
       );
       await prefs.setInt(key, now);
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      debugPrint('Alarm recalculation failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<void> _migrateFutureCriticalAlarms() async {
