@@ -1,4 +1,10 @@
 # ACTIVE SUMMARY
+## 2026-06-20 TASK_20260617_160808 closed-loop fresh 실행 및 기기 확인
+- FluxOS `pipeline-audit`, `pipeline-adopt`, context hygiene, fast/deep preflight를 수행했다. deep preflight는 기준 저장소의 기존 active lock/dirty/generated/실행 중 빌드 경고로 PROTECTED를 보고했고, 현재 worktree는 기능 소스 diff 없이 clean 상태였다. 대상 파일 claim은 `settings_screen.dart`만 `L1656` active였고 테스트 파일 claim은 선행 큐 때문에 queued였다.
+- 재검토 지시 3건을 현재 코드/테스트와 다시 대조했다. 네이버 OAuth launch 실패는 `connectAndImport launch failed -> CalDAV fallback` 로그 후 `_connectNaverCalDavFallbackAndImport()`로 전환되고, `_showNaverCalDavDialog()`는 실제 fallback 경로에서 사용된다.
+- focused 테스트 `Naver calendar sync opens CalDAV fallback when OAuth cannot launch`는 실제 파일에 존재하며 `+1`로 실행되어 CalDAV 다이얼로그 표시와 네이버 ID/앱 비밀번호 입력값 전달을 검증했다. `auth_service_test`는 Naver 일반 로그인 `email`, 캘린더 연결 `email,calendar` 목적별 scope 분리를 `+4`로 검증했다.
+- 검증: `scripts/flutter-local.ps1 test ...`는 worktree 상위 `.fluxos\scripts\fluxos-session-bootstrap.ps1` 부재로 Flutter 실행 전 실패성 출력. 원시 focused settings test `+1`, `auth_service_test` `+4`, `flutter analyze --no-pub`, `git diff --check`, `flutter build apk --debug --no-pub` 통과. `flutter install -d 192.168.0.103:40737 --debug` 성공, `adb shell monkey -p com.fluxstudio.planflow -c android.intent.category.LAUNCHER 1`은 `Events injected: 1`, `pidof`는 `2445`였다.
+
 ## 2026-06-20 TASK_20260617_160808 closed-loop 현재 턴 재확인
 - FluxOS `pipeline-audit`, `pipeline-adopt`, context hygiene, fast/deep preflight를 수행했다. deep preflight는 기준 저장소의 기존 active lock/dirty/generated 경고로 PROTECTED를 보고했고, 파일 claim `L1624`/`L1625`/`L1626`은 선행 큐 때문에 QUEUED였다. 현재 작업 worktree는 clean 상태였다.
 - Claude 재검토 수정 지시 3건을 현재 코드/테스트에 다시 대조했다. 네이버 OAuth launch 실패는 `connectAndImport launch failed -> CalDAV fallback` 로그 후 `_connectNaverCalDavFallbackAndImport()`로 이어지고, `_showNaverCalDavDialog()`는 실제 fallback 경로에서 사용된다.
