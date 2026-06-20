@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../core/constants.dart';
 import '../core/env.dart';
 import '../core/responsive.dart';
@@ -17,6 +19,7 @@ import '../services/calendar_sync_service.dart';
 import '../services/critical_alarm_channel_migration_service.dart';
 import '../services/departure_alarm_service.dart';
 import '../services/external_calendar_sync_guide_service.dart';
+import '../services/manual_event_side_effect_service.dart';
 import '../l10n/app_l10n.dart';
 import 'calendar/calendar_screen.dart';
 import 'home/home_screen.dart';
@@ -107,6 +110,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       unawaited(_migrateFutureCriticalAlarms());
       unawaited(_refreshDepartureAlarmsAndMonitor());
       unawaited(_ensureBriefingsScheduled(reason: 'app_start'));
+      unawaited(_maybeRecalculateAllAlarms());
       debugPrint('[GCAL] _maybeAutoConnect 호출 시도 (initState)');
       unawaited(_maybeAutoConnectGoogleCalendar());
     });
@@ -168,6 +172,22 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     await _departureAlarmService.scheduleNextMonitor(
       interval: result.nextMonitorInterval,
     );
+  }
+
+  Future<void> _maybeRecalculateAllAlarms() async {
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty) return;
+    try {
+      const key = 'alarm_recalc_last_run';
+      final prefs = await SharedPreferences.getInstance();
+      final lastRun = prefs.getInt(key) ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - lastRun < const Duration(hours: 24).inMilliseconds) return;
+      await ManualEventSideEffectService().recalculateUpcomingAlarmsForUser(
+        userId: userId,
+      );
+      await prefs.setInt(key, now);
+    } catch (_) {}
   }
 
   Future<void> _migrateFutureCriticalAlarms() async {
