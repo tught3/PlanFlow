@@ -1599,6 +1599,13 @@ class PlanFlowMonthlyWidgetProvider :
                 for (eventSlot in 1..4) {
                     val eventId = findViewId(context, "${prefix}_event_${eventSlot}_title")
                         .takeIf { it != 0 } ?: findViewId(context, "month_cell_${slot}_event_${eventSlot}_title")
+
+                    // overflow > 0이면 마지막 슬롯(event_4)은 overflow_count에 위임 → 강제 GONE
+                    if (eventSlot == 4 && overflow > 0) {
+                        if (eventId != 0) views.setViewVisibility(eventId, View.GONE)
+                        continue
+                    }
+
                     val rawTitle = if (hasMonthCellPayload) {
                         widgetData.getString("${prefix}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
                     } else null
