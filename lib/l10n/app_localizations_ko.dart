@@ -134,7 +134,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get voiceGuideTitle => '이렇게 말해보세요';
 
   @override
-  String get voiceGuideFooter => '시간,장소,반복 표현을 같이 할수록 정확해지고 편하게 AI와 대화도가능합니다';
+  String get voiceGuideFooter => '시간, 장소, 반복 표현을 같이 말하면 더 정확해요.';
 
   @override
   String get voiceListenIdle => '아래 버튼을 눌러 음성으로 말하거나, 직접 입력해 주세요.';

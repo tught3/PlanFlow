@@ -1396,6 +1396,17 @@ class _VoiceCommandGuide extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
+                          if (isKorean)
+                            Text(
+                              'AI와 편하게 대화도 가능합니다',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: PlanFlowColors.primary,
+                                height: 1.15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                         ],
                       ),
                     ),
