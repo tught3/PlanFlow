@@ -425,6 +425,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (mounted) {
       EventRefreshBus.instance.notifyChanged(reason: 'location_resolved');
+      unawaited(const DepartureAlarmService().refreshUpcoming());
     }
   }
 
