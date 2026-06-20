@@ -1367,6 +1367,16 @@ class PlanFlowMonthlyWidgetProvider :
                     }
                 }
 
+                // 2.5단계: overflow > 0인 셀의 마지막 슬롯을 비워 overflow에 합산
+                // event_4 + overflow_count 동시 표시 시 5행이 돼 레이아웃 깨짐 방지
+                // (라이브 경로의 overflow 수치는 hiddenEvents.size로 동적 계산되므로
+                //  slotMap만 비우면 overflow 카운트가 자동으로 올바르게 반영됨)
+                for (index in 0 until 42) {
+                    if (overflowCounts[index] > 0 && slotMap[index][3] != null) {
+                        slotMap[index][3] = null
+                    }
+                }
+
                 for (slot in 1..42) {
                     val dayId = findViewId(context, "month_cell_${slot}_day")
                         .takeIf { it != 0 }
