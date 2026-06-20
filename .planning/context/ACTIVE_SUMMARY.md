@@ -1,9 +1,9 @@
 # ACTIVE SUMMARY
-## 2026-06-20 TASK_20260617_160808 closed-loop Codex 구현 재검증
-- FluxOS `pipeline-audit`, `pipeline-adopt`, context hygiene, deep preflight, ownership check 후 Claude 재검토 지시 기준으로 현재 코드와 테스트를 다시 대조했다. active lock `L1588`은 같은 태스크/소유자였고, 추가 claim `L1591`은 선행 queued instruction 때문에 queued 상태였다.
+## 2026-06-20 TASK_20260617_160808 closed-loop fresh Codex 검증
+- FluxOS `pipeline-audit`, `pipeline-adopt`, context hygiene, fast/deep preflight, ownership check 후 Claude 재검토 지시 기준으로 현재 코드와 테스트를 다시 대조했다. active lock `L1588`은 같은 태스크 범위였고, 추가 claim `L1589`/`L1590`은 선행 queued instruction 때문에 queued 상태였다.
 - 기능 소스는 이미 요구 상태라 추가 수정하지 않았다. 네이버 OAuth launch 실패는 `connectAndImport launch failed -> CalDAV fallback` 로그 후 `_connectNaverCalDavFallbackAndImport()`로 연결되고, focused 테스트는 CalDAV 다이얼로그와 `네이버 ID`/`앱 비밀번호` 입력값 전달을 검증한다.
 - Naver OAuth scope는 제거가 아니라 목적별 분리다. 일반 로그인은 `email`, 캘린더 연결은 `email,calendar`를 유지한다.
-- 검증: wrapper `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패성 출력. 원시 `flutter test` focused `+1`, `auth_service_test` `+4`, focused `flutter analyze --no-pub`, scoped `git diff --check`, `flutter build apk --debug --no-pub` 통과. `flutter devices`는 Chrome/Edge만 감지해 Android 설치/실행 검증은 미실행했다. FluxOS done 파일을 현재 결과로 갱신했다.
+- 검증: wrapper `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패성 출력. 원시 `flutter test test/screens/settings_screen_test.dart -r compact -j 1 --plain-name "Naver calendar sync opens CalDAV fallback when OAuth cannot launch" --no-pub`는 실제 `+1`, `flutter test test/services/auth_service_test.dart -r compact -j 1 --no-pub`는 `+4`, focused `flutter analyze ... --no-pub`, scoped `git diff --check`, `flutter build apk --debug --no-pub` 통과. 최초 raw focused test는 `--no-pub` 없이 실행 중 180초 타임아웃되어 남은 테스트 프로세스를 정리 후 재실행했다. `flutter devices`는 Chrome/Edge만 감지해 Android 설치/실행 검증은 미실행했다. FluxOS done 파일을 현재 결과로 갱신했다.
 
 ## 2026-06-20 TASK_20260617_160808 closed-loop latest 실행
 - FluxOS `pipeline-audit`, `pipeline-adopt`, context hygiene, deep preflight, 파일 claim `L1585` 후 Claude 재검토 지시를 현재 코드/테스트와 다시 대조했다. claim은 기존 PlanFlow active/queued instruction 때문에 QUEUED였고, 기능 소스는 이미 요구 상태라 추가 소스 수정은 없었다.
