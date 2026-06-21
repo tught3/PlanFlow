@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -122,15 +124,27 @@ void main() {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
       addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
-      await tester.binding.setSurfaceSize(const Size(360, 740));
+      await tester.binding.setSurfaceSize(const Size(1000, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       final permissionService = _FakePermissionService();
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: PermissionOnboardingScreen(
-            permissionService: permissionService,
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(1000, 800),
+            displayFeatures: <ui.DisplayFeature>[
+              ui.DisplayFeature(
+                bounds: Rect.fromLTWH(500, 0, 12, 800),
+                type: ui.DisplayFeatureType.hinge,
+                state: ui.DisplayFeatureState.postureHalfOpened,
+              ),
+            ],
+          ),
+          child: MaterialApp(
+            home: PermissionOnboardingScreen(
+              permissionService: permissionService,
+            ),
           ),
         ),
       );
@@ -145,6 +159,7 @@ void main() {
       expect(permissionService.fullScreenIntentGranted, isTrue);
       expect(permissionService.notificationRequests, 1);
       expect(permissionService.exactAlarmRequests, 1);
+      expect(permissionService.exactAlarmSettingsOpened, isFalse);
       expect(
         find.descendant(
           of: find.byKey(
@@ -217,7 +232,7 @@ void main() {
   );
 
   testWidgets(
-    'PermissionOnboardingScreen opens app settings when exact alarm stays denied',
+    'PermissionOnboardingScreen opens exact alarm settings when exact alarm stays denied',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
@@ -247,7 +262,8 @@ void main() {
       await tester.tap(requestButton);
       await tester.pumpAndSettle();
 
-      expect(permissionService.appSettingsOpened, isTrue);
+      expect(permissionService.exactAlarmSettingsOpened, isTrue);
+      expect(permissionService.appSettingsOpened, isFalse);
       expect(permissionService.exactAlarmGranted, isFalse);
 
       permissionService.exactAlarmGranted = true;
@@ -277,6 +293,8 @@ class _FakePermissionService extends AppPermissionService {
   bool notificationRequestGranted = true;
   bool exactAlarmRequestGranted = true;
   bool notificationSettingsOpened = false;
+  bool exactAlarmSettingsOpened = false;
+  bool fullScreenIntentSettingsOpened = false;
   bool appSettingsOpened = false;
   int microphoneRequests = 0;
   int locationRequests = 0;
@@ -363,6 +381,18 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> openNotificationSettings() async {
     notificationSettingsOpened = true;
+    return true;
+  }
+
+  @override
+  Future<bool> openExactAlarmSettings() async {
+    exactAlarmSettingsOpened = true;
+    return true;
+  }
+
+  @override
+  Future<bool> openFullScreenIntentSettings() async {
+    fullScreenIntentSettingsOpened = true;
     return true;
   }
 

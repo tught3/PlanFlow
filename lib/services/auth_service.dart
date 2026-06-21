@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'oauth_callback_handler.dart';
 import '../core/env.dart';
 import '../core/supabase_auth_options.dart';
 
@@ -251,6 +252,8 @@ class AuthService implements AuthSessionClient {
       PlanFlowOAuthProvider.kakao => LaunchMode.inAppBrowserView,
       PlanFlowOAuthProvider.naver => LaunchMode.inAppBrowserView,
     };
+    _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
+    await OAuthCallbackHandler.persistCurrentPendingCallback();
     debugPrint(
       'OAuth launch: purpose=$purpose appProvider=$appProvider '
       'supabaseProvider=$supabaseProvider host=${uri.host} path=${uri.path} '
@@ -262,6 +265,20 @@ class AuthService implements AuthSessionClient {
       mode: launchMode,
       webOnlyWindowName: '_self',
     );
+  }
+
+  void _markPendingOAuthCallback({
+    required PlanFlowOAuthProvider appProvider,
+    required String purpose,
+  }) {
+    switch (purpose) {
+      case 'calendar-link':
+        OAuthCallbackHandler.markPendingCalendarLink(appProvider);
+        break;
+      case 'sign-in':
+        OAuthCallbackHandler.markPendingLogin(appProvider);
+        break;
+    }
   }
 
   @override

@@ -102,8 +102,22 @@ class NaverCalendarPermissionService {
     await clearStoredToken();
   }
 
-  Future<bool> captureCurrentProviderToken() {
-    return _persistCurrentProviderToken();
+  Future<bool> captureCurrentProviderToken({
+    bool allowWithoutNaverIdentity = false,
+  }) {
+    return _persistCurrentProviderToken(
+      allowWithoutNaverIdentity: allowWithoutNaverIdentity,
+    );
+  }
+
+  Future<bool> captureProviderToken(
+    String token, {
+    bool allowWithoutNaverIdentity = false,
+  }) {
+    return _persistProviderToken(
+      token,
+      allowWithoutNaverIdentity: allowWithoutNaverIdentity,
+    );
   }
 
   Future<String?> resolveAccessTokenForCalendar() {
@@ -234,14 +248,16 @@ class NaverCalendarPermissionService {
     }
   }
 
-  Future<bool> _persistCurrentProviderToken() async {
+  Future<bool> _persistCurrentProviderToken({
+    bool allowWithoutNaverIdentity = false,
+  }) async {
     final token = _currentProviderToken();
     final client = _clientOrNull;
     final userId = client?.auth.currentUser?.id;
     if (client == null ||
         userId == null ||
         userId.trim().isEmpty ||
-        !isNaverSignedIn() ||
+        (!allowWithoutNaverIdentity && !isNaverSignedIn()) ||
         token == null ||
         token.trim().isEmpty) {
       return false;
@@ -252,6 +268,38 @@ class NaverCalendarPermissionService {
         <String, dynamic>{
           'user_id': userId,
           'naver_calendar_token': token,
+        },
+        onConflict: 'user_id',
+      );
+      debugPrint('Naver calendar provider token captured.');
+      return true;
+    } catch (error, stackTrace) {
+      debugPrint('Naver calendar token persistence skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return false;
+    }
+  }
+
+  Future<bool> _persistProviderToken(
+    String? token, {
+    bool allowWithoutNaverIdentity = false,
+  }) async {
+    final client = _clientOrNull;
+    final userId = client?.auth.currentUser?.id;
+    if (client == null ||
+        userId == null ||
+        userId.trim().isEmpty ||
+        (!allowWithoutNaverIdentity && !isNaverSignedIn()) ||
+        token == null ||
+        token.trim().isEmpty) {
+      return false;
+    }
+
+    try {
+      await client.from('user_settings').upsert(
+        <String, dynamic>{
+          'user_id': userId,
+          'naver_calendar_token': token.trim(),
         },
         onConflict: 'user_id',
       );
