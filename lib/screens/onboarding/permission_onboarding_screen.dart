@@ -33,6 +33,8 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
   bool _isLoading = true;
   bool _isRequestingAll = false;
   bool _resumeRequestAll = false;
+  int? _resumeRequestIndex;
+  String? _resumeRequestLabel;
   String? _activeRequestKey;
   String? _message;
   int _prepTimeMin = 30;
@@ -58,7 +60,16 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     }
     if (_resumeRequestAll) {
       _resumeRequestAll = false;
-      unawaited(_continueRequestAllAfterResume());
+      final resumeIndex = _resumeRequestIndex;
+      final resumeLabel = _resumeRequestLabel;
+      _resumeRequestIndex = null;
+      _resumeRequestLabel = null;
+      unawaited(
+        _continueRequestAllAfterResume(
+          resumeIndex: resumeIndex,
+          resumeLabel: resumeLabel,
+        ),
+      );
       return;
     }
     unawaited(_refresh(clearMessage: true));
@@ -168,7 +179,10 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     }
   }
 
-  Future<void> _continueRequestAllAfterResume() async {
+  Future<void> _continueRequestAllAfterResume({
+    required int? resumeIndex,
+    required String? resumeLabel,
+  }) async {
     if (!mounted || _isRequestingAll || _activeRequestKey != null) {
       return;
     }
@@ -177,7 +191,24 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       _message = '앱으로 돌아왔습니다. 남은 권한을 이어서 확인하고 요청할게요.';
     });
     try {
-      await _requestAllSteps();
+      await _refresh();
+      if (!mounted) {
+        return;
+      }
+      if (resumeIndex == null || resumeLabel == null) {
+        return;
+      }
+      final snapshot = _snapshot;
+      final stillMissing =
+          snapshot == null || !_isStepGrantedForLabel(snapshot, resumeLabel);
+      if (stillMissing) {
+        setState(() {
+          _message =
+              '$resumeLabel 권한은 아직 꺼져 있습니다. 다시 켠 뒤 돌아오면 다음 단계로 이어집니다.';
+        });
+        return;
+      }
+      await _requestAllSteps(startIndex: resumeIndex + 1);
     } finally {
       if (mounted) {
         setState(() {
@@ -187,68 +218,83 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
     }
   }
 
-  Future<void> _requestAllSteps() async {
+  Future<void> _requestAllSteps({int startIndex = 0}) async {
     final failures = <String>[];
     final requiresFullScreenIntent = _requiresFullScreenIntent();
 
-    if (!await _runPermissionStep(
-      key: 'microphone',
-      label: '마이크',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.microphoneGranted,
-      request: _permissionService.requestMicrophonePermission,
-    )) {
-      return;
-    }
-    if (!await _runPermissionStep(
-      key: 'notifications',
-      label: '앱 알림',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.notificationsGranted,
-      request: _permissionService.requestNotificationPermission,
-      openSettings: _permissionService.openNotificationSettings,
-    )) {
-      return;
-    }
-    if (!await _runPermissionStep(
-      key: 'exactAlarm',
-      label: '정확한 알람',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.exactAlarmsGranted,
-      request: _permissionService.requestExactAlarmPermission,
-      openSettings: _permissionService.openExactAlarmSettings,
-    )) {
-      return;
-    }
-    if (requiresFullScreenIntent) {
+    var stepIndex = 0;
+    if (startIndex <= stepIndex++) {
       if (!await _runPermissionStep(
+        index: stepIndex - 1,
+        key: 'microphone',
+        label: '마이크',
+        failures: failures,
+        isGranted: (snapshot) => snapshot.microphoneGranted,
+        request: _permissionService.requestMicrophonePermission,
+      )) {
+        return;
+      }
+    }
+    if (startIndex <= stepIndex++) {
+      if (!await _runPermissionStep(
+        index: stepIndex - 1,
+        key: 'notifications',
+        label: '앱 알림',
+        failures: failures,
+        isGranted: (snapshot) => snapshot.notificationsGranted,
+        request: _permissionService.requestNotificationPermission,
+        openSettings: _permissionService.openNotificationSettings,
+      )) {
+        return;
+      }
+    }
+    if (startIndex <= stepIndex++) {
+      if (!await _runPermissionStep(
+        index: stepIndex - 1,
+        key: 'location',
+        label: '위치',
+        failures: failures,
+        isGranted: (snapshot) => snapshot.locationGranted,
+        request: _permissionService.requestLocationPermission,
+      )) {
+        return;
+      }
+    }
+    if (startIndex <= stepIndex++) {
+      if (!await _runPermissionStep(
+        index: stepIndex - 1,
+        key: 'calendar',
+        label: '기기 캘린더',
+        failures: failures,
+        isGranted: (snapshot) => snapshot.calendarGranted,
+        request: _permissionService.requestCalendarPermission,
+      )) {
+        return;
+      }
+    }
+    if (startIndex <= stepIndex++) {
+      if (!await _runPermissionStep(
+        index: stepIndex - 1,
+        key: 'exactAlarm',
+        label: '정확한 알람',
+        failures: failures,
+        isGranted: (snapshot) => snapshot.exactAlarmsGranted,
+        request: _permissionService.requestExactAlarmPermission,
+      )) {
+        return;
+      }
+    }
+    if (requiresFullScreenIntent && startIndex <= stepIndex++) {
+      if (!await _runPermissionStep(
+        index: stepIndex - 1,
         key: 'fullScreenIntent',
         label: '전체 화면 알림',
         failures: failures,
         isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
         request: _permissionService.requestFullScreenIntentPermission,
-        openSettings: _permissionService.openFullScreenIntentSettings,
       )) {
         return;
       }
-    }
-    if (!await _runPermissionStep(
-      key: 'location',
-      label: '위치',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.locationGranted,
-      request: _permissionService.requestLocationPermission,
-    )) {
-      return;
-    }
-    if (!await _runPermissionStep(
-      key: 'calendar',
-      label: '기기 캘린더',
-      failures: failures,
-      isGranted: (snapshot) => snapshot.calendarGranted,
-      request: _permissionService.requestCalendarPermission,
-    )) {
-      return;
     }
 
     await _refresh();
@@ -270,6 +316,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
   }
 
   Future<bool> _runPermissionStep({
+    required int index,
     required String key,
     required String label,
     required List<String> failures,
@@ -296,6 +343,8 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         final opened = await _withPermissionTimeout(openSettings);
         if (opened) {
           _resumeRequestAll = true;
+          _resumeRequestIndex = index;
+          _resumeRequestLabel = label;
           if (mounted) {
             setState(() {
               _message = '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
@@ -311,6 +360,8 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         final opened = await _withPermissionTimeout(openSettings);
         if (opened) {
           _resumeRequestAll = true;
+          _resumeRequestIndex = index;
+          _resumeRequestLabel = label;
           if (mounted) {
             setState(() {
               _message = '$label 권한이 아직 꺼져 있습니다. Android 설정 화면으로 이동합니다.';
@@ -331,9 +382,30 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       }
       if (after != null && !isGranted(after) && openSettings != null) {
         _resumeRequestAll = true;
+        _resumeRequestIndex = index;
+        _resumeRequestLabel = label;
       }
     }
     return true;
+  }
+
+  bool _isStepGrantedForLabel(AppPermissionSnapshot snapshot, String label) {
+    switch (label) {
+      case '마이크':
+        return snapshot.microphoneGranted;
+      case '앱 알림':
+        return snapshot.notificationsGranted;
+      case '위치':
+        return snapshot.locationGranted;
+      case '기기 캘린더':
+        return snapshot.calendarGranted;
+      case '정확한 알람':
+        return snapshot.exactAlarmsGranted;
+      case '전체 화면 알림':
+        return snapshot.fullScreenIntentGranted;
+      default:
+        return false;
+    }
   }
 
   Future<AppPermissionSnapshot?> _safeCheckAll() async {
@@ -490,7 +562,7 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
               const _SectionHeader(
                 label: '필수 권한',
                 subtitle:
-                    '위에서부터 하나씩 허용하면 바로 시작할 수 있어요. 폴드/플립에서는 전체 화면 알림도 함께 켜 주세요.',
+                    '위에서부터 하나씩 허용하면 바로 시작할 수 있어요. 위치와 기기 캘린더도 기본 기능에 필요합니다. 폴드/플립에서는 전체 화면 알림도 함께 켜 주세요.',
               ),
               const SizedBox(height: 9),
               _PermissionTile(
@@ -528,58 +600,6 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   openSettings: _permissionService.openNotificationSettings,
                 ),
               ),
-              const SizedBox(height: 9),
-              _PermissionTile(
-                icon: Icons.alarm_on_outlined,
-                title: '정확한 알람',
-                description:
-                    '중요 일정 알림을 지정한 시간에 맞춰 울리기 위해 필요합니다. Android에서는 설정 화면으로 이동할 수 있습니다.',
-                descriptionMaxLines: 2,
-                granted: snapshot?.exactAlarmsGranted == true,
-                isRequesting: _activeRequestKey == 'exactAlarm',
-                key: const ValueKey('permission-onboarding-exact-alarm-tile'),
-                onRequest: () => _requestOne(
-                  key: 'exactAlarm',
-                  grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
-                  deniedMessage:
-                      '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요. 중요 알람의 잠금화면 표시에도 영향을 줍니다.',
-                  isGranted: (snapshot) => snapshot.exactAlarmsGranted,
-                  request: _permissionService.requestExactAlarmPermission,
-                  openSettings: _permissionService.openExactAlarmSettings,
-                ),
-              ),
-              const SizedBox(height: 9),
-              if (showFullScreenIntentPermission) ...[
-                _PermissionTile(
-                  icon: Icons.open_in_full_outlined,
-                  title: '전체 화면 알림',
-                  description: '중요 알람을 잠금화면과 폴드/플립 겉화면에 크게 띄우기 위해 필요합니다.',
-                  descriptionMaxLines: 2,
-                  granted: snapshot?.fullScreenIntentGranted == true,
-                  isRequesting: _activeRequestKey == 'fullScreenIntent',
-                  key: const ValueKey(
-                    'permission-onboarding-full-screen-intent-tile',
-                  ),
-                  onRequest: () => _requestOne(
-                    key: 'fullScreenIntent',
-                    grantedMessage: '전체 화면 알림 권한 상태를 다시 확인했습니다.',
-                    deniedMessage:
-                        '전체 화면 알림이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 전체 화면 알림을 허용해 주세요.',
-                    isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
-                    request:
-                        _permissionService.requestFullScreenIntentPermission,
-                    openSettings:
-                        _permissionService.openFullScreenIntentSettings,
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ] else
-                const SizedBox(height: 16),
-              const _SectionHeader(
-                label: '선택 권한',
-                subtitle: '허용 안 해도 기본 기능 사용 가능',
-              ),
-              const SizedBox(height: 9),
               _PermissionTile(
                 icon: Icons.my_location_outlined,
                 title: '위치',
@@ -614,6 +634,52 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   request: _permissionService.requestCalendarPermission,
                 ),
               ),
+              const SizedBox(height: 9),
+              _PermissionTile(
+                icon: Icons.alarm_on_outlined,
+                title: '정확한 알람',
+                description:
+                    '중요 일정 알림을 지정한 시간에 맞춰 울리기 위해 필요합니다. Android에서는 설정 화면으로 이동할 수 있습니다.',
+                descriptionMaxLines: 2,
+                granted: snapshot?.exactAlarmsGranted == true,
+                isRequesting: _activeRequestKey == 'exactAlarm',
+                key: const ValueKey('permission-onboarding-exact-alarm-tile'),
+                onRequest: () => _requestOne(
+                  key: 'exactAlarm',
+                  grantedMessage: '정확한 알람 권한 상태를 다시 확인했습니다.',
+                  deniedMessage:
+                      '정확한 알람 권한이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 알람 권한을 허용해 주세요. 중요 알람의 잠금화면 표시에도 영향을 줍니다.',
+                  isGranted: (snapshot) => snapshot.exactAlarmsGranted,
+                  request: _permissionService.requestExactAlarmPermission,
+                ),
+              ),
+              const SizedBox(height: 9),
+              if (showFullScreenIntentPermission) ...[
+                _PermissionTile(
+                  icon: Icons.open_in_full_outlined,
+                  title: '전체 화면 알림',
+                  description:
+                      '중요 알람을 잠금화면과 폴드/플립 겉화면에 크게 띄우기 위해 필요합니다.',
+                  descriptionMaxLines: 2,
+                  granted: snapshot?.fullScreenIntentGranted == true,
+                  isRequesting: _activeRequestKey == 'fullScreenIntent',
+                  key: const ValueKey(
+                    'permission-onboarding-full-screen-intent-tile',
+                  ),
+                  onRequest: () => _requestOne(
+                    key: 'fullScreenIntent',
+                    grantedMessage:
+                        '전체 화면 알림 권한 상태를 다시 확인했습니다.',
+                    deniedMessage:
+                        '전체 화면 알림이 아직 꺼져 있습니다. Android 설정에서 PlanFlow의 전체 화면 알림을 허용해 주세요.',
+                    isGranted: (snapshot) => snapshot.fullScreenIntentGranted,
+                    request:
+                        _permissionService.requestFullScreenIntentPermission,
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ] else
+                const SizedBox(height: 16),
             ],
             if (_message != null) ...[
               const SizedBox(height: 10),

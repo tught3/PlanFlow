@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-21 V2 권한 온보딩 루프/필수권한 보정
+- V2 권한 온보딩에서 설정 화면 복귀 후 같은 단계를 다시 여는 루프를 끊고, 위치/기기 캘린더를 선택 권한이 아니라 필수 권한 흐름으로 올렸다.
+- 정확한 알람과 전체 화면 알림은 앱 정보 fallback 없이 전용 설정만 열도록 정리했고, onboarding/request 흐름과 테스트를 함께 맞췄다.
+- 검증: `flutter analyze --no-pub`, `flutter test test/screens/permission_onboarding_screen_test.dart --no-pub -r compact`, `flutter build apk --release --no-pub`(timeout 후 APK 갱신 확인), `adb -s 192.168.0.103:46757 install -r -t build/app/outputs/flutter-apk/app-release.apk`, `adb -s 192.168.0.103:46757 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity`, `com.fluxstudio.planflow` / `com.fluxstudio.planflow.v2` 동시 설치 확인.
 ## 2026-06-21 V2 main sync checkpoint
 - V2의 OAuth 콜백에 main 수준의 pending 상태 복구와 Naver 캘린더 토큰 캡처 흐름을 복구하고, `planflow-v2://auth-callback` scheme는 유지했다.
 - 권한 온보딩은 정확한 알람/전체 화면 알림 전용 설정 진입을 유지하면서, 폴드/플립 전용 전체 화면 알림 노출과 ready 판정을 분리했다.

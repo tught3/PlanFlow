@@ -80,6 +80,41 @@ void main() {
   );
 
   testWidgets(
+    'PermissionOnboardingScreen keeps location and calendar in the required section',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PermissionOnboardingScreen(
+            permissionService: _FakePermissionService(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('선택 권한'), findsNothing);
+      final locationTile = find.text('위치');
+      await tester.scrollUntilVisible(
+        locationTile,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(locationTile, findsOneWidget);
+
+      final calendarTile = find.text('기기 캘린더');
+      await tester.scrollUntilVisible(
+        calendarTile,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(calendarTile, findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'PermissionOnboardingScreen skip completes onboarding without OS permission requests',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
@@ -159,7 +194,7 @@ void main() {
       expect(permissionService.fullScreenIntentGranted, isTrue);
       expect(permissionService.notificationRequests, 1);
       expect(permissionService.exactAlarmRequests, 1);
-      expect(permissionService.exactAlarmSettingsOpened, isFalse);
+      expect(permissionService.exactAlarmSettingsOpened, isTrue);
       expect(
         find.descendant(
           of: find.byKey(
@@ -168,6 +203,14 @@ void main() {
           matching: find.byIcon(Icons.check_circle_outline),
         ),
         findsOneWidget,
+      );
+      final fullScreenIntentTile = find.byKey(
+        const ValueKey('permission-onboarding-full-screen-intent-tile'),
+      );
+      await tester.scrollUntilVisible(
+        fullScreenIntentTile,
+        300,
+        scrollable: find.byType(Scrollable).first,
       );
       expect(
         find.descendant(
@@ -367,6 +410,7 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestExactAlarmPermission() async {
     exactAlarmRequests += 1;
+    exactAlarmSettingsOpened = true;
     exactAlarmGranted = exactAlarmRequestGranted;
     return exactAlarmRequestGranted;
   }
@@ -374,6 +418,7 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestFullScreenIntentPermission() async {
     fullScreenIntentRequests += 1;
+    fullScreenIntentSettingsOpened = true;
     fullScreenIntentGranted = true;
     return true;
   }
