@@ -465,7 +465,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
   void _handlePlanFlowDeepLink(Uri? uri) {
     if (uri == null ||
-        uri.scheme != 'planflow' ||
+        uri.scheme != 'planflow-v2' ||
         uri.host == 'auth-callback') {
       return;
     }
@@ -567,7 +567,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
 @visibleForTesting
 String? resolveHomeWidgetRoute(Uri? uri) {
-  if (uri == null || uri.scheme != 'planflow') {
+  if (uri == null || uri.scheme != 'planflow-v2') {
     return null;
   }
 

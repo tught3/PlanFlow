@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-21 V2 deep link and widget namespace split
+- V2 deep link scheme를 `planflow-v2://`로 분리하고, auth callback 및 widget 진입 경로도 V2 전용 scheme만 받도록 `lib/core/env.dart`, `lib/app.dart`, `lib/services/oauth_callback_handler.dart`, `android/app/src/main/AndroidManifest.xml`을 정리했다.
+- V2 widget action 문자열도 `com.fluxstudio.planflow.v2.widget.*`로 분리해 기존 PlanFlow 위젯 액션과 겹치지 않게 했다.
+- 검증: `flutter analyze --no-pub` 통과, `flutter build apk --release --no-pub` 통과, `adb -s 192.168.0.103:46757 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `am start -W -a android.intent.action.VIEW -d "planflow-v2://voice-launcher"` 성공.
 ## 2026-06-21 V2 Android package split
 - V2 Android `applicationId`/`namespace`를 `com.fluxstudio.planflow.v2`로 분리하고, `MainActivity`와 `PlanFlowHomeWidgetProvider`를 `android/app/src/main/kotlin/com/fluxstudio/planflow/v2/`로 이동해 패키지 경로를 V2에 맞췄다.
 - `AndroidManifest.xml` 런처 라벨을 `PlanFlow V2`로 구분했고, `android/app/google-services.json`에는 V2 Firebase client 항목을 추가해 빌드가 통과하도록 맞췄다.
