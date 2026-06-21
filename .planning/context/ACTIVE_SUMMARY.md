@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-21 V2 permission onboarding settings routing
+- 권한 온보딩에서 `정확한 알람`과 `전체 화면 알림`이 앱 정보 화면으로 빠지지 않도록, Android 전용 `ACTION_REQUEST_SCHEDULE_EXACT_ALARM`과 `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT`를 통해 각 권한의 전용 설정 화면으로 연결했다.
+- `AppPermissionService`와 `PermissionOnboardingScreen`은 각각 전용 native 호출을 사용하도록 정리했고, 기존 알림/위치/캘린더 흐름은 그대로 유지했다.
+- 검증: `flutter analyze --no-pub` 통과, `flutter build apk --release --no-pub` 통과, `adb -s 192.168.0.103:46757 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
 ## 2026-06-21 V2 deep link and widget namespace split
 - V2 deep link scheme를 `planflow-v2://`로 분리하고, auth callback 및 widget 진입 경로도 V2 전용 scheme만 받도록 `lib/core/env.dart`, `lib/app.dart`, `lib/services/oauth_callback_handler.dart`, `android/app/src/main/AndroidManifest.xml`을 정리했다.
 - V2 widget action 문자열도 `com.fluxstudio.planflow.v2.widget.*`로 분리해 기존 PlanFlow 위젯 액션과 겹치지 않게 했다.

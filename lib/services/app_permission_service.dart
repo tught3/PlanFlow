@@ -242,6 +242,38 @@ class AppPermissionService {
     }
   }
 
+  Future<bool> openExactAlarmSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return false;
+    }
+    try {
+      return await _androidPermissionsChannel.invokeMethod<bool>(
+            'openExactAlarmSettings',
+          ) ??
+          false;
+    } catch (error, stackTrace) {
+      debugPrint('Open exact alarm settings failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return openAppSettings();
+    }
+  }
+
+  Future<bool> openFullScreenIntentSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return false;
+    }
+    try {
+      return await _androidPermissionsChannel.invokeMethod<bool>(
+            'openFullScreenIntentSettings',
+          ) ??
+          false;
+    } catch (error, stackTrace) {
+      debugPrint('Open full-screen intent settings failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return openAppSettings();
+    }
+  }
+
   Future<bool> openNotificationSettings() {
     return _notificationService.openAppNotificationSettings();
   }

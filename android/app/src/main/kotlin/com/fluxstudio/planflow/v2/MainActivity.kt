@@ -77,6 +77,12 @@ class MainActivity : FlutterActivity() {
                     "canUseFullScreenIntent" -> {
                         result.success(canUseFullScreenIntent())
                     }
+                    "openExactAlarmSettings" -> {
+                        result.success(openExactAlarmSettings())
+                    }
+                    "openFullScreenIntentSettings" -> {
+                        result.success(openFullScreenIntentSettings())
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -240,6 +246,38 @@ class MainActivity : FlutterActivity() {
             true
         } catch (_: Exception) {
             false
+        }
+    }
+
+    private fun openExactAlarmSettings(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return openAppSettings()
+        }
+        return try {
+            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                data = Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (_: Exception) {
+            openAppSettings()
+        }
+    }
+
+    private fun openFullScreenIntentSettings(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            return openAppSettings()
+        }
+        return try {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+                data = Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (_: Exception) {
+            openAppSettings()
         }
     }
 
