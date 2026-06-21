@@ -7,7 +7,6 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
-import '../../services/calendar_sync_service.dart';
 import '../../services/oauth_callback_handler.dart';
 import '../../l10n/app_l10n.dart';
 
@@ -208,9 +207,6 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
         if (mounted && signedIn) {
           keepLoadingForCallback = true;
           unawaited(AnalyticsService.logLogin(method: 'google'));
-          unawaited(
-            CalendarSyncService().syncGoogleCalendar(interactive: true),
-          );
         } else if (mounted) {
           _setMessage(l10n.loginSessionFailed);
         }

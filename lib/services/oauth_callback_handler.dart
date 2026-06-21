@@ -13,7 +13,6 @@ import '../core/log_text.dart';
 import '../core/router.dart';
 import '../providers/auth_provider.dart';
 import 'auth_service.dart';
-import 'calendar_sync_service.dart';
 import 'naver_calendar_permission_service.dart';
 
 enum OAuthCallbackPurpose {
@@ -623,13 +622,6 @@ class OAuthCallbackHandler {
         explicitProviderToken: response.session.providerToken,
         allowWithoutNaverIdentity: isPendingNaverCalendarLink,
       );
-      // Google 로그인 시 Google Calendar interactive sync
-      final loginSession = client.auth.currentSession;
-      final loginProvider =
-          loginSession?.user.appMetadata['provider']?.toString() ?? '';
-      if (loginProvider.contains('google')) {
-        unawaited(CalendarSyncService().syncGoogleCalendar(interactive: true));
-      }
       if (isPasswordRecovery) {
         authProvider.markPasswordRecovery();
         clearPendingCallback();

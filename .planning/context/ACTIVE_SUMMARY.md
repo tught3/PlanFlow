@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-21 Google login and onboarding order cleanup
+- Google 로그인 성공 직후에 바로 `CalendarSyncService.syncGoogleCalendar(interactive: true)`를 띄우던 경로를 제거해, 계정 선택이 로그인 온보딩 화면 위로 뒤늦게 튀어나오지 않도록 정리했다.
+- `ShellScreen`은 이제 권한 온보딩이 끝난 뒤에만 Google Calendar 자동 연결과 나머지 시작 작업을 실행하도록 순서를 묶어서, 로그인 -> 온보딩 -> 캘린더 계정 확인 순서로 정돈했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, `scripts/flutter-local.ps1 build apk --release --no-pub` 통과, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `adb -s 192.168.0.105:5555 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
 ## 2026-06-21 Supabase readiness/error split
 - `LoginScreen`이 Supabase 초기화 진행 중인 정상 상태를 `빌드 설정값 부족` 오류로 오진하지 않도록, 준비 중과 실제 실패 상태를 분리했다.
 - `AppEnv`에 Supabase 초기화 실패 플래그와 실패 메시지를 추가하고, `main.dart`의 Supabase 초기화 예외를 실패 상태로 기록하게 해서 실제 실패만 로그인 화면에 노출되도록 정리했다.

@@ -100,15 +100,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     authProvider.addListener(_handleAuthChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _maybeOpenPermissionOnboarding();
-      unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-        reason: 'app_start',
-      ));
-      unawaited(_migrateFutureCriticalAlarms());
-      unawaited(_refreshDepartureAlarmsAndMonitor());
-      unawaited(_ensureBriefingsScheduled(reason: 'app_start'));
-      debugPrint('[GCAL] _maybeAutoConnect 호출 시도 (initState)');
-      unawaited(_maybeAutoConnectGoogleCalendar());
+      unawaited(_runSignedInStartupTasks(reason: 'app_start'));
     });
   }
 
@@ -149,18 +141,25 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _maybeOpenPermissionOnboarding();
-        unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-          reason: 'auth_changed',
-          force: true,
-        ));
-        unawaited(_migrateFutureCriticalAlarms());
-        unawaited(_refreshDepartureAlarmsAndMonitor());
-        unawaited(_ensureBriefingsScheduled(reason: 'auth_changed'));
-        debugPrint('[GCAL] _maybeAutoConnect 호출 시도 (auth_changed)');
-        unawaited(_maybeAutoConnectGoogleCalendar());
+        unawaited(_runSignedInStartupTasks(reason: 'auth_changed'));
       }
     });
+  }
+
+  Future<void> _runSignedInStartupTasks({required String reason}) async {
+    await _maybeOpenPermissionOnboarding();
+    if (!mounted) {
+      return;
+    }
+    unawaited(_calendarAutoSyncService.syncConnectedCalendars(
+      reason: reason,
+      force: reason == 'auth_changed',
+    ));
+    unawaited(_migrateFutureCriticalAlarms());
+    unawaited(_refreshDepartureAlarmsAndMonitor());
+    unawaited(_ensureBriefingsScheduled(reason: reason));
+    debugPrint('[GCAL] _maybeAutoConnect 호출 시도 ($reason)');
+    await _maybeAutoConnectGoogleCalendar();
   }
 
   Future<void> _refreshDepartureAlarmsAndMonitor() async {
