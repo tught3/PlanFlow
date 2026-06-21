@@ -1,4 +1,4 @@
-package com.fluxstudio.planflow
+package com.fluxstudio.planflow.v2
 
 import android.Manifest
 import android.app.NotificationManager
@@ -1103,3 +1103,5 @@ private class PlanFlowSttChannel(
         publishText(partialResults)
     }
 }
+
+

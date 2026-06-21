@@ -1,4 +1,4 @@
-﻿package com.fluxstudio.planflow
+package com.fluxstudio.planflow.v2
 
 import android.appwidget.AppWidgetManager
 import android.app.PendingIntent
@@ -1683,3 +1683,5 @@ class PlanFlowMicWidgetProvider : BasePlanFlowWidgetProvider(R.layout.planflow_m
         bindVoice(context, views, R.id.widget_mic_container)
     }
 }
+
+

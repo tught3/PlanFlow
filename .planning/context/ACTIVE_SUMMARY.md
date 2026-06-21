@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-21 V2 Android package split
+- V2 Android `applicationId`/`namespace`를 `com.fluxstudio.planflow.v2`로 분리하고, `MainActivity`와 `PlanFlowHomeWidgetProvider`를 `android/app/src/main/kotlin/com/fluxstudio/planflow/v2/`로 이동해 패키지 경로를 V2에 맞췄다.
+- `AndroidManifest.xml` 런처 라벨을 `PlanFlow V2`로 구분했고, `android/app/google-services.json`에는 V2 Firebase client 항목을 추가해 빌드가 통과하도록 맞췄다.
+- 검증: `flutter analyze --no-pub` 통과, `flutter build apk --release --no-pub` 통과로 `build/app/outputs/flutter-apk/app-release.apk` 생성, `adb -s 192.168.0.103:46757 install -r -t ...` 성공, 그리고 동일 기기에서 `com.fluxstudio.planflow`와 `com.fluxstudio.planflow.v2`가 함께 설치됨과 `am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 실행을 확인했다.
 ## 2026-06-14 V2 real-device smoke test guide
 - Added `docs/planflow-v2/22-v2-real-device-smoke-test.md` to document the 3-account leader/member/outsider device layout, step-by-step smoke flow, failure checkpoints, bug log template, and PASS criteria.
 - The guide is documentation only and keeps code and DB changes out of scope for this turn.
