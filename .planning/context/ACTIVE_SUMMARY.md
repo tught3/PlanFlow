@@ -2,6 +2,7 @@
 ## 2026-06-21 V2 main sync checkpoint
 - V2의 OAuth 콜백에 main 수준의 pending 상태 복구와 Naver 캘린더 토큰 캡처 흐름을 복구하고, `planflow-v2://auth-callback` scheme는 유지했다.
 - 권한 온보딩은 정확한 알람/전체 화면 알림 전용 설정 진입을 유지하면서, 폴드/플립 전용 전체 화면 알림 노출과 ready 판정을 분리했다.
+- V2 Firebase 설정은 `android/app/google-services.json`을 V2 앱 등록값으로 교체했다.
 - 검증: `flutter analyze --no-pub`, `flutter test test/screens/permission_onboarding_screen_test.dart test/services/oauth_callback_handler_test.dart test/app_home_widget_route_test.dart --no-pub -r compact`, `flutter build apk --release --no-pub`, `adb -s 192.168.0.103:46757 install -r -t build/app/outputs/flutter-apk/app-release.apk`, `adb -s 192.168.0.103:46757 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity`.
 ## 2026-06-21 V2 permission onboarding settings routing
 - 권한 온보딩에서 `정확한 알람`과 `전체 화면 알림`이 앱 정보 화면으로 빠지지 않도록, Android 전용 `ACTION_REQUEST_SCHEDULE_EXACT_ALARM`과 `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT`를 통해 각 권한의 전용 설정 화면으로 연결했다.
