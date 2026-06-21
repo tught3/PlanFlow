@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-21 Google native login split
+- Google 로그인만 `GoogleSignIn + Supabase signInWithIdToken`으로 분기하고, Kakao/Naver는 기존 브라우저 OAuth + callback 흐름을 유지했다.
+- 로그인 성공 후에는 기존과 같은 세션 동기화와 Google Calendar 인터랙티브 동기화를 이어가도록 `login_screen.dart`에 얇은 분기만 추가했다.
+- 검증: `flutter analyze --no-pub` 통과, `flutter build apk --release --no-pub` 통과로 `build/app/outputs/flutter-apk/app-release.apk` 재생성, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `adb -s 192.168.0.105:5555 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
 ## 2026-06-21 Google OAuth launch stabilization
 - Google 로그인 런처를 풀 브라우저 대신 커스텀 탭(`LaunchMode.inAppBrowserView`)으로 바꿔, S8처럼 Chrome 계정 선택 화면이 오래 머무는 기기에서도 앱 복귀 가능성을 높였다.
 - 이 변경은 S8 전용 우회가 아니라 모든 Android 기기에 공통 적용되는 로그인 진입 방식 정리로 두었다.

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -24,10 +25,12 @@ abstract class AuthSessionClient {
 }
 
 class AuthService implements AuthSessionClient {
-  AuthService({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+  AuthService({SupabaseClient? client, GoogleSignIn? googleSignIn})
+      : _client = client ?? Supabase.instance.client,
+        _googleSignIn = googleSignIn;
 
   final SupabaseClient _client;
+  GoogleSignIn? _googleSignIn;
 
   @override
   Session? get currentSession => _client.auth.currentSession;
@@ -41,6 +44,38 @@ class AuthService implements AuthSessionClient {
   @override
   Future<void> refreshSession() async {
     await _client.auth.refreshSession();
+  }
+
+  Future<AuthResponse> signInWithGoogleNative() async {
+    final serverClientId = AppEnv.googleServerClientId.trim();
+    if (serverClientId.isEmpty) {
+      throw AuthException(
+        'Google 로그인 설정이 없습니다. Google serverClientId를 확인해 주세요.',
+      );
+    }
+
+    final googleUser = await _googleSignInInstance.signIn();
+    if (googleUser == null) {
+      throw AuthException('Google 로그인이 취소되었습니다.');
+    }
+
+    final googleAuth = await googleUser.authentication;
+    final idToken = googleAuth.idToken?.trim();
+    final accessToken = googleAuth.accessToken?.trim();
+    if (idToken == null || idToken.isEmpty) {
+      throw AuthException('Google ID 토큰을 받지 못했습니다.');
+    }
+    if (accessToken == null || accessToken.isEmpty) {
+      throw AuthException('Google access token을 받지 못했습니다.');
+    }
+
+    final response = await _client.auth.signInWithIdToken(
+      provider: OAuthProvider.google,
+      idToken: idToken,
+      accessToken: accessToken,
+    );
+    unawaited(_tryEnsureProfile(response.user));
+    return response;
   }
 
   Future<AuthResponse> signInWithEmail({
@@ -107,6 +142,12 @@ class AuthService implements AuthSessionClient {
       supabaseProvider: _oauthProvider(provider),
       queryParams: queryParams,
       purpose: 'sign-in',
+    );
+  }
+
+  GoogleSignIn get _googleSignInInstance {
+    return _googleSignIn ??= GoogleSignIn(
+      serverClientId: AppEnv.googleServerClientId,
     );
   }
 

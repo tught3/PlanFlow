@@ -7,9 +7,9 @@ import '../../core/env.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/auth_service.dart';
+import '../../services/calendar_sync_service.dart';
 import '../../services/oauth_callback_handler.dart';
 import '../../l10n/app_l10n.dart';
-
 
 enum _AuthMode {
   login,
@@ -196,16 +196,32 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
 
     var keepLoadingForCallback = false;
     try {
-      OAuthCallbackHandler.markPendingLogin(provider);
-      final launched = await authService.signInWithOAuth(provider);
-      if (!launched) {
-        OAuthCallbackHandler.clearPendingCallback();
-        _setMessage(l10n.oauthLaunchFailed);
+      if (provider == PlanFlowOAuthProvider.google) {
+        await authService.signInWithGoogleNative();
+        final signedIn = await authProvider.syncCurrentSession();
+        if (mounted && signedIn) {
+          keepLoadingForCallback = true;
+          unawaited(AnalyticsService.logLogin(method: 'google'));
+          unawaited(
+            CalendarSyncService().syncGoogleCalendar(interactive: true),
+          );
+        } else if (mounted) {
+          _setMessage(l10n.loginSessionFailed);
+        }
       } else {
-        keepLoadingForCallback = true;
+        OAuthCallbackHandler.markPendingLogin(provider);
+        final launched = await authService.signInWithOAuth(provider);
+        if (!launched) {
+          OAuthCallbackHandler.clearPendingCallback();
+          _setMessage(l10n.oauthLaunchFailed);
+        } else {
+          keepLoadingForCallback = true;
+        }
       }
     } catch (error) {
-      OAuthCallbackHandler.clearPendingCallback();
+      if (provider != PlanFlowOAuthProvider.google) {
+        OAuthCallbackHandler.clearPendingCallback();
+      }
       _setMessage(_friendlyAuthMessage(error));
     } finally {
       if (mounted && !keepLoadingForCallback) {
@@ -313,6 +329,12 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
 
   String _friendlyAuthMessage(Object error) {
     final message = error.toString();
+    if (message.contains('Google 로그인 설정이 없습니다') ||
+        message.contains('Google 로그인이 취소되었습니다') ||
+        message.contains('Google ID 토큰을 받지 못했습니다') ||
+        message.contains('Google access token을 받지 못했습니다')) {
+      return message;
+    }
     if (message.contains('Invalid login credentials')) {
       return appL10n(context).authInvalidCredentials;
     }
