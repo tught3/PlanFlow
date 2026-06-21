@@ -1723,9 +1723,7 @@ class _CalendarMiniEventList extends StatelessWidget {
         ? events.take(maxVisibleEvents).toList(growable: false)
         : events;
     final hiddenCount = requiresOverflowLabel
-        ? (overflowCount > 0
-            ? overflowCount
-            : events.length - displayEvents.length)
+        ? (events.length + overflowCount) - displayEvents.length
         : 0;
     return Column(
       mainAxisSize: MainAxisSize.max,

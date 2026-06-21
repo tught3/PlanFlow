@@ -471,12 +471,7 @@ abstract class BasePlanFlowWidgetProvider(
             return null
         }
 
-        val title = previewTitle?.trim()?.takeIf { it.isNotBlank() }
-        return when {
-            title == null -> "+$overflowCount"
-            overflowCount == 1 -> title
-            else -> "$title 외 ${overflowCount}건"
-        }
+        return "+${overflowCount}개"
     }
 
     protected fun bindWeekAction(context: Context, views: RemoteViews, viewId: Int, action: String, providerClass: Class<*>) {
@@ -1367,13 +1362,16 @@ class PlanFlowMonthlyWidgetProvider :
                     }
                 }
 
-                // 2.5단계: overflow > 0인 셀의 마지막 슬롯을 비워 overflow에 합산
-                // event_4 + overflow_count 동시 표시 시 5행이 돼 레이아웃 깨짐 방지
+                // 2.5단계: 월간 위젯은 3개까지 실제 일정을 보이고, 그 이상은 +N개로 표시한다.
                 // (라이브 경로의 overflow 수치는 hiddenEvents.size로 동적 계산되므로
                 //  slotMap만 비우면 overflow 카운트가 자동으로 올바르게 반영됨)
+                val maxVisibleMonthlyEvents = 3
                 for (index in 0 until 42) {
-                    if (overflowCounts[index] > 0 && slotMap[index][3] != null) {
-                        slotMap[index][3] = null
+                    val totalDayEvents = rawWidgetEventsForDay(rawEvents, cellDays[index]).size
+                    val requiresOverflowLabel =
+                        overflowCounts[index] > 0 || totalDayEvents > maxVisibleMonthlyEvents
+                    if (requiresOverflowLabel && slotMap[index][maxVisibleMonthlyEvents] != null) {
+                        slotMap[index][maxVisibleMonthlyEvents] = null
                     }
                 }
 

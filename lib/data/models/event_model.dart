@@ -16,6 +16,7 @@ class EventModel {
     this.participants = const <String>[],
     this.targets = const <String>[],
     this.isCritical = false,
+    this.useStrongAlarm = false,
     this.recurrenceRule,
     this.isAllDay = false,
     this.isMultiDay = false,
@@ -47,6 +48,7 @@ class EventModel {
       participants: _stringListValue(json['participants']),
       targets: _stringListValue(json['targets']),
       isCritical: _boolValue(json['is_critical']),
+      useStrongAlarm: _boolValue(json['use_strong_alarm']),
       recurrenceRule: _optionalStringValue(json['recurrence_rule']),
       isAllDay: _boolValue(json['is_all_day']),
       isMultiDay: _boolValue(json['is_multi_day']),
@@ -77,6 +79,7 @@ class EventModel {
   final List<String> participants;
   final List<String> targets;
   final bool isCritical;
+  final bool useStrongAlarm;
   final String? recurrenceRule;
   final bool isAllDay;
   final bool isMultiDay;
@@ -114,6 +117,7 @@ class EventModel {
       'participants': participants,
       'targets': targets,
       'is_critical': isCritical,
+      'use_strong_alarm': useStrongAlarm,
       'recurrence_rule': _optionalStringValue(recurrenceRule),
       'is_all_day': isAllDay,
       'is_multi_day': isMultiDay,
@@ -144,6 +148,7 @@ class EventModel {
       'participants': participants,
       'targets': targets,
       'is_critical': isCritical,
+      'use_strong_alarm': useStrongAlarm,
       'recurrence_rule': _optionalStringValue(recurrenceRule),
       'is_all_day': isAllDay,
       'is_multi_day': isMultiDay,

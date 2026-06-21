@@ -35,11 +35,8 @@ import '../../services/device_calendar_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/naver_caldav_service.dart';
-import '../../services/naver_calendar_permission_service.dart';
-import '../../services/naver_open_api_calendar_service.dart';
 import '../../services/notification_service.dart';
 import '../../core/diag_logger.dart';
-import '../../services/oauth_callback_handler.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
 import '../../l10n/app_l10n.dart';
@@ -60,10 +57,8 @@ class SettingsScreen extends StatefulWidget {
     NotificationService? notificationService,
     BackupService? backupService,
     AuthService? authService,
-    NaverCalendarPermissionService? naverCalendarPermissionService,
     DeviceCalendarService? deviceCalendarService,
     NaverCalDavService? naverCalDavService,
-    NaverOpenApiCalendarService? naverImportService,
     String? userId,
     SettingsInitialAction? initialAction,
   })  : _settingsRepository = settingsRepository,
@@ -73,10 +68,8 @@ class SettingsScreen extends StatefulWidget {
         _notificationService = notificationService,
         _backupService = backupService,
         _authService = authService,
-        _naverCalendarPermissionService = naverCalendarPermissionService,
         _deviceCalendarService = deviceCalendarService,
         _naverCalDavService = naverCalDavService,
-        _naverImportService = naverImportService,
         _userId = userId,
         _initialAction = initialAction;
 
@@ -87,10 +80,8 @@ class SettingsScreen extends StatefulWidget {
   final NotificationService? _notificationService;
   final BackupService? _backupService;
   final AuthService? _authService;
-  final NaverCalendarPermissionService? _naverCalendarPermissionService;
   final DeviceCalendarService? _deviceCalendarService;
   final NaverCalDavService? _naverCalDavService;
-  final NaverOpenApiCalendarService? _naverImportService;
   final String? _userId;
   final SettingsInitialAction? _initialAction;
 
@@ -111,13 +102,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   late final DailyBackupSchedulerService _dailyBackupSchedulerService;
   late final DeviceCalendarService _deviceCalendarService;
   late final NaverCalDavService _naverCalDavService;
-  late final NaverOpenApiCalendarService _naverImportService;
   late final HomeWidgetService _homeWidgetService;
   late final NotificationService _notificationService;
 
   BackupService? _backupService;
   AuthService? _authService;
-  NaverCalendarPermissionService? _naverCalendarPermissionService;
 
   UserSettingsModel? _savedSettings;
   TimeOfDay _morningBriefingAt = const TimeOfDay(hour: 7, minute: 30);
@@ -156,8 +145,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isTestingNaverCalDav = false;
   bool _isImportingNaverCalDav = false;
   bool _hasNaverCalDavCredentials = false;
-  bool _hasNaverOpenApiAccess = false;
-  bool _pendingNaverOpenApiImportAfterConsent = false;
   bool _isLoadingBackups = false;
   bool _isSavingSettings = false;
   bool _settingsSaveQueued = false;
@@ -167,7 +154,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isTestingEveningBriefing = false;
   bool _isBackupActionRunning = false;
   bool _ownsNaverCalDavService = false;
-  bool _ownsNaverImportService = false;
   NaverCalDavConnectionResult? _lastNaverCalDavResult;
   final ValueNotifier<NaverCalDavSyncProgress?> _naverCalDavProgress =
       ValueNotifier<NaverCalDavSyncProgress?>(null);
@@ -221,14 +207,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     _homeWidgetService = HomeWidgetService();
     _ownsNaverCalDavService = widget._naverCalDavService == null;
     _naverCalDavService = widget._naverCalDavService ?? NaverCalDavService();
-    _ownsNaverImportService = widget._naverImportService == null;
-    _naverImportService =
-        widget._naverImportService ?? NaverOpenApiCalendarService();
     _backupService = widget._backupService ??
         (AppEnv.isSupabaseReady ? BackupService() : null);
     _authService =
         widget._authService ?? (AppEnv.isSupabaseReady ? AuthService() : null);
-    _naverCalendarPermissionService = widget._naverCalendarPermissionService;
 
     unawaited(_loadSettings());
     unawaited(_loadAppVersionInfo());
@@ -257,7 +239,6 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   void dispose() {
-    _pendingNaverOpenApiImportAfterConsent = false;
     WidgetsBinding.instance.removeObserver(this);
     if (AppEnv.isSupabaseReady) {
       authProvider.removeListener(_handleFeedbackAdminAuthChanged);
@@ -265,9 +246,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     _settingsProvider.dispose();
     if (_ownsNaverCalDavService) {
       unawaited(_naverCalDavService.dispose());
-    }
-    if (_ownsNaverImportService) {
-      _naverImportService.dispose();
     }
     _deviceCalendarImportTimer?.cancel();
     _naverCalDavProgress.dispose();
@@ -284,8 +262,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _refreshCalendarConnectionState() async {
     _logSettingsGoogleCalendar('refreshConnectionState start');
     _logSettingsNaverCalendar(
-      'refreshConnectionState start pendingOpenApi=$_pendingNaverOpenApiImportAfterConsent '
-      'testing=$_isTestingNaverCalDav importing=$_isImportingNaverCalDav',
+      'refreshConnectionState start testing=$_isTestingNaverCalDav '
+      'importing=$_isImportingNaverCalDav',
     );
     await Future.wait<void>([
       _loadCalendarStatus().catchError((error, stackTrace) {
@@ -309,18 +287,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     ]);
     _logSettingsGoogleCalendar(
         'refreshConnectionState status loaders completed');
-    _logSettingsNaverCalendar(
-      'refreshConnectionState status loaders completed '
-      'pendingOpenApi=$_pendingNaverOpenApiImportAfterConsent',
-    );
-    if (_pendingNaverOpenApiImportAfterConsent &&
-        mounted &&
-        !_isTestingNaverCalDav &&
-        !_isImportingNaverCalDav) {
-      _logSettingsNaverCalendar(
-          'refreshConnectionState verifying pending Naver OAuth');
-      unawaited(_verifyNaverOpenApiAccessAndImportAfterOAuth());
-    }
+    _logSettingsNaverCalendar('refreshConnectionState status loaders completed');
   }
 
   void _handleFeedbackAdminAuthChanged() {
@@ -522,18 +489,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
       debugPrintStack(stackTrace: stackTrace);
     }
-    final hasOpenApiAccess = await _naverImportService.hasCalendarAccess();
     _logSettingsNaverCalendar(
-      'loadNaverCalDavState result hasCalDavCredentials=$hasCalDavCredentials '
-      'hasOpenApiAccess=$hasOpenApiAccess',
+      'loadNaverCalDavState result hasCalDavCredentials=$hasCalDavCredentials',
     );
     if (!mounted) {
       return;
     }
     setState(() {
       _hasNaverCalDavCredentials = hasCalDavCredentials;
-      _hasNaverOpenApiAccess = hasOpenApiAccess;
-      if (!hasCalDavCredentials && !hasOpenApiAccess) {
+      if (!hasCalDavCredentials) {
         _lastNaverCalDavResult = null;
       }
     });
@@ -673,10 +637,6 @@ class _SettingsScreenState extends State<SettingsScreen>
         );
       },
     );
-  }
-
-  NaverCalendarPermissionService get _naverCalendarPermissionServiceInstance {
-    return _naverCalendarPermissionService ??= NaverCalendarPermissionService();
   }
 
   Future<void> _importDeviceNaverCalendar() async {
@@ -904,144 +864,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     return imported?.success ?? false;
   }
 
-  Future<void> _verifyNaverOpenApiAccessAndImportAfterOAuth() async {
-    NaverCalendarPermissionResult? lastPermission;
-    final maxAttempts = widget._naverImportService != null ? 1 : 12;
-    final retryDelay = widget._naverImportService != null
-        ? Duration.zero
-        : const Duration(seconds: 1);
-    _logSettingsNaverCalendar(
-      'verifyOpenApiAfterOAuth start maxAttempts=$maxAttempts '
-      'retryDelayMs=${retryDelay.inMilliseconds} '
-      'pending=$_pendingNaverOpenApiImportAfterConsent',
-    );
-    for (var attempt = 0; attempt < maxAttempts; attempt += 1) {
-      if (retryDelay > Duration.zero) {
-        await Future<void>.delayed(retryDelay);
-      }
-      if (!mounted || !_pendingNaverOpenApiImportAfterConsent) {
-        _logSettingsNaverCalendar(
-          'verifyOpenApiAfterOAuth stop before refresh mounted=$mounted '
-          'pending=$_pendingNaverOpenApiImportAfterConsent attempt=${attempt + 1}',
-        );
-        return;
-      }
-      final permission = await _refreshNaverCalendarPermissionForSettings();
-      lastPermission = permission;
-      _logSettingsNaverCalendar(
-        'verifyOpenApiAfterOAuth attempt=${attempt + 1}/$maxAttempts '
-        'status=${permission.status.name} isGranted=${permission.isGranted} '
-        'statusCode=${permission.statusCode} '
-        'errorType=${permission.error?.runtimeType}',
-      );
-      if (!mounted || !_pendingNaverOpenApiImportAfterConsent) {
-        _logSettingsNaverCalendar(
-          'verifyOpenApiAfterOAuth stop after refresh mounted=$mounted '
-          'pending=$_pendingNaverOpenApiImportAfterConsent attempt=${attempt + 1}',
-        );
-        return;
-      }
-      if (!permission.isGranted) {
-        continue;
-      }
-      setState(() {
-        _hasNaverOpenApiAccess = true;
-        _pendingNaverOpenApiImportAfterConsent = false;
-      });
-      _showSnack('네이버 캘린더 권한을 확인했습니다. 일정을 가져옵니다.');
-      _logSettingsNaverCalendar('verifyOpenApiAfterOAuth granted -> import');
-      if (!mounted) {
-        return;
-      }
-      await _importNaverCalDavEvents(skipIntro: true, useOpenApi: true);
-      return;
-    }
-    if (!mounted || !_pendingNaverOpenApiImportAfterConsent) {
-      _logSettingsNaverCalendar(
-        'verifyOpenApiAfterOAuth final stop mounted=$mounted '
-        'pending=$_pendingNaverOpenApiImportAfterConsent',
-      );
-      return;
-    }
-    _logSettingsNaverCalendar(
-      'verifyOpenApiAfterOAuth failed finalStatus=${lastPermission?.status.name} '
-      'statusCode=${lastPermission?.statusCode} '
-      'errorType=${lastPermission?.error?.runtimeType}',
-    );
-    setState(() {
-      _hasNaverOpenApiAccess = false;
-      _pendingNaverOpenApiImportAfterConsent = false;
-    });
-    await _markNaverCalDavConnection(
-      status: CalendarConnectionStatus.reauthRequired,
-      lastError: lastPermission?.message ??
-          'Naver Calendar permission was not granted after OAuth.',
-    );
-    if (mounted) {
-      await _loadCalendarStatus();
-      _showSnack(
-        '${_naverOpenApiFailureMessage(lastPermission)} CalDAV 직접 연결로 전환합니다.',
-      );
-      await _connectNaverCalDavFallbackAndImport();
-    }
-  }
-
-  Future<NaverCalendarPermissionResult>
-      _refreshNaverCalendarPermissionForSettings() async {
-    if (widget._naverCalendarPermissionService != null ||
-        _ownsNaverImportService) {
-      _logSettingsNaverCalendar(
-        'refreshPermissionForSettings source=permissionService '
-        'widgetService=${widget._naverCalendarPermissionService != null} '
-        'ownsImport=$_ownsNaverImportService',
-      );
-      final result =
-          await _naverCalendarPermissionServiceInstance.refreshStatus();
-      _logSettingsNaverCalendar(
-        'refreshPermissionForSettings result status=${result.status.name} '
-        'isGranted=${result.isGranted} statusCode=${result.statusCode} '
-        'errorType=${result.error?.runtimeType}',
-      );
-      return result;
-    }
-
-    _logSettingsNaverCalendar(
-        'refreshPermissionForSettings source=importService');
-    final hasAccess = await _naverImportService.hasCalendarAccess();
-    _logSettingsNaverCalendar(
-      'refreshPermissionForSettings importService hasAccess=$hasAccess',
-    );
-    if (hasAccess) {
-      return const NaverCalendarPermissionResult(
-        status: NaverCalendarPermissionStatus.granted,
-        message: '네이버 캘린더 권한을 확인했습니다.',
-      );
-    }
-    return const NaverCalendarPermissionResult(
-      status: NaverCalendarPermissionStatus.unknown,
-      message: '네이버 캘린더 권한을 아직 확인하지 못했습니다.',
-    );
-  }
-
-  String _naverOpenApiFailureMessage(
-    NaverCalendarPermissionResult? permission,
-  ) {
-    final status = permission?.status;
-    if (status == NaverCalendarPermissionStatus.denied) {
-      return '네이버 캘린더 권한이 아직 허용되지 않았습니다. 동의 화면에서 캘린더 권한을 허용해 주세요.';
-    }
-    if (status == NaverCalendarPermissionStatus.networkError) {
-      return permission?.message ?? '네이버 캘린더 권한 확인 중 네트워크 문제가 발생했습니다.';
-    }
-    if (permission?.message.contains('토큰') == true) {
-      return '네이버 로그인은 됐지만 캘린더 토큰을 받지 못했습니다.';
-    }
-    return permission?.message ?? '네이버 캘린더 권한을 확인하지 못했습니다. 다시 연결해 주세요.';
-  }
-
   Future<NaverCalDavSyncResult?> _importNaverCalDavEvents({
     bool skipIntro = false,
-    bool useOpenApi = false,
   }) async {
     if (_isImportingNaverCalDav) {
       return null;
@@ -1060,7 +884,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     final quickResult = await _runNaverCalDavImport(
       userId: userId,
       mode: NaverCalDavSyncMode.quick,
-      useOpenApi: useOpenApi,
     );
     if (!mounted || quickResult == null || !quickResult.success) {
       return quickResult;
@@ -1076,7 +899,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       from: range.from,
       to: range.to,
       additionalLabel: range.label,
-      useOpenApi: useOpenApi,
     );
   }
 
@@ -1087,11 +909,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     DateTime? to,
     String? additionalLabel,
     bool diagnosticImport = false,
-    bool useOpenApi = false,
   }) async {
     _logSettingsNaverCalendar(
       'runImport start userPresent=${userId.isNotEmpty} mode=$mode '
-      'useOpenApi=$useOpenApi diagnosticImport=$diagnosticImport '
+      'diagnosticImport=$diagnosticImport '
       'from=${from?.toIso8601String() ?? "(null)"} '
       'to=${to?.toIso8601String() ?? "(null)"}',
     );
@@ -1108,35 +929,20 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (!_isNaverCalDavProgressDialogOpen) {
       unawaited(_showNaverCalDavProgressDialog(dismissible: true));
     }
-    final result = useOpenApi
-        ? await _naverImportService.syncAll(
-            userId: userId,
-            from: from,
-            to: to,
-            mode: mode,
-            skipUnchanged: true,
-            diagnosticImport: diagnosticImport,
-            onProgress: (progress) {
-              if (!mounted) {
-                return;
-              }
-              _naverCalDavProgress.value = progress;
-            },
-          )
-        : await _naverCalDavService.syncAll(
-            userId: userId,
-            from: from,
-            to: to,
-            mode: mode,
-            skipUnchanged: true,
-            diagnosticImport: diagnosticImport,
-            onProgress: (progress) {
-              if (!mounted) {
-                return;
-              }
-              _naverCalDavProgress.value = progress;
-            },
-          );
+    final result = await _naverCalDavService.syncAll(
+      userId: userId,
+      from: from,
+      to: to,
+      mode: mode,
+      skipUnchanged: true,
+      diagnosticImport: diagnosticImport,
+      onProgress: (progress) {
+        if (!mounted) {
+          return;
+        }
+        _naverCalDavProgress.value = progress;
+      },
+    );
     _logSettingsNaverCalendar(
       'runImport result success=${result.success} events=${result.events} '
       'createdOrUpdated=${result.createdOrUpdated} skipped=${result.skipped} '
@@ -1168,7 +974,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         await _loadCalendarStatus();
       }
       EventRefreshBus.instance.notifyChanged(
-        reason: useOpenApi ? 'naver_open_api_import' : 'naver_caldav_import',
+        reason: 'naver_caldav_import',
       );
     } else {
       _logSettingsNaverCalendar('runImport failed -> mark failed');
@@ -1190,7 +996,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _showSnack('먼저 PlanFlow에 로그인해 주세요.');
       return;
     }
-    if (!_hasNaverCalDavCredentials && !_hasNaverOpenApiAccess) {
+    if (!_hasNaverCalDavCredentials) {
       final connected = await _connectNaverCalDavAndImport();
       if (!connected || !mounted) {
         return;
@@ -1201,7 +1007,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       mode: NaverCalDavSyncMode.quick,
       additionalLabel: '진단',
       diagnosticImport: true,
-      useOpenApi: !_hasNaverCalDavCredentials && _hasNaverOpenApiAccess,
     );
   }
 
@@ -2013,7 +1818,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       case SettingsInitialAction.calendarSync:
         return;
       case SettingsInitialAction.naverCalDav:
-        if (_hasNaverCalDavCredentials || _hasNaverOpenApiAccess) {
+        if (_hasNaverCalDavCredentials) {
           _showSnack('네이버 캘린더가 이미 연결되어 있어 동기화를 시작합니다.');
         }
         await _syncOrReconnectNaverCalendar();
@@ -2040,35 +1845,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Future<void> _recheckNaverAccountConsent() async {
-    if (_authService == null) {
-      _showSnack('Supabase 설정 후 네이버 계정 정보를 다시 확인할 수 있습니다.');
-      return;
-    }
-    if (!authProvider.isSignedIn) {
-      _showSnack('먼저 PlanFlow에 로그인해 주세요.');
-      return;
-    }
-    try {
-      // WebView 대신 Chrome Custom Tab으로 네이버 재인증 (auth_type=reprompt)
-      final launched = await _authService!.recheckNaverAccountConsent();
-      if (mounted && !launched) {
-        _showSnack('네이버 계정 정보 확인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-      }
-    } catch (error, stackTrace) {
-      OAuthCallbackHandler.clearPendingCallback();
-      debugPrint('Naver account recheck failed: ${logSafeText(error)}');
-      debugPrintStack(stackTrace: stackTrace);
-      _showSnack('네이버 계정 정보 확인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-    }
-  }
-
   Future<void> _disconnectNaverCalendar() async {
-    final authService = _authService;
-    if (authService == null) {
-      _showSnack('Supabase 설정 후 네이버 연동을 해제할 수 있습니다.');
-      return;
-    }
     if (!authProvider.isSignedIn) {
       _showSnack('먼저 PlanFlow에 로그인해 주세요.');
       return;
@@ -2086,12 +1863,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       _isDisconnectingNaverCalendar = true;
     });
     try {
-      final unlinked = await authService.disconnectNaverCalendar();
       await _calendarSyncService.disconnectProvider(
         CalendarProvider.naver,
         deleteProviderEvents: deleteProviderEvents,
       );
-      await _naverCalendarPermissionServiceInstance.clearConnectionState();
       await _naverCalDavService.clearCredentials();
       if (!mounted) {
         return;
@@ -2106,12 +1881,12 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
       setState(() {
         _hasNaverCalDavCredentials = false;
-        _hasNaverOpenApiAccess = false;
-        _pendingNaverOpenApiImportAfterConsent = false;
         _lastNaverCalDavResult = null;
       });
       _showSnack(
-        unlinked ? '네이버 연동을 해제했습니다.' : '네이버 연동 정보를 정리했습니다. 다시 동기화하면 새로 연결됩니다.',
+        deleteProviderEvents
+            ? '네이버 CalDAV 연동과 가져온 일정을 정리했습니다.'
+            : '네이버 CalDAV 연동을 해제했습니다. 기존 일정은 유지됩니다.',
       );
     } catch (error, stackTrace) {
       debugPrint('Naver calendar disconnect failed: ${logSafeText(error)}');
@@ -2975,7 +2750,6 @@ class _SettingsScreenState extends State<SettingsScreen>
             children: [
               _AccountSection(
                 authService: _authService,
-                onRecheckNaverAccount: _recheckNaverAccountConsent,
                 onSignedOut: () {
                   if (mounted) {
                     context.go(AppRoutes.login);
@@ -3299,7 +3073,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                                     child: OutlinedButton.icon(
                                       onPressed: _isDisconnectingNaverCalendar ||
                                               !(_hasNaverCalDavCredentials ||
-                                                  _hasNaverOpenApiAccess ||
                                                   _canDisconnectCalendar(
                                                     _calendarSyncSummary?.naver,
                                                   ))
@@ -3660,9 +3433,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   String _naverCalendarStatusLabel() {
     final autoSyncSnapshot = _naverCalendarAutoSyncSnapshot;
-    if (autoSyncSnapshot != null &&
-        !(_hasNaverOpenApiAccess &&
-            autoSyncSnapshot.key == 'naver_caldav_auto_import')) {
+    if (autoSyncSnapshot != null) {
       return autoSyncSnapshot.message;
     }
     final summary = _calendarSyncSummary?.naver;
@@ -3672,10 +3443,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (_hasNaverCalDavCredentials) {
       return _lastNaverCalDavResult?.message ??
           '네이버 CalDAV 자격증명이 저장되어 있습니다. 동기화를 눌러 확인해 주세요.';
-    }
-    if (_hasNaverOpenApiAccess) {
-      return _lastNaverCalDavResult?.message ??
-          '네이버 캘린더 권한은 확인됐습니다. 동기화를 눌러 일정을 가져오세요.';
     }
     return '네이버 캘린더 연결 안 됨';
   }
@@ -3711,10 +3478,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   CalendarAutoSyncProviderSnapshot? get _naverCalendarAutoSyncSnapshot {
-    return _autoSyncProviderSnapshot(const [
-      'naver_caldav_auto_import',
-      'naver_api_auto_export',
-    ]);
+    return _autoSyncProviderSnapshot(const ['naver_caldav_auto_import']);
   }
 
   CalendarAutoSyncProviderSnapshot? get _deviceCalendarAutoSyncSnapshot {
@@ -3723,7 +3487,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   bool _isNaverCalendarConfigured() {
     // 로컬 CalDAV 자격증명이 없으면 DB 상태와 무관하게 미연결
-    if (!_hasNaverCalDavCredentials && !_hasNaverOpenApiAccess) return false;
+    if (!_hasNaverCalDavCredentials) return false;
     final summary = _calendarSyncSummary?.naver;
     if (summary != null) {
       if (summary.status == CalendarIntegrationStatus.synced ||
@@ -3876,12 +3640,10 @@ class _NaverCalDavImportRange {
 class _AccountSection extends StatelessWidget {
   const _AccountSection({
     required this.authService,
-    required this.onRecheckNaverAccount,
     required this.onSignedOut,
   });
 
   final AuthService? authService;
-  final Future<void> Function() onRecheckNaverAccount;
   final VoidCallback onSignedOut;
 
   @override
@@ -3918,12 +3680,6 @@ class _AccountSection extends StatelessWidget {
         animation: authProvider,
         builder: (context, _) {
           final signedIn = authProvider.isSignedIn;
-          final showNaverRecheck = shouldShowNaverAccountRecheck(
-            signedIn: signedIn,
-            isNaverAccount: authProvider.isNaverAccount,
-            socialAccountInfoIncomplete:
-                authProvider.socialAccountInfoIncomplete,
-          );
           return Column(
             children: [
               _StatusRow(
@@ -3942,17 +3698,6 @@ class _AccountSection extends StatelessWidget {
                   icon: Icons.info_outline,
                   text:
                       '소셜 로그인은 되었지만 계정 이메일/이름을 확인하지 못했습니다. 제공 항목 동의나 provider 설정을 다시 확인해 주세요.',
-                ),
-              ],
-              if (showNaverRecheck) ...[
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: onRecheckNaverAccount,
-                    icon: const Icon(Icons.refresh_outlined),
-                    label: const Text('네이버 계정 정보 다시 확인'),
-                  ),
                 ),
               ],
               const SizedBox(height: 12),

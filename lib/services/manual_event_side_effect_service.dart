@@ -947,7 +947,7 @@ class ManualEventSideEffectService {
     final criticalNotifyAt = criticalAlarmOffset == null
         ? null
         : _resolveCriticalNotifyAt(startAt, criticalAlarmOffset);
-    if (event.isCritical && criticalNotifyAt != null) {
+    if (event.useStrongAlarm && criticalNotifyAt != null) {
       payloads.add(
         _reminderPayload(
           eventId: event.id,
@@ -987,7 +987,7 @@ class ManualEventSideEffectService {
     final criticalNotifyAt = criticalAlarmOffset == null
         ? null
         : _resolveCriticalNotifyAt(startAt, criticalAlarmOffset);
-    if (event.isCritical && criticalNotifyAt != null) {
+    if (event.useStrongAlarm && criticalNotifyAt != null) {
       final result = await _notifications.scheduleCriticalAlarmWithResult(
         id: _notifications.notificationIdFor('${event.id}:critical'),
         title: event.title,
@@ -1067,6 +1067,7 @@ EventModel _copyEventWithLocationCoordinates(
     participants: event.participants,
     targets: event.targets,
     isCritical: event.isCritical,
+    useStrongAlarm: event.useStrongAlarm,
     recurrenceRule: event.recurrenceRule,
     isAllDay: event.isAllDay,
     isMultiDay: event.isMultiDay,
@@ -1102,6 +1103,7 @@ EventModel _copyEventWithCritical(
     participants: event.participants,
     targets: event.targets,
     isCritical: isCritical,
+    useStrongAlarm: event.useStrongAlarm,
     recurrenceRule: event.recurrenceRule,
     isAllDay: event.isAllDay,
     isMultiDay: event.isMultiDay,

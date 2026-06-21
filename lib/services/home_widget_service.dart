@@ -638,14 +638,17 @@ class HomeWidgetSchedulePayloadBuilder {
       }
     }
 
-    // 2.5단계: overflow > 0인 셀에서 마지막 슬롯을 overflow로 이동
+    // 2.5단계: 월간 위젯은 3개까지 실제 일정을 보이고, 그 이상은 +n개로 대체합니다.
     // XML 레이아웃(event_1~4 + overflow_count)에서 overflow_count와 event_4가
-    // 동시에 표시되면 5행이 돼 레이아웃이 깨짐 → 마지막 슬롯을 비워 overflow에 합산
+    // 동시에 표시되면 5행이 돼 레이아웃이 깨지므로 마지막 슬롯을 overflow 자리로 씁니다.
+    final maxVisibleMonthlyEvents = monthlyWidgetEventRows - 1;
     for (var i = 0; i < 42; i++) {
-      if (overflowCounts[i] > 0 &&
-          slotMap[i][monthlyWidgetEventRows - 1] != null) {
-        slotMap[i][monthlyWidgetEventRows - 1] = null;
-        overflowCounts[i]++;
+      final totalDayEvents = _eventsForDay(events, cellDays[i]).length;
+      final requiresOverflowLabel =
+          overflowCounts[i] > 0 || totalDayEvents > maxVisibleMonthlyEvents;
+      if (requiresOverflowLabel &&
+          slotMap[i][maxVisibleMonthlyEvents] != null) {
+        slotMap[i][maxVisibleMonthlyEvents] = null;
       }
     }
 
@@ -661,6 +664,7 @@ class HomeWidgetSchedulePayloadBuilder {
       final hiddenEvents = dayEvents
           .where((event) => !visibleIds.contains(event.id))
           .toList(growable: false);
+      final overflowCount = hiddenEvents.length;
       final cellEvents = slotMap[i]
           .where((e) => e != null)
           .map((e) => _listEventForMonthCell(e!, day))
@@ -671,7 +675,7 @@ class HomeWidgetSchedulePayloadBuilder {
         day: day.day,
         inMonth: inMonth,
         events: cellEvents,
-        overflowCount: overflowCounts[i],
+        overflowCount: overflowCount,
         overflowPreviewTitle: hiddenEvents.isEmpty
             ? null
             : hiddenEvents.first.title.trim().isEmpty

@@ -402,8 +402,18 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   Future<void> _handleSave() async {
-    final isValid = _formKey.currentState?.validate() ?? false;
+    debugPrint('EventEditScreen save start');
+    final formState = _formKey.currentState;
+    if (formState == null) {
+      debugPrint('EventEditScreen save blocked: form state missing');
+      _showMessage('저장 폼 상태를 찾지 못했어요. 화면을 다시 열어 주세요.');
+      return;
+    }
+    final isValid = formState.validate();
     if (!isValid) {
+      debugPrint('EventEditScreen save blocked: form validation failed');
+      _showMessage('필수 항목(제목 등)을 확인해 주세요.');
+      _revealFirstFormError();
       return;
     }
 
@@ -412,19 +422,24 @@ class _EventEditScreenState extends State<EventEditScreen> {
     });
 
     try {
+      debugPrint('EventEditScreen save try entered');
       if (!AppEnv.isSupabaseReady) {
+        debugPrint('EventEditScreen save blocked: supabase env missing');
         _showMessage('Supabase 빌드 설정값이 주입되지 않았습니다.');
         return;
       }
 
       try {
+        debugPrint('EventEditScreen save before syncCurrentSession');
         await authProvider.syncCurrentSession();
+        debugPrint('EventEditScreen save after syncCurrentSession');
       } catch (error) {
         debugPrint('EventEditScreen session sync failed before save: $error');
       }
 
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) {
+        debugPrint('EventEditScreen save blocked: user missing');
         _showMessage('로그인 후 저장할 수 있습니다.');
         return;
       }
@@ -434,12 +449,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
           _loadedEvent?.recurrenceRule?.trim().isNotEmpty == true) {
         recurrenceScope = await _chooseRecurrenceEditScopeSafe();
         if (recurrenceScope == null) {
+          debugPrint('EventEditScreen save canceled: recurrence scope dialog');
           return;
         }
       }
 
+      debugPrint('EventEditScreen save before ensureLocationCoordinates');
       await _ensureLocationCoordinatesBeforeSave();
+      debugPrint('EventEditScreen save after ensureLocationCoordinates');
       if (!mounted) {
+        debugPrint('EventEditScreen save stopped: unmounted after location');
         return;
       }
 
@@ -487,23 +506,34 @@ class _EventEditScreenState extends State<EventEditScreen> {
       );
 
       final overlapStart = updatedEvent.startAt ?? _startAt;
+      debugPrint('EventEditScreen save before findOverlappingEvents');
       final overlappingEvents = await _repository.findOverlappingEvents(
         rangeStart: overlapStart,
         rangeEnd: _eventRangeEnd(overlapStart, updatedEvent.endAt),
         userId: user.id,
         excludedEventId: _loadedEvent?.id ?? updatedEvent.id,
       );
+      debugPrint('EventEditScreen save after findOverlappingEvents');
       final duplicateWarningEvents = filterDuplicateWarningEvents(
         draft: updatedEvent,
         candidates: overlappingEvents,
       );
       if (!mounted) {
+        debugPrint(
+            'EventEditScreen save stopped: unmounted after overlap check');
         return;
       }
       if (duplicateWarningEvents.isNotEmpty) {
         final shouldContinue =
             await _showOverlapWarning(duplicateWarningEvents);
-        if (!shouldContinue || !mounted) {
+        if (!mounted) {
+          debugPrint(
+              'EventEditScreen save stopped: unmounted after overlap warning');
+          return;
+        }
+        if (!shouldContinue) {
+          debugPrint('EventEditScreen save canceled: overlap warning');
+          _showMessage('중복 일정 경고에서 저장을 취소했어요.');
           return;
         }
       }
@@ -590,6 +620,37 @@ class _EventEditScreenState extends State<EventEditScreen> {
         });
       }
     }
+  }
+
+  void _revealFirstFormError() {
+    final formContext = _formKey.currentContext;
+    if (formContext == null) {
+      return;
+    }
+
+    BuildContext? firstErrorContext;
+    void visit(Element element) {
+      if (firstErrorContext != null) {
+        return;
+      }
+      if (element is StatefulElement) {
+        final state = element.state;
+        if (state is FormFieldState<dynamic> && state.hasError) {
+          firstErrorContext = element;
+          return;
+        }
+      }
+      element.visitChildren(visit);
+    }
+
+    (formContext as Element).visitChildren(visit);
+    final targetContext = firstErrorContext ?? formContext;
+    Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 250),
+      alignment: 0.1,
+    );
+    Focus.maybeOf(targetContext)?.requestFocus();
   }
 
   String _messageForSaveStateError(StateError error) {

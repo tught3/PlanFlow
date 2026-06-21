@@ -1005,7 +1005,7 @@ enum _ExternalMapTarget {
           <String, String>{'api': '1', 'query': trimmed},
         ),
       _ExternalMapTarget.naver =>
-        Uri.parse('https://map.naver.com/p/search/$encoded'),
+        Uri.parse('nmap://search?query=$encoded&appname=com.fluxstudio.planflow'),
       _ExternalMapTarget.tmap => Uri.parse('tmap://search?name=$encoded'),
     };
   }
@@ -1028,10 +1028,18 @@ class _ExternalMapButtons extends StatelessWidget {
       );
       return;
     }
-    final opened = await launchUrl(
+    var opened = await launchUrl(
       target.uri(trimmed),
       mode: LaunchMode.externalApplication,
     );
+    // 네이버 지도 앱(nmap://)이 설치되지 않은 경우 웹으로 폴백
+    if (!opened && target == _ExternalMapTarget.naver) {
+      final encoded = Uri.encodeComponent(trimmed);
+      opened = await launchUrl(
+        Uri.parse('https://map.naver.com/p/search/$encoded'),
+        mode: LaunchMode.externalApplication,
+      );
+    }
     if (!opened && context.mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(content: Text('${target.label}를 열지 못했어요.')),
