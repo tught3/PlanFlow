@@ -1138,12 +1138,19 @@ class _EventEditScreenState extends State<EventEditScreen> {
                         currentEnd: _endAt,
                         endEditedByUser: _endEditedByUser,
                       );
+                      if (_endAt != null && _endAt!.isBefore(_startAt)) {
+                        _endAt = _startAt;
+                      }
                     });
                   },
                   onEndChanged: (value) {
                     setState(() {
                       _endEditedByUser = true;
-                      _endAt = value;
+                      if (value != null && value.isBefore(_startAt)) {
+                        _endAt = _startAt;
+                      } else {
+                        _endAt = value;
+                      }
                     });
                   },
                   onAllDayChanged: (value) {
