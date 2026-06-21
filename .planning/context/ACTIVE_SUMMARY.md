@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-21 Google OAuth launch stabilization
+- Google 로그인 런처를 풀 브라우저 대신 커스텀 탭(`LaunchMode.inAppBrowserView`)으로 바꿔, S8처럼 Chrome 계정 선택 화면이 오래 머무는 기기에서도 앱 복귀 가능성을 높였다.
+- 이 변경은 S8 전용 우회가 아니라 모든 Android 기기에 공통 적용되는 로그인 진입 방식 정리로 두었다.
+- 검증: `flutter analyze --no-pub` 통과, `flutter build apk --release --no-pub` 통과로 `build/app/outputs/flutter-apk/app-release.apk` 재생성, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공 및 S8 앱 버전 갱신 확인.
 ## 2026-06-21 V2 main 추적 재정렬
 - V2를 독립 수정 분기가 아니라 main PlanFlow 기준선 + 얇은 V2 overlay로 관리하도록 `docs/planflow-v2/23-main-tracking-overlay-policy.md`에 허용/비허용 차이를 문서화했다.
 - 권한 온보딩, `AppPermissionService`, `app.dart`, OAuth callback, Android manifest, `MainActivity`, 홈 위젯 provider를 main 기준으로 재정렬했고, V2에는 `planflow-v2://`, `PlanFlow V2`, `com.fluxstudio.planflow.v2`, `com.fluxstudio.planflow.v2.widget.*` overlay만 남겼다.

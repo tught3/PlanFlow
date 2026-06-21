@@ -248,7 +248,9 @@ class AuthService implements AuthSessionClient {
     required String purpose,
   }) async {
     final launchMode = switch (appProvider) {
-      PlanFlowOAuthProvider.google => LaunchMode.externalApplication,
+      // Google OAuth는 풀 브라우저보다 커스텀 탭이 S8 같은 구형 기기에서
+      // 계정 선택/리다이렉트 복귀 안정성이 더 나은 경우가 있어 우선 사용한다.
+      PlanFlowOAuthProvider.google => LaunchMode.inAppBrowserView,
       PlanFlowOAuthProvider.kakao => LaunchMode.inAppBrowserView,
       PlanFlowOAuthProvider.naver => LaunchMode.inAppBrowserView,
     };
