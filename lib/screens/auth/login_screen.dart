@@ -228,7 +228,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       if (provider != PlanFlowOAuthProvider.google) {
         OAuthCallbackHandler.clearPendingCallback();
       }
-      _setMessage(_friendlyAuthMessage(error));
+      _setMessage(_friendlyAuthMessage(error, provider: provider));
     } finally {
       if (mounted && !keepLoadingForCallback) {
         setState(() {
@@ -379,12 +379,27 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     });
   }
 
-  String _friendlyAuthMessage(Object error) {
-    final message = error.toString();
+  String _friendlyAuthMessage(
+    Object error, {
+    PlanFlowOAuthProvider? provider,
+  }) {
+    final message = error.toString().trim();
+
+    if (provider == PlanFlowOAuthProvider.google &&
+        message.isNotEmpty &&
+        !message.contains(appL10n(context).authGenericError)) {
+      return message;
+    }
+
     if (message.contains('Google 로그인 설정이 없습니다') ||
         message.contains('Google 로그인이 취소되었습니다') ||
         message.contains('Google ID 토큰을 받지 못했습니다') ||
         message.contains('Google access token을 받지 못했습니다')) {
+      return message;
+    }
+    if (message.contains('AuthException') ||
+        message.contains('AuthApiException') ||
+        message.contains('PlatformException')) {
       return message;
     }
     if (message.contains('Invalid login credentials')) {

@@ -69,13 +69,19 @@ class AuthService implements AuthSessionClient {
       throw AuthException('Google access token을 받지 못했습니다.');
     }
 
-    final response = await _client.auth.signInWithIdToken(
-      provider: OAuthProvider.google,
-      idToken: idToken,
-      accessToken: accessToken,
-    );
-    unawaited(_tryEnsureProfile(response.user));
-    return response;
+    try {
+      final response = await _client.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+        accessToken: accessToken,
+      );
+      unawaited(_tryEnsureProfile(response.user));
+      return response;
+    } catch (error, stackTrace) {
+      debugPrint('Google native sign-in failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   Future<AuthResponse> signInWithEmail({

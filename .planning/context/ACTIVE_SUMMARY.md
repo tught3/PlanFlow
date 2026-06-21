@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-21 Google native auth error transparency
+- Google native login 실패 시 `login_screen.dart`가 더 이상 무조건 generic 문구만 내지 않도록 바꿔, Google/Supabase 원문 에러를 그대로 보여주거나 최소한 상세 메시지가 노출되게 했다.
+- `AuthService.signInWithGoogleNative()`도 실패 시 `debugPrint`로 원문을 남기게 해서, 다음 재현 때 UI와 logcat 양쪽에서 같은 원인을 확인할 수 있게 했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, `scripts/flutter-local.ps1 build apk --release --no-pub` 통과, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `adb -s 192.168.0.105:5555 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
 ## 2026-06-21 Login screen Supabase readiness race fix
 - `LoginScreen`이 `initState()` 시점의 Supabase 준비 상태를 고정하지 않도록 바꾸고, `AuthService`를 필요한 시점에 lazy resolve 하도록 정리했다.
 - Supabase 초기화가 늦게 끝나는 경우에도 짧게 기다렸다가 Google native login / email login을 진행하도록 해서, 준비 완료 직후에도 stale `Supabase 빌드 설정값` 오류가 남지 않게 했다.
