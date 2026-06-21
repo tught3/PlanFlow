@@ -7,6 +7,10 @@ import 'package:planflow/screens/auth/login_screen.dart';
 import 'package:planflow/services/auth_service.dart';
 
 void main() {
+  setUp(() {
+    AppEnv.resetSupabaseInitializationState();
+  });
+
   testWidgets('LoginScreen shows the Naver social login button',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(360, 1200));
@@ -27,6 +31,27 @@ void main() {
       tester.getTopLeft(find.text('이메일 로그인')).dy,
       lessThan(tester.getTopLeft(find.text('간편 로그인')).dy),
     );
+    expect(
+      find.textContaining('Supabase 빌드 설정값을 먼저 주입해야 로그인할 수 있습니다.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('LoginScreen surfaces Supabase init failures', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    AppEnv.markSupabaseInitializationFailed('Supabase 초기화에 실패했습니다: timeout');
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: LoginScreen(),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Supabase 초기화에 실패했습니다'), findsOneWidget);
   });
 
   testWidgets('LoginScreen shows safer email sign-up guidance', (tester) async {

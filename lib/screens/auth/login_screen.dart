@@ -111,7 +111,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     }
     final l10n = appL10n(context);
     if (authService == null) {
-      _setMessage(l10n.supabaseLoginMissing);
+      _setMessage(_supabaseUnavailableMessage(forSocialLogin: false));
       return;
     }
 
@@ -191,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     }
     final l10n = appL10n(context);
     if (authService == null) {
-      _setMessage(l10n.supabaseSocialMissing);
+      _setMessage(_supabaseUnavailableMessage(forSocialLogin: true));
       return;
     }
 
@@ -318,7 +318,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   }
 
   void _startSupabaseReadyPoller() {
-    if (AppEnv.isSupabaseReady) {
+    if (AppEnv.isSupabaseReady || AppEnv.isSupabaseInitializationFailed) {
       return;
     }
     _supabaseReadyPoller?.cancel();
@@ -329,7 +329,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
         timer.cancel();
         return;
       }
-      if (AppEnv.isSupabaseReady) {
+      if (AppEnv.isSupabaseReady || AppEnv.isSupabaseInitializationFailed) {
         timer.cancel();
         setState(() {});
       }
@@ -357,10 +357,25 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     }
 
     final deadline = DateTime.now().add(const Duration(seconds: 6));
-    while (!AppEnv.isSupabaseReady && DateTime.now().isBefore(deadline)) {
+    while (!AppEnv.isSupabaseReady &&
+        !AppEnv.isSupabaseInitializationFailed &&
+        DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     return _resolveAuthService();
+  }
+
+  String _supabaseUnavailableMessage({required bool forSocialLogin}) {
+    if (!AppEnv.hasValidSupabaseConfig) {
+      return forSocialLogin
+          ? appL10n(context).supabaseSocialMissing
+          : appL10n(context).supabaseLoginMissing;
+    }
+    if (AppEnv.isSupabaseInitializationFailed) {
+      return AppEnv.supabaseInitializationErrorMessage ??
+          appL10n(context).authGenericError;
+    }
+    return 'Supabase 초기화가 아직 끝나지 않았습니다. 잠시 후 다시 시도해 주세요.';
   }
 
   void _ensureMessageVisible() {
@@ -418,6 +433,12 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = appL10n(context);
+    final supabaseBannerMessage = !AppEnv.hasValidSupabaseConfig
+        ? l10n.supabaseLoginMissing
+        : AppEnv.isSupabaseInitializationFailed
+            ? (AppEnv.supabaseInitializationErrorMessage ??
+                l10n.authGenericError)
+            : null;
     final title = switch (_mode) {
       _AuthMode.login => l10n.loginTitle,
       _AuthMode.signUp => l10n.signUpTitle,
@@ -480,9 +501,9 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 12),
-            if (!AppEnv.isSupabaseReady)
+            if (supabaseBannerMessage != null)
               _MessageBox(
-                message: l10n.supabaseLoginMissing,
+                message: supabaseBannerMessage,
                 isError: true,
               ),
             if (_message != null) ...[

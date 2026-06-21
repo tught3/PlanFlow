@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-21 Supabase readiness/error split
+- `LoginScreen`이 Supabase 초기화 진행 중인 정상 상태를 `빌드 설정값 부족` 오류로 오진하지 않도록, 준비 중과 실제 실패 상태를 분리했다.
+- `AppEnv`에 Supabase 초기화 실패 플래그와 실패 메시지를 추가하고, `main.dart`의 Supabase 초기화 예외를 실패 상태로 기록하게 해서 실제 실패만 로그인 화면에 노출되도록 정리했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, `flutter test test/screens/login_screen_test.dart --no-pub -r compact` 통과, `flutter build apk --release --no-pub` 통과, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `adb -s 192.168.0.105:5555 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
 ## 2026-06-21 Google native auth error transparency
 - Google native login 실패 시 `login_screen.dart`가 더 이상 무조건 generic 문구만 내지 않도록 바꿔, Google/Supabase 원문 에러를 그대로 보여주거나 최소한 상세 메시지가 노출되게 했다.
 - `AuthService.signInWithGoogleNative()`도 실패 시 `debugPrint`로 원문을 남기게 해서, 다음 재현 때 UI와 logcat 양쪽에서 같은 원인을 확인할 수 있게 했다.

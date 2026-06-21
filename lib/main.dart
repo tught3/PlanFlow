@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -63,9 +64,10 @@ Future<void> _initializeFirebaseServices() async {
 Future<void> _initializeNaverMap() async {
   if (AppEnv.naverMapClientId.trim().isNotEmpty) {
     var naverMapAuthFailed = false;
-    debugPrint(
-      'Naver Map init start: package=com.fluxstudio.planflow '
-      'clientIdSet=${AppEnv.naverMapClientId.trim().isNotEmpty}',
+    developer.log(
+      'Naver Map init start',
+      name: 'PlanFlow',
+      error: 'clientIdSet=${AppEnv.naverMapClientId.trim().isNotEmpty}',
     );
     try {
       await FlutterNaverMap()
@@ -79,13 +81,19 @@ Future<void> _initializeNaverMap() async {
           .timeout(const Duration(seconds: 8));
       if (!naverMapAuthFailed) {
         AppEnv.markNaverMapInitialized();
-        debugPrint(
-          'Naver Map init ready: package=com.fluxstudio.planflow '
-          'clientIdSet=${AppEnv.naverMapClientId.trim().isNotEmpty}',
+        developer.log(
+          'Naver Map init success',
+          name: 'PlanFlow',
+          error: 'clientIdSet=${AppEnv.naverMapClientId.trim().isNotEmpty}',
         );
       }
     } catch (error) {
-      debugPrint('Naver Map initialization skipped: $error');
+      developer.log(
+        'Naver Map init failed: $error',
+        name: 'PlanFlow',
+        error: error,
+        stackTrace: StackTrace.current,
+      );
     }
   }
 }
@@ -93,6 +101,7 @@ Future<void> _initializeNaverMap() async {
 Future<void> _initializeSupabase() async {
   if (AppEnv.hasValidSupabaseConfig) {
     try {
+      developer.log('Supabase init start', name: 'PlanFlow');
       await Supabase.initialize(
         url: AppEnv.supabaseUrl,
         anonKey: AppEnv.supabaseAnonKey,
@@ -100,8 +109,9 @@ Future<void> _initializeSupabase() async {
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
         ),
-      ).timeout(const Duration(seconds: 10));
+        ).timeout(const Duration(seconds: 10));
       AppEnv.markSupabaseInitialized();
+      developer.log('Supabase init success', name: 'PlanFlow');
       authProvider.start();
       String? lastPrefetchedUserId;
       void syncPrefetchForAuthUser() {
@@ -122,7 +132,13 @@ Future<void> _initializeSupabase() async {
       authProvider.addListener(syncPrefetchForAuthUser);
       unawaited(const DailyCalendarSyncSchedulerService().scheduleDaily());
     } catch (error) {
-      debugPrint('Supabase initialization skipped: $error');
+      AppEnv.markSupabaseInitializationFailed(error);
+      developer.log(
+        'Supabase init failed: $error',
+        name: 'PlanFlow',
+        error: error,
+        stackTrace: StackTrace.current,
+      );
       authProvider.start();
     }
   } else {
