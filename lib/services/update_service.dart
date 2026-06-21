@@ -67,6 +67,7 @@ class UpdateService {
 
   @visibleForTesting
   static void resetForTest() {
+    _defaultInstance._setUiState(UpdateUiState.idle);
     _instance = _defaultInstance;
   }
 
@@ -119,10 +120,12 @@ class UpdateService {
     );
 
     try {
+      _setUiState(UpdateUiState.checking);
       final info = await _updateFlow.checkForUpdate().timeout(_checkTimeout);
 
       if (info.updateAvailability != UpdateAvailabilityState.available) {
         if (shouldForceUpdate) {
+          _setUiState(UpdateUiState.openingPlayStore);
           await _fallbackToPlayStore(metadata.packageName);
           return report(UpdatePromptOutcome.playStoreOpened).didStartUpdateFlow;
         }
@@ -130,12 +133,14 @@ class UpdateService {
       }
 
       if (shouldForceUpdate && info.immediateUpdateAllowed) {
+        _setUiState(UpdateUiState.updating);
         await _updateFlow.performImmediateUpdate();
         return report(UpdatePromptOutcome.immediateUpdateStarted)
             .didStartUpdateFlow;
       }
 
       if (info.flexibleUpdateAllowed) {
+        _setUiState(UpdateUiState.updating);
         await _updateFlow.startFlexibleUpdate();
         await _updateFlow.completeFlexibleUpdate();
         return report(UpdatePromptOutcome.flexibleUpdateStarted)
@@ -143,6 +148,7 @@ class UpdateService {
       }
 
       if (shouldForceUpdate) {
+        _setUiState(UpdateUiState.openingPlayStore);
         await _fallbackToPlayStore(metadata.packageName);
         return report(UpdatePromptOutcome.playStoreOpened).didStartUpdateFlow;
       } else {
@@ -154,10 +160,13 @@ class UpdateService {
     } catch (error) {
       debugPrint('In-app update check skipped: $error');
       if (shouldForceUpdate) {
+        _setUiState(UpdateUiState.openingPlayStore);
         await _fallbackToPlayStore(metadata.packageName);
         return report(UpdatePromptOutcome.playStoreOpened).didStartUpdateFlow;
       }
       return report(UpdatePromptOutcome.noAction).didStartUpdateFlow;
+    } finally {
+      _setUiState(UpdateUiState.idle);
     }
   }
 
@@ -208,6 +217,17 @@ class UpdateService {
   final Duration _checkTimeout;
   final bool _skipInDebug;
   Future<bool>? _inFlightCheck;
+  final ValueNotifier<UpdateUiState> _uiState =
+      ValueNotifier<UpdateUiState>(UpdateUiState.idle);
+
+  ValueListenable<UpdateUiState> get uiState => _uiState;
+
+  void _setUiState(UpdateUiState state) {
+    if (_uiState.value == state) {
+      return;
+    }
+    _uiState.value = state;
+  }
 }
 
 enum UpdatePromptOutcome {
@@ -217,6 +237,13 @@ enum UpdatePromptOutcome {
   playStoreOpened;
 
   bool get didStartUpdateFlow => this != UpdatePromptOutcome.noAction;
+}
+
+enum UpdateUiState {
+  idle,
+  checking,
+  updating,
+  openingPlayStore,
 }
 
 class AppVersionMetadata {

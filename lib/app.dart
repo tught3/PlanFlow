@@ -542,26 +542,124 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     return AnimatedBuilder(
       animation: PlanFlowRegionController.instance,
       builder: (context, _) {
-        return MaterialApp.router(
-          debugShowCheckedModeBanner: false,
-          scaffoldMessengerKey: AppFeedbackService.scaffoldMessengerKey,
-          title: 'PlanFlow',
-          theme: buildPlanFlowTheme(),
-          locale: PlanFlowRegionController.instance.region.uiLocale,
-          supportedLocales: const [
-            Locale('ko', 'KR'),
-            Locale('en', 'US'),
-          ],
-          localizationsDelegates: const [
-            AppLocalizations.delegate,
-            GlobalMaterialLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-          ],
-          routerConfig: appRouter,
+        return ValueListenableBuilder<UpdateUiState>(
+          valueListenable: UpdateService.instance.uiState,
+          builder: (context, updateState, _) {
+            return MaterialApp.router(
+              debugShowCheckedModeBanner: false,
+              scaffoldMessengerKey: AppFeedbackService.scaffoldMessengerKey,
+              title: 'PlanFlow',
+              theme: buildPlanFlowTheme(),
+              locale: PlanFlowRegionController.instance.region.uiLocale,
+              supportedLocales: const [
+                Locale('ko', 'KR'),
+                Locale('en', 'US'),
+              ],
+              localizationsDelegates: const [
+                AppLocalizations.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+              ],
+              routerConfig: appRouter,
+              builder: (context, child) {
+                final showUpdateOverlay = updateState == UpdateUiState.updating ||
+                    updateState == UpdateUiState.openingPlayStore;
+                return Stack(
+                  children: <Widget>[
+                    child ?? const SizedBox.shrink(),
+                    if (showUpdateOverlay)
+                      _UpdateProgressOverlay(state: updateState),
+                  ],
+                );
+              },
+            );
+          },
         );
       },
     );
+  }
+}
+
+class _UpdateProgressOverlay extends StatelessWidget {
+  const _UpdateProgressOverlay({required this.state});
+
+  final UpdateUiState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final (title, subtitle) = switch (state) {
+      UpdateUiState.checking => (
+          '업데이트 확인 중...',
+          '잠시만 기다려 주세요.',
+        ),
+      UpdateUiState.updating => (
+          '업데이트 중...',
+          '업데이트가 끝날 때까지 잠시만 기다려 주세요.',
+        ),
+      UpdateUiState.openingPlayStore => (
+          '업데이트 페이지를 여는 중...',
+          '조금만 기다려 주세요.',
+        ),
+      UpdateUiState.idle => (
+          '',
+          '',
+        ),
+    };
+
+    return Positioned.fill(
+      child: Stack(
+        children: <Widget>[
+          const ModalBarrier(
+            dismissible: false,
+            color: Colors.black45,
+          ),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 300),
+              child: Material(
+                elevation: 10,
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 22,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        subtitle,
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Colors.black54,
+                            ),
+                      ),
+                    ],
+                  ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
   }
 }
 

@@ -80,41 +80,6 @@ void main() {
   );
 
   testWidgets(
-    'PermissionOnboardingScreen keeps location and calendar in the required section',
-    (tester) async {
-      SharedPreferencesAsyncPlatform.instance =
-          InMemorySharedPreferencesAsync.empty();
-      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: PermissionOnboardingScreen(
-            permissionService: _FakePermissionService(),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('선택 권한'), findsNothing);
-      final locationTile = find.text('위치');
-      await tester.scrollUntilVisible(
-        locationTile,
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(locationTile, findsOneWidget);
-
-      final calendarTile = find.text('기기 캘린더');
-      await tester.scrollUntilVisible(
-        calendarTile,
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(calendarTile, findsOneWidget);
-    },
-  );
-
-  testWidgets(
     'PermissionOnboardingScreen skip completes onboarding without OS permission requests',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
@@ -154,7 +119,92 @@ void main() {
   );
 
   testWidgets(
-    'PermissionOnboardingScreen includes exact alarm and full-screen alarm in request-all flow',
+    'PermissionOnboardingScreen hides full-screen intent permission on normal phones',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+      await tester.binding.setSurfaceSize(const Size(360, 740));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final permissionService = _FakePermissionService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PermissionOnboardingScreen(
+            permissionService: permissionService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(permissionService.microphoneRequests, 1);
+      expect(permissionService.notificationRequests, 1);
+      expect(permissionService.exactAlarmRequests, 1);
+      expect(permissionService.locationRequests, 1);
+      expect(permissionService.calendarRequests, 1);
+      expect(permissionService.fullScreenIntentRequests, 0);
+      expect(permissionService.exactAlarmGranted, isTrue);
+      expect(permissionService.fullScreenIntentGranted, isFalse);
+      expect(
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
+        findsOneWidget,
+      );
+
+      final fullScreenIntentTile = find.byKey(
+        const ValueKey('permission-onboarding-full-screen-intent-tile'),
+      );
+      expect(fullScreenIntentTile, findsNothing);
+    },
+  );
+
+  testWidgets(
+    'PermissionOnboardingScreen does not treat a cutout as a foldable display feature',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final permissionService = _FakePermissionService();
+
+      await tester.pumpWidget(
+        MediaQuery(
+          data: MediaQueryData(
+            size: const Size(390, 844),
+            displayFeatures: <ui.DisplayFeature>[
+              ui.DisplayFeature(
+                bounds: const Rect.fromLTWH(180, 0, 30, 24),
+                type: ui.DisplayFeatureType.unknown,
+                state: ui.DisplayFeatureState.postureFlat,
+              ),
+            ],
+          ),
+          child: MaterialApp(
+            home: PermissionOnboardingScreen(
+              permissionService: permissionService,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('permission-onboarding-full-screen-intent-tile')),
+        findsNothing,
+      );
+      expect(permissionService.fullScreenIntentRequests, isZero);
+    },
+  );
+
+  testWidgets(
+    'PermissionOnboardingScreen shows full-screen intent permission as required on foldables',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
@@ -170,7 +220,7 @@ void main() {
             size: Size(1000, 800),
             displayFeatures: <ui.DisplayFeature>[
               ui.DisplayFeature(
-                bounds: Rect.fromLTWH(500, 0, 12, 800),
+                bounds: Rect.fromLTWH(495, 0, 10, 800),
                 type: ui.DisplayFeatureType.hinge,
                 state: ui.DisplayFeatureState.postureHalfOpened,
               ),
@@ -185,25 +235,6 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(permissionService.exactAlarmGranted, isTrue);
-      expect(permissionService.fullScreenIntentGranted, isTrue);
-      expect(permissionService.notificationRequests, 1);
-      expect(permissionService.exactAlarmRequests, 1);
-      expect(permissionService.exactAlarmSettingsOpened, isTrue);
-      expect(
-        find.descendant(
-          of: find.byKey(
-            const ValueKey('permission-onboarding-exact-alarm-tile'),
-          ),
-          matching: find.byIcon(Icons.check_circle_outline),
-        ),
-        findsOneWidget,
-      );
       final fullScreenIntentTile = find.byKey(
         const ValueKey('permission-onboarding-full-screen-intent-tile'),
       );
@@ -212,17 +243,15 @@ void main() {
         300,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(
-        find.descendant(
-          of: find.byKey(
-            const ValueKey(
-              'permission-onboarding-full-screen-intent-tile',
-            ),
-          ),
-          matching: find.byIcon(Icons.check_circle_outline),
-        ),
-        findsOneWidget,
+      expect(fullScreenIntentTile, findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
       );
+      await tester.pumpAndSettle();
+
+      expect(permissionService.fullScreenIntentRequests, 1);
+      expect(permissionService.fullScreenIntentGranted, isTrue);
     },
   );
 
@@ -275,7 +304,42 @@ void main() {
   );
 
   testWidgets(
-    'PermissionOnboardingScreen opens exact alarm settings when exact alarm stays denied',
+    'PermissionOnboardingScreen does not reopen notification settings in a loop after resume when still denied',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+      final permissionService = _FakePermissionService()
+        ..notificationRequestGranted = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PermissionOnboardingScreen(
+            permissionService: permissionService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(permissionService.notificationSettingsOpened, isTrue);
+      expect(permissionService.notificationRequests, 1);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(permissionService.notificationSettingsOpened, isTrue);
+      expect(permissionService.notificationRequests, 1);
+    },
+  );
+
+  testWidgets(
+    'PermissionOnboardingScreen does not open generic app settings when exact alarm stays denied',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.empty();
@@ -293,35 +357,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final requestButton = find.descendant(
-        of: find.byKey(
-          const ValueKey('permission-onboarding-exact-alarm-tile'),
-        ),
-        matching: find.byType(TextButton),
+      await tester.tap(
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
       );
-      await tester.drag(find.byType(ListView), const Offset(0, -300));
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(requestButton);
-      await tester.tap(requestButton);
       await tester.pumpAndSettle();
 
-      expect(permissionService.exactAlarmSettingsOpened, isTrue);
       expect(permissionService.appSettingsOpened, isFalse);
       expect(permissionService.exactAlarmGranted, isFalse);
-
-      permissionService.exactAlarmGranted = true;
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pumpAndSettle();
-
-      expect(
-        find.descendant(
-          of: find.byKey(
-            const ValueKey('permission-onboarding-exact-alarm-tile'),
-          ),
-          matching: find.byIcon(Icons.check_circle_outline),
-        ),
-        findsOneWidget,
-      );
+      expect(permissionService.alarmSettingsOpened, isTrue);
     },
   );
 }
@@ -330,14 +373,16 @@ class _FakePermissionService extends AppPermissionService {
   _FakePermissionService()
       : super(notificationService: _FakeNotificationService());
 
+  bool microphoneGranted = false;
+  bool locationGranted = false;
+  bool calendarGranted = false;
   bool exactAlarmGranted = false;
   bool fullScreenIntentGranted = false;
   bool notificationGranted = false;
   bool notificationRequestGranted = true;
   bool exactAlarmRequestGranted = true;
   bool notificationSettingsOpened = false;
-  bool exactAlarmSettingsOpened = false;
-  bool fullScreenIntentSettingsOpened = false;
+  bool alarmSettingsOpened = false;
   bool appSettingsOpened = false;
   int microphoneRequests = 0;
   int locationRequests = 0;
@@ -358,9 +403,9 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<AppPermissionSnapshot> checkAll() async {
     return AppPermissionSnapshot(
-      microphoneGranted: false,
-      locationGranted: false,
-      calendarGranted: false,
+      microphoneGranted: microphoneGranted,
+      locationGranted: locationGranted,
+      calendarGranted: calendarGranted,
       notificationStatus: NotificationPermissionStatus(
         notificationsEnabled: notificationGranted,
         exactAlarmsEnabled: exactAlarmGranted,
@@ -374,19 +419,22 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestMicrophonePermission() async {
     microphoneRequests += 1;
-    return false;
+    microphoneGranted = true;
+    return true;
   }
 
   @override
   Future<bool> requestLocationPermission() async {
     locationRequests += 1;
-    return false;
+    locationGranted = true;
+    return true;
   }
 
   @override
   Future<bool> requestCalendarPermission() async {
     calendarRequests += 1;
-    return false;
+    calendarGranted = true;
+    return true;
   }
 
   @override
@@ -410,7 +458,6 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestExactAlarmPermission() async {
     exactAlarmRequests += 1;
-    exactAlarmSettingsOpened = true;
     exactAlarmGranted = exactAlarmRequestGranted;
     return exactAlarmRequestGranted;
   }
@@ -418,7 +465,6 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> requestFullScreenIntentPermission() async {
     fullScreenIntentRequests += 1;
-    fullScreenIntentSettingsOpened = true;
     fullScreenIntentGranted = true;
     return true;
   }
@@ -430,14 +476,8 @@ class _FakePermissionService extends AppPermissionService {
   }
 
   @override
-  Future<bool> openExactAlarmSettings() async {
-    exactAlarmSettingsOpened = true;
-    return true;
-  }
-
-  @override
-  Future<bool> openFullScreenIntentSettings() async {
-    fullScreenIntentSettingsOpened = true;
+  Future<bool> openAlarmSettings() async {
+    alarmSettingsOpened = true;
     return true;
   }
 

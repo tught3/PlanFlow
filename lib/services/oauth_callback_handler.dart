@@ -138,6 +138,16 @@ class OAuthCallbackHandler {
         DateTime.now().difference(startedAt) <= maxAge;
   }
 
+  static bool hasPendingCalendarLink({
+    Duration maxAge = const Duration(minutes: 10),
+  }) {
+    final startedAt = _pendingStartedAt;
+    return _pendingPurpose == OAuthCallbackPurpose.calendarLink &&
+        _pendingMethod != null &&
+        startedAt != null &&
+        DateTime.now().difference(startedAt) <= maxAge;
+  }
+
   static bool hasPendingEmailConfirmation({
     Duration maxAge = const Duration(hours: 24),
   }) {
@@ -153,16 +163,6 @@ class OAuthCallbackHandler {
       return null;
     }
     return _pendingMethod;
-  }
-
-  static bool hasPendingCalendarLink({
-    Duration maxAge = const Duration(minutes: 10),
-  }) {
-    final startedAt = _pendingStartedAt;
-    return _pendingPurpose == OAuthCallbackPurpose.calendarLink &&
-        _pendingMethod != null &&
-        startedAt != null &&
-        DateTime.now().difference(startedAt) <= maxAge;
   }
 
   static Future<void> persistCurrentPendingCallback() async {
@@ -324,7 +324,9 @@ class OAuthCallbackHandler {
     _subscription = _appLinks.uriLinkStream.listen(
       (uri) => unawaited(_handleUri(uri)),
       onError: (Object error, StackTrace stackTrace) {
-        debugPrint('OAuth callback listener error: $error');
+        debugPrint(
+          'OAuth callback listener error: ${logSafeText(error)}',
+        );
       },
     );
   }
@@ -342,10 +344,13 @@ class OAuthCallbackHandler {
     try {
       final uri = await _appLinks.getInitialLink();
       if (uri != null) {
+        _logNaverCalendar('initialLink observed ${_safeUriSummary(uri)}');
         await _handleUri(uri);
       }
     } catch (error, stackTrace) {
-      debugPrint('OAuth initial callback read failed: $error');
+      debugPrint(
+        'OAuth initial callback read failed: ${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
     }
   }
@@ -357,10 +362,7 @@ class OAuthCallbackHandler {
 
     latestUserMessage.value = null;
     final resolvedPending = await _resolvePendingCallback();
-    DiagLogger.log(
-      'DIAG',
-      'resolvePending purpose=${resolvedPending?.purpose} method=${resolvedPending?.method}',
-    );
+    DiagLogger.log('DIAG', 'resolvePending purpose=${resolvedPending?.purpose} method=${resolvedPending?.method}');
     final pendingPurpose = resolvedPending?.purpose;
     final pendingMethod = resolvedPending?.method;
     final isPendingNaverCalendarLink =
@@ -368,10 +370,7 @@ class OAuthCallbackHandler {
       pendingPurpose: pendingPurpose,
       pendingMethod: pendingMethod,
     );
-    DiagLogger.log(
-      'DIAG',
-      'isPendingNaverCalendarLink=$isPendingNaverCalendarLink',
-    );
+    DiagLogger.log('DIAG', 'isPendingNaverCalendarLink=$isPendingNaverCalendarLink');
     final normalizedUri = _normalizeAuthCallbackUri(uri);
     final isPasswordRecovery = isPasswordRecoveryCallback(normalizedUri);
     final isEmailConfirmation = isEmailConfirmationCallback(normalizedUri) ||
@@ -439,10 +438,7 @@ class OAuthCallbackHandler {
       hasPendingCalendarLink:
           pendingPurpose == OAuthCallbackPurpose.calendarLink,
     );
-    DiagLogger.log(
-      'DIAG',
-      'shouldExchange=$shouldExchangeCallback currentSession=${client.auth.currentSession != null}',
-    );
+    DiagLogger.log('DIAG', 'shouldExchange=$shouldExchangeCallback currentSession=${client.auth.currentSession != null}');
 
     debugPrint(
       'OAuth callback routing: pendingPurpose=$pendingPurpose '
@@ -464,6 +460,7 @@ class OAuthCallbackHandler {
       if (pendingMethod == 'naver') {
         _logNaverCalendar('no exchange path: capture provider token');
       }
+      // getLinkIdentityUrl 콜백: URL fragment에서 직접 provider_token 추출
       final urlProviderToken = isPendingNaverCalendarLink
           ? normalizedUri.queryParameters['provider_token']
           : null;
@@ -491,6 +488,7 @@ class OAuthCallbackHandler {
       return;
     }
 
+    // Naver 캘린더 연동 콜백: PKCE code는 교환하되 기존 Google 세션은 복원한다.
     if (isPendingNaverCalendarLink) {
       final previousSession = client.auth.currentSession;
       final googleUserId = previousSession?.user.id;
@@ -625,17 +623,18 @@ class OAuthCallbackHandler {
         explicitProviderToken: response.session.providerToken,
         allowWithoutNaverIdentity: isPendingNaverCalendarLink,
       );
-      if (isPasswordRecovery) {
-        authProvider.markPasswordRecovery();
-        clearPendingCallback();
-        appRouter.go(AppRoutes.resetPassword);
-        return;
-      }
+      // Google 로그인 시 Google Calendar interactive sync
       final loginSession = client.auth.currentSession;
       final loginProvider =
           loginSession?.user.appMetadata['provider']?.toString() ?? '';
       if (loginProvider.contains('google')) {
         unawaited(CalendarSyncService().syncGoogleCalendar(interactive: true));
+      }
+      if (isPasswordRecovery) {
+        authProvider.markPasswordRecovery();
+        clearPendingCallback();
+        appRouter.go(AppRoutes.resetPassword);
+        return;
       }
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
@@ -654,11 +653,23 @@ class OAuthCallbackHandler {
         'code=${error.code} status=${error.statusCode}',
       );
       clearPendingCallback();
+      if (pendingMethod == 'naver') {
+        _logNaverCalendar(
+          'exchange authException message=${logSafeText(error.message)} '
+          'code=${error.code} status=${error.statusCode}',
+        );
+      }
       latestUserMessage.value = isEmailConfirmation
           ? _messageForEmailConfirmationException(error)
           : _messageForAuthException(error);
     } catch (error) {
       debugPrint('OAuth callback exchange failed: ${logSafeText(error)}');
+      if (pendingMethod == 'naver') {
+        _logNaverCalendar(
+          'exchange failed type=${error.runtimeType} '
+          'error=${logSafeText(error)}',
+        );
+      }
       clearPendingCallback();
       latestUserMessage.value = isEmailConfirmation
           ? '이메일 인증을 확인하지 못했습니다. 인증 링크가 만료되었거나 이미 사용되었을 수 있습니다. 로그인으로 다시 시도해 주세요.'
@@ -805,10 +816,7 @@ class OAuthCallbackHandler {
     bool allowWithoutNaverIdentity = false,
   }) async {
     try {
-      DiagLogger.log(
-        'DIAG',
-        'captureToken explicit=${explicitProviderToken?.trim().isNotEmpty == true} allowWithout=$allowWithoutNaverIdentity',
-      );
+      DiagLogger.log('DIAG', 'captureToken explicit=${explicitProviderToken?.trim().isNotEmpty == true} allowWithout=$allowWithoutNaverIdentity');
       _logNaverCalendar(
         'provider token capture start '
         'explicitTokenPresent=${explicitProviderToken?.trim().isNotEmpty == true} '
@@ -835,6 +843,15 @@ class OAuthCallbackHandler {
       );
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  @visibleForTesting
+  static bool shouldTrustProviderTokenForNaverCalendarLink({
+    required OAuthCallbackPurpose? pendingPurpose,
+    required String? pendingMethod,
+  }) {
+    return pendingPurpose == OAuthCallbackPurpose.calendarLink &&
+        pendingMethod == 'naver';
   }
 
   @visibleForTesting
@@ -876,15 +893,6 @@ class OAuthCallbackHandler {
         normalizedEvent == 'signup' ||
         normalizedEvent == 'email_confirmed' ||
         normalizedEvent == 'emailconfirmation';
-  }
-
-  @visibleForTesting
-  static bool shouldTrustProviderTokenForNaverCalendarLink({
-    required OAuthCallbackPurpose? pendingPurpose,
-    required String? pendingMethod,
-  }) {
-    return pendingPurpose == OAuthCallbackPurpose.calendarLink &&
-        pendingMethod == 'naver';
   }
 
   Future<bool> _syncAndRouteHome() async {

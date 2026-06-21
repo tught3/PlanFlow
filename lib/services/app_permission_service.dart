@@ -212,14 +212,17 @@ class AppPermissionService {
   }
 
   Future<bool> requestExactAlarmPermission() {
-    return _requestExactAlarmPermissionWithSettings();
+    return _notificationService.requestExactAlarmPermission();
   }
 
   Future<bool> requestFullScreenIntentPermission() async {
-    final opened = await openFullScreenIntentSettings();
+    final granted =
+        await _notificationService.requestFullScreenIntentPermission();
+    if (granted == true) {
+      return true;
+    }
     final status = await _notificationService.checkPermissionStatus();
-    return opened ||
-        status.fullScreenIntentStatus == PermissionCheckState.granted ||
+    return status.fullScreenIntentStatus == PermissionCheckState.granted ||
         status.fullScreenIntentStatus == PermissionCheckState.unsupported;
   }
 
@@ -239,51 +242,24 @@ class AppPermissionService {
     }
   }
 
-  Future<bool> openExactAlarmSettings() async {
+  Future<bool> openAlarmSettings() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       return false;
     }
     try {
       return await _androidPermissionsChannel.invokeMethod<bool>(
-            'openExactAlarmSettings',
+            'openAlarmSettings',
           ) ??
           false;
     } catch (error, stackTrace) {
-      debugPrint('Open exact alarm settings failed: $error');
+      debugPrint('Open alarm settings failed: $error');
       debugPrintStack(stackTrace: stackTrace);
-      return false;
-    }
-  }
-
-  Future<bool> openFullScreenIntentSettings() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      return false;
-    }
-    try {
-      return await _androidPermissionsChannel.invokeMethod<bool>(
-            'openFullScreenIntentSettings',
-          ) ??
-          false;
-    } catch (error, stackTrace) {
-      debugPrint('Open full-screen intent settings failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      return false;
+      return openAppSettings();
     }
   }
 
   Future<bool> openNotificationSettings() {
     return _notificationService.openAppNotificationSettings();
-  }
-
-  Future<bool> _requestExactAlarmPermissionWithSettings() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
-      return true;
-    }
-    final opened = await openExactAlarmSettings();
-    final status = await _notificationService.checkPermissionStatus();
-    return opened ||
-        status.exactAlarmsEnabled == true ||
-        status.exactAlarmsEnabled == null;
   }
 
   String _onboardingKey(String userId) => '$_onboardingPrefix:$userId';
@@ -327,7 +303,6 @@ class AppPermissionSnapshot {
       microphoneGranted &&
       notificationsGranted &&
       exactAlarmsGranted &&
-      fullScreenIntentGranted &&
       locationGranted &&
       calendarGranted;
 }

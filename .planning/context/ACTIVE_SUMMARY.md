@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-21 V2 main 추적 재정렬
+- V2를 독립 수정 분기가 아니라 main PlanFlow 기준선 + 얇은 V2 overlay로 관리하도록 `docs/planflow-v2/23-main-tracking-overlay-policy.md`에 허용/비허용 차이를 문서화했다.
+- 권한 온보딩, `AppPermissionService`, `app.dart`, OAuth callback, Android manifest, `MainActivity`, 홈 위젯 provider를 main 기준으로 재정렬했고, V2에는 `planflow-v2://`, `PlanFlow V2`, `com.fluxstudio.planflow.v2`, `com.fluxstudio.planflow.v2.widget.*` overlay만 남겼다.
+- 권한 온보딩 테스트도 main 기준으로 되돌려 V2 전용 권한 흐름 drift가 생기지 않게 했다.
+- 검증: `flutter analyze --no-pub`, `flutter test test/screens/permission_onboarding_screen_test.dart test/services/oauth_callback_handler_test.dart test/app_home_widget_route_test.dart --no-pub -r compact`, `flutter build apk --release --no-pub`, `adb -s 192.168.0.103:46757 install -r -t build/app/outputs/flutter-apk/app-release.apk`, `adb -s 192.168.0.103:46757 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity`, main/V2 공존 패키지 확인, `planflow-v2://voice-launcher` 딥링크 전달 확인.
 ## 2026-06-21 V2 권한 온보딩 루프/필수권한 보정
 - V2 권한 온보딩에서 설정 화면 복귀 후 같은 단계를 다시 여는 루프를 끊고, 위치/기기 캘린더를 선택 권한이 아니라 필수 권한 흐름으로 올렸다.
 - 정확한 알람과 전체 화면 알림은 앱 정보 fallback 없이 전용 설정만 열도록 정리했고, onboarding/request 흐름과 테스트를 함께 맞췄다.
