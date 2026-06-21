@@ -12,17 +12,25 @@ try {
   $session = Start-FluxOsProjectSession -Project 'PlanFlow' -Source 'flutter-local' -Owner 'PlanFlow-local' -Label 'PlanFlow Flutter 런처' -Note ("flutter {0}" -f (($Args -join ' ').Trim())) -Cwd (Resolve-Path (Join-Path $PSScriptRoot '..')).Path -PreferCurrentProjectSession
 
   $defineFile = Join-Path $PSScriptRoot '..\env\local.json'
-
+  $fallbackDefineFile = Join-Path $PSScriptRoot '..\env\local.example.json'
   if (-not (Test-Path $defineFile)) {
-    throw "Missing local define file: $defineFile"
+    if (Test-Path $fallbackDefineFile) {
+      $defineFile = $fallbackDefineFile
+      Write-Warning "Missing env/local.json; falling back to env/local.example.json"
+    } else {
+      Write-Warning "Missing local define file and example fallback; continuing without injected dart-defines."
+      $defineFile = $null
+    }
   }
 
-  $localDefines = Get-Content $defineFile -Raw -Encoding utf8 | ConvertFrom-Json
   $defineArgs = @()
-  foreach ($property in $localDefines.PSObject.Properties) {
-    $value = [string]$property.Value
-    if (-not [string]::IsNullOrWhiteSpace($value)) {
-      $defineArgs += "--dart-define=$($property.Name)=$value"
+  if ($defineFile) {
+    $localDefines = Get-Content $defineFile -Raw -Encoding utf8 | ConvertFrom-Json
+    foreach ($property in $localDefines.PSObject.Properties) {
+      $value = [string]$property.Value
+      if (-not [string]::IsNullOrWhiteSpace($value)) {
+        $defineArgs += "--dart-define=$($property.Name)=$value"
+      }
     }
   }
 
