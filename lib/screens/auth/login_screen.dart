@@ -41,7 +41,8 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   final _messageKey = GlobalKey();
 
-  late final AuthService? _authService;
+  AuthService? _authService;
+  Timer? _supabaseReadyPoller;
 
   _AuthMode _mode = _AuthMode.login;
   bool _isLoading = false;
@@ -52,10 +53,8 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _authService = AppEnv.isSupabaseReady
-        ? widget._authService ?? AuthService()
-        : widget._authService;
     OAuthCallbackHandler.latestUserMessage.addListener(_handleOAuthMessage);
+    _startSupabaseReadyPoller();
   }
 
   @override
@@ -71,6 +70,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     _emailFocusNode.dispose();
     _passwordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
+    _supabaseReadyPoller?.cancel();
     super.dispose();
   }
 
@@ -104,10 +104,13 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _submit() async {
-    final l10n = appL10n(context);
-    final authService = _authService;
     FocusScope.of(context).unfocus();
-    if (!AppEnv.isSupabaseReady || authService == null) {
+    final authService = await _resolveAuthServiceWhenReady();
+    if (!mounted) {
+      return;
+    }
+    final l10n = appL10n(context);
+    if (authService == null) {
       _setMessage(l10n.supabaseLoginMissing);
       return;
     }
@@ -182,9 +185,12 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _socialLogin(PlanFlowOAuthProvider provider) async {
+    final authService = await _resolveAuthServiceWhenReady();
+    if (!mounted) {
+      return;
+    }
     final l10n = appL10n(context);
-    final authService = _authService;
-    if (!AppEnv.isSupabaseReady || authService == null) {
+    if (authService == null) {
       _setMessage(l10n.supabaseSocialMissing);
       return;
     }
@@ -309,6 +315,52 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       _isError = isError;
     });
     _ensureMessageVisible();
+  }
+
+  void _startSupabaseReadyPoller() {
+    if (AppEnv.isSupabaseReady) {
+      return;
+    }
+    _supabaseReadyPoller?.cancel();
+    _supabaseReadyPoller = Timer.periodic(const Duration(milliseconds: 200), (
+      timer,
+    ) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (AppEnv.isSupabaseReady) {
+        timer.cancel();
+        setState(() {});
+      }
+    });
+  }
+
+  AuthService? _resolveAuthService() {
+    if (widget._authService != null) {
+      _authService = widget._authService;
+      return _authService;
+    }
+    if (!AppEnv.isSupabaseReady) {
+      return null;
+    }
+    return _authService ??= AuthService();
+  }
+
+  Future<AuthService?> _resolveAuthServiceWhenReady() async {
+    if (widget._authService != null) {
+      _authService = widget._authService;
+      return _authService;
+    }
+    if (AppEnv.isSupabaseReady) {
+      return _authService ??= AuthService();
+    }
+
+    final deadline = DateTime.now().add(const Duration(seconds: 6));
+    while (!AppEnv.isSupabaseReady && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return _resolveAuthService();
   }
 
   void _ensureMessageVisible() {
