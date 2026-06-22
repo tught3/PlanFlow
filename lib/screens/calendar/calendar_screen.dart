@@ -379,6 +379,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String? _loadMessage;
   bool _isSearching = false;
   bool _isRefreshing = false;
+  int _consecutiveFailures = 0;
+  Timer? _retryTimer;
   bool _hasPendingRefresh = false;
   DateTime? _pendingFocusDate;
   DateTime? _pendingOpenDaySheetDate;
@@ -417,9 +419,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _scheduleRetry() {
+    _retryTimer?.cancel();
+    final Duration delay;
+    if (_consecutiveFailures >= 6) {
+      delay = const Duration(hours: 1);
+    } else if (_consecutiveFailures >= 3) {
+      delay = const Duration(minutes: 10);
+    } else {
+      return;
+    }
+    _retryTimer = Timer(delay, () {
+      if (mounted) _loadEvents();
+    });
   }
 
   void _handleEventRefresh() {
@@ -507,6 +525,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
           }
           _loadState = _CalendarLoadState.ready;
           _loadMessage = null;
+          _consecutiveFailures = 0;
+          _retryTimer?.cancel();
         });
       }
       if (shouldOpenDaySheet && daySheetDate != null && mounted) {
@@ -517,13 +537,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
         });
       }
     } catch (error) {
-      if (mounted) {
-        setState(() {
-          _loadState = _CalendarLoadState.error;
-          _loadMessage = '캘린더 일정을 불러오지 못했어요. 다시 시도해 주세요.';
-        });
-      }
       debugPrint('CalendarScreen load failed: $error');
+      if (mounted) {
+        _consecutiveFailures++;
+        _scheduleRetry();
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -1052,8 +1070,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   padding: const EdgeInsets.all(AppConstants.defaultPadding),
                   children: [
                     if (_loadState == _CalendarLoadState.supabaseMissing ||
-                        _loadState == _CalendarLoadState.signedOut ||
-                        _loadState == _CalendarLoadState.error) ...[
+                        _loadState == _CalendarLoadState.signedOut) ...[
                       _CalendarStatusCard(
                         state: _loadState,
                         message: _loadMessage,

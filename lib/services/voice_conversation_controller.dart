@@ -14,6 +14,7 @@ enum VoiceConversationAction {
   confirmDelete,
   deleteConfirmed,
   deleteCanceled,
+  createEvent,
 }
 
 class VoiceConversationDeleteAction {
@@ -131,6 +132,8 @@ class VoiceConversationResult {
           ? '삭제를 진행할게요.'
           : '"${targetEvent!.title}" 일정을 삭제할게요.',
       VoiceConversationAction.deleteCanceled => '삭제를 취소했어요.',
+      VoiceConversationAction.createEvent =>
+        draftEvent == null ? '일정 정보를 파악하지 못했어요.' : '일정을 만들어 드릴까요? 확인 후 저장해 주세요.',
       VoiceConversationAction.none =>
         targetEvent == null ? '이해한 일정을 찾지 못했어요.' : '해당 일정을 선택했어요.',
     };
@@ -609,6 +612,36 @@ class VoiceConversationController {
       );
     }
 
+    if (route.intent == VoiceCommandRouteIntent.add ||
+        _hasCreateEventKeywords(text)) {
+      final draftTitle = route.targetText.trim().isNotEmpty
+          ? route.targetText.trim()
+          : route.cleanedText.trim();
+      final range = _parseDateRange(text);
+      final now = planflowLocal((_now ?? planflowNow)());
+      final startAt = range?.start ?? now;
+      final endAt = range?.end ?? startAt.add(const Duration(hours: 1));
+      final draft = EventModel(
+        id: '',
+        userId: '',
+        title: draftTitle.isEmpty ? input : draftTitle,
+        startAt: startAt,
+        endAt: endAt,
+        createdAt: now,
+      );
+      state.pendingTitleSearchText = null;
+      return _finish(
+        state,
+        session,
+        VoiceConversationResult(
+          action: VoiceConversationAction.createEvent,
+          inputText: input,
+          draftEvent: draft,
+          assistantMessage: '일정을 만들어 드릴까요? 편집 화면에서 확인 후 저장하세요.',
+        ),
+      );
+    }
+
     return _finish(
       state,
       session,
@@ -619,6 +652,18 @@ class VoiceConversationController {
             ? state.selectedEvents
             : const <EventModel>[],
       ),
+    );
+  }
+
+  static const _createEventKeywords = [
+    '만들어', '만들어줘', '추가해', '추가해줘', '등록해', '등록해줘',
+    '새 일정', '일정 만들어', '일정 추가', '일정 등록', '일정 만들', '일정 새로',
+  ];
+
+  bool _hasCreateEventKeywords(String text) {
+    final lower = text.replaceAll(' ', '');
+    return _createEventKeywords.any(
+      (kw) => lower.contains(kw.replaceAll(' ', '')),
     );
   }
 

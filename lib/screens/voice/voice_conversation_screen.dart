@@ -312,6 +312,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         if (!updated) {
           return;
         }
+      } else if (result.action == VoiceConversationAction.createEvent &&
+          result.draftEvent != null) {
+        await _openGeneralEditScreen(result.draftEvent!);
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText != null) {
@@ -1129,6 +1132,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         return '삭제를 진행했어요.';
       case VoiceConversationAction.deleteCanceled:
         return '삭제를 취소했어요.';
+      case VoiceConversationAction.createEvent:
+        if (result.draftEvent == null) return '일정 정보를 파악하지 못했어요. 날짜와 제목을 포함해서 다시 말해 주세요.';
+        return '일정 편집 화면을 열게요. 내용 확인 후 저장해 주세요.';
       case VoiceConversationAction.none:
         if (result.selectedEvents.length > 1) {
           return '${result.selectedEvents.length}개의 일정을 선택했어요. 무엇을 바꿀지 이어서 말해 주세요.';

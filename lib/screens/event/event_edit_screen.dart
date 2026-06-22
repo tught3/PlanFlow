@@ -1021,21 +1021,26 @@ class _EventEditScreenState extends State<EventEditScreen> {
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('반복 일정 수정'),
-        content: const Text(
-          '반복 일정입니다. 어떤 범위에 수정 내용을 적용할까요?',
+        titlePadding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
+        title: Row(
+          children: [
+            const Expanded(child: Text('반복 일정 수정')),
+            IconButton(
+              icon: const Icon(Icons.close),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () => Navigator.of(context).pop(null),
+            ),
+          ],
         ),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+        content: const Text('어떤 범위에 수정 내용을 적용할까요?'),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         actions: [
           Wrap(
             spacing: 8,
             runSpacing: 8,
             alignment: WrapAlignment.end,
             children: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(null),
-                child: const Text('취소'),
-              ),
               OutlinedButton(
                 onPressed: () => Navigator.of(context).pop('single'),
                 child: const Text('이 일정만'),

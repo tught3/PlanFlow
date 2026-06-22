@@ -3062,9 +3062,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                             children: [
                               _StatusRow(
                                 label: '네이버 캘린더',
-                                value: _naverCalendarStatusLabel(),
+                                value: _naverCalendarSimpleStatusLabel(),
                                 icon: Icons.event_available_outlined,
                                 isConfigured: _isNaverCalendarConfigured(),
+                                onInfo: _isNaverCalendarConfigured()
+                                    ? _showNaverCalendarStatusDetailDialog
+                                    : null,
                               ),
                               const SizedBox(height: 12),
                               Row(
@@ -3445,6 +3448,41 @@ class _SettingsScreenState extends State<SettingsScreen>
           '네이버 CalDAV 자격증명이 저장되어 있습니다. 동기화를 눌러 확인해 주세요.';
     }
     return '네이버 캘린더 연결 안 됨';
+  }
+
+  String _naverCalendarSimpleStatusLabel() {
+    if (!_isNaverCalendarConfigured()) {
+      return '연결 안 됨';
+    }
+    final autoSyncSnapshot = _naverCalendarAutoSyncSnapshot;
+    if (autoSyncSnapshot != null) {
+      return '자동 동기화 중';
+    }
+    final result = _lastNaverCalDavResult;
+    if (result != null && result.isSuccess) {
+      return '정상적으로 연결되었습니다.';
+    }
+    if (_hasNaverCalDavCredentials) {
+      return '정상적으로 연결되었습니다. 네이버 일정 동기화를 시작하세요.';
+    }
+    return '연결 안 됨';
+  }
+
+  void _showNaverCalendarStatusDetailDialog() {
+    final detail = _naverCalendarStatusLabel();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('네이버 캘린더 상태'),
+        content: Text(detail),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
   }
 
   CalendarAutoSyncProviderSnapshot? _autoSyncProviderSnapshot(
@@ -4204,12 +4242,14 @@ class _StatusRow extends StatelessWidget {
     required this.value,
     required this.icon,
     required this.isConfigured,
+    this.onInfo,
   });
 
   final String label;
   final String value;
   final IconData icon;
   final bool isConfigured;
+  final VoidCallback? onInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -4243,13 +4283,24 @@ class _StatusRow extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: 8),
-        Icon(
-          isConfigured
-              ? Icons.check_circle_outline
-              : Icons.remove_circle_outline,
-          color: color,
-        ),
+        if (onInfo != null) ...[
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.info_outline, size: 20),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            color: PlanFlowColors.textSecondary,
+            onPressed: onInfo,
+          ),
+        ] else ...[
+          const SizedBox(width: 8),
+          Icon(
+            isConfigured
+                ? Icons.check_circle_outline
+                : Icons.remove_circle_outline,
+            color: color,
+          ),
+        ],
       ],
     );
   }
