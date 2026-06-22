@@ -269,7 +269,7 @@ void main() {
 
       expect(status.status, CalendarIntegrationStatus.ready);
       expect(status.message, contains('연결'));
-      expect(googleSignIn.signInSilentCallCount, 1);
+      expect(googleSignIn.signInSilentCallCount, 2);
     });
 
     test(
@@ -306,7 +306,7 @@ void main() {
       expect(googleSignIn.signInCallCount, 1);
     });
 
-    test('non-interactive Google sync marks connection reauth on token miss',
+    test('non-interactive Google sync keeps connection ready on token miss',
         () async {
       final connectionRepository = _FakeCalendarConnectionRepository(
         initial: const CalendarConnectionModel(
@@ -327,11 +327,13 @@ void main() {
 
       final result = await service.syncGoogleCalendar(interactive: false);
 
-      expect(result.status, CalendarIntegrationStatus.reauthRequired);
+      expect(result.status, CalendarIntegrationStatus.ready);
       expect(connectionRepository.connection?.status,
-          CalendarConnectionStatus.reauthRequired);
+          CalendarConnectionStatus.connected);
       expect(connectionRepository.connection?.providerAccountEmail,
           'user@example.com');
+      expect(connectionRepository.connection?.lastError,
+          contains('silent sign-in token unavailable'));
     });
 
     test('classifies Google sign-in cancellation with actionable message',

@@ -1,4 +1,10 @@
 # ACTIVE SUMMARY
+## 2026-06-23 TASK_20260622_072637 T1+T2+T3 3차 개선
+- `local_time.dart`의 timezone 초기화 함수를 public으로 열고 `main()` 시작 직후 선초기화해 일정 편집 진입 시 첫 호출 지연을 줄였다.
+- 설정 화면 캘린더 상태 행은 info 아이콘을 label 옆에 인라인으로 배치하고 check/remove 상태 아이콘은 항상 오른쪽에 유지하도록 바꿨다. Google Calendar 상태 문구는 간단 표시와 상세 다이얼로그로 분리했다.
+- Google Calendar silent sign-in은 상태 확인/토큰 획득 경로에서 1회 재시도하고, 자동 동기화 토큰 미확보 시 기존 연결 상태를 reauth로 깨지 않고 일시 오류로 기록한다.
+- 검증: `flutter analyze ... --no-pub`, `flutter test test/services/calendar_sync_service_test.dart --no-pub -r compact`, 설정 화면 focused 2개 테스트 통과. `flutter build apk --release --no-pub`는 `android/key.properties` 부재로 Gradle에서 실패했다.
+
 ## 2026-06-18 TASK_20260618_123620 PlanFlow 2차 버그/개선 6종
 - 연동 해제 모달을 X 닫기 + 일정 유지/삭제 2버튼으로 정리했고, 네이버 CalDAV 진행/진단 다이얼로그는 짧은 상태와 상세 info 진입으로 분리했다.
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 모달을 표시하고 성공 상태를 저장/복원하며, 서비스 import 루프는 6개 단위 제한 병렬 처리와 결과 집계 방식으로 바꿨다.
