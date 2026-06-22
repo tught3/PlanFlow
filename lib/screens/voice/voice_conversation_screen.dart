@@ -12,6 +12,7 @@ import '../../data/repositories/event_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/gpt_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/stt_service.dart';
 import '../../services/voice_conversation_controller.dart';
@@ -312,13 +313,17 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         if (!updated) {
           return;
         }
-      } else if (result.action == VoiceConversationAction.createEvent &&
-          result.draftEvent != null) {
-        await _openGeneralEditScreen(result.draftEvent!);
+      } else if (result.action == VoiceConversationAction.createEvent) {
+        await _openCreateEventScreen(result.inputText, result.draftEvent);
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText != null) {
-        await _openEditWithLocation(result.targetEvent!, result.locationText!);
+        final validatedLocation = await GptService().validateLocation(result.locationText!);
+        if (validatedLocation != null) {
+          await _openEditWithLocation(result.targetEvent!, validatedLocation);
+        } else {
+          await _openGeneralEditScreen(result.targetEvent!);
+        }
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText == null) {
@@ -733,6 +738,60 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       ),
     );
     await context.push('${AppRoutes.eventEdit}/${edited.id}', extra: edited);
+    await _loadEvents();
+  }
+
+  Future<void> _openCreateEventScreen(
+    String rawInput,
+    EventModel? fallbackDraft,
+  ) async {
+    await _stopVoiceBeforeNavigation();
+    if (!mounted) return;
+
+    EventModel draft;
+    try {
+      final parsed = await GptService().parseSchedule(rawInput);
+      final title = (parsed['title'] as String?)?.trim();
+      final startAtRaw = parsed['start_at']?.toString();
+      DateTime? startAt;
+      if (startAtRaw != null) {
+        final dt = DateTime.tryParse(startAtRaw);
+        startAt = dt?.isUtc == true ? dt!.toLocal() : dt;
+      }
+      final endAtRaw = parsed['end_at']?.toString();
+      DateTime? endAt;
+      if (endAtRaw != null) {
+        final dt = DateTime.tryParse(endAtRaw);
+        endAt = dt?.isUtc == true ? dt!.toLocal() : dt;
+      }
+      final now = planflowNow();
+      final resolvedStart = startAt ?? now;
+      final resolvedEnd = endAt ?? resolvedStart.add(const Duration(hours: 1));
+      draft = EventModel(
+        id: '',
+        userId: '',
+        title: (title?.isNotEmpty == true) ? title! : rawInput,
+        startAt: resolvedStart,
+        endAt: resolvedEnd,
+        isCritical: parsed['is_critical'] == true,
+        recurrenceRule: (parsed['recurrence_rule'] as String?)?.trim(),
+        location: (parsed['location'] as String?)?.trim(),
+        locationLat: parsed['location_lat'] as double?,
+        locationLng: parsed['location_lng'] as double?,
+        createdAt: now,
+      );
+    } catch (_) {
+      draft = fallbackDraft ??
+          EventModel(
+            id: '',
+            userId: '',
+            title: rawInput,
+            createdAt: planflowNow(),
+          );
+    }
+
+    if (!mounted) return;
+    await context.push('${AppRoutes.eventEdit}/${draft.id}', extra: draft);
     await _loadEvents();
   }
 

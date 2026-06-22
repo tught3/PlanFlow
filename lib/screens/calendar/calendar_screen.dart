@@ -12,6 +12,7 @@ import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../services/event_prefetch_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
@@ -505,9 +506,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return;
     }
 
+    // 캐시가 있으면 즉시 표시 후 백그라운드에서 갱신
+    if (repositoryOverride == null) {
+      final cached = EventPrefetchService().getCached(userId);
+      if (cached != null && cached.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _allEvents = _eventsForDisplayAfterReload(cached);
+            _loadState = _CalendarLoadState.ready;
+            _loadMessage = null;
+            _consecutiveFailures = 0;
+          });
+        }
+      }
+    }
+
     try {
       final repository = repositoryOverride ?? EventRepository.supabase();
       final events = await repository.listEvents(userId: userId);
+      if (repositoryOverride == null) {
+        EventPrefetchService().store(userId, events);
+      }
       var shouldOpenDaySheet = false;
       var daySheetDate = focusDate;
       if (mounted) {

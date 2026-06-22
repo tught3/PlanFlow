@@ -224,6 +224,25 @@ class GptService {
     return briefing;
   }
 
+  /// 텍스트가 실제 장소명(건물명·지역명·주소)인지 GPT로 검증.
+  /// 장소명이면 정제된 장소명 반환, 아니면 null.
+  Future<String?> validateLocation(String candidate) async {
+    if (candidate.trim().isEmpty) return null;
+    const systemPrompt =
+        'You are a location name validator for Korean text. '
+        'If the input is a real place name (building, landmark, address, region, or business name), '
+        'return ONLY the clean place name without any explanation. '
+        'If the input is NOT a place name (e.g. a sentence, a task description, or random text), '
+        'return exactly the word: null';
+    final content = await _requestCompletion(
+      systemPrompt: systemPrompt,
+      userPrompt: candidate.trim(),
+    );
+    final response = content?.trim();
+    if (response == null || response.isEmpty || response == 'null') return null;
+    return response;
+  }
+
   Future<String?> _requestCompletion({
     required String systemPrompt,
     required String userPrompt,

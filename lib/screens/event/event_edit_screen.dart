@@ -1036,19 +1036,28 @@ class _EventEditScreenState extends State<EventEditScreen> {
         content: const Text('어떤 범위에 수정 내용을 적용할까요?'),
         actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         actions: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).pop('single'),
-                child: const Text('이 일정만'),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop('single'),
+                      child: const Text('이 일정만'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop('future'),
+                      child: const Text('이후 모든 일정'),
+                    ),
+                  ),
+                ],
               ),
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).pop('future'),
-                child: const Text('이후 모든 일정'),
-              ),
+              const SizedBox(height: 8),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop('all'),
                 child: const Text('전체 반복 일정'),
