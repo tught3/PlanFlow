@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/env.dart';
+import 'core/local_time.dart';
 import 'core/supabase_auth_options.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
@@ -20,6 +21,7 @@ import 'services/event_prefetch_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  ensureTimeZonesInitialized();
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
