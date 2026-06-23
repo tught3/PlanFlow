@@ -271,7 +271,11 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         unawaited(AnalyticsService.logVoiceInputCompleted(
           textLength: (result.text ?? '').trim().length,
         ));
-        await _continueWithRawText();
+        // 완료 버튼(_handleVoiceDonePressed)이 먼저 정지를 요청했으면
+        // capturedText 경로에서 제출하므로 여기서는 건너뛴다.
+        if (!_isFinishingVoiceFlow) {
+          await _continueWithRawText();
+        }
         return;
       }
 
@@ -734,8 +738,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         if (!mounted) {
           return;
         }
+        // confirm에서 'cancelled'로 돌아온 경우 텍스트를 유지해 재편집·재제출 허용.
+        // 저장 완료(context.go(home))나 기타 pop은 리셋.
         final shouldResetTranscript =
-            location == AppRoutes.confirm ||
+            (location == AppRoutes.confirm && result != 'cancelled') ||
             location == AppRoutes.voiceAction ||
             (_isVoiceConversationRoute(location) &&
                 result == voiceConversationClosedResult);

@@ -1851,7 +1851,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
             unawaited(AnalyticsService.logScheduleCancelled());
-            context.pop();
+            context.pop('cancelled');
           },
         ),
       ),
