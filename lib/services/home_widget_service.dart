@@ -460,6 +460,7 @@ class HomeWidgetSchedulePayloadBuilder {
       participants: event.participants,
       targets: event.targets,
       isCritical: event.isCritical,
+      useStrongAlarm: event.useStrongAlarm,
       recurrenceRule: null,
       isAllDay: event.isAllDay,
       isMultiDay: event.isMultiDay,
