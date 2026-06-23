@@ -6,6 +6,7 @@ import '../screens/auth/login_screen.dart';
 import '../screens/onboarding/permission_onboarding_screen.dart';
 import '../screens/auth/reset_password_screen.dart';
 import '../data/models/event_model.dart';
+import '../features/groups/models/group_event_model.dart';
 import '../screens/briefing/briefing_launch_screen.dart';
 import '../screens/event/event_detail_screen.dart';
 import '../screens/event/event_edit_screen.dart';
@@ -13,6 +14,14 @@ import '../screens/placeholder_screen.dart';
 import '../screens/settings/naver_ics_import_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/splash/splash_screen.dart';
+import '../features/groups/screens/group_dashboard_screen.dart';
+import '../features/groups/screens/group_create_screen.dart';
+import '../features/groups/screens/group_event_create_screen.dart';
+import '../features/groups/screens/group_event_detail_screen.dart';
+import '../features/groups/screens/group_event_list_screen.dart';
+import '../features/groups/screens/group_invite_screen.dart';
+import '../features/groups/screens/group_list_screen.dart';
+import '../features/groups/screens/group_member_screen.dart';
 import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
@@ -120,9 +129,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => ShellScreen(
         key: ValueKey<String>('calendar-${state.uri.query}'),
         initialIndex: 1,
-        initialCalendarDate: _parseRouteDate(
-          state.uri.queryParameters['date'],
-        ),
+        initialCalendarDate: _parseRouteDate(state.uri.queryParameters['date']),
       ),
     ),
     GoRoute(
@@ -144,9 +151,9 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final paths = state.extra is List
             ? (state.extra! as List)
-                .map((item) => item.toString())
-                .where((path) => path.trim().isNotEmpty)
-                .toList(growable: false)
+                  .map((item) => item.toString())
+                  .where((path) => path.trim().isNotEmpty)
+                  .toList(growable: false)
             : const <String>[];
         return NaverIcsImportScreen(initialPaths: paths);
       },
@@ -186,9 +193,7 @@ final GoRouter appRouter = GoRouter(
         );
         final rawText = extra['raw_text']?.toString() ?? '';
         return VoiceActionScreen(
-          key: ValueKey(
-            'voice-action-${action.name}-${rawText.hashCode}',
-          ),
+          key: ValueKey('voice-action-${action.name}-${rawText.hashCode}'),
           rawText: rawText,
           action: action,
         );
@@ -206,8 +211,9 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.eventDetail,
       builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
+        final event = state.extra is EventModel
+            ? state.extra! as EventModel
+            : null;
         return EventDetailScreen(
           event: event,
           eventId: _resolveEventId(state, event),
@@ -219,8 +225,9 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.eventDetailWithId,
       builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
+        final event = state.extra is EventModel
+            ? state.extra! as EventModel
+            : null;
         return EventDetailScreen(
           event: event,
           eventId: _resolveEventId(state, event),
@@ -232,8 +239,9 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.eventEdit,
       builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
+        final event = state.extra is EventModel
+            ? state.extra! as EventModel
+            : null;
         return EventEditScreen(
           event: event,
           eventId: _resolveEventId(state, event),
@@ -244,13 +252,51 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.eventEditWithId,
       builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
+        final event = state.extra is EventModel
+            ? state.extra! as EventModel
+            : null;
         return EventEditScreen(
           event: event,
           eventId: _resolveEventId(state, event),
         );
       },
+    ),
+    GoRoute(
+      path: AppRoutes.groups,
+      builder: (context, state) => const GroupListScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupCreate,
+      builder: (context, state) => const GroupCreateScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupInvites,
+      builder: (context, state) => const GroupInviteScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupMembers,
+      builder: (context, state) => const GroupMemberScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEvents,
+      builder: (context, state) => const GroupEventListScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupDashboard,
+      builder: (context, state) => const GroupDashboardScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEventCreate,
+      builder: (context, state) => const GroupEventCreateScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEventDetail,
+      builder: (context, state) => GroupEventDetailScreen(
+        eventId: state.pathParameters['eventId']?.trim() ?? '',
+        event: state.extra is GroupEventModel
+            ? state.extra! as GroupEventModel
+            : null,
+      ),
     ),
   ],
   errorBuilder: (context, state) => const PlaceholderScreen(
@@ -284,7 +330,8 @@ String? _resolveEventId(GoRouterState state, EventModel? event) {
 }
 
 bool _isAutoStart(GoRouterState state) {
-  final value = state.uri.queryParameters['autoStart'] ??
+  final value =
+      state.uri.queryParameters['autoStart'] ??
       state.uri.queryParameters['autostart'];
   return value == '1' || value == 'true';
 }

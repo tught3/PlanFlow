@@ -15,14 +15,14 @@ void main() {
     test('detects Supabase password recovery callback type', () {
       expect(
         OAuthCallbackHandler.isPasswordRecoveryCallback(
-          Uri.parse('planflow://auth-callback?type=recovery'),
+          Uri.parse('planflow-v2://auth-callback?type=recovery'),
         ),
         isTrue,
       );
       expect(
         OAuthCallbackHandler.isPasswordRecoveryCallback(
           Uri.parse(
-            'planflow://auth-callback#access_token=token&type=recovery',
+            'planflow-v2://auth-callback#access_token=token&type=recovery',
           ),
         ),
         isTrue,
@@ -32,7 +32,7 @@ void main() {
     test('detects legacy password recovery callback event', () {
       expect(
         OAuthCallbackHandler.isPasswordRecoveryCallback(
-          Uri.parse('planflow://auth-callback?event=password_recovery'),
+          Uri.parse('planflow-v2://auth-callback?event=password_recovery'),
         ),
         isTrue,
       );
@@ -41,7 +41,7 @@ void main() {
     test('does not treat normal OAuth callbacks as password recovery', () {
       expect(
         OAuthCallbackHandler.isPasswordRecoveryCallback(
-          Uri.parse('planflow://auth-callback?code=sample'),
+          Uri.parse('planflow-v2://auth-callback?code=sample'),
         ),
         isFalse,
       );
@@ -50,14 +50,14 @@ void main() {
     test('detects Supabase email sign-up confirmation callback type', () {
       expect(
         OAuthCallbackHandler.isEmailConfirmationCallback(
-          Uri.parse('planflow://auth-callback?type=signup'),
+          Uri.parse('planflow-v2://auth-callback?type=signup'),
         ),
         isTrue,
       );
       expect(
         OAuthCallbackHandler.isEmailConfirmationCallback(
           Uri.parse(
-            'planflow://auth-callback#access_token=token&type=signup',
+            'planflow-v2://auth-callback#access_token=token&type=signup',
           ),
         ),
         isTrue,
@@ -67,13 +67,13 @@ void main() {
     test('does not treat normal OAuth callbacks as email confirmation', () {
       expect(
         OAuthCallbackHandler.isEmailConfirmationCallback(
-          Uri.parse('planflow://auth-callback?code=sample'),
+          Uri.parse('planflow-v2://auth-callback?code=sample'),
         ),
         isFalse,
       );
       expect(
         OAuthCallbackHandler.isEmailConfirmationCallback(
-          Uri.parse('planflow://auth-callback?type=recovery'),
+          Uri.parse('planflow-v2://auth-callback?type=recovery'),
         ),
         isFalse,
       );
@@ -81,7 +81,7 @@ void main() {
 
     test('maps email confirmation access denial to email guidance', () {
       final message = OAuthCallbackHandler.callbackErrorMessageFor(
-        Uri.parse('planflow://auth-callback?error=access_denied'),
+        Uri.parse('planflow-v2://auth-callback?error=access_denied'),
         isEmailConfirmation: true,
         pendingMethod: 'email',
       );
@@ -93,7 +93,7 @@ void main() {
     test('maps expired email confirmation links to email guidance', () {
       final message = OAuthCallbackHandler.callbackErrorMessageFor(
         Uri.parse(
-          'planflow://auth-callback?error=access_denied&error_code=otp_expired',
+          'planflow-v2://auth-callback?error=access_denied&error_code=otp_expired',
         ),
         isEmailConfirmation: true,
         pendingMethod: 'email',
@@ -105,7 +105,7 @@ void main() {
 
     test('keeps social access denial guidance for social pending login', () {
       final message = OAuthCallbackHandler.callbackErrorMessageFor(
-        Uri.parse('planflow://auth-callback?error=access_denied'),
+        Uri.parse('planflow-v2://auth-callback?error=access_denied'),
         pendingMethod: 'kakao',
       );
 
@@ -114,7 +114,7 @@ void main() {
 
     test('uses neutral guidance when access denial has no pending method', () {
       final message = OAuthCallbackHandler.callbackErrorMessageFor(
-        Uri.parse('planflow://auth-callback?error=access_denied'),
+        Uri.parse('planflow-v2://auth-callback?error=access_denied'),
       );
 
       expect(message, contains('인증이 완료되지 않았습니다'));

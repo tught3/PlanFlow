@@ -777,7 +777,7 @@ class OAuthCallbackHandler {
   }
 
   bool _isAuthCallback(Uri uri) {
-    return uri.scheme == 'planflow' && uri.host == 'auth-callback';
+    return uri.scheme == 'planflow-v2' && uri.host == 'auth-callback';
   }
 
   Uri _normalizeAuthCallbackUri(Uri uri) {

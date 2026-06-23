@@ -41,6 +41,22 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+alter table public.users
+  add column if not exists invite_code text;
+
+update public.users
+set invite_code = lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10))
+where invite_code is null;
+
+alter table public.users
+  alter column invite_code set default lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10));
+
+alter table public.users
+  alter column invite_code set not null;
+
+create unique index if not exists users_invite_code_uidx
+  on public.users (invite_code);
+
 -- 2. events
 create table if not exists public.events (
   id uuid primary key default gen_random_uuid(),
@@ -121,7 +137,1153 @@ create trigger events_set_updated_at
   before update on public.events
   for each row execute function public.set_updated_at();
 
--- 3. pre_actions
+-- V2 groups
+create table if not exists public.groups (
+  id uuid primary key default gen_random_uuid(),
+  parent_group_id uuid references public.groups (id) on delete set null,
+  name text not null,
+  description text,
+  status text not null default 'active' check (status in ('active', 'archived', 'deleted_pending')),
+  created_by uuid not null references public.users (id) on delete restrict,
+  archived_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.group_members (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  user_id uuid not null references public.users (id) on delete cascade,
+  role text not null default 'member' check (role in ('leader', 'member')),
+  status text not null default 'active' check (status in ('active', 'removed')),
+  joined_at timestamptz not null default now(),
+  removed_at timestamptz,
+  removed_by uuid references public.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint group_members_group_user_unique unique (group_id, user_id)
+);
+
+create index if not exists groups_parent_group_id_idx
+  on public.groups (parent_group_id);
+
+create index if not exists groups_status_idx
+  on public.groups (status);
+
+create index if not exists groups_created_by_idx
+  on public.groups (created_by);
+
+create index if not exists group_members_group_id_idx
+  on public.group_members (group_id);
+
+create index if not exists group_members_user_id_idx
+  on public.group_members (user_id);
+
+create index if not exists group_members_group_id_role_idx
+  on public.group_members (group_id, role);
+
+create or replace function public.handle_new_group()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.group_members (
+    group_id,
+    user_id,
+    role,
+    status,
+    joined_at,
+    created_at,
+    updated_at
+  )
+  values (
+    new.id,
+    new.created_by,
+    'leader',
+    'active',
+    now(),
+    now(),
+    now()
+  )
+  on conflict (group_id, user_id) do update
+    set role = 'leader',
+        status = 'active',
+        removed_at = null,
+        removed_by = null,
+        joined_at = now(),
+        updated_at = now();
+
+  return new;
+end;
+$$;
+
+drop trigger if exists groups_set_updated_at on public.groups;
+create trigger groups_set_updated_at
+  before update on public.groups
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists group_members_set_updated_at on public.group_members;
+create trigger group_members_set_updated_at
+  before update on public.group_members
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists groups_handle_new_group on public.groups;
+create trigger groups_handle_new_group
+  after insert on public.groups
+  for each row execute function public.handle_new_group();
+
+alter table public.groups enable row level security;
+alter table public.group_members enable row level security;
+
+grant select, insert, update on table public.groups to authenticated;
+grant select, insert, update on table public.group_members to authenticated;
+
+create or replace function public.is_group_member(group_id_input uuid, user_id_input uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.group_members
+    where group_id = group_id_input
+      and user_id = user_id_input
+      and status = 'active'
+  );
+$$;
+
+create or replace function public.is_group_leader(group_id_input uuid, user_id_input uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.group_members
+    where group_id = group_id_input
+      and user_id = user_id_input
+      and role = 'leader'
+      and status = 'active'
+  );
+$$;
+
+drop policy if exists "groups_select_member" on public.groups;
+drop policy if exists "groups_insert_leader" on public.groups;
+drop policy if exists "groups_update_leader" on public.groups;
+create policy "groups_select_member"
+  on public.groups
+  for select
+  using (
+    status = 'active'
+    and public.is_group_member(id, auth.uid())
+  );
+create policy "groups_insert_leader"
+  on public.groups
+  for insert
+  with check (
+    auth.uid() = created_by
+    and status = 'active'
+  );
+create policy "groups_update_leader"
+  on public.groups
+  for update
+  using (
+    status = 'active'
+    and public.is_group_leader(id, auth.uid())
+  )
+  with check (
+    status = 'active'
+    and public.is_group_leader(id, auth.uid())
+  );
+
+-- 3. group_invites
+create table if not exists public.group_invites (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  invited_user_id uuid references public.users (id) on delete set null,
+  invited_email text,
+  invited_invite_code text,
+  invited_by uuid not null references public.users (id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'rejected', 'cancelled', 'expired')),
+  expires_at timestamptz not null default (now() + interval '7 days'),
+  accepted_at timestamptz,
+  rejected_at timestamptz,
+  cancelled_at timestamptz,
+  expired_at timestamptz,
+  acted_by uuid references public.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint group_invites_target_required_check
+    check (num_nonnulls(invited_user_id, invited_email, invited_invite_code) > 0)
+);
+
+create index if not exists group_invites_group_id_idx
+  on public.group_invites (group_id);
+
+create index if not exists group_invites_invited_by_idx
+  on public.group_invites (invited_by);
+
+create index if not exists group_invites_invited_user_id_idx
+  on public.group_invites (invited_user_id);
+
+create index if not exists group_invites_invited_email_idx
+  on public.group_invites (invited_email);
+
+create index if not exists group_invites_invited_invite_code_idx
+  on public.group_invites (invited_invite_code);
+
+create index if not exists group_invites_status_idx
+  on public.group_invites (status);
+
+create index if not exists group_invites_expires_at_idx
+  on public.group_invites (expires_at);
+
+create unique index if not exists group_invites_group_pending_user_uidx
+  on public.group_invites (group_id, invited_user_id)
+  where status = 'pending'
+    and invited_user_id is not null;
+
+create unique index if not exists group_invites_group_pending_email_uidx
+  on public.group_invites (group_id, lower(invited_email))
+  where status = 'pending'
+    and invited_email is not null;
+
+create unique index if not exists group_invites_group_pending_invite_code_uidx
+  on public.group_invites (group_id, lower(invited_invite_code))
+  where status = 'pending'
+    and invited_invite_code is not null;
+
+create or replace function public.is_group_invite_target(
+  invited_user_id_input uuid,
+  invited_email_input text,
+  invited_invite_code_input text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.users
+    where id = auth.uid()
+      and (
+        (
+          invited_user_id_input is not null
+          and invited_user_id_input = id
+        )
+        or (
+          invited_email_input is not null
+          and email is not null
+          and lower(invited_email_input) = lower(email)
+        )
+        or (
+          invited_invite_code_input is not null
+          and invite_code is not null
+          and lower(invited_invite_code_input) = lower(invite_code)
+        )
+      )
+  );
+$$;
+
+drop trigger if exists group_invites_set_updated_at on public.group_invites;
+create trigger group_invites_set_updated_at
+  before update on public.group_invites
+  for each row execute function public.set_updated_at();
+
+create or replace function public.prevent_group_invite_immutable_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.group_id is distinct from old.group_id
+    or new.invited_user_id is distinct from old.invited_user_id
+    or new.invited_email is distinct from old.invited_email
+    or new.invited_invite_code is distinct from old.invited_invite_code
+    or new.invited_by is distinct from old.invited_by
+    or new.expires_at is distinct from old.expires_at
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'group_invites immutable fields cannot change';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists group_invites_prevent_immutable_changes on public.group_invites;
+create trigger group_invites_prevent_immutable_changes
+  before update on public.group_invites
+  for each row execute function public.prevent_group_invite_immutable_changes();
+
+create or replace function public.accept_group_invite(invite_id_input uuid)
+returns public.group_invites
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  invite_row public.group_invites%rowtype;
+  member_id uuid;
+  updated_invite public.group_invites%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  select *
+    into invite_row
+    from public.group_invites
+   where id = invite_id_input
+   for update;
+
+  if not found then
+    raise exception 'group invite not found';
+  end if;
+
+  if invite_row.status <> 'pending' then
+    raise exception 'pending invite만 수락할 수 있습니다.';
+  end if;
+
+  if invite_row.expires_at <= now() then
+    raise exception '만료된 초대는 수락할 수 없습니다.';
+  end if;
+
+  if not public.is_group_invite_target(
+    invite_row.invited_user_id,
+    invite_row.invited_email,
+    invite_row.invited_invite_code
+  ) then
+    raise exception '내 초대만 처리할 수 있습니다.';
+  end if;
+
+  if not exists (
+    select 1
+      from public.groups
+     where id = invite_row.group_id
+       and status = 'active'
+  ) then
+    raise exception '활성화된 그룹만 초대 수락이 가능합니다.';
+  end if;
+
+  if exists (
+    select 1
+      from public.group_members
+     where group_id = invite_row.group_id
+       and user_id = auth.uid()
+       and status = 'active'
+  ) then
+    raise exception '이미 활성 멤버입니다.';
+  end if;
+
+  insert into public.group_members (
+    group_id,
+    user_id,
+    role,
+    status,
+    joined_at,
+    created_at,
+    updated_at
+  )
+  values (
+    invite_row.group_id,
+    auth.uid(),
+    'member',
+    'active',
+    now(),
+    now(),
+    now()
+  )
+  on conflict (group_id, user_id) do nothing
+  returning id into member_id;
+
+  if member_id is null then
+    raise exception '이미 활성 멤버입니다.';
+  end if;
+
+  update public.group_invites
+     set status = 'accepted',
+         accepted_at = now(),
+         acted_by = auth.uid()
+   where id = invite_row.id
+   returning * into updated_invite;
+
+  return updated_invite;
+end;
+$$;
+
+grant execute on function public.accept_group_invite(uuid) to authenticated;
+
+alter table public.group_invites enable row level security;
+
+grant select, insert, update on table public.group_invites to authenticated;
+
+drop policy if exists "group_invites_select_access" on public.group_invites;
+drop policy if exists "group_invites_insert_leader" on public.group_invites;
+drop policy if exists "group_invites_update_target" on public.group_invites;
+drop policy if exists "group_invites_update_leader_cancel" on public.group_invites;
+create policy "group_invites_select_access"
+  on public.group_invites
+  for select
+  using (
+    exists (
+      select 1
+      from public.groups
+      where groups.id = group_invites.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+    or invited_by = auth.uid()
+    or (
+      status = 'pending'
+      and public.is_group_invite_target(
+        invited_user_id,
+        invited_email,
+        invited_invite_code
+      )
+    )
+  );
+create policy "group_invites_insert_leader"
+  on public.group_invites
+  for insert
+  with check (
+    status = 'pending'
+    and invited_by = auth.uid()
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_invites.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+  );
+create policy "group_invites_update_target"
+  on public.group_invites
+  for update
+  using (
+    status = 'pending'
+    and public.is_group_invite_target(
+      invited_user_id,
+      invited_email,
+      invited_invite_code
+    )
+  )
+  with check (
+    status in ('accepted', 'rejected')
+    and acted_by = auth.uid()
+    and (
+      (status = 'accepted' and accepted_at is not null)
+      or (status = 'rejected' and rejected_at is not null)
+    )
+  );
+create policy "group_invites_update_leader_cancel"
+  on public.group_invites
+  for update
+  using (
+    status = 'pending'
+    and invited_by = auth.uid()
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_invites.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+  )
+  with check (
+    status = 'cancelled'
+    and acted_by = auth.uid()
+    and cancelled_at is not null
+  );
+
+drop policy if exists "group_members_select_member" on public.group_members;
+drop policy if exists "group_members_insert_leader" on public.group_members;
+drop policy if exists "group_members_update_leader" on public.group_members;
+create policy "group_members_select_member"
+  on public.group_members
+  for select
+  using (
+    exists (
+      select 1
+      from public.groups
+      where groups.id = group_members.group_id
+        and groups.status = 'active'
+        and public.is_group_member(groups.id, auth.uid())
+    )
+  );
+create policy "group_members_insert_leader"
+  on public.group_members
+  for insert
+  with check (
+    (
+      exists (
+        select 1
+        from public.groups
+        where groups.id = group_members.group_id
+          and groups.status = 'active'
+          and public.is_group_leader(groups.id, auth.uid())
+      )
+      or exists (
+        select 1
+        from public.group_invites
+        where group_invites.group_id = group_members.group_id
+          and group_invites.status = 'accepted'
+          and public.is_group_invite_target(
+            group_invites.invited_user_id,
+            group_invites.invited_email,
+            group_invites.invited_invite_code
+          )
+      )
+    )
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_members.group_id
+        and groups.status = 'active'
+    )
+    and role = 'member'
+    and status = 'active'
+    and removed_at is null
+    and removed_by is null
+  );
+create policy "group_members_update_leader"
+  on public.group_members
+  for update
+  using (
+    exists (
+      select 1
+      from public.groups
+      where groups.id = group_members.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from public.groups
+      where groups.id = group_members.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+    and status = 'active'
+    and removed_at is null
+    and removed_by is null
+  );
+
+create or replace function public.remove_group_member(
+  group_id_input uuid,
+  member_user_id_input uuid
+)
+returns public.group_members
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  group_row public.groups%rowtype;
+  target_member public.group_members%rowtype;
+  updated_member public.group_members%rowtype;
+  active_leader_count integer;
+begin
+  if current_user_id is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  if member_user_id_input = current_user_id then
+    raise exception '자기 자신은 제거할 수 없습니다.';
+  end if;
+
+  select *
+    into group_row
+    from public.groups
+   where id = group_id_input
+   for update;
+
+  if not found then
+    raise exception 'group not found';
+  end if;
+
+  if group_row.status <> 'active' then
+    raise exception 'active group만 멤버를 제거할 수 있습니다.';
+  end if;
+
+  if not public.is_group_leader(group_row.id, current_user_id) then
+    raise exception '팀 리더만 멤버를 제거할 수 있습니다.';
+  end if;
+
+  select *
+    into target_member
+    from public.group_members
+   where group_id = group_row.id
+     and user_id = member_user_id_input
+   for update;
+
+  if not found then
+    raise exception 'group member not found';
+  end if;
+
+  if target_member.status <> 'active' then
+    raise exception 'active 멤버만 제거할 수 있습니다.';
+  end if;
+
+  if target_member.role = 'leader' then
+    select count(*)
+      into active_leader_count
+      from public.group_members
+     where group_id = group_row.id
+       and role = 'leader'
+       and status = 'active';
+
+    if active_leader_count <= 1 then
+      raise exception '마지막 리더는 제거할 수 없습니다.';
+    end if;
+  end if;
+
+  update public.group_members
+     set status = 'removed',
+         removed_at = now(),
+         removed_by = current_user_id,
+         updated_at = now()
+   where id = target_member.id
+   returning * into updated_member;
+
+  return updated_member;
+end;
+$$;
+
+grant execute on function public.remove_group_member(uuid, uuid) to authenticated;
+
+create or replace function public.is_valid_group_role_delegation_permissions(
+  permissions_input jsonb
+)
+returns boolean
+language sql
+immutable
+security definer
+set search_path = public
+as $$
+  select
+    permissions_input is not null
+    and jsonb_typeof(permissions_input) = 'array'
+    and jsonb_array_length(permissions_input) > 0
+    and not exists (
+      select 1
+      from jsonb_array_elements_text(permissions_input) as permission(permission_value)
+      where permission_value not in (
+        'create_group_event',
+        'update_group_event',
+        'cancel_group_event',
+        'view_group_dashboard'
+      )
+    );
+$$;
+
+-- 4. group_role_delegations
+create table if not exists public.group_role_delegations (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  delegator_user_id uuid not null references public.users (id) on delete cascade,
+  delegate_user_id uuid not null references public.users (id) on delete cascade,
+  permissions jsonb not null default '[]'::jsonb,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  status text not null default 'active' check (status in ('active', 'expired', 'cancelled')),
+  cancelled_at timestamptz,
+  cancelled_by uuid references public.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint group_role_delegations_time_check check (ends_at > starts_at),
+  constraint group_role_delegations_permissions_check check (
+    jsonb_typeof(permissions) = 'array'
+    and jsonb_array_length(permissions) > 0
+    and public.is_valid_group_role_delegation_permissions(permissions)
+  )
+);
+
+create index if not exists group_role_delegations_group_id_idx
+  on public.group_role_delegations (group_id);
+
+create index if not exists group_role_delegations_delegator_user_id_idx
+  on public.group_role_delegations (delegator_user_id);
+
+create index if not exists group_role_delegations_delegate_user_id_idx
+  on public.group_role_delegations (delegate_user_id);
+
+create index if not exists group_role_delegations_status_idx
+  on public.group_role_delegations (status);
+
+create index if not exists group_role_delegations_starts_at_idx
+  on public.group_role_delegations (starts_at);
+
+create index if not exists group_role_delegations_ends_at_idx
+  on public.group_role_delegations (ends_at);
+
+create index if not exists group_role_delegations_group_delegate_status_idx
+  on public.group_role_delegations (group_id, delegate_user_id, status);
+
+create unique index if not exists group_role_delegations_group_delegate_active_uidx
+  on public.group_role_delegations (group_id, delegate_user_id)
+  where status = 'active';
+
+create or replace function public.prevent_group_role_delegation_immutable_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.group_id is distinct from old.group_id
+    or new.delegator_user_id is distinct from old.delegator_user_id
+    or new.delegate_user_id is distinct from old.delegate_user_id
+    or new.permissions is distinct from old.permissions
+    or new.starts_at is distinct from old.starts_at
+    or new.ends_at is distinct from old.ends_at
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'group_role_delegations immutable fields cannot change';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists group_role_delegations_set_updated_at on public.group_role_delegations;
+create trigger group_role_delegations_set_updated_at
+  before update on public.group_role_delegations
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists group_role_delegations_prevent_immutable_changes on public.group_role_delegations;
+create trigger group_role_delegations_prevent_immutable_changes
+  before update on public.group_role_delegations
+  for each row execute function public.prevent_group_role_delegation_immutable_changes();
+
+alter table public.group_role_delegations enable row level security;
+
+grant select, insert, update on table public.group_role_delegations to authenticated;
+
+drop policy if exists "group_role_delegations_select_access" on public.group_role_delegations;
+drop policy if exists "group_role_delegations_insert_leader" on public.group_role_delegations;
+drop policy if exists "group_role_delegations_update_cancel_access" on public.group_role_delegations;
+create policy "group_role_delegations_select_access"
+  on public.group_role_delegations
+  for select
+  using (
+    delegator_user_id = auth.uid()
+    or delegate_user_id = auth.uid()
+    or exists (
+      select 1
+      from public.groups
+      where groups.id = group_role_delegations.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+  );
+create policy "group_role_delegations_insert_leader"
+  on public.group_role_delegations
+  for insert
+  with check (
+    status = 'active'
+    and delegator_user_id = auth.uid()
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_role_delegations.group_id
+        and groups.status = 'active'
+        and public.is_group_leader(groups.id, auth.uid())
+    )
+  );
+create policy "group_role_delegations_update_cancel_access"
+  on public.group_role_delegations
+  for update
+  using (
+    status = 'active'
+    and (
+      delegator_user_id = auth.uid()
+      or exists (
+        select 1
+        from public.groups
+        where groups.id = group_role_delegations.group_id
+          and groups.status = 'active'
+          and public.is_group_leader(groups.id, auth.uid())
+      )
+    )
+  )
+  with check (
+    status = 'cancelled'
+    and cancelled_by = auth.uid()
+    and cancelled_at is not null
+  );
+
+create or replace function public.has_group_delegated_permission(
+  group_id_input uuid,
+  user_id_input uuid,
+  permission_input text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.group_role_delegations
+    where group_id = group_id_input
+      and delegate_user_id = user_id_input
+      and status = 'active'
+      and starts_at <= now()
+      and ends_at >= now()
+      and permissions ? permission_input
+      and permission_input in (
+        'create_group_event',
+        'update_group_event',
+        'cancel_group_event',
+        'view_group_dashboard'
+      )
+      and exists (
+        select 1
+        from public.groups
+        where groups.id = group_id_input
+          and groups.status = 'active'
+      )
+  );
+$$;
+
+-- 5. group_events
+create table if not exists public.group_events (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  title text not null,
+  description text,
+  location text,
+  start_at timestamptz not null,
+  end_at timestamptz not null,
+  all_day boolean not null default false,
+  recurrence_type text not null default 'none' check (recurrence_type in ('none', 'daily', 'weekly', 'monthly')),
+  recurrence_until timestamptz,
+  created_by uuid not null references public.users (id) on delete cascade,
+  updated_by uuid references public.users (id) on delete set null,
+  cancelled_at timestamptz,
+  cancelled_by uuid references public.users (id) on delete set null,
+  status text not null default 'active' check (status in ('active', 'cancelled', 'archived')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint group_events_end_after_start_check check (end_at >= start_at)
+);
+
+create index if not exists group_events_group_id_idx
+  on public.group_events (group_id);
+
+create index if not exists group_events_created_by_idx
+  on public.group_events (created_by);
+
+create index if not exists group_events_updated_by_idx
+  on public.group_events (updated_by);
+
+create index if not exists group_events_cancelled_by_idx
+  on public.group_events (cancelled_by);
+
+create index if not exists group_events_status_idx
+  on public.group_events (status);
+
+create index if not exists group_events_start_at_idx
+  on public.group_events (start_at);
+
+create index if not exists group_events_group_start_at_idx
+  on public.group_events (group_id, start_at);
+
+create index if not exists group_events_group_status_start_at_idx
+  on public.group_events (group_id, status, start_at);
+
+create or replace function public.prevent_group_event_immutable_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.group_id is distinct from old.group_id
+    or new.created_by is distinct from old.created_by
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'group_events immutable fields cannot change';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists group_events_set_updated_at on public.group_events;
+create trigger group_events_set_updated_at
+  before update on public.group_events
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists group_events_prevent_immutable_changes on public.group_events;
+create trigger group_events_prevent_immutable_changes
+  before update on public.group_events
+  for each row execute function public.prevent_group_event_immutable_changes();
+
+alter table public.group_events enable row level security;
+
+grant select, insert, update on table public.group_events to authenticated;
+
+drop policy if exists "group_events_select_access" on public.group_events;
+drop policy if exists "group_events_insert_access" on public.group_events;
+drop policy if exists "group_events_update_access" on public.group_events;
+drop policy if exists "group_events_cancel_access" on public.group_events;
+create policy "group_events_select_access"
+  on public.group_events
+  for select
+  using (
+    status = 'active'
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_events.group_id
+        and groups.status = 'active'
+    )
+    and (
+      public.is_group_member(group_id, auth.uid())
+      or public.is_group_leader(group_id, auth.uid())
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'create_group_event')
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'update_group_event')
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'cancel_group_event')
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'view_group_dashboard')
+    )
+  );
+create policy "group_events_insert_access"
+  on public.group_events
+  for insert
+  with check (
+    status = 'active'
+    and created_by = auth.uid()
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_events.group_id
+        and groups.status = 'active'
+    )
+    and (
+      public.is_group_leader(group_id, auth.uid())
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'create_group_event')
+    )
+  );
+create policy "group_events_update_access"
+  on public.group_events
+  for update
+  using (
+    status = 'active'
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_events.group_id
+        and groups.status = 'active'
+    )
+    and (
+      public.is_group_leader(group_id, auth.uid())
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'update_group_event')
+    )
+  )
+  with check (
+    status in ('active', 'archived')
+    and updated_by = auth.uid()
+  );
+create policy "group_events_cancel_access"
+  on public.group_events
+  for update
+  using (
+    status = 'active'
+    and exists (
+      select 1
+      from public.groups
+      where groups.id = group_events.group_id
+        and groups.status = 'active'
+    )
+    and (
+      public.is_group_leader(group_id, auth.uid())
+      or public.has_group_delegated_permission(group_id, auth.uid(), 'cancel_group_event')
+    )
+  )
+  with check (
+    status = 'cancelled'
+    and cancelled_at is not null
+    and cancelled_by = auth.uid()
+  );
+
+-- 6. group_backups
+create table if not exists public.group_backups (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups (id) on delete cascade,
+  backup_type text not null check (backup_type in ('archive', 'delete')),
+  snapshot jsonb not null default '{}'::jsonb,
+  created_by uuid not null references public.users (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  restored_at timestamptz,
+  restored_by uuid references public.users (id) on delete set null
+);
+
+create index if not exists group_backups_group_id_idx
+  on public.group_backups (group_id);
+
+create index if not exists group_backups_created_by_idx
+  on public.group_backups (created_by);
+
+create index if not exists group_backups_restored_by_idx
+  on public.group_backups (restored_by);
+
+create index if not exists group_backups_created_at_idx
+  on public.group_backups (created_at);
+
+create or replace function public.prevent_group_backup_immutable_changes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.group_id is distinct from old.group_id
+    or new.backup_type is distinct from old.backup_type
+    or new.snapshot is distinct from old.snapshot
+    or new.created_by is distinct from old.created_by
+    or new.created_at is distinct from old.created_at
+  then
+    raise exception 'group_backups immutable fields cannot change';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists group_backups_prevent_immutable_changes on public.group_backups;
+create trigger group_backups_prevent_immutable_changes
+  before update on public.group_backups
+  for each row execute function public.prevent_group_backup_immutable_changes();
+
+create or replace function public.archive_group_with_backup(group_id_input uuid)
+returns public.group_backups
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_user_id uuid := auth.uid();
+  group_row public.groups%rowtype;
+  backup_row public.group_backups%rowtype;
+  snapshot_payload jsonb;
+begin
+  if current_user_id is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  select *
+    into group_row
+    from public.groups
+   where id = group_id_input
+   for update;
+
+  if not found then
+    raise exception 'group not found';
+  end if;
+
+  if group_row.status <> 'active' then
+    raise exception 'active group만 보관할 수 있습니다.';
+  end if;
+
+  if not public.is_group_leader(group_row.id, current_user_id) then
+    raise exception '팀 리더만 그룹을 보관할 수 있습니다.';
+  end if;
+
+  snapshot_payload := jsonb_build_object(
+    'group', to_jsonb(group_row),
+    'active_members',
+    coalesce(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'user_id', group_members.user_id,
+            'role', group_members.role,
+            'joined_at', group_members.joined_at,
+            'created_at', group_members.created_at
+          )
+        )
+        from public.group_members
+        where group_members.group_id = group_row.id
+          and group_members.status = 'active'
+      ),
+      '[]'::jsonb
+    )
+  );
+
+  insert into public.group_backups (
+    group_id,
+    backup_type,
+    snapshot,
+    created_by,
+    created_at
+  )
+  values (
+    group_row.id,
+    'archive',
+    snapshot_payload,
+    current_user_id,
+    now()
+  )
+  returning * into backup_row;
+
+  update public.groups
+     set status = 'archived',
+         archived_at = now()
+   where id = group_row.id;
+
+  return backup_row;
+end;
+$$;
+
+grant execute on function public.archive_group_with_backup(uuid) to authenticated;
+
+alter table public.group_backups enable row level security;
+
+grant select, insert, update on table public.group_backups to authenticated;
+
+drop policy if exists "group_backups_select_leader" on public.group_backups;
+drop policy if exists "group_backups_insert_leader" on public.group_backups;
+drop policy if exists "group_backups_update_restore_leader" on public.group_backups;
+create policy "group_backups_select_leader"
+  on public.group_backups
+  for select
+  using (
+    public.is_group_leader(group_id, auth.uid())
+  );
+create policy "group_backups_insert_leader"
+  on public.group_backups
+  for insert
+  with check (
+    created_by = auth.uid()
+    and public.is_group_leader(group_id, auth.uid())
+  );
+create policy "group_backups_update_restore_leader"
+  on public.group_backups
+  for update
+  using (
+    public.is_group_leader(group_id, auth.uid())
+  )
+  with check (
+    restored_by = auth.uid()
+    and restored_at is not null
+  );
+
+-- 7. pre_actions
 create table if not exists public.pre_actions (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events (id) on delete cascade,

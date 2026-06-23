@@ -7,17 +7,22 @@ import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/features/groups/models/calendar_overlay_item.dart';
+import 'package:planflow/features/groups/models/group_event_model.dart';
+import 'package:planflow/features/groups/models/group_member_model.dart';
+import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/providers/group_calendar_overlay_provider.dart';
+import 'package:planflow/features/groups/providers/group_context_provider.dart';
+import 'package:planflow/features/groups/repositories/group_event_repository.dart';
+import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/calendar/calendar_screen.dart';
 import 'package:planflow/services/event_refresh_bus.dart';
 
 void main() {
-  testWidgets('CalendarScreen does not show a loading panel while loading',
-      (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: CalendarScreen(),
-      ),
-    );
+  testWidgets('CalendarScreen does not show a loading panel while loading', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
 
     await tester.pumpAndSettle();
 
@@ -27,64 +32,65 @@ void main() {
   });
 
   test(
-      'mergeCalendarEventsAfterReload preserves existing events after suspiciously small reload',
-      () {
-    final now = DateTime.now();
-    final merged = mergeCalendarEventsAfterReload(
-      previous: [
-        _event('old-1', '기존 일정 1', now.add(const Duration(minutes: 1))),
-        _event('old-2', '기존 일정 2', now.add(const Duration(minutes: 2))),
-      ],
-      loaded: [
-        _event('new-1', '새 일정', now.add(const Duration(minutes: 3))),
-      ],
-    );
+    'mergeCalendarEventsAfterReload preserves existing events after suspiciously small reload',
+    () {
+      final now = DateTime.now();
+      final merged = mergeCalendarEventsAfterReload(
+        previous: [
+          _event('old-1', '기존 일정 1', now.add(const Duration(minutes: 1))),
+          _event('old-2', '기존 일정 2', now.add(const Duration(minutes: 2))),
+        ],
+        loaded: [_event('new-1', '새 일정', now.add(const Duration(minutes: 3)))],
+      );
 
-    expect(merged.map((event) => event.id), ['old-1', 'old-2', 'new-1']);
-  });
+      expect(merged.map((event) => event.id), ['old-1', 'old-2', 'new-1']);
+    },
+  );
 
   testWidgets(
-      'CalendarScreen runs a queued reload after refresh signal arrives while loading',
-      (tester) async {
-    final now = DateTime.now();
-    final firstLoad = Completer<List<EventModel>>();
-    final repository = _AsyncEventRepository([
-      firstLoad.future,
-      Future.value([
-        _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
-        _event('new-1', '새 일정', now.add(const Duration(hours: 2))),
-      ]),
-    ]);
+    'CalendarScreen runs a queued reload after refresh signal arrives while loading',
+    (tester) async {
+      final now = DateTime.now();
+      final firstLoad = Completer<List<EventModel>>();
+      final repository = _AsyncEventRepository([
+        firstLoad.future,
+        Future.value([
+          _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
+          _event('new-1', '새 일정', now.add(const Duration(hours: 2))),
+        ]),
+      ]);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          eventRepository: repository,
-          userId: 'user-1',
-          initialDate: now,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: now,
+          ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    EventRefreshBus.instance.notifyChanged(
-      reason: 'test_queued',
-      startAt: now,
-    );
-    await tester.pump();
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'test_queued',
+        startAt: now,
+      );
+      await tester.pump();
 
-    firstLoad.complete([
-      _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
-    ]);
-    await tester.pumpAndSettle();
+      firstLoad.complete([
+        _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
+      ]);
+      await tester.pumpAndSettle();
 
-    expect(repository.listCalls, 2);
-    expect(find.text('기존 일정'), findsWidgets);
-    expect(find.text('새 일정'), findsWidgets);
-  });
+      expect(repository.listCalls, 2);
+      expect(find.text('기존 일정'), findsWidgets);
+      expect(find.text('새 일정'), findsWidgets);
+    },
+  );
 
-  testWidgets('CalendarScreen opens selected day sheet from initialDate',
-      (tester) async {
+  testWidgets('CalendarScreen opens selected day sheet from initialDate', (
+    tester,
+  ) async {
     final selectedDay = DateTime(2026, 5, 15, 9);
     final repository = _AsyncEventRepository([
       Future.value([
@@ -108,32 +114,26 @@ void main() {
       find.byKey(const ValueKey('calendar-day-events-draggable-sheet')),
       findsOneWidget,
     );
-    final dayEventsList =
-        find.byKey(const ValueKey('calendar-day-events-list'));
+    final dayEventsList = find.byKey(
+      const ValueKey('calendar-day-events-list'),
+    );
     expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('선택한 날짜 일정'),
-      ),
+      find.descendant(of: dayEventsList, matching: find.text('선택한 날짜 일정')),
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('다른 날짜 일정'),
-      ),
+      find.descendant(of: dayEventsList, matching: find.text('다른 날짜 일정')),
       findsNothing,
     );
   });
 
-  testWidgets('CalendarScreen direct add passes selected date to edit route',
-      (tester) async {
+  testWidgets('CalendarScreen direct add passes selected date to edit route', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(900, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final selectedDay = DateTime(2026, 6, 15, 9);
-    final repository = _AsyncEventRepository([
-      Future.value(<EventModel>[]),
-    ]);
+    final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
     final router = GoRouter(
       initialLocation: '/',
       routes: [
@@ -210,41 +210,40 @@ void main() {
   });
 
   test(
-      'calendar mini month cells reserve multi-day bands and overflow after four slots',
-      () {
-    final cells = buildCalendarMiniMonthCells(
-      focusedMonth: DateTime(2026, 6),
-      events: <EventModel>[
-        EventModel(
-          id: 'multi',
-          userId: 'user-1',
-          title: '연속 일정',
-          startAt: DateTime(2026, 6, 1, 9),
-          endAt: DateTime(2026, 6, 3, 9),
-          isMultiDay: true,
-        ),
-        _event('a', 'A', DateTime(2026, 6, 1, 10)),
-        _event('b', 'B', DateTime(2026, 6, 1, 11)),
-        _event('c', 'C', DateTime(2026, 6, 1, 12)),
-        _event('d', 'D', DateTime(2026, 6, 1, 13)),
-        _event('e', 'E', DateTime(2026, 6, 1, 14)),
-      ],
-    );
+    'calendar mini month cells reserve multi-day bands and overflow after four slots',
+    () {
+      final cells = buildCalendarMiniMonthCells(
+        focusedMonth: DateTime(2026, 6),
+        events: <EventModel>[
+          EventModel(
+            id: 'multi',
+            userId: 'user-1',
+            title: '연속 일정',
+            startAt: DateTime(2026, 6, 1, 9),
+            endAt: DateTime(2026, 6, 3, 9),
+            isMultiDay: true,
+          ),
+          _event('a', 'A', DateTime(2026, 6, 1, 10)),
+          _event('b', 'B', DateTime(2026, 6, 1, 11)),
+          _event('c', 'C', DateTime(2026, 6, 1, 12)),
+          _event('d', 'D', DateTime(2026, 6, 1, 13)),
+          _event('e', 'E', DateTime(2026, 6, 1, 14)),
+        ],
+      );
 
-    final day1 = cells.firstWhere((cell) => cell.dayNumber == 1);
-    final day2 = cells.firstWhere((cell) => cell.dayNumber == 2);
+      final day1 = cells.firstWhere((cell) => cell.dayNumber == 1);
+      final day2 = cells.firstWhere((cell) => cell.dayNumber == 2);
 
-    expect(day1.events.length, 4);
-    expect(day1.events.first.id, 'multi');
-    expect(day1.overflowCount, 2);
-    expect(day2.events.first.id, 'multi');
-  });
+      expect(day1.events.length, 4);
+      expect(day1.events.first.id, 'multi');
+      expect(day1.overflowCount, 2);
+      expect(day2.events.first.id, 'multi');
+    },
+  );
 
   testWidgets('CalendarScreen paints holiday day numbers red', (tester) async {
     final repository = _AsyncEventRepository([
-      Future.value([
-        _event('holiday', '현충일', DateTime(2026, 6, 6, 9)),
-      ]),
+      Future.value([_event('holiday', '현충일', DateTime(2026, 6, 6, 9))]),
     ]);
 
     await tester.pumpWidget(
@@ -264,8 +263,9 @@ void main() {
     expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
   });
 
-  testWidgets('CalendarScreen shows cross-month range on selected end day',
-      (tester) async {
+  testWidgets('CalendarScreen shows cross-month range on selected end day', (
+    tester,
+  ) async {
     final selectedDay = DateTime(2026, 6);
     final repository = _AsyncEventRepository([
       Future.value([
@@ -292,15 +292,152 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final dayEventsList =
-        find.byKey(const ValueKey('calendar-day-events-list'));
+    final dayEventsList = find.byKey(
+      const ValueKey('calendar-day-events-list'),
+    );
     expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('원주집방문'),
-      ),
+      find.descendant(of: dayEventsList, matching: find.text('원주집방문')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('CalendarScreen overlays group events in the day sheet', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(420, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final selectedDay = DateTime(2026, 6, 15, 9);
+    final repository = _AsyncEventRepository([
+      Future.value([_event('personal-1', '개인 일정', selectedDay)]),
+    ]);
+    final overlayProvider = _staticOverlayProvider(
+      groups: <GroupModel>[
+        _group(
+          id: 'group-1',
+          name: '서울1팀',
+          createdBy: 'leader-1',
+          createdAt: DateTime.utc(2026, 6, 11),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          _groupMember(
+            id: 'leader-row',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'leader',
+          ),
+        ],
+      },
+      eventsByGroupId: <String, List<GroupEventModel>>{
+        'group-1': <GroupEventModel>[
+          _groupEvent(
+            id: 'group-event-1',
+            groupId: 'group-1',
+            title: '그룹 회의',
+            startAt: DateTime.utc(2026, 6, 15, 10),
+            endAt: DateTime.utc(2026, 6, 15, 11),
+          ),
+        ],
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: selectedDay,
+          groupCalendarOverlayProvider: overlayProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('개인 일정'), findsWidgets);
+    expect(find.text('그룹 일정'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('calendar-group-overlay-event-group-event-1')),
+      findsOneWidget,
+    );
+    expect(find.text('서울1팀'), findsWidgets);
+  });
+
+  testWidgets('CalendarScreen routes group overlay taps to detail screen', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(420, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final selectedDay = DateTime(2026, 6, 15, 9);
+    final repository = _AsyncEventRepository([
+      Future.value([_event('personal-1', '개인 일정', selectedDay)]),
+    ]);
+    final overlayProvider = _staticOverlayProvider(
+      groups: <GroupModel>[
+        _group(
+          id: 'group-1',
+          name: '서울1팀',
+          createdBy: 'leader-1',
+          createdAt: DateTime.utc(2026, 6, 11),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          _groupMember(
+            id: 'leader-row',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'leader',
+          ),
+        ],
+      },
+      eventsByGroupId: <String, List<GroupEventModel>>{
+        'group-1': <GroupEventModel>[
+          _groupEvent(
+            id: 'group-event-1',
+            groupId: 'group-1',
+            title: '그룹 회의',
+            startAt: DateTime.utc(2026, 6, 15, 10),
+            endAt: DateTime.utc(2026, 6, 15, 11),
+          ),
+        ],
+      },
+    );
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, __) => CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: selectedDay,
+            groupCalendarOverlayProvider: overlayProvider,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.groupEventDetail,
+          builder: (_, state) => Scaffold(
+            body: Text('group-detail:${state.pathParameters['eventId']}'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    final groupCard = find.byKey(
+      const ValueKey('calendar-group-overlay-event-group-event-1'),
+    );
+    expect(groupCard, findsOneWidget);
+
+    await tester.tap(groupCard);
+    await tester.pumpAndSettle();
+
+    expect(find.text('group-detail:group-event-1'), findsOneWidget);
   });
 }
 
@@ -349,4 +486,208 @@ class _AsyncEventRepository extends EventRepository {
   Future<EventModel> updateEvent(EventModel event) {
     throw UnimplementedError();
   }
+}
+
+class _StaticGroupCalendarOverlayProvider extends GroupCalendarOverlayProvider {
+  _StaticGroupCalendarOverlayProvider({
+    required List<CalendarOverlayItem> items,
+    required GroupModel? selectedGroup,
+    required String? selectedGroupRole,
+    required List<GroupModel> groups,
+    required Map<String, List<GroupMemberModel>> membersByGroupId,
+  }) : _items = List<CalendarOverlayItem>.unmodifiable(items),
+       _selectedGroup = selectedGroup,
+       _selectedGroupRole = selectedGroupRole,
+       super(
+         contextProvider: GroupContextProvider(
+           repository: _FakeGroupRepository(
+             groups: groups,
+             membersByGroupId: membersByGroupId,
+           ),
+         ),
+         repository: _FakeGroupEventRepository(
+           const <String, List<GroupEventModel>>{},
+         ),
+       );
+
+  final List<CalendarOverlayItem> _items;
+  final GroupModel? _selectedGroup;
+  final String? _selectedGroupRole;
+
+  @override
+  List<CalendarOverlayItem> get items => _items;
+
+  @override
+  GroupModel? get selectedGroup => _selectedGroup;
+
+  @override
+  String? get selectedGroupRole => _selectedGroupRole;
+
+  @override
+  Future<void> loadForMonth(String userId, DateTime focusedMonth) async {}
+
+  @override
+  Future<void> clear() async {}
+}
+
+_StaticGroupCalendarOverlayProvider _staticOverlayProvider({
+  required List<GroupModel> groups,
+  required Map<String, List<GroupMemberModel>> membersByGroupId,
+  required Map<String, List<GroupEventModel>> eventsByGroupId,
+  GroupModel? selectedGroup,
+  String? selectedGroupRole,
+}) {
+  final selected = selectedGroup ?? (groups.isEmpty ? null : groups.first);
+  final items = <CalendarOverlayItem>[];
+  if (selected != null) {
+    final events = eventsByGroupId[selected.id] ?? const <GroupEventModel>[];
+    items.addAll(
+      events.map(
+        (event) =>
+            CalendarOverlayItem.fromGroupEvent(event, groupName: selected.name),
+      ),
+    );
+  }
+  return _StaticGroupCalendarOverlayProvider(
+    items: items,
+    selectedGroup: selected,
+    selectedGroupRole: selectedGroupRole,
+    groups: groups,
+    membersByGroupId: membersByGroupId,
+  );
+}
+
+class _FakeGroupRepository extends GroupRepository {
+  _FakeGroupRepository({required this.groups, required this.membersByGroupId});
+
+  final List<GroupModel> groups;
+  final Map<String, List<GroupMemberModel>> membersByGroupId;
+
+  @override
+  Future<List<GroupModel>> listGroups() async => groups;
+
+  @override
+  Future<GroupModel?> fetchGroup(String groupId) async {
+    for (final group in groups) {
+      if (group.id == groupId) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<GroupModel> createGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupModel> updateGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<GroupMemberModel>> listMembers(String groupId) async {
+    return membersByGroupId[groupId] ?? const <GroupMemberModel>[];
+  }
+
+  @override
+  Future<GroupMemberModel> addMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupMemberModel> updateMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+}
+
+class _FakeGroupEventRepository extends GroupEventRepository {
+  _FakeGroupEventRepository(this.eventsByGroupId);
+
+  final Map<String, List<GroupEventModel>> eventsByGroupId;
+
+  @override
+  Future<List<GroupEventModel>> getEventsForGroup(
+    String groupId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    return List<GroupEventModel>.from(
+      eventsByGroupId[groupId] ?? const <GroupEventModel>[],
+    );
+  }
+
+  @override
+  Future<GroupEventModel> createGroupEvent(GroupEventModel event) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> updateGroupEvent(GroupEventModel event) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> cancelGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> archiveGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> fetchGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+}
+
+GroupModel _group({
+  required String id,
+  required String name,
+  required String createdBy,
+  required DateTime createdAt,
+}) {
+  return GroupModel(
+    id: id,
+    createdBy: createdBy,
+    name: name,
+    createdAt: createdAt,
+  );
+}
+
+GroupMemberModel _groupMember({
+  required String id,
+  required String groupId,
+  required String userId,
+  required String role,
+}) {
+  return GroupMemberModel(
+    id: id,
+    groupId: groupId,
+    userId: userId,
+    role: role,
+    status: 'active',
+    createdAt: DateTime.utc(2026, 6, 11),
+  );
+}
+
+GroupEventModel _groupEvent({
+  required String id,
+  required String groupId,
+  required String title,
+  required DateTime startAt,
+  required DateTime endAt,
+}) {
+  return GroupEventModel(
+    id: id,
+    groupId: groupId,
+    title: title,
+    startAt: startAt,
+    endAt: endAt,
+    createdBy: 'leader-1',
+    location: '회의실',
+  );
 }

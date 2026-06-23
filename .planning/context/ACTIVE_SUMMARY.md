@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-23 TASK_20260621_035633 PlanFlow V2 main 추적 재정렬
+- `origin/main`을 기준으로 V2 브랜치를 다시 구성하고, V2 overlay는 Android applicationId/namespace/label/deeplink/Firebase 설정, `planflow-v2://` callback, 그룹 기능 문서/코드/라우트/설정/캘린더 통합만 유지했다.
+- `MainActivity.kt`와 `PlanFlowHomeWidgetProvider.kt`는 최신 main 로직을 기준으로 `com.fluxstudio.planflow.v2` package 및 V2 widget action namespace/scheme만 재적용했다.
+- 검증: `flutter pub get`, `flutter analyze --no-pub`, V2 scheme/OAuth/group focused tests, settings/calendar focused tests, `git diff --check` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했고, `flutter build apk --release --no-pub`는 `android/key.properties` 부재로 실패했다. Android 실기기는 offline 상태라 실행 검증은 미실행.
+
 ## 2026-06-18 TASK_20260618_123620 PlanFlow 2차 버그/개선 6종
 - 연동 해제 모달을 X 닫기 + 일정 유지/삭제 2버튼으로 정리했고, 네이버 CalDAV 진행/진단 다이얼로그는 짧은 상태와 상세 info 진입으로 분리했다.
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 모달을 표시하고 성공 상태를 저장/복원하며, 서비스 import 루프는 6개 단위 제한 병렬 처리와 결과 집계 방식으로 바꿨다.

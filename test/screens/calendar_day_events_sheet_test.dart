@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/features/groups/models/calendar_overlay_item.dart';
 import 'package:planflow/screens/calendar/calendar_screen.dart';
 
 void main() {
@@ -26,10 +27,12 @@ void main() {
             height: 360,
             child: DayEventsSheet(
               day: DateTime(2026, 5, 12),
-              events: events,
+              personalEvents: events,
+              groupEvents: const <CalendarOverlayItem>[],
               onAdd: () {},
               onVoice: () {},
               onEventTap: (_) {},
+              onGroupEventTap: (_) {},
             ),
           ),
         ),

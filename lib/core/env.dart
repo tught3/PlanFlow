@@ -29,7 +29,7 @@ class AppEnv {
   }
 
   static String get naverClientId => _envValue('NAVER_CLIENT_ID');
-  static String get authRedirectUrl => 'planflow://auth-callback';
+  static String get authRedirectUrl => 'planflow-v2://auth-callback';
 
   static bool get hasValidSupabaseConfig {
     final url = supabaseUrl.trim();

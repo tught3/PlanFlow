@@ -43,7 +43,7 @@
     </queries>
 
     <application
-        android:label="PlanFlow"
+        android:label="PlanFlow V2"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -73,16 +73,16 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:host="voice"
-                    android:scheme="planflow" />
+                    android:scheme="planflow-v2" />
                 <data
                     android:host="voice-launcher"
-                    android:scheme="planflow" />
+                    android:scheme="planflow-v2" />
                 <data
                     android:host="calendar"
-                    android:scheme="planflow" />
+                    android:scheme="planflow-v2" />
                 <data
                     android:host="event"
-                    android:scheme="planflow" />
+                    android:scheme="planflow-v2" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -90,7 +90,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:host="auth-callback"
-                    android:scheme="planflow" />
+                    android:scheme="planflow-v2" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
