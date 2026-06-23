@@ -529,6 +529,37 @@ void main() {
     expect(june9Cell.overflowCount, 3);
   });
 
+  test(
+      'HomeWidgetSchedulePayloadBuilder expands recurring events for adjacent month widgets',
+      () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime(2026, 5, 20, 9),
+      events: <EventModel>[
+        EventModel(
+          id: 'weekly-review',
+          userId: 'user-1',
+          title: '주간 리뷰',
+          startAt: DateTime(2026, 4, 6, 9),
+          recurrenceRule: 'FREQ=WEEKLY;BYDAY=MO',
+        ),
+      ],
+    );
+
+    final april20Cell = payload.previousMonthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 4, 20),
+    );
+    final may18Cell = payload.monthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 5, 18),
+    );
+    final june15Cell = payload.nextMonthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 6, 15),
+    );
+
+    expect(april20Cell.events.map((event) => event.title), contains('주간 리뷰'));
+    expect(may18Cell.events.map((event) => event.title), contains('주간 리뷰'));
+    expect(june15Cell.events.map((event) => event.title), contains('주간 리뷰'));
+  });
+
   test('HomeWidgetSchedulePayloadBuilder fills tomorrow only in empty space',
       () {
     final now = DateTime.parse('2026-05-20T04:00:00Z');

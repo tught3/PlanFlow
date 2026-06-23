@@ -1912,3 +1912,8 @@
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 안내를 표시하고, 이벤트 저장은 6개 단위 병렬 배치로 처리한다.
 - 기존 pre_actions 보유 이벤트를 `is_critical = true`로 보정하는 migration을 추가했다.
 - 검증: classifier/manual/settings focused tests와 `flutter analyze --no-pub`가 통과했다. PowerShell에서 `flutter build apk --debug --no-pub`는 Gradle client disconnect로 `-1` 조기 종료됐지만, `cmd.exe /d /s /c "flutter build apk --debug --no-pub"` 경로는 통과해 `build\app\outputs\flutter-apk\app-debug.apk`를 생성했다. `flutter install -d 192.168.0.103:39685 --debug`와 `adb ... monkey` 실행 확인도 통과했고 PID는 `2259`였다. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
+
+## 2026-06-23 TASK_20260621_000928 월간 위젯 반복 일정 확장 보정
+- 홈 위젯 payload builder가 현재 월 42칸만 기준으로 반복 일정을 확장하던 문제를 보정해, 이전/현재/다음 월 위젯 그리드 전체 범위까지 occurrence를 생성하도록 했다.
+- 이전/다음 월 위젯 payload에도 주간 반복 일정이 표시되는 회귀 테스트를 추가했다.
+- 검증: `flutter test test\services\home_widget_service_test.dart --no-pub -r compact`, scoped analyze, 전체 `flutter analyze --no-pub` 통과. `flutter build apk --release --no-pub`는 `android/key.properties` 누락으로 실패했다.

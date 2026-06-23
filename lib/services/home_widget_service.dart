@@ -261,11 +261,14 @@ class HomeWidgetSchedulePayloadBuilder {
     List<EventModel> events,
     DateTime month,
   ) {
-    final monthStart = DateTime(month.year, month.month);
-    final startWeekday = monthStart.weekday % 7;
-    final firstCell = monthStart.subtract(Duration(days: startWeekday));
-    final rangeStart = firstCell;
-    final rangeEnd = firstCell.add(const Duration(days: 42));
+    final previousFirstCell = _firstMonthGridCell(
+      DateTime(month.year, month.month - 1),
+    );
+    final nextFirstCell = _firstMonthGridCell(
+      DateTime(month.year, month.month + 1),
+    );
+    final rangeStart = previousFirstCell;
+    final rangeEnd = nextFirstCell.add(const Duration(days: 42));
     final expanded = <EventModel>[];
     for (final event in events) {
       expanded.addAll(
@@ -277,6 +280,12 @@ class HomeWidgetSchedulePayloadBuilder {
       );
     }
     return _hideOverriddenWidgetOccurrences(expanded);
+  }
+
+  static DateTime _firstMonthGridCell(DateTime month) {
+    final monthStart = DateTime(month.year, month.month);
+    final startWeekday = monthStart.weekday % 7;
+    return monthStart.subtract(Duration(days: startWeekday));
   }
 
   static List<EventModel> _expandSingleWidgetEvent(
