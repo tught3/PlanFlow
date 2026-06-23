@@ -10,18 +10,11 @@ import '../../services/auth_service.dart';
 import '../../services/oauth_callback_handler.dart';
 import '../../l10n/app_l10n.dart';
 
-
-enum _AuthMode {
-  login,
-  signUp,
-  reset,
-}
+enum _AuthMode { login, signUp, reset }
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({
-    super.key,
-    AuthService? authService,
-  }) : _authService = authService;
+  const LoginScreen({super.key, AuthService? authService})
+      : _authService = authService;
 
   final AuthService? _authService;
 
@@ -118,8 +111,12 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     final l10n = appL10n(context);
     final authService = _authService;
     FocusScope.of(context).unfocus();
-    if (!AppEnv.isSupabaseReady || authService == null) {
-      _setMessage(l10n.supabaseLoginMissing);
+    final blockedMessage = _supabaseReadinessMessage(social: false);
+    if (blockedMessage != null || authService == null) {
+      _setMessage(
+        blockedMessage ?? l10n.supabaseLoginMissing,
+        isError: !AppEnv.isSupabaseInitializationPending,
+      );
       return;
     }
 
@@ -156,10 +153,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
           name: _nameController.text,
         );
         if (response.session == null) {
-          _setMessage(
-            l10n.signUpEmailSent,
-            isError: false,
-          );
+          _setMessage(l10n.signUpEmailSent, isError: false);
           _setMode(_AuthMode.login, keepMessage: true);
         } else if (mounted) {
           OAuthCallbackHandler.clearPendingCallback();
@@ -173,10 +167,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
         }
       } else {
         await authService.sendPasswordResetEmail(_emailController.text);
-        _setMessage(
-          l10n.passwordResetSent,
-          isError: false,
-        );
+        _setMessage(l10n.passwordResetSent, isError: false);
       }
     } catch (error) {
       if (_mode == _AuthMode.signUp) {
@@ -195,8 +186,12 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   Future<void> _socialLogin(PlanFlowOAuthProvider provider) async {
     final l10n = appL10n(context);
     final authService = _authService;
-    if (!AppEnv.isSupabaseReady || authService == null) {
-      _setMessage(l10n.supabaseSocialMissing);
+    final blockedMessage = _supabaseReadinessMessage(social: true);
+    if (blockedMessage != null || authService == null) {
+      _setMessage(
+        blockedMessage ?? l10n.supabaseSocialMissing,
+        isError: !AppEnv.isSupabaseInitializationPending,
+      );
       return;
     }
 
@@ -306,6 +301,33 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     _ensureMessageVisible();
   }
 
+  String? _supabaseReadinessMessage({required bool social}) {
+    final l10n = appL10n(context);
+    if (AppEnv.isSupabaseReady) {
+      return null;
+    }
+    if (!AppEnv.hasValidSupabaseConfig) {
+      return social ? l10n.supabaseSocialMissing : l10n.supabaseLoginMissing;
+    }
+    if (AppEnv.hasSupabaseInitializationFailed) {
+      final reason = AppEnv.supabaseInitializationError;
+      final suffix = reason == null || reason.isEmpty ? '' : ' 원인: $reason';
+      return 'Supabase 로그인 준비에 실패했습니다. 앱을 다시 열고 네트워크와 설정을 확인해 주세요.$suffix';
+    }
+    return '로그인 준비 중입니다. 잠시 후 다시 시도해 주세요.';
+  }
+
+  String? _supabaseFailureBannerMessage() {
+    if (AppEnv.isSupabaseReady) {
+      return null;
+    }
+    if (!AppEnv.hasValidSupabaseConfig ||
+        AppEnv.hasSupabaseInitializationFailed) {
+      return _supabaseReadinessMessage(social: false);
+    }
+    return null;
+  }
+
   void _ensureMessageVisible() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final messageContext = _messageKey.currentContext;
@@ -350,6 +372,10 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       _AuthMode.signUp => l10n.signUpSubtitle,
       _AuthMode.reset => l10n.passwordResetSubtitle,
     };
+
+    final supabaseBannerMessage = authProvider.hasResolvedInitialSession
+        ? _supabaseFailureBannerMessage()
+        : null;
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -402,11 +428,8 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 12),
-            if (authProvider.hasResolvedInitialSession && !AppEnv.isSupabaseReady)
-              _MessageBox(
-                message: l10n.supabaseLoginMissing,
-                isError: true,
-              ),
+            if (supabaseBannerMessage != null)
+              _MessageBox(message: supabaseBannerMessage, isError: true),
             if (_message != null) ...[
               _MessageBox(
                 key: _messageKey,
@@ -492,10 +515,7 @@ class _EmailLoginCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(
-          color: PlanFlowColors.primaryFaint,
-          width: 0.5,
-        ),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -582,8 +602,9 @@ class _EmailLoginCard extends StatelessWidget {
                 scrollPadding: const EdgeInsets.only(bottom: 180),
                 onSubmitted: (_) {
                   if (mode == _AuthMode.signUp) {
-                    FocusScope.of(context)
-                        .requestFocus(confirmPasswordFocusNode);
+                    FocusScope.of(
+                      context,
+                    ).requestFocus(confirmPasswordFocusNode);
                   } else {
                     onSubmit();
                   }
@@ -643,11 +664,7 @@ class _EmailLoginCard extends StatelessWidget {
 }
 
 class _MessageBox extends StatelessWidget {
-  const _MessageBox({
-    super.key,
-    required this.message,
-    required this.isError,
-  });
+  const _MessageBox({super.key, required this.message, required this.isError});
 
   final String message;
   final bool isError;
@@ -696,10 +713,7 @@ class _SocialLoginCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(
-          color: PlanFlowColors.primaryFaint,
-          width: 0.5,
-        ),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -784,10 +798,7 @@ class _BrandLoginButton extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-          ),
+          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
         child: Stack(
           alignment: Alignment.center,

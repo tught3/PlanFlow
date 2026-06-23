@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-23 TASK_20260621_100723 Google 로그인 Supabase 준비 상태 경고 보정
+- Supabase 초기화 상태를 pending/failed/ready로 분리해, 앱 시작 직후 초기화가 아직 진행 중인 상태를 실제 실패나 빌드 설정 누락으로 오판하지 않게 했다.
+- Google 포함 소셜 로그인 클릭 시 pending 상태는 정보 메시지로만 안내하고, Supabase 초기화 실패가 확정된 경우에만 실패 원인 요약을 표시한다. JWT 형태 토큰은 UI 노출 전 마스킹한다.
+- 검증: focused `login_screen_test`, focused/full `flutter analyze --no-pub`, `git diff --check` 통과. `flutter build apk --release --no-pub`는 `android/key.properties` 부재로 Gradle 초기에 실패했다.
+
 ## 2026-06-18 TASK_20260618_123620 PlanFlow 2차 버그/개선 6종
 - 연동 해제 모달을 X 닫기 + 일정 유지/삭제 2버튼으로 정리했고, 네이버 CalDAV 진행/진단 다이얼로그는 짧은 상태와 상세 info 진입으로 분리했다.
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 모달을 표시하고 성공 상태를 저장/복원하며, 서비스 import 루프는 6개 단위 제한 병렬 처리와 결과 집계 방식으로 바꿨다.

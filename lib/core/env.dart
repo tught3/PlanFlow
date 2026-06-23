@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class AppEnv {
   static const _defaultSupabaseUrl = 'https://xqvvfnvmytjlblcngipn.supabase.co';
   static const _defaultSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.'
@@ -5,6 +7,8 @@ class AppEnv {
       '_YMZvcyy5W5-YUI--1kNrAzCAC9H8BfW2ku0DUpXIpM';
 
   static bool _supabaseInitialized = false;
+  static bool _supabaseInitializationFailed = false;
+  static String? _supabaseInitializationError;
   static bool _naverMapInitialized = false;
 
   static String get supabaseUrl => _envValue('SUPABASE_URL');
@@ -47,12 +51,28 @@ class AppEnv {
   }
 
   static bool get isSupabaseReady => _supabaseInitialized;
+  static bool get hasSupabaseInitializationFailed =>
+      _supabaseInitializationFailed;
+  static bool get isSupabaseInitializationPending =>
+      hasValidSupabaseConfig &&
+      !_supabaseInitialized &&
+      !_supabaseInitializationFailed;
+  static String? get supabaseInitializationError =>
+      _supabaseInitializationError;
   static bool get isNaverMapReady => _naverMapInitialized;
 
   static bool get isConfigured => isSupabaseReady && hasValidSupabaseConfig;
 
   static void markSupabaseInitialized() {
     _supabaseInitialized = true;
+    _supabaseInitializationFailed = false;
+    _supabaseInitializationError = null;
+  }
+
+  static void markSupabaseInitializationFailed(Object error) {
+    _supabaseInitialized = false;
+    _supabaseInitializationFailed = true;
+    _supabaseInitializationError = _safeErrorSummary(error);
   }
 
   static void markNaverMapInitialized() {
@@ -80,19 +100,25 @@ class AppEnv {
     return switch (key) {
       'SUPABASE_URL' => const String.fromEnvironment('SUPABASE_URL'),
       'SUPABASE_ANON_KEY' => const String.fromEnvironment('SUPABASE_ANON_KEY'),
-      'GOOGLE_ANDROID_CLIENT_ID' =>
-        const String.fromEnvironment('GOOGLE_ANDROID_CLIENT_ID'),
-      'GOOGLE_MAPS_API_KEY' =>
-        const String.fromEnvironment('GOOGLE_MAPS_API_KEY'),
+      'GOOGLE_ANDROID_CLIENT_ID' => const String.fromEnvironment(
+          'GOOGLE_ANDROID_CLIENT_ID',
+        ),
+      'GOOGLE_MAPS_API_KEY' => const String.fromEnvironment(
+          'GOOGLE_MAPS_API_KEY',
+        ),
       'TMAP_API_KEY' => const String.fromEnvironment('TMAP_API_KEY'),
-      'NAVER_MAP_CLIENT_ID' =>
-        const String.fromEnvironment('NAVER_MAP_CLIENT_ID'),
-      'NAVER_MAP_PROXY_URL' =>
-        const String.fromEnvironment('NAVER_MAP_PROXY_URL'),
-      'GOOGLE_WEB_CLIENT_ID' =>
-        const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
-      'GOOGLE_SERVER_CLIENT_ID' =>
-        const String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID'),
+      'NAVER_MAP_CLIENT_ID' => const String.fromEnvironment(
+          'NAVER_MAP_CLIENT_ID',
+        ),
+      'NAVER_MAP_PROXY_URL' => const String.fromEnvironment(
+          'NAVER_MAP_PROXY_URL',
+        ),
+      'GOOGLE_WEB_CLIENT_ID' => const String.fromEnvironment(
+          'GOOGLE_WEB_CLIENT_ID',
+        ),
+      'GOOGLE_SERVER_CLIENT_ID' => const String.fromEnvironment(
+          'GOOGLE_SERVER_CLIENT_ID',
+        ),
       'NAVER_CLIENT_ID' => const String.fromEnvironment('NAVER_CLIENT_ID'),
       _ => '',
     };
@@ -111,5 +137,24 @@ class AppEnv {
         normalized.contains('your-naver-map-client-id') ||
         normalized.contains('your-naver-map-client-secret') ||
         normalized.contains('your-naver-map-proxy-url');
+  }
+
+  static String _safeErrorSummary(Object error) {
+    final raw = error.toString().trim();
+    if (raw.isEmpty) {
+      return error.runtimeType.toString();
+    }
+    final compact = raw.replaceAll(RegExp(r'\s+'), ' ').replaceAll(
+          RegExp(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'),
+          '[redacted-token]',
+        );
+    return compact.length <= 140 ? compact : '${compact.substring(0, 140)}...';
+  }
+
+  @visibleForTesting
+  static void resetSupabaseInitializationForTesting() {
+    _supabaseInitialized = false;
+    _supabaseInitializationFailed = false;
+    _supabaseInitializationError = null;
   }
 }

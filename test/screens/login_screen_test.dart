@@ -7,16 +7,17 @@ import 'package:planflow/screens/auth/login_screen.dart';
 import 'package:planflow/services/auth_service.dart';
 
 void main() {
-  testWidgets('LoginScreen shows the Naver social login button',
-      (tester) async {
+  setUp(() {
+    AppEnv.resetSupabaseInitializationForTesting();
+  });
+
+  testWidgets('LoginScreen shows the Naver social login button', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(360, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: LoginScreen(),
-      ),
-    );
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
 
     await tester.pumpAndSettle();
 
@@ -36,9 +37,7 @@ void main() {
     final authService = _FakeAuthService();
     AppEnv.markSupabaseInitialized();
     await tester.pumpWidget(
-      MaterialApp(
-        home: LoginScreen(authService: authService),
-      ),
+      MaterialApp(home: LoginScreen(authService: authService)),
     );
     await tester.pumpAndSettle();
 
@@ -63,6 +62,45 @@ void main() {
     expect(tester.getTopLeft(messageBox).dy, greaterThanOrEqualTo(0));
     expect(tester.getBottomLeft(messageBox).dy, lessThan(1200));
     expect(find.text('비밀번호를 잊으셨나요?'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Google login click does not show missing Supabase config while initialization is pending',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(420, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+      await tester.pumpAndSettle();
+
+      final googleButton = find.text('Google로 계속하기');
+      await tester.ensureVisible(googleButton);
+      await tester.tap(googleButton);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('로그인 준비 중입니다'), findsOneWidget);
+      expect(find.textContaining('Supabase 빌드 설정값'), findsNothing);
+    },
+  );
+
+  testWidgets('Google login click shows the real Supabase readiness failure', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(420, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    AppEnv.markSupabaseInitializationFailed('network timeout');
+
+    await tester.pumpWidget(const MaterialApp(home: LoginScreen()));
+    await tester.pumpAndSettle();
+
+    final googleButton = find.text('Google로 계속하기');
+    await tester.ensureVisible(googleButton);
+    await tester.tap(googleButton);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Supabase 로그인 준비에 실패했습니다'), findsOneWidget);
+    expect(find.textContaining('network timeout'), findsOneWidget);
+    expect(find.textContaining('Supabase 빌드 설정값'), findsNothing);
   });
 }
 

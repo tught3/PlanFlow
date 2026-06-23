@@ -127,6 +127,7 @@ Future<void> _initializeSupabase() async {
       unawaited(const DailyCalendarSyncSchedulerService().scheduleDaily());
     } catch (error) {
       debugPrint('Supabase initialization skipped: $error');
+      AppEnv.markSupabaseInitializationFailed(error);
       authProvider.start();
     }
   } else {
