@@ -653,6 +653,20 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     if (!AppEnv.isSupabaseReady || rawText.trim().isEmpty) {
       return rawText;
     }
+    // 보정 규칙은 부가 기능이므로 Supabase 조회가 느려도 확인 페이지 이동을
+    // 막지 않는다. 500ms 안에 못 끝내면 원본 텍스트로 즉시 진행한다.
+    try {
+      return await _applyTranscriptCorrectionRulesInner(rawText).timeout(
+        const Duration(milliseconds: 500),
+        onTimeout: () => rawText,
+      );
+    } catch (error) {
+      debugPrint('VoiceInputScreen correction timeout/skip: $error');
+      return rawText;
+    }
+  }
+
+  Future<String> _applyTranscriptCorrectionRulesInner(String rawText) async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null || userId.trim().isEmpty) {
       return rawText;

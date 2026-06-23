@@ -873,11 +873,33 @@ class GptService {
   String _scheduleSystemPromptForRegion() {
     final region = PlanFlowRegionController.instance.region;
     final now = _now();
+    final todayDate = DateTime(now.year, now.month, now.day);
+    final weekStart = todayDate.subtract(Duration(days: now.weekday - 1));
+    final weekEnd = weekStart.add(const Duration(days: 6));
+    final nextWeekStart = weekStart.add(const Duration(days: 7));
+    final nextWeekEnd = nextWeekStart.add(const Duration(days: 6));
+    String ymd(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+    const weekdayNames = ['월', '화', '수', '목', '금', '토', '일'];
+    final todayName = weekdayNames[now.weekday - 1];
+    // 월 경계 예시: 오늘 기준 "다음주 금요일"의 실제 날짜를 직접 계산해 GPT에 제시
+    final nextWeekFriday = nextWeekStart.add(const Duration(days: 4));
     return '''
 Current user region: ${region.countryName} (${region.countryCode}).
 Current locale: ${region.localeCode}.
 Current time zone: ${region.timeZoneId}.
 Current local date-time: ${now.toIso8601String()}.
+Today is ${ymd(todayDate)} ($todayName요일).
+This week (이번주): ${ymd(weekStart)} (월) ~ ${ymd(weekEnd)} (일).
+Next week (다음주): ${ymd(nextWeekStart)} (월) ~ ${ymd(nextWeekEnd)} (일).
+
+Weekday resolution rules (IMPORTANT, follow exactly):
+- "이번주 <요일>" = that weekday inside the This week range above.
+- "다음주 <요일>" = that weekday inside the Next week range above.
+- A month boundary does NOT reset the week. On ${ymd(todayDate)}, "다음주 금요일" is ${ymd(nextWeekFriday)}, even when it falls in the next month.
+- A bare "<요일>" with no 이번주/다음주 means the nearest upcoming occurrence (today or later).
 
 $_scheduleSystemPrompt
 ''';
@@ -894,11 +916,30 @@ $_scheduleSystemPrompt
     if (parsedStartAt == null) {
       return true;
     }
+    // "이번주/다음주 X요일"처럼 시간 표현이 없는 상대 요일 표현은 로컬 파서가
+    // 결정적으로 정확하다. GPT는 주차 경계(특히 월을 넘는 다음주) 계산을 자주
+    // 틀리므로, 이 경우 로컬 추론 날짜를 우선한다. (시간이 있는 표현은 기존
+    // 동작을 유지해 시간 정보 손실을 막는다.)
+    if (_hasRelativeWeekdayDateHint(rawText) &&
+        !_hasExplicitKoreanTimeExpression(rawText) &&
+        !_sameCalendarDay(parsedStartAt, inferredStartAt)) {
+      return true;
+    }
     if (!_hasExplicitKoreanTimeExpression(rawText)) {
       return false;
     }
     return parsedStartAt.difference(inferredStartAt).abs() >
         const Duration(minutes: 1);
+  }
+
+  bool _sameCalendarDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  bool _hasRelativeWeekdayDateHint(String rawText) {
+    final text = _normalizeKoreanText(rawText);
+    // 이번주/다음주 + 요일, 또는 이번주/다음주 단독 표현
+    return RegExp(r'(이번|다음)\s*주').hasMatch(text);
   }
 
   bool _hasRecurringDateHint(String rawText) {

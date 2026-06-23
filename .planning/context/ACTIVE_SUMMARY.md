@@ -1907,13 +1907,17 @@
 - `provider_token`이 없는 Naver 콜백에서도 저장 단계가 지나가도록 진단 로그를 추가해 토큰 미저장 원인을 추적 가능하게 했다.
 - 검증: `scripts\\flutter-local.ps1 analyze --no-pub`, `scripts\\flutter-local.ps1 test test/services/oauth_callback_handler_test.dart --no-pub` 통과.
 
+## 2026-06-19 릴리즈 빌드 규칙 고정
+- PlanFlow AGENTS.md와 Play Console 제출 문서에 Android 빌드는 앞으로 release만 사용하도록 명시했다.
+- 디버그 APK 빌드 금지와 배포는 사용자 명시 요청 때만 수행한다는 규칙을 같이 적어 다음 세션에서도 유지되게 했다.
+
 ## 2026-06-18 TASK_20260618_123620 재검토 보완
 - 외부 캘린더 priority 1~5와 pre-action 보유 일정을 중요 일정으로 판정하고, pre-action 생성 후 `is_critical`을 동기화하도록 보강했다.
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 안내를 표시하고, 이벤트 저장은 6개 단위 병렬 배치로 처리한다.
 - 기존 pre_actions 보유 이벤트를 `is_critical = true`로 보정하는 migration을 추가했다.
 - 검증: classifier/manual/settings focused tests와 `flutter analyze --no-pub`가 통과했다. PowerShell에서 `flutter build apk --debug --no-pub`는 Gradle client disconnect로 `-1` 조기 종료됐지만, `cmd.exe /d /s /c "flutter build apk --debug --no-pub"` 경로는 통과해 `build\app\outputs\flutter-apk\app-debug.apk`를 생성했다. `flutter install -d 192.168.0.103:39685 --debug`와 `adb ... monkey` 실행 확인도 통과했고 PID는 `2259`였다. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
 
-## 2026-06-23 TASK_20260621_000928 월간 위젯 반복 일정 확장 보정
-- 홈 위젯 payload builder가 현재 월 42칸만 기준으로 반복 일정을 확장하던 문제를 보정해, 이전/현재/다음 월 위젯 그리드 전체 범위까지 occurrence를 생성하도록 했다.
-- 이전/다음 월 위젯 payload에도 주간 반복 일정이 표시되는 회귀 테스트를 추가했다.
-- 검증: `flutter test test\services\home_widget_service_test.dart --no-pub -r compact`, scoped analyze, 전체 `flutter analyze --no-pub` 통과. `flutter build apk --release --no-pub`는 `android/key.properties` 누락으로 실패했다.
+## 2026-06-21 Naver OpenAPI 직접 연동 제거
+- 설정 화면과 자동 동기화에서 더 이상 쓰지 않는 Naver OpenAPI 직접 가져오기 경로를 제거하고, Naver 캘린더 동기화는 CalDAV 자격증명/가져오기 기준으로만 동작하게 정리했다.
+- `naver_open_api_calendar_service.dart`와 해당 테스트를 삭제하고, 설정 화면의 OpenAPI 권한 재확인/동의 후 가져오기 흐름과 자동 동기화의 `naver_api_auto_export` 단계를 제거했다.
+- 검증: 관련 파일 분석 `No issues found`, `settings_screen_test.dart`, `calendar_auto_sync_service_test.dart` 통과. 기존 auth/callback/provider-token 관련 Naver OAuth 코드는 아직 참조 중이라 이번 죽은 코드 제거 범위에서는 유지했다.
