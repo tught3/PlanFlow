@@ -166,6 +166,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   final GlobalKey _calendarSyncSectionKey = GlobalKey();
   NotificationPermissionStatus? _notificationPermissionStatus;
 
+  // ── Developer options state ─────────────────────────────────────
+  bool _devModeEnabled = false;
+  bool _verboseLoggingEnabled = false;
+  bool _experimentalFeaturesEnabled = false;
+
   String? get _userId => widget._userId ?? authProvider.userId;
   bool get _isFeedbackAdmin {
     if (!AppEnv.isSupabaseReady) {
@@ -220,6 +225,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     unawaited(_loadCalendarStatus());
     unawaited(_loadAutoSyncSnapshot());
     unawaited(_loadDeviceCalendarSyncedState());
+    unawaited(_loadDeveloperOptions());
     final naverCalDavStateLoaded = _loadNaverCalDavState();
     unawaited(naverCalDavStateLoaded);
     if (widget._initialAction != null) {
@@ -558,6 +564,18 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     setState(() {
       _hasDeviceCalendarSynced = _hasDeviceCalendarSynced || stored;
+    });
+  }
+
+
+  Future<void> _loadDeveloperOptions() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _devModeEnabled = prefs.getBool('dev_mode_enabled') ?? false;
+      _verboseLoggingEnabled = prefs.getBool('verbose_logging_enabled') ?? false;
+      _experimentalFeaturesEnabled =
+          prefs.getBool('experimental_features_enabled') ?? false;
     });
   }
 
@@ -2806,6 +2824,71 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+
+  Widget _buildDeveloperOptionsSection() {
+    return _SectionCard(
+      title: '개발자 옵션',
+      subtitle: '디버깅 및 실험적 기능을 제어합니다.',
+      child: Column(
+        children: [
+          SwitchListTile.adaptive(
+            key: const ValueKey('settings-dev-mode-enabled'),
+            contentPadding: EdgeInsets.zero,
+            value: _devModeEnabled,
+            activeThumbColor: PlanFlowColors.primary,
+            activeTrackColor: PlanFlowColors.primaryFaint,
+            title: const Text('Developer Mode'),
+            subtitle: const Text(
+              '숨겨진 디버기 정보와 개발자 메뉴를 활성화합니다.',
+            ),
+            onChanged: (value) async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('dev_mode_enabled', value);
+              if (!mounted) return;
+              setState(() => _devModeEnabled = value);
+            },
+          ),
+          const Divider(height: 1),
+          SwitchListTile.adaptive(
+            key: const ValueKey('settings-verbose-logging-enabled'),
+            contentPadding: EdgeInsets.zero,
+            value: _verboseLoggingEnabled,
+            activeThumbColor: PlanFlowColors.primary,
+            activeTrackColor: PlanFlowColors.primaryFaint,
+            title: const Text('Verbose Logging'),
+            subtitle: const Text(
+              '모든 네트워크 요청과 내부 동작을 상세 로그에 기록합니다.',
+            ),
+            onChanged: (value) async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('verbose_logging_enabled', value);
+              if (!mounted) return;
+              setState(() => _verboseLoggingEnabled = value);
+            },
+          ),
+          const Divider(height: 1),
+          SwitchListTile.adaptive(
+            key: const ValueKey('settings-experimental-features-enabled'),
+            contentPadding: EdgeInsets.zero,
+            value: _experimentalFeaturesEnabled,
+            activeThumbColor: PlanFlowColors.primary,
+            activeTrackColor: PlanFlowColors.primaryFaint,
+            title: const Text('Experimental Features'),
+            subtitle: const Text(
+              '아직 공개 전인 실험적 기능을 미리 사용할 수 있습니다.',
+            ),
+            onChanged: (value) async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('experimental_features_enabled', value);
+              if (!mounted) return;
+              setState(() => _experimentalFeaturesEnabled = value);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final contentMaxWidth = context.planflowWindowInfo.contentMaxWidth;
@@ -3402,6 +3485,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               const SizedBox(height: 16),
               _buildRegionSettings(),
+              const SizedBox(height: 16),
+              _buildDeveloperOptionsSection(),
             ],
           ),
         ),
