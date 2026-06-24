@@ -363,6 +363,7 @@ class HomeWidgetSchedulePayloadBuilder {
 
     var current = localStartAt;
     var safety = 0;
+    var step = 0;
     while (current.isBefore(hardEnd) && safety < 420) {
       safety += 1;
       final occurrenceEnd = duration == null ? null : current.add(duration);
@@ -374,24 +375,17 @@ class HomeWidgetSchedulePayloadBuilder {
       if (_widgetEventIntersectsRange(candidate, rangeStart, rangeEnd)) {
         occurrences.add(candidate);
       }
+      step += 1;
       current = switch (freq) {
         'DAILY' => current.add(Duration(days: interval)),
         'WEEKLY' => current.add(Duration(days: 7 * interval)),
-        'MONTHLY' => DateTime(
-          current.year,
-          current.month + interval,
-          current.day,
-          current.hour,
-          current.minute,
-          current.second,
+        'MONTHLY' => _widgetMonthOccurrence(
+          localStartAt,
+          monthsFromStart: step * interval,
         ),
-        'YEARLY' => DateTime(
-          current.year + interval,
-          current.month,
-          current.day,
-          current.hour,
-          current.minute,
-          current.second,
+        'YEARLY' => _widgetMonthOccurrence(
+          localStartAt,
+          monthsFromStart: step * interval * 12,
         ),
         _ => hardEnd,
       };
@@ -403,7 +397,8 @@ class HomeWidgetSchedulePayloadBuilder {
     if (value == null || value.isEmpty) {
       return null;
     }
-    final normalized = value.replaceAll('Z', '');
+    final isUtc = value.endsWith('Z');
+    final normalized = value.replaceAll(RegExp('[zZ]'), '');
     if (normalized.length < 8) {
       return null;
     }
@@ -413,7 +408,44 @@ class HomeWidgetSchedulePayloadBuilder {
     if (year == null || month == null || day == null) {
       return null;
     }
-    return DateTime(year, month, day).add(const Duration(days: 1));
+    if (normalized.length < 15 || !normalized.contains('T')) {
+      return DateTime(year, month, day).add(const Duration(days: 1));
+    }
+    final hour = int.tryParse(normalized.substring(9, 11));
+    final minute = int.tryParse(normalized.substring(11, 13));
+    final second = int.tryParse(normalized.substring(13, 15));
+    if (hour == null || minute == null || second == null) {
+      return null;
+    }
+    final inclusiveUntil = isUtc
+        ? planflowLocal(DateTime.utc(year, month, day, hour, minute, second))
+        : DateTime(year, month, day, hour, minute, second);
+    return inclusiveUntil.add(const Duration(microseconds: 1));
+  }
+
+  static DateTime _widgetMonthOccurrence(
+    DateTime startAt, {
+    required int monthsFromStart,
+  }) {
+    final monthIndex = startAt.month - 1 + monthsFromStart;
+    final year = startAt.year + monthIndex ~/ 12;
+    final month = monthIndex % 12 + 1;
+    final lastDay = _lastWidgetMonthDay(year, month);
+    final day = startAt.day <= lastDay ? startAt.day : lastDay;
+    return DateTime(
+      year,
+      month,
+      day,
+      startAt.hour,
+      startAt.minute,
+      startAt.second,
+      startAt.millisecond,
+      startAt.microsecond,
+    );
+  }
+
+  static int _lastWidgetMonthDay(int year, int month) {
+    return DateTime(year, month + 1, 0).day;
   }
 
   static List<int> _parseWidgetRRuleByDays(String rule) {
