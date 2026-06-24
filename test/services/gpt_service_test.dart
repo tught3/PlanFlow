@@ -664,7 +664,8 @@ void main() {
       );
     });
 
-    test('public local inference treats day-only dates as this month or next month',
+    test(
+        'public local inference treats day-only dates as this month or next month',
         () {
       final now = DateTime(2026, 6, 10, 9, 30);
       final service = GptService(
@@ -683,6 +684,90 @@ void main() {
         ).inferStartAtFromRawText('29일 계룡으로 엄마 만나러 가기'),
         DateTime(2026, 7, 29, 9),
       );
+    });
+
+    test('public local inference respects this-week and next-week weekdays',
+        () {
+      expect(
+        GptService(
+          endpoint: Uri.parse(_proxyEndpoint),
+          now: () => DateTime(2026, 5, 6, 9),
+        ).inferStartAtFromRawText('다음주 금요일 미팅'),
+        DateTime(2026, 5, 15, 9),
+      );
+      expect(
+        GptService(
+          endpoint: Uri.parse(_proxyEndpoint),
+          now: () => DateTime(2026, 5, 9, 9),
+        ).inferStartAtFromRawText('이번주 금요일 미팅'),
+        DateTime(2026, 5, 8, 9),
+      );
+      expect(
+        GptService(
+          endpoint: Uri.parse(_proxyEndpoint),
+          now: () => DateTime(2026, 5, 4, 9),
+        ).inferStartAtFromRawText('이번주 금요일 미팅'),
+        DateTime(2026, 5, 8, 9),
+      );
+      expect(
+        GptService(
+          endpoint: Uri.parse(_proxyEndpoint),
+          now: () => DateTime(2026, 5, 9, 9),
+        ).inferStartAtFromRawText('금요일 미팅'),
+        DateTime(2026, 5, 15, 9),
+      );
+      expect(
+        GptService(
+          endpoint: Uri.parse(_proxyEndpoint),
+          now: () => DateTime(2026, 1, 28, 9),
+        ).inferStartAtFromRawText('다음주 금요일 미팅'),
+        DateTime(2026, 2, 6, 9),
+      );
+      expect(
+        GptService(
+          endpoint: Uri.parse(_proxyEndpoint),
+          now: () => DateTime(2026, 5, 6, 9),
+        ).inferStartAtFromRawText('다음 주 금요일 미팅'),
+        DateTime(2026, 5, 15, 9),
+      );
+    });
+
+    test('prefers local this-week and next-week weekday over model date',
+        () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '미팅',
+                    'start_at': '2026-05-08T09:00:00.000',
+                    'end_at': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 6, 9),
+      );
+
+      final result = await service.parseSchedule('다음주 금요일 미팅');
+
+      expect(result['start_at'], '2026-05-15T09:00:00.000');
     });
 
     test('locally infers all-day, multi-day, category, and recurrence hints',
@@ -1043,6 +1128,60 @@ void main() {
         contains('Input: "토요일 병원 병문안" -> include "꽃이나 선물 챙기기"'),
       );
       expect(prompt, contains('Input: "내일 법원" or "내일 학교"'));
+    });
+
+    test('schedule prompt includes dynamic this-week and next-week ranges',
+        () async {
+      late Map<String, dynamic> body;
+
+      final client = MockClient((request) async {
+        body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '미팅',
+                    'start_at': null,
+                    'end_at': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 1, 28, 9),
+      );
+
+      await service.parseSchedule('다음주 금요일 미팅');
+
+      final prompt = (body['messages'] as List).first['content'] as String;
+      expect(prompt, contains('Today: 2026-01-28 (수요일)'));
+      expect(
+        prompt,
+        contains('This week (이번주): 2026-01-26 to 2026-02-01'),
+      );
+      expect(
+        prompt,
+        contains('Next week (다음주): 2026-02-02 to 2026-02-08'),
+      );
+      expect(
+        prompt,
+        contains('"다음주 금요일" means 2026-02-06'),
+      );
     });
   });
 }

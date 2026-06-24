@@ -228,8 +228,7 @@ class GptService {
   /// 장소명이면 정제된 장소명 반환, 아니면 null.
   Future<String?> validateLocation(String candidate) async {
     if (candidate.trim().isEmpty) return null;
-    const systemPrompt =
-        'You are a location name validator for Korean text. '
+    const systemPrompt = 'You are a location name validator for Korean text. '
         'If the input is a real place name (building, landmark, address, region, or business name), '
         'return ONLY the clean place name without any explanation. '
         'If the input is NOT a place name (e.g. a sentence, a task description, or random text), '
@@ -734,7 +733,8 @@ class GptService {
       return relative;
     }
 
-    final recurringDate = _extractMonthlyRecurringDateFromText(dateTimeText, now);
+    final recurringDate =
+        _extractMonthlyRecurringDateFromText(dateTimeText, now);
     final date = recurringDate ?? _extractDateFromText(dateTimeText, now);
     final time = _normalizeAmbiguousLeadingTime(
       dateTimeText,
@@ -873,11 +873,22 @@ class GptService {
   String _scheduleSystemPromptForRegion() {
     final region = PlanFlowRegionController.instance.region;
     final now = _now();
+    final today = DateTime(now.year, now.month, now.day);
+    final thisWeekStart = today.subtract(Duration(days: today.weekday - 1));
+    final thisWeekEnd = thisWeekStart.add(const Duration(days: 6));
+    final nextWeekStart = thisWeekStart.add(const Duration(days: 7));
+    final nextWeekEnd = nextWeekStart.add(const Duration(days: 6));
+    final nextWeekFriday = nextWeekStart.add(const Duration(days: 4));
     return '''
 Current user region: ${region.countryName} (${region.countryCode}).
 Current locale: ${region.localeCode}.
 Current time zone: ${region.timeZoneId}.
 Current local date-time: ${now.toIso8601String()}.
+Today: ${_formatDate(today)} (${_koreanWeekdayName(today.weekday)}).
+This week (이번주): ${_formatDate(thisWeekStart)} to ${_formatDate(thisWeekEnd)}.
+Next week (다음주): ${_formatDate(nextWeekStart)} to ${_formatDate(nextWeekEnd)}.
+Resolve "이번주 + weekday" inside this-week range, even if the day already passed.
+Resolve "다음주 + weekday" inside next-week range, even across month boundaries. Example: "다음주 금요일" means ${_formatDate(nextWeekFriday)}.
 
 $_scheduleSystemPrompt
 ''';
@@ -894,11 +905,43 @@ $_scheduleSystemPrompt
     if (parsedStartAt == null) {
       return true;
     }
+    if (_hasExplicitWeekModifierWithWeekday(rawText)) {
+      return parsedStartAt.difference(inferredStartAt).abs() >
+          const Duration(minutes: 1);
+    }
     if (!_hasExplicitKoreanTimeExpression(rawText)) {
       return false;
     }
     return parsedStartAt.difference(inferredStartAt).abs() >
         const Duration(minutes: 1);
+  }
+
+  bool _hasExplicitWeekModifierWithWeekday(String rawText) {
+    final text = _normalizeKoreanText(rawText);
+    final hasWeekModifier = text.contains('이번주') ||
+        text.contains('이번 주') ||
+        text.contains('다음주') ||
+        text.contains('다음 주');
+    return hasWeekModifier && RegExp(r'[월화수목금토일]\s*요일').hasMatch(text);
+  }
+
+  String _formatDate(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
+  }
+
+  String _koreanWeekdayName(int weekday) {
+    return switch (weekday) {
+      DateTime.monday => '월요일',
+      DateTime.tuesday => '화요일',
+      DateTime.wednesday => '수요일',
+      DateTime.thursday => '목요일',
+      DateTime.friday => '금요일',
+      DateTime.saturday => '토요일',
+      DateTime.sunday => '일요일',
+      _ => '',
+    };
   }
 
   bool _hasRecurringDateHint(String rawText) {
@@ -1177,8 +1220,8 @@ $_scheduleSystemPrompt
       }
     }
 
-    final dayOnly = RegExp(r'(?<!\d)(?<day>\d{1,2})일(?:로|에|부터|까지)?')
-        .firstMatch(text);
+    final dayOnly =
+        RegExp(r'(?<!\d)(?<day>\d{1,2})일(?:로|에|부터|까지)?').firstMatch(text);
     if (dayOnly != null) {
       final day = int.tryParse(dayOnly.namedGroup('day') ?? '');
       if (day != null && day >= 1) {
@@ -1223,6 +1266,9 @@ $_scheduleSystemPrompt
       '토요일': DateTime.saturday,
     };
 
+    final hasNextWeek = text.contains('다음주') || text.contains('다음 주');
+    final hasThisWeek =
+        !hasNextWeek && (text.contains('이번주') || text.contains('이번 주'));
     final now = _now();
     for (final entry in weekdays.entries) {
       if (!text.contains(entry.key)) {
@@ -1231,7 +1277,9 @@ $_scheduleSystemPrompt
       final currentWeekday = now.weekday;
       final targetWeekday = entry.value;
       var delta = targetWeekday - currentWeekday;
-      if (delta <= 0) {
+      if (hasNextWeek) {
+        delta += 7;
+      } else if (!hasThisWeek && delta <= 0) {
         delta += 7;
       }
       return DateTime(now.year, now.month, now.day).add(Duration(days: delta));
