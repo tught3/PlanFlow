@@ -379,6 +379,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     final capturedText = _rawTextController.text.trim().isNotEmpty
         ? _rawTextController.text.trim()
         : _recognizedText?.trim() ?? '';
+    _lastSubmittedSignature = null;
+    _isSubmittingVoiceCommand = false;
     _isFinishingVoiceFlow = true;
     _partialTranscriptToken++;
     await widget.sttService.stopActiveListen();
@@ -658,31 +660,44 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       return rawText;
     }
     try {
-      final settingsRepository =
-          widget.settingsRepository ?? SettingsRepository.supabase();
-      final settings = await settingsRepository.fetchSettings(userId);
-      if (settings?.voiceCorrectionLearningEnabled == false) {
-        return rawText;
-      }
-      final repository = VoiceCorrectionRuleRepository.supabase();
-      final rules = <VoiceCorrectionRule>[
-        ...await repository.fetchPersonalRules(userId),
-        if (settings?.voiceCommonLearningOptIn == true)
-          ...await repository.fetchTrustedCommonRules(),
-      ];
-      return _voiceCorrectionLearningService
-          .applyRules(
-            rawText,
-            rules: rules,
-            stage: VoiceCorrectionStage.stt,
-            field: VoiceCorrectionField.transcript,
-          )
-          .text;
+      return await _applyTranscriptCorrectionRulesInner(
+        rawText,
+        userId,
+      ).timeout(
+        const Duration(milliseconds: 300),
+        onTimeout: () => rawText,
+      );
     } catch (error, stackTrace) {
       debugPrint('VoiceInputScreen correction apply skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
       return rawText;
     }
+  }
+
+  Future<String> _applyTranscriptCorrectionRulesInner(
+    String rawText,
+    String userId,
+  ) async {
+    final settingsRepository =
+        widget.settingsRepository ?? SettingsRepository.supabase();
+    final settings = await settingsRepository.fetchSettings(userId);
+    if (settings?.voiceCorrectionLearningEnabled == false) {
+      return rawText;
+    }
+    final repository = VoiceCorrectionRuleRepository.supabase();
+    final rules = <VoiceCorrectionRule>[
+      ...await repository.fetchPersonalRules(userId),
+      if (settings?.voiceCommonLearningOptIn == true)
+        ...await repository.fetchTrustedCommonRules(),
+    ];
+    return _voiceCorrectionLearningService
+        .applyRules(
+          rawText,
+          rules: rules,
+          stage: VoiceCorrectionStage.stt,
+          field: VoiceCorrectionField.transcript,
+        )
+        .text;
   }
 
   bool _beginVoiceCommandSubmit(String rawText) {
@@ -721,10 +736,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
           return;
         }
         final shouldResetTranscript =
-            location == AppRoutes.confirm ||
-            location == AppRoutes.voiceAction ||
-            (_isVoiceConversationRoute(location) &&
-                result == voiceConversationClosedResult);
+            (location == AppRoutes.confirm && result != 'cancelled') ||
+                location == AppRoutes.voiceAction ||
+                (_isVoiceConversationRoute(location) &&
+                    result == voiceConversationClosedResult);
         if (shouldResetTranscript) {
           _resetTranscriptForFreshVoiceInput();
           if (_isVoiceConversationRoute(location) &&

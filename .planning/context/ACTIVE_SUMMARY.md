@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-24 TASK_20260623_031728 voice_input 완료 흐름 3종 보정
+- 음성 완료 버튼이 STT stop 전에 제출 guard(`_lastSubmittedSignature`, `_isSubmittingVoiceCommand`)를 선점 클리어하도록 보정해, 자동 제출 경로가 같은 signature를 먼저 잡아 완료 버튼 제출이 누락되는 흐름을 막았다.
+- transcript 보정 규칙 적용은 300ms timeout + fallback raw text 구조로 분리했고, 확인 화면 뒤로가기는 `cancelled` 결과를 반환해 동일 텍스트 재제출 guard만 초기화하고 transcript는 보존하도록 했다.
+- 검증: scoped/full analyze 통과, `voice_input_screen_test.dart` 단독 통과, voice correction 테스트 통과. `confirm_screen_test.dart`는 기존 시간 의존 기대값(2026-06-13)과 현재 날짜 차이로 1건 실패했고, release APK 빌드는 `android/key.properties` 누락으로 실패했다. Android 기기는 감지되지 않아 실행 검증은 미실행.
+
 ## 2026-06-18 TASK_20260618_123620 PlanFlow 2차 버그/개선 6종
 - 연동 해제 모달을 X 닫기 + 일정 유지/삭제 2버튼으로 정리했고, 네이버 CalDAV 진행/진단 다이얼로그는 짧은 상태와 상세 info 진입으로 분리했다.
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 모달을 표시하고 성공 상태를 저장/복원하며, 서비스 import 루프는 6개 단위 제한 병렬 처리와 결과 집계 방식으로 바꿨다.

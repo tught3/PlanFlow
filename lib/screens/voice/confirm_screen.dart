@@ -1851,7 +1851,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
             unawaited(AnalyticsService.logScheduleCancelled());
-            context.pop();
+            context.pop('cancelled');
           },
         ),
       ),
@@ -1977,8 +1977,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                               currentEnd: _endAt,
                               endEditedByUser: _endEditedByUser,
                             );
-                            if (_endAt != null &&
-                                _endAt!.isBefore(_startAt)) {
+                            if (_endAt != null && _endAt!.isBefore(_startAt)) {
                               _endAt = _startAt;
                             }
                           });
