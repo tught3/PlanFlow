@@ -296,6 +296,9 @@ SettingsInitialAction? _parseSettingsInitialAction(GoRouterState state) {
     case 'naver-caldav':
       return SettingsInitialAction.naverCalDav;
   }
+  if (state.uri.queryParameters['openSurvey'] == '1') {
+    return SettingsInitialAction.openBetaSurvey;
+  }
   return null;
 }
 

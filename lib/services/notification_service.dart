@@ -158,6 +158,26 @@ class NotificationService {
     await scheduleMonthlyNaverIcsReminder();
   }
 
+  // 베타 테스트 기간 하루 1회 설문 알림 — 완료했으면 호출하지 말 것
+  Future<void> scheduleBetaSurveyReminder({DateTime? now}) {
+    final basis = now ?? DateTime.now();
+    final today9pm = DateTime(basis.year, basis.month, basis.day, 21, 0);
+    final notifyAt = today9pm.isAfter(basis)
+        ? today9pm
+        : today9pm.add(const Duration(days: 1));
+    return scheduleEventReminder(
+      id: notificationIdFor('beta_survey_reminder'),
+      title: 'PlanFlow 하루는 어떠셨나요?',
+      body: '한 마디만 남겨주시면 앱 개선에 바로 반영할게요 🙏',
+      notifyAt: notifyAt,
+      payload: 'beta_survey',
+    );
+  }
+
+  Future<void> cancelBetaSurveyReminder() {
+    return cancel(notificationIdFor('beta_survey_reminder'));
+  }
+
   Future<void> scheduleMonthlyNaverIcsReminder({DateTime? now}) {
     final basis = now ?? DateTime.now();
     final nextReminder = _nextMonthlyNaverIcsReminderAt(basis);
@@ -1009,6 +1029,10 @@ class NotificationService {
   static String? routeForNotificationResponse(NotificationResponse response) {
     if (response.payload == 'naver_ics_monthly_reminder') {
       return AppRoutes.naverIcsImport;
+    }
+
+    if (response.payload == 'beta_survey') {
+      return '${AppRoutes.settings}?openSurvey=1';
     }
 
     final payload = response.payload ?? '';

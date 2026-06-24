@@ -304,12 +304,14 @@ class FeedbackReportSection extends StatelessWidget {
   const FeedbackReportSection({
     super.key,
     required this.onPressed,
+    this.onOpenBetaSurvey,
     this.onOpenAdminInbox,
     this.newAdminReportCount,
     this.isLoadingAdminReportCount = false,
   });
 
   final VoidCallback onPressed;
+  final VoidCallback? onOpenBetaSurvey;
   final VoidCallback? onOpenAdminInbox;
   final int? newAdminReportCount;
   final bool isLoadingAdminReportCount;
@@ -354,6 +356,15 @@ class FeedbackReportSection extends StatelessWidget {
               icon: const Icon(Icons.feedback_outlined),
               label: const Text('문제 신고하기'),
             ),
+            if (onOpenBetaSurvey != null) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                key: const ValueKey('settings-beta-survey-button'),
+                onPressed: onOpenBetaSurvey,
+                icon: const Icon(Icons.star_border_outlined),
+                label: const Text('베타 사용 후기 남기기'),
+              ),
+            ],
             if (onOpenAdminInbox != null) ...[
               const SizedBox(height: 8),
               OutlinedButton.icon(

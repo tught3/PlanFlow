@@ -77,6 +77,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     unawaited(_syncSessionAndCalendar(reason: 'startup'));
     unawaited(_listenForSharedIcsFiles());
     unawaited(_notificationService.scheduleMonthlyNaverIcsReminder());
+    unawaited(_scheduleBetaSurveyReminderIfNeeded());
     _routeInitialHomeWidgetLaunch();
     _listenForPlanFlowDeepLinks();
     _homeWidgetClickSubscription = HomeWidget.widgetClicked.listen(
@@ -140,6 +141,13 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       debugPrint('Smart preparation migration skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  Future<void> _scheduleBetaSurveyReminderIfNeeded() async {
+    final prefs = await SharedPreferences.getInstance();
+    final completed = prefs.getBool('beta_survey_completed') ?? false;
+    if (completed) return;
+    await _notificationService.scheduleBetaSurveyReminder();
   }
 
   Future<void> _scheduleDeferredUpdateCheck() async {

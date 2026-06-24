@@ -5,6 +5,7 @@ enum FeedbackReportType {
   notification('notification', '알림'),
   mapLocation('map_location', '지도/위치'),
   featureRequest('feature_request', '기능 제안'),
+  betaSurvey('beta_survey', '베타 후기'),
   other('other', '기타');
 
   const FeedbackReportType(this.value, this.label);

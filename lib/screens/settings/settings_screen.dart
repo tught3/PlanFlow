@@ -40,9 +40,10 @@ import '../../core/diag_logger.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
 import '../../l10n/app_l10n.dart';
+import 'beta_survey_sheet.dart';
 import 'feedback_report_sheet.dart';
 
-enum SettingsInitialAction { calendarSync, naverCalDav }
+enum SettingsInitialAction { calendarSync, naverCalDav, openBetaSurvey }
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -1788,6 +1789,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       return;
     }
 
+    if (widget._initialAction == SettingsInitialAction.openBetaSurvey) {
+      await _openBetaSurveySheet();
+      return;
+    }
+
     await _scrollToCalendarSyncSection();
     if (!mounted) {
       return;
@@ -1801,6 +1807,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           _showSnack('네이버 캘린더가 이미 연결되어 있어 동기화를 시작합니다.');
         }
         await _syncOrReconnectNaverCalendar();
+        return;
+      case SettingsInitialAction.openBetaSurvey:
         return;
       case null:
         return;
@@ -3183,6 +3191,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: 16),
               FeedbackReportSection(
                 onPressed: _openFeedbackReportSheet,
+                onOpenBetaSurvey: _openBetaSurveySheet,
                 onOpenAdminInbox: _isFeedbackAdmin
                     ? _openFeedbackAdminReportsSheet
                     : null,
@@ -3309,6 +3318,29 @@ class _SettingsScreenState extends State<SettingsScreen>
       floatingActionButton: PlanFlowVoiceFab(
         onPressed: () => context.push(AppRoutes.voice),
       ),
+    );
+  }
+
+  Future<void> _openBetaSurveySheet() async {
+    FeedbackRepository repository;
+    try {
+      repository = FeedbackRepository.supabase();
+    } on FeedbackSubmissionException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+      return;
+    }
+
+    final submitted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => BetaSurveySheet(repository: repository),
+    );
+    if (!mounted || submitted != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('후기를 보내주셔서 감사해요! 앱 개선에 바로 반영할게요. 🙏')),
     );
   }
 
