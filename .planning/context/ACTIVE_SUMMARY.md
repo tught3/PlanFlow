@@ -2,7 +2,7 @@
 ## 2026-06-25 TASK_20260623_031806 GPT 이번주/다음주 요일 파싱 보정
 - `GptService`의 요일 추론에서 `이번주`는 현재 주 월~일 범위 안의 요일을 과거 날짜까지 허용하고, `다음주`는 다음 주 월~일 범위의 요일로 계산하도록 보정했다. 수식어가 없을 때는 기존처럼 가장 가까운 다가오는 요일을 유지한다.
 - GPT가 `다음주 금요일`을 이번 주 금요일로 잘못 반환해도 로컬 추론이 우선되도록 `이번주/다음주 + 요일` 힌트를 `_shouldPreferInferredStartAt`에 추가했고, 시스템 프롬프트에 Today/This week/Next week/다음주 금요일 예시를 동적으로 넣었다.
-- 검증: 추가 회귀 테스트 3건은 RED 확인 후 GREEN 전환, `flutter test test/services/gpt_service_test.dart --no-pub -r compact`, scoped analyze, 전체 `flutter analyze --no-pub`, `git diff --check -- lib/services/gpt_service.dart test/services/gpt_service_test.dart` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했고, `flutter build apk --release --no-pub`는 `android/key.properties` 누락으로 실패했다.
+- 검증: 추가 회귀 테스트 3건은 RED 확인 후 GREEN 전환, `flutter test test/services/gpt_service_test.dart --no-pub -r compact`, scoped analyze, 전체 `flutter analyze --no-pub`, `git diff --check -- lib/services/gpt_service.dart test/services/gpt_service_test.dart` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했고, release APK 빌드는 `android/key.properties` 부재 확인 후 미실행했다.
 
 ## 2026-06-24 TASK_20260623_031728 voice_input 완료 흐름 3종 보정
 - 음성 완료 버튼이 STT stop 전에 제출 guard(`_lastSubmittedSignature`, `_isSubmittingVoiceCommand`)를 선점 클리어하도록 보정해, 자동 제출 경로가 같은 signature를 먼저 잡아 완료 버튼 제출이 누락되는 흐름을 막았다.

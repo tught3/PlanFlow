@@ -734,7 +734,7 @@ void main() {
 
     test('prefers local this-week and next-week weekday over model date',
         () async {
-      final client = MockClient((request) async {
+      final nextWeekClient = MockClient((request) async {
         return http.Response(
           jsonEncode(<String, dynamic>{
             'choices': <Map<String, dynamic>>[
@@ -760,7 +760,7 @@ void main() {
       });
 
       final service = GptService(
-        client: client,
+        client: nextWeekClient,
         endpoint: Uri.parse(_proxyEndpoint),
         now: () => DateTime(2026, 5, 6, 9),
       );
@@ -768,6 +768,41 @@ void main() {
       final result = await service.parseSchedule('다음주 금요일 미팅');
 
       expect(result['start_at'], '2026-05-15T09:00:00.000');
+
+      final thisWeekClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '미팅',
+                    'start_at': '2026-05-15T09:00:00.000',
+                    'end_at': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final thisWeekService = GptService(
+        client: thisWeekClient,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 9, 9),
+      );
+
+      final thisWeekResult = await thisWeekService.parseSchedule('이번주 금요일 미팅');
+
+      expect(thisWeekResult['start_at'], '2026-05-08T09:00:00.000');
     });
 
     test('locally infers all-day, multi-day, category, and recurrence hints',
