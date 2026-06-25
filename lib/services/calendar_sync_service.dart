@@ -646,10 +646,15 @@ class CalendarSyncService {
       try {
         final api = gcal.CalendarApi(client);
         _logGoogleAuth('Google Calendar API fetch start');
-        _logSyncDiag('google sync fetchEvents status=start');
+        _logSyncDiag(
+          'google sync fetchEvents status=start '
+          'httpStatus=unavailable apiClient=googleapis',
+        );
         final googleEvents = await _googleCalendarEventsFetcher(api);
         _logSyncDiag(
-          'google sync fetchEvents status=success count=${googleEvents.length}',
+          'google sync fetchEvents status=success '
+          'httpStatus=unavailable apiClient=googleapis '
+          'count=${googleEvents.length}',
         );
         _logGoogleAuth(
           'Google Calendar API fetch completed count=${googleEvents.length}',
@@ -686,7 +691,9 @@ class CalendarSyncService {
           lastError: error.toString(),
         );
         _logSyncDiag(
-          'google sync saveConnection status=failed errorType=${error.runtimeType}',
+          'google sync saveConnection status=failed '
+          'httpStatus=unavailable apiClient=googleapis '
+          'errorType=${error.runtimeType}',
         );
         _logGoogleAuthError(
           'Google Calendar API sync failed',
@@ -841,6 +848,10 @@ class CalendarSyncService {
 
   Future<CalendarIntegrationResult> syncNaverCalendar() async {
     _logSyncDiag('naver sync entry');
+    _logSyncDiag(
+      'naver sync unsupported reason=caldav_only tokenStorage=removed '
+      'providerTokenPersist=false',
+    );
     return CalendarIntegrationResult.unsupported(
       CalendarProvider.naver,
       message: '네이버 캘린더 동기화는 CalDAV 연결에서만 실행됩니다.',

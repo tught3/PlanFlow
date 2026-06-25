@@ -490,6 +490,12 @@ class OAuthCallbackHandler {
           '[PlanFlowNaverCalendar] oauth callback exchange completed '
           'user=${response.session.user.id}',
         );
+        DiagLogger.log(
+          'NAVER_TOKEN',
+          'callback exchange provider '
+              '${DiagLogger.describeToken(response.session.providerToken)} '
+              'persistence=removed caldavOnly=true',
+        );
       }
       // Google 로그인 시 Google Calendar interactive sync
       final loginSession = client.auth.currentSession;

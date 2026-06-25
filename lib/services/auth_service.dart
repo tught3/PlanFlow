@@ -121,7 +121,8 @@ class AuthService implements AuthSessionClient {
         'signInWithOAuth start provider=naver forCalendar=$effectiveForCalendar '
         'forceConsent=$forceConsent '
         'sessionPresent=${_client.auth.currentSession != null} '
-        'userPresent=${_client.auth.currentUser != null}',
+        'userPresent=${_client.auth.currentUser != null} '
+        'calendarTokenStorage=removed caldavOnly=true',
       );
       _diagToken(
         'signInWithOAuth currentSessionProvider '
@@ -224,7 +225,8 @@ class AuthService implements AuthSessionClient {
       _diagAuth(
         'connectCalendarProvider start provider=naver '
         'sessionPresent=${_client.auth.currentSession != null} '
-        'userPresent=${_client.auth.currentUser != null}',
+        'userPresent=${_client.auth.currentUser != null} '
+        'calendarTokenStorage=removed caldavOnly=true',
       );
       _diagToken(
         'connectCalendarProvider currentSessionProvider '
@@ -241,6 +243,10 @@ class AuthService implements AuthSessionClient {
     }
     if (_client.auth.currentSession == null) {
       if (provider == PlanFlowOAuthProvider.naver) {
+        _diagToken(
+          'connectCalendarProvider unsupported reason=caldav_only '
+          'tokenStorage=removed providerTokenPersist=false',
+        );
         _logNaverCalendarAuth(
           'connectCalendarProvider naver unsupported: CalDAV is required',
         );
@@ -253,6 +259,10 @@ class AuthService implements AuthSessionClient {
     }
 
     if (provider == PlanFlowOAuthProvider.naver) {
+      _diagToken(
+        'connectCalendarProvider unsupported reason=caldav_only '
+        'tokenStorage=removed providerTokenPersist=false',
+      );
       _logNaverCalendarAuth(
         'connectCalendarProvider naver unsupported: CalDAV is required',
       );

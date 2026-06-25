@@ -1,4 +1,10 @@
 # ACTIVE SUMMARY
+## 2026-06-26 TASK_20260623_055547 revision 재검토 보정
+- R1 재검토: `rg "naver_calendar_token|naver_token|captureProviderToken|persistProviderToken" lib --glob "*.dart"` 결과 0건이며 `lib/services/naver_calendar_permission_service.dart`도 없음. Naver 캘린더 OAuth token persist/load 로직은 이전된 것이 아니라 제거된 상태로 확인되어, 미저장 원인은 저장 경로 부재로 보고한다.
+- R2 재검토: `google_calendar_permission_service.dart`, `calendar_sync_service.dart`, `settings_screen.dart`의 DiagLogger 계측/진단 로그 뷰어/복사/비우기 UI를 실측 확인했고, Naver unsupported 경로에는 `tokenStorage=removed`/`providerTokenPersist=false` 로그를 보강했다.
+- R3 재검토: guarded 래퍼로 release APK 및 split-per-ABI release APK를 생성했다. universal APK는 Drive MCP 100MB 제한으로 업로드 실패했으며, arm64 split release APK를 Drive에 업로드했다. 공유 권한 부여는 domain permission 오류로 실패해 링크 접근성은 제한될 수 있다.
+- 검증: `flutter analyze --no-pub`, `git diff --check`, `apksigner verify`, `aapt dump badging`, SHA256 확인 통과. `scripts/flutter-local.ps1 analyze --no-pub`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
+
 ## 2026-06-25 TASK_20260623_055547 revision 진단 로그 리뷰 보정
 - `DiagLogger.maskToken()` 공개 헬퍼를 추가하고 `describeToken()`이 중앙 마스킹을 쓰도록 정리했으며, `auth_service.dart` Naver 분기에 리뷰 지시의 `providerToken present=` 로그를 추가했다.
 - 잔존 `DIAG` 태그를 `SYNC`/`GOOGLE_TOKEN`/`CALDAV`로 정리했고, `naver_caldav_service_test`의 현재 실패 2건은 `main` 별도 worktree에서도 재현된 pre-existing 실패로 TODO 주석을 남겼다.
