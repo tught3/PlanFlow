@@ -241,7 +241,8 @@ class ManualEventSideEffectService {
         ),
       );
       remindersSynced = true;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[PlanFlow] reminder DB sync failed for event ${event.id}: $e\n$st');
       remindersSynced = false;
     }
 
@@ -273,7 +274,8 @@ class ManualEventSideEffectService {
         ),
       );
       notificationsSynced = true;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[PlanFlow] local notification sync failed for event ${event.id}: $e\n$st');
       notificationsSynced = false;
     }
 
@@ -698,7 +700,8 @@ class ManualEventSideEffectService {
         );
       }
       return true;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[PlanFlow] smart preparation alarm resync failed: $e\n$st');
       return false;
     }
   }
