@@ -33,9 +33,11 @@ Future<void> main() async {
 }
 
 Future<void> _initializePlatformServices() async {
-  await _initializeFirebaseServices();
-  await _initializeNaverMap();
-  await _initializeSupabase();
+  await Future.wait([
+    _initializeFirebaseServices(),
+    _initializeNaverMap(),
+    _initializeSupabase(),
+  ]);
 }
 
 Future<void> _initializeFirebaseServices() async {
@@ -100,7 +102,7 @@ Future<void> _initializeSupabase() async {
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
         ),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 30));
       AppEnv.markSupabaseInitialized();
       authProvider.start();
       String? lastPrefetchedUserId;
