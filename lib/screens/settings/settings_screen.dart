@@ -59,17 +59,17 @@ class SettingsScreen extends StatefulWidget {
     NaverCalDavService? naverCalDavService,
     String? userId,
     SettingsInitialAction? initialAction,
-  }) : _settingsRepository = settingsRepository,
-       _briefingSchedulerService = briefingSchedulerService,
-       _calendarSyncService = calendarSyncService,
-       _calendarAutoSyncService = calendarAutoSyncService,
-       _notificationService = notificationService,
-       _backupService = backupService,
-       _authService = authService,
-       _deviceCalendarService = deviceCalendarService,
-       _naverCalDavService = naverCalDavService,
-       _userId = userId,
-       _initialAction = initialAction;
+  })  : _settingsRepository = settingsRepository,
+        _briefingSchedulerService = briefingSchedulerService,
+        _calendarSyncService = calendarSyncService,
+        _calendarAutoSyncService = calendarAutoSyncService,
+        _notificationService = notificationService,
+        _backupService = backupService,
+        _authService = authService,
+        _deviceCalendarService = deviceCalendarService,
+        _naverCalDavService = naverCalDavService,
+        _userId = userId,
+        _initialAction = initialAction;
 
   final SettingsRepository? _settingsRepository;
   final BriefingSchedulerService? _briefingSchedulerService;
@@ -156,6 +156,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   final ValueNotifier<NaverCalDavSyncProgress?> _naverCalDavProgress =
       ValueNotifier<NaverCalDavSyncProgress?>(null);
   Timer? _deviceCalendarImportTimer;
+  Timer? _autoSyncReloadDebounce;
+  bool _isRetryingCalendarAutoSync = false;
+  int? _lastHandledCalendarRefreshSequence;
   bool _isNaverCalDavProgressDialogOpen = false;
   int? _newFeedbackReportCount;
   bool _isLoadingNewFeedbackReportCount = false;
@@ -184,16 +187,15 @@ class _SettingsScreenState extends State<SettingsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _settingsRepository =
-        widget._settingsRepository ??
+    EventRefreshBus.instance.latest.addListener(_handleCalendarRefreshSignal);
+    _settingsRepository = widget._settingsRepository ??
         (AppEnv.isSupabaseReady
             ? SettingsRepository.supabase()
             : _UnavailableSettingsRepository());
     _settingsProvider = SettingsProvider(_settingsRepository);
     _briefingSchedulerService =
         widget._briefingSchedulerService ?? BriefingSchedulerService();
-    _calendarSyncService =
-        widget._calendarSyncService ??
+    _calendarSyncService = widget._calendarSyncService ??
         CalendarSyncService(
           googleClientId: _googleCalendarClientId,
           googleServerClientId: _googleCalendarServerClientId,
@@ -207,8 +209,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _homeWidgetService = HomeWidgetService();
     _ownsNaverCalDavService = widget._naverCalDavService == null;
     _naverCalDavService = widget._naverCalDavService ?? NaverCalDavService();
-    _backupService =
-        widget._backupService ??
+    _backupService = widget._backupService ??
         (AppEnv.isSupabaseReady ? BackupService() : null);
     _authService =
         widget._authService ?? (AppEnv.isSupabaseReady ? AuthService() : null);
@@ -241,6 +242,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    EventRefreshBus.instance.latest.removeListener(
+      _handleCalendarRefreshSignal,
+    );
     if (AppEnv.isSupabaseReady) {
       authProvider.removeListener(_handleFeedbackAdminAuthChanged);
     }
@@ -249,6 +253,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       unawaited(_naverCalDavService.dispose());
     }
     _deviceCalendarImportTimer?.cancel();
+    _autoSyncReloadDebounce?.cancel();
     _naverCalDavProgress.dispose();
     super.dispose();
   }
@@ -256,11 +261,43 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(_refreshCalendarConnectionState());
+      unawaited(_refreshCalendarConnectionState(runAutoRetry: true));
     }
   }
 
-  Future<void> _refreshCalendarConnectionState() async {
+  void _handleCalendarRefreshSignal() {
+    final signal = EventRefreshBus.instance.latest.value;
+    if (signal == null ||
+        signal.sequence == _lastHandledCalendarRefreshSequence) {
+      return;
+    }
+    _lastHandledCalendarRefreshSequence = signal.sequence;
+    if (!_isCalendarAutoSyncRefreshReason(signal.reason)) {
+      return;
+    }
+    _autoSyncReloadDebounce?.cancel();
+    _autoSyncReloadDebounce = Timer(
+      const Duration(milliseconds: 600),
+      () {
+        if (mounted) {
+          unawaited(_refreshCalendarConnectionState());
+        }
+      },
+    );
+  }
+
+  bool _isCalendarAutoSyncRefreshReason(String reason) {
+    return reason == 'google_auto_sync' ||
+        reason == 'naver_caldav_auto_import' ||
+        reason == 'device_naver_import' ||
+        reason.startsWith('calendar_auto_sync:') ||
+        reason.startsWith('google_calendar_auto_sync:') ||
+        reason == 'naver_caldav_import';
+  }
+
+  Future<void> _refreshCalendarConnectionState({
+    bool runAutoRetry = false,
+  }) async {
     _logSettingsGoogleCalendar('refreshConnectionState start');
     _logSettingsNaverCalendar(
       'refreshConnectionState start testing=$_isTestingNaverCalDav '
@@ -288,6 +325,72 @@ class _SettingsScreenState extends State<SettingsScreen>
     _logSettingsNaverCalendar(
       'refreshConnectionState status loaders completed',
     );
+    if (runAutoRetry) {
+      await _maybeRetryFailedCalendarAutoSync();
+    }
+  }
+
+  Future<void> _maybeRetryFailedCalendarAutoSync() async {
+    if (!mounted ||
+        _isRetryingCalendarAutoSync ||
+        _isSyncingGoogleCalendar ||
+        _isTestingNaverCalDav ||
+        _isImportingNaverCalDav ||
+        _isImportingDeviceNaverCalendar) {
+      return;
+    }
+    final snapshot = _calendarAutoSyncSnapshot;
+    if (snapshot == null || !_hasFailedCalendarAutoSyncSnapshot(snapshot)) {
+      return;
+    }
+    _isRetryingCalendarAutoSync = true;
+    try {
+      final result = await _calendarAutoSyncService.syncConnectedCalendars(
+        reason: 'settings_auto_retry',
+        force: true,
+      );
+      _logSettingsGoogleCalendar(
+        'autoRetry result didRun=${result.didRun} failed=${result.failed.join(',')}',
+      );
+      _logSettingsNaverCalendar(
+        'autoRetry result didRun=${result.didRun} failed=${result.failed.join(',')}',
+      );
+      if (!mounted) {
+        return;
+      }
+      await Future.wait<void>([
+        _loadCalendarStatus().catchError((error, stackTrace) {
+          debugPrint(
+            'Calendar status refresh after retry skipped: ${logSafeText(error)}',
+          );
+          debugPrintStack(stackTrace: stackTrace);
+        }),
+        _loadAutoSyncSnapshot().catchError((error, stackTrace) {
+          debugPrint(
+            'Calendar snapshot refresh after retry skipped: ${logSafeText(error)}',
+          );
+          debugPrintStack(stackTrace: stackTrace);
+        }),
+        _loadNaverCalDavState().catchError((error, stackTrace) {
+          debugPrint(
+            'Naver CalDAV state refresh after retry skipped: ${logSafeText(error)}',
+          );
+          debugPrintStack(stackTrace: stackTrace);
+        }),
+      ]);
+    } catch (error, stackTrace) {
+      debugPrint('Calendar auto retry failed: ${logSafeText(error)}');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      _isRetryingCalendarAutoSync = false;
+    }
+  }
+
+  bool _hasFailedCalendarAutoSyncSnapshot(CalendarAutoSyncSnapshot snapshot) {
+    return snapshot.failed.isNotEmpty ||
+        snapshot.providers.any((provider) {
+          return provider.status == 'attention' || provider.status == 'failed';
+        });
   }
 
   void _handleFeedbackAdminAuthChanged() {
@@ -387,8 +490,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       final label = version.isEmpty
           ? '버전 정보를 불러오지 못했습니다.'
           : buildNumber.isEmpty
-          ? '버전 $version'
-          : '버전 $version (빌드 $buildNumber)';
+              ? '버전 $version'
+              : '버전 $version (빌드 $buildNumber)';
       if (!mounted) {
         return;
       }
@@ -442,8 +545,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     setState(() {
       _calendarAutoSyncSnapshot = snapshot;
-      _hasDeviceCalendarSynced =
-          _hasDeviceCalendarSynced ||
+      _hasDeviceCalendarSynced = _hasDeviceCalendarSynced ||
           _deviceCalendarAutoSyncSnapshot?.lastSuccessAt != null;
     });
   }
@@ -468,8 +570,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _openCriticalAlarmSoundSettings() async {
-    final opened = await _notificationService
-        .openCriticalAlarmChannelSettings();
+    final opened =
+        await _notificationService.openCriticalAlarmChannelSettings();
     if (!mounted) {
       return;
     }
@@ -526,8 +628,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() {
       _calendarSyncSummary = CalendarSyncSummary(
         google: result,
-        naver:
-            _calendarSyncSummary?.naver ??
+        naver: _calendarSyncSummary?.naver ??
             CalendarIntegrationResult.signedOut(CalendarProvider.naver),
       );
       _isSyncingGoogleCalendar = false;
@@ -783,8 +884,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         naverIdentityId = (dataId?.isNotEmpty == true)
             ? dataId
             : identity.identityId.trim().isNotEmpty
-            ? identity.identityId.trim()
-            : null;
+                ? identity.identityId.trim()
+                : null;
         break;
       }
     }
@@ -1061,16 +1162,15 @@ class _SettingsScreenState extends State<SettingsScreen>
                 NaverCalDavInvalidSample s =>
                   '${s.title ?? ''} ${s.reason} ${s.rawStart ?? ''} ${s.calendarPath}',
                 _ => sample.toString(),
-              }.toLowerCase();
+              }
+                  .toLowerCase();
               return text.contains(query.trim().toLowerCase());
             }
 
-            final visibleSamples = samples
-                .where(sampleMatches)
-                .toList(growable: false);
-            final visibleInvalidSamples = invalidSamples
-                .where(sampleMatches)
-                .toList(growable: false);
+            final visibleSamples =
+                samples.where(sampleMatches).toList(growable: false);
+            final visibleInvalidSamples =
+                invalidSamples.where(sampleMatches).toList(growable: false);
 
             return SingleChildScrollView(
               child: Column(
@@ -1080,8 +1180,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   Text(
                     diagnostics.toSummaryMessage(),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                          fontWeight: FontWeight.w700,
+                        ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -1102,8 +1202,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   Text(
                     '읽음/파싱 수는 네이버 서버가 반환한 원본 후보입니다. 검색한 제목이 샘플에 없으면 CalDAV 응답 자체에 없거나 샘플 5개 밖에 있을 수 있어요.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
+                          color: PlanFlowColors.textSecondary,
+                        ),
                   ),
                   if (visibleSamples.isNotEmpty) ...[
                     const SizedBox(height: 16),
@@ -1267,7 +1367,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               final stage = progress?.stage;
               final showBackgroundHint =
                   stage == NaverCalDavSyncStage.querying ||
-                  stage == NaverCalDavSyncStage.saving;
+                      stage == NaverCalDavSyncStage.saving;
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1280,8 +1380,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Text(
                       '앱을 전환해도 동기화는 계속됩니다.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                      ),
+                            color: PlanFlowColors.textSecondary,
+                          ),
                     ),
                   ],
                 ],
@@ -1600,8 +1700,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (context) {
         final theme = Theme.of(context);
-        final bodyStyle =
-            theme.textTheme.bodyMedium?.copyWith(
+        final bodyStyle = theme.textTheme.bodyMedium?.copyWith(
               fontSize: (theme.textTheme.bodyMedium?.fontSize ?? 14) + 2,
               height: 1.45,
             ) ??
@@ -2620,9 +2719,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           Text(
             'Android 알림 채널 설정에서 중요 일정 알람의 소리를 직접 듣고 바꿀 수 있어요.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: PlanFlowColors.textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
+                  color: PlanFlowColors.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
           ),
         ],
       ),
@@ -2634,9 +2733,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     required int value,
     required ValueChanged<int> onChanged,
   }) {
-    final selected = value == 0 || value == 10 || value == 30 || value == 31
-        ? value
-        : 30;
+    final selected =
+        value == 0 || value == 10 || value == 30 || value == 31 ? value : 30;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SegmentedButton<int>(
@@ -2683,8 +2781,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   }) {
     final selected =
         DepartureAlarmService.allowedRepeatIntervalMinutes.contains(value)
-        ? value
-        : DepartureAlarmService.defaultRepeatIntervalMin;
+            ? value
+            : DepartureAlarmService.defaultRepeatIntervalMin;
     const options = <(int, String)>[
       (0, '없음'),
       (5, '5분'),
@@ -2697,16 +2795,14 @@ class _SettingsScreenState extends State<SettingsScreen>
       key: key,
       spacing: 6,
       runSpacing: 6,
-      children: options
-          .map((item) {
-            final isSelected = selected == item.$1;
-            return ChoiceChip(
-              label: Text(item.$2),
-              selected: isSelected,
-              onSelected: (_) => onChanged(item.$1),
-            );
-          })
-          .toList(growable: false),
+      children: options.map((item) {
+        final isSelected = selected == item.$1;
+        return ChoiceChip(
+          label: Text(item.$2),
+          selected: isSelected,
+          onSelected: (_) => onChanged(item.$1),
+        );
+      }).toList(growable: false),
     );
   }
 
@@ -2966,11 +3062,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                         ),
                         child: Text(
                           '알림은 PlanFlow 기준으로 울립니다. 외부 캘린더 앱의 기본 알림이 켜져 있으면 해당 앱에서도 알림이 울릴 수 있어요.',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: PlanFlowColors.textPrimary,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: PlanFlowColors.textPrimary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -2988,8 +3084,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         children: [
                           Expanded(
                             child: OutlinedButton.icon(
-                              onPressed:
-                                  _isDisconnectingGoogleCalendar ||
+                              onPressed: _isDisconnectingGoogleCalendar ||
                                       !_canDisconnectCalendar(
                                         _calendarSyncSummary?.google,
                                       )
@@ -3016,8 +3111,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                               key: const ValueKey(
                                 'settings-google-calendar-sync-button',
                               ),
-                              onPressed:
-                                  _isLoadingCalendarStatus ||
+                              onPressed: _isLoadingCalendarStatus ||
                                       _isSyncingGoogleCalendar ||
                                       _isDisconnectingGoogleCalendar
                                   ? null
@@ -3046,8 +3140,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       const SizedBox(height: 16),
                       InkWell(
                         borderRadius: BorderRadius.circular(12),
-                        onTap:
-                            _isLoadingCalendarStatus ||
+                        onTap: _isLoadingCalendarStatus ||
                                 _isTestingNaverCalDav ||
                                 _isImportingNaverCalDav ||
                                 _isDisconnectingNaverCalendar
@@ -3071,8 +3164,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 children: [
                                   Expanded(
                                     child: OutlinedButton.icon(
-                                      onPressed:
-                                          _isDisconnectingNaverCalendar ||
+                                      onPressed: _isDisconnectingNaverCalendar ||
                                               !(_hasNaverCalDavCredentials ||
                                                   _canDisconnectCalendar(
                                                     _calendarSyncSummary?.naver,
@@ -3100,8 +3192,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                       key: const ValueKey(
                                         'settings-naver-calendar-sync-button',
                                       ),
-                                      onPressed:
-                                          _isLoadingCalendarStatus ||
+                                      onPressed: _isLoadingCalendarStatus ||
                                               _isTestingNaverCalDav ||
                                               _isImportingNaverCalDav ||
                                               _isDisconnectingNaverCalendar
@@ -3119,7 +3210,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 alignment: Alignment.centerLeft,
                                 child: Text(
                                   '보조 기능: 삼성/구글/기타 휴대폰 캘린더 저장소에 이미 동기화된 일정을 가져올 수 있습니다.',
-                                  style: Theme.of(context).textTheme.bodySmall
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
                                       ?.copyWith(
                                         color: PlanFlowColors.textSecondary,
                                       ),
@@ -3137,8 +3230,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                               key: const ValueKey(
                                 'settings-device-calendar-disconnect-button',
                               ),
-                              onPressed:
-                                  _isDisconnectingDeviceCalendar ||
+                              onPressed: _isDisconnectingDeviceCalendar ||
                                       _isImportingDeviceNaverCalendar ||
                                       !_hasDeviceCalendarSynced
                                   ? null
@@ -3164,8 +3256,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                               key: const ValueKey(
                                 'settings-device-calendar-import-button',
                               ),
-                              onPressed:
-                                  _isImportingDeviceNaverCalendar ||
+                              onPressed: _isImportingDeviceNaverCalendar ||
                                       _isDisconnectingDeviceCalendar
                                   ? null
                                   : _importDeviceNaverCalendar,
@@ -3180,7 +3271,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                         const SizedBox(height: 8),
                         Text(
                           '일정이 많아 조금 걸리고 있습니다. 가져오기는 계속 진행 중입니다.',
-                          style: Theme.of(context).textTheme.bodySmall
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
                               ?.copyWith(color: PlanFlowColors.textSecondary),
                         ),
                       ],
@@ -3192,9 +3285,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               FeedbackReportSection(
                 onPressed: _openFeedbackReportSheet,
                 onOpenBetaSurvey: _openBetaSurveySheet,
-                onOpenAdminInbox: _isFeedbackAdmin
-                    ? _openFeedbackAdminReportsSheet
-                    : null,
+                onOpenAdminInbox:
+                    _isFeedbackAdmin ? _openFeedbackAdminReportsSheet : null,
                 newAdminReportCount: _newFeedbackReportCount,
                 isLoadingAdminReportCount: _isLoadingNewFeedbackReportCount,
               ),
@@ -3215,9 +3307,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                               key: const ValueKey(
                                 'settings-create-backup-button',
                               ),
-                              onPressed: _isBackupActionRunning
-                                  ? null
-                                  : _createBackup,
+                              onPressed:
+                                  _isBackupActionRunning ? null : _createBackup,
                               style: _settingsSkyButtonStyle(),
                               icon: _isBackupActionRunning
                                   ? const SizedBox.square(
@@ -3268,9 +3359,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                         _appVersionLabel,
                         key: const ValueKey('settings-app-version-label'),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: PlanFlowColors.textPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
+                              color: PlanFlowColors.textPrimary,
+                              fontWeight: FontWeight.w700,
+                            ),
                       ),
                     ),
                   ],
@@ -3469,7 +3560,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       CalendarIntegrationStatus.ready ||
       CalendarIntegrationStatus.synced ||
       CalendarIntegrationStatus.reauthRequired ||
-      CalendarIntegrationStatus.failed => 'Google Calendar 다시 동기화',
+      CalendarIntegrationStatus.failed =>
+        'Google Calendar 다시 동기화',
       _ => 'Google Calendar 연결',
     };
   }
@@ -3533,21 +3625,17 @@ class _SettingsScreenState extends State<SettingsScreen>
       return null;
     }
     final keys = providerKeys.toSet();
-    final providers = snapshot.providers
-        .where((provider) {
-          return keys.contains(provider.key);
-        })
-        .toList(growable: false);
+    final providers = snapshot.providers.where((provider) {
+      return keys.contains(provider.key);
+    }).toList(growable: false);
     if (providers.isEmpty) {
       return null;
     }
     providers.sort((a, b) {
-      final aStamp =
-          a.checkedAt ??
+      final aStamp = a.checkedAt ??
           a.lastSuccessAt ??
           DateTime.fromMillisecondsSinceEpoch(0);
-      final bStamp =
-          b.checkedAt ??
+      final bStamp = b.checkedAt ??
           b.lastSuccessAt ??
           DateTime.fromMillisecondsSinceEpoch(0);
       return bStamp.compareTo(aStamp);
@@ -3614,7 +3702,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       CalendarIntegrationStatus.syncing ||
       CalendarIntegrationStatus.synced ||
       CalendarIntegrationStatus.reauthRequired ||
-      CalendarIntegrationStatus.failed => true,
+      CalendarIntegrationStatus.failed =>
+        true,
       _ => false,
     };
   }
@@ -3626,10 +3715,12 @@ class _SettingsScreenState extends State<SettingsScreen>
     return switch (defaultTargetPlatform) {
       TargetPlatform.android => null,
       TargetPlatform.iOS ||
-      TargetPlatform.macOS => AppEnv.googleAndroidClientId,
+      TargetPlatform.macOS =>
+        AppEnv.googleAndroidClientId,
       TargetPlatform.fuchsia ||
       TargetPlatform.linux ||
-      TargetPlatform.windows => null,
+      TargetPlatform.windows =>
+        null,
     };
   }
 
@@ -3643,7 +3734,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       TargetPlatform.macOS ||
       TargetPlatform.fuchsia ||
       TargetPlatform.linux ||
-      TargetPlatform.windows => null,
+      TargetPlatform.windows =>
+        null,
     };
   }
 }
@@ -3887,11 +3979,11 @@ Future<void> _showNaverGuideImage(
                     Expanded(
                       child: Text(
                         title,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                ),
                       ),
                     ),
                     IconButton(
@@ -4220,37 +4312,35 @@ class _NaverDiagnosticCountTable extends StatelessWidget {
         border: Border.all(color: PlanFlowColors.primaryFaint),
       ),
       child: Wrap(
-        children: rows
-            .map((row) {
-              return SizedBox(
-                width: 132,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        row.$1,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        children: rows.map((row) {
+          return SizedBox(
+            width: 132,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    row.$1,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: PlanFlowColors.textSecondary,
                         ),
-                      ),
-                      Text(
-                        '${row.$2}개',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  ),
+                  Text(
+                    '${row.$2}개',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           color: PlanFlowColors.primary,
                           fontWeight: FontWeight.w800,
                         ),
-                      ),
-                    ],
                   ),
-                ),
-              );
-            })
-            .toList(growable: false),
+                ],
+              ),
+            ),
+          );
+        }).toList(growable: false),
       ),
     );
   }
@@ -4274,9 +4364,8 @@ class _StatusRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = isConfigured
-        ? const Color(0xFF1F8A4C)
-        : PlanFlowColors.textSecondary;
+    final color =
+        isConfigured ? const Color(0xFF1F8A4C) : PlanFlowColors.textSecondary;
     return Row(
       children: [
         Container(

@@ -13,9 +13,11 @@ import 'package:planflow/screens/settings/settings_screen.dart';
 import 'package:planflow/services/auth_service.dart';
 import 'package:planflow/services/backup_service.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
+import 'package:planflow/services/calendar_auto_sync_service.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
+import 'package:planflow/services/event_refresh_bus.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
@@ -79,75 +81,82 @@ void main() {
     );
   });
 
-  testWidgets('SettingsScreen loads settings and shows Naver calendar actions',
-      (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'SettingsScreen loads settings and shows Naver calendar actions',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final settingsRepository = _FakeSettingsRepository(
-      fetched: const UserSettingsModel(
-        id: 'settings-1',
-        userId: 'user-1',
-        morningBriefingAt: '06:40',
-        eveningBriefingAt: '20:20',
-        defaultReminderMin: 45,
-      ),
-    );
+      final settingsRepository = _FakeSettingsRepository(
+        fetched: const UserSettingsModel(
+          id: 'settings-1',
+          userId: 'user-1',
+          morningBriefingAt: '06:40',
+          eveningBriefingAt: '20:20',
+          defaultReminderMin: 45,
+        ),
+      );
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsScreen(
-          settingsRepository: settingsRepository,
-          briefingSchedulerService: _FakeBriefingSchedulerService(),
-          calendarSyncService: _FakeCalendarSyncService(
-            summary: CalendarSyncSummary(
-              google: CalendarIntegrationResult.ready(
-                CalendarProvider.google,
-              ),
-              naver: CalendarIntegrationResult.ready(
-                CalendarProvider.naver,
-                message: 'Naver Calendar 권한을 사용할 수 있습니다.',
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: settingsRepository,
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.ready(
+                  CalendarProvider.naver,
+                  message: 'Naver Calendar 권한을 사용할 수 있습니다.',
+                ),
               ),
             ),
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(
+              initialHasCredentials: true,
+            ),
+            userId: 'user-1',
           ),
-          notificationService: _FakeNotificationService(),
-          naverCalDavService:
-              _FakeNaverCalDavService(initialHasCredentials: true),
-          userId: 'user-1',
         ),
-      ),
-    );
+      );
 
-    await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-    expect(find.text('계정'), findsOneWidget);
-    expect(find.text('06:40'), findsWidgets);
-    expect(find.text('20:20'), findsWidgets);
-    expect(find.text('기본 알림'), findsNothing);
-    expect(find.text('저장'), findsNothing);
-    expect(find.text('변경 즉시 적용'), findsNothing);
-    final syncButton =
-        find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
-    await _scrollUntilHitTestable(tester, syncButton);
-    expect(syncButton, findsOneWidget);
-    expect(find.text('저장 누락 진단'), findsNothing);
-    expect(find.text('Naver CalDAV 직접 연결'), findsNothing);
-    expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
-    expect(find.text('네이버 CalDAV 일정 가져오기'), findsNothing);
-    final feedbackButton =
-        find.byKey(const ValueKey('settings-feedback-report-button'));
-    await _scrollUntilHitTestable(tester, feedbackButton);
-    expect(find.text('문제 신고 / 의견 보내기'), findsOneWidget);
-    expect(feedbackButton, findsOneWidget);
-    final versionLabel =
-        find.byKey(const ValueKey('settings-app-version-label'));
-    await _scrollUntilHitTestable(tester, versionLabel);
-    expect(find.text('버전 1.1.0 (빌드 3)'), findsOneWidget);
-    expect(settingsRepository.fetchUserIds.single, 'user-1');
-  });
+      expect(find.text('계정'), findsOneWidget);
+      expect(find.text('06:40'), findsWidgets);
+      expect(find.text('20:20'), findsWidgets);
+      expect(find.text('기본 알림'), findsNothing);
+      expect(find.text('저장'), findsNothing);
+      expect(find.text('변경 즉시 적용'), findsNothing);
+      final syncButton = find.byKey(
+        const ValueKey('settings-naver-calendar-sync-button'),
+      );
+      await _scrollUntilHitTestable(tester, syncButton);
+      expect(syncButton, findsOneWidget);
+      expect(find.text('저장 누락 진단'), findsNothing);
+      expect(find.text('Naver CalDAV 직접 연결'), findsNothing);
+      expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
+      expect(find.text('네이버 CalDAV 일정 가져오기'), findsNothing);
+      final feedbackButton = find.byKey(
+        const ValueKey('settings-feedback-report-button'),
+      );
+      await _scrollUntilHitTestable(tester, feedbackButton);
+      expect(find.text('문제 신고 / 의견 보내기'), findsOneWidget);
+      expect(feedbackButton, findsOneWidget);
+      final versionLabel = find.byKey(
+        const ValueKey('settings-app-version-label'),
+      );
+      await _scrollUntilHitTestable(tester, versionLabel);
+      expect(find.text('버전 1.1.0 (빌드 3)'), findsOneWidget);
+      expect(settingsRepository.fetchUserIds.single, 'user-1');
+    },
+  );
 
-  testWidgets('SettingsScreen hides calendar auto-sync summary card',
-      (tester) async {
+  testWidgets('SettingsScreen hides calendar auto-sync summary card', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({
@@ -202,8 +211,9 @@ void main() {
     expect(find.text('Google Calendar 다시 동기화'), findsOneWidget);
   });
 
-  testWidgets('SettingsScreen hides briefing and departure runtime status',
-      (tester) async {
+  testWidgets('SettingsScreen hides briefing and departure runtime status', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     SharedPreferences.setMockInitialValues({
@@ -249,89 +259,92 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('settings-briefing-runtime-status-card')),
-        findsNothing);
     expect(
-        find.byKey(
-            const ValueKey('settings-departure-alarm-runtime-status-card')),
-        findsNothing);
+      find.byKey(const ValueKey('settings-briefing-runtime-status-card')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('settings-departure-alarm-runtime-status-card'),
+      ),
+      findsNothing,
+    );
     expect(find.text('브리핑 예약 상태'), findsNothing);
     expect(find.text('출발 알림 상태'), findsNothing);
-    expect(find.byKey(const ValueKey('settings-critical-alarm-sound-button')),
-        findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('settings-critical-alarm-sound-button')),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
-      'SettingsScreen auto-saves setting changes and schedules briefing',
-      (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    'SettingsScreen auto-saves setting changes and schedules briefing',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final settingsRepository = _FakeSettingsRepository(
-      fetched: const UserSettingsModel(
-        id: 'settings-1',
-        userId: 'user-1',
-        morningBriefingAt: '07:10',
-        eveningBriefingAt: '21:20',
-        defaultReminderMin: 45,
-      ),
-    );
-    final scheduler = _FakeBriefingSchedulerService();
+      final settingsRepository = _FakeSettingsRepository(
+        fetched: const UserSettingsModel(
+          id: 'settings-1',
+          userId: 'user-1',
+          morningBriefingAt: '07:10',
+          eveningBriefingAt: '21:20',
+          defaultReminderMin: 45,
+        ),
+      );
+      final scheduler = _FakeBriefingSchedulerService();
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsScreen(
-          settingsRepository: settingsRepository,
-          briefingSchedulerService: scheduler,
-          calendarSyncService: _FakeCalendarSyncService(
-            summary: CalendarSyncSummary(
-              google: CalendarIntegrationResult.ready(
-                CalendarProvider.google,
-              ),
-              naver: CalendarIntegrationResult.signedOut(
-                CalendarProvider.naver,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: settingsRepository,
+            briefingSchedulerService: scheduler,
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.signedOut(
+                  CalendarProvider.naver,
+                ),
               ),
             ),
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
           ),
-          notificationService: _FakeNotificationService(),
-          naverCalDavService: _FakeNaverCalDavService(),
-          userId: 'user-1',
         ),
-      ),
-    );
+      );
 
-    await tester.pumpAndSettle();
-    final travelModeSelector =
-        find.byKey(const ValueKey('settings-travel-mode-selector'));
-    await _scrollUntilHitTestable(tester, travelModeSelector);
-    await tester.tap(
-      find.descendant(
-        of: travelModeSelector,
-        matching: find.text('대중교통'),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
+      final travelModeSelector = find.byKey(
+        const ValueKey('settings-travel-mode-selector'),
+      );
+      await _scrollUntilHitTestable(tester, travelModeSelector);
+      await tester.tap(
+        find.descendant(of: travelModeSelector, matching: find.text('대중교통')),
+      );
+      await tester.pumpAndSettle();
 
-    expect(settingsRepository.savedSettings, isNotNull);
-    expect(settingsRepository.savedSettings!.defaultReminderMin, 45);
-    expect(settingsRepository.savedSettings!.travelMode, 'transit');
-    expect(settingsRepository.savedSettings!.morningBriefingAt, '07:10');
-    expect(settingsRepository.savedSettings!.eveningBriefingAt, '21:20');
-    expect(scheduler.lastMorningTime, '07:10');
-    expect(scheduler.lastEveningTime, '21:20');
-    expect(scheduler.callCount, 2);
-  });
+      expect(settingsRepository.savedSettings, isNotNull);
+      expect(settingsRepository.savedSettings!.defaultReminderMin, 45);
+      expect(settingsRepository.savedSettings!.travelMode, 'transit');
+      expect(settingsRepository.savedSettings!.morningBriefingAt, '07:10');
+      expect(settingsRepository.savedSettings!.eveningBriefingAt, '21:20');
+      expect(scheduler.lastMorningTime, '07:10');
+      expect(scheduler.lastEveningTime, '21:20');
+      expect(scheduler.callCount, 2);
+    },
+  );
 
-  testWidgets('SettingsScreen saves preferred map provider choice',
-      (tester) async {
+  testWidgets('SettingsScreen saves preferred map provider choice', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final settingsRepository = _FakeSettingsRepository(
-      fetched: const UserSettingsModel(
-        id: 'settings-1',
-        userId: 'user-1',
-      ),
+      fetched: const UserSettingsModel(id: 'settings-1', userId: 'user-1'),
     );
 
     await tester.pumpWidget(
@@ -372,18 +385,16 @@ void main() {
     expect(settingsRepository.savedSettings!.preferredMapProvider, 'google');
 
     await tester.tap(
-      find.descendant(
-        of: preferredMapSelector,
-        matching: find.text('TMAP'),
-      ),
+      find.descendant(of: preferredMapSelector, matching: find.text('TMAP')),
     );
     await tester.pumpAndSettle();
 
     expect(settingsRepository.savedSettings!.preferredMapProvider, 'tmap');
   });
 
-  testWidgets('SettingsScreen saves smart departure alarm settings',
-      (tester) async {
+  testWidgets('SettingsScreen saves smart departure alarm settings', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -424,14 +435,12 @@ void main() {
     expect(find.text('출발 사전 알림'), findsOneWidget);
     expect(find.text('출발 알림 반복 주기'), findsOneWidget);
 
-    final safetyMarginSelector =
-        find.byKey(const ValueKey('settings-departure-safety-margin-selector'));
+    final safetyMarginSelector = find.byKey(
+      const ValueKey('settings-departure-safety-margin-selector'),
+    );
     await _scrollUntilHitTestable(tester, safetyMarginSelector);
     await tester.tap(
-      find.descendant(
-        of: safetyMarginSelector,
-        matching: find.text('30분'),
-      ),
+      find.descendant(of: safetyMarginSelector, matching: find.text('30분')),
     );
     await tester.pumpAndSettle();
 
@@ -439,27 +448,23 @@ void main() {
     expect(settingsRepository.savedSettings!.departureSafetyMarginMin, 30);
     expect(settingsRepository.savedSettings!.departPreAlarmOffset, 30);
 
-    final departPreAlarmSelector =
-        find.byKey(const ValueKey('settings-depart-pre-alarm-selector'));
+    final departPreAlarmSelector = find.byKey(
+      const ValueKey('settings-depart-pre-alarm-selector'),
+    );
     await _scrollUntilHitTestable(tester, departPreAlarmSelector);
     await tester.tap(
-      find.descendant(
-        of: departPreAlarmSelector,
-        matching: find.text('둘 다'),
-      ),
+      find.descendant(of: departPreAlarmSelector, matching: find.text('둘 다')),
     );
     await tester.pumpAndSettle();
 
     expect(settingsRepository.savedSettings!.departPreAlarmOffset, 31);
 
-    final repeatSelector =
-        find.byKey(const ValueKey('settings-departure-repeat-selector'));
+    final repeatSelector = find.byKey(
+      const ValueKey('settings-departure-repeat-selector'),
+    );
     await _scrollUntilHitTestable(tester, repeatSelector);
     await tester.tap(
-      find.descendant(
-        of: repeatSelector,
-        matching: find.text('15분'),
-      ),
+      find.descendant(of: repeatSelector, matching: find.text('15분')),
     );
     await tester.pumpAndSettle();
 
@@ -499,8 +504,9 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final voiceAutoStartSelector =
-        find.byKey(const ValueKey('settings-voice-auto-start-selector'));
+    final voiceAutoStartSelector = find.byKey(
+      const ValueKey('settings-voice-auto-start-selector'),
+    );
     await _scrollUntilHitTestable(tester, voiceAutoStartSelector);
     await tester.tap(voiceAutoStartSelector.hitTestable().first);
     await tester.pumpAndSettle();
@@ -509,8 +515,9 @@ void main() {
     expect(settingsRepository.savedSettings!.voiceAutoStart, isFalse);
   });
 
-  testWidgets('Google calendar button syncs interactively and shows feedback',
-      (tester) async {
+  testWidgets('Google calendar button syncs interactively and shows feedback', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -540,8 +547,9 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final syncButton =
-        find.byKey(const ValueKey('settings-google-calendar-sync-button'));
+    final syncButton = find.byKey(
+      const ValueKey('settings-google-calendar-sync-button'),
+    );
     await _scrollUntilHitTestable(tester, syncButton);
     await tester.tap(syncButton.hitTestable().first);
     await tester.pumpAndSettle();
@@ -554,61 +562,63 @@ void main() {
     );
   });
 
-  testWidgets('Naver calendar button runs CalDAV quick sync and shows feedback',
-      (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final calendarSyncService = _FakeCalendarSyncService(
-      summary: CalendarSyncSummary(
-        google: CalendarIntegrationResult.ready(CalendarProvider.google),
-        naver: CalendarIntegrationResult.signedOut(CalendarProvider.naver),
-      ),
-    );
-    final naverCalDavService = _FakeNaverCalDavService(
-      initialHasCredentials: true,
-      syncDelay: const Duration(seconds: 1),
-      syncResult: const NaverCalDavSyncResult(
-        success: true,
-        message: '네이버 캘린더 일정 1개를 PlanFlow로 가져왔습니다.',
-        createdOrUpdated: 1,
-        events: 1,
-      ),
-    );
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsScreen(
-          settingsRepository: _FakeSettingsRepository(),
-          briefingSchedulerService: _FakeBriefingSchedulerService(),
-          calendarSyncService: calendarSyncService,
-          notificationService: _FakeNotificationService(),
-          naverCalDavService: naverCalDavService,
-          userId: 'user-1',
-        ),
-      ),
-    );
-
-    await tester.pumpAndSettle();
-    final syncButton =
-        find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
-    await _scrollUntilHitTestable(tester, syncButton);
-    await tester.tap(syncButton.hitTestable().first);
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pumpAndSettle();
-
-    expect(calendarSyncService.naverSyncCallCount, 0);
-    expect(naverCalDavService.syncCallCount, 1);
-  });
-
   testWidgets(
-      'Naver calendar sync does not show permission failure when fallback starts',
-      (tester) async {
+    'SettingsScreen reloads calendar status after auto-sync signal',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final calendarSyncService = _FakeCalendarSyncService(
+        summary: CalendarSyncSummary(
+          google: CalendarIntegrationResult.ready(CalendarProvider.google),
+          naver: CalendarIntegrationResult.signedOut(CalendarProvider.naver),
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: _FakeSettingsRepository(),
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: calendarSyncService,
+            calendarAutoSyncService: _FakeCalendarAutoSyncService(),
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      final initialFetchCount = calendarSyncService.fetchStatusCallCount;
+
+      EventRefreshBus.instance.notifyChanged(reason: 'google_auto_sync');
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+
+      expect(
+        calendarSyncService.fetchStatusCallCount,
+        greaterThan(initialFetchCount),
+      );
+    },
+  );
+
+  testWidgets('SettingsScreen retries failed calendar auto sync on resume', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => authProvider.setUser(null));
 
-    authProvider.setUser('user-1');
-
+    final calendarAutoSyncService = _FakeCalendarAutoSyncService(
+      snapshot: CalendarAutoSyncSnapshot(
+        lastReason: 'app_resumed',
+        lastAttemptAt: DateTime(2026, 5, 9, 8, 30),
+        completed: const <String>[],
+        failed: const <String>['google_auto_sync'],
+        skipped: const <String>[],
+        providers: const <CalendarAutoSyncProviderSnapshot>[],
+      ),
+      syncResult: CalendarAutoSyncResult(),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
@@ -616,16 +626,14 @@ void main() {
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
             summary: CalendarSyncSummary(
-              google: CalendarIntegrationResult.signedOut(
-                CalendarProvider.google,
-              ),
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
               naver: CalendarIntegrationResult.signedOut(
                 CalendarProvider.naver,
               ),
             ),
           ),
+          calendarAutoSyncService: calendarAutoSyncService,
           notificationService: _FakeNotificationService(),
-          authService: _FakeAuthService(connectCalendarResult: false),
           naverCalDavService: _FakeNaverCalDavService(),
           userId: 'user-1',
         ),
@@ -633,24 +641,115 @@ void main() {
     );
 
     await tester.pumpAndSettle();
-    final syncButton =
-        find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
-    await _scrollUntilHitTestable(tester, syncButton);
-    await tester.tap(syncButton.hitTestable().first);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
 
-    expect(
-      find.textContaining('권한 동의가 확인되지 않았습니다'),
-      findsNothing,
-    );
-    expect(find.text('네이버 캘린더 연결'), findsOneWidget);
-    expect(find.text('네이버 ID'), findsOneWidget);
-    expect(find.text('앱 비밀번호'), findsOneWidget);
+    expect(calendarAutoSyncService.syncConnectedCallCount, 1);
+    expect(calendarAutoSyncService.lastSyncReason, 'settings_auto_retry');
+    expect(calendarAutoSyncService.lastSyncForce, isTrue);
   });
 
-  testWidgets('logout does not clear saved Naver calendar credentials',
-      (tester) async {
+  testWidgets(
+    'Naver calendar button runs CalDAV quick sync and shows feedback',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final calendarSyncService = _FakeCalendarSyncService(
+        summary: CalendarSyncSummary(
+          google: CalendarIntegrationResult.ready(CalendarProvider.google),
+          naver: CalendarIntegrationResult.signedOut(CalendarProvider.naver),
+        ),
+      );
+      final naverCalDavService = _FakeNaverCalDavService(
+        initialHasCredentials: true,
+        syncDelay: const Duration(seconds: 1),
+        syncResult: const NaverCalDavSyncResult(
+          success: true,
+          message: '네이버 캘린더 일정 1개를 PlanFlow로 가져왔습니다.',
+          createdOrUpdated: 1,
+          events: 1,
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: _FakeSettingsRepository(),
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: calendarSyncService,
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: naverCalDavService,
+            userId: 'user-1',
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      final syncButton = find.byKey(
+        const ValueKey('settings-naver-calendar-sync-button'),
+      );
+      await _scrollUntilHitTestable(tester, syncButton);
+      await tester.tap(syncButton.hitTestable().first);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+
+      expect(calendarSyncService.naverSyncCallCount, 0);
+      expect(naverCalDavService.syncCallCount, 1);
+    },
+  );
+
+  testWidgets(
+    'Naver calendar sync does not show permission failure when fallback starts',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(() => authProvider.setUser(null));
+
+      authProvider.setUser('user-1');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: _FakeSettingsRepository(),
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.signedOut(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.signedOut(
+                  CalendarProvider.naver,
+                ),
+              ),
+            ),
+            notificationService: _FakeNotificationService(),
+            authService: _FakeAuthService(connectCalendarResult: false),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      final syncButton = find.byKey(
+        const ValueKey('settings-naver-calendar-sync-button'),
+      );
+      await _scrollUntilHitTestable(tester, syncButton);
+      await tester.tap(syncButton.hitTestable().first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.textContaining('권한 동의가 확인되지 않았습니다'), findsNothing);
+      expect(find.text('네이버 캘린더 연결'), findsOneWidget);
+      expect(find.text('네이버 ID'), findsOneWidget);
+      expect(find.text('앱 비밀번호'), findsOneWidget);
+    },
+  );
+
+  testWidgets('logout does not clear saved Naver calendar credentials', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => authProvider.setUser(null));
@@ -672,8 +771,9 @@ void main() {
             briefingSchedulerService: _FakeBriefingSchedulerService(),
             calendarSyncService: _FakeCalendarSyncService(
               summary: CalendarSyncSummary(
-                google:
-                    CalendarIntegrationResult.ready(CalendarProvider.google),
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
                 naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
               ),
             ),
@@ -685,23 +785,15 @@ void main() {
         ),
         GoRoute(
           path: AppRoutes.login,
-          builder: (context, state) => const Scaffold(
-            body: SizedBox.shrink(),
-          ),
+          builder: (context, state) => const Scaffold(body: SizedBox.shrink()),
         ),
       ],
     );
 
-    await tester.pumpWidget(
-      MaterialApp.router(routerConfig: router),
-    );
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
 
     await tester.pumpAndSettle();
-    await _scrollUntilHitTestable(
-      tester,
-      find.text('로그아웃'),
-      maxScrolls: 24,
-    );
+    await _scrollUntilHitTestable(tester, find.text('로그아웃'), maxScrolls: 24);
     await tester.tap(find.text('로그아웃').hitTestable().first);
     await tester.pumpAndSettle();
 
@@ -709,8 +801,9 @@ void main() {
     expect(naverCalDavService.clearCallCount, 0);
   });
 
-  testWidgets('device Naver calendar import button imports phone calendars',
-      (tester) async {
+  testWidgets('device Naver calendar import button imports phone calendars', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -756,67 +849,69 @@ void main() {
     );
   });
 
-  testWidgets('device Naver calendar import shows long-running progress dialog',
-      (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'device Naver calendar import shows long-running progress dialog',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final deviceCalendarService = _FakeDeviceCalendarService(
-      result: const DeviceCalendarImportResult(
-        status: DeviceCalendarImportStatus.imported,
-        message: '휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.',
-        importedCount: 1,
-      ),
-      delay: const Duration(seconds: 4),
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsScreen(
-          settingsRepository: _FakeSettingsRepository(),
-          briefingSchedulerService: _FakeBriefingSchedulerService(),
-          calendarSyncService: _FakeCalendarSyncService(
-            summary: CalendarSyncSummary(
-              google: CalendarIntegrationResult.ready(CalendarProvider.google),
-              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
-            ),
-          ),
-          deviceCalendarService: deviceCalendarService,
-          notificationService: _FakeNotificationService(),
-          naverCalDavService: _FakeNaverCalDavService(),
-          userId: 'user-1',
+      final deviceCalendarService = _FakeDeviceCalendarService(
+        result: const DeviceCalendarImportResult(
+          status: DeviceCalendarImportStatus.imported,
+          message: '휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.',
+          importedCount: 1,
         ),
-      ),
-    );
+        delay: const Duration(seconds: 4),
+      );
 
-    await tester.pumpAndSettle();
-    final importButton = find.byKey(
-      const ValueKey('settings-device-calendar-import-button'),
-    );
-    await _scrollUntilHitTestable(tester, importButton);
-    await tester.tap(importButton.hitTestable().first);
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 3));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: _FakeSettingsRepository(),
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+              ),
+            ),
+            deviceCalendarService: deviceCalendarService,
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
+          ),
+        ),
+      );
 
-    expect(find.text('휴대폰 내부 캘린더 가져오기'), findsOneWidget);
-    expect(
-      find.textContaining('일정이 많아 조금 걸리고 있습니다'),
-      findsWidgets,
-    );
+      await tester.pumpAndSettle();
+      final importButton = find.byKey(
+        const ValueKey('settings-device-calendar-import-button'),
+      );
+      await _scrollUntilHitTestable(tester, importButton);
+      await tester.tap(importButton.hitTestable().first);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
 
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pumpAndSettle();
+      expect(find.text('휴대폰 내부 캘린더 가져오기'), findsOneWidget);
+      expect(find.textContaining('일정이 많아 조금 걸리고 있습니다'), findsWidgets);
 
-    expect(find.text('휴대폰 내부 캘린더 가져오기'), findsNothing);
-    expect(deviceCalendarService.importCallCount, 1);
-    expect(
-      find.textContaining('휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.'),
-      findsWidgets,
-    );
-  });
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
 
-  testWidgets('SettingsScreen hides notification permission controls',
-      (tester) async {
+      expect(find.text('휴대폰 내부 캘린더 가져오기'), findsNothing);
+      expect(deviceCalendarService.importCallCount, 1);
+      expect(
+        find.textContaining('휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.'),
+        findsWidgets,
+      );
+    },
+  );
+
+  testWidgets('SettingsScreen hides notification permission controls', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -873,8 +968,9 @@ void main() {
           ),
           notificationService: _FakeNotificationService(),
           backupService: _FakeBackupService(),
-          naverCalDavService:
-              _FakeNaverCalDavService(initialHasCredentials: true),
+          naverCalDavService: _FakeNaverCalDavService(
+            initialHasCredentials: true,
+          ),
           userId: 'user-1',
         ),
       ),
@@ -882,10 +978,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    Future<void> expectButtonColor(
-      ValueKey<String> key,
-      Color expected,
-    ) async {
+    Future<void> expectButtonColor(ValueKey<String> key, Color expected) async {
       final finder = find.byKey(key);
       await _scrollUntilHitTestable(tester, finder, maxScrolls: 80);
       final button = tester.widget<FilledButton>(finder);
@@ -926,48 +1019,54 @@ void main() {
     );
   });
 
-  testWidgets('SettingsScreen shows backup load errors instead of empty backup',
-      (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => authProvider.setUser(null));
+  testWidgets(
+    'SettingsScreen shows backup load errors instead of empty backup',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(() => authProvider.setUser(null));
 
-    AppEnv.markSupabaseInitialized();
-    authProvider.setUser('user-1');
+      AppEnv.markSupabaseInitialized();
+      authProvider.setUser('user-1');
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsScreen(
-          settingsRepository: _FakeSettingsRepository(),
-          briefingSchedulerService: _FakeBriefingSchedulerService(),
-          calendarSyncService: _FakeCalendarSyncService(
-            summary: CalendarSyncSummary(
-              google: CalendarIntegrationResult.ready(CalendarProvider.google),
-              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: _FakeSettingsRepository(),
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+              ),
             ),
+            notificationService: _FakeNotificationService(),
+            backupService: _FakeBackupService(
+              listError: const BackupSchemaException('테스트 백업 스키마 오류'),
+            ),
+            naverCalDavService: _FakeNaverCalDavService(
+              initialHasCredentials: true,
+            ),
+            userId: 'user-1',
           ),
-          notificationService: _FakeNotificationService(),
-          backupService: _FakeBackupService(
-            listError: const BackupSchemaException('테스트 백업 스키마 오류'),
-          ),
-          naverCalDavService:
-              _FakeNaverCalDavService(initialHasCredentials: true),
-          userId: 'user-1',
         ),
-      ),
-    );
+      );
 
-    await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-    final restoreButton =
-        find.byKey(const ValueKey('settings-restore-backup-button'));
-    await _scrollUntilHitTestable(tester, restoreButton, maxScrolls: 80);
-    await tester.tap(restoreButton);
-    await tester.pumpAndSettle();
+      final restoreButton = find.byKey(
+        const ValueKey('settings-restore-backup-button'),
+      );
+      await _scrollUntilHitTestable(tester, restoreButton, maxScrolls: 80);
+      await tester.tap(restoreButton);
+      await tester.pumpAndSettle();
 
-    expect(find.text('테스트 백업 스키마 오류'), findsOneWidget);
-    expect(find.text('백업된 항목이 없습니다. 먼저 백업을 만들어 주세요.'), findsNothing);
-  });
+      expect(find.text('테스트 백업 스키마 오류'), findsOneWidget);
+      expect(find.text('백업된 항목이 없습니다. 먼저 백업을 만들어 주세요.'), findsNothing);
+    },
+  );
 }
 
 Future<void> _scrollUntilHitTestable(
@@ -1033,10 +1132,8 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
 }
 
 class _FakeCalendarSyncService extends CalendarSyncService {
-  _FakeCalendarSyncService({
-    required this.summary,
-    this.googleSyncResult,
-  }) : super(
+  _FakeCalendarSyncService({required this.summary, this.googleSyncResult})
+      : super(
           naverStatusProvider: () async {
             return const NaverCalendarPermissionResult(
               status: NaverCalendarPermissionStatus.unknown,
@@ -1047,14 +1144,18 @@ class _FakeCalendarSyncService extends CalendarSyncService {
           naverStatusSaver: (_) async {},
         );
 
-  final CalendarSyncSummary summary;
+  CalendarSyncSummary summary;
   final CalendarIntegrationResult? googleSyncResult;
+  int fetchStatusCallCount = 0;
   int googleSyncCallCount = 0;
   int naverSyncCallCount = 0;
   bool? lastInteractive;
 
   @override
-  Future<CalendarSyncSummary> fetchStatus() async => summary;
+  Future<CalendarSyncSummary> fetchStatus() async {
+    fetchStatusCallCount += 1;
+    return summary;
+  }
 
   @override
   Future<CalendarIntegrationResult> syncGoogleCalendar({
@@ -1073,6 +1174,48 @@ class _FakeCalendarSyncService extends CalendarSyncService {
   }
 }
 
+class _FakeCalendarAutoSyncService extends CalendarAutoSyncService {
+  _FakeCalendarAutoSyncService({
+    CalendarAutoSyncSnapshot? snapshot,
+    CalendarAutoSyncResult? syncResult,
+  })  : snapshot = snapshot ?? _emptySnapshot,
+        syncResult = syncResult ?? CalendarAutoSyncResult();
+
+  static final CalendarAutoSyncSnapshot _emptySnapshot =
+      CalendarAutoSyncSnapshot(
+    lastReason: null,
+    lastAttemptAt: null,
+    completed: const <String>[],
+    failed: const <String>[],
+    skipped: const <String>[],
+    providers: const <CalendarAutoSyncProviderSnapshot>[],
+  );
+
+  CalendarAutoSyncSnapshot snapshot;
+  CalendarAutoSyncResult syncResult;
+  int loadSnapshotCallCount = 0;
+  int syncConnectedCallCount = 0;
+  String? lastSyncReason;
+  bool? lastSyncForce;
+
+  @override
+  Future<CalendarAutoSyncSnapshot> loadSnapshot() async {
+    loadSnapshotCallCount += 1;
+    return snapshot;
+  }
+
+  @override
+  Future<CalendarAutoSyncResult> syncConnectedCalendars({
+    String reason = 'app_lifecycle',
+    bool force = false,
+  }) async {
+    syncConnectedCallCount += 1;
+    lastSyncReason = reason;
+    lastSyncForce = force;
+    return syncResult;
+  }
+}
+
 class _FakeNotificationService extends NotificationService {
   @override
   Future<NotificationPermissionStatus> checkPermissionStatus() async {
@@ -1085,10 +1228,8 @@ class _FakeNotificationService extends NotificationService {
 }
 
 class _FakeDeviceCalendarService extends DeviceCalendarService {
-  _FakeDeviceCalendarService({
-    required this.result,
-    this.delay = Duration.zero,
-  }) : super(
+  _FakeDeviceCalendarService({required this.result, this.delay = Duration.zero})
+      : super(
           gateway: _FakeDeviceCalendarGateway(),
           eventRepository: _FakeDeviceEventRepository(),
           currentUserId: 'user-1',
@@ -1113,9 +1254,7 @@ class _FakeDeviceCalendarService extends DeviceCalendarService {
 }
 
 class _FakeBackupService extends BackupService {
-  _FakeBackupService({
-    this.listError,
-  });
+  _FakeBackupService({this.listError});
 
   final Object? listError;
 

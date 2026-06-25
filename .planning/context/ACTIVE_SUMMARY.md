@@ -1,4 +1,10 @@
 # ACTIVE SUMMARY
+## 2026-06-25 TASK_20260621_110709 동기화 자동 재시도 + 설정 화면 자동 갱신
+- 설정 화면이 `EventRefreshBus`의 자동 동기화/가져오기 완료 신호(`google_auto_sync`, `naver_caldav_auto_import`, `device_naver_import`, 기존 `calendar_auto_sync:*`)를 받으면 600ms debounce 후 캘린더 연결 상태, 자동 동기화 스냅샷, Naver CalDAV 자격증명 상태를 다시 읽도록 보강했다.
+- 앱이 설정 화면에서 resume될 때 이전 자동 동기화 스냅샷의 실패 리스트 또는 provider attention/failed 상태가 있으면 `CalendarAutoSyncService.syncConnectedCalendars(reason: settings_auto_retry, force: true)`로 재시도를 위임한다.
+- `settings_screen_test.dart`에 자동 동기화 신호 후 상태 재조회와 실패 스냅샷 resume 재시도 회귀 테스트를 추가하고 fake 서비스 call count를 보강했다.
+- 검증: `flutter analyze lib\screens\settings\settings_screen.dart test\screens\settings_screen_test.dart --no-pub`, `flutter test test\screens\settings_screen_test.dart --no-pub -r compact`, `git diff --check -- lib\screens\settings\settings_screen.dart test\screens\settings_screen_test.dart` 통과. release APK 빌드는 `android/key.properties` 부재 확인으로 skip했다.
+
 ## 2026-06-18 TASK_20260618_123620 PlanFlow 2차 버그/개선 6종
 - 연동 해제 모달을 X 닫기 + 일정 유지/삭제 2버튼으로 정리했고, 네이버 CalDAV 진행/진단 다이얼로그는 짧은 상태와 상세 info 진입으로 분리했다.
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 모달을 표시하고 성공 상태를 저장/복원하며, 서비스 import 루프는 6개 단위 제한 병렬 처리와 결과 집계 방식으로 바꿨다.
