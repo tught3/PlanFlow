@@ -11,8 +11,11 @@ class DiagLogger {
   static void log(String tag, String message) {
     final now = DateTime.now();
     final ts =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
-    final entry = '[$ts][$tag] $message';
+    final safeTag = maskTokens(tag);
+    final safeMessage = maskTokens(message);
+    final entry = '[$ts][$safeTag] $safeMessage';
     _entries.add(entry);
     if (_entries.length > _maxEntries) {
       _entries.removeAt(0);
@@ -34,5 +37,62 @@ class DiagLogger {
     await Clipboard.setData(ClipboardData(text: dump()));
   }
 
+  static String maskTokens(String value) {
+    var masked = value;
+    for (final pattern in _tokenPatterns) {
+      masked = masked.replaceAllMapped(pattern, (match) {
+        final prefix = match.group(1) ?? '';
+        final token = match.group(2) ?? '';
+        if (token.trim().isEmpty) {
+          return match.group(0) ?? '';
+        }
+        return '$prefix[MASKED_TOKEN]';
+      });
+    }
+    return masked;
+  }
+
+  static String describeToken(String? token) {
+    final trimmed = token?.trim();
+    if (trimmed == null) {
+      return 'tokenPresent=false tokenState=null maskedToken=none';
+    }
+    if (trimmed.isEmpty) {
+      return 'tokenPresent=false tokenState=empty maskedToken=none';
+    }
+    return 'tokenPresent=true tokenLength=${trimmed.length} '
+        'maskedToken=${_maskSingleToken(trimmed)}';
+  }
+
   static int get entryCount => _entries.length;
+
+  static String _maskSingleToken(String token) {
+    if (token.length <= 8) {
+      return '${token[0]}***${token[token.length - 1]}';
+    }
+    return '${token.substring(0, 4)}...${token.substring(token.length - 4)}';
+  }
+
+  static final List<RegExp> _tokenPatterns = [
+    RegExp(
+      r'\b(bearer\s+)([A-Za-z0-9._~+/=-]{8,})',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'\b((?:(?:access|refresh|id|provider|calendar|auth)[_-]?)?token\s*[:=]\s*)([A-Za-z0-9._~+/=-]{8,})',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'''(["']?(?:access_token|refresh_token|id_token|provider_token|token)["']?\s*:\s*["']?)([^"',&\s]{8,})''',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'\b((?:auth[-_]?code|authCode|code|session|app[-_]?password|appPassword|password)\s*[:=]\s*)([A-Za-z0-9._~+/=-]{8,})',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'''(["']?(?:authCode|auth_code|code|session|appPassword|app_password|password)["']?\s*:\s*["']?)([^"',&\s]{8,})''',
+      caseSensitive: false,
+    ),
+  ];
 }

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/diag_logger.dart';
 import '../core/env.dart';
 import '../core/log_text.dart';
 import '../core/supabase_auth_options.dart';
@@ -29,11 +30,25 @@ class AuthService implements AuthSessionClient {
       : _client = client ?? Supabase.instance.client;
 
   static const String _naverCalendarLogTag = 'PlanFlowNaverCalendar';
+  static const String _diagAuthTag = 'NAVER_AUTH';
+  static const String _diagTokenTag = 'NAVER_TOKEN';
 
   final SupabaseClient _client;
 
   static void _logNaverCalendarAuth(String message) {
     debugPrint('[$_naverCalendarLogTag] auth ${logSafeText(message)}');
+  }
+
+  static void _diagAuth(String message) {
+    DiagLogger.log(_diagAuthTag, logSafeText(message));
+  }
+
+  static void _diagToken(String message) {
+    DiagLogger.log(_diagTokenTag, logSafeText(message));
+  }
+
+  static String _tokenDiagnostic(String? token) {
+    return DiagLogger.describeToken(token);
   }
 
   @override
@@ -100,6 +115,16 @@ class AuthService implements AuthSessionClient {
     bool forCalendar = false,
   }) async {
     if (provider == PlanFlowOAuthProvider.naver) {
+      _diagAuth(
+        'signInWithOAuth start provider=naver forCalendar=$forCalendar '
+        'forceConsent=$forceConsent '
+        'sessionPresent=${_client.auth.currentSession != null} '
+        'userPresent=${_client.auth.currentUser != null}',
+      );
+      _diagToken(
+        'signInWithOAuth currentSessionProvider '
+        '${_tokenDiagnostic(_client.auth.currentSession?.providerToken)}',
+      );
       _logNaverCalendarAuth(
         'signInWithOAuth start forCalendar=$forCalendar '
         'forceConsent=$forceConsent '
@@ -116,6 +141,11 @@ class AuthService implements AuthSessionClient {
       forceConsent: forceConsent,
     );
     if (provider == PlanFlowOAuthProvider.naver) {
+      _diagAuth(
+        'signInWithOAuth urlBuilt provider=naver host=${uri.host} '
+        'path=${uri.path} queryKeys=${uri.queryParameters.keys.join(',')} '
+        'scopes=${oauthScopesFor(provider, forCalendar: forCalendar) ?? 'default'}',
+      );
       _logNaverCalendarAuth(
         'signInWithOAuth built uri host=${uri.host} path=${uri.path} '
         'queryKeys=${uri.queryParameters.keys.join(',')} '
@@ -144,19 +174,35 @@ class AuthService implements AuthSessionClient {
       forceConsent: forceConsent,
     );
     if (provider == PlanFlowOAuthProvider.naver) {
+      _diagAuth(
+        'buildOAuthSignInUri request provider=naver '
+        'forCalendar=$forCalendar forceConsent=$forceConsent '
+        'scopes=${scopes ?? 'default'} '
+        'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
+      );
       _logNaverCalendarAuth(
         'buildOAuthSignInUri request forCalendar=$forCalendar '
         'forceConsent=$forceConsent scopes=${scopes ?? 'default'} '
         'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
       );
     }
-    final response = await _client.auth.getOAuthSignInUrl(
-      provider: oauthProvider,
-      redirectTo: AppEnv.authRedirectUrl,
-      scopes: scopes,
-      queryParams: queryParams,
-    );
-    return Uri.parse(response.url);
+    try {
+      final response = await _client.auth.getOAuthSignInUrl(
+        provider: oauthProvider,
+        redirectTo: AppEnv.authRedirectUrl,
+        scopes: scopes,
+        queryParams: queryParams,
+      );
+      return Uri.parse(response.url);
+    } catch (error) {
+      if (provider == PlanFlowOAuthProvider.naver) {
+        _diagAuth(
+          'buildOAuthSignInUri exception type=${error.runtimeType} '
+          'error=${logSafeText(error)}',
+        );
+      }
+      rethrow;
+    }
   }
 
   Future<bool> recheckNaverAccountConsent() {
@@ -170,6 +216,15 @@ class AuthService implements AuthSessionClient {
   Future<bool> connectCalendarProvider(PlanFlowOAuthProvider provider) async {
     final oauthProvider = _oauthProvider(provider);
     if (provider == PlanFlowOAuthProvider.naver) {
+      _diagAuth(
+        'connectCalendarProvider start provider=naver '
+        'sessionPresent=${_client.auth.currentSession != null} '
+        'userPresent=${_client.auth.currentUser != null}',
+      );
+      _diagToken(
+        'connectCalendarProvider currentSessionProvider '
+        '${_tokenDiagnostic(_client.auth.currentSession?.providerToken)}',
+      );
       _logNaverCalendarAuth(
         'connectCalendarProvider start sessionPresent=${_client.auth.currentSession != null} '
         'currentUserPresent=${_client.auth.currentUser != null}',
@@ -212,6 +267,9 @@ class AuthService implements AuthSessionClient {
         purpose: 'calendar-link',
       );
     } catch (_) {
+      if (provider == PlanFlowOAuthProvider.naver) {
+        _diagAuth('connectCalendarProvider exception type=unknown');
+      }
       rethrow;
     }
   }
@@ -272,6 +330,14 @@ class AuthService implements AuthSessionClient {
       'queryParams=${queryParams?.keys.join(',') ?? 'none'}',
     );
     if (appProvider == PlanFlowOAuthProvider.naver) {
+      _diagAuth(
+        'launchOAuthUrl start purpose=$purpose provider=naver '
+        'mode=$launchMode host=${uri.host} path=${uri.path} '
+        'queryKeys=${uri.queryParameters.keys.join(',')} '
+        'scopes=$effectiveScopes '
+        'sessionPresent=${_client.auth.currentSession != null} '
+        'userPresent=${_client.auth.currentUser != null}',
+      );
       _logNaverCalendarAuth(
         'launchOAuthUrl purpose=$purpose mode=$launchMode '
         'host=${uri.host} path=${uri.path} '
@@ -281,19 +347,35 @@ class AuthService implements AuthSessionClient {
       );
     }
     _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
+    if (appProvider == PlanFlowOAuthProvider.naver) {
+      _diagAuth('launchOAuthUrl pendingMarked purpose=$purpose provider=naver');
+    }
     await OAuthCallbackHandler.persistCurrentPendingCallback();
-    final launched = await launchUrl(
-      uri,
-      mode: launchMode,
-      webOnlyWindowName: '_self',
-    );
+    final bool launched;
+    try {
+      launched = await launchUrl(
+        uri,
+        mode: launchMode,
+        webOnlyWindowName: '_self',
+      );
+    } catch (error) {
+      if (appProvider == PlanFlowOAuthProvider.naver) {
+        _diagAuth(
+          'launchOAuthUrl exception type=${error.runtimeType} '
+          'error=${logSafeText(error)}',
+        );
+      }
+      rethrow;
+    }
     if (!launched) {
       if (appProvider == PlanFlowOAuthProvider.naver) {
+        _diagAuth('launchOAuthUrl failed launched=false provider=naver');
         _logNaverCalendarAuth('launchOAuthUrl failed launched=false');
       }
       OAuthCallbackHandler.clearPendingCallback();
     }
     if (appProvider == PlanFlowOAuthProvider.naver) {
+      _diagAuth('launchOAuthUrl result launched=$launched provider=naver');
       _logNaverCalendarAuth('launchOAuthUrl result launched=$launched');
     }
     return launched;

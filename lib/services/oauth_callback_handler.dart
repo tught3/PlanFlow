@@ -35,6 +35,8 @@ class OAuthCallbackHandler {
   static const _storedPendingMethodKey = 'oauth_callback_pending_method';
   static const _storedPendingStartedAtKey = 'oauth_callback_pending_started_at';
   static const _naverCalendarLogTag = 'PlanFlowNaverCalendar';
+  static const _diagAuthTag = 'NAVER_AUTH';
+  static const _diagTokenTag = 'NAVER_TOKEN';
 
   final AppLinks _appLinks;
   StreamSubscription<Uri>? _subscription;
@@ -42,6 +44,18 @@ class OAuthCallbackHandler {
 
   static void _logNaverCalendar(String message) {
     debugPrint('[$_naverCalendarLogTag] oauth ${logSafeText(message)}');
+  }
+
+  static void _diagAuth(String message) {
+    DiagLogger.log(_diagAuthTag, logSafeText(message));
+  }
+
+  static void _diagToken(String message) {
+    DiagLogger.log(_diagTokenTag, logSafeText(message));
+  }
+
+  static String _tokenDiagnostic(String? token) {
+    return DiagLogger.describeToken(token);
   }
 
   static String _safeUriSummary(Uri uri) {
@@ -362,7 +376,10 @@ class OAuthCallbackHandler {
 
     latestUserMessage.value = null;
     final resolvedPending = await _resolvePendingCallback();
-    DiagLogger.log('DIAG', 'resolvePending purpose=${resolvedPending?.purpose} method=${resolvedPending?.method}');
+    _diagAuth(
+      'resolvePending purpose=${resolvedPending?.purpose} '
+      'method=${resolvedPending?.method} userMessageCleared=true',
+    );
     final pendingPurpose = resolvedPending?.purpose;
     final pendingMethod = resolvedPending?.method;
     final isPendingNaverCalendarLink =
@@ -370,7 +387,10 @@ class OAuthCallbackHandler {
       pendingPurpose: pendingPurpose,
       pendingMethod: pendingMethod,
     );
-    DiagLogger.log('DIAG', 'isPendingNaverCalendarLink=$isPendingNaverCalendarLink');
+    _diagAuth(
+      'pendingNaverCalendarLink=$isPendingNaverCalendarLink '
+      'allowWithoutNaverIdentity=$isPendingNaverCalendarLink',
+    );
     final normalizedUri = _normalizeAuthCallbackUri(uri);
     final isPasswordRecovery = isPasswordRecoveryCallback(normalizedUri);
     final isEmailConfirmation = isEmailConfirmationCallback(normalizedUri) ||
@@ -438,7 +458,11 @@ class OAuthCallbackHandler {
       hasPendingCalendarLink:
           pendingPurpose == OAuthCallbackPurpose.calendarLink,
     );
-    DiagLogger.log('DIAG', 'shouldExchange=$shouldExchangeCallback currentSession=${client.auth.currentSession != null}');
+    _diagAuth(
+      'route shouldExchange=$shouldExchangeCallback '
+      'sessionPresent=${client.auth.currentSession != null} '
+      'userPresent=${client.auth.currentUser != null}',
+    );
 
     debugPrint(
       'OAuth callback routing: pendingPurpose=$pendingPurpose '
@@ -465,6 +489,9 @@ class OAuthCallbackHandler {
           ? normalizedUri.queryParameters['provider_token']
           : null;
       if (isPendingNaverCalendarLink) {
+        _diagToken(
+          'noExchange urlProviderToken ${_tokenDiagnostic(urlProviderToken)}',
+        );
         _logNaverCalendar(
           'no exchange path: urlProviderToken present='
           '${urlProviderToken?.trim().isNotEmpty == true}',
@@ -494,11 +521,11 @@ class OAuthCallbackHandler {
       final googleUserId = previousSession?.user.id;
       final rawAuthCode = normalizedUri.queryParameters['code'];
       final authCode = rawAuthCode?.trim();
-      DiagLogger.log(
-        'DIAG',
-        'naver preExchange googleUserId=${googleUserId ?? "null"} '
-            'previousSessionPresent=${previousSession != null} '
-            'codePresent=${authCode?.isNotEmpty == true}',
+      _diagAuth(
+        'naver preExchange previousSessionPresent=${previousSession != null} '
+        'previousUserPresent=${googleUserId?.isNotEmpty == true} '
+        'currentUserPresent=${client.auth.currentUser != null} '
+        'codePresent=${authCode?.isNotEmpty == true}',
       );
       _logNaverCalendar(
         'exchange path: using PKCE code exchange and restoring previous session '
@@ -519,10 +546,10 @@ class OAuthCallbackHandler {
           normalizedAuthCode,
         );
         naverProviderToken = response.session.providerToken?.trim();
-        DiagLogger.log(
-          'DIAG',
-          'naver postExchange providerTokenPresent='
-              '${naverProviderToken?.isNotEmpty == true}',
+        _diagToken(
+          'naver postExchange ${_tokenDiagnostic(naverProviderToken)} '
+          'sessionPresent=${response.session.accessToken.trim().isNotEmpty} '
+          'userPresent=${response.session.user.id.trim().isNotEmpty}',
         );
         _logNaverCalendar(
           'exchange path: code exchange completed '
@@ -534,8 +561,7 @@ class OAuthCallbackHandler {
           try {
             final previousRefreshToken = previousSession.refreshToken?.trim();
             if (previousRefreshToken == null || previousRefreshToken.isEmpty) {
-              DiagLogger.log(
-                'DIAG',
+              _diagAuth(
                 'naver previous session restore skipped reason=missing_refresh_token',
               );
               _logNaverCalendar(
@@ -546,18 +572,17 @@ class OAuthCallbackHandler {
                 previousRefreshToken,
                 accessToken: previousSession.accessToken,
               );
-              DiagLogger.log(
-                'DIAG',
-                'naver previous session restored user=${previousSession.user.id}',
+              _diagAuth(
+                'naver previous session restored userPresent=true',
               );
               _logNaverCalendar(
                 'exchange path: previous session restored user=${previousSession.user.id}',
               );
             }
           } catch (error, stackTrace) {
-            DiagLogger.log(
-              'DIAG',
-              'naver previous session restore failed type=${error.runtimeType} error=$error',
+            _diagAuth(
+              'naver previous session restore failed '
+              'type=${error.runtimeType} error=${logSafeText(error)}',
             );
             _logNaverCalendar(
               'exchange path: previous session restore failed '
@@ -570,17 +595,18 @@ class OAuthCallbackHandler {
       final restoredUserId = client.auth.currentSession?.user.id;
       final restoredMatchesGoogle =
           restoredUserId != null && restoredUserId == googleUserId;
-      DiagLogger.log(
-        'DIAG',
-        'naver restore-check restoredUserId=${restoredUserId ?? "null"} '
-            'googleUserId=${googleUserId ?? "null"} match=$restoredMatchesGoogle',
+      _diagAuth(
+        'naver restoreCheck restoredUserPresent='
+        '${restoredUserId?.isNotEmpty == true} '
+        'previousUserPresent=${googleUserId?.isNotEmpty == true} '
+        'match=$restoredMatchesGoogle',
       );
       if (restoredMatchesGoogle &&
           naverProviderToken != null &&
           naverProviderToken.isNotEmpty) {
-        DiagLogger.log(
-          'DIAG',
-          'naver persist-target persisting token for user=$restoredUserId',
+        _diagToken(
+          'naver persistTarget willPersist=true userPresent=true '
+          'allowWithoutNaverIdentity=true ${_tokenDiagnostic(naverProviderToken)}',
         );
         await _captureNaverProviderTokenIfAny(
           explicitProviderToken: naverProviderToken,
@@ -590,9 +616,10 @@ class OAuthCallbackHandler {
         final skipReason = restoredUserId == null
             ? 'no_restored_session'
             : (!restoredMatchesGoogle ? 'user_mismatch' : 'empty_token');
-        DiagLogger.log(
-          'DIAG',
-          'naver persist-target SKIPPED reason=$skipReason',
+        _diagToken(
+          'naver persistTarget skipped reason=$skipReason '
+          'userPresent=${restoredUserId?.isNotEmpty == true} '
+          'allowWithoutNaverIdentity=true ${_tokenDiagnostic(naverProviderToken)}',
         );
       }
       final signedIn = await _syncAndRouteHome();
@@ -654,6 +681,11 @@ class OAuthCallbackHandler {
       );
       clearPendingCallback();
       if (pendingMethod == 'naver') {
+        _diagAuth(
+          'exchange exception type=${error.runtimeType} '
+          'code=${error.code} status=${error.statusCode} '
+          'error=${logSafeText(error.message)}',
+        );
         _logNaverCalendar(
           'exchange authException message=${logSafeText(error.message)} '
           'code=${error.code} status=${error.statusCode}',
@@ -665,6 +697,10 @@ class OAuthCallbackHandler {
     } catch (error) {
       debugPrint('OAuth callback exchange failed: ${logSafeText(error)}');
       if (pendingMethod == 'naver') {
+        _diagAuth(
+          'exchange exception type=${error.runtimeType} '
+          'error=${logSafeText(error)}',
+        );
         _logNaverCalendar(
           'exchange failed type=${error.runtimeType} '
           'error=${logSafeText(error)}',
@@ -816,7 +852,12 @@ class OAuthCallbackHandler {
     bool allowWithoutNaverIdentity = false,
   }) async {
     try {
-      DiagLogger.log('DIAG', 'captureToken explicit=${explicitProviderToken?.trim().isNotEmpty == true} allowWithout=$allowWithoutNaverIdentity');
+      _diagToken(
+        'captureToken start source='
+        '${explicitProviderToken?.trim().isNotEmpty == true ? 'explicit' : 'session'} '
+        'allowWithoutNaverIdentity=$allowWithoutNaverIdentity '
+        '${_tokenDiagnostic(explicitProviderToken)}',
+      );
       _logNaverCalendar(
         'provider token capture start '
         'explicitTokenPresent=${explicitProviderToken?.trim().isNotEmpty == true} '
@@ -825,18 +866,24 @@ class OAuthCallbackHandler {
       final permissionService = NaverCalendarPermissionService();
       final token = explicitProviderToken?.trim();
       if (token != null && token.isNotEmpty) {
-        await permissionService.captureProviderToken(
+        final saved = await permissionService.captureProviderToken(
           token,
           allowWithoutNaverIdentity: allowWithoutNaverIdentity,
         );
+        _diagToken('captureToken completed source=explicit saved=$saved');
         _logNaverCalendar('provider token capture completed source=explicit');
         return;
       }
-      await permissionService.captureCurrentProviderToken(
+      final saved = await permissionService.captureCurrentProviderToken(
         allowWithoutNaverIdentity: allowWithoutNaverIdentity,
       );
+      _diagToken('captureToken completed source=session saved=$saved');
       _logNaverCalendar('provider token capture completed source=session');
     } catch (error, stackTrace) {
+      _diagToken(
+        'captureToken exception type=${error.runtimeType} '
+        'error=${logSafeText(error)}',
+      );
       _logNaverCalendar(
         'provider token capture skipped type=${error.runtimeType} '
         'error=${logSafeText(error)}',

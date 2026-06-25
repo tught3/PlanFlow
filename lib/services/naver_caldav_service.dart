@@ -616,6 +616,10 @@ class NaverCalDavService {
   EventRepository get _eventRepository =>
       _eventRepositoryOverride ?? EventRepository.supabase(client: _client);
 
+  void _logCalDavDiag(String message) {
+    DiagLogger.log('CALDAV', message);
+  }
+
   static NaverCalDavCredentialStore _defaultCredentialStore(
     SupabaseClient? client,
   ) {
@@ -642,6 +646,7 @@ class NaverCalDavService {
 
   Future<bool> hasCredentials() async {
     final credentials = await _credentialStore.readCredentials();
+    _logCalDavDiag('hasCredentials present=${credentials != null}');
     return credentials != null;
   }
 
@@ -652,7 +657,11 @@ class NaverCalDavService {
   }) async {
     final normalizedId = naverId.trim();
     final normalizedPassword = appPassword.trim();
+    _logCalDavDiag(
+      'testConnection entry idPresent=${normalizedId.isNotEmpty} passwordPresent=${normalizedPassword.isNotEmpty} saveOnSuccess=$saveOnSuccess',
+    );
     if (normalizedId.isEmpty || normalizedPassword.isEmpty) {
+      _logCalDavDiag('testConnection authStatus=missingInput');
       return const NaverCalDavConnectionResult(
         status: NaverCalDavConnectionStatus.failed,
         message: '네이버 ID와 앱 비밀번호를 모두 입력해 주세요.',
@@ -668,6 +677,9 @@ class NaverCalDavService {
         naverId: normalizedId,
         appPassword: normalizedPassword,
       );
+      _logCalDavDiag(
+        'testConnection propfind result=${result.status.name} status=${result.statusCode ?? 0}',
+      );
 
       if (result.isSuccess) {
         if (saveOnSuccess) {
@@ -675,6 +687,7 @@ class NaverCalDavService {
             naverId: normalizedId,
             appPassword: normalizedPassword,
           );
+          _logCalDavDiag('testConnection credentialsSaved=true');
         }
         return result;
       }
@@ -706,7 +719,9 @@ class NaverCalDavService {
       naverId: naverId,
       appPassword: appPassword,
     );
+    _logCalDavDiag('getCalendars authStatus=credentialsResolved');
     final homePaths = await _discoverCalendarHomePaths(credentials);
+    _logCalDavDiag('getCalendars homePathCandidates=${homePaths.length}');
     debugPrint('Naver CalDAV 캘린더 홈 후보: $homePaths');
     Object? lastError;
     for (final path in homePaths) {
@@ -719,20 +734,14 @@ class NaverCalDavService {
           appPassword: credentials.appPassword,
           body: _calendarListPropfindBody,
         );
-        DiagLogger.log(
-          'NaverCalDav',
-          'getCalendars propfind status=${response.statusCode}',
-        );
+        _logCalDavDiag('getCalendars propfind status=${response.statusCode}');
         if (response.statusCode == 404) {
           lastError = StateError('CalDAV calendar-home not found: $endpoint');
           continue;
         }
         _throwForCalDavStatus(response.statusCode, endpoint);
         final calendars = _parseCalendarsFromResponse(response.body);
-        DiagLogger.log(
-          'NaverCalDav',
-          'getCalendars found=${calendars.length}',
-        );
+        _logCalDavDiag('getCalendars found=${calendars.length}');
         debugPrint('Naver CalDAV 캘린더 목록: $path / ${calendars.length}개');
         for (final calendar in calendars) {
           debugPrint(
@@ -745,16 +754,12 @@ class NaverCalDavService {
         }
       } catch (error) {
         lastError = error;
-        DiagLogger.log(
-          'NaverCalDav',
-          'getCalendars pathFailed error=${error.runtimeType}',
-        );
+        _logCalDavDiag('getCalendars pathFailed error=${error.runtimeType}');
         debugPrint('Naver CalDAV calendar path failed: $path / $error');
       }
     }
     if (lastError != null) {
-      DiagLogger.log(
-        'NaverCalDav',
+      _logCalDavDiag(
         'getCalendars allPathsFailed lastError=${lastError.runtimeType}',
       );
       throw StateError('네이버 CalDAV 캘린더 경로를 찾지 못했습니다. 서버 경로를 추가 확인해야 합니다.');
@@ -776,6 +781,9 @@ class NaverCalDavService {
       naverId: naverId,
       appPassword: appPassword,
     );
+    _logCalDavDiag(
+      'getEvents entry allowFullFallback=$allowFullFallback allowResourceFallback=$allowResourceFallback',
+    );
     final now = DateTime.now().toUtc();
     final startAt = (from ?? now.subtract(const Duration(days: 90))).toUtc();
     final endAt = (to ?? now.add(const Duration(days: 180))).toUtc();
@@ -792,6 +800,7 @@ class NaverCalDavService {
       body: _reportBody(startAt, endAt),
       parseStats: parseStats,
     );
+    _logCalDavDiag('getEvents rangeQuery count=${rangedEvents.length}');
     debugPrint(
         'Naver CalDAV 범위 REPORT: $calendarPath / ${rangedEvents.length}개');
     final filteredRangedEvents =
@@ -801,9 +810,11 @@ class NaverCalDavService {
       return filteredRangedEvents;
     }
     if (!allowFullFallback) {
+      _logCalDavDiag('getEvents fullFallback skipped');
       return filteredRangedEvents;
     }
 
+    _logCalDavDiag('getEvents fullFallback start');
     final fallbackEvents = await _queryEvents(
       endpoint: endpoint,
       naverId: credentials.naverId,
@@ -813,6 +824,9 @@ class NaverCalDavService {
     );
     final filteredFallbackEvents =
         _filterEventsByRange(fallbackEvents, startAt, endAt);
+    _logCalDavDiag(
+      'getEvents fullFallback count=${fallbackEvents.length} filtered=${filteredFallbackEvents.length}',
+    );
     debugPrint(
       'Naver CalDAV 전체 REPORT: $calendarPath / '
       '${fallbackEvents.length}개, 범위 내 ${filteredFallbackEvents.length}개',
@@ -825,9 +839,11 @@ class NaverCalDavService {
       return mergedFallbackEvents;
     }
     if (!allowResourceFallback) {
+      _logCalDavDiag('getEvents resourceFallback skipped');
       return const <NaverCalDavEvent>[];
     }
 
+    _logCalDavDiag('getEvents resourceFallback start');
     final resourceEvents = await _loadEventsFromResources(
       endpoint: endpoint,
       naverId: credentials.naverId,
@@ -836,6 +852,9 @@ class NaverCalDavService {
     );
     final filteredResourceEvents =
         _filterEventsByRange(resourceEvents, startAt, endAt);
+    _logCalDavDiag(
+      'getEvents resourceFallback count=${resourceEvents.length} filtered=${filteredResourceEvents.length}',
+    );
     debugPrint(
       'Naver CalDAV 리소스 GET: $calendarPath / '
       '${resourceEvents.length}개, 범위 내 ${filteredResourceEvents.length}개',
@@ -859,6 +878,7 @@ class NaverCalDavService {
       depth: '1',
     );
     debugPrint('Naver CalDAV REPORT 응답: $endpoint / ${response.statusCode}');
+    _logCalDavDiag('queryEvents report status=${response.statusCode}');
     _throwForCalDavStatus(response.statusCode, endpoint);
 
     final document = XmlDocument.parse(response.body);
@@ -999,6 +1019,7 @@ class NaverCalDavService {
       body: _eventListPropfindBody,
       depth: '1',
     );
+    _logCalDavDiag('discoverEventHrefs propfind status=${response.statusCode}');
     _throwForCalDavStatus(response.statusCode, endpoint);
 
     final document = XmlDocument.parse(response.body);
@@ -1031,6 +1052,7 @@ class NaverCalDavService {
       hrefs.add(normalizedHref);
     }
     debugPrint('Naver CalDAV 이벤트 리소스 후보: ${hrefs.length}');
+    _logCalDavDiag('discoverEventHrefs candidates=${hrefs.length}');
     return hrefs.toList(growable: false);
   }
 
@@ -1046,6 +1068,7 @@ class NaverCalDavService {
         ..headers.addAll(_authHeaders(naverId, appPassword));
       final streamed = await _httpClient.send(request).timeout(_timeout);
       final bytes = await streamed.stream.toBytes();
+      _logCalDavDiag('loadEventResource get status=${streamed.statusCode}');
       if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
         debugPrint(
           'Naver CalDAV 이벤트 GET 실패: $href / ${streamed.statusCode}',
@@ -1101,10 +1124,14 @@ class NaverCalDavService {
     bool diagnosticImport = false,
     NaverCalDavProgressCallback? onProgress,
   }) async {
+    _logCalDavDiag(
+      'syncAll entry mode=${mode.name} skipUnchanged=$skipUnchanged diagnosticImport=$diagnosticImport',
+    );
     final resolvedUserId = userId ?? _currentUserId ?? _currentSupabaseUserId();
     final range = _resolveSyncRange(mode: mode, from: from, to: to);
     final diagnostics = _NaverCalDavMutableDiagnostics();
     if (resolvedUserId == null || resolvedUserId.isEmpty) {
+      _logCalDavDiag('syncAll authStatus=missingUser');
       return NaverCalDavSyncResult(
         success: false,
         message: '먼저 PlanFlow에 로그인해 주세요.',
@@ -1123,6 +1150,7 @@ class NaverCalDavService {
       final cleanedCount = await _cleanupSuspiciousImportedEvents(
         resolvedUserId,
       );
+      _logCalDavDiag('syncAll cleanup count=$cleanedCount');
       if (cleanedCount > 0) {
         debugPrint(
           'Naver CalDAV cleanup removed $cleanedCount suspicious imported events before sync.',
@@ -1135,7 +1163,7 @@ class NaverCalDavService {
         message: '네이버 CalDAV 연결을 확인하는 중입니다.',
       ));
       final calendars = await getCalendars();
-      DiagLogger.log('NaverCalDav', 'syncAll calendars=${calendars.length}');
+      _logCalDavDiag('syncAll calendars=${calendars.length}');
       if (calendars.isEmpty) {
         return NaverCalDavSyncResult(
           success: false,
@@ -1163,6 +1191,7 @@ class NaverCalDavService {
         source: 'naver_caldav',
         userId: resolvedUserId,
       );
+      _logCalDavDiag('syncAll existingExternalIds=${existingNaverIds.length}');
 
       // 모든 캘린더에서 이벤트 병렬 조회
       emit(NaverCalDavSyncProgress(
@@ -1189,6 +1218,8 @@ class NaverCalDavService {
               ),
             )),
       );
+      _logCalDavDiag(
+          'syncAll queryStatus=completed calendars=${calendars.length}');
 
       for (var index = 0; index < calendars.length; index += 1) {
         final calendar = calendars[index];
@@ -1432,10 +1463,7 @@ class NaverCalDavService {
         diagnostics: frozenDiagnostics,
       );
     } catch (error, stackTrace) {
-      DiagLogger.log(
-        'NaverCalDav',
-        'syncAll failed error=${error.runtimeType}',
-      );
+      _logCalDavDiag('syncAll failed error=${error.runtimeType}');
       debugPrint('Naver CalDAV sync failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return NaverCalDavSyncResult(
@@ -1451,12 +1479,16 @@ class NaverCalDavService {
   }
 
   Future<bool> exportEvent(EventModel event) async {
+    _logCalDavDiag(
+      'exportEvent entry source=${event.source} startAtPresent=${event.startAt != null}',
+    );
     if (event.source == 'google' ||
         event.source == 'naver' ||
         event.source == 'naver_caldav' ||
         event.source == 'naver_device' ||
         event.source == 'device_calendar' ||
         event.startAt == null) {
+      _logCalDavDiag('exportEvent skipped reason=ineligible');
       return true;
     }
 
@@ -1467,6 +1499,7 @@ class NaverCalDavService {
         appPassword: credentials.appPassword,
       );
       if (calendars.isEmpty) {
+        _logCalDavDiag('exportEvent calendars=0');
         return false;
       }
       final resourcePath =
@@ -1482,13 +1515,16 @@ class NaverCalDavService {
         ..body = _buildPlanFlowIcal(event);
       final streamed = await _httpClient.send(request).timeout(_timeout);
       await streamed.stream.drain<void>();
+      _logCalDavDiag('exportEvent put status=${streamed.statusCode}');
       if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
         await _markCalDavExportMetadata(event, calendars.first.path);
+        _logCalDavDiag('exportEvent metadataSaved=true');
         return true;
       }
       debugPrint('Naver CalDAV export failed: ${streamed.statusCode}');
       return false;
     } catch (error, stackTrace) {
+      _logCalDavDiag('exportEvent failed error=${error.runtimeType}');
       debugPrint('Naver CalDAV export skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
       return false;
@@ -1925,12 +1961,14 @@ class NaverCalDavService {
 
       final streamed = await _httpClient.send(request).timeout(_timeout);
       await streamed.stream.drain<void>();
+      _logCalDavDiag('propfind status=${streamed.statusCode}');
 
       return _resultForStatusCode(
         streamed.statusCode,
         endpoint: endpoint,
       );
     } on TimeoutException catch (error) {
+      _logCalDavDiag('propfind failed error=TimeoutException');
       return NaverCalDavConnectionResult(
         status: NaverCalDavConnectionStatus.networkError,
         message: '네이버 CalDAV 서버 연결 시간이 초과되었습니다. 네트워크 상태를 확인해 주세요.',
@@ -1938,6 +1976,7 @@ class NaverCalDavService {
         error: error,
       );
     } on SocketException catch (error) {
+      _logCalDavDiag('propfind failed error=SocketException');
       return NaverCalDavConnectionResult(
         status: NaverCalDavConnectionStatus.networkError,
         message: '네이버 CalDAV 서버에 연결하지 못했습니다. 네트워크 상태를 확인해 주세요.',
@@ -1945,6 +1984,7 @@ class NaverCalDavService {
         error: error,
       );
     } on http.ClientException catch (error) {
+      _logCalDavDiag('propfind failed error=ClientException');
       return NaverCalDavConnectionResult(
         status: NaverCalDavConnectionStatus.networkError,
         message: '네이버 CalDAV 요청을 보내지 못했습니다. 네트워크 상태를 확인해 주세요.',
@@ -1952,6 +1992,7 @@ class NaverCalDavService {
         error: error,
       );
     } catch (error, stackTrace) {
+      _logCalDavDiag('propfind failed error=${error.runtimeType}');
       debugPrint('Naver CalDAV test failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return NaverCalDavConnectionResult(
@@ -1973,6 +2014,7 @@ class NaverCalDavService {
         directId.isNotEmpty &&
         directPassword != null &&
         directPassword.isNotEmpty) {
+      _logCalDavDiag('resolveCredentials source=direct');
       return NaverCalDavCredentials(
         naverId: directId,
         appPassword: directPassword,
@@ -1981,8 +2023,10 @@ class NaverCalDavService {
 
     final stored = await _credentialStore.readCredentials();
     if (stored == null) {
+      _logCalDavDiag('resolveCredentials source=stored present=false');
       throw StateError('네이버 CalDAV 연결 정보가 없습니다. 먼저 연결 테스트를 완료해 주세요.');
     }
+    _logCalDavDiag('resolveCredentials source=stored present=true');
     return stored;
   }
 
@@ -2006,6 +2050,7 @@ class NaverCalDavService {
         body: _discoveryPropfindBody,
         depth: '0',
       );
+      _logCalDavDiag('discoverHome root status=${root.statusCode}');
       if (root.statusCode >= 200 && root.statusCode < 300) {
         final document = XmlDocument.parse(root.body);
         final rootCalendarHome =
@@ -2021,6 +2066,7 @@ class NaverCalDavService {
         }
       }
     } catch (error) {
+      _logCalDavDiag('discoverHome root failed error=${error.runtimeType}');
       debugPrint('Naver CalDAV root discovery failed: $error');
     }
 
@@ -2047,6 +2093,7 @@ class NaverCalDavService {
       body: _calendarHomePropfindBody,
       depth: '0',
     );
+    _logCalDavDiag('discoverHome principal status=${response.statusCode}');
     if (response.statusCode < 200 || response.statusCode >= 300) {
       return null;
     }

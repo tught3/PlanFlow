@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-25 TASK_20260623_055547 Naver 토큰 미저장 진단 로그 보강
+- 기존 `DiagLogger`를 재사용해 날짜 포함 timestamp, 중앙 토큰/code/session/appPassword 마스킹, token presence/length/앞뒤 마스킹 진단 헬퍼를 추가했다.
+- Naver OAuth 콜백/인증 시작/토큰 캡처/`user_settings.naver_calendar_token` load/persist/upsert/예외 경로와 Google token resolve/persist, Google/Naver sync, Naver CalDAV 상태에 `NAVER_AUTH`/`NAVER_TOKEN`/`GOOGLE_TOKEN`/`SYNC`/`CALDAV` 진단 로그를 보강했다.
+- 설정 화면 진단 로그 뷰어에 항목 수, 복사, 비우기 액션을 추가했다. 검증: scoped analyze, 전체 `flutter analyze --no-pub`, Naver/auth focused tests, `settings_screen_test` 통과. `calendar_sync_service_test` 2건과 `naver_caldav_service_test` 2건은 기존 기대값 계열 실패로 남았고, guarded release APK 빌드는 `android/key.properties` 부재로 실패해 APK/Drive 전달과 실행 확인은 미수행했다.
+
 ## 2026-06-25 TASK_20260623_061718_01 위젯 월간뷰 반복 확장 앵커링
 - 홈 위젯 월간 payload의 반복 일정 확장에서 오래된 DAILY 및 WEEKLY+BYDAY 일정이 safety 한계 전에 표시 범위에 도달하지 못해 누락되는 문제를 재현 테스트로 고정한 뒤, rangeStart 직전 occurrence부터 시작하도록 앵커링했다.
 - 기존 월말 clamp 경로는 유지하고 MONTHLY 31일/YEARLY 2월 29일/INTERVAL/UNTIL/override 숨김 회귀 테스트를 추가해 원본 날짜 기준 시퀀스와 override 불변식을 고정했다.

@@ -55,6 +55,8 @@ class NaverCalendarPermissionService {
   static const String _lastCheckedAtKey =
       'naver_calendar_permission_checked_at';
   static const String _logTag = 'PlanFlowNaverCalendar';
+  static const String _diagAuthTag = 'NAVER_AUTH';
+  static const String _diagTokenTag = 'NAVER_TOKEN';
 
   final SupabaseClient? _supabaseClient;
   final http.Client _httpClient;
@@ -84,10 +86,15 @@ class NaverCalendarPermissionService {
     final client = _clientOrNull;
     final userId = client?.auth.currentUser?.id;
     if (client == null || userId == null || userId.trim().isEmpty) {
+      _diagToken(
+        'clearStoredToken skipped clientPresent=${client != null} '
+        'userPresent=${userId?.trim().isNotEmpty == true}',
+      );
       return;
     }
 
     try {
+      _diagToken('clearStoredToken upsertBefore userPresent=true');
       await client.from('user_settings').upsert(
         <String, dynamic>{
           'user_id': userId,
@@ -95,7 +102,12 @@ class NaverCalendarPermissionService {
         },
         onConflict: 'user_id',
       );
+      _diagToken('clearStoredToken upsertAfter success=true');
     } catch (error, stackTrace) {
+      _diagToken(
+        'clearStoredToken exception type=${error.runtimeType} '
+        'error=${logSafeText(error)}',
+      );
       debugPrint(
         'Naver calendar token clear skipped: ${logSafeText(error)}',
       );
@@ -132,6 +144,10 @@ class NaverCalendarPermissionService {
 
   Future<NaverCalendarPermissionResult> refreshStatus() async {
     final accessToken = await _resolveAccessToken();
+    _diagToken(
+      'refreshStatus resolvedAccessToken '
+      '${_tokenDiagnostic(accessToken)}',
+    );
     _log(
       'refreshStatus start tokenPresent=${accessToken?.trim().isNotEmpty == true}',
     );
@@ -182,6 +198,10 @@ class NaverCalendarPermissionService {
         message: '네이버 캘린더 권한 확인 중 연결 시간이 초과되었습니다.',
         error: error,
       );
+      _diagAuth(
+        'refreshStatus exception type=${error.runtimeType} '
+        'error=${logSafeText(error)}',
+      );
       _log('refreshStatus timeout error=${logSafeText(error)}');
       await saveStatus(result.status);
       return result;
@@ -191,6 +211,10 @@ class NaverCalendarPermissionService {
         message: '네이버 캘린더 권한 확인 중 네트워크 문제가 발생했습니다.',
         error: error,
       );
+      _diagAuth(
+        'refreshStatus exception type=${error.runtimeType} '
+        'error=${logSafeText(error)}',
+      );
       _log('refreshStatus socket error=${logSafeText(error)}');
       await saveStatus(result.status);
       return result;
@@ -199,6 +223,10 @@ class NaverCalendarPermissionService {
         status: NaverCalendarPermissionStatus.unknown,
         message: '네이버 캘린더 권한 상태를 확인하지 못했습니다.',
         error: error,
+      );
+      _diagAuth(
+        'refreshStatus exception type=${error.runtimeType} '
+        'error=${logSafeText(error)}',
       );
       _log('refreshStatus unknown error=${logSafeText(error)}');
       await saveStatus(result.status);
@@ -224,12 +252,19 @@ class NaverCalendarPermissionService {
     final provider = _accessTokenProvider;
     if (provider != null) {
       final token = await provider();
+      _diagToken(
+          'resolveAccessToken source=injected ${_tokenDiagnostic(token)}');
       _log(
           'accessToken source=injected present=${token?.trim().isNotEmpty == true}');
       return token;
     }
 
     final providerToken = _currentProviderToken();
+    _diagToken(
+      'resolveAccessToken source=currentSessionProvider '
+      '${_tokenDiagnostic(providerToken)} '
+      'sessionPresent=${_clientOrNull?.auth.currentSession != null}',
+    );
     if (providerToken != null && providerToken.trim().isNotEmpty) {
       _log('accessToken source=current_provider_token present=true');
       return providerToken;
@@ -249,20 +284,36 @@ class NaverCalendarPermissionService {
     final client = _clientOrNull;
     final userId = client?.auth.currentUser?.id;
     if (client == null || userId == null || userId.trim().isEmpty) {
+      _diagToken(
+        'storedToken rowLoadSkipped clientPresent=${client != null} '
+        'userPresent=${userId?.trim().isNotEmpty == true}',
+      );
       return null;
     }
 
     try {
+      _diagToken('storedToken rowLoadBefore userPresent=true');
       final row = await client
           .from('user_settings')
           .select('naver_calendar_token')
           .eq('user_id', userId)
           .maybeSingle();
       if (row == null) {
+        _diagToken('storedToken rowLoadAfter row=null');
         return null;
       }
-      return row['naver_calendar_token']?.toString();
+      final token = row['naver_calendar_token']?.toString();
+      _diagToken(
+        'storedToken rowLoadAfter row=present '
+        'tokenEmpty=${token?.trim().isEmpty != false} '
+        '${_tokenDiagnostic(token)}',
+      );
+      return token;
     } catch (error, stackTrace) {
+      _diagToken(
+        'storedToken rowLoadException type=${error.runtimeType} '
+        'error=${logSafeText(error)}',
+      );
       debugPrint(
         'Stored Naver calendar token lookup failed: ${logSafeText(error)}',
       );
@@ -288,6 +339,15 @@ class NaverCalendarPermissionService {
     final userId = client?.auth.currentUser?.id;
     final naverSignedIn = client != null && isNaverSignedIn();
     final tokenPresent = token?.trim().isNotEmpty == true;
+    _diagToken(
+      'persistToken start clientPresent=${client != null} '
+      'sessionPresent=${client?.auth.currentSession != null} '
+      'providerTokenPresent='
+      '${client?.auth.currentSession?.providerToken?.trim().isNotEmpty == true} '
+      'userPresent=${userId?.trim().isNotEmpty == true} '
+      'allowWithoutNaverIdentity=$allowWithoutNaverIdentity '
+      'naverSignedIn=$naverSignedIn ${_tokenDiagnostic(token)}',
+    );
     if (client == null ||
         userId == null ||
         userId.trim().isEmpty ||
@@ -301,11 +361,18 @@ class NaverCalendarPermissionService {
         'tokenPresent=$tokenPresent '
         'calendarLinkToken=$allowWithoutNaverIdentity',
       );
-      DiagLogger.log('DIAG', 'persistToken SKIPPED clientPresent=${client != null} userPresent=${userId?.trim().isNotEmpty == true} naverSignedIn=$naverSignedIn tokenPresent=$tokenPresent calendarLinkToken=$allowWithoutNaverIdentity');
+      _diagToken(
+        'persistToken skipped clientPresent=${client != null} '
+        'userPresent=${userId?.trim().isNotEmpty == true} '
+        'naverSignedIn=$naverSignedIn tokenPresent=$tokenPresent '
+        'allowWithoutNaverIdentity=$allowWithoutNaverIdentity',
+      );
       return false;
     }
 
     try {
+      _diagToken(
+          'persistToken upsertBefore userPresent=true tokenPresent=true');
       await client.from('user_settings').upsert(
         <String, dynamic>{
           'user_id': userId,
@@ -315,9 +382,16 @@ class NaverCalendarPermissionService {
       );
       _log(
           'provider token captured calendarLinkToken=$allowWithoutNaverIdentity.');
-      DiagLogger.log('DIAG', 'persistToken SAVED calendarLinkToken=$allowWithoutNaverIdentity');
+      _diagToken(
+        'persistToken upsertAfter success=true '
+        'allowWithoutNaverIdentity=$allowWithoutNaverIdentity',
+      );
       return true;
     } catch (error, stackTrace) {
+      _diagToken(
+        'persistToken exception type=${error.runtimeType} '
+        'error=${logSafeText(error)}',
+      );
       _log(
         'provider token persistence skipped: ${logSafeText(error)}',
       );
@@ -404,6 +478,18 @@ class NaverCalendarPermissionService {
 
   static void _log(String message) {
     debugPrint('[$_logTag] ${logSafeText(message)}');
+  }
+
+  static void _diagAuth(String message) {
+    DiagLogger.log(_diagAuthTag, logSafeText(message));
+  }
+
+  static void _diagToken(String message) {
+    DiagLogger.log(_diagTokenTag, logSafeText(message));
+  }
+
+  static String _tokenDiagnostic(String? token) {
+    return DiagLogger.describeToken(token);
   }
 
   static NaverCalendarPermissionStatus _parseStatus(String? value) {

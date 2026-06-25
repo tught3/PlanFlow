@@ -110,8 +110,7 @@ class CalendarIntegrationResult {
     return CalendarIntegrationResult(
       provider: provider,
       status: CalendarIntegrationStatus.synced,
-      message:
-          message ??
+      message: message ??
           (syncedItems > 0
               ? '캘린더 동기화가 완료되었습니다. $syncedItems개 일정을 반영했습니다.'
               : '캘린더 동기화가 완료되었습니다. 새로 반영할 일정은 없습니다.'),
@@ -166,8 +165,8 @@ class CalendarSyncSummary {
   bool get hasAnySuccess => google.isSuccess || naver.isSuccess;
 }
 
-typedef GoogleAccessTokenProvider =
-    Future<String?> Function({required bool interactive});
+typedef GoogleAccessTokenProvider = Future<String?> Function(
+    {required bool interactive});
 
 class GoogleCalendarEventEntry {
   const GoogleCalendarEventEntry({
@@ -193,16 +192,16 @@ class GoogleCalendarEventEntry {
   }
 }
 
-typedef GoogleCalendarEventsFetcher =
-    Future<List<GoogleCalendarEventEntry>> Function(gcal.CalendarApi api);
+typedef GoogleCalendarEventsFetcher = Future<List<GoogleCalendarEventEntry>>
+    Function(gcal.CalendarApi api);
 
-typedef NaverCalendarStatusProvider =
-    Future<NaverCalendarPermissionResult> Function();
+typedef NaverCalendarStatusProvider = Future<NaverCalendarPermissionResult>
+    Function();
 
 typedef NaverCalendarAccessTokenProvider = Future<String?> Function();
 
-typedef NaverCalendarStatusSaver =
-    Future<void> Function(NaverCalendarPermissionStatus status);
+typedef NaverCalendarStatusSaver = Future<void> Function(
+    NaverCalendarPermissionStatus status);
 
 class CalendarSyncService {
   CalendarSyncService({
@@ -227,27 +226,26 @@ class CalendarSyncService {
     bool? googlePlatformSupported,
     TargetPlatform? googleTargetPlatform,
     http.Client Function()? httpClientFactory,
-  }) : _googleClientId = googleClientId,
-       _googleServerClientId = googleServerClientId,
-       _googleScopes = List<String>.unmodifiable(googleScopes),
-       _googleSignIn = googleSignIn,
-       _eventRepositoryOverride = eventRepository,
-       _calendarConnectionRepositoryOverride = calendarConnectionRepository,
-       _googleAccessTokenProvider = googleAccessTokenProvider,
-       _googleCalendarEventsFetcher =
-           googleCalendarEventsFetcher ?? _defaultGoogleCalendarEventsFetcher,
-       _naverPermissionServiceOverride = naverPermissionService,
-       _naverStatusProvider = naverStatusProvider,
-       _naverAccessTokenProvider = naverAccessTokenProvider,
-       _naverStatusSaver = naverStatusSaver,
-       _naverCreateScheduleUri =
-           naverCreateScheduleUri ??
-           Uri.parse('https://openapi.naver.com/calendar/createSchedule.json'),
-       _naverExportLimit = naverExportLimit,
-       _currentUserIdOverride = currentUserId,
-       _googlePlatformSupportedOverride = googlePlatformSupported,
-       _googleTargetPlatformOverride = googleTargetPlatform,
-       _httpClientFactory = httpClientFactory ?? http.Client.new;
+  })  : _googleClientId = googleClientId,
+        _googleServerClientId = googleServerClientId,
+        _googleScopes = List<String>.unmodifiable(googleScopes),
+        _googleSignIn = googleSignIn,
+        _eventRepositoryOverride = eventRepository,
+        _calendarConnectionRepositoryOverride = calendarConnectionRepository,
+        _googleAccessTokenProvider = googleAccessTokenProvider,
+        _googleCalendarEventsFetcher =
+            googleCalendarEventsFetcher ?? _defaultGoogleCalendarEventsFetcher,
+        _naverPermissionServiceOverride = naverPermissionService,
+        _naverStatusProvider = naverStatusProvider,
+        _naverAccessTokenProvider = naverAccessTokenProvider,
+        _naverStatusSaver = naverStatusSaver,
+        _naverCreateScheduleUri = naverCreateScheduleUri ??
+            Uri.parse('https://openapi.naver.com/calendar/createSchedule.json'),
+        _naverExportLimit = naverExportLimit,
+        _currentUserIdOverride = currentUserId,
+        _googlePlatformSupportedOverride = googlePlatformSupported,
+        _googleTargetPlatformOverride = googleTargetPlatform,
+        _httpClientFactory = httpClientFactory ?? http.Client.new;
 
   final String? _googleClientId;
   final String? _googleServerClientId;
@@ -287,6 +285,12 @@ class CalendarSyncService {
     developer.log(safeMessage, name: _googleAuthLogTag);
     debugPrint('[$_googleAuthLogTag] $safeMessage');
   }
+
+  void _logSyncDiag(String message) {
+    DiagLogger.log('SYNC', message);
+  }
+
+  int _tokenLength(String? token) => token?.trim().length ?? 0;
 
   void _logGoogleAuthError(
     String message, {
@@ -352,10 +356,12 @@ class CalendarSyncService {
     return switch (_googleTargetPlatform) {
       TargetPlatform.android ||
       TargetPlatform.iOS ||
-      TargetPlatform.macOS => true,
+      TargetPlatform.macOS =>
+        true,
       TargetPlatform.fuchsia ||
       TargetPlatform.linux ||
-      TargetPlatform.windows => false,
+      TargetPlatform.windows =>
+        false,
     };
   }
 
@@ -399,8 +405,8 @@ class CalendarSyncService {
       final events = await _eventRepository.listEvents(userId: userId);
       for (final event in events) {
         final isImportedProviderEvent = event.source == providerKey;
-        final isLinkedProviderEvent = (event.externalCalendarId ?? '')
-            .startsWith('$providerKey:');
+        final isLinkedProviderEvent =
+            (event.externalCalendarId ?? '').startsWith('$providerKey:');
         if (isImportedProviderEvent || isLinkedProviderEvent) {
           await _eventRepository.deleteEvent(event.id, userId: userId);
         }
@@ -426,8 +432,8 @@ class CalendarSyncService {
     );
     final configurationIssue = _googleConfigurationIssue;
     DiagLogger.log(
-      'DIAG',
-      'google getStatus serverClientIdSet=${logSafeText(_hasText(_googleServerClientId))} configurationIssue=${logSafeText(configurationIssue)}',
+      'SYNC',
+      'google getStatus serverClientIdSet=${_hasText(_googleServerClientId)} configurationIssue=${configurationIssue == null ? "none" : "present"}',
     );
     if (configurationIssue != null) {
       _logGoogleAuth(
@@ -454,19 +460,9 @@ class CalendarSyncService {
         'connected=${connection?.isConnected == true} '
         'providerAccountEmail=${connection?.providerAccountEmail ?? "(null)"}',
       );
-      // DiagLogger 진단 로그
-      try {
-        final userId = _currentUserId();
-        DiagLogger.log(
-          'DIAG',
-          'google getStatus fetchConn userId=${logSafeText(userId)} connStatus=${logSafeText(connection?.status.name)} connected=${connection?.isConnected == true} email=${logSafeText(connection?.providerAccountEmail)}',
-        );
-      } catch (e) {
-        DiagLogger.log(
-          'DIAG',
-          'google getStatus fetchConn userIdFailed=${logSafeText(e)} connStatus=${logSafeText(connection?.status.name)} connected=${connection?.isConnected == true}',
-        );
-      }
+      _logSyncDiag(
+        'google getStatus fetchConnection status=${connection?.status.name ?? "none"} connected=${connection?.isConnected == true}',
+      );
       if (connection == null || !connection.isConnected) {
         return CalendarIntegrationResult.signedOut(
           CalendarProvider.google,
@@ -479,7 +475,7 @@ class CalendarSyncService {
       if (account == null) {
         _logGoogleAuth('getGoogleStatus silentSignIn account=null');
         DiagLogger.log(
-          'DIAG',
+          'SYNC',
           'google getStatus silentSignIn accountNull=true',
         );
         return CalendarIntegrationResult.ready(
@@ -491,9 +487,7 @@ class CalendarSyncService {
 
       _logGoogleAuth('getGoogleStatus silentSignIn email=${account.email}');
       DiagLogger.log(
-        'DIAG',
-        'google getStatus silentSignIn accountEmail=${logSafeText(account.email)}',
-      );
+          'SYNC', 'google getStatus silentSignIn accountPresent=true');
       return CalendarIntegrationResult.ready(
         CalendarProvider.google,
         message: 'Google Calendar 연결이 정상입니다.',
@@ -524,9 +518,8 @@ class CalendarSyncService {
       'serverClientIdSet=${_hasText(_googleServerClientId)}',
     );
     final configurationIssue = _googleConfigurationIssue;
-    DiagLogger.log(
-      'DIAG',
-      'google syncCalendar serverClientIdSet=${logSafeText(_hasText(_googleServerClientId))} configurationIssue=${logSafeText(configurationIssue)}',
+    _logSyncDiag(
+      'google sync entry interactive=$interactive serverClientIdSet=${_hasText(_googleServerClientId)} configurationIssue=${configurationIssue == null ? "none" : "present"}',
     );
     if (configurationIssue != null) {
       _logGoogleAuth(
@@ -549,6 +542,9 @@ class CalendarSyncService {
     try {
       final existingConnection = await _fetchConnection(
         CalendarProvider.google,
+      );
+      _logSyncDiag(
+        'google sync fetchConnection status=${existingConnection?.status.name ?? "none"} connected=${existingConnection?.isConnected == true}',
       );
       _logGoogleAuth(
         'existingConnection status=${existingConnection?.status.name} '
@@ -580,6 +576,9 @@ class CalendarSyncService {
       final accessToken = await _fetchGoogleAccessToken(
         interactive: interactive,
       );
+      _logSyncDiag(
+        'google sync accessToken present=${accessToken?.trim().isNotEmpty == true} length=${_tokenLength(accessToken)}',
+      );
       _logGoogleAuth(
         'Google access token fetched present=${accessToken?.trim().isNotEmpty == true} '
         'lastAccount=${_lastGoogleAccountEmail ?? "(null)"}',
@@ -594,15 +593,15 @@ class CalendarSyncService {
           // clearAuthCache 재시도 후에도 null → 일시적 Play Services 문제이므로
           // status를 reauthRequired로 바꾸지 않고 lastError만 기록 후 skip
           try {
-            final userId = _currentUserId();
+            _currentUserId();
             DiagLogger.log(
-              'DIAG',
-              'google syncCalendar saveConn_1 userId=${logSafeText(userId)} silentTokenMissing - skip without status change',
+              'SYNC',
+              'google sync saveConnection status=${existingConnection!.status.name} reason=silentTokenMissing',
             );
           } catch (e) {
             DiagLogger.log(
-              'DIAG',
-              'google syncCalendar saveConn_1 userIdFailed=${logSafeText(e)} silentTokenMissing - skip without status change',
+              'SYNC',
+              'google sync saveConnection skipped reason=currentUserLookupFailed errorType=${e.runtimeType}',
             );
           }
           await _saveConnection(
@@ -618,15 +617,15 @@ class CalendarSyncService {
           );
         }
         try {
-          final userId = _currentUserId();
+          _currentUserId();
           DiagLogger.log(
-            'DIAG',
-            'google syncCalendar saveConn_2 userId=${logSafeText(userId)} status=reauthRequired',
+            'SYNC',
+            'google sync saveConnection status=reauthRequired reason=tokenMissing',
           );
         } catch (e) {
           DiagLogger.log(
-            'DIAG',
-            'google syncCalendar saveConn_2 userIdFailed=${logSafeText(e)} status=reauthRequired',
+            'SYNC',
+            'google sync saveConnection skipped reason=currentUserLookupFailed errorType=${e.runtimeType}',
           );
         }
         await _saveConnection(
@@ -683,7 +682,11 @@ class CalendarSyncService {
       try {
         final api = gcal.CalendarApi(client);
         _logGoogleAuth('Google Calendar API fetch start');
+        _logSyncDiag('google sync fetchEvents status=start');
         final googleEvents = await _googleCalendarEventsFetcher(api);
+        _logSyncDiag(
+          'google sync fetchEvents status=success count=${googleEvents.length}',
+        );
         _logGoogleAuth(
           'Google Calendar API fetch completed count=${googleEvents.length}',
         );
@@ -697,12 +700,12 @@ class CalendarSyncService {
         await _saveConnection(
           CalendarProvider.google,
           status: CalendarConnectionStatus.connected,
-          providerAccountEmail:
-              _lastGoogleAccountEmail ??
+          providerAccountEmail: _lastGoogleAccountEmail ??
               existingConnection?.providerAccountEmail,
           accessToken: accessToken,
           lastSyncedAt: DateTime.now().toUtc(),
         );
+        _logSyncDiag('google sync saveConnection status=connected');
         _logGoogleAuth('Google Calendar connection saved status=connected');
 
         return CalendarIntegrationResult.synced(
@@ -717,6 +720,9 @@ class CalendarSyncService {
           CalendarProvider.google,
           status: CalendarConnectionStatus.failed,
           lastError: error.toString(),
+        );
+        _logSyncDiag(
+          'google sync saveConnection status=failed errorType=${error.runtimeType}',
         );
         _logGoogleAuthError(
           'Google Calendar API sync failed',
@@ -821,8 +827,7 @@ class CalendarSyncService {
         await _saveConnection(
           CalendarProvider.google,
           status: CalendarConnectionStatus.connected,
-          providerAccountEmail:
-              _lastGoogleAccountEmail ??
+          providerAccountEmail: _lastGoogleAccountEmail ??
               existingConnection.providerAccountEmail,
           accessToken: accessToken,
           lastSyncedAt: DateTime.now().toUtc(),
@@ -851,6 +856,9 @@ class CalendarSyncService {
 
   Future<CalendarIntegrationResult> getNaverStatus() async {
     final connection = await _fetchConnection(CalendarProvider.naver);
+    _logSyncDiag(
+      'naver getStatus fetchConnection status=${connection?.status.name ?? "none"} connected=${connection?.isConnected == true} caldavLinked=${connection?.lastSyncedAt != null}',
+    );
 
     // CalDAV 수동 가져오기로 연결된 경우: Open API 체크 불필요
     if (connection != null &&
@@ -863,8 +871,12 @@ class CalendarSyncService {
     }
 
     final permission = await _refreshNaverStatus();
+    _logSyncDiag('naver getStatus permission=${permission.status.name}');
     if (permission.isGranted) {
       final token = await _resolveNaverAccessToken();
+      _logSyncDiag(
+        'naver getStatus accessToken present=${token?.trim().isNotEmpty == true} length=${_tokenLength(token)}',
+      );
       if (token == null || token.trim().isEmpty) {
         await _saveConnection(
           CalendarProvider.naver,
@@ -910,9 +922,9 @@ class CalendarSyncService {
     }
     return switch (permission.status) {
       NaverCalendarPermissionStatus.granted => CalendarIntegrationResult.ready(
-        CalendarProvider.naver,
-        message: 'Naver Calendar 권한을 사용할 수 있습니다.',
-      ),
+          CalendarProvider.naver,
+          message: 'Naver Calendar 권한을 사용할 수 있습니다.',
+        ),
       NaverCalendarPermissionStatus.denied =>
         CalendarIntegrationResult.signedOut(
           CalendarProvider.naver,
@@ -933,8 +945,10 @@ class CalendarSyncService {
   }
 
   Future<CalendarIntegrationResult> syncNaverCalendar() async {
+    _logSyncDiag('naver sync entry');
     try {
       final permission = await _refreshNaverStatus();
+      _logSyncDiag('naver sync permission=${permission.status.name}');
       if (!permission.isGranted) {
         if (permission.isNetworkError) {
           return CalendarIntegrationResult.failed(
@@ -950,6 +964,9 @@ class CalendarSyncService {
       }
 
       final accessToken = await _resolveNaverAccessToken();
+      _logSyncDiag(
+        'naver sync accessToken present=${accessToken?.trim().isNotEmpty == true} length=${_tokenLength(accessToken)}',
+      );
       if (accessToken == null || accessToken.trim().isEmpty) {
         await _saveConnection(
           CalendarProvider.naver,
@@ -976,20 +993,21 @@ class CalendarSyncService {
       var syncedItems = 0;
       try {
         for (final event in events) {
-          final response = await client
-              .post(
-                _naverCreateScheduleUri,
-                headers: <String, String>{
-                  HttpHeaders.authorizationHeader: 'Bearer $accessToken',
-                  HttpHeaders.contentTypeHeader:
-                      'application/x-www-form-urlencoded; charset=utf-8',
-                },
-                body: <String, String>{
-                  'calendarId': 'defaultCalendarId',
-                  'scheduleIcalString': buildNaverScheduleIcal(event),
-                },
-              )
-              .timeout(const Duration(seconds: 10));
+          final response = await client.post(
+            _naverCreateScheduleUri,
+            headers: <String, String>{
+              HttpHeaders.authorizationHeader: 'Bearer $accessToken',
+              HttpHeaders.contentTypeHeader:
+                  'application/x-www-form-urlencoded; charset=utf-8',
+            },
+            body: <String, String>{
+              'calendarId': 'defaultCalendarId',
+              'scheduleIcalString': buildNaverScheduleIcal(event),
+            },
+          ).timeout(const Duration(seconds: 10));
+          _logSyncDiag(
+            'naver sync export status=${response.statusCode}',
+          );
 
           if (response.statusCode == 401 || response.statusCode == 403) {
             await _saveNaverStatus(NaverCalendarPermissionStatus.denied);
@@ -1019,6 +1037,7 @@ class CalendarSyncService {
         accessToken: accessToken,
         lastSyncedAt: DateTime.now().toUtc(),
       );
+      _logSyncDiag('naver sync saveConnection status=connected');
 
       return CalendarIntegrationResult.synced(
         CalendarProvider.naver,
@@ -1026,6 +1045,7 @@ class CalendarSyncService {
         syncedItems: syncedItems,
       );
     } catch (error, stackTrace) {
+      _logSyncDiag('naver sync failed errorType=${error.runtimeType}');
       debugPrint('Naver Calendar sync failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       return CalendarIntegrationResult.failed(
@@ -1043,24 +1063,22 @@ class CalendarSyncService {
     final now = DateTime.now();
     final lowerBound = now.subtract(const Duration(days: 1));
     final events = await _eventRepository.listEvents(userId: _currentUserId());
-    final filtered =
-        events
-            .where((event) => event.startAt != null)
-            .where((event) => !event.startAt!.isBefore(lowerBound))
-            .where((event) => !_isExternalCalendarSource(event.source))
-            .where((event) {
-              if (event.externalCalendarId != 'naver:default') {
-                return true;
-              }
-              final lastSyncedAt = event.lastSyncedAt;
-              final updatedAt = event.updatedAt;
-              if (lastSyncedAt == null || updatedAt == null) {
-                return true;
-              }
-              return updatedAt.toUtc().isAfter(lastSyncedAt.toUtc());
-            })
-            .toList()
-          ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+    final filtered = events
+        .where((event) => event.startAt != null)
+        .where((event) => !event.startAt!.isBefore(lowerBound))
+        .where((event) => !_isExternalCalendarSource(event.source))
+        .where((event) {
+      if (event.externalCalendarId != 'naver:default') {
+        return true;
+      }
+      final lastSyncedAt = event.lastSyncedAt;
+      final updatedAt = event.updatedAt;
+      if (lastSyncedAt == null || updatedAt == null) {
+        return true;
+      }
+      return updatedAt.toUtc().isAfter(lastSyncedAt.toUtc());
+    }).toList()
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
     return filtered.take(_naverExportLimit).toList(growable: false);
   }
 
@@ -1068,11 +1086,18 @@ class CalendarSyncService {
     CalendarProvider provider,
   ) async {
     try {
-      return await _calendarConnectionRepository.fetchConnection(
+      final connection = await _calendarConnectionRepository.fetchConnection(
         userId: _currentUserId(),
         provider: _providerKey(provider),
       );
+      _logSyncDiag(
+        '${_providerKey(provider)} fetchConnection status=${connection?.status.name ?? "none"} connected=${connection?.isConnected == true}',
+      );
+      return connection;
     } catch (error, stackTrace) {
+      _logSyncDiag(
+        '${_providerKey(provider)} fetchConnection failed errorType=${error.runtimeType}',
+      );
       debugPrint('Calendar connection fetch skipped: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       return null;
@@ -1115,11 +1140,17 @@ class CalendarSyncService {
           lastError: lastError,
         ),
       );
+      _logSyncDiag(
+        '${_providerKey(provider)} saveConnection status=${status.name} accessTokenPresent=${accessToken?.trim().isNotEmpty == true || existing?.accessToken?.trim().isNotEmpty == true} accessTokenLength=${_tokenLength(accessToken ?? existing?.accessToken)} lastSyncedAtSet=${lastSyncedAt != null || existing?.lastSyncedAt != null} lastErrorPresent=${lastError?.trim().isNotEmpty == true}',
+      );
       debugPrint(
         '[$logTag] saveConnection completed provider=${_providerKey(provider)} '
         'status=${status.name}',
       );
     } catch (error, stackTrace) {
+      _logSyncDiag(
+        '${_providerKey(provider)} saveConnection failed status=${status.name} errorType=${error.runtimeType}',
+      );
       if (provider == CalendarProvider.google) {
         _logGoogleAuthError(
           'Calendar connection save skipped',
@@ -1586,11 +1617,11 @@ class CalendarSyncService {
                 userId: _currentUserId(),
               );
         if (planFlowOrigin != null) {
-          final linked = await _eventRepository
-              .attachExternalSyncMetadataIfCompatible(
-                existing: planFlowOrigin,
-                incoming: model,
-              );
+          final linked =
+              await _eventRepository.attachExternalSyncMetadataIfCompatible(
+            existing: planFlowOrigin,
+            incoming: model,
+          );
           debugPrint(
             'Google import reflected PlanFlow event handled: '
             'incoming="${logSafeText(model.title)}" ${model.startAt} '
@@ -1605,11 +1636,11 @@ class CalendarSyncService {
           excludedSources: const <String>{'google'},
         );
         if (duplicate != null) {
-          final linked = await _eventRepository
-              .attachExternalSyncMetadataIfCompatible(
-                existing: duplicate,
-                incoming: model,
-              );
+          final linked =
+              await _eventRepository.attachExternalSyncMetadataIfCompatible(
+            existing: duplicate,
+            incoming: model,
+          );
           debugPrint(
             'Google import duplicate handled by title/start: '
             'incoming="${logSafeText(model.title)}" ${model.startAt} '
@@ -1827,7 +1858,7 @@ class CalendarSyncService {
   }
 
   static Future<List<GoogleCalendarEventEntry>>
-  _defaultGoogleCalendarEventsFetcher(gcal.CalendarApi api) async {
+      _defaultGoogleCalendarEventsFetcher(gcal.CalendarApi api) async {
     final entries = <GoogleCalendarEventEntry>[];
     final calendars = await _fetchReadableGoogleCalendars(api);
 
