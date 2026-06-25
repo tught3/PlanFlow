@@ -560,6 +560,156 @@ void main() {
     expect(june15Cell.events.map((event) => event.title), contains('주간 리뷰'));
   });
 
+  test(
+      'HomeWidgetSchedulePayloadBuilder keeps long-running daily recurring events in the visible months',
+      () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime(2026, 5, 20, 9),
+      events: <EventModel>[
+        EventModel(
+          id: 'daily-standup',
+          userId: 'user-1',
+          title: '매일 점검',
+          startAt: DateTime(2024, 1, 1, 8),
+          recurrenceRule: 'FREQ=DAILY',
+        ),
+      ],
+    );
+
+    final may20Cell = payload.monthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 5, 20),
+    );
+    final june15Cell = payload.nextMonthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 6, 15),
+    );
+
+    expect(may20Cell.events.map((event) => event.title), contains('매일 점검'));
+    expect(june15Cell.events.map((event) => event.title), contains('매일 점검'));
+  });
+
+  test(
+      'HomeWidgetSchedulePayloadBuilder keeps long-running weekly BYDAY events in adjacent month widgets',
+      () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime(2026, 5, 20, 9),
+      events: <EventModel>[
+        EventModel(
+          id: 'weekly-sync',
+          userId: 'user-1',
+          title: '장기 주간 회의',
+          startAt: DateTime(2023, 1, 2, 9),
+          recurrenceRule: 'FREQ=WEEKLY;BYDAY=MO',
+        ),
+      ],
+    );
+
+    final april20Cell = payload.previousMonthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 4, 20),
+    );
+    final may18Cell = payload.monthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 5, 18),
+    );
+    final june15Cell = payload.nextMonthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 6, 15),
+    );
+
+    expect(
+      april20Cell.events.map((event) => event.title),
+      contains('장기 주간 회의'),
+    );
+    expect(
+      may18Cell.events.map((event) => event.title),
+      contains('장기 주간 회의'),
+    );
+    expect(
+      june15Cell.events.map((event) => event.title),
+      contains('장기 주간 회의'),
+    );
+  });
+
+  test(
+      'HomeWidgetSchedulePayloadBuilder clamps monthly and yearly recurring dates without shifting the series',
+      () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime(2026, 3, 15, 9),
+      events: <EventModel>[
+        EventModel(
+          id: 'monthly-close',
+          userId: 'user-1',
+          title: '월말 정산',
+          startAt: DateTime(2026, 1, 31, 10),
+          recurrenceRule: 'FREQ=MONTHLY',
+        ),
+        EventModel(
+          id: 'leap-review',
+          userId: 'user-1',
+          title: '윤년 리뷰',
+          startAt: DateTime(2024, 2, 29, 11),
+          recurrenceRule: 'FREQ=YEARLY',
+        ),
+      ],
+    );
+
+    final feb28Cell = payload.previousMonthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 2, 28),
+    );
+    final mar31Cell = payload.monthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 3, 31),
+    );
+    final apr30Cell = payload.nextMonthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 4, 30),
+    );
+
+    expect(feb28Cell.events.map((event) => event.title), contains('월말 정산'));
+    expect(feb28Cell.events.map((event) => event.title), contains('윤년 리뷰'));
+    expect(mar31Cell.events.map((event) => event.title), contains('월말 정산'));
+    expect(apr30Cell.events.map((event) => event.title), contains('월말 정산'));
+  });
+
+  test(
+      'HomeWidgetSchedulePayloadBuilder preserves monthly interval, until, and overrides',
+      () {
+    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
+      now: DateTime(2026, 5, 20, 9),
+      events: <EventModel>[
+        EventModel(
+          id: 'bi-monthly',
+          userId: 'user-1',
+          title: '격월 점검',
+          startAt: DateTime(2026, 1, 31, 10),
+          recurrenceRule: 'FREQ=MONTHLY;INTERVAL=2;UNTIL=20260601',
+        ),
+        EventModel(
+          id: 'bi-monthly-override',
+          userId: 'user-1',
+          title: '격월 점검 변경',
+          startAt: DateTime(2026, 5, 31, 14),
+          parentEventId: 'bi-monthly',
+        ),
+      ],
+    );
+
+    final may31Cell = payload.monthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 5, 31),
+    );
+    final june30Cell = payload.nextMonthCells.firstWhere(
+      (cell) => cell.inMonth && cell.date == DateTime(2026, 6, 30),
+    );
+
+    expect(
+      may31Cell.events.map((event) => event.title),
+      isNot(contains('격월 점검')),
+    );
+    expect(
+      may31Cell.events.map((event) => event.title),
+      contains('격월 점검 변경'),
+    );
+    expect(
+      june30Cell.events.map((event) => event.title),
+      isNot(contains('격월 점검')),
+    );
+  });
+
   test('HomeWidgetSchedulePayloadBuilder fills tomorrow only in empty space',
       () {
     final now = DateTime.parse('2026-05-20T04:00:00Z');

@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-25 TASK_20260623_061718_01 위젯 월간뷰 반복 확장 앵커링
+- 홈 위젯 월간 payload의 반복 일정 확장에서 오래된 DAILY 및 WEEKLY+BYDAY 일정이 safety 한계 전에 표시 범위에 도달하지 못해 누락되는 문제를 재현 테스트로 고정한 뒤, rangeStart 직전 occurrence부터 시작하도록 앵커링했다.
+- 기존 월말 clamp 경로는 유지하고 MONTHLY 31일/YEARLY 2월 29일/INTERVAL/UNTIL/override 숨김 회귀 테스트를 추가해 원본 날짜 기준 시퀀스와 override 불변식을 고정했다.
+- 검증: `flutter test test/services/home_widget_service_test.dart --no-pub -r compact`, scoped analyze, 전체 `flutter analyze --no-pub` 통과. `test/services` 전체는 기존 `calendar_sync`, `manual_event_side_effect`, `naver_caldav` 기대값 7건 실패로 미통과. `flutter build apk --release --no-pub`는 `android/key.properties` 부재로 실패했다.
+
 ## 2026-06-25 TASK_20260623_031806 GPT 이번주/다음주 요일 파싱 보정
 - `GptService`의 요일 추론에서 `이번주`는 현재 주 월~일 범위 안의 요일을 과거 날짜까지 허용하고, `다음주`는 다음 주 월~일 범위의 요일로 계산하도록 보정했다. 수식어가 없을 때는 기존처럼 가장 가까운 다가오는 요일을 유지한다.
 - GPT가 `다음주 금요일`을 이번 주 금요일로 잘못 반환해도 로컬 추론이 우선되도록 `이번주/다음주 + 요일` 힌트를 `_shouldPreferInferredStartAt`에 추가했고, 시스템 프롬프트에 Today/This week/Next week/다음주 금요일 예시를 동적으로 넣었다.

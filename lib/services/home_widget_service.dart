@@ -161,12 +161,11 @@ class HomeWidgetSchedulePayloadBuilder {
     final localNow = planflowLocal(now);
     final month = DateTime(localNow.year, localNow.month);
     final expandedEvents = _expandRecurringEventsForWidget(events, month);
-    final sortedEvents =
-        expandedEvents
-            .where((event) => event.startAt != null)
-            .where((event) => includeWeekends || !_startsOnWeekend(event))
-            .toList(growable: false)
-          ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+    final sortedEvents = expandedEvents
+        .where((event) => event.startAt != null)
+        .where((event) => includeWeekends || !_startsOnWeekend(event))
+        .toList(growable: false)
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
     final futureEvents = sortedEvents
         .where((event) => !event.startAt!.isBefore(now))
         .toList(growable: false);
@@ -317,7 +316,7 @@ class HomeWidgetSchedulePayloadBuilder {
     if (freq == 'WEEKLY') {
       final byDays = _parseWidgetRRuleByDays(rule);
       if (byDays.isNotEmpty) {
-        var weekStart = DateTime(
+        final firstWeekStart = DateTime(
           localStartAt.year,
           localStartAt.month,
           localStartAt.day,
@@ -325,8 +324,26 @@ class HomeWidgetSchedulePayloadBuilder {
           localStartAt.minute,
           localStartAt.second,
         ).subtract(Duration(days: localStartAt.weekday - DateTime.monday));
+        final rangeWeekStart = DateTime(
+          rangeStart.year,
+          rangeStart.month,
+          rangeStart.day,
+          localStartAt.hour,
+          localStartAt.minute,
+          localStartAt.second,
+        ).subtract(Duration(days: rangeStart.weekday - DateTime.monday));
+        final weeksFromStart =
+            rangeWeekStart.difference(firstWeekStart).inDays ~/ 7;
+        final startWeekStep = weeksFromStart <= 0
+            ? 0
+            : (weeksFromStart ~/ interval - 1).clamp(0, weeksFromStart);
+        var weekStart = firstWeekStart.add(
+          Duration(days: startWeekStep * interval * 7),
+        );
+        final safetyLimit =
+            ((hardEnd.difference(weekStart).inDays / 7).ceil() ~/ interval) + 8;
         var safety = 0;
-        while (weekStart.isBefore(hardEnd) && safety < 120) {
+        while (weekStart.isBefore(hardEnd) && safety < safetyLimit) {
           safety += 1;
           for (final weekday in byDays) {
             final day = weekStart.add(
@@ -343,9 +360,8 @@ class HomeWidgetSchedulePayloadBuilder {
             if (current.isBefore(localStartAt) || !current.isBefore(hardEnd)) {
               continue;
             }
-            final occurrenceEnd = duration == null
-                ? null
-                : current.add(duration);
+            final occurrenceEnd =
+                duration == null ? null : current.add(duration);
             final candidate = _copyWidgetEventWithTime(
               event,
               startAt: current,
@@ -361,10 +377,27 @@ class HomeWidgetSchedulePayloadBuilder {
       }
     }
 
-    var current = localStartAt;
+    var step = _widgetStartStepForRange(
+      freq: freq,
+      interval: interval,
+      localStartAt: localStartAt,
+      rangeStart: rangeStart,
+    );
+    var current = _widgetOccurrenceForStep(
+      localStartAt,
+      freq: freq,
+      interval: interval,
+      step: step,
+      hardEnd: hardEnd,
+    );
+    final safetyLimit = _widgetOccurrenceSafetyLimit(
+      freq: freq,
+      interval: interval,
+      current: current,
+      hardEnd: hardEnd,
+    );
     var safety = 0;
-    var step = 0;
-    while (current.isBefore(hardEnd) && safety < 420) {
+    while (current.isBefore(hardEnd) && safety < safetyLimit) {
       safety += 1;
       final occurrenceEnd = duration == null ? null : current.add(duration);
       final candidate = _copyWidgetEventWithTime(
@@ -376,21 +409,83 @@ class HomeWidgetSchedulePayloadBuilder {
         occurrences.add(candidate);
       }
       step += 1;
-      current = switch (freq) {
-        'DAILY' => current.add(Duration(days: interval)),
-        'WEEKLY' => current.add(Duration(days: 7 * interval)),
-        'MONTHLY' => _widgetMonthOccurrence(
+      current = _widgetOccurrenceForStep(
+        localStartAt,
+        freq: freq,
+        interval: interval,
+        step: step,
+        hardEnd: hardEnd,
+      );
+    }
+    return occurrences.isEmpty ? <EventModel>[event] : occurrences;
+  }
+
+  static int _widgetStartStepForRange({
+    required String freq,
+    required int interval,
+    required DateTime localStartAt,
+    required DateTime rangeStart,
+  }) {
+    final rawStep = switch (freq) {
+      'DAILY' => rangeStart.difference(localStartAt).inDays ~/ interval,
+      'WEEKLY' => rangeStart.difference(localStartAt).inDays ~/ (7 * interval),
+      'MONTHLY' => _widgetMonthsBetween(localStartAt, rangeStart) ~/ interval,
+      'YEARLY' =>
+        _widgetMonthsBetween(localStartAt, rangeStart) ~/ (interval * 12),
+      _ => 0,
+    };
+    if (rawStep <= 0) {
+      return 0;
+    }
+    return rawStep - 1;
+  }
+
+  static int _widgetMonthsBetween(DateTime startAt, DateTime target) {
+    return (target.year - startAt.year) * 12 + target.month - startAt.month;
+  }
+
+  static DateTime _widgetOccurrenceForStep(
+    DateTime localStartAt, {
+    required String freq,
+    required int interval,
+    required int step,
+    required DateTime hardEnd,
+  }) {
+    return switch (freq) {
+      'DAILY' => localStartAt.add(Duration(days: step * interval)),
+      'WEEKLY' => localStartAt.add(Duration(days: step * interval * 7)),
+      'MONTHLY' => _widgetMonthOccurrence(
           localStartAt,
           monthsFromStart: step * interval,
         ),
-        'YEARLY' => _widgetMonthOccurrence(
+      'YEARLY' => _widgetMonthOccurrence(
           localStartAt,
           monthsFromStart: step * interval * 12,
         ),
-        _ => hardEnd,
-      };
+      _ => hardEnd,
+    };
+  }
+
+  static int _widgetOccurrenceSafetyLimit({
+    required String freq,
+    required int interval,
+    required DateTime current,
+    required DateTime hardEnd,
+  }) {
+    final remainingDays = hardEnd.difference(current).inDays;
+    if (remainingDays <= 0) {
+      return 1;
     }
-    return occurrences.isEmpty ? <EventModel>[event] : occurrences;
+    final rawLimit = switch (freq) {
+      'DAILY' => (remainingDays / interval).ceil(),
+      'WEEKLY' => (remainingDays / (7 * interval)).ceil(),
+      'MONTHLY' =>
+        (_widgetMonthsBetween(current, hardEnd) / interval).ceil() + 1,
+      'YEARLY' =>
+        (_widgetMonthsBetween(current, hardEnd) / (interval * 12)).ceil() + 1,
+      _ => 1,
+    };
+    return rawLimit + 8;
   }
 
   static DateTime? _parseWidgetRRuleUntil(String? value) {
@@ -539,23 +634,21 @@ class HomeWidgetSchedulePayloadBuilder {
     if (overrides.isEmpty) {
       return events;
     }
-    return events
-        .where((event) {
-          final startAt = event.startAt;
-          if (startAt == null) {
-            return true;
-          }
-          final isOverridden = overrides.any((override) {
-            if (override.parentEventId != event.id) {
-              return false;
-            }
-            final overrideStart = override.startAt;
-            return overrideStart != null &&
-                planflowIsSameLocalDay(overrideStart, startAt);
-          });
-          return !isOverridden;
-        })
-        .toList(growable: false);
+    return events.where((event) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        return true;
+      }
+      final isOverridden = overrides.any((override) {
+        if (override.parentEventId != event.id) {
+          return false;
+        }
+        final overrideStart = override.startAt;
+        return overrideStart != null &&
+            planflowIsSameLocalDay(overrideStart, startAt);
+      });
+      return !isOverridden;
+    }).toList(growable: false);
   }
 
   static List<HomeWidgetMonthDayData> _monthDays(
@@ -618,7 +711,8 @@ class HomeWidgetSchedulePayloadBuilder {
       final fd = planflowLocalDay(e.startAt!);
       final ld = _displayEndDay(e);
       return ld.isAfter(fd);
-    }).toList()..sort((a, b) => a.startAt!.compareTo(b.startAt!));
+    }).toList()
+      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
 
     for (final event in multiDayEvents) {
       final fd = planflowLocalDay(event.startAt!);
@@ -651,22 +745,22 @@ class HomeWidgetSchedulePayloadBuilder {
     // 2단계: 단일 이벤트(같은 날 시작·종료)를 남은 slot에 채움
     for (var i = 0; i < 42; i++) {
       final day = cellDays[i];
-      final singleEvents =
-          events.where((e) {
-            if (e.startAt == null) return false;
-            final fd = planflowLocalDay(e.startAt!);
-            final ld = _displayEndDay(e);
-            return !ld.isAfter(fd) && fd == day;
-          }).toList()..sort((a, b) {
-            final aStart = a.startAt;
-            final bStart = b.startAt;
-            if (aStart == null && bStart == null) {
-              return a.title.compareTo(b.title);
-            }
-            if (aStart == null) return 1;
-            if (bStart == null) return -1;
-            return aStart.compareTo(bStart);
-          });
+      final singleEvents = events.where((e) {
+        if (e.startAt == null) return false;
+        final fd = planflowLocalDay(e.startAt!);
+        final ld = _displayEndDay(e);
+        return !ld.isAfter(fd) && fd == day;
+      }).toList()
+        ..sort((a, b) {
+          final aStart = a.startAt;
+          final bStart = b.startAt;
+          if (aStart == null && bStart == null) {
+            return a.title.compareTo(b.title);
+          }
+          if (aStart == null) return 1;
+          if (bStart == null) return -1;
+          return aStart.compareTo(bStart);
+        });
       for (final event in singleEvents) {
         var placed = false;
         for (var slot = 0; slot < monthlyWidgetEventRows; slot++) {
@@ -699,10 +793,8 @@ class HomeWidgetSchedulePayloadBuilder {
       final day = cellDays[i];
       final inMonth = day.year == month.year && day.month == month.month;
       final dayEvents = _eventsForDay(events, day);
-      final visibleIds = slotMap[i]
-          .whereType<EventModel>()
-          .map((event) => event.id)
-          .toSet();
+      final visibleIds =
+          slotMap[i].whereType<EventModel>().map((event) => event.id).toSet();
       final hiddenEvents = dayEvents
           .where((event) => !visibleIds.contains(event.id))
           .toList(growable: false);
@@ -721,8 +813,8 @@ class HomeWidgetSchedulePayloadBuilder {
         overflowPreviewTitle: hiddenEvents.isEmpty
             ? null
             : hiddenEvents.first.title.trim().isEmpty
-            ? null
-            : hiddenEvents.first.title.trim(),
+                ? null
+                : hiddenEvents.first.title.trim(),
       );
     });
   }
@@ -754,8 +846,7 @@ class HomeWidgetSchedulePayloadBuilder {
 
     // 주 경계: 일요일(0)=행 시작 시각적으로 start처럼 처리
     final isRowStart = cellDay.weekday == DateTime.sunday || cellDay.day == 1;
-    final isRowEnd =
-        cellDay.weekday == DateTime.saturday ||
+    final isRowEnd = cellDay.weekday == DateTime.saturday ||
         cellDay.day == DateTime(cellDay.year, cellDay.month + 1, 0).day;
 
     final isCellFirstDay = cellDay == firstEventDay;
@@ -796,9 +887,8 @@ class HomeWidgetSchedulePayloadBuilder {
     return List<HomeWidgetWeekDayData>.generate(7, (index) {
       final day = weekStart.add(Duration(days: index));
       final dayEvents = _eventsForDay(events, day);
-      final hiddenEvents = dayEvents
-          .skip(weeklyWidgetEventRows)
-          .toList(growable: false);
+      final hiddenEvents =
+          dayEvents.skip(weeklyWidgetEventRows).toList(growable: false);
       return HomeWidgetWeekDayData(
         date: day,
         summary: dayEvents.isEmpty ? '일정 없음' : '${dayEvents.length}건',
@@ -806,8 +896,8 @@ class HomeWidgetSchedulePayloadBuilder {
         overflowPreviewTitle: hiddenEvents.isEmpty
             ? null
             : hiddenEvents.first.title.trim().isEmpty
-            ? null
-            : hiddenEvents.first.title.trim(),
+                ? null
+                : hiddenEvents.first.title.trim(),
         hasCritical: dayEvents.any((event) => event.isCritical),
         events: dayEvents
             .map(_listEvent)
@@ -818,24 +908,23 @@ class HomeWidgetSchedulePayloadBuilder {
   }
 
   static List<EventModel> _eventsForDay(List<EventModel> events, DateTime day) {
-    final dayEvents =
-        events
-            .where((event) => _eventIntersectsDisplayDay(event, day))
-            .toList(growable: false)
-          ..sort((a, b) {
-            final aStart = a.startAt;
-            final bStart = b.startAt;
-            if (aStart == null && bStart == null) {
-              return a.title.compareTo(b.title);
-            }
-            if (aStart == null) {
-              return 1;
-            }
-            if (bStart == null) {
-              return -1;
-            }
-            return aStart.compareTo(bStart);
-          });
+    final dayEvents = events
+        .where((event) => _eventIntersectsDisplayDay(event, day))
+        .toList(growable: false)
+      ..sort((a, b) {
+        final aStart = a.startAt;
+        final bStart = b.startAt;
+        if (aStart == null && bStart == null) {
+          return a.title.compareTo(b.title);
+        }
+        if (aStart == null) {
+          return 1;
+        }
+        if (bStart == null) {
+          return -1;
+        }
+        return aStart.compareTo(bStart);
+      });
     return dayEvents;
   }
 
@@ -932,9 +1021,9 @@ class HomeWidgetService {
     HomeWidgetPlatform? platform,
     TravelTimeBufferService? travelTimeBufferService,
     this.iOSAppGroupId,
-  }) : _platform = platform ?? createHomeWidgetPlatform(),
-       _travelTimeBufferService =
-           travelTimeBufferService ?? TravelTimeBufferService();
+  })  : _platform = platform ?? createHomeWidgetPlatform(),
+        _travelTimeBufferService =
+            travelTimeBufferService ?? TravelTimeBufferService();
 
   static const String defaultWidgetName = 'PlanFlowHomeWidgetProvider';
   static const String hideWeekendsKey = 'widget_hide_weekends';
@@ -1011,8 +1100,7 @@ class HomeWidgetService {
     String? iOSName,
     String? qualifiedAndroidName,
   }) async {
-    final resolvedBufferMinutes =
-        travelBufferMinutes ??
+    final resolvedBufferMinutes = travelBufferMinutes ??
         await _resolveTravelBufferMinutes(
           travelOrigin: travelOrigin,
           destination: location,
@@ -1059,17 +1147,14 @@ class HomeWidgetService {
         await _saveValue('next_event_title', data.title.trim()) && success;
     success =
         await _saveOptionalValue('next_event_id', data.eventId) && success;
-    success =
-        await _saveOptionalValue(
+    success = await _saveOptionalValue(
           'next_event_start_at',
           data.startAt?.toUtc().toIso8601String(),
         ) &&
         success;
-    success =
-        await _saveOptionalValue('next_event_location', data.location) &&
+    success = await _saveOptionalValue('next_event_location', data.location) &&
         success;
-    success =
-        await _saveOptionalValue(
+    success = await _saveOptionalValue(
           'next_event_travel_buffer_minutes',
           data.travelBufferMinutes,
         ) &&
@@ -1130,61 +1215,52 @@ class HomeWidgetService {
         await _saveValue('next_event_title', nextEvent.title.trim()) && success;
     success =
         await _saveOptionalValue('next_event_id', nextEvent.eventId) && success;
-    success =
-        await _saveOptionalValue(
+    success = await _saveOptionalValue(
           'next_event_start_at',
           nextEvent.startAt?.toUtc().toIso8601String(),
         ) &&
         success;
     success =
         await _saveOptionalValue('next_event_location', nextEvent.location) &&
-        success;
-    success =
-        await _saveOptionalValue(
+            success;
+    success = await _saveOptionalValue(
           'next_event_travel_buffer_minutes',
           nextEvent.travelBufferMinutes,
         ) &&
         success;
     success =
         await _saveValue('next_event_is_critical', nextEvent.isCritical) &&
-        success;
+            success;
     success = await _saveTodayEvents(todayEvents) && success;
-    success =
-        await _saveTodayScheduleData(
+    success = await _saveTodayScheduleData(
           lastPastEvent: lastPastEvent,
-          todayUpcomingEvents: todayUpcomingEvents.isEmpty
-              ? todayEvents
-              : todayUpcomingEvents,
+          todayUpcomingEvents:
+              todayUpcomingEvents.isEmpty ? todayEvents : todayUpcomingEvents,
           tomorrowEvents: tomorrowEvents,
         ) &&
         success;
-    success =
-        await _saveValue('schedule_events_json', jsonEncode(rawEvents)) &&
+    success = await _saveValue('schedule_events_json', jsonEncode(rawEvents)) &&
         success;
     success = await _saveMonthData(month: month, days: monthDays) && success;
     success = await _saveMonthCalendarData(monthCells) && success;
-    success =
-        await _saveMonthCalendarData(
+    success = await _saveMonthCalendarData(
           previousMonthCells,
           keyPrefix: 'month_offset_-1_cell',
         ) &&
         success;
-    success =
-        await _saveMonthCalendarData(
+    success = await _saveMonthCalendarData(
           nextMonthCells,
           keyPrefix: 'month_offset_1_cell',
         ) &&
         success;
     if (month != null) {
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             'month_title_offset_-1',
             '${DateTime(month.year, month.month - 1).year}.'
                 '${DateTime(month.year, month.month - 1).month.toString().padLeft(2, '0')}',
           ) &&
           success;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             'month_title_offset_1',
             '${DateTime(month.year, month.month + 1).year}.'
                 '${DateTime(month.year, month.month + 1).month.toString().padLeft(2, '0')}',
@@ -1192,15 +1268,13 @@ class HomeWidgetService {
           success;
     }
     success = await _saveWeekData(weekDays) && success;
-    success =
-        await _saveWeekData(
+    success = await _saveWeekData(
           previousWeekDays,
           keyPrefix: 'week_offset_-1_day',
           titleKey: 'week_title_offset_-1',
         ) &&
         success;
-    success =
-        await _saveWeekData(
+    success = await _saveWeekData(
           nextWeekDays,
           keyPrefix: 'week_offset_1_day',
           titleKey: 'week_title_offset_1',
@@ -1208,8 +1282,7 @@ class HomeWidgetService {
         success;
     // 일별 offset: -1(어제), 0(오늘), 1(내일)
     success = await _saveDayOffsetEvents(-1, yesterdayEvents) && success;
-    success =
-        await _saveDayOffsetEvents(
+    success = await _saveDayOffsetEvents(
           0,
           todayUpcomingEvents.isEmpty ? todayEvents : todayUpcomingEvents,
         ) &&
@@ -1292,24 +1365,21 @@ class HomeWidgetService {
       final slot = index + 1;
       success =
           await _saveOptionalValue('event_list_${slot}_id', event?.eventId) &&
-          success;
+              success;
       success =
           await _saveOptionalValue('event_list_${slot}_title', event?.title) &&
-          success;
-      success =
-          await _saveOptionalValue(
+              success;
+      success = await _saveOptionalValue(
             'event_list_${slot}_time',
             event?.startAt?.toUtc().toIso8601String(),
           ) &&
           success;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             'event_list_${slot}_location',
             event?.location,
           ) &&
           success;
-      success =
-          await _saveValue(
+      success = await _saveValue(
             'event_list_${slot}_is_critical',
             event?.isCritical ?? false,
           ) &&
@@ -1331,9 +1401,8 @@ class HomeWidgetService {
         .toList(growable: false);
     final remainingCapacity =
         HomeWidgetSchedulePayloadBuilder.todayWidgetRowCapacity -
-        todaySlots.length;
-    final tomorrowLimit =
-        remainingCapacity <
+            todaySlots.length;
+    final tomorrowLimit = remainingCapacity <
             HomeWidgetSchedulePayloadBuilder.tomorrowWidgetMaxRows
         ? remainingCapacity
         : HomeWidgetSchedulePayloadBuilder.tomorrowWidgetMaxRows;
@@ -1342,24 +1411,19 @@ class HomeWidgetService {
         : tomorrowEvents.take(tomorrowLimit).toList(growable: false);
     success =
         await _saveValue('today_upcoming_count', todaySlots.length) && success;
-    success =
-        await _saveValue('tomorrow_event_count', tomorrowSlots.length) &&
+    success = await _saveValue('tomorrow_event_count', tomorrowSlots.length) &&
         success;
-    for (
-      var index = 0;
-      index < HomeWidgetSchedulePayloadBuilder.todayWidgetRowCapacity;
-      index += 1
-    ) {
-      success =
-          await _saveListEvent(
+    for (var index = 0;
+        index < HomeWidgetSchedulePayloadBuilder.todayWidgetRowCapacity;
+        index += 1) {
+      success = await _saveListEvent(
             'today_upcoming_${index + 1}',
             index < todaySlots.length ? todaySlots[index] : null,
           ) &&
           success;
     }
     for (var index = 0; index < 2; index += 1) {
-      success =
-          await _saveListEvent(
+      success = await _saveListEvent(
             'tomorrow_event_${index + 1}',
             index < tomorrowSlots.length ? tomorrowSlots[index] : null,
           ) &&
@@ -1374,8 +1438,7 @@ class HomeWidgetService {
   }) async {
     var success = true;
     final resolvedMonth = month ?? DateTime.now();
-    success =
-        await _saveValue(
+    success = await _saveValue(
           'month_title',
           '${resolvedMonth.year}.${resolvedMonth.month.toString().padLeft(2, '0')}',
         ) &&
@@ -1396,20 +1459,17 @@ class HomeWidgetService {
           break;
         }
       }
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             'month_day_${day}_summary',
             summaries[day],
           ) &&
           success;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             'month_day_${day}_count',
             sourceDay?.eventCount,
           ) &&
           success;
-      success =
-          await _saveValue(
+      success = await _saveValue(
             'month_day_${day}_has_critical',
             sourceDay?.hasCritical ?? false,
           ) &&
@@ -1430,83 +1490,69 @@ class HomeWidgetService {
     };
     for (var cellIndex = 1; cellIndex <= 42; cellIndex += 1) {
       final cell = byCell[cellIndex];
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             '${keyPrefix}_${cellIndex}_date',
             cell?.date == null
                 ? null
                 : _localDateKey(planflowLocal(cell!.date!)),
           ) &&
           success;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             '${keyPrefix}_${cellIndex}_day',
             cell?.day,
           ) &&
           success;
-      success =
-          await _saveValue(
+      success = await _saveValue(
             '${keyPrefix}_${cellIndex}_in_month',
             cell?.inMonth ?? false,
           ) &&
           success;
-      success =
-          await _saveValue(
+      success = await _saveValue(
             '${keyPrefix}_${cellIndex}_overflow_count',
             cell?.overflowCount ?? 0,
           ) &&
           success;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             '${keyPrefix}_${cellIndex}_overflow_preview_title',
             cell?.overflowPreviewTitle,
           ) &&
           success;
-      final events =
-          cell?.events
+      final events = cell?.events
               .take(HomeWidgetSchedulePayloadBuilder.monthlyWidgetEventRows)
               .toList(growable: false) ??
           const <HomeWidgetListEventData>[];
-      for (
-        var eventIndex = 0;
-        eventIndex < HomeWidgetSchedulePayloadBuilder.monthlyWidgetEventRows;
-        eventIndex += 1
-      ) {
+      for (var eventIndex = 0;
+          eventIndex < HomeWidgetSchedulePayloadBuilder.monthlyWidgetEventRows;
+          eventIndex += 1) {
         final event = eventIndex < events.length ? events[eventIndex] : null;
         final eventSlot = eventIndex + 1;
-        success =
-            await _saveOptionalValue(
+        success = await _saveOptionalValue(
               '${keyPrefix}_${cellIndex}_event_${eventSlot}_id',
               event?.eventId,
             ) &&
             success;
-        success =
-            await _saveOptionalValue(
+        success = await _saveOptionalValue(
               '${keyPrefix}_${cellIndex}_event_${eventSlot}_title',
               event?.title,
             ) &&
             success;
-        success =
-            await _saveOptionalValue(
+        success = await _saveOptionalValue(
               '${keyPrefix}_${cellIndex}_event_${eventSlot}_time',
               event?.startAt?.toUtc().toIso8601String(),
             ) &&
             success;
-        success =
-            await _saveValue(
+        success = await _saveValue(
               '${keyPrefix}_${cellIndex}_event_${eventSlot}_is_critical',
               event?.isCritical ?? false,
             ) &&
             success;
         // multi-day 연속 일정 pill 표시용
-        success =
-            await _saveOptionalValue(
+        success = await _saveOptionalValue(
               '${keyPrefix}_${cellIndex}_event_${eventSlot}_segment',
               event?.monthSegment,
             ) &&
             success;
-        success =
-            await _saveValue(
+        success = await _saveValue(
               '${keyPrefix}_${cellIndex}_event_${eventSlot}_show_title',
               event?.showTitleInMonth ?? true,
             ) &&
@@ -1536,78 +1582,65 @@ class HomeWidgetService {
     for (var index = 0; index < 7; index += 1) {
       final day = index < slots.length ? slots[index] : null;
       final slot = index + 1;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             '${keyPrefix}_${slot}_date',
             day?.date.toUtc().toIso8601String(),
           ) &&
           success;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             '${keyPrefix}_${slot}_summary',
             day?.summary,
           ) &&
           success;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             '${keyPrefix}_${slot}_count',
             day?.eventCount ?? day?.events.length,
           ) &&
           success;
-      success =
-          await _saveValue(
+      success = await _saveValue(
             '${keyPrefix}_${slot}_has_critical',
             day?.hasCritical ??
                 day?.events.any((event) => event.isCritical) ??
                 false,
           ) &&
           success;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             '${keyPrefix}_${slot}_overflow_preview_title',
             day?.overflowPreviewTitle,
           ) &&
           success;
 
-      final events =
-          day?.events
+      final events = day?.events
               .take(HomeWidgetSchedulePayloadBuilder.weeklyWidgetEventRows)
               .toList(growable: false) ??
           const <HomeWidgetListEventData>[];
       final eventCount = day?.eventCount ?? day?.events.length ?? 0;
-      success =
-          await _saveValue(
+      success = await _saveValue(
             '${keyPrefix}_${slot}_overflow_count',
             eventCount > events.length ? eventCount - events.length : 0,
           ) &&
           success;
-      for (
-        var eventIndex = 0;
-        eventIndex < HomeWidgetSchedulePayloadBuilder.weeklyWidgetEventRows;
-        eventIndex += 1
-      ) {
+      for (var eventIndex = 0;
+          eventIndex < HomeWidgetSchedulePayloadBuilder.weeklyWidgetEventRows;
+          eventIndex += 1) {
         final event = eventIndex < events.length ? events[eventIndex] : null;
         final eventSlot = eventIndex + 1;
-        success =
-            await _saveOptionalValue(
+        success = await _saveOptionalValue(
               '${keyPrefix}_${slot}_event_${eventSlot}_id',
               event?.eventId,
             ) &&
             success;
-        success =
-            await _saveOptionalValue(
+        success = await _saveOptionalValue(
               '${keyPrefix}_${slot}_event_${eventSlot}_title',
               event?.title,
             ) &&
             success;
-        success =
-            await _saveOptionalValue(
+        success = await _saveOptionalValue(
               '${keyPrefix}_${slot}_event_${eventSlot}_time',
               event?.startAt?.toUtc().toIso8601String(),
             ) &&
             success;
-        success =
-            await _saveValue(
+        success = await _saveValue(
               '${keyPrefix}_${slot}_event_${eventSlot}_is_critical',
               event?.isCritical ?? false,
             ) &&
@@ -1630,38 +1663,32 @@ class HomeWidgetService {
     for (var index = 0; index < maxVisible; index += 1) {
       final event = index < slots.length ? slots[index] : null;
       final slot = index + 1;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             'day_offset_${offset}_event_${slot}_id',
             event?.eventId,
           ) &&
           success;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             'day_offset_${offset}_event_${slot}_title',
             event?.title,
           ) &&
           success;
-      success =
-          await _saveOptionalValue(
+      success = await _saveOptionalValue(
             'day_offset_${offset}_event_${slot}_time',
             event?.startAt?.toUtc().toIso8601String(),
           ) &&
           success;
-      success =
-          await _saveValue(
+      success = await _saveValue(
             'day_offset_${offset}_event_${slot}_is_critical',
             event?.isCritical ?? false,
           ) &&
           success;
     }
     // 총 개수 및 overflow 미리보기 제목 저장
-    success =
-        await _saveValue('day_offset_${offset}_count', events.length) &&
+    success = await _saveValue('day_offset_${offset}_count', events.length) &&
         success;
     final overflowTitle = events.skip(maxVisible).firstOrNull?.title.trim();
-    success =
-        await _saveOptionalValue(
+    success = await _saveOptionalValue(
           'day_offset_${offset}_overflow_preview_title',
           overflowTitle == null || overflowTitle.isEmpty ? null : overflowTitle,
         ) &&
@@ -1712,18 +1739,16 @@ class HomeWidgetService {
         await _saveOptionalValue('${prefix}_id', event?.eventId) && success;
     success =
         await _saveOptionalValue('${prefix}_title', event?.title) && success;
-    success =
-        await _saveOptionalValue(
+    success = await _saveOptionalValue(
           '${prefix}_time',
           event?.startAt?.toUtc().toIso8601String(),
         ) &&
         success;
-    success =
-        await _saveOptionalValue('${prefix}_location', event?.location) &&
+    success = await _saveOptionalValue('${prefix}_location', event?.location) &&
         success;
     success =
         await _saveValue('${prefix}_is_critical', event?.isCritical ?? false) &&
-        success;
+            success;
     return success;
   }
 
