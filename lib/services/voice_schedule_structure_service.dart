@@ -460,10 +460,10 @@ class VoiceScheduleStructureService {
       '',
     );
     final preserveRelativeDayWords = shouldPreserveRelativeDayWords(rawText);
-    final cleaned = stripScheduleNoise(
+    final cleaned = _stripOrphanRelativeTimeTail(stripScheduleNoise(
       source,
       preserveRelativeDayWords: preserveRelativeDayWords,
-    );
+    ));
     final hasRecurrenceIntent = _hasRecurrenceIntent(structure, rawText);
     final titleWithoutLocation = preserveLeadingLocationTitle(
       _stripLeadingRecurrenceExpression(cleaned),
@@ -505,10 +505,10 @@ class VoiceScheduleStructureService {
     final fallback = _stripTrailingRecurrenceCommand(
       preserveLeadingLocationTitle(
         _stripLeadingRecurrenceExpression(
-          stripScheduleNoise(
+          _stripOrphanRelativeTimeTail(stripScheduleNoise(
             rawText,
             preserveRelativeDayWords: preserveRelativeDayWords,
-          ),
+          )),
         ),
         rawText: rawText,
       ),
@@ -559,6 +559,10 @@ class VoiceScheduleStructureService {
           ' ',
         )
         .replaceAll(RegExp(r'\d{1,3}\s*(분|시간)\s*(뒤|후|있다가|이따)'), ' ')
+        .replaceAll(
+          RegExp(r'(^|\s)(?:뒤에|뒤로|후에|후로|뒤|후|이따|있다가)(?=\s|$)'),
+          ' ',
+        )
         .replaceAll(
           (shouldPreserveRelativeDayWords(referenceText ?? title)
               ? RegExp(
@@ -1302,15 +1306,93 @@ class VoiceScheduleStructureService {
     if (isOnlyScheduleMetadata(normalized)) {
       return true;
     }
-    return RegExp(
+    final compact = normalized.replaceAll(RegExp(r'\s+'), '');
+    if (RegExp(
       r'^(?:오늘|내일|모레|글피|오전|오후|아침|낮|점심|저녁|밤|새벽|오전중|오후중|오전쯤|오후쯤)$',
-    ).hasMatch(normalized.replaceAll(RegExp(r'\s+'), ''));
+    ).hasMatch(compact)) {
+      return true;
+    }
+    if (RegExp(r'^(?:에|에서|로|으로|뒤|후|뒤에|뒤로|후에|후로|간뒤|한뒤)$')
+        .hasMatch(compact)) {
+      return true;
+    }
+    if (_looksLikePlaceName(normalized)) {
+      return false;
+    }
+    if (RegExp(
+      r'(?:^|\s)(?:가|간|갔다|가서|가기|오|온|왔다|오기|하|한|했다|하기|작성|확인|연락|전화|문의|보고|전달|갖다\s*주기|가져다\s*주기)(?:\s*(?:뒤|후|에|로|으로))?$',
+    ).hasMatch(normalized)) {
+      return true;
+    }
+    return RegExp(r'(?:뒤에|뒤로|후에|후로|간\s*뒤|한\s*뒤)$')
+        .hasMatch(normalized);
   }
 
   bool isOnlyScheduleMetadata(String text) {
     return RegExp(
-      r'^(?:오늘|내일|모레|글피|오전|오후|아침|점심|저녁|밤|새벽|매주|매월|매년|격주|반복|알림|리마인더|알람|\d{1,2}\s*시|\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따))*$',
+      r'^(?:오늘|내일|모레|글피|오전|오후|아침|점심|저녁|밤|새벽|매주|매월|매년|격주|반복|알림|리마인더|알람|뒤|후|뒤에|뒤로|후에|후로|있다가|이따|\d{1,2}\s*시|\d{1,3}\s*(?:분|시간)\s*(?:뒤|후|있다가|이따))*$',
     ).hasMatch(text.replaceAll(RegExp(r'\s+'), ''));
+  }
+
+  String _stripOrphanRelativeTimeTail(String text) {
+    return normalizeSpacingForSchedule(
+      text
+          .replaceAll(
+            RegExp(r'(^|\s)(?:뒤에|뒤로|후에|후로|뒤|후|이따|있다가)(?=\s|$)'),
+            ' ',
+          )
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim(),
+    );
+  }
+
+  bool _looksLikePlaceName(String text) {
+    final compact = normalizeText(text, '').replaceAll(RegExp(r'\s+'), '');
+    if (compact.isEmpty) {
+      return false;
+    }
+    const placeKeywords = <String>[
+      '병원',
+      '의원',
+      '치과',
+      '약국',
+      '역',
+      '터미널',
+      '공항',
+      '학교',
+      '학원',
+      '대학교',
+      '법원',
+      '회사',
+      '본사',
+      '사무실',
+      '센터',
+      '식당',
+      '카페',
+      '호텔',
+      '마트',
+      '백화점',
+      '시장',
+      '공원',
+      '주차장',
+      '건물',
+      '오피스',
+      '스튜디오',
+      '헬스장',
+      '편의점',
+      '아웃렛',
+      '주유소',
+      '횟집',
+      '본점',
+      '지점',
+      '세브란스',
+      '기독',
+      '클리닉',
+      '플레이스',
+      '아파트',
+      '빌딩',
+    ];
+    return placeKeywords.any(compact.contains);
   }
 
   Set<String> _meaningfulTitleTokens(String text) {

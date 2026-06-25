@@ -1,4 +1,10 @@
 # ACTIVE SUMMARY
+## 2026-06-25 TASK_20260623_232528 음성 제목/장소 파싱 및 장소 clear UX
+- GPT 일정 파싱 프롬프트에 title 상대시간 잔여 제거와 location 명사형 장소 제약을 추가했고, 장소 검증 호출은 gpt-4o-mini/max_tokens 20/700ms로 제한했다.
+- 로컬 음성 구조 파서는 `뒤에/후로` 같은 고아 상대시간 토큰을 제목에서 제거하고, `간 뒤` 같은 동사형 장소 후보를 거부하면서 `원주세브란스`/`강남역` 등 실제 장소명은 유지한다.
+- 일정 편집 장소 입력란은 텍스트가 있을 때만 `장소 지우기` X 버튼을 지도 버튼 왼쪽에 표시하고, clear 시 컨트롤러와 콜백을 함께 동기화한다.
+- 검증: `flutter analyze --no-pub`, `flutter test test/services/gpt_service_test.dart --no-pub -r compact`, `flutter test test/services/voice_schedule_structure_service_test.dart --no-pub -r compact`, `flutter test test/widgets/calendar_style_event_editor_test.dart --no-pub -r compact` 통과. `flutter-build-guarded.ps1` release APK 빌드는 android-build lock/release는 정상이나 `android/key.properties` 부재로 Gradle signing 단계에서 실패했다.
+
 ## 2026-06-18 TASK_20260618_123620 PlanFlow 2차 버그/개선 6종
 - 연동 해제 모달을 X 닫기 + 일정 유지/삭제 2버튼으로 정리했고, 네이버 CalDAV 진행/진단 다이얼로그는 짧은 상태와 상세 info 진입으로 분리했다.
 - 휴대폰 내부 캘린더 가져오기는 3초 초과 시 진행 모달을 표시하고 성공 상태를 저장/복원하며, 서비스 import 루프는 6개 단위 제한 병렬 처리와 결과 집계 방식으로 바꿨다.

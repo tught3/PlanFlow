@@ -409,5 +409,43 @@ void main() {
 
       expect(location, '대장동 해링턴플레이스');
     });
+
+    test('removes orphan relative-time particles from titles', () {
+      const rawText = '2시간 뒤에 뇌혈관 심포지엄 기안서작성';
+
+      final title = service.normalizeLocalVoiceTitle(
+        '뒤에 뇌혈관 심포지엄 기안서작성',
+        referenceText: rawText,
+      );
+
+      expect(title, '뇌혈관 심포지엄 기안서작성');
+    });
+
+    test('rejects verb fragments while preserving place noun locations', () {
+      expect(
+        service.normalizeScheduleLocation(
+          location: '간 뒤',
+          rawText: '2시간 뒤에 뇌혈관 심포지엄 기안서작성',
+          title: '뇌혈관 심포지엄 기안서작성',
+        ),
+        isNull,
+      );
+      expect(
+        service.normalizeScheduleLocation(
+          location: '원주세브란스',
+          rawText: '내일 오전 11시 원주세브란스 방문',
+          title: '방문',
+        ),
+        '원주세브란스',
+      );
+      expect(
+        service.normalizeScheduleLocation(
+          location: '강남역',
+          rawText: '내일 오후 2시 강남역 미팅',
+          title: '미팅',
+        ),
+        '강남역',
+      );
+    });
   });
 }

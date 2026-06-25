@@ -225,6 +225,29 @@ void main() {
     expect(find.text('지도 지정'), findsOneWidget);
   });
 
+  testWidgets('location clear button clears text and notifies parent',
+      (tester) async {
+    String? changedLocation;
+    final host = _TestHost(
+      startAt: DateTime(2026, 5, 13, 9),
+      endAt: DateTime(2026, 5, 13, 10),
+      locationText: '원주세브란스기독병원',
+      onLocationTextChanged: (value) => changedLocation = value,
+    );
+
+    await tester.pumpWidget(host);
+
+    expect(find.byTooltip('장소 지우기'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('장소 지우기'));
+    await tester.pump();
+
+    expect(host.locationController.text, isEmpty);
+    expect(changedLocation, '');
+    expect(find.byTooltip('장소 지우기'), findsNothing);
+    expect(find.byTooltip('지도에서 위치 선택'), findsOneWidget);
+  });
+
   testWidgets('location status shows resolved map position', (tester) async {
     await tester.pumpWidget(
       _TestHost(
@@ -327,6 +350,7 @@ class _TestHost extends StatelessWidget {
     this.locationText = '',
     this.locationLat,
     this.locationLng,
+    this.onLocationTextChanged,
     this.recurrence = const RecurrenceSelection(),
     this.initiallyExpandClassification = false,
     this.initiallyExpandDetails = false,
@@ -339,6 +363,7 @@ class _TestHost extends StatelessWidget {
   final String locationText;
   final double? locationLat;
   final double? locationLng;
+  final ValueChanged<String>? onLocationTextChanged;
   final RecurrenceSelection recurrence;
   final bool initiallyExpandClassification;
   final bool initiallyExpandDetails;
@@ -379,6 +404,7 @@ class _TestHost extends StatelessWidget {
             onReminderChanged: (_) {},
             onCriticalChanged: (_) {},
             onStrongAlarmChanged: (_) {},
+            onLocationTextChanged: onLocationTextChanged,
             onLocationPick: () {},
             isSearchingLocation: false,
           ),

@@ -85,15 +85,16 @@ class GptService {
 
     final parsed = _decodeJsonMap(content);
     if (parsed == null) {
-      return _applyCorrectionRulesToParsedSchedule(
-        _fallbackSchedule(
-          rawText: rawText,
-          rawResponse: content,
-        ),
+      final fallback = _fallbackSchedule(
+        rawText: rawText,
+        rawResponse: content,
       );
+      await _validateParsedLocation(fallback);
+      return _applyCorrectionRulesToParsedSchedule(fallback);
     }
 
     final normalized = _normalizeSchedule(parsed, rawText);
+    await _validateParsedLocation(normalized);
     return _applyCorrectionRulesToParsedSchedule(normalized);
   }
 
@@ -232,14 +233,24 @@ class GptService {
         'You are a location name validator for Korean text. '
         'If the input is a real place name (building, landmark, address, region, or business name), '
         'return ONLY the clean place name without any explanation. '
+        'The place name must be a noun-form location only. '
+        'Reject verbs, particles, time words, full sentences, and task descriptions. '
         'If the input is NOT a place name (e.g. a sentence, a task description, or random text), '
         'return exactly the word: null';
     final content = await _requestCompletion(
       systemPrompt: systemPrompt,
       userPrompt: candidate.trim(),
+      model: 'gpt-4o-mini',
+      maxTokens: 20,
+      timeout: const Duration(milliseconds: 700),
     );
     final response = content?.trim();
     if (response == null || response.isEmpty || response == 'null') return null;
+    if (response.toLowerCase() == 'not valid json' ||
+        response.length > 80 ||
+        RegExp(r'[\{\}\[\]":]').hasMatch(response)) {
+      return null;
+    }
     return response;
   }
 
@@ -248,6 +259,9 @@ class GptService {
     required String userPrompt,
     Map<String, dynamic>? responseFormat,
     bool throwOnFailure = false,
+    String? model,
+    int? maxTokens,
+    Duration? timeout,
   }) async {
     final client = _client ?? http.Client();
     try {
@@ -260,7 +274,7 @@ class GptService {
               'Content-Type': 'application/json',
             },
             body: jsonEncode(<String, dynamic>{
-              'model': _model,
+              'model': model ?? _model,
               'messages': <Map<String, String>>[
                 <String, String>{
                   'role': 'system',
@@ -272,9 +286,10 @@ class GptService {
                 },
               ],
               if (responseFormat != null) 'response_format': responseFormat,
+              if (maxTokens != null) 'max_tokens': maxTokens,
             }),
           )
-          .timeout(_completionTimeout);
+          .timeout(timeout ?? _completionTimeout);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         if (throwOnFailure) {
@@ -371,6 +386,18 @@ class GptService {
         client.close();
       }
     }
+  }
+
+  Future<void> _validateParsedLocation(Map<String, dynamic> schedule) async {
+    final location = schedule['location']?.toString().trim();
+    if (location == null || location.isEmpty) {
+      return;
+    }
+    final validatedLocation = await validateLocation(location);
+    if (validatedLocation == null || validatedLocation.trim().isEmpty) {
+      return;
+    }
+    schedule['location'] = validatedLocation.trim();
   }
 
   String _safeBodySnippet(http.Response response) {
@@ -1411,6 +1438,7 @@ For all-day schedules, set is_all_day true. For multi-day schedules such as "5�
 category must be one of "업무", "개인", "건강", "교육", "기타"; infer conservatively and default to "기타".
 Category examples: "병원 진료" and "헬스장" -> "건강"; "세미나 참석" and "강의" -> "교육"; "JW제약 미팅" -> "업무"; "친구 약속" -> "개인".
 Keep date, time, recurrence, and reminder phrases out of title and memo once they are represented as structured fields.
+Remove relative time expressions from title as a whole phrase; do not leave orphan words such as "뒤에", "뒤로", "후에", or "후로" in title.
 Memo is only for an explicit note/description the user wants to keep, and only when the user explicitly says it with phrases like "메모에", "설명에", or "노트로". Do not copy the full raw utterance into memo.
 When the user says "내용은 ..." or "할 일은 ...", treat the following phrase as the schedule content/title source, not as memo.
 Keep people words, names, job titles, and recipient particles in the title. Do not shorten "김태형 PM한테" to "PM한테" or move the person out of the title.
@@ -1427,6 +1455,7 @@ Use Korean user-facing pre_action titles. Examples: "준비물 챙기기", "이�
 Prefer practical offsets: 24 hours for medical/checkup preparation, 12 hours for fasting/medication checks, 2-3 hours for departure or supplies, 1 hour for simple final checks.
 Do not infer medical or fasting pre_actions from place names alone.
 Hospital, clinic, dental, court, and school names are locations unless the user's action/purpose is also clear.
+location must be a noun-form place name only, such as a building, landmark, region, address, business, or institution. Exclude verbs, particles, time words, and full sentences; if no valid place noun exists, return null.
 For hospitals, distinguish medical care, work/meetings, visiting a patient, and unclear purpose. "병원", "병원 방문", "병원 미팅", and "병문안" must not produce medical or fasting pre_actions unless the text also says 진료, 검진, 검사, 수술, 채혈, 치료, 접종, 처방, 내시경, 금식, or another explicit medical action.
 For "병문안" or "문병", add a visit-oriented pre_action such as "꽃이나 선물 챙기기" instead of medical or fasting preparation.
 Fasting/medication pre_actions require explicit fasting-sensitive context such as 내시경, 금식, 마취, 수술, or a medical 검사/검진 context. Do not add them for a generic hospital location.

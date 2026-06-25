@@ -301,17 +301,39 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                     labelText: '장소',
                     helperText: widget.locationHelperText,
                     prefixIcon: const Icon(Icons.place_outlined),
-                    suffixIcon: IconButton(
-                      tooltip: '지도에서 위치 선택',
-                      onPressed: widget.isLookingUpLocation
-                          ? null
-                          : widget.onLocationPick,
-                      icon: widget.isLookingUpLocation
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.map_outlined),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: widget.locationController,
+                          builder: (context, value, _) {
+                            if (value.text.trim().isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return IconButton(
+                              tooltip: '장소 지우기',
+                              onPressed: () {
+                                widget.locationController.clear();
+                                widget.onLocationTextChanged?.call('');
+                              },
+                              icon: const Icon(Icons.clear),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          tooltip: '지도에서 위치 선택',
+                          onPressed: widget.isLookingUpLocation
+                              ? null
+                              : widget.onLocationPick,
+                          icon: widget.isLookingUpLocation
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.map_outlined),
+                        ),
+                      ],
                     ),
                   ),
                 ),
