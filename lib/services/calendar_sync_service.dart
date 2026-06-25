@@ -1,6 +1,5 @@
 import 'dart:developer' as developer;
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -12,13 +11,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/diag_logger.dart';
 import '../core/log_text.dart';
-import '../core/local_time.dart';
 import '../data/models/calendar_connection_model.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/calendar_connection_repository.dart';
 import '../data/repositories/event_repository.dart';
 import 'external_event_import_classifier.dart';
-import 'naver_calendar_permission_service.dart';
 
 enum CalendarProvider { google, naver }
 
@@ -195,14 +192,6 @@ class GoogleCalendarEventEntry {
 typedef GoogleCalendarEventsFetcher = Future<List<GoogleCalendarEventEntry>>
     Function(gcal.CalendarApi api);
 
-typedef NaverCalendarStatusProvider = Future<NaverCalendarPermissionResult>
-    Function();
-
-typedef NaverCalendarAccessTokenProvider = Future<String?> Function();
-
-typedef NaverCalendarStatusSaver = Future<void> Function(
-    NaverCalendarPermissionStatus status);
-
 class CalendarSyncService {
   CalendarSyncService({
     String? googleClientId,
@@ -216,12 +205,6 @@ class CalendarSyncService {
     CalendarConnectionRepository? calendarConnectionRepository,
     GoogleAccessTokenProvider? googleAccessTokenProvider,
     GoogleCalendarEventsFetcher? googleCalendarEventsFetcher,
-    NaverCalendarPermissionService? naverPermissionService,
-    NaverCalendarStatusProvider? naverStatusProvider,
-    NaverCalendarAccessTokenProvider? naverAccessTokenProvider,
-    NaverCalendarStatusSaver? naverStatusSaver,
-    Uri? naverCreateScheduleUri,
-    int naverExportLimit = 50,
     String? currentUserId,
     bool? googlePlatformSupported,
     TargetPlatform? googleTargetPlatform,
@@ -235,13 +218,6 @@ class CalendarSyncService {
         _googleAccessTokenProvider = googleAccessTokenProvider,
         _googleCalendarEventsFetcher =
             googleCalendarEventsFetcher ?? _defaultGoogleCalendarEventsFetcher,
-        _naverPermissionServiceOverride = naverPermissionService,
-        _naverStatusProvider = naverStatusProvider,
-        _naverAccessTokenProvider = naverAccessTokenProvider,
-        _naverStatusSaver = naverStatusSaver,
-        _naverCreateScheduleUri = naverCreateScheduleUri ??
-            Uri.parse('https://openapi.naver.com/calendar/createSchedule.json'),
-        _naverExportLimit = naverExportLimit,
         _currentUserIdOverride = currentUserId,
         _googlePlatformSupportedOverride = googlePlatformSupported,
         _googleTargetPlatformOverride = googleTargetPlatform,
@@ -257,16 +233,9 @@ class CalendarSyncService {
   final CalendarConnectionRepository? _calendarConnectionRepositoryOverride;
   final GoogleAccessTokenProvider? _googleAccessTokenProvider;
   final GoogleCalendarEventsFetcher _googleCalendarEventsFetcher;
-  final NaverCalendarPermissionService? _naverPermissionServiceOverride;
-  final NaverCalendarStatusProvider? _naverStatusProvider;
-  final NaverCalendarAccessTokenProvider? _naverAccessTokenProvider;
-  final NaverCalendarStatusSaver? _naverStatusSaver;
-  final Uri _naverCreateScheduleUri;
-  final int _naverExportLimit;
   final String? _currentUserIdOverride;
 
   GoogleSignIn? _googleSignIn;
-  NaverCalendarPermissionService? _naverPermissionService;
   String? _lastGoogleAccountEmail;
   static const String _googleAuthLogTag = 'PlanFlowGoogleAuth';
 
@@ -372,11 +341,6 @@ class CalendarSyncService {
   CalendarConnectionRepository get _calendarConnectionRepository {
     return _calendarConnectionRepositoryOverride ??
         CalendarConnectionRepository.supabase();
-  }
-
-  NaverCalendarPermissionService get _naverPermissionServiceInstance {
-    return _naverPermissionServiceOverride ??
-        (_naverPermissionService ??= NaverCalendarPermissionService());
   }
 
   Future<CalendarSyncSummary> fetchStatus() async {
@@ -860,7 +824,6 @@ class CalendarSyncService {
       'naver getStatus fetchConnection status=${connection?.status.name ?? "none"} connected=${connection?.isConnected == true} caldavLinked=${connection?.lastSyncedAt != null}',
     );
 
-    // CalDAV 수동 가져오기로 연결된 경우: Open API 체크 불필요
     if (connection != null &&
         connection.isConnected &&
         connection.lastSyncedAt != null) {
@@ -870,216 +833,18 @@ class CalendarSyncService {
       );
     }
 
-    final permission = await _refreshNaverStatus();
-    _logSyncDiag('naver getStatus permission=${permission.status.name}');
-    if (permission.isGranted) {
-      final token = await _resolveNaverAccessToken();
-      _logSyncDiag(
-        'naver getStatus accessToken present=${token?.trim().isNotEmpty == true} length=${_tokenLength(token)}',
-      );
-      if (token == null || token.trim().isEmpty) {
-        await _saveConnection(
-          CalendarProvider.naver,
-          status: CalendarConnectionStatus.reauthRequired,
-          lastError: 'Naver provider token missing',
-        );
-        return CalendarIntegrationResult.signedOut(
-          CalendarProvider.naver,
-          message: 'Naver Calendar 토큰을 확인하지 못했습니다. 네이버 캘린더 권한 동의를 다시 진행해 주세요.',
-        );
-      }
-      await _saveConnection(
-        CalendarProvider.naver,
-        status: CalendarConnectionStatus.connected,
-        accessToken: token,
-        lastError: null,
-      );
-      return CalendarIntegrationResult.ready(
-        CalendarProvider.naver,
-        message: 'Naver Calendar가 현재 PlanFlow 계정에 연결되어 있습니다.',
-      );
-    }
-    if (connection != null &&
-        connection.isConnected &&
-        permission.isNetworkError) {
-      return CalendarIntegrationResult.failed(
-        CalendarProvider.naver,
-        error: permission.error ?? permission.message,
-        message:
-            'Naver Calendar 연결은 저장되어 있지만 현재 권한을 다시 확인하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 동기화해 주세요.',
-      );
-    }
-    if (permission.isDenied ||
-        permission.status == NaverCalendarPermissionStatus.unknown) {
-      // CalDAV로 연결된 경우(lastSyncedAt 있음) Open API 실패로 덮어쓰지 않음
-      if (connection?.lastSyncedAt == null) {
-        await _saveConnection(
-          CalendarProvider.naver,
-          status: CalendarConnectionStatus.reauthRequired,
-          lastError: permission.message,
-        );
-      }
-    }
-    return switch (permission.status) {
-      NaverCalendarPermissionStatus.granted => CalendarIntegrationResult.ready(
-          CalendarProvider.naver,
-          message: 'Naver Calendar 권한을 사용할 수 있습니다.',
-        ),
-      NaverCalendarPermissionStatus.denied =>
-        CalendarIntegrationResult.signedOut(
-          CalendarProvider.naver,
-          message: 'Naver Calendar 권한 동의가 필요합니다. 동의 화면에서 캘린더 일정담기를 체크해 주세요.',
-        ),
-      NaverCalendarPermissionStatus.networkError =>
-        CalendarIntegrationResult.failed(
-          CalendarProvider.naver,
-          error: permission.error ?? permission.message,
-          message: permission.message,
-        ),
-      NaverCalendarPermissionStatus.unknown =>
-        CalendarIntegrationResult.signedOut(
-          CalendarProvider.naver,
-          message: 'Naver Calendar 연결 상태를 확인하려면 네이버 권한 동의가 필요합니다.',
-        ),
-    };
+    return CalendarIntegrationResult.notConfigured(
+      CalendarProvider.naver,
+      message: '네이버 캘린더는 CalDAV 앱 비밀번호로 연결해 주세요.',
+    );
   }
 
   Future<CalendarIntegrationResult> syncNaverCalendar() async {
     _logSyncDiag('naver sync entry');
-    try {
-      final permission = await _refreshNaverStatus();
-      _logSyncDiag('naver sync permission=${permission.status.name}');
-      if (!permission.isGranted) {
-        if (permission.isNetworkError) {
-          return CalendarIntegrationResult.failed(
-            CalendarProvider.naver,
-            error: permission.error ?? permission.message,
-            message: permission.message,
-          );
-        }
-        return CalendarIntegrationResult.signedOut(
-          CalendarProvider.naver,
-          message: 'Naver Calendar 권한이 필요합니다. 네이버 동의 화면에서 캘린더 일정담기를 체크해 주세요.',
-        );
-      }
-
-      final accessToken = await _resolveNaverAccessToken();
-      _logSyncDiag(
-        'naver sync accessToken present=${accessToken?.trim().isNotEmpty == true} length=${_tokenLength(accessToken)}',
-      );
-      if (accessToken == null || accessToken.trim().isEmpty) {
-        await _saveConnection(
-          CalendarProvider.naver,
-          status: CalendarConnectionStatus.reauthRequired,
-          lastError: 'Naver provider token missing',
-        );
-        return CalendarIntegrationResult.signedOut(
-          CalendarProvider.naver,
-          message: 'Naver Calendar 토큰을 확인하지 못했습니다. 네이버 캘린더 권한 동의를 다시 진행해 주세요.',
-        );
-      }
-
-      await _ensureSupabaseSessionForCalendarWrite();
-
-      final events = await _eventsForNaverExport();
-      if (events.isEmpty) {
-        return CalendarIntegrationResult.synced(
-          CalendarProvider.naver,
-          message: 'Naver Calendar로 보낼 예정 일정이 없습니다.',
-        );
-      }
-
-      final client = _httpClientFactory();
-      var syncedItems = 0;
-      try {
-        for (final event in events) {
-          final response = await client.post(
-            _naverCreateScheduleUri,
-            headers: <String, String>{
-              HttpHeaders.authorizationHeader: 'Bearer $accessToken',
-              HttpHeaders.contentTypeHeader:
-                  'application/x-www-form-urlencoded; charset=utf-8',
-            },
-            body: <String, String>{
-              'calendarId': 'defaultCalendarId',
-              'scheduleIcalString': buildNaverScheduleIcal(event),
-            },
-          ).timeout(const Duration(seconds: 10));
-          _logSyncDiag(
-            'naver sync export status=${response.statusCode}',
-          );
-
-          if (response.statusCode == 401 || response.statusCode == 403) {
-            await _saveNaverStatus(NaverCalendarPermissionStatus.denied);
-            throw _NaverCalendarSyncException(
-              'Naver Calendar 권한이 만료되었거나 부족합니다. 다시 권한 동의를 진행해 주세요.',
-              statusCode: response.statusCode,
-              body: response.body,
-            );
-          }
-          if (response.statusCode < 200 || response.statusCode >= 400) {
-            throw _NaverCalendarSyncException(
-              'Naver Calendar 일정 저장에 실패했습니다. 네이버 API 응답을 확인해 주세요.',
-              statusCode: response.statusCode,
-              body: response.body,
-            );
-          }
-          await _markEventSyncedToNaver(event);
-          syncedItems += 1;
-        }
-      } finally {
-        client.close();
-      }
-
-      await _saveConnection(
-        CalendarProvider.naver,
-        status: CalendarConnectionStatus.connected,
-        accessToken: accessToken,
-        lastSyncedAt: DateTime.now().toUtc(),
-      );
-      _logSyncDiag('naver sync saveConnection status=connected');
-
-      return CalendarIntegrationResult.synced(
-        CalendarProvider.naver,
-        message: 'Naver Calendar에 $syncedItems개 일정을 반영했습니다.',
-        syncedItems: syncedItems,
-      );
-    } catch (error, stackTrace) {
-      _logSyncDiag('naver sync failed errorType=${error.runtimeType}');
-      debugPrint('Naver Calendar sync failed: ${logSafeText(error)}');
-      debugPrintStack(stackTrace: stackTrace);
-      return CalendarIntegrationResult.failed(
-        CalendarProvider.naver,
-        error: error,
-        stackTrace: stackTrace,
-        message: error is _NaverCalendarSyncException
-            ? error.message
-            : 'Naver Calendar 동기화에 실패했습니다. 네이버 권한과 네트워크 상태를 확인해 주세요.',
-      );
-    }
-  }
-
-  Future<List<EventModel>> _eventsForNaverExport() async {
-    final now = DateTime.now();
-    final lowerBound = now.subtract(const Duration(days: 1));
-    final events = await _eventRepository.listEvents(userId: _currentUserId());
-    final filtered = events
-        .where((event) => event.startAt != null)
-        .where((event) => !event.startAt!.isBefore(lowerBound))
-        .where((event) => !_isExternalCalendarSource(event.source))
-        .where((event) {
-      if (event.externalCalendarId != 'naver:default') {
-        return true;
-      }
-      final lastSyncedAt = event.lastSyncedAt;
-      final updatedAt = event.updatedAt;
-      if (lastSyncedAt == null || updatedAt == null) {
-        return true;
-      }
-      return updatedAt.toUtc().isAfter(lastSyncedAt.toUtc());
-    }).toList()
-      ..sort((a, b) => a.startAt!.compareTo(b.startAt!));
-    return filtered.take(_naverExportLimit).toList(growable: false);
+    return CalendarIntegrationResult.unsupported(
+      CalendarProvider.naver,
+      message: '네이버 캘린더 동기화는 CalDAV 연결에서만 실행됩니다.',
+    );
   }
 
   Future<CalendarConnectionModel?> _fetchConnection(
@@ -1286,49 +1051,6 @@ class CalendarSyncService {
     return 1;
   }
 
-  Future<void> _markEventSyncedToNaver(EventModel event) async {
-    final now = DateTime.now().toUtc();
-    await _eventRepository.updateEvent(
-      EventModel(
-        id: event.id,
-        userId: event.userId,
-        title: event.title,
-        startAt: event.startAt,
-        endAt: event.endAt,
-        location: event.location,
-        locationLat: event.locationLat,
-        locationLng: event.locationLng,
-        memo: event.memo,
-        supplies: event.supplies,
-        suppliesChecked: event.suppliesChecked,
-        participants: event.participants,
-        targets: event.targets,
-        isCritical: event.isCritical,
-        recurrenceRule: event.recurrenceRule,
-        isAllDay: event.isAllDay,
-        isMultiDay: event.isMultiDay,
-        parentEventId: event.parentEventId,
-        category: event.category,
-        source: event.source,
-        externalId: _naverEventUid(event),
-        externalCalendarId: 'naver:default',
-        externalUpdatedAt: now,
-        lastSyncedAt: now,
-        createdAt: event.createdAt,
-        updatedAt: event.updatedAt,
-      ),
-    );
-  }
-
-  String _naverEventUid(EventModel event) {
-    final id = event.id.trim();
-    if (id.isNotEmpty) {
-      return 'planflow-$id@planflow';
-    }
-    final startAt = event.startAt?.toIso8601String() ?? 'no-start';
-    return 'planflow-${event.userId}-${event.title}-$startAt@planflow';
-  }
-
   @visibleForTesting
   static gcal.Event buildGoogleExportEventForTest(EventModel event) {
     final startAt = event.startAt!;
@@ -1351,30 +1073,6 @@ class CalendarSyncService {
 
   gcal.Event _eventToGoogleEvent(EventModel event) {
     return buildGoogleExportEventForTest(event);
-  }
-
-  Future<NaverCalendarPermissionResult> _refreshNaverStatus() {
-    final provider = _naverStatusProvider;
-    if (provider != null) {
-      return provider();
-    }
-    return _naverPermissionServiceInstance.refreshStatus();
-  }
-
-  Future<String?> _resolveNaverAccessToken() {
-    final provider = _naverAccessTokenProvider;
-    if (provider != null) {
-      return provider();
-    }
-    return _naverPermissionServiceInstance.resolveAccessTokenForCalendar();
-  }
-
-  Future<void> _saveNaverStatus(NaverCalendarPermissionStatus status) {
-    final saver = _naverStatusSaver;
-    if (saver != null) {
-      return saver(status);
-    }
-    return _naverPermissionServiceInstance.saveStatus(status);
   }
 
   String _googleApiFailureMessage(Object error) {
@@ -1962,84 +1660,5 @@ class CalendarSyncService {
     } while (pageToken != null && pageToken.isNotEmpty);
 
     return entries;
-  }
-
-  @visibleForTesting
-  static String buildNaverScheduleIcal(EventModel event) {
-    final startAt = event.startAt;
-    if (startAt == null) {
-      throw ArgumentError.value(event.startAt, 'event.startAt');
-    }
-    final endAt = event.endAt ?? startAt.add(const Duration(minutes: 30));
-    final now = DateTime.now().toUtc();
-    final uid =
-        'planflow-${event.id.trim().isNotEmpty ? event.id.trim() : '${event.userId}-${event.title}-${startAt.toIso8601String()}'}@planflow';
-
-    return [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//PlanFlow//PlanFlow Calendar//KO',
-      'CALSCALE:GREGORIAN',
-      'BEGIN:VEVENT',
-      'UID:${_escapeIcalText(uid)}',
-      'SEQUENCE:0',
-      'CLASS:PUBLIC',
-      'TRANSP:OPAQUE',
-      'SUMMARY:${_escapeIcalText(event.title)}',
-      'DTSTART;TZID=Asia/Seoul:${_formatNaverLocalDateTime(startAt)}',
-      'DTEND;TZID=Asia/Seoul:${_formatNaverLocalDateTime(endAt)}',
-      if ((event.memo ?? '').trim().isNotEmpty)
-        'DESCRIPTION:${_escapeIcalText(event.memo!.trim())}',
-      if ((event.location ?? '').trim().isNotEmpty)
-        'LOCATION:${_escapeIcalText(event.location!.trim())}',
-      'CREATED:${_formatNaverUtcDateTime(event.createdAt ?? now)}',
-      'DTSTAMP:${_formatNaverUtcDateTime(now)}',
-      'LAST-MODIFIED:${_formatNaverUtcDateTime(now)}',
-      'PRIORITY:${event.isCritical ? 1 : 0}',
-      'END:VEVENT',
-      'END:VCALENDAR',
-    ].join('\r\n');
-  }
-
-  static String _formatNaverLocalDateTime(DateTime value) {
-    final local = planflowLocal(value);
-    return '${local.year.toString().padLeft(4, '0')}'
-        '${local.month.toString().padLeft(2, '0')}'
-        '${local.day.toString().padLeft(2, '0')}T'
-        '${local.hour.toString().padLeft(2, '0')}'
-        '${local.minute.toString().padLeft(2, '0')}'
-        '${local.second.toString().padLeft(2, '0')}';
-  }
-
-  static String _formatNaverUtcDateTime(DateTime value) {
-    final utc = value.toUtc();
-    return '${utc.year.toString().padLeft(4, '0')}'
-        '${utc.month.toString().padLeft(2, '0')}'
-        '${utc.day.toString().padLeft(2, '0')}T'
-        '${utc.hour.toString().padLeft(2, '0')}'
-        '${utc.minute.toString().padLeft(2, '0')}'
-        '${utc.second.toString().padLeft(2, '0')}Z';
-  }
-
-  static String _escapeIcalText(String value) {
-    return value
-        .replaceAll(r'\', r'\\')
-        .replaceAll('\n', r'\n')
-        .replaceAll('\r', '')
-        .replaceAll(';', r'\;')
-        .replaceAll(',', r'\,');
-  }
-}
-
-class _NaverCalendarSyncException implements Exception {
-  const _NaverCalendarSyncException(this.message, {this.statusCode, this.body});
-
-  final String message;
-  final int? statusCode;
-  final String? body;
-
-  @override
-  String toString() {
-    return 'NaverCalendarSyncException(statusCode: $statusCode, message: $message, body: $body)';
   }
 }

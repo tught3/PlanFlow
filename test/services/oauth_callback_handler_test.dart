@@ -121,16 +121,16 @@ void main() {
       expect(message, isNot(contains('소셜 동의')));
     });
 
-    test('tracks pending calendar link callbacks', () {
+    test('tracks pending Google calendar link callbacks', () {
       OAuthCallbackHandler.markPendingCalendarLink(
-        PlanFlowOAuthProvider.naver,
+        PlanFlowOAuthProvider.google,
       );
 
       expect(OAuthCallbackHandler.hasPendingCalendarLink(), isTrue);
       expect(OAuthCallbackHandler.hasPendingLogin(), isFalse);
     });
 
-    test('restores pending Naver calendar link callback from storage',
+    test('does not restore Naver calendar link as recoverable token callback',
         () async {
       OAuthCallbackHandler.markPendingCalendarLink(
         PlanFlowOAuthProvider.naver,
@@ -141,7 +141,7 @@ void main() {
       expect(
         await OAuthCallbackHandler
             .hasRecoverableNaverCalendarLinkCallbackForTest(),
-        isTrue,
+        isFalse,
       );
     });
 
@@ -153,30 +153,6 @@ void main() {
           hasPendingCalendarLink: true,
         ),
         isTrue,
-      );
-    });
-
-    test('trusts provider token only for Naver calendar link callback', () {
-      expect(
-        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
-          pendingPurpose: OAuthCallbackPurpose.calendarLink,
-          pendingMethod: 'naver',
-        ),
-        isTrue,
-      );
-      expect(
-        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
-          pendingPurpose: OAuthCallbackPurpose.login,
-          pendingMethod: 'naver',
-        ),
-        isFalse,
-      );
-      expect(
-        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
-          pendingPurpose: OAuthCallbackPurpose.calendarLink,
-          pendingMethod: 'google',
-        ),
-        isFalse,
       );
     });
 

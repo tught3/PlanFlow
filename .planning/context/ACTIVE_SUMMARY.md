@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-25 TASK_20260623_055552_03 Naver OpenAPI/OAuth 캘린더 import 제거
+- 네이버 캘린더 OpenAPI/OAuth import/export 경로를 제거하고, `CalendarSyncService`의 Naver 분기는 CalDAV 안내용 상태/unsupported 결과만 반환하도록 정리했다.
+- `naver_calendar_permission_service.dart`와 테스트를 삭제했고, auth/callback/auth_provider/settings/user_settings 경로에서 `naver_calendar_token`, `email,calendar`, provider token 저장 흐름을 제거했다. 네이버 로그인 OAuth는 `email` scope로 유지한다.
+- 검증: `flutter analyze --no-pub`, 변경 영향 테스트 77개(`auth_service`, `oauth_callback_handler`, `calendar_sync_service`, `calendar_auto_sync_service`, `settings_screen`, user_settings/settings repo, CalDAV credential, ICS import) 통과. `naver_caldav_service_test` 전체는 기존 기대값 계열 2건 실패가 남았고, guarded release APK 빌드는 `android/key.properties` 누락으로 실패했다.
+
 ## 2026-06-25 TASK_20260623_055549_03 Naver 캘린더 토큰 저장 세션 검증
 - `oauth_callback_handler.dart`의 Naver calendar-link 콜백에서 기존 구현의 동일 사용자 세션 검증 흐름을 재대조했고, 사양과 맞지 않던 DiagLogger 키 `restoreCheck`/`persistTarget`을 `restore-check`/`persist-target`으로 정규화했다.
 - `googleUserId` 사전 캡처, exchange try 내부 문자열 추출만 수행, 복원 세션 `restoredUserId == googleUserId` 및 non-empty token 조건 저장, 일반 OAuth/Google sync 경로 불변을 별도 리뷰어가 PASS로 확인했다.

@@ -14,7 +14,6 @@ import '../core/router.dart';
 import '../providers/auth_provider.dart';
 import 'auth_service.dart';
 import 'calendar_sync_service.dart';
-import 'naver_calendar_permission_service.dart';
 
 enum OAuthCallbackPurpose {
   login,
@@ -36,7 +35,6 @@ class OAuthCallbackHandler {
   static const _storedPendingStartedAtKey = 'oauth_callback_pending_started_at';
   static const _naverCalendarLogTag = 'PlanFlowNaverCalendar';
   static const _diagAuthTag = 'NAVER_AUTH';
-  static const _diagTokenTag = 'NAVER_TOKEN';
 
   final AppLinks _appLinks;
   StreamSubscription<Uri>? _subscription;
@@ -48,14 +46,6 @@ class OAuthCallbackHandler {
 
   static void _diagAuth(String message) {
     DiagLogger.log(_diagAuthTag, logSafeText(message));
-  }
-
-  static void _diagToken(String message) {
-    DiagLogger.log(_diagTokenTag, logSafeText(message));
-  }
-
-  static String _tokenDiagnostic(String? token) {
-    return DiagLogger.describeToken(token);
   }
 
   static String _safeUriSummary(Uri uri) {
@@ -280,11 +270,8 @@ class OAuthCallbackHandler {
 
   @visibleForTesting
   static Future<bool> hasRecoverableNaverCalendarLinkCallbackForTest() async {
-    final pending = await _resolvePendingCallback();
-    return shouldTrustProviderTokenForNaverCalendarLink(
-      pendingPurpose: pending?.purpose,
-      pendingMethod: pending?.method,
-    );
+    await _resolvePendingCallback();
+    return false;
   }
 
   static Future<_StoredOAuthPending?> _resolvePendingCallback() async {
@@ -382,15 +369,6 @@ class OAuthCallbackHandler {
     );
     final pendingPurpose = resolvedPending?.purpose;
     final pendingMethod = resolvedPending?.method;
-    final isPendingNaverCalendarLink =
-        shouldTrustProviderTokenForNaverCalendarLink(
-      pendingPurpose: pendingPurpose,
-      pendingMethod: pendingMethod,
-    );
-    _diagAuth(
-      'pendingNaverCalendarLink=$isPendingNaverCalendarLink '
-      'allowWithoutNaverIdentity=$isPendingNaverCalendarLink',
-    );
     final normalizedUri = _normalizeAuthCallbackUri(uri);
     final isPasswordRecovery = isPasswordRecoveryCallback(normalizedUri);
     final isEmailConfirmation = isEmailConfirmationCallback(normalizedUri) ||
@@ -407,7 +385,6 @@ class OAuthCallbackHandler {
         'handleUri observed original=${_safeUriSummary(uri)} '
         'normalized=${_safeUriSummary(normalizedUri)} '
         'pendingPurpose=$pendingPurpose pendingMethod=$pendingMethod '
-        'trustProviderToken=$isPendingNaverCalendarLink '
         'passwordRecovery=$isPasswordRecovery '
         'emailConfirmation=$isEmailConfirmation',
       );
@@ -482,25 +459,10 @@ class OAuthCallbackHandler {
     if (!shouldExchangeCallback) {
       debugPrint('OAuth callback already produced a Supabase session.');
       if (pendingMethod == 'naver') {
-        _logNaverCalendar('no exchange path: capture provider token');
-      }
-      // getLinkIdentityUrl 콜백: URL fragment에서 직접 provider_token 추출
-      final urlProviderToken = isPendingNaverCalendarLink
-          ? normalizedUri.queryParameters['provider_token']
-          : null;
-      if (isPendingNaverCalendarLink) {
-        _diagToken(
-          'noExchange urlProviderToken ${_tokenDiagnostic(urlProviderToken)}',
-        );
         _logNaverCalendar(
-          'no exchange path: urlProviderToken present='
-          '${urlProviderToken?.trim().isNotEmpty == true}',
+          'no exchange path: existing Supabase session retained',
         );
       }
-      await _captureNaverProviderTokenIfAny(
-        explicitProviderToken: urlProviderToken,
-        allowWithoutNaverIdentity: isPendingNaverCalendarLink,
-      );
       final signedIn = await _syncAndRouteHome();
       if (signedIn) {
         if (isEmailConfirmation) {
@@ -509,122 +471,6 @@ class OAuthCallbackHandler {
         } else {
           await _logPendingLoginIfNeeded();
         }
-      } else {
-        clearPendingCallback();
-      }
-      return;
-    }
-
-    // Naver 캘린더 연동 콜백: PKCE code는 교환하되 기존 Google 세션은 복원한다.
-    if (isPendingNaverCalendarLink) {
-      final previousSession = client.auth.currentSession;
-      final googleUserId = previousSession?.user.id;
-      final rawAuthCode = normalizedUri.queryParameters['code'];
-      final authCode = rawAuthCode?.trim();
-      _diagAuth(
-        'naver preExchange previousSessionPresent=${previousSession != null} '
-        'previousUserPresent=${googleUserId?.isNotEmpty == true} '
-        'currentUserPresent=${client.auth.currentUser != null} '
-        'codePresent=${authCode?.isNotEmpty == true}',
-      );
-      _logNaverCalendar(
-        'exchange path: using PKCE code exchange and restoring previous session '
-        'previousSessionPresent=${previousSession != null}',
-      );
-      if (authCode == null || authCode.isEmpty) {
-        _logNaverCalendar('exchange path: missing auth code in callback url');
-        clearPendingCallback();
-        latestUserMessage.value =
-            '네이버 권한 동의는 열렸지만 인증 코드가 전달되지 않았습니다. 다시 시도해 주세요.';
-        return;
-      }
-      final normalizedAuthCode = authCode;
-      String? naverProviderToken;
-
-      try {
-        final response = await client.auth.exchangeCodeForSession(
-          normalizedAuthCode,
-        );
-        naverProviderToken = response.session.providerToken?.trim();
-        _diagToken(
-          'naver postExchange ${_tokenDiagnostic(naverProviderToken)} '
-          'sessionPresent=${response.session.accessToken.trim().isNotEmpty} '
-          'userPresent=${response.session.user.id.trim().isNotEmpty}',
-        );
-        _logNaverCalendar(
-          'exchange path: code exchange completed '
-          'providerTokenPresent='
-          '${naverProviderToken?.isNotEmpty == true}',
-        );
-      } finally {
-        if (previousSession != null) {
-          try {
-            final previousRefreshToken = previousSession.refreshToken?.trim();
-            if (previousRefreshToken == null || previousRefreshToken.isEmpty) {
-              _diagAuth(
-                'naver previous session restore skipped reason=missing_refresh_token',
-              );
-              _logNaverCalendar(
-                'exchange path: previous session restore skipped reason=missing_refresh_token',
-              );
-            } else {
-              await client.auth.setSession(
-                previousRefreshToken,
-                accessToken: previousSession.accessToken,
-              );
-              _diagAuth(
-                'naver previous session restored userPresent=true',
-              );
-              _logNaverCalendar(
-                'exchange path: previous session restored user=${previousSession.user.id}',
-              );
-            }
-          } catch (error, stackTrace) {
-            _diagAuth(
-              'naver previous session restore failed '
-              'type=${error.runtimeType} error=${logSafeText(error)}',
-            );
-            _logNaverCalendar(
-              'exchange path: previous session restore failed '
-              'type=${error.runtimeType} error=${logSafeText(error)}',
-            );
-            debugPrintStack(stackTrace: stackTrace);
-          }
-        }
-      }
-      final restoredUserId = client.auth.currentSession?.user.id;
-      final restoredMatchesGoogle =
-          restoredUserId != null && restoredUserId == googleUserId;
-      _diagAuth(
-        'naver restore-check restoredUserPresent='
-        '${restoredUserId?.isNotEmpty == true} '
-        'previousUserPresent=${googleUserId?.isNotEmpty == true} '
-        'match=$restoredMatchesGoogle',
-      );
-      if (restoredMatchesGoogle &&
-          naverProviderToken != null &&
-          naverProviderToken.isNotEmpty) {
-        _diagToken(
-          'naver persist-target willPersist=true userPresent=true '
-          'allowWithoutNaverIdentity=true ${_tokenDiagnostic(naverProviderToken)}',
-        );
-        await _captureNaverProviderTokenIfAny(
-          explicitProviderToken: naverProviderToken,
-          allowWithoutNaverIdentity: true,
-        );
-      } else {
-        final skipReason = restoredUserId == null
-            ? 'no_restored_session'
-            : (!restoredMatchesGoogle ? 'user_mismatch' : 'empty_token');
-        _diagToken(
-          'naver persist-target skipped reason=$skipReason '
-          'userPresent=${restoredUserId?.isNotEmpty == true} '
-          'allowWithoutNaverIdentity=true ${_tokenDiagnostic(naverProviderToken)}',
-        );
-      }
-      final signedIn = await _syncAndRouteHome();
-      if (signedIn) {
-        await _logPendingLoginIfNeeded();
       } else {
         clearPendingCallback();
       }
@@ -642,14 +488,9 @@ class OAuthCallbackHandler {
       if (pendingMethod == 'naver') {
         debugPrint(
           '[PlanFlowNaverCalendar] oauth callback exchange completed '
-          'providerTokenPresent='
-          '${response.session.providerToken?.trim().isNotEmpty == true}',
+          'user=${response.session.user.id}',
         );
       }
-      await _captureNaverProviderTokenIfAny(
-        explicitProviderToken: response.session.providerToken,
-        allowWithoutNaverIdentity: isPendingNaverCalendarLink,
-      );
       // Google 로그인 시 Google Calendar interactive sync
       final loginSession = client.auth.currentSession;
       final loginProvider =
@@ -845,60 +686,6 @@ class OAuthCallbackHandler {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     return AppEnv.isSupabaseReady;
-  }
-
-  Future<void> _captureNaverProviderTokenIfAny({
-    String? explicitProviderToken,
-    bool allowWithoutNaverIdentity = false,
-  }) async {
-    try {
-      _diagToken(
-        'captureToken start source='
-        '${explicitProviderToken?.trim().isNotEmpty == true ? 'explicit' : 'session'} '
-        'allowWithoutNaverIdentity=$allowWithoutNaverIdentity '
-        '${_tokenDiagnostic(explicitProviderToken)}',
-      );
-      _logNaverCalendar(
-        'provider token capture start '
-        'explicitTokenPresent=${explicitProviderToken?.trim().isNotEmpty == true} '
-        'allowWithoutNaverIdentity=$allowWithoutNaverIdentity',
-      );
-      final permissionService = NaverCalendarPermissionService();
-      final token = explicitProviderToken?.trim();
-      if (token != null && token.isNotEmpty) {
-        final saved = await permissionService.captureProviderToken(
-          token,
-          allowWithoutNaverIdentity: allowWithoutNaverIdentity,
-        );
-        _diagToken('captureToken completed source=explicit saved=$saved');
-        _logNaverCalendar('provider token capture completed source=explicit');
-        return;
-      }
-      final saved = await permissionService.captureCurrentProviderToken(
-        allowWithoutNaverIdentity: allowWithoutNaverIdentity,
-      );
-      _diagToken('captureToken completed source=session saved=$saved');
-      _logNaverCalendar('provider token capture completed source=session');
-    } catch (error, stackTrace) {
-      _diagToken(
-        'captureToken exception type=${error.runtimeType} '
-        'error=${logSafeText(error)}',
-      );
-      _logNaverCalendar(
-        'provider token capture skipped type=${error.runtimeType} '
-        'error=${logSafeText(error)}',
-      );
-      debugPrintStack(stackTrace: stackTrace);
-    }
-  }
-
-  @visibleForTesting
-  static bool shouldTrustProviderTokenForNaverCalendarLink({
-    required OAuthCallbackPurpose? pendingPurpose,
-    required String? pendingMethod,
-  }) {
-    return pendingPurpose == OAuthCallbackPurpose.calendarLink &&
-        pendingMethod == 'naver';
   }
 
   @visibleForTesting

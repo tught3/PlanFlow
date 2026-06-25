@@ -19,13 +19,14 @@ void main() {
       );
     });
 
-    test('Naver calendar connection requests calendar consent scope', () {
+    test('Naver calendar connection no longer requests calendar consent scope',
+        () {
       expect(
         AuthService.oauthScopesFor(
           PlanFlowOAuthProvider.naver,
           forCalendar: true,
         ),
-        'email,calendar',
+        'email',
       );
     });
 

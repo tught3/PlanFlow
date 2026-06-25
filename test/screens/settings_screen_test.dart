@@ -17,7 +17,6 @@ import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
-import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1036,16 +1035,7 @@ class _FakeCalendarSyncService extends CalendarSyncService {
   _FakeCalendarSyncService({
     required this.summary,
     this.googleSyncResult,
-  }) : super(
-          naverStatusProvider: () async {
-            return const NaverCalendarPermissionResult(
-              status: NaverCalendarPermissionStatus.unknown,
-              message: '테스트 권한 상태',
-            );
-          },
-          naverAccessTokenProvider: () async => null,
-          naverStatusSaver: (_) async {},
-        );
+  }) : super();
 
   final CalendarSyncSummary summary;
   final CalendarIntegrationResult? googleSyncResult;

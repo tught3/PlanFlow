@@ -18,7 +18,6 @@ class UserSettingsModel {
     this.localeCode = 'ko-KR',
     this.timeZoneId = 'Asia/Seoul',
     this.googleCalendarToken,
-    this.naverCalendarToken,
     this.createdAt,
   });
 
@@ -78,7 +77,6 @@ class UserSettingsModel {
         _countryCodeValue(json['country_code']),
       ),
       googleCalendarToken: json['google_calendar_token'] as String?,
-      naverCalendarToken: json['naver_calendar_token'] as String?,
       createdAt: _dateTimeValue(json['created_at']),
     );
   }
@@ -101,7 +99,6 @@ class UserSettingsModel {
   final String localeCode;
   final String timeZoneId;
   final String? googleCalendarToken;
-  final String? naverCalendarToken;
   final DateTime? createdAt;
 
   UserSettingsModel copyWith({
@@ -123,10 +120,8 @@ class UserSettingsModel {
     String? localeCode,
     String? timeZoneId,
     String? googleCalendarToken,
-    String? naverCalendarToken,
     DateTime? createdAt,
     bool clearGoogleCalendarToken = false,
-    bool clearNaverCalendarToken = false,
     bool clearCreatedAt = false,
   }) {
     return UserSettingsModel(
@@ -153,9 +148,6 @@ class UserSettingsModel {
       googleCalendarToken: clearGoogleCalendarToken
           ? null
           : googleCalendarToken ?? this.googleCalendarToken,
-      naverCalendarToken: clearNaverCalendarToken
-          ? null
-          : naverCalendarToken ?? this.naverCalendarToken,
       createdAt: clearCreatedAt ? null : createdAt ?? this.createdAt,
     );
   }
@@ -181,7 +173,6 @@ class UserSettingsModel {
       'locale_code': localeCode,
       'time_zone_id': timeZoneId,
       'google_calendar_token': googleCalendarToken,
-      'naver_calendar_token': naverCalendarToken,
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
     };
   }

@@ -1561,8 +1561,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     return confirmed == true;
   }
 
-  // Legacy CalDAV 앱 비밀번호 다이얼로그 — Open API 전환 후 미사용.
-  // OAuth 연결이 열리지 않거나 권한 확인이 끝나지 않을 때 CalDAV 직접 연결로 전환한다.
+  // Naver Calendar import는 CalDAV 앱 비밀번호 방식만 사용한다.
   Future<_NaverCalDavCredentials?> _showNaverCalDavDialog({
     String? initialNaverId,
   }) {
@@ -2076,8 +2075,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<UserSettingsModel> _settingsForSave(String userId) async {
     var current = _savedSettings ?? UserSettingsModel.defaults(userId: userId);
-    if (current.googleCalendarToken != null &&
-        current.naverCalendarToken != null) {
+    if (current.googleCalendarToken != null) {
       return current;
     }
 
@@ -2089,8 +2087,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       current = current.copyWith(
         googleCalendarToken:
             current.googleCalendarToken ?? latest.googleCalendarToken,
-        naverCalendarToken:
-            current.naverCalendarToken ?? latest.naverCalendarToken,
       );
     } catch (error, stackTrace) {
       debugPrint(

@@ -12,209 +12,50 @@ import 'package:planflow/data/models/calendar_connection_model.dart';
 import 'package:planflow/data/repositories/calendar_connection_repository.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
-import 'package:planflow/services/naver_calendar_permission_service.dart';
 
 void main() {
   group('CalendarSyncService', () {
     test('returns setup states without requiring provider credentials',
         () async {
-      final service = CalendarSyncService(
-        naverStatusProvider: () async {
-          return const NaverCalendarPermissionResult(
-            status: NaverCalendarPermissionStatus.unknown,
-            message: '네이버 권한 확인 필요',
-          );
-        },
-      );
+      final service = CalendarSyncService();
 
       final status = await service.fetchStatus();
 
       expect(status.google.status, CalendarIntegrationStatus.notConfigured);
       expect(status.google.provider, CalendarProvider.google);
-      expect(status.naver.status, CalendarIntegrationStatus.signedOut);
+      expect(status.naver.status, CalendarIntegrationStatus.notConfigured);
       expect(status.naver.provider, CalendarProvider.naver);
     });
 
-    test('exports upcoming PlanFlow events to Naver Calendar', () async {
-      final requests = <http.Request>[];
-      final event = EventModel(
-        id: 'event-1',
-        userId: 'user-1',
-        title: '한강 피크닉',
-        startAt: DateTime.now().add(const Duration(hours: 2)),
-        endAt: DateTime.now().add(const Duration(hours: 3)),
-        location: '한강',
-        memo: '돗자리 챙기기',
-      );
-
-      final service = CalendarSyncService(
-        currentUserId: 'user-1',
-        eventRepository: _FakeEventRepository(events: <EventModel>[event]),
-        naverStatusProvider: () async {
-          return const NaverCalendarPermissionResult(
-            status: NaverCalendarPermissionStatus.granted,
-            message: '권한 확인',
-          );
-        },
-        naverAccessTokenProvider: () async => 'naver-token',
-        naverStatusSaver: (_) async {},
-        httpClientFactory: () => MockClient((request) async {
-          requests.add(request);
-          return http.Response('{"result":"ok"}', 200);
-        }),
-      );
-
-      final result = await service.syncNaverCalendar();
-
-      expect(result.status, CalendarIntegrationStatus.synced);
-      expect(result.syncedItems, 1);
-      expect(requests, hasLength(1));
-      expect(requests.single.url.toString(),
-          'https://openapi.naver.com/calendar/createSchedule.json');
-      expect(requests.single.headers['authorization'], 'Bearer naver-token');
-      expect(requests.single.bodyFields['calendarId'], 'defaultCalendarId');
-      expect(
-        requests.single.bodyFields['scheduleIcalString'],
-        contains('SUMMARY:한강 피크닉'),
-      );
-      expect(
-        requests.single.bodyFields['scheduleIcalString'],
-        contains('UID:planflow-event-1@planflow'),
-      );
-    });
-
-    test('does not re-export imported external rows to Naver Calendar',
-        () async {
-      final requests = <http.Request>[];
-      final service = CalendarSyncService(
-        currentUserId: 'user-1',
-        eventRepository: _FakeEventRepository(events: <EventModel>[
-          EventModel(
-            id: 'google-1',
-            userId: 'user-1',
-            title: '구글에서 온 일정',
-            startAt: DateTime.now().add(const Duration(hours: 2)),
-            source: 'google',
-          ),
-          EventModel(
-            id: 'naver-caldav-1',
-            userId: 'user-1',
-            title: '네이버에서 온 일정',
-            startAt: DateTime.now().add(const Duration(hours: 3)),
-            source: 'naver_caldav',
-          ),
-          EventModel(
-            id: 'device-1',
-            userId: 'user-1',
-            title: '휴대폰 캘린더에서 온 일정',
-            startAt: DateTime.now().add(const Duration(hours: 4)),
-            source: 'naver_device',
-          ),
-        ]),
-        naverStatusProvider: () async {
-          return const NaverCalendarPermissionResult(
-            status: NaverCalendarPermissionStatus.granted,
-            message: '권한 확인',
-          );
-        },
-        naverAccessTokenProvider: () async => 'naver-token',
-        naverStatusSaver: (_) async {},
-        httpClientFactory: () => MockClient((request) async {
-          requests.add(request);
-          return http.Response('{"result":"ok"}', 200);
-        }),
-      );
-
-      final result = await service.syncNaverCalendar();
-
-      expect(result.status, CalendarIntegrationStatus.synced);
-      expect(result.syncedItems, 0);
-      expect(requests, isEmpty);
-    });
-
-    test('does not call Naver API when calendar permission is missing',
-        () async {
-      var requestCount = 0;
+    test('Naver sync is unsupported in CalendarSyncService', () async {
       final service = CalendarSyncService(
         currentUserId: 'user-1',
         eventRepository: _FakeEventRepository(events: const <EventModel>[]),
-        naverStatusProvider: () async {
-          return const NaverCalendarPermissionResult(
-            status: NaverCalendarPermissionStatus.denied,
-            message: '권한 없음',
-          );
-        },
-        httpClientFactory: () => MockClient((request) async {
-          requestCount += 1;
-          return http.Response('{"result":"ok"}', 200);
-        }),
       );
 
       final result = await service.syncNaverCalendar();
 
-      expect(result.status, CalendarIntegrationStatus.signedOut);
-      expect(requestCount, 0);
+      expect(result.status, CalendarIntegrationStatus.unsupported);
+      expect(result.message, contains('CalDAV'));
     });
 
-    test('requires Naver re-consent when provider token is missing', () async {
-      final connectionRepository = _FakeCalendarConnectionRepository();
+    test('Naver status reports ready only for CalDAV connection', () async {
       final service = CalendarSyncService(
         currentUserId: 'user-1',
-        calendarConnectionRepository: connectionRepository,
-        naverStatusProvider: () async {
-          return const NaverCalendarPermissionResult(
-            status: NaverCalendarPermissionStatus.granted,
-            message: '권한 확인',
-          );
-        },
-        naverAccessTokenProvider: () async => null,
-        naverStatusSaver: (_) async {},
+        calendarConnectionRepository: _FakeCalendarConnectionRepository(
+          initial: CalendarConnectionModel(
+            userId: 'user-1',
+            provider: 'naver',
+            status: CalendarConnectionStatus.connected,
+            lastSyncedAt: DateTime.utc(2026, 5, 1),
+          ),
+        ),
       );
 
       final result = await service.getNaverStatus();
 
-      expect(result.status, CalendarIntegrationStatus.signedOut);
-      expect(result.message, contains('토큰'));
-      expect(
-        connectionRepository.connection?.status,
-        CalendarConnectionStatus.reauthRequired,
-      );
-      expect(
-        connectionRepository.connection?.lastError,
-        'Naver provider token missing',
-      );
-    });
-
-    test('builds an iCalendar payload for Naver createSchedule', () {
-      final event = EventModel(
-        id: 'event-1',
-        userId: 'user-1',
-        title: '회의, 준비',
-        startAt: DateTime.utc(2026, 5, 5, 1),
-        location: '서울;강남',
-      );
-
-      final ical = CalendarSyncService.buildNaverScheduleIcal(event);
-
-      expect(ical, contains('BEGIN:VCALENDAR'));
-      expect(ical, contains(r'SUMMARY:회의\, 준비'));
-      expect(ical, contains(r'LOCATION:서울\;강남'));
-      expect(ical, contains('END:VCALENDAR'));
-    });
-
-    test('Naver iCalendar payload stays VALARM-free', () {
-      final ical = CalendarSyncService.buildNaverScheduleIcal(
-        EventModel(
-          id: 'event-1',
-          userId: 'user-1',
-          title: '외부 앱 알림 없이 보낼 일정',
-          startAt: DateTime.utc(2026, 5, 5, 1),
-          isCritical: true,
-        ),
-      );
-
-      expect(ical, isNot(contains('BEGIN:VALARM')));
-      expect(ical, isNot(contains('TRIGGER')));
+      expect(result.status, CalendarIntegrationStatus.ready);
+      expect(result.message, contains('CalDAV'));
     });
 
     test('does not call Google sign-in on unsupported platforms', () async {
@@ -269,7 +110,7 @@ void main() {
 
       expect(status.status, CalendarIntegrationStatus.ready);
       expect(status.message, contains('연결'));
-      expect(googleSignIn.signInSilentCallCount, 1);
+      expect(googleSignIn.signInSilentCallCount, 2);
     });
 
     test(
@@ -306,7 +147,7 @@ void main() {
       expect(googleSignIn.signInCallCount, 1);
     });
 
-    test('non-interactive Google sync marks connection reauth on token miss',
+    test('non-interactive Google sync keeps existing connection on token miss',
         () async {
       final connectionRepository = _FakeCalendarConnectionRepository(
         initial: const CalendarConnectionModel(
@@ -327,9 +168,9 @@ void main() {
 
       final result = await service.syncGoogleCalendar(interactive: false);
 
-      expect(result.status, CalendarIntegrationStatus.reauthRequired);
+      expect(result.status, CalendarIntegrationStatus.ready);
       expect(connectionRepository.connection?.status,
-          CalendarConnectionStatus.reauthRequired);
+          CalendarConnectionStatus.connected);
       expect(connectionRepository.connection?.providerAccountEmail,
           'user@example.com');
     });

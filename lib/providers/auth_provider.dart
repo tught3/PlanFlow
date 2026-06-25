@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/env.dart';
 import '../core/supabase_auth_options.dart';
 import '../services/auth_service.dart';
-import '../services/naver_calendar_permission_service.dart';
 
 final AuthProvider authProvider = AuthProvider();
 
@@ -129,11 +128,6 @@ class AuthProvider extends ChangeNotifier {
         'user=${authState.session?.user.id ?? '<none>'}',
       );
       _isPasswordRecovery = authState.event == AuthChangeEvent.passwordRecovery;
-      if (authState.session != null) {
-        unawaited(
-          NaverCalendarPermissionService().captureCurrentProviderToken(),
-        );
-      }
       if (authState.event == AuthChangeEvent.signedOut &&
           authState.session == null &&
           !PlanFlowAuthLocalStorage.isSessionRemovalAllowed &&
@@ -214,9 +208,6 @@ class AuthProvider extends ChangeNotifier {
     final snapshotUser = snapshotSession?.user ?? service.currentUser;
     final hadAccountSnapshot = hasAccountSnapshot;
     _setSessionStatus(AuthSessionStatus.recovering);
-    unawaited(
-      NaverCalendarPermissionService().captureCurrentProviderToken(),
-    );
     try {
       await _refreshSessionOnce(service);
     } catch (error) {

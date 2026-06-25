@@ -21,7 +21,6 @@ void main() {
         'voice_common_learning_opt_in': true,
         'preferred_map_provider': 'google',
         'google_calendar_token': 'google-token',
-        'naver_calendar_token': 'naver-token',
         'created_at': '2026-05-02T00:00:00Z',
       },
     );
@@ -45,7 +44,6 @@ void main() {
     expect(settings.voiceCommonLearningOptIn, isTrue);
     expect(settings.preferredMapProvider, 'google');
     expect(settings.googleCalendarToken, 'google-token');
-    expect(settings.naverCalendarToken, 'naver-token');
     expect(settings.createdAt, DateTime.parse('2026-05-02T00:00:00Z'));
     expect(gateway.fetchUserIds.single, 'user-1');
   });

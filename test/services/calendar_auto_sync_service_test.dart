@@ -10,7 +10,6 @@ import 'package:planflow/services/event_preparation_service.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/manual_event_side_effect_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
-import 'package:planflow/services/naver_calendar_permission_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -547,16 +546,7 @@ class _FakeCalendarSyncService extends CalendarSyncService {
     required this.naverResult,
   })  : _googleResults = null,
         _naverResults = null,
-        super(
-          naverStatusProvider: () async {
-            return const NaverCalendarPermissionResult(
-              status: NaverCalendarPermissionStatus.granted,
-              message: '테스트 권한 상태',
-            );
-          },
-          naverAccessTokenProvider: () async => 'naver-token',
-          naverStatusSaver: (_) async {},
-        );
+        super();
 
   _FakeCalendarSyncService.sequence({
     required List<CalendarIntegrationResult> googleResults,
@@ -565,16 +555,7 @@ class _FakeCalendarSyncService extends CalendarSyncService {
         naverResult = naverResults.last,
         _googleResults = googleResults,
         _naverResults = naverResults,
-        super(
-          naverStatusProvider: () async {
-            return const NaverCalendarPermissionResult(
-              status: NaverCalendarPermissionStatus.granted,
-              message: '테스트 권한 상태',
-            );
-          },
-          naverAccessTokenProvider: () async => 'naver-token',
-          naverStatusSaver: (_) async {},
-        );
+        super();
 
   final CalendarIntegrationResult googleResult;
   final CalendarIntegrationResult naverResult;

@@ -19,7 +19,6 @@ void main() {
       preferredMapProvider: 'google',
       departureSafetyMarginMin: 20,
       googleCalendarToken: 'google-token',
-      naverCalendarToken: 'naver-token',
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
     );
 
@@ -48,7 +47,6 @@ void main() {
     expect(restored.preferredMapProvider, 'google');
     expect(restored.toJson()['preferred_map_provider'], 'google');
     expect(restored.googleCalendarToken, model.googleCalendarToken);
-    expect(restored.naverCalendarToken, model.naverCalendarToken);
     expect(restored.createdAt, model.createdAt);
   });
 
