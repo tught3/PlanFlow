@@ -6,13 +6,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:planflow/l10n/app_localizations.dart';
 
 import 'core/constants.dart';
 import 'core/env.dart';
 import 'core/region_settings.dart';
 import 'core/router.dart';
+import 'core/safe_prefs.dart';
 import 'core/startup_route_gate.dart';
 import 'core/theme.dart';
 import 'data/repositories/settings_repository.dart';
@@ -144,7 +144,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   Future<void> _scheduleBetaSurveyReminderIfNeeded() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await tryGetPrefs();
+    if (prefs == null) return;
     final completed = prefs.getBool('beta_survey_completed') ?? false;
     if (completed) return;
     await _notificationService.scheduleBetaSurveyReminder();
@@ -260,7 +261,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   Future<String?> _loadPendingUpdateRestoreRoute() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await tryGetPrefs();
+    if (prefs == null) return null;
     final value = prefs.getString(_pendingUpdateRestoreRouteKey)?.trim();
     if (value == null || value.isEmpty) {
       return null;
@@ -269,12 +271,14 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   Future<void> _savePendingUpdateRestoreRoute(String route) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await tryGetPrefs();
+    if (prefs == null) return;
     await prefs.setString(_pendingUpdateRestoreRouteKey, route);
   }
 
   Future<void> _clearPendingUpdateRestoreRoute() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await tryGetPrefs();
+    if (prefs == null) return;
     await prefs.remove(_pendingUpdateRestoreRouteKey);
   }
 

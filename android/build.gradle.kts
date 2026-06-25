@@ -5,7 +5,9 @@ allprojects {
     }
 
     configurations.configureEach {
-        resolutionStrategy.force("androidx.glance:glance-appwidget:1.0.0")
+        // 1.0.0은 위젯 리스트 트램폴린이 target intent 없이 호출될 때
+        // IllegalArgumentException으로 크래시하는 버그가 있어 1.1.0으로 상향.
+        resolutionStrategy.force("androidx.glance:glance-appwidget:1.1.0")
     }
 }
 

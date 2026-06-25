@@ -63,6 +63,11 @@
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
+            <!-- Flutter 자동 딥링크 라우팅 비활성화: planflow:// 커스텀 스킴은 app_links가 전담 처리.
+                 켜두면 raw planflow:// URI가 go_router parser로 유입돼 .origin 호출 시 크래시. -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
