@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-25 TASK_20260622_053439 반복일정 수정 범위 다이얼로그 버튼 배치
+- `event_edit_screen.dart`의 반복 일정 수정 범위 선택 다이얼로그에서 actions 영역을 2단 `Column` 구조에서 3버튼 `Wrap` 구조로 변경했다.
+- X 닫기 버튼의 `pop(null)`, 각 버튼 반환값(`single`/`future`/`all`), `전체 반복 일정`만 `FilledButton`인 스타일은 유지했다.
+- 검증: `flutter pub get`, `flutter analyze lib/screens/event/event_edit_screen.dart --no-pub`, `git diff --check -- lib/screens/event/event_edit_screen.dart`, 별도 Codex 리뷰어 재검토 PASS. `scripts/flutter-local.ps1 analyze ...`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 실행 전 실패했다.
+
 ## 2026-06-25 TASK_20260621_110709 동기화 자동 재시도 + 설정 화면 자동 갱신
 - 설정 화면이 `EventRefreshBus`의 자동 동기화/가져오기 완료 신호(`google_auto_sync`, `naver_caldav_auto_import`, `device_naver_import`, 기존 `calendar_auto_sync:*`)를 받으면 600ms debounce 후 캘린더 연결 상태, 자동 동기화 스냅샷, Naver CalDAV 자격증명 상태를 다시 읽도록 보강했다.
 - 앱이 설정 화면에서 resume될 때 이전 자동 동기화 스냅샷의 실패 리스트 또는 provider attention/failed 상태가 있으면 `CalendarAutoSyncService.syncConnectedCalendars(reason: settings_auto_retry, force: true)`로 재시도를 위임한다.
