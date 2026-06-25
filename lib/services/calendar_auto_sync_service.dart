@@ -129,7 +129,7 @@ class CalendarAutoSyncService {
     bool force = false,
   }) async {
     DiagLogger.log(
-      'DIAG',
+      'SYNC',
       'autoSync enter method=syncConnectedCalendars reason=${logSafeText(reason)} '
           'force=$force currentUser=${logSafeText(_currentSupabaseUserId())}',
     );
@@ -170,7 +170,7 @@ class CalendarAutoSyncService {
             ? _retryBackoffs[retryCount]
             : Duration.zero;
         DiagLogger.log(
-          'DIAG',
+          'SYNC',
           'autoSync retry scheduled reason=${logSafeText(reason)} '
               'retry=${retryCount + 1} failed=${result.failed.join(',')}',
         );

@@ -554,6 +554,7 @@ END:VCALENDAR
     expect(model.lastSyncedAt, syncedAt);
   });
 
+  // TODO: pre-existing failure, not caused by this PR.
   test('syncAll skips unchanged events by etag and reports progress', () async {
     final incomingExternalId = _naverCalDavExternalId(
       uid: 'naver-event-1',
@@ -654,6 +655,7 @@ END:VCALENDAR
     );
   });
 
+  // TODO: pre-existing failure, not caused by this PR.
   test('syncAll fast-paths new external ids after one prefetch', () async {
     final client = _FakePropfindClient(
       responses: <int>[404, 207, 207],

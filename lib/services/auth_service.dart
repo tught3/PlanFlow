@@ -127,6 +127,10 @@ class AuthService implements AuthSessionClient {
         'signInWithOAuth currentSessionProvider '
         '${_tokenDiagnostic(_client.auth.currentSession?.providerToken)}',
       );
+      _diagAuth(
+        'providerToken present='
+        '${_client.auth.currentSession?.providerToken?.isNotEmpty == true}',
+      );
       _logNaverCalendarAuth(
         'signInWithOAuth start forCalendar=$effectiveForCalendar '
         'forceConsent=$forceConsent '
@@ -225,6 +229,10 @@ class AuthService implements AuthSessionClient {
       _diagToken(
         'connectCalendarProvider currentSessionProvider '
         '${_tokenDiagnostic(_client.auth.currentSession?.providerToken)}',
+      );
+      _diagAuth(
+        'providerToken present='
+        '${_client.auth.currentSession?.providerToken?.isNotEmpty == true}',
       );
       _logNaverCalendarAuth(
         'connectCalendarProvider start sessionPresent=${_client.auth.currentSession != null} '

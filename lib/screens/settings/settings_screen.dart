@@ -783,7 +783,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
     }
     DiagLogger.log(
-      'DIAG',
+      'CALDAV',
       'caldavFallback naverIdFound=${naverIdentityId != null}',
     );
 
@@ -810,13 +810,13 @@ class _SettingsScreenState extends State<SettingsScreen>
         saveOnSuccess: true,
       );
       DiagLogger.log(
-        'DIAG',
+        'CALDAV',
         'caldav testConnection status=${result.status.name} '
             'isSuccess=${result.isSuccess} statusCode=${result.statusCode}',
       );
     } catch (error, stackTrace) {
       DiagLogger.log(
-        'DIAG',
+        'CALDAV',
         'caldav testConnection exception ${logSafeText(error.runtimeType)}',
       );
       debugPrint('Naver CalDAV connect failed: ${logSafeText(error)}');

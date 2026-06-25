@@ -26,7 +26,7 @@ class GoogleCalendarAutoSyncService {
 
   Future<void> syncIfAllowed({String reason = 'app_lifecycle'}) async {
     DiagLogger.log(
-      'DIAG',
+      'GOOGLE_TOKEN',
       'googleAutoSync enter reason=${logSafeText(reason)} '
           'currentUser=${logSafeText(Supabase.instance.client.auth.currentUser?.id)}',
     );
@@ -49,7 +49,7 @@ class GoogleCalendarAutoSyncService {
             googleServerClientId: kIsWeb ? null : AppEnv.googleServerClientId,
           );
       DiagLogger.log(
-        'DIAG',
+        'GOOGLE_TOKEN',
         'googleAutoSync calling syncGoogleCalendar(interactive:false) '
             'currentUser=${logSafeText(Supabase.instance.client.auth.currentUser?.id)}',
       );

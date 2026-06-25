@@ -52,6 +52,15 @@ class DiagLogger {
     return masked;
   }
 
+  static String maskToken(String? token) {
+    final trimmed = token?.trim();
+    if (trimmed == null || trimmed.length < 8) {
+      return '[REDACTED len=${trimmed?.length ?? 0}]';
+    }
+    return '${trimmed.substring(0, 4)}...'
+        '${trimmed.substring(trimmed.length - 4)} [len=${trimmed.length}]';
+  }
+
   static String describeToken(String? token) {
     final trimmed = token?.trim();
     if (trimmed == null) {
@@ -61,17 +70,10 @@ class DiagLogger {
       return 'tokenPresent=false tokenState=empty maskedToken=none';
     }
     return 'tokenPresent=true tokenLength=${trimmed.length} '
-        'maskedToken=${_maskSingleToken(trimmed)}';
+        'maskedToken=${maskToken(trimmed)}';
   }
 
   static int get entryCount => _entries.length;
-
-  static String _maskSingleToken(String token) {
-    if (token.length <= 8) {
-      return '${token[0]}***${token[token.length - 1]}';
-    }
-    return '${token.substring(0, 4)}...${token.substring(token.length - 4)}';
-  }
 
   static final List<RegExp> _tokenPatterns = [
     RegExp(

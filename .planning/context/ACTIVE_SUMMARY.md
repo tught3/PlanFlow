@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-25 TASK_20260623_055547 revision 진단 로그 리뷰 보정
+- `DiagLogger.maskToken()` 공개 헬퍼를 추가하고 `describeToken()`이 중앙 마스킹을 쓰도록 정리했으며, `auth_service.dart` Naver 분기에 리뷰 지시의 `providerToken present=` 로그를 추가했다.
+- 잔존 `DIAG` 태그를 `SYNC`/`GOOGLE_TOKEN`/`CALDAV`로 정리했고, `naver_caldav_service_test`의 현재 실패 2건은 `main` 별도 worktree에서도 재현된 pre-existing 실패로 TODO 주석을 남겼다.
+- 검증: `flutter analyze --no-pub`, `git diff --check`, `rg "DiagLogger\\.log\\(\\s*'DIAG'|\\bDIAG\\b" lib test` 0건. 대상 테스트는 `naver_caldav_service_test` pre-existing 2건만 실패했고, release APK 빌드는 `android/key.properties` 누락으로 실패해 APK/Drive 전달은 미수행했다.
+
 ## 2026-06-25 TASK_20260623_055552_03 Naver OpenAPI/OAuth 캘린더 import 제거
 - 네이버 캘린더 OpenAPI/OAuth import/export 경로를 제거하고, `CalendarSyncService`의 Naver 분기는 CalDAV 안내용 상태/unsupported 결과만 반환하도록 정리했다.
 - `naver_calendar_permission_service.dart`와 테스트를 삭제했고, auth/callback/auth_provider/settings/user_settings 경로에서 `naver_calendar_token`, `email,calendar`, provider token 저장 흐름을 제거했다. 네이버 로그인 OAuth는 `email` scope로 유지한다.
