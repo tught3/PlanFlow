@@ -596,7 +596,7 @@ class OAuthCallbackHandler {
       final restoredMatchesGoogle =
           restoredUserId != null && restoredUserId == googleUserId;
       _diagAuth(
-        'naver restoreCheck restoredUserPresent='
+        'naver restore-check restoredUserPresent='
         '${restoredUserId?.isNotEmpty == true} '
         'previousUserPresent=${googleUserId?.isNotEmpty == true} '
         'match=$restoredMatchesGoogle',
@@ -605,7 +605,7 @@ class OAuthCallbackHandler {
           naverProviderToken != null &&
           naverProviderToken.isNotEmpty) {
         _diagToken(
-          'naver persistTarget willPersist=true userPresent=true '
+          'naver persist-target willPersist=true userPresent=true '
           'allowWithoutNaverIdentity=true ${_tokenDiagnostic(naverProviderToken)}',
         );
         await _captureNaverProviderTokenIfAny(
@@ -617,7 +617,7 @@ class OAuthCallbackHandler {
             ? 'no_restored_session'
             : (!restoredMatchesGoogle ? 'user_mismatch' : 'empty_token');
         _diagToken(
-          'naver persistTarget skipped reason=$skipReason '
+          'naver persist-target skipped reason=$skipReason '
           'userPresent=${restoredUserId?.isNotEmpty == true} '
           'allowWithoutNaverIdentity=true ${_tokenDiagnostic(naverProviderToken)}',
         );

@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-25 TASK_20260623_055549_03 Naver 캘린더 토큰 저장 세션 검증
+- `oauth_callback_handler.dart`의 Naver calendar-link 콜백에서 기존 구현의 동일 사용자 세션 검증 흐름을 재대조했고, 사양과 맞지 않던 DiagLogger 키 `restoreCheck`/`persistTarget`을 `restore-check`/`persist-target`으로 정규화했다.
+- `googleUserId` 사전 캡처, exchange try 내부 문자열 추출만 수행, 복원 세션 `restoredUserId == googleUserId` 및 non-empty token 조건 저장, 일반 OAuth/Google sync 경로 불변을 별도 리뷰어가 PASS로 확인했다.
+- 검증: `flutter analyze lib/services/oauth_callback_handler.dart --no-pub`, `flutter test test/services/oauth_callback_handler_test.dart --no-pub -r compact`, `git diff --check -- lib/services/oauth_callback_handler.dart` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 실패했고, release APK 빌드는 `android/key.properties` 누락으로 실패했다. Android 기기는 감지되지 않았다.
+
 ## 2026-06-25 TASK_20260623_055547 Naver 토큰 미저장 진단 로그 보강
 - 기존 `DiagLogger`를 재사용해 날짜 포함 timestamp, 중앙 토큰/code/session/appPassword 마스킹, token presence/length/앞뒤 마스킹 진단 헬퍼를 추가했다.
 - Naver OAuth 콜백/인증 시작/토큰 캡처/`user_settings.naver_calendar_token` load/persist/upsert/예외 경로와 Google token resolve/persist, Google/Naver sync, Naver CalDAV 상태에 `NAVER_AUTH`/`NAVER_TOKEN`/`GOOGLE_TOKEN`/`SYNC`/`CALDAV` 진단 로그를 보강했다.
