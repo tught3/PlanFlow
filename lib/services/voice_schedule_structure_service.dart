@@ -759,10 +759,28 @@ class VoiceScheduleStructureService {
     );
   }
 
+  /// 제목에서 단독으로 쓰인 조사 토큰(예: "에서", "에", "로")을 제거한다.
+  /// "에서 만남" -> "만남". "병원에서"처럼 명사와 결합된 조사는 한 토큰이라 유지.
+  /// 조사는 단독으로 제목이 될 수 없다는 원칙.
+  static final RegExp _standaloneParticleToken = RegExp(
+    r'^(?:에서|에게서|에게|께서|께|한테서|한테|으로|로|에|까지|부터|을|를)$',
+  );
+  String _stripStandaloneParticles(String title) {
+    final tokens =
+        title.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+    final kept =
+        tokens.where((t) => !_standaloneParticleToken.hasMatch(t)).toList();
+    final result = kept.join(' ').trim();
+    // 전부 조사뿐인 비정상 입력이면 원본 유지(빈 제목 방지).
+    return result.isEmpty ? title.trim() : result;
+  }
+
   String ensurePeopleInTitle(String title, String rawText) {
-    final normalizedTitle = _preserveRoleRecipientInTitle(
-      normalizeSpacingForSchedule(title),
-      rawText,
+    final normalizedTitle = _stripStandaloneParticles(
+      _preserveRoleRecipientInTitle(
+        normalizeSpacingForSchedule(title),
+        rawText,
+      ),
     );
     final compactTitle =
         normalizedTitle.replaceAll(RegExp(r'\s+'), '').toLowerCase();

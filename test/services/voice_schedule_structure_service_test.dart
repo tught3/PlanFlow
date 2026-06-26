@@ -409,5 +409,33 @@ void main() {
 
       expect(location, '대장동 해링턴플레이스');
     });
+
+    test('drops standalone particle left after location extraction (에서)', () {
+      const rawText = '내일 오전 11시에 모란역에서 만남';
+      final structure = service.analyze(rawText);
+
+      // GPT/로컬이 장소 '모란역'을 떼고 조사 '에서'만 남긴 경우.
+      final parsedTitle = service.normalizeParsedScheduleTitle(
+        '에서 만남',
+        rawText: rawText,
+        structured: structure,
+      );
+
+      expect(parsedTitle.split(RegExp(r'\s+')), isNot(contains('에서')),
+          reason: '단독 조사 "에서"는 제목 토큰으로 남으면 안 된다');
+      expect(parsedTitle, contains('만남'));
+    });
+
+    test('keeps noun+particle compound (병원에서) as a single title token', () {
+      // 명사와 결합된 조사는 단독 조사가 아니므로 그대로 유지.
+      final title = service.ensurePeopleInTitle('병원에서', '병원에서 회의');
+      expect(title, '병원에서');
+    });
+
+    test('strips only the standalone particle, keeps the rest', () {
+      // 처소격 단독 토큰만 제거, 일반 단어는 보존.
+      expect(service.ensurePeopleInTitle('에 회의', '회의'), '회의');
+      expect(service.ensurePeopleInTitle('회의 준비', '회의 준비'), '회의 준비');
+    });
   });
 }
