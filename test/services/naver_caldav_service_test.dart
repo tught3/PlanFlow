@@ -596,9 +596,12 @@ END:VCALENDAR
     expect(result.diagnostics.rawEvents, 1);
     expect(result.diagnostics.parsedEvents, 1);
     expect(result.diagnostics.unchangedSkipped, 1);
+    // 747c6ed 이후: initialExternalIds에 이미 있는 externalId는 캐시 체크에서 먼저 스킵됨.
+    // 캐시 경로를 타면 etag 비교로 가지 않으므로 skip 이유는 '이미 가져온 일정 (캐시)'.
+    // etag 비교 경로는 initialExternalIds가 비어있고 DB에 existing event가 있을 때 사용됨.
     expect(
       result.diagnostics.skipReasons.keys,
-      contains(startsWith('external_etag')),
+      contains('이미 가져온 일정 (캐시)'),
     );
     expect(result.diagnostics.samples.single.rawStart,
         'DTSTART;TZID=Asia/Seoul:20260505T100000');
@@ -663,12 +666,14 @@ END:VCALENDAR
         _eventReportXml,
       ],
     );
+    // seed event 제목이 incoming 네이버 이벤트('한강 피크닉')와 다르게 설정해
+    // 같은 제목+시간 duplicate 분기를 피하고 정상 upsert 경로를 테스트함
     final repository = _FakeEventRepository(
       seedEvents: <EventModel>[
         EventModel(
-          id: 'manual-1',
+          id: 'manual-other',
           userId: 'user-1',
-          title: '한강 피크닉',
+          title: '다른 일정',
           startAt: DateTime.utc(2026, 5, 5, 1),
           source: 'manual',
         ),
@@ -690,9 +695,12 @@ END:VCALENDAR
     expect(result.createdOrUpdated, 1);
     expect(result.skipped, 0);
     expect(repository.upserted, hasLength(1));
+    // fetchExternalIdsBySource로 일괄 prefetch가 1회만 발생해야 함 (per-event DB 쿼리 제거)
     expect(repository.fetchExternalIdSetCalls, 1);
-    expect(repository.fetchByExternalIdCalls, 0);
-    expect(repository.findTitleStartCalls, 0);
+    // 캐시에 없는 새 externalId는 _skipUnchangedReason에서 DB 확인 1회 수행 (null 반환 → upsert)
+    expect(repository.fetchByExternalIdCalls, 1);
+    // _sameTitleStartDuplicateReason에서 title+start 중복 체크 1회 수행
+    expect(repository.findTitleStartCalls, 1);
     expect(repository.externalIdSet,
         contains(repository.upserted.single.externalId));
   });

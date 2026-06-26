@@ -269,7 +269,8 @@ void main() {
 
       expect(status.status, CalendarIntegrationStatus.ready);
       expect(status.message, contains('연결'));
-      expect(googleSignIn.signInSilentCallCount, 1);
+      // signInSilently가 null을 반환하면 retry를 1회 더 시도하므로 총 2회 호출됨
+      expect(googleSignIn.signInSilentCallCount, 2);
     });
 
     test(
@@ -327,9 +328,12 @@ void main() {
 
       final result = await service.syncGoogleCalendar(interactive: false);
 
-      expect(result.status, CalendarIntegrationStatus.reauthRequired);
+      // 비대화형 모드에서 token이 없어도 일시적 Play Services 문제일 수 있으므로
+      // 7a13836 수정 이후 status를 reauthRequired로 바꾸지 않고 ready로 반환함
+      expect(result.status, CalendarIntegrationStatus.ready);
+      // connection status는 기존 connected 유지 (오탐 방지)
       expect(connectionRepository.connection?.status,
-          CalendarConnectionStatus.reauthRequired);
+          CalendarConnectionStatus.connected);
       expect(connectionRepository.connection?.providerAccountEmail,
           'user@example.com');
     });

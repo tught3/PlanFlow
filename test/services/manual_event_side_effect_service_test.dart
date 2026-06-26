@@ -61,6 +61,8 @@ void main() {
         title: '중요 발표',
         startAt: DateTime.now().add(const Duration(hours: 3)),
         isCritical: true,
+        // 3bc6a28 이후 system_alarm은 useStrongAlarm 필드로 제어됨 (isCritical과 분리)
+        useStrongAlarm: true,
       );
 
       final result = await service.syncAfterSave(
@@ -110,6 +112,10 @@ void main() {
         locationLat: 37.4979,
         locationLng: 127.0276,
         isCritical: false,
+        // 3bc6a28 이후 system_alarm은 useStrongAlarm 필드로 제어됨.
+        // pre-action 생성 시 isCritical이 true로 자동 설정되지만
+        // useStrongAlarm은 사용자 토글 값 그대로 유지됨.
+        useStrongAlarm: true,
       );
 
       await service.syncAfterSave(
@@ -539,6 +545,8 @@ void main() {
         location: '강릉아산병원',
         source: 'naver_device',
         isCritical: true,
+        // 3bc6a28 이후 system_alarm은 useStrongAlarm 필드로 제어됨 (isCritical과 분리)
+        useStrongAlarm: true,
       );
 
       final result = await service.resyncRemindersForEvents(
