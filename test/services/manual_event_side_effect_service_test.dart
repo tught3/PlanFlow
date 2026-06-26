@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/core/diag_logger.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/services/app_permission_service.dart';
@@ -774,6 +775,229 @@ void main() {
         contains('지금 출발하세요 🚗 (이동 약 30분 — 위치 확인 불가, 기본값)'),
       );
     });
+
+    // ── DiagLogger 로깅 검증 테스트 ──────────────────────────────────────────
+    // 편집 경로(syncAfterSave)에서 DiagLogger에 ManualSideEffect 태그 로그가
+    // 실제로 남는지 검증한다.  confirm 경로와 달리 이 경로엔 진단 로그가 없어
+    // 기기에서 알람 등록 여부를 추적할 수 없었던 문제를 방지한다.
+    group('DiagLogger 로깅', () {
+      setUp(DiagLogger.clear);
+
+      test(
+          'syncAfterSave: 장소 있는 일정 저장 시 ManualSideEffect 로그가 기록된다',
+          () async {
+        final service = ManualEventSideEffectService(
+          gateway: _FakeManualEventGateway(),
+          eventRepository: _FakeEventRepository(),
+          departureAlarmService: _FakeDepartureAlarmService(),
+          notificationService: _FakeNotificationService(),
+          now: () => DateTime(2026, 5, 8, 6),
+        );
+        final event = EventModel(
+          id: 'diag-event',
+          userId: 'user-1',
+          title: '외부 미팅',
+          startAt: DateTime(2026, 5, 8, 10),
+          location: '강남역',
+          locationLat: 37.4979,
+          locationLng: 127.0276,
+        );
+
+        await service.syncAfterSave(event: event, userId: 'user-1');
+
+        final dump = DiagLogger.dump();
+        // 진입 로그: hasLocation=true 포함 여부
+        expect(
+          dump,
+          contains('ManualSideEffect'),
+          reason: 'ManualSideEffect 태그 로그가 DiagLogger에 기록되어야 한다',
+        );
+        expect(
+          dump,
+          contains('syncAfterSave 시작'),
+          reason: '편집 경로 진입 로그가 기록되어야 한다',
+        );
+        expect(
+          dump,
+          contains('hasLocation=true'),
+          reason: '장소 있는 일정이면 hasLocation=true로 기록되어야 한다',
+        );
+      });
+
+      test(
+          'syncAfterSave: 장소 없는 일정 저장 시 hasLocation=false가 기록된다',
+          () async {
+        final service = ManualEventSideEffectService(
+          gateway: _FakeManualEventGateway(),
+          eventRepository: _FakeEventRepository(),
+          departureAlarmService: _FakeDepartureAlarmService(),
+          notificationService: _FakeNotificationService(),
+          now: () => DateTime(2026, 5, 8, 6),
+        );
+        final event = EventModel(
+          id: 'diag-no-place',
+          userId: 'user-1',
+          title: '전화 회의',
+          startAt: DateTime(2026, 5, 8, 10),
+        );
+
+        await service.syncAfterSave(event: event, userId: 'user-1');
+
+        expect(
+          DiagLogger.dump(),
+          contains('hasLocation=false'),
+          reason: '장소 없는 일정이면 hasLocation=false로 기록되어야 한다',
+        );
+      });
+
+      test(
+          'recalculateAlarmsForEvents: 장소 없는 일정은 DepartureAlarm 스킵 로그가 기록된다',
+          () async {
+        final departure = _FakeDepartureAlarmService();
+        final service = ManualEventSideEffectService(
+          gateway: _FakeManualEventGateway(),
+          eventRepository: _FakeEventRepository(),
+          departureAlarmService: departure,
+          notificationService: _FakeNotificationService(),
+          now: () => DateTime(2026, 5, 8, 6),
+        );
+        final noPlaceEvent = EventModel(
+          id: 'no-place-event',
+          userId: 'user-1',
+          title: '내부 회의',
+          startAt: DateTime(2026, 5, 8, 10),
+        );
+
+        await service.recalculateAlarmsForEvents(
+          events: <EventModel>[noPlaceEvent],
+          userId: 'user-1',
+          now: DateTime(2026, 5, 8, 6),
+        );
+
+        expect(
+          DiagLogger.dump(),
+          contains('DepartureAlarm 스킵(장소없음)'),
+          reason: '장소 없는 일정은 출발 알람 스킵 로그가 남아야 한다',
+        );
+        expect(
+          departure.scheduledEventIds,
+          isEmpty,
+          reason: '장소 없는 일정에는 출발 알람이 등록되지 않아야 한다',
+        );
+      });
+
+      test(
+          'recalculateAlarmsForEvents: 장소 있는 일정은 DepartureAlarm 등록 로그가 기록된다',
+          () async {
+        final departure = _FakeDepartureAlarmService();
+        final service = ManualEventSideEffectService(
+          gateway: _FakeManualEventGateway(),
+          eventRepository: _FakeEventRepository(),
+          departureAlarmService: departure,
+          notificationService: _FakeNotificationService(),
+          now: () => DateTime(2026, 5, 8, 6),
+        );
+        final placeEvent = EventModel(
+          id: 'place-event',
+          userId: 'user-1',
+          title: '거래처 방문',
+          startAt: DateTime(2026, 5, 8, 10),
+          location: '강남역',
+          locationLat: 37.4979,
+          locationLng: 127.0276,
+        );
+
+        await service.recalculateAlarmsForEvents(
+          events: <EventModel>[placeEvent],
+          userId: 'user-1',
+          now: DateTime(2026, 5, 8, 6),
+        );
+
+        final dump = DiagLogger.dump();
+        expect(
+          dump,
+          contains('DepartureAlarm 등록'),
+          reason: '장소 있는 일정은 출발 알람 등록 로그가 남아야 한다',
+        );
+        expect(
+          departure.scheduledEventIds,
+          contains('place-event'),
+          reason: '장소 있는 일정에는 출발 알람이 등록되어야 한다',
+        );
+      });
+
+      test(
+          'resyncExternalPreparationForDay: 두 번째 외부일정은 준비 알람 payload가 0개임을 로그로 확인',
+          () async {
+        final gateway = _FakeManualEventGateway();
+        final service = ManualEventSideEffectService(
+          gateway: gateway,
+          eventRepository: _FakeEventRepository(),
+          departureAlarmService: _FakeDepartureAlarmService(),
+          notificationService: _FakeNotificationService(),
+          now: () => DateTime(2026, 5, 8, 6),
+        );
+        final firstEvent = EventModel(
+          id: 'first-event',
+          userId: 'user-1',
+          title: '9시 거래처 방문',
+          startAt: DateTime(2026, 5, 8, 9),
+          location: '강남역',
+        );
+        final secondEvent = EventModel(
+          id: 'second-event',
+          userId: 'user-1',
+          title: '11시 병원 방문',
+          startAt: DateTime(2026, 5, 8, 11),
+          location: '서울대병원',
+        );
+
+        await service.resyncExternalPreparationForDay(
+          dayEvents: <EventModel>[firstEvent, secondEvent],
+          userId: 'user-1',
+          dayReference: DateTime(2026, 5, 8),
+          now: DateTime(2026, 5, 8, 6),
+        );
+
+        final dump = DiagLogger.dump();
+        // 첫 번째 일정: isFirst=true → 준비 알람 포함
+        expect(
+          dump,
+          contains('eventId=first-event'),
+          reason: '첫 번째 일정 로그가 기록되어야 한다',
+        );
+        // 두 번째 일정: isFirst=false → 준비 알람 없음(출발 알람만)
+        expect(
+          dump,
+          contains('eventId=second-event'),
+          reason: '두 번째 일정 로그가 기록되어야 한다',
+        );
+
+        // 첫 번째 일정에 준비 시작 알람이 있고, 두 번째엔 없음
+        final firstPayloads = gateway.insertedPreActions
+            .where((row) => row['event_id'] == 'first-event')
+            .map((row) => row['title'].toString());
+        final secondPayloads = gateway.insertedPreActions
+            .where((row) => row['event_id'] == 'second-event')
+            .map((row) => row['title'].toString());
+        expect(
+          firstPayloads.any(_isPreparationStartAlarmTitle),
+          isTrue,
+          reason: '첫 번째 외부 일정에는 준비 시작 알람이 있어야 한다',
+        );
+        expect(
+          secondPayloads.any(_isPreparationStartAlarmTitle),
+          isFalse,
+          reason: '두 번째 외부 일정에는 준비 시작 알람이 없어야 한다(isFirst=false)',
+        );
+        expect(
+          secondPayloads.any(_isDepartureExternalAlarmTitle),
+          isTrue,
+          reason: '두 번째 외부 일정에도 출발 알람은 있어야 한다',
+        );
+      });
+    });
+    // ── DiagLogger 로깅 검증 테스트 끝 ──────────────────────────────────────
 
     test(
         'resyncExternalPreparationForDay ignores earlier event without place for prep target',

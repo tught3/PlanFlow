@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/diag_logger.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
@@ -201,6 +202,19 @@ class ManualEventSideEffectService {
     await _departureAlarms.clearAcknowledgement(event.id);
     await _notifications.cancelEventNotifications(event.id);
 
+    // 편집 경로 진입 로그: 장소 유무와 isFirstExternalEventOfDay 값을 기록해
+    // 기기 진단 로그에서 스마트 준비 알람·출발 알람 등록 여부를 추적할 수 있게 한다.
+    final hasLocation = (event.location?.trim().isNotEmpty ?? false) ||
+        (event.locationLat != null && event.locationLng != null);
+    DiagLogger.log(
+      'ManualSideEffect',
+      'syncAfterSave 시작 eventId=${event.id} '
+      'hasLocation=$hasLocation '
+      'locationText="${event.location ?? ''}" '
+      'hasCoords=${event.locationLat != null && event.locationLng != null} '
+      'isFirstExternal=$isFirstExternalEventOfDay',
+    );
+
     try {
       await gateway.deleteRemindersForEvent(eventId: event.id, userId: userId);
       if (clearPreActions) {
@@ -227,6 +241,14 @@ class ManualEventSideEffectService {
         includePreparationAlarms: isFirstExternalEventOfDay,
         now: effectiveNow,
       );
+      // DB pre_actions 삽입 전: payload 개수 및 준비 알람 포함 여부 기록
+      DiagLogger.log(
+        'ManualSideEffect',
+        'SmartPrep DB payload count=${externalPreparationPayloads.length} '
+        'includePrep=$isFirstExternalEventOfDay '
+        'travelMin=${resolvedTravelMinutes.minutes} '
+        'travelIsFallback=${resolvedTravelMinutes.isFallback}',
+      );
       await gateway.insertPreActions(externalPreparationPayloads);
       reminderEvent = await _syncEventCriticalFlagForPreActions(
         event,
@@ -243,6 +265,10 @@ class ManualEventSideEffectService {
       remindersSynced = true;
     } catch (e, st) {
       debugPrint('[PlanFlow] reminder DB sync failed for event ${event.id}: $e\n$st');
+      DiagLogger.log(
+        'ManualSideEffect',
+        'DB 동기화 실패 eventId=${event.id} error=$e',
+      );
       remindersSynced = false;
     }
 
@@ -252,33 +278,50 @@ class ManualEventSideEffectService {
         reminderOffset: reminderOffset,
         criticalAlarmOffset: criticalAlarmOffset ?? reminderOffset,
       );
+      final localSmartPrepPayloads =
+          SmartPreparationAlarmService().buildExternalEventPayloads(
+        eventId: event.id,
+        userId: userId,
+        title: event.title,
+        eventStartAt: startAt,
+        location: event.location,
+        prepTimeMin: prepTimeMin,
+        prepPreAlarmOffset: prepPreAlarmOffset,
+        departPreAlarmOffset: departPreAlarmOffset,
+        travelMinutes: resolvedTravelMinutes.minutes,
+        travelMinutesIsFallback: resolvedTravelMinutes.isFallback,
+        departureSafetyMarginMin: departureSafetyMargin.inMinutes,
+        isFirstExternalEventOfDay: isFirstExternalEventOfDay,
+        includePreparationAlarms: isFirstExternalEventOfDay,
+        now: effectiveNow,
+      );
+      // 로컬 알람 스케줄 전: payload 개수 기록
+      DiagLogger.log(
+        'ManualSideEffect',
+        'SmartPrep 로컬알람 payload count=${localSmartPrepPayloads.length} '
+        'eventId=${event.id}',
+      );
       await const SmartPreparationAlarmService().schedulePayloads(
         eventId: event.id,
         eventTitle: event.title,
         eventSource: event.source,
-        payloads: SmartPreparationAlarmService().buildExternalEventPayloads(
-          eventId: event.id,
-          userId: userId,
-          title: event.title,
-          eventStartAt: startAt,
-          location: event.location,
-          prepTimeMin: prepTimeMin,
-          prepPreAlarmOffset: prepPreAlarmOffset,
-          departPreAlarmOffset: departPreAlarmOffset,
-          travelMinutes: resolvedTravelMinutes.minutes,
-          travelMinutesIsFallback: resolvedTravelMinutes.isFallback,
-          departureSafetyMarginMin: departureSafetyMargin.inMinutes,
-          isFirstExternalEventOfDay: isFirstExternalEventOfDay,
-          includePreparationAlarms: isFirstExternalEventOfDay,
-          now: effectiveNow,
-        ),
+        payloads: localSmartPrepPayloads,
       );
       notificationsSynced = true;
     } catch (e, st) {
       debugPrint('[PlanFlow] local notification sync failed for event ${event.id}: $e\n$st');
+      DiagLogger.log(
+        'ManualSideEffect',
+        '로컬 알람 동기화 실패 eventId=${event.id} error=$e',
+      );
       notificationsSynced = false;
     }
 
+    // recalculate가 출발 알람을 등록하므로 진입 전 기록
+    DiagLogger.log(
+      'ManualSideEffect',
+      'recalculate 시작 eventId=${event.id} hasLocation=$hasLocation',
+    );
     await recalculateUpcomingAlarmsForUser(
       userId: userId,
       seedEvents: <EventModel>[event],
@@ -472,6 +515,12 @@ class ManualEventSideEffectService {
         return startAt != null && startAt.isBefore(departureUntil);
       })) {
         if (!_hasPlace(event)) {
+          // 장소 없는 일정: 출발 알람 스킵
+          DiagLogger.log(
+            'ManualSideEffect',
+            'DepartureAlarm 스킵(장소없음) eventId=${event.id} '
+            'title="${event.title}"',
+          );
           departureSkipped += 1;
           continue;
         }
@@ -485,6 +534,18 @@ class ManualEventSideEffectService {
           event,
           rescheduleMonitor: false,
           safetyMarginOverride: departureSafetyMargin,
+        );
+        // 출발 알람 등록/스킵 결과 기록
+        DiagLogger.log(
+          'ManualSideEffect',
+          result.isScheduled
+              ? 'DepartureAlarm 등록 eventId=${event.id} '
+                  'title="${event.title}" '
+                  'loc="${event.location ?? ''}" '
+                  'hasCoords=${event.locationLat != null && event.locationLng != null}'
+              : 'DepartureAlarm 스킵 eventId=${event.id} '
+                  'title="${event.title}" '
+                  'reason=${result.skippedReason ?? 'unknown'}',
         );
         if (result.isScheduled) {
           departureScheduled += 1;
@@ -649,10 +710,20 @@ class ManualEventSideEffectService {
         ),
       );
     if (externalEvents.isEmpty) {
+      DiagLogger.log(
+        'ManualSideEffect',
+        'resyncExternalPrep 외부일정 없음 day=${dayReference.toIso8601String()}',
+      );
       return true;
     }
 
     final firstExternalEventId = externalEvents.first.id;
+    DiagLogger.log(
+      'ManualSideEffect',
+      'resyncExternalPrep 외부일정 count=${externalEvents.length} '
+      'firstId=$firstExternalEventId '
+      'day=${dayReference.toIso8601String()}',
+    );
     final payloadsByEvent = <EventModel, List<Map<String, dynamic>>>{};
     for (final event in externalEvents) {
       final resolvedTravelMinutes = await _resolveTravelMinutesForEvent(
@@ -660,7 +731,8 @@ class ManualEventSideEffectService {
         fallbackTravelMinutes: travelMinutes,
         travelMode: travelMode,
       );
-      payloadsByEvent[event] = smartService.buildExternalEventPayloads(
+      final isFirst = event.id == firstExternalEventId;
+      final payloads = smartService.buildExternalEventPayloads(
         eventId: event.id,
         userId: userId,
         title: event.title,
@@ -672,10 +744,21 @@ class ManualEventSideEffectService {
         travelMinutes: resolvedTravelMinutes.minutes,
         travelMinutesIsFallback: resolvedTravelMinutes.isFallback,
         departureSafetyMarginMin: departureSafetyMargin.inMinutes,
-        isFirstExternalEventOfDay: event.id == firstExternalEventId,
-        includePreparationAlarms: event.id == firstExternalEventId,
+        isFirstExternalEventOfDay: isFirst,
+        includePreparationAlarms: isFirst,
         now: now,
       );
+      // 이벤트별 payload 생성 결과: 준비 알람 포함 여부와 payload 수 기록
+      DiagLogger.log(
+        'ManualSideEffect',
+        'resyncExternalPrep payload eventId=${event.id} '
+        'isFirst=$isFirst '
+        'includePrep=$isFirst '
+        'payloadCount=${payloads.length} '
+        'travelMin=${resolvedTravelMinutes.minutes} '
+        'travelIsFallback=${resolvedTravelMinutes.isFallback}',
+      );
+      payloadsByEvent[event] = payloads;
     }
 
     try {

@@ -652,15 +652,30 @@ class _MapSearchHeader extends StatelessWidget implements PreferredSizeWidget {
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    key: const ValueKey('location-search-field'),
-                    controller: queryController,
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (_) => onSearch(),
-                    decoration: const InputDecoration(
-                      hintText: '장소명을 입력해 주세요',
-                      prefixIcon: Icon(Icons.search),
-                    ),
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: queryController,
+                    builder: (context, value, _) {
+                      return TextField(
+                        key: const ValueKey('location-search-field'),
+                        controller: queryController,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (_) => onSearch(),
+                        decoration: InputDecoration(
+                          hintText: '장소명을 입력해 주세요',
+                          prefixIcon: const Icon(Icons.search),
+                          // 이미 입력된 검색어를 한 번에 지우는 X 버튼
+                          suffixIcon: value.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  key: const ValueKey(
+                                      'location-search-clear-button'),
+                                  tooltip: '입력 지우기',
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () => queryController.clear(),
+                                ),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
