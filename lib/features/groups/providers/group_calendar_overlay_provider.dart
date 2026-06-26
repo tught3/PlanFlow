@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/calendar_overlay_item.dart';
+import '../models/group_event_recurrence.dart';
 import '../models/group_model.dart';
 import '../repositories/group_event_repository.dart';
 import 'group_context_provider.dart';
@@ -75,16 +76,22 @@ class GroupCalendarOverlayProvider extends ChangeNotifier {
 
       final events =
           await _repository.getEventsForGroup(group.id, rangeStart, rangeEnd);
+      // 반복 일정은 표시 구간 안의 개별 발생으로 전개해 매 발생일마다 보이게 한다.
+      final items = <CalendarOverlayItem>[];
+      for (final event in events) {
+        for (final occurrence
+            in expandGroupEventOccurrences(event, rangeStart, rangeEnd)) {
+          items.add(
+            CalendarOverlayItem.fromGroupEvent(
+              occurrence,
+              groupName: group.name,
+            ),
+          );
+        }
+      }
       _setState(
         GroupCalendarOverlayState(
-          items: events
-              .map(
-                (event) => CalendarOverlayItem.fromGroupEvent(
-                  event,
-                  groupName: group.name,
-                ),
-              )
-              .toList(growable: false),
+          items: items,
           selectedGroup: group,
           selectedGroupRole: _contextProvider.selectedGroupRole,
           rangeStart: rangeStart,

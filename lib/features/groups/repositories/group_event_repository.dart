@@ -37,13 +37,20 @@ class SupabaseGroupEventRepository extends GroupEventRepository {
     DateTime from,
     DateTime to,
   ) async {
+    final fromIso = from.toUtc().toIso8601String();
+    // 반복 일정은 원본 1건만 저장되므로, 원본이 조회 구간보다 과거에 시작했어도
+    // 시리즈가 구간으로 이어지면 가져와야 한다. 비반복은 기존대로 end_at 겹침으로 필터.
     final response = await _client
         .from('group_events')
         .select()
         .eq('group_id', groupId)
         .eq('status', 'active')
         .lte('start_at', to.toUtc().toIso8601String())
-        .gte('end_at', from.toUtc().toIso8601String())
+        .or(
+          'and(recurrence_type.eq.none,end_at.gte.$fromIso),'
+          'and(recurrence_type.neq.none,'
+          'or(recurrence_until.is.null,recurrence_until.gte.$fromIso))',
+        )
         .order('start_at', ascending: true);
     return response
         .map<GroupEventModel>(

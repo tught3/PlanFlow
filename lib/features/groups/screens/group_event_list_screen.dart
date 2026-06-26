@@ -8,6 +8,7 @@ import '../../../core/local_time.dart';
 import '../../../core/theme.dart';
 import '../../../providers/auth_provider.dart';
 import '../models/group_event_model.dart';
+import '../models/group_event_recurrence.dart';
 import '../providers/group_event_provider.dart';
 import '../providers/group_event_state.dart';
 
@@ -364,13 +365,7 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
   List<GroupEventModel> _eventsForDay(
       List<GroupEventModel> events, DateTime day) {
     return events
-        .where(
-          (event) => planflowEventIntersectsLocalDay(
-            startAt: event.startAt,
-            endAt: event.endAt,
-            day: day,
-          ),
-        )
+        .where((event) => groupEventOccursOnLocalDay(event, day))
         .toList(growable: false);
   }
 
@@ -378,11 +373,14 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
       List<GroupEventModel> events, DateTime day) {
     final weekStart = DateTime(day.year, day.month, day.day)
         .subtract(Duration(days: day.weekday - DateTime.monday));
-    final weekEnd = weekStart.add(const Duration(days: 7));
     return events.where((event) {
-      final localStart = planflowLocal(event.startAt);
-      final localEnd = planflowLocal(event.endAt);
-      return localStart.isBefore(weekEnd) && localEnd.isAfter(weekStart);
+      for (var offset = 0; offset < 7; offset++) {
+        final weekDay = weekStart.add(Duration(days: offset));
+        if (groupEventOccursOnLocalDay(event, weekDay)) {
+          return true;
+        }
+      }
+      return false;
     }).toList(growable: false);
   }
 
