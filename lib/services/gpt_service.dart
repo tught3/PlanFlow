@@ -438,7 +438,7 @@ class GptService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('GptService JSON 파싱 실패 무시: $e'); }
 
     final start = trimmed.indexOf('{');
     final end = trimmed.lastIndexOf('}');
@@ -451,7 +451,7 @@ class GptService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('GptService JSON 파싱 실패 무시: $e'); }
 
     return null;
   }

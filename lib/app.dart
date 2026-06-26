@@ -448,7 +448,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     try {
       await _settingsMethodChannel
           .invokeMethod<void>('consumeHomeWidgetLaunch');
-    } catch (_) {}
+    } catch (e) { debugPrint('App consumeHomeWidgetLaunch 무시: $e'); }
   }
 
   /// warm-start fallback: widgetClicked 스트림이 유실된 경우 onResume에서 재확인

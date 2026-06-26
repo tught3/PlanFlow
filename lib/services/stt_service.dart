@@ -730,7 +730,7 @@ class SttService {
     if (_activeNativeListen) {
       try {
         await _nativeSttChannel.invokeMethod<String>('stop');
-      } catch (_) {}
+      } catch (e) { debugPrint('SttService 무시된 예외: $e'); }
       await Future<void>.delayed(const Duration(milliseconds: 350));
       _completeActiveListenFromText(detach: true);
       return;
@@ -755,12 +755,12 @@ class SttService {
     if (hadActiveNativeListen) {
       try {
         await _nativeSttChannel.invokeMethod<String>('cancel');
-      } catch (_) {}
+      } catch (e) { debugPrint('SttService 무시된 예외: $e'); }
     }
     if (speech != null) {
       try {
         await speech.cancel();
-      } catch (_) {}
+      } catch (e) { debugPrint('SttService 무시된 예외: $e'); }
     }
     _completeActiveFailure(
       failure: SttListenFailure.silence,
@@ -796,7 +796,7 @@ class SttService {
     if (_activeNativeListen) {
       try {
         await _nativeSttChannel.invokeMethod<String>('cancel');
-      } catch (_) {}
+      } catch (e) { debugPrint('SttService 무시된 예외: $e'); }
       _completeActiveFailure(
         failure: SttListenFailure.silence,
         message: '음성 입력을 취소했어요.',
@@ -806,7 +806,7 @@ class SttService {
     if (speech != null) {
       try {
         await speech.cancel();
-      } catch (_) {}
+      } catch (e) { debugPrint('SttService 무시된 예외: $e'); }
     }
     _completeActiveFailure(
       failure: SttListenFailure.silence,

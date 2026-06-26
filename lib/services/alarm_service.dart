@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -142,6 +143,6 @@ Future<void> _briefingAlarmCallback(
         isMorning: isMorning,
         userId: userId,
       );
-    } catch (_) {}
+    } catch (e) { debugPrint('AlarmService 무시된 예외: $e'); }
   }
 }

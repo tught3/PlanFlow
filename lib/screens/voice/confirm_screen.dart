@@ -1521,7 +1521,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
               await _resolveTravelBufferMinutesForWidget(nextEvent),
         ),
       );
-    } catch (_) {}
+    } catch (e) { debugPrint('ConfirmScreen 위젯 갱신 무시: $e'); }
   }
 
   Future<int> _resolveTravelBufferMinutesForWidget(EventModel event) {

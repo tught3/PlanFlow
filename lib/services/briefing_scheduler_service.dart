@@ -794,7 +794,7 @@ class BriefingSchedulerService {
       if (currentUserId != null && currentUserId.isNotEmpty) {
         return currentUserId;
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('BriefingScheduler 사용자ID 조회 무시: $e'); }
 
     return null;
   }

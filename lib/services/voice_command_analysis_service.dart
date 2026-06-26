@@ -1210,7 +1210,7 @@ class VoiceCommandAnalysisService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('VoiceCommandAnalysis JSON 파싱 무시: $e'); }
 
     final start = trimmed.indexOf('{');
     final end = trimmed.lastIndexOf('}');
@@ -1223,7 +1223,7 @@ class VoiceCommandAnalysisService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (_) {}
+    } catch (e) { debugPrint('VoiceCommandAnalysis JSON 파싱 무시: $e'); }
 
     return null;
   }

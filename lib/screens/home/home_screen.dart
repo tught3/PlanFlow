@@ -437,7 +437,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           createdAt: event.createdAt,
           updatedAt: event.updatedAt,
         ));
-      } catch (_) {}
+      } catch (e) { debugPrint('HomeScreen 위치 동기화 무시: $e'); }
       await Future.delayed(const Duration(milliseconds: 300));
     }
     if (mounted) {

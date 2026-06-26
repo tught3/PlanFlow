@@ -97,7 +97,7 @@ class AuthProvider extends ChangeNotifier {
     }
     try {
       await completer.future.timeout(timeout);
-    } catch (_) {}
+    } catch (e) { debugPrint('AuthProvider 세션 대기 타임아웃 무시: $e'); }
     return hasResolvedInitialSession;
   }
 
@@ -549,7 +549,7 @@ class AuthProvider extends ChangeNotifier {
         await _firstAuthEventCompleter?.future.timeout(
           const Duration(seconds: 2),
         );
-      } catch (_) {}
+      } catch (e) { debugPrint('AuthProvider 세션 대기 타임아웃 무시: $e'); }
       snapshotUser = service.currentSession?.user ?? service.currentUser;
     }
 
