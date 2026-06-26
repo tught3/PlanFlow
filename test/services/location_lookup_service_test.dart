@@ -482,4 +482,109 @@ void main() {
       ),
     );
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // sortByRelevance — 검색어 유사도 정렬 (순수 함수, API 호출 없음)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  LocationLookupResult _makeResult(String name, {String address = ''}) =>
+      LocationLookupResult(
+        name: name,
+        address: address,
+        latitude: 0.0,
+        longitude: 0.0,
+        provider: LocationLookupProvider.tmap,
+      );
+
+  group('sortByRelevance', () {
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: '',
+      clientSecret: '',
+      googleMapsApiKey: '',
+    );
+
+    test('수진역 검색 시 정확 일치 결과가 1순위, 군더더기 많은 결과는 후순위', () {
+      // 재현 케이스: '수진역코아루천년가 정문'이 1순위로 나오던 버그
+      final input = [
+        _makeResult('수진역코아루천년가 정문'),
+        _makeResult('수진역'),
+        _makeResult('수진역 8호선'),
+        _makeResult('수진역사거리'),
+      ];
+      final sorted = service.sortByRelevance('수진역', input);
+
+      // '수진역' 또는 '수진역 8호선'이 앞쪽에 와야 함
+      final shortIndex = sorted.indexWhere((r) =>
+          r.name == '수진역' || r.name == '수진역 8호선');
+      final longIndex =
+          sorted.indexWhere((r) => r.name == '수진역코아루천년가 정문');
+
+      expect(shortIndex, lessThan(longIndex),
+          reason: '유사도 높은 결과("수진역" 또는 "수진역 8호선")가 '
+              '"수진역코아루천년가 정문"보다 앞에 위치해야 합니다');
+      // 첫 번째 결과가 '수진역' 또는 '수진역 8호선'이어야 함 (버그 케이스: 1순위가 엉뚱한 결과)
+      expect(
+        sorted.first.name == '수진역' || sorted.first.name == '수진역 8호선',
+        isTrue,
+        reason: '1순위가 "수진역" 또는 "수진역 8호선"이어야 합니다. 실제: ${sorted.first.name}',
+      );
+    });
+
+    test('정확 일치가 접두 일치보다 우선순위가 높다', () {
+      final input = [
+        _makeResult('수진역사거리'),   // 접두 일치
+        _makeResult('수진역'),         // 정확 일치
+      ];
+      final sorted = service.sortByRelevance('수진역', input);
+
+      expect(sorted.first.name, equals('수진역'));
+    });
+
+    test('접두 일치가 내부 포함보다 우선순위가 높다', () {
+      final input = [
+        _makeResult('역수진홀'),       // 내부 포함
+        _makeResult('수진역사거리'),   // 접두 일치
+      ];
+      final sorted = service.sortByRelevance('수진역', input);
+
+      expect(sorted.first.name, equals('수진역사거리'));
+    });
+
+    test('교통 키워드(역) 포함 결과에 가산점이 붙는다', () {
+      // '수진역' 검색 시 역 이름이 없는 결과보다 역 포함 결과가 앞에 와야 함
+      final input = [
+        _makeResult('수진 코아루천년가'),   // 역 키워드 없음
+        _makeResult('수진역 8호선'),         // 역 키워드 포함
+      ];
+      final sorted = service.sortByRelevance('수진역', input);
+
+      expect(sorted.first.name, equals('수진역 8호선'));
+    });
+
+    test('이름 길이가 짧을수록(군더더기 적을수록) 더 높은 점수를 받는다', () {
+      final input = [
+        _makeResult('수진역광장아파트단지'),  // 길이 가장 긺 (접두 일치, extraChars 큼)
+        _makeResult('수진역사거리'),            // 중간 (접두 일치, extraChars 작음)
+        _makeResult('수진역'),                  // 가장 짧음 (정확 일치)
+      ];
+      final sorted = service.sortByRelevance('수진역', input);
+
+      // '수진역'은 정확 일치(150점)로 1순위
+      expect(sorted[0].name, equals('수진역'));
+      // '수진역광장아파트단지'는 접두 일치지만 군더더기가 가장 많으므로 3순위
+      expect(sorted[2].name, equals('수진역광장아파트단지'));
+    });
+
+    test('단일 결과면 정렬 없이 그대로 반환', () {
+      final input = [_makeResult('수진역')];
+      final sorted = service.sortByRelevance('수진역', input);
+      expect(sorted, equals(input));
+    });
+
+    test('빈 목록이면 빈 목록을 반환', () {
+      final sorted = service.sortByRelevance('수진역', []);
+      expect(sorted, isEmpty);
+    });
+  });
 }

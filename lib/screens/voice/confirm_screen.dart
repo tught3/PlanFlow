@@ -567,6 +567,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     if (query.isEmpty ||
         _shouldSkipAutomaticLocationResolution(query) ||
         (_locationLat != null && _locationLng != null)) {
+      // 이미 좌표가 있거나 개인 별칭이면 스킵
+      DiagLogger.log(
+        'GeoResolve',
+        '스킵: 쿼리="${query.isEmpty ? '(빈값)' : query}" '
+        '이미보유=${_locationLat != null && _locationLng != null} '
+        '개인별칭=${query.isNotEmpty && _shouldSkipAutomaticLocationResolution(query)}',
+      );
       return;
     }
 
@@ -586,13 +593,22 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         return null;
       });
       unawaited(gpsFuture);
+      DiagLogger.log('GeoResolve', '검색시작: 쿼리="$query"');
       final results = await widget.locationLookupService.search(
         query,
         origin: null,
       );
+      DiagLogger.log(
+        'GeoResolve',
+        '검색결과: 쿼리="$query" 결과수=${results.length}'
+        '${results.isNotEmpty ? ' 1위="${results.first.name}" lat=${results.first.latitude} lng=${results.first.longitude}' : ''}',
+      );
       if (!mounted ||
           query != _locationController.text.trim() ||
           results.isEmpty) {
+        if (results.isEmpty) {
+          DiagLogger.log('GeoResolve', '실패: 쿼리="$query" 결과없음 → 좌표 미설정');
+        }
         return;
       }
 
@@ -609,12 +625,17 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             resolvedLabel.isNotEmpty ? resolvedLabel : query;
       });
       _isApplyingHydration = false;
+      DiagLogger.log(
+        'GeoResolve',
+        '성공: 쿼리="$query" 선택="${selected.name}" lat=${selected.latitude} lng=${selected.longitude}',
+      );
       _removeResolvedLocationFromTitle(
         previousLocationText: query,
         resolvedLocationText: _resolvedLocationLabel,
       );
     } catch (error) {
       debugPrint('ConfirmScreen save-time location resolution failed: $error');
+      DiagLogger.log('GeoResolve', '오류: 쿼리="$query" error=$error');
     } finally {
       _isApplyingHydration = false;
       if (mounted) {

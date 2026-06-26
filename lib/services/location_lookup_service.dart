@@ -678,16 +678,57 @@ class LocationLookupService {
     required LocationLookupProvider? preferredProvider,
   }) {
     final normalizedQuery = _compactSearchText(query);
+    final nameCompact = _compactSearchText(result.name);
     final label = _compactSearchText('${result.name} ${result.address}');
     var score = 0.0;
-    if (normalizedQuery.isNotEmpty && label == normalizedQuery) {
-      score += 120;
-    } else if (normalizedQuery.isNotEmpty && label.contains(normalizedQuery)) {
-      score += 80;
-    } else if (normalizedQuery.isNotEmpty && normalizedQuery.contains(label)) {
-      score += 45;
+
+    // --- 이름 기반 유사도 (name-only 우선, label 보조) ---
+    if (normalizedQuery.isNotEmpty) {
+      if (nameCompact == normalizedQuery) {
+        // (1) 이름이 검색어와 정확히 일치
+        score += 150;
+      } else if (label == normalizedQuery) {
+        // (1) label 정확 일치
+        score += 120;
+      } else if (nameCompact.startsWith(normalizedQuery)) {
+        // (2) 이름이 검색어로 시작 (접두 일치) — 짧을수록 가산
+        score += 110;
+        final extraChars = nameCompact.length - normalizedQuery.length;
+        score += (20 - extraChars.clamp(0, 20)).toDouble();
+      } else if (label.startsWith(normalizedQuery)) {
+        // (2) label 접두 일치 — 짧을수록 가산
+        score += 90;
+        final extraChars = label.length - normalizedQuery.length;
+        score += (10 - extraChars.clamp(0, 10)).toDouble();
+      } else if (nameCompact.contains(normalizedQuery)) {
+        // (3) 이름에 검색어 포함 — 짧을수록 더 유사
+        score += 80;
+        // 이름이 짧을수록 가산 (군더더기가 적음): 최대 +20
+        final extraChars = nameCompact.length - normalizedQuery.length;
+        score += (20 - extraChars.clamp(0, 20)).toDouble();
+      } else if (label.contains(normalizedQuery)) {
+        // (3) label에 검색어 포함 — 이름 포함보다 낮은 점수
+        score += 60;
+        final extraChars = label.length - normalizedQuery.length;
+        score += (10 - extraChars.clamp(0, 10)).toDouble();
+      } else if (normalizedQuery.contains(nameCompact) ||
+          normalizedQuery.contains(label)) {
+        score += 45;
+      }
     }
 
+    // --- 교통 키워드 가산점 ---
+    // 검색어에 역/지하철/버스 등이 있을 때 결과 이름에도 같은 키워드 있으면 +15
+    const transitKeywords = <String>['역', '지하철', '버스', '터미널', '공항', '기차'];
+    final queryRaw = query.replaceAll(RegExp(r'\s+'), '');
+    for (final kw in transitKeywords) {
+      if (queryRaw.contains(kw) && nameCompact.contains(kw)) {
+        score += 15;
+        break; // 한 번만 가산
+      }
+    }
+
+    // --- 토큰 단위 포함 점수 ---
     final queryTokens = _tokenize(query)
         .map(_removeKoreanParticleSuffix)
         .map(_removeLocationSuffix)
@@ -700,6 +741,7 @@ class LocationLookupService {
       }
     }
 
+    // --- 지역 힌트 가산점 ---
     for (final region in _matchedKoreanRegionHints(query)) {
       if (_containsAlias(_compactSearchText(result.name), region) ||
           _containsAlias(_compactSearchText(result.address), region)) {
@@ -707,15 +749,39 @@ class LocationLookupService {
       }
     }
 
+    // --- 제공자 선호 ---
     if (preferredProvider != null && result.provider == preferredProvider) {
       score += 8;
     }
 
+    // --- 거리 가산점 ---
     if (origin != null && !_hasExplicitRegionHint(query)) {
       final distance = _distanceMeters(origin, result);
       score += (30 - (distance / 1000)).clamp(0, 30).toDouble();
     }
     return score;
+  }
+
+  /// 검색어와의 유사도로 결과 리스트를 재정렬하는 순수 함수.
+  /// API 호출 없이 이미 받은 [results] 리스트에 적용.
+  /// 정렬 우선순위:
+  ///   (1) 이름 정확 일치
+  ///   (2) 이름이 검색어로 시작(접두 일치)
+  ///   (3) 이름에 검색어 포함(짧은 이름 우선)
+  ///   (4) 교통 키워드(역·지하철 등) 가산
+  ///   (5) 나머지 API 기본 순서
+  List<LocationLookupResult> sortByRelevance(
+    String query,
+    List<LocationLookupResult> results, {
+    GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
+  }) {
+    return _rankResults(
+      query,
+      results,
+      origin: origin,
+      preferredProvider: preferredProvider,
+    );
   }
 
   String _compactSearchText(String value) {

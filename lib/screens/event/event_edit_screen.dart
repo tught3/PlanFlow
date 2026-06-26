@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
+import '../../core/diag_logger.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
 import '../../core/responsive.dart';
@@ -194,6 +195,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
   Future<void> _ensureLocationCoordinatesBeforeSave() async {
     final query = _locationController.text.trim();
     if (query.isEmpty || (_locationLat != null && _locationLng != null)) {
+      DiagLogger.log(
+        'GeoResolve',
+        '[EditScreen] 스킵: 쿼리="${query.isEmpty ? '(빈값)' : query}" '
+        '이미보유=${_locationLat != null && _locationLng != null}',
+      );
       return;
     }
 
@@ -213,13 +219,25 @@ class _EventEditScreenState extends State<EventEditScreen> {
         return null;
       });
       unawaited(gpsFuture);
+      DiagLogger.log('GeoResolve', '[EditScreen] 검색시작: 쿼리="$query"');
       final results = await LocationLookupService().search(
         query,
         origin: null,
       );
+      DiagLogger.log(
+        'GeoResolve',
+        '[EditScreen] 검색결과: 쿼리="$query" 결과수=${results.length}'
+        '${results.isNotEmpty ? ' 1위="${results.first.name}" lat=${results.first.latitude} lng=${results.first.longitude}' : ''}',
+      );
       if (!mounted ||
           query != _locationController.text.trim() ||
           results.isEmpty) {
+        if (results.isEmpty) {
+          DiagLogger.log(
+            'GeoResolve',
+            '[EditScreen] 실패: 쿼리="$query" 결과없음 → 좌표 미설정',
+          );
+        }
         return;
       }
 
@@ -234,10 +252,15 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _resolvedLocationLabel =
             resolvedLabel.isNotEmpty ? resolvedLabel : query;
       });
+      DiagLogger.log(
+        'GeoResolve',
+        '[EditScreen] 성공: 쿼리="$query" 선택="${selected.name}" lat=${selected.latitude} lng=${selected.longitude}',
+      );
     } catch (error, stackTrace) {
       debugPrint(
           'EventEditScreen save-time location resolution failed: $error');
       debugPrintStack(stackTrace: stackTrace);
+      DiagLogger.log('GeoResolve', '[EditScreen] 오류: 쿼리="$query" error=$error');
     } finally {
       if (mounted) {
         setState(() {
