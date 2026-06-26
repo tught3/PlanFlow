@@ -331,10 +331,51 @@ class AuthService implements AuthSessionClient {
   }
 
   @override
-  Future<void> signOut() {
-    return PlanFlowAuthLocalStorage.runWithSessionRemovalAllowed(
-      _client.auth.signOut,
-    );
+  Future<void> signOut() async {
+    PlanFlowAuthLocalStorage.beginExplicitSignOut();
+    try {
+      await PlanFlowAuthLocalStorage.runWithSessionRemovalAllowed(
+        _client.auth.signOut,
+      );
+    } finally {
+      await clearCachedOAuthState();
+      // 비동기 signedOut 이벤트 리스너가 명시적 로그아웃 플래그를 본 뒤 풀리도록 지연 해제한다.
+      // 정상 경로에서는 AuthProvider 리스너가 먼저 endExplicitSignOut()을 호출하며,
+      // 리스너가 없는 경우(테스트 등)를 대비한 fallback이다.
+      unawaited(
+        Future<void>.delayed(
+          const Duration(milliseconds: 500),
+          PlanFlowAuthLocalStorage.endExplicitSignOut,
+        ),
+      );
+    }
+  }
+
+  @visibleForTesting
+  Future<void> clearCachedOAuthState() async {
+    OAuthCallbackHandler.clearPendingCallback();
+    OAuthCallbackHandler.clearLatestUserMessage();
+    await _clearGoogleSignInCache();
+  }
+
+  Future<void> _clearGoogleSignInCache() async {
+    final googleSignIn = _googleSignIn;
+    if (googleSignIn == null) {
+      return;
+    }
+
+    try {
+      await googleSignIn.disconnect();
+    } catch (error, stackTrace) {
+      debugPrint('Google sign-out cache clear via disconnect skipped: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      try {
+        await googleSignIn.signOut();
+      } catch (fallbackError, fallbackStackTrace) {
+        debugPrint('Google sign-out cache clear skipped: $fallbackError');
+        debugPrintStack(stackTrace: fallbackStackTrace);
+      }
+    }
   }
 
   @override

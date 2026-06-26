@@ -21,6 +21,7 @@ void main() {
 
   tearDown(() {
     SharedPreferencesAsyncPlatform.instance = null;
+    PlanFlowAuthLocalStorage.endExplicitSignOut();
   });
 
   test('refreshes the restored session snapshot before startup resolves',
@@ -287,6 +288,48 @@ void main() {
 
     expect(provider.isSignedIn, isFalse);
     expect(provider.userId, isNull);
+
+    provider.dispose();
+    await service.dispose();
+  });
+
+  test(
+      'clears account snapshot for explicit sign out even after removal flag '
+      'is reset (async listener race)', () async {
+    final service = _FakeAuthService(
+      currentSession: _session(
+        userId: 'naver-user',
+        email: 'naver-user@example.com',
+        provider: 'custom:planflow-naver',
+      ),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.isSignedIn, isTrue);
+    expect(provider.provider, 'custom:planflow-naver');
+    expect(provider.email, 'naver-user@example.com');
+
+    // 실제 race 재현: signOut()은 이미 끝나 isSessionRemovalAllowed는 false지만
+    // 명시적 로그아웃 플래그는 비동기 리스너가 볼 때까지 유지된다.
+    PlanFlowAuthLocalStorage.beginExplicitSignOut();
+    expect(PlanFlowAuthLocalStorage.isSessionRemovalAllowed, isFalse);
+
+    service.emitSignedOut();
+    await Future<void>.delayed(Duration.zero);
+
+    // 복구되지 않고 스냅샷이 확정 초기화되어야 한다.
+    expect(provider.isSignedIn, isFalse);
+    expect(provider.needsReauthentication, isFalse);
+    expect(provider.sessionStatus, AuthSessionStatus.signedOut);
+    expect(provider.userId, isNull);
+    expect(provider.email, isNull);
+    expect(provider.provider, isNull);
+    // 리스너가 명시적 로그아웃을 소비하면 플래그를 즉시 해제한다.
+    expect(PlanFlowAuthLocalStorage.isExplicitSignOutInProgress, isFalse);
+    expect(service.refreshCount, 1);
 
     provider.dispose();
     await service.dispose();

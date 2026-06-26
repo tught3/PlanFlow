@@ -19,6 +19,10 @@ class PlanFlowAuthLocalStorage extends LocalStorage {
   static const persistSessionKey = 'planflow:supabase_auth_session:v1';
   static const _secureSessionKey = 'planflow_supabase_auth_session_v1';
   static bool _allowSessionRemoval = false;
+  // 사용자 주도 로그아웃 진행 중 여부. _allowSessionRemoval은 signOut() 완료 직후
+  // 동기적으로 false로 리셋되어, 비동기로 처리되는 signedOut 이벤트 리스너가 이를 보지 못한다.
+  // 이 플래그는 리스너가 명시적 로그아웃을 인지할 때까지(또는 fallback 타임아웃까지) 유지된다.
+  static bool _explicitSignOutInProgress = false;
 
   final String? legacyPersistSessionKey;
   final SharedPreferences? _preferencesOverride;
@@ -28,6 +32,16 @@ class PlanFlowAuthLocalStorage extends LocalStorage {
   bool _initialized = false;
 
   static bool get isSessionRemovalAllowed => _allowSessionRemoval;
+
+  static bool get isExplicitSignOutInProgress => _explicitSignOutInProgress;
+
+  static void beginExplicitSignOut() {
+    _explicitSignOutInProgress = true;
+  }
+
+  static void endExplicitSignOut() {
+    _explicitSignOutInProgress = false;
+  }
 
   static Future<T> runWithSessionRemovalAllowed<T>(
     Future<T> Function() action,

@@ -135,15 +135,20 @@ class AuthProvider extends ChangeNotifier {
         );
       }
       if (authState.event == AuthChangeEvent.signedOut &&
-          authState.session == null &&
-          !PlanFlowAuthLocalStorage.isSessionRemovalAllowed &&
-          hasAccountSnapshot) {
-        debugPrint(
-          'Auth signedOut recover: explicitSignOut=false hasSnapshot=true',
-        );
-        _setSessionStatus(AuthSessionStatus.recovering);
-        unawaited(syncCurrentSession());
-        return;
+          authState.session == null) {
+        if (PlanFlowAuthLocalStorage.isExplicitSignOutInProgress) {
+          // 사용자 주도 로그아웃은 권위적으로 처리한다: 복구하지 않고 아래 공통 경로로 떨어져
+          // _applyUser(null) + signedOut을 적용해 스냅샷(provider/email)을 확정 초기화한다.
+          PlanFlowAuthLocalStorage.endExplicitSignOut();
+        } else if (!PlanFlowAuthLocalStorage.isSessionRemovalAllowed &&
+            hasAccountSnapshot) {
+          debugPrint(
+            'Auth signedOut recover: explicitSignOut=false hasSnapshot=true',
+          );
+          _setSessionStatus(AuthSessionStatus.recovering);
+          unawaited(syncCurrentSession());
+          return;
+        }
       }
       await _syncProfileAndApplyUser(
         service,
