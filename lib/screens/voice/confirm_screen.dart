@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
+import '../../core/diag_logger.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
 import '../../core/responsive.dart';
@@ -1149,12 +1150,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       label: 'pre_actions',
     );
     await _tryFollowUp(
-      () => widget.smartPreparationAlarmService.schedulePayloads(
-        eventId: event.id,
-        eventTitle: event.title,
-        payloads: preActionPayloads,
-        notificationKeyPrefix: 'pre_action',
-      ),
+      () {
+        DiagLogger.log('SmartPrep',
+            'payloads=${preActionPayloads.length} loc="${event.location ?? ''}"');
+        return widget.smartPreparationAlarmService.schedulePayloads(
+          eventId: event.id,
+          eventTitle: event.title,
+          payloads: preActionPayloads,
+          notificationKeyPrefix: 'pre_action',
+        );
+      },
       label: 'smart_preparation_alarm_notifications',
     );
     await _tryFollowUp(
@@ -1171,11 +1176,16 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
           event,
           safetyMarginOverride: departureSafetyMargin,
         );
-        if (!result.isScheduled) {
-          debugPrint(
-            'Departure alarm skipped: ${result.skippedReason ?? 'unknown'}',
-          );
-        }
+        final hasCoords =
+            event.locationLat != null && event.locationLng != null;
+        // 릴리즈 기기에서도 확인 가능하도록 DiagLogger로 등록/스킵 사유를 남긴다.
+        DiagLogger.log(
+          'DepartureAlarm',
+          result.isScheduled
+              ? 'scheduled hasCoords=$hasCoords loc="${event.location ?? ''}"'
+              : 'skipped reason=${result.skippedReason ?? 'unknown'} '
+                  'hasCoords=$hasCoords loc="${event.location ?? ''}"',
+        );
       },
       label: 'departure_alarm',
     );

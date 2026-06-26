@@ -61,7 +61,8 @@ class VoiceDateRangeParser {
       final start = today.add(const Duration(days: 3));
       return _singleDay(start, '글피');
     }
-    if (compact.contains('모레')) {
+    // '내일모레'/'내일모래'(STT 오인식)는 2일 뒤. '내일' 단독 검사보다 먼저 둔다.
+    if (compact.contains('모레') || compact.contains('내일모래')) {
       final start = today.add(const Duration(days: 2));
       return _singleDay(start, '모레');
     }

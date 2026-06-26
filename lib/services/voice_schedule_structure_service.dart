@@ -1137,6 +1137,14 @@ class VoiceScheduleStructureService {
       '경기장',
       '빌딩',
       '타워',
+      '아파트',
+      '빌라',
+      '오피스텔',
+      '주택',
+      '펜션',
+      '모텔',
+      '단지',
+      '타운하우스',
     ];
     final keywordPattern = placeKeywords.join('|');
     // 장소 키워드로 끝나는 구 + 조사(에/에서/로/으로)
@@ -1472,10 +1480,14 @@ class VoiceScheduleStructureService {
     ).hasMatch(text)) {
       return text;
     }
-    return text.replaceAllMapped(
-      RegExp(r'(^|\s)모래(?=\s|$)'),
-      (match) => '${match.group(1) ?? ''}모레',
-    );
+    // STT가 '내일모레'를 '내일모래'(붙은 형태)로 인식한 경우 먼저 교정한 뒤,
+    // 단독 '모래'(=모레)도 교정한다.
+    return text
+        .replaceAll('내일모래', '내일모레')
+        .replaceAllMapped(
+          RegExp(r'(^|\s)모래(?=\s|$)'),
+          (match) => '${match.group(1) ?? ''}모레',
+        );
   }
 
   String _extractContentClause(String text) {

@@ -1201,14 +1201,18 @@ $_scheduleSystemPrompt
   DateTime? _extractDateFromText(String text, DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
 
-    if (text.contains('내일')) {
-      return today.add(const Duration(days: 1));
-    }
-    if (text.contains('모레')) {
+    // '내일모레'/'내일모래'(STT 오인식)/'모레'는 2일 뒤. '내일' 단독보다 먼저 검사한다
+    // ('내일모레'가 '내일'에 먼저 걸려 1일 뒤로 오인되는 것 방지).
+    if (text.contains('내일모레') ||
+        text.contains('내일모래') ||
+        text.contains('모레')) {
       return today.add(const Duration(days: 2));
     }
     if (text.contains('글피')) {
       return today.add(const Duration(days: 3));
+    }
+    if (text.contains('내일')) {
+      return today.add(const Duration(days: 1));
     }
     if (text.contains('오늘')) {
       return today;
@@ -1472,6 +1476,7 @@ title, date, start_at, end_at, location, location_lat, location_lng, travel_orig
 start_at and end_at must be ISO-8601 date-time strings when possible.
 Keep date, time, recurrence, and reminder expressions out of title and memo; put them only into the structured fields.
 For Korean relative and colloquial time expressions such as "3분 뒤", "2시간 후", "내일 오전 10시", "열두시반", "오후 두시 반", and "저녁 일곱시 삼십분", resolve them from the current local date and time.
+"내일" means tomorrow (today + 1 day). "모레" and "내일모레" mean the day after tomorrow (today + 2 days); STT often mishears "모레" as "모래", so "내일모래" also means today + 2 days. "글피" means today + 3 days. Resolve "모레"/"내일모레"/"내일모래" to today + 2 days, never to tomorrow.
 For day-only expressions like "28일" or "28일로", resolve to the 28th of the current month. If that date has already passed, use the 28th of the next month instead. Always output the full date in ISO-8601 format.
 If only a date is known, use 09:00 local time unless the user clearly implies all-day.
 For recurring schedules, return recurrence_rule as an iCal RRULE such as "FREQ=WEEKLY;BYDAY=TU". Otherwise return null.

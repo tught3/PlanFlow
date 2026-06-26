@@ -759,6 +759,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
           }
         }
         _resetVoiceCommandSubmitGuard(clearSignature: true);
+        // confirm 취소 등으로 트랜스크립트 텍스트를 유지하더라도, 이전 파싱의
+        // stale draft 캐시는 항상 비운다. (안 비우면 같은 텍스트 재입력 시
+        // _preparedDraftForCurrentText가 옛 draft를 반환해 제목/장소가 오염됨)
+        _clearPreparedDraft();
       }),
     );
   }

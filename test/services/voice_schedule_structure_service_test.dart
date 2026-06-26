@@ -437,5 +437,15 @@ void main() {
       expect(service.ensurePeopleInTitle('에 회의', '회의'), '회의');
       expect(service.ensurePeopleInTitle('회의 준비', '회의 준비'), '회의 준비');
     });
+
+    test('extracts trailing residential location (성원아파트에서)', () {
+      final location = service.normalizeScheduleLocation(
+        location: null,
+        rawText: '엄마 만나러 가기 성원아파트에서',
+        title: '엄마 만나러 가기',
+      );
+      expect(location, isNotNull);
+      expect(location, contains('성원아파트'));
+    });
   });
 }
