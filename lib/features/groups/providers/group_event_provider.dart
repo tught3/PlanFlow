@@ -38,6 +38,9 @@ class GroupEventProvider extends ChangeNotifier {
   bool _isDisposed = false;
 
   GroupEventState get state => _state;
+  // 화면의 오늘/이번주 구분이 load 범위와 같은 시계를 쓰도록 주입된 nowProvider를
+  // 로컬 시각으로 노출한다. 프로덕션에서는 planflowNow()와 동일하다.
+  DateTime nowLocal() => planflowLocal(_nowProvider().toUtc());
   List<GroupEventModel> get events => _state.events;
   GroupModel? get selectedGroup => _state.selectedGroup;
   String? get selectedGroupRole => _state.selectedGroupRole;

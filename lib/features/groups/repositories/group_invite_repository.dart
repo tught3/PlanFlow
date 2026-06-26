@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/group_json.dart';
@@ -137,8 +138,14 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
       );
     }
 
+    final now = DateTime.now().toUtc();
     final uniqueRows = <String, Map<String, dynamic>>{};
     for (final row in rows) {
+      // 만료된 초대는 서버 RLS/accept RPC가 막더라도 목록에 노출되지 않도록 거른다.
+      // expires_at이 없으면(과거 데이터) 유효한 것으로 간주한다.
+      if (isExpiredInviteRow(row, now)) {
+        continue;
+      }
       uniqueRows[row['id'].toString()] = row;
     }
     return uniqueRows.values
@@ -331,6 +338,19 @@ class SupabaseGroupInviteRepository extends GroupInviteRepository {
     if (!matches) {
       throw StateError('내 초대만 처리할 수 있습니다.');
     }
+  }
+
+  @visibleForTesting
+  static bool isExpiredInviteRow(Map<String, dynamic> row, DateTime nowUtc) {
+    final rawExpiresAt = row['expires_at'];
+    if (rawExpiresAt == null || rawExpiresAt.toString().trim().isEmpty) {
+      return false;
+    }
+    final expiresAt = DateTime.tryParse(rawExpiresAt.toString())?.toUtc();
+    if (expiresAt == null) {
+      return false;
+    }
+    return !expiresAt.isAfter(nowUtc);
   }
 
   Map<String, dynamic> _rowAsJson(Object row) {

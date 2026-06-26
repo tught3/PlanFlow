@@ -80,7 +80,7 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
       animation: _provider,
       builder: (context, _) {
         final state = _provider.state;
-        final today = planflowNow();
+        final today = _provider.nowLocal();
         final todayEvents = _eventsForDay(state.events, today);
         final weekEvents = _eventsForWeek(state.events, today)
             .where((event) => !todayEvents.any((item) => item.id == event.id))

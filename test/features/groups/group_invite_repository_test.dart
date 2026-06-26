@@ -65,4 +65,47 @@ void main() {
       throwsStateError,
     );
   });
+
+  group('isExpiredInviteRow', () {
+    final now = DateTime.utc(2026, 6, 26, 9);
+
+    test('treats past expires_at as expired', () {
+      final row = <String, dynamic>{
+        'id': 'invite-1',
+        'expires_at': '2026-06-20T00:00:00Z',
+      };
+      expect(
+        SupabaseGroupInviteRepository.isExpiredInviteRow(row, now),
+        isTrue,
+      );
+    });
+
+    test('keeps future expires_at', () {
+      final row = <String, dynamic>{
+        'id': 'invite-2',
+        'expires_at': '2026-07-01T00:00:00Z',
+      };
+      expect(
+        SupabaseGroupInviteRepository.isExpiredInviteRow(row, now),
+        isFalse,
+      );
+    });
+
+    test('treats null or unparseable expires_at as not expired', () {
+      expect(
+        SupabaseGroupInviteRepository.isExpiredInviteRow(
+          <String, dynamic>{'id': 'invite-3', 'expires_at': null},
+          now,
+        ),
+        isFalse,
+      );
+      expect(
+        SupabaseGroupInviteRepository.isExpiredInviteRow(
+          <String, dynamic>{'id': 'invite-4', 'expires_at': 'not-a-date'},
+          now,
+        ),
+        isFalse,
+      );
+    });
+  });
 }
