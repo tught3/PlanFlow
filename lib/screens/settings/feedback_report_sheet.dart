@@ -392,9 +392,13 @@ class FeedbackReportSection extends StatelessWidget {
             ),
             if (onOpenBetaSurvey != null) ...[
               const SizedBox(height: 8),
-              OutlinedButton.icon(
+              FilledButton.icon(
                 key: const ValueKey('settings-beta-survey-button'),
                 onPressed: onOpenBetaSurvey,
+                style: FilledButton.styleFrom(
+                  backgroundColor: PlanFlowColors.fab,
+                  foregroundColor: Colors.white,
+                ),
                 icon: const Icon(Icons.star_border_outlined),
                 label: const Text('베타 사용 후기 남기기'),
               ),
