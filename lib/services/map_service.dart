@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 
 import '../core/env.dart';
+import 'api_usage_guard.dart';
 
 enum MapTravelMode {
   car,
@@ -32,17 +33,22 @@ class MapService {
     String? naverClientId,
     String? naverClientSecret,
     http.Client Function()? httpClientFactory,
+    ApiUsageGuard? usageGuard,
   })  : _tmapApiKey = tmapApiKey ?? AppEnv.tmapApiKey,
         _naverProxyUrl = naverProxyUrl ?? AppEnv.naverMapProxyUrl,
         _naverClientId = naverClientId ?? AppEnv.naverMapClientId,
         _naverClientSecret = naverClientSecret ?? '',
-        _httpClientFactory = httpClientFactory ?? http.Client.new;
+        _httpClientFactory = httpClientFactory ?? http.Client.new,
+        _usageGuard = usageGuard;
 
   final String _tmapApiKey;
   final String _naverProxyUrl;
   final String _naverClientId;
   final String _naverClientSecret;
   final http.Client Function() _httpClientFactory;
+  final ApiUsageGuard? _usageGuard;
+
+  ApiUsageGuard get _guard => _usageGuard ?? ApiUsageGuard.instance;
 
   Future<MapTravelEstimate?> getTravelMinutes({
     required double originLat,
@@ -90,6 +96,11 @@ class MapService {
     required double destinationLng,
   }) async {
     if (_tmapApiKey.trim().isEmpty) {
+      return null;
+    }
+
+    // circuit breaker — 일일 한도 초과 시 null 반환 → 호출부가 Naver로 폴백
+    if (!await _guard.tryConsume(ApiName.tmapRoutes)) {
       return null;
     }
 

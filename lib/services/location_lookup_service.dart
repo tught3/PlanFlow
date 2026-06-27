@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/env.dart';
+import 'api_usage_guard.dart';
 import 'app_permission_service.dart';
 
 enum LocationLookupProvider {
@@ -88,12 +89,14 @@ class LocationLookupService {
     String? tmapApiKey,
     String? googleMapsApiKey,
     http.Client Function()? httpClientFactory,
+    ApiUsageGuard? usageGuard,
   })  : _clientId = clientId ?? AppEnv.naverMapClientId,
         _clientSecret = clientSecret ?? '',
         _proxyUrl = proxyUrl ?? AppEnv.naverMapProxyUrl,
         _tmapApiKey = tmapApiKey ?? AppEnv.tmapApiKey,
         _googleMapsApiKey = googleMapsApiKey ?? AppEnv.googleMapsApiKey,
-        _httpClientFactory = httpClientFactory ?? http.Client.new;
+        _httpClientFactory = httpClientFactory ?? http.Client.new,
+        _usageGuard = usageGuard;
 
   final String _clientId;
   final String _clientSecret;
@@ -101,6 +104,9 @@ class LocationLookupService {
   final String _tmapApiKey;
   final String _googleMapsApiKey;
   final http.Client Function() _httpClientFactory;
+  final ApiUsageGuard? _usageGuard;
+
+  ApiUsageGuard get _guard => _usageGuard ?? ApiUsageGuard.instance;
 
   Future<List<LocationLookupResult>> search(
     String query, {
@@ -405,6 +411,12 @@ class LocationLookupService {
     GeoPoint? origin,
   }) async {
     if (_tmapApiKey.trim().isEmpty) {
+      return const <LocationLookupResult>[];
+    }
+
+    // circuit breaker — 일일 한도 초과 시 실제 HTTP 호출 없이 즉시 빈 결과 반환
+    if (!await _guard.tryConsume(ApiName.tmapPoi)) {
+      debugPrint('ApiUsageGuard: tmap_poi blocked — daily limit exceeded');
       return const <LocationLookupResult>[];
     }
 
