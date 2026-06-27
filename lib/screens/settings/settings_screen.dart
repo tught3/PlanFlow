@@ -3456,8 +3456,24 @@ class _SettingsScreenState extends State<SettingsScreen>
                 title: '진단 로그',
                 subtitle: '버그 진단용 로그를 화면에 표시합니다.',
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    final log = DiagLogger.dump();
+                  onPressed: () async {
+                    // 출발 preflight는 백그라운드 isolate에서 실행되어 메모리
+                    // 로그에 안 남으므로 SharedPreferences 기록을 읽어 상단에 붙인다.
+                    String preflightHeader;
+                    try {
+                      final prefs = await SharedPreferences.getInstance();
+                      final last =
+                          prefs.getString(departurePreflightLastRunKey);
+                      preflightHeader = last != null
+                          ? '[출발 preflight 마지막 실행]\n$last\n\n'
+                          : '[출발 preflight 마지막 실행] 기록 없음\n\n';
+                    } catch (error) {
+                      preflightHeader = '[출발 preflight] 읽기 실패: $error\n\n';
+                    }
+                    final log = preflightHeader + DiagLogger.dump();
+                    if (!context.mounted) {
+                      return;
+                    }
                     showDialog<void>(
                       context: context,
                       builder: (ctx) => AlertDialog(

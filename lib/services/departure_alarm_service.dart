@@ -982,10 +982,11 @@ Future<void> _departureAlarmPreflightCallback(
       await const DepartureAlarmService().refreshUpcoming(userId: userId);
       return;
     }
-    await const DepartureAlarmService().runPreflightForEvent(
+    final result = await const DepartureAlarmService().runPreflightForEvent(
       eventId,
       userId: userId,
     );
+    await _recordPreflightRun(eventId: eventId, result: result);
   } catch (error, stackTrace) {
     debugPrint('Departure alarm preflight skipped: $error');
     debugPrintStack(stackTrace: stackTrace);
@@ -994,5 +995,29 @@ Future<void> _departureAlarmPreflightCallback(
     await service.scheduleNextMonitor(
       interval: await service._urgentMonitorInterval(),
     );
+  }
+}
+
+/// 출발 알람 preflight(출발 직전 위치 재조회·이동시간 재계산)의 실행 결과를
+/// 영속 저장한다. 백그라운드 isolate라 메모리 DiagLogger에 안 남으므로,
+/// SharedPreferences에 기록해 메인 isolate(진단 로그 화면)에서 읽게 한다.
+const String departurePreflightLastRunKey = 'departure_preflight_last_run';
+
+Future<void> _recordPreflightRun({
+  required String eventId,
+  required DepartureAlarmScheduleResult result,
+}) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final summary = result.isScheduled
+        ? 'OK travelMin=${result.travelMinutes ?? '-'} '
+            'notifyAt=${result.notifyAt?.toIso8601String() ?? '-'}'
+        : 'SKIP reason=${result.skippedReason ?? 'unknown'}';
+    await prefs.setString(
+      departurePreflightLastRunKey,
+      '${DateTime.now().toIso8601String()} | event=$eventId | $summary',
+    );
+  } catch (error) {
+    debugPrint('preflight record failed: $error');
   }
 }
