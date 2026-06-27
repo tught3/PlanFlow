@@ -465,6 +465,27 @@ void main() {
       },
     );
 
+    // 버그: rawText 자체가 "뒤에…"로 시작하면 extractPeopleFields가 "뒤에"를
+    // 사람으로 오인 추출해, _stripOrphanTimeParticles로 제거한 "뒤에"를
+    // ensurePeopleInTitle 마지막에 사람 이름으로 제목 앞에 다시 붙이던 현상.
+    test(
+      'ensurePeopleInTitle이 사람으로 오인된 시간조사("뒤에")를 제목에 복원하지 않는다',
+      () {
+        const text = '뒤에 확인 메세지 출력';
+        final parsed = service.normalizeParsedScheduleTitle(text, rawText: text);
+        expect(parsed, isNot(contains('뒤에')));
+        expect(parsed, contains('확인'));
+        // 진짜 사람 이름은 보존돼야 한다.
+        expect(
+          service.normalizeParsedScheduleTitle(
+            '엄마 만나러 가기',
+            rawText: '엄마 만나러 가기',
+          ),
+          contains('엄마'),
+        );
+      },
+    );
+
     test(
       'normalizeLocalVoiceTitle strips orphan time particle "뒤에" from local title',
       () {

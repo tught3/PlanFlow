@@ -804,6 +804,11 @@ class VoiceScheduleStructureService {
         normalizedTitle.replaceAll(RegExp(r'\s+'), '').toLowerCase();
     final people = extractPeopleFields(rawText).all.where((person) {
       final compactPerson = person.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+      // "뒤에"·"후에" 같은 시간 조사가 사람으로 오인 추출되어, 위에서 제거한
+      // 시간 찌꺼기를 사람 이름으로 제목 앞에 다시 붙이는 것을 방지한다.
+      if (_trailingTimeParticlePattern.hasMatch(person.trim())) {
+        return false;
+      }
       return !normalizedTitle.contains(person) &&
           !compactTitle.contains(compactPerson);
     }).toList(growable: false);
