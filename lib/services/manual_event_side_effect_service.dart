@@ -724,12 +724,22 @@ class ManualEventSideEffectService {
       'firstId=$firstExternalEventId '
       'day=${dayReference.toIso8601String()}',
     );
+
+    // 위치를 루프 밖에서 1회만 조회해 이벤트마다 중복 LocationManager 호출을 막는다.
+    final sharedOrigin = await _resolveOriginLocation();
+    DiagLogger.log(
+      'ManualSideEffect',
+      'resyncExternalPrep origin=${sharedOrigin != null ? '${sharedOrigin.latitude},${sharedOrigin.longitude}' : 'null'} '
+      'day=${dayReference.toIso8601String()}',
+    );
+
     final payloadsByEvent = <EventModel, List<Map<String, dynamic>>>{};
     for (final event in externalEvents) {
       final resolvedTravelMinutes = await _resolveTravelMinutesForEvent(
         event,
         fallbackTravelMinutes: travelMinutes,
         travelMode: travelMode,
+        preResolvedOrigin: sharedOrigin,
       );
       final isFirst = event.id == firstExternalEventId;
       final payloads = smartService.buildExternalEventPayloads(
@@ -797,10 +807,16 @@ class ManualEventSideEffectService {
     return '$userId:$yyyy-$mm-$dd';
   }
 
+  /// 이벤트별 이동시간 해상도를 계산한다.
+  ///
+  /// [preResolvedOrigin] 을 전달하면 위치 조회를 건너뛴다.
+  /// 여러 이벤트를 루프로 처리할 때 origin 조회를 루프 밖에서 1회 실행하고
+  /// 이 파라미터로 전달해야 LocationManager 중복 호출을 막을 수 있다.
   Future<_TravelMinutesResolution> _resolveTravelMinutesForEvent(
     EventModel event, {
     required int fallbackTravelMinutes,
     required String travelMode,
+    GeoPoint? preResolvedOrigin,
   }) async {
     if (fallbackTravelMinutes !=
         SmartPreparationAlarmService.defaultTravelBufferMin) {
@@ -809,7 +825,8 @@ class ManualEventSideEffectService {
         isFallback: false,
       );
     }
-    final origin = await _resolveOriginLocation();
+    // preResolvedOrigin이 있으면 추가 위치 조회 없이 바로 사용한다.
+    final origin = preResolvedOrigin ?? await _resolveOriginLocation();
     final destination =
         await _resolveDestinationForEvent(event, origin: origin);
     if (destination == null) {

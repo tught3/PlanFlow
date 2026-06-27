@@ -161,7 +161,13 @@ class CalendarAutoSyncService {
     try {
       await _storeLastStartedAt(now);
       for (var retryCount = 0;; retryCount += 1) {
-        result = await _syncConnectedCalendarsOnce(reason: reason);
+        // 재시도(retry)에서는 알림 재예약(_resyncUpcomingPreparation)을 건너뛴다.
+        // 알림 재예약은 위치 조회·API 호출을 포함하므로 재시도마다 반복하면
+        // 백그라운드 CPU/네트워크 폭주를 일으킨다.
+        result = await _syncConnectedCalendarsOnce(
+          reason: reason,
+          syncPreparation: retryCount == 0,
+        );
         if (!result.hasFailures || retryCount >= _maxFailureRetries) {
           break;
         }
@@ -195,6 +201,7 @@ class CalendarAutoSyncService {
 
   Future<CalendarAutoSyncResult> _syncConnectedCalendarsOnce({
     required String reason,
+    bool syncPreparation = true,
   }) async {
     final result = CalendarAutoSyncResult();
     await _runStep(result, 'google_auto_sync', () async {
@@ -232,10 +239,14 @@ class CalendarAutoSyncService {
       }
       return CalendarAutoSyncStepOutcome.completed(imported.message);
     });
-    await _resyncUpcomingPreparation(
-      userId: _resolvedUserId(),
-      reason: reason,
-    );
+    // 알림 재예약은 최초 시도에서만 실행한다 (syncPreparation=false이면 건너뜀).
+    // 재시도(retry)마다 반복하면 위치 조회·API 호출이 중복 실행된다.
+    if (syncPreparation) {
+      await _resyncUpcomingPreparation(
+        userId: _resolvedUserId(),
+        reason: reason,
+      );
+    }
     return result;
   }
 

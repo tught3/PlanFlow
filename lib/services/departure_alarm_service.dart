@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/diag_logger.dart';
 import '../core/env.dart';
 import '../core/supabase_auth_options.dart';
 import '../data/models/event_model.dart';
@@ -159,6 +160,9 @@ class DepartureAlarmService {
     Duration? safetyMarginOverride,
     MapTravelMode? travelModeOverride,
     bool fireDueDeparture = false,
+    /// 백그라운드 isolate(모니터·preflight 콜백)에서 호출할 때 true로 설정한다.
+    /// 라이브 GPS 조회를 건너뛰고 캐시된 위치만 사용해 LocationManager 폭주를 막는다.
+    bool cacheOnlyLocation = false,
   }) async {
     final startAt = event.startAt;
     final destinationLat = event.locationLat;
@@ -192,7 +196,7 @@ class DepartureAlarmService {
       );
     }
 
-    final origin = await _resolveOriginLocation();
+    final origin = await _resolveOriginLocation(cacheOnly: cacheOnlyLocation);
     if (origin == null) {
       if (fireDueDeparture) {
         final notifyAt = _currentTime.add(_immediateNotificationDelay);
@@ -384,6 +388,9 @@ class DepartureAlarmService {
         rescheduleMonitor: false,
         safetyMarginOverride: safetyMargin,
         travelModeOverride: travelMode,
+        // 모니터 콜백은 백그라운드 isolate에서 실행되므로
+        // 라이브 GPS 조회를 금지하고 캐시만 사용한다.
+        cacheOnlyLocation: true,
       );
       if (eventResult.isScheduled) {
         scheduled += 1;
@@ -689,7 +696,14 @@ class DepartureAlarmService {
     );
   }
 
-  Future<GeoPoint?> _resolveOriginLocation() async {
+  /// 출발지 위치를 확인한다.
+  ///
+  /// [cacheOnly] 가 true이면 라이브 GPS/네이티브 위치 조회를 건너뛰고
+  /// SharedPreferences에 저장된 캐시만 반환한다. 백그라운드 isolate(모니터·
+  /// preflight 콜백) 에서 호출할 때는 반드시 true로 설정해야 한다.
+  /// 라이브 위치 요청은 백그라운드에서 LocationManager 폭주와 CPU 과다 사용을
+  /// 일으키며 삼성 계열 기기에서 앱 강제 종료의 직접 원인이 된다.
+  Future<GeoPoint?> _resolveOriginLocation({bool cacheOnly = false}) async {
     final provider = _currentLocationProvider;
     if (provider != null) {
       final origin = await provider();
@@ -697,6 +711,10 @@ class DepartureAlarmService {
         await _cacheLastOrigin(origin);
         return origin;
       }
+    }
+    // cacheOnly 모드: 라이브 위치 조회 없이 캐시만 사용
+    if (cacheOnly) {
+      return _loadCachedOrigin();
     }
     try {
       final permissionGranted = await _permissions.checkLocationPermission();
@@ -930,6 +948,12 @@ class _FallbackSettingsRepository extends SettingsRepository {
 
 @pragma('vm:entry-point')
 Future<void> _departureAlarmMonitorCallback() async {
+  // 백그라운드 isolate: 진단 로그로 실행 시각과 cacheOnly 전략 추적
+  DiagLogger.log(
+    'DepartureMonitor',
+    'monitorCallback 시작 at=${DateTime.now().toIso8601String()} '
+    'cacheOnlyLocation=true (라이브 GPS 조회 금지)',
+  );
   Duration? scheduledInterval;
   try {
     if (!AppEnv.isSupabaseReady && AppEnv.hasValidSupabaseConfig) {
@@ -947,9 +971,16 @@ Future<void> _departureAlarmMonitorCallback() async {
     }
     final refreshResult = await const DepartureAlarmService().refreshUpcoming();
     scheduledInterval = refreshResult.nextMonitorInterval;
+    DiagLogger.log(
+      'DepartureMonitor',
+      'monitorCallback 완료 scheduled=${refreshResult.scheduled} '
+      'skipped=${refreshResult.skipped} '
+      'nextInterval=${scheduledInterval?.inMinutes ?? 30}min',
+    );
   } catch (error, stackTrace) {
     debugPrint('Departure alarm monitor skipped: $error');
     debugPrintStack(stackTrace: stackTrace);
+    DiagLogger.log('DepartureMonitor', 'monitorCallback 예외 error=$error');
   } finally {
     await const DepartureAlarmService()
         .scheduleNextMonitor(interval: scheduledInterval);

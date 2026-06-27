@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/diag_logger.dart';
 import '../core/env.dart';
 import '../core/supabase_auth_options.dart';
 import 'briefing_scheduler_service.dart';
@@ -115,6 +116,12 @@ Future<void> _briefingAlarmCallback(
   final briefingType = params['briefing_type'] as String? ?? 'morning';
   final isMorning = briefingType == 'morning';
   final userId = params['user_id'] as String?;
+
+  DiagLogger.log(
+    'BriefingAlarm',
+    'briefingCallback 시작 type=$briefingType '
+    'at=${DateTime.now().toIso8601String()}',
+  );
 
   try {
     if (!AppEnv.isSupabaseReady && AppEnv.hasValidSupabaseConfig) {

@@ -597,6 +597,70 @@ void main() {
     expect(travel.lastOriginLng, 127.0);
     expect(notifications.criticalTitles, contains('지금 출발해야 해요'));
   });
+
+  // [PREVENT] 백그라운드 모니터 콜백에서 AppPermissionService 라이브 위치 조회 금지 회귀 테스트
+  // 실증: refreshUpcoming이 cacheOnlyLocation=true 없이 scheduleForEvent를 호출하면
+  // LocationManager 폭주 → 삼성 기기 excessive cpu kill로 앱 종료 → 알람 미발생
+  //
+  // 검증 전략: cacheOnly=true이면 _permissions.checkLocationPermission() 경로에
+  // 진입하지 않는다 → SharedPreferences 캐시만으로 origin을 결정한다.
+  // AppPermissionService는 주입하지 않고(기본값=플랫폼 채널), 캐시 없이 실행하면
+  // 'missing_origin'으로 skip되어야 한다. 즉, 라이브 조회를 시도했다면 플랫폼
+  // 채널 예외가 발생했을 것이므로 테스트가 예외 없이 skip 결과를 반환하면
+  // cacheOnly 경로가 정상 작동하는 것이다.
+  test(
+      'refreshUpcoming with cacheOnly skips events when no cache — no live location lookup',
+      () async {
+    AppEnv.markSupabaseInitialized();
+    // 캐시 없음: cacheOnly=true이면 missing_origin으로 skip (라이브 조회 시도하지 않음)
+    SharedPreferences.setMockInitialValues({});
+
+    final notifications = _FakeNotificationService();
+    final preflight = _FakeDeparturePreflightScheduler(shouldSchedule: false);
+    final service = DepartureAlarmService(
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-bg-monitor',
+            userId: 'user-1',
+            title: '배경 모니터 테스트',
+            startAt: DateTime(2026, 5, 8, 14),
+            location: '판교',
+            locationLat: 37.39,
+            locationLng: 127.11,
+          ),
+        ],
+      ),
+      // currentLocationProvider 주입 없음 → 플랫폼 채널(AppPermissionService) 경로
+      // cacheOnly=true이면 이 경로에 도달하지 않아야 한다.
+      travelTimeBufferService: _FakeTravelTimeBufferService(
+        routeEstimate: const TravelTimeBufferEstimate(
+          buffer: Duration(minutes: 30),
+          source: TravelTimeBufferSource.coordinates,
+          reason: 'test',
+        ),
+      ),
+      notificationService: notifications,
+      preflightScheduler: preflight.call,
+      now: () => DateTime(2026, 5, 8, 9),
+    );
+
+    // cacheOnly=true + 캐시 없음이면 'missing_origin'으로 skip되어야 한다.
+    // 라이브 OS 위치 조회를 시도했다면 플랫폼 채널 MissingPluginException이 발생했을 것이다.
+    final result = await service.refreshUpcoming(userId: 'user-1');
+
+    expect(
+      result.skipped,
+      greaterThanOrEqualTo(1),
+      reason: '캐시된 위치가 없고 cacheOnly=true이면 출발 알람이 missing_origin으로 skip되어야 합니다.',
+    );
+    // 중요: 알림이 등록되지 않아야 한다 (원인 없이 발화하면 안 됨)
+    expect(
+      notifications.criticalTitles,
+      isEmpty,
+      reason: '위치 정보 없이 출발 알람을 등록하면 안 됩니다.',
+    );
+  });
 }
 
 class _FakeTravelTimeBufferService extends TravelTimeBufferService {

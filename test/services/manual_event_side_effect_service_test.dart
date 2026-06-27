@@ -1274,6 +1274,7 @@ class _FakeDepartureAlarmService extends DepartureAlarmService {
     Duration? safetyMarginOverride,
     MapTravelMode? travelModeOverride,
     bool fireDueDeparture = false,
+    bool cacheOnlyLocation = false,
   }) async {
     scheduleForEventCallCount += 1;
     scheduledEventIds.add(event.id);
