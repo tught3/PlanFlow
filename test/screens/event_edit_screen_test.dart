@@ -140,6 +140,14 @@ void main() {
     );
     await tester.tap(find.text('중요한 일정으로 표시'));
     await tester.pumpAndSettle();
+    // 중요 표시 활성화 후 강한 알람 토글 — 이때 권한 다이얼로그가 열림
+    await tester.scrollUntilVisible(
+      find.text('강한 알람'),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('강한 알람'));
+    await tester.pumpAndSettle();
 
     expect(find.text('중요한 일정 알림 권한이 필요해요'), findsOneWidget);
 

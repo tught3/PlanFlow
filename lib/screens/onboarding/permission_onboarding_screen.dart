@@ -632,6 +632,30 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   request: _permissionService.requestCalendarPermission,
                 ),
               ),
+              const SizedBox(height: 9),
+              _PermissionTile(
+                icon: Icons.alarm_outlined,
+                title: '정확한 알람',
+                // '앱에서 바로 켤 수 없어요' 문구는 테스트 및 UX에서 확인
+                description:
+                    '정확한 시각에 알람을 울리려면 필요합니다. 앱에서 바로 켤 수 없어요 — Android 알람 설정(앱 > PlanFlow)에서 직접 허용해 주세요.',
+                descriptionMaxLines: 3,
+                granted: snapshot?.exactAlarmsGranted == true,
+                isRequesting: _activeRequestKey == 'exactAlarm',
+                key: const ValueKey(
+                  'permission-onboarding-exact-alarm-tile',
+                ),
+                onRequest: () => _requestOne(
+                  key: 'exactAlarm',
+                  grantedMessage: '정확한 알람 권한이 허용되었습니다.',
+                  deniedMessage:
+                      '정확한 알람 권한이 없으면 중요 일정 알림이 지연될 수 있습니다. Android 알람 설정에서 PlanFlow를 허용해 주세요.',
+                  isGranted: (snapshot) => snapshot.exactAlarmsGranted,
+                  // openSettings 없음: openAlarmSettings 는 openAppSettings 로 폴백하므로
+                  // 타일에서 직접 앱 설정을 열지 않는다. 사용자가 description 안내 따라 직접 이동.
+                  request: _permissionService.requestExactAlarmPermission,
+                ),
+              ),
               if (showFullScreenIntentPermission) ...[
                 const SizedBox(height: 9),
                 _PermissionTile(

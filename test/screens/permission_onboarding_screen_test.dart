@@ -145,11 +145,13 @@ void main() {
 
       expect(permissionService.microphoneRequests, 1);
       expect(permissionService.notificationRequests, 1);
-      expect(permissionService.exactAlarmRequests, 0);
+      // exactAlarm은 필수 권한으로 포함됨 — 일반폰에서도 요청된다
+      expect(permissionService.exactAlarmRequests, greaterThan(0));
       expect(permissionService.locationRequests, 1);
       expect(permissionService.calendarRequests, 1);
       expect(permissionService.fullScreenIntentRequests, 0);
-      expect(permissionService.exactAlarmGranted, isFalse);
+      // exactAlarm 기본값(true)이므로 허용됨
+      expect(permissionService.exactAlarmGranted, isTrue);
       expect(permissionService.fullScreenIntentGranted, isFalse);
       expect(
         find.byKey(const ValueKey('permission-onboarding-request-all-button')),

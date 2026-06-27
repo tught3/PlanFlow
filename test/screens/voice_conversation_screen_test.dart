@@ -567,29 +567,23 @@ void main() {
   });
 
   testWidgets('AI 일정 대화는 뒤로가기 확인 후에만 대화 세션을 종료한다', (tester) async {
+    // _exitConversation()은 context.pop() 대신 context.go(AppRoutes.home)으로 이동한다.
+    // 따라서 /home 라우트가 필요하며, pop 결과를 기대하는 대신 홈 화면으로 이동하는지 확인한다.
     final stt = _FakeSttService();
-    final popResults = <Object?>[];
     final router = GoRouter(
-      initialLocation: '/voice-host',
+      initialLocation: AppRoutes.voiceConversation,
       routes: [
-        GoRoute(
-          path: '/voice-host',
-          builder: (context, state) => TextButton(
-            onPressed: () {
-              unawaited(
-                context.push<Object?>(AppRoutes.voiceConversation).then(
-                      popResults.add,
-                    ),
-              );
-            },
-            child: const Text('대화 열기'),
-          ),
-        ),
         GoRoute(
           path: AppRoutes.voiceConversation,
           builder: (context, state) => VoiceConversationScreen(
             sttService: stt,
             repository: _FakeEventRepository(const <EventModel>[]),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.home,
+          builder: (context, state) => const Scaffold(
+            body: Text('홈 화면'),
           ),
         ),
       ],
@@ -603,27 +597,26 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('대화 열기'));
-    await tester.pumpAndSettle();
-
+    // 뒤로가기 버튼을 누르면 확인 바텀시트가 뜬다
     await tester.tap(find.byTooltip('뒤로가기'));
     await tester.pumpAndSettle();
 
     expect(find.text('AI 일정 대화 페이지를 나가겠습니까?'), findsOneWidget);
 
+    // '계속 대화하기'를 누르면 대화 화면이 유지된다
     await tester.tap(find.text('계속 대화하기'));
     await tester.pumpAndSettle();
 
     expect(find.text('AI 일정 대화'), findsOneWidget);
-    expect(popResults, isEmpty);
 
+    // 다시 뒤로가기 후 '나가기'를 누르면 홈 화면으로 이동한다
     await tester.tap(find.byTooltip('뒤로가기'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('나가기'));
     await tester.pumpAndSettle();
 
-    expect(find.text('대화 열기'), findsOneWidget);
-    expect(popResults, contains(voiceConversationClosedResult));
+    // _exitConversation이 context.go(AppRoutes.home)으로 이동하므로 홈 화면이 보인다
+    expect(find.text('홈 화면'), findsOneWidget);
     expect(stt.cancelCalls, greaterThanOrEqualTo(1));
     expect(tester.takeException(), isNull);
   });
