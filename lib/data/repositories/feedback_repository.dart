@@ -152,13 +152,17 @@ class FeedbackRepository {
       'route_or_screen': routeOrScreen,
       'diagnostics': diagnostics.diagnostics,
       'status': 'new',
-      // source가 NOT NULL이라 명시 전송(default 의존 제거 + admin에서 앱/웹 출처 구분).
-      'source': 'android-app',
     };
 
     try {
       await _gateway.insert(payload).timeout(const Duration(seconds: 12));
     } on PostgrestException catch (error) {
+      // 정확한 실패 원인(어떤 컬럼/제약)을 기기 진단로그에서 확인할 수 있게 남긴다.
+      DiagLogger.log(
+        'FeedbackErr',
+        'insert 실패 code=${error.code} msg=${error.message} '
+            'details=${error.details}',
+      );
       throw FeedbackSubmissionException(_messageForPostgrest(error));
     } on SocketException {
       throw const FeedbackSubmissionException(

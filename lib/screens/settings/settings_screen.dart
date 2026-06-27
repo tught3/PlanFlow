@@ -3385,36 +3385,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               const SizedBox(height: 16),
               _SectionCard(
-                title: '테스트 알림',
-                subtitle: '알림 표시 자체가 작동하는지 즉시 확인합니다.',
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    try {
-                      await _notificationService
-                          .showDiagnosticTestNotification();
-                      final pending =
-                          await _notificationService.pendingNotificationCount();
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            '테스트 알림 1건 발송 · 현재 예약된 일정 알림 $pending건',
-                          ),
-                        ),
-                      );
-                    } catch (error) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('테스트 알림 오류: $error')),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.notifications_active_outlined),
-                  label: const Text('테스트 알림 보내기'),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _SectionCard(
                 title: '진단 로그',
                 subtitle: '버그 진단용 로그를 화면에 표시합니다.',
                 child: ElevatedButton.icon(
