@@ -3466,7 +3466,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
-                            '테스트 알림 발송 — 예약된 알림 $pending건',
+                            '테스트 알림 1건 발송 · 현재 예약된 일정 알림 $pending건',
                           ),
                         ),
                       );
