@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-27 TASK_20260627_112532 feedback_reports 웹 피드백 마이그레이션
+- `public.feedback_reports`를 Homepage 웹 익명 제출과 PlanFlow 앱 인증 제출이 함께 쓰도록 `user_id` nullable, `source`/`email` 컬럼, `source` 기본값 `app`, `feedback_reports_source_idx`를 번호 마이그레이션으로 추적했다.
+- 운영 Supabase `xqvvfnvmytjlblcngipn`에 idempotent SQL을 재적용했고, 컬럼/제약/인덱스/RLS 정책을 실측 확인했다. Homepage Production 배포는 Vercel Ready이며 `/api/feedback` 스모크 POST가 200 `{ok:true}`로 통과했고 테스트 행은 삭제했다.
+- 검증: `flutter test test\supabase\feedback_reports_schema_test.dart --no-pub -r compact` 통과, `flutter analyze test\supabase\feedback_reports_schema_test.dart --no-pub` 통과. 전체 `flutter analyze --no-pub`는 기존 `test\services\location_lookup_service_test.dart:490` info 1건으로 실패했다.
+
 ## 2026-06-25 TASK_20260621_110709 동기화 자동 재시도 + 설정 화면 자동 갱신
 - 설정 화면이 `EventRefreshBus`의 자동 동기화/가져오기 완료 신호(`google_auto_sync`, `naver_caldav_auto_import`, `device_naver_import`, 기존 `calendar_auto_sync:*`)를 받으면 600ms debounce 후 캘린더 연결 상태, 자동 동기화 스냅샷, Naver CalDAV 자격증명 상태를 다시 읽도록 보강했다.
 - 앱이 설정 화면에서 resume될 때 이전 자동 동기화 스냅샷의 실패 리스트 또는 provider attention/failed 상태가 있으면 `CalendarAutoSyncService.syncConnectedCalendars(reason: settings_auto_retry, force: true)`로 재시도를 위임한다.

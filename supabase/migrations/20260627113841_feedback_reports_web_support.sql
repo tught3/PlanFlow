@@ -1,5 +1,5 @@
--- PlanFlow user feedback reports patch.
--- Apply this in Supabase SQL Editor for project xqvvfnvmytjlblcngipn.
+-- Track feedback_reports as a numbered migration and support homepage web intake.
+-- Idempotent for the shared PlanFlow Supabase project.
 
 create table if not exists public.feedback_reports (
   id uuid primary key default gen_random_uuid(),
