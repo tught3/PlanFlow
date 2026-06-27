@@ -537,6 +537,22 @@ class DeviceCalendarService {
         );
         return _DeviceCalendarEventImportOutcome.skipped();
       }
+
+      // external_id 기반 중복 체크: 이미 가져온 이벤트면 skipped 처리
+      final alreadyImported = await _eventRepository.fetchEventBySourceExternalId(
+        source: eventModel.source,
+        externalId: eventModel.externalId!,
+        userId: userId,
+      );
+      if (alreadyImported != null) {
+        debugPrint(
+          'Device calendar import skipped (already imported by external_id): '
+          'incoming="${eventModel.title}" ${eventModel.startAt} '
+          'existing=${alreadyImported.id} externalId=${eventModel.externalId}',
+        );
+        return _DeviceCalendarEventImportOutcome.skipped();
+      }
+
       await _eventRepository.upsertEventBySourceExternalId(eventModel);
       return _DeviceCalendarEventImportOutcome.imported();
     } catch (error, stackTrace) {

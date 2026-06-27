@@ -359,6 +359,57 @@ void main() {
     expect(upsertBody, isNot(contains('CalendarContract.Reminders')));
   });
 
+  test(
+      'second import of the same events reports all as skipped (no duplicates)',
+      () async {
+    // 버그 1 회귀 방지: 한 번 가져온 external_id는 두 번째 import에서 skipped 처리해야 한다.
+    final gateway = _FakeDeviceCalendarGateway(
+      calendars: [
+        {
+          'id': '7',
+          'displayName': '네이버 캘린더',
+          'accountName': 'tught3@naver.com',
+        },
+      ],
+      events: [
+        {
+          'eventId': '42',
+          'calendarId': '7',
+          'title': '서초 미팅',
+          'beginMillis': DateTime(2026, 5, 6, 10).millisecondsSinceEpoch,
+          'endMillis': DateTime(2026, 5, 6, 11).millisecondsSinceEpoch,
+        },
+      ],
+    );
+
+    // 첫 번째 import
+    final repository = _FakeEventRepository();
+    final service = DeviceCalendarService(
+      gateway: gateway,
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+    final firstResult = await service.importNaverEvents();
+    expect(firstResult.importedCount, 1);
+    expect(firstResult.skippedCount, 0);
+    expect(repository.upserted, hasLength(1));
+
+    // 두 번째 import: 같은 이벤트이므로 전부 skipped 처리되어야 한다.
+    final secondResult = await service.importNaverEvents();
+    expect(
+      secondResult.status,
+      DeviceCalendarImportStatus.imported,
+      reason: 'status는 imported(= 처리 완료)로 유지',
+    );
+    expect(secondResult.importedCount, 0,
+        reason: '새로 추가된 이벤트가 없어야 한다');
+    expect(secondResult.skippedCount, 1,
+        reason: '중복 external_id는 skipped로 계산되어야 한다');
+    // DB row 수는 변하지 않아야 한다.
+    expect(repository.upserted, hasLength(1),
+        reason: '두 번째 import 후에도 row 수가 1이어야 한다');
+  });
+
   test('returns distinct failure when calendar permission is denied', () async {
     final service = DeviceCalendarService(
       gateway: _FakeDeviceCalendarGateway(permissionGranted: false),
@@ -477,6 +528,20 @@ class _FakeEventRepository extends EventRepository {
   Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
     for (final event in upserted) {
       if (event.id == eventId && (userId == null || event.userId == userId)) {
+        return event;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<EventModel?> fetchEventBySourceExternalId({
+    required String source,
+    required String externalId,
+    String? userId,
+  }) async {
+    for (final event in upserted) {
+      if (event.source == source && event.externalId == externalId) {
         return event;
       }
     }

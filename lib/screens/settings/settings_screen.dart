@@ -516,7 +516,16 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() {
       _isLoadingCalendarStatus = true;
     });
-    final summary = await _calendarSyncService.fetchStatus();
+    // prefs와 summary를 병렬 조회: summary만으로 덮어쓰면 레이스 조건에서
+    // _loadDeviceCalendarSyncedState가 세운 true를 false로 되돌린다.
+    final results = await Future.wait<Object?>([
+      _calendarSyncService.fetchStatus(),
+      SharedPreferences.getInstance().then(
+        (prefs) => prefs.getBool(_deviceCalendarSyncedPrefsKey) ?? false,
+      ),
+    ]);
+    final summary = results[0]! as CalendarSyncSummary;
+    final storedDeviceSynced = results[1]! as bool;
     _logSettingsGoogleCalendar(
       'loadCalendarStatus google status=${summary.google.status.name} '
       'success=${summary.google.isSuccess} '
@@ -535,7 +544,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() {
       _calendarSyncSummary = summary;
       _isLoadingCalendarStatus = false;
-      _hasDeviceCalendarSynced = _hasSyncedDeviceCalendar(summary);
+      // storedDeviceSynced(prefs) OR snapshot OR summary 중 하나라도 true면 true 유지.
+      // 단순 대입 대신 OR로 기존 true를 보존한다.
+      _hasDeviceCalendarSynced = _hasDeviceCalendarSynced ||
+          storedDeviceSynced ||
+          _hasSyncedDeviceCalendar(summary);
     });
   }
 
