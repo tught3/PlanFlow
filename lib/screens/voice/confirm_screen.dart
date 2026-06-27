@@ -839,6 +839,47 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   bool get _shouldExpandDetailsSection =>
       _detailsSectionInitiallyExpanded || _shouldShowPurposeClarification;
 
+  /// 알람 예약 후 권한이 부족한 경우 사용자에게 안내 다이얼로그를 표시.
+  ///
+  /// 정확한 알람 권한 또는 배터리 최적화 예외가 꺼져 있을 때만 표시.
+  /// 저장 자체를 막지 않으며, 다이얼로그는 권한 화면으로 이동하는 버튼을 제공.
+  Future<void> _showAlarmPermissionGuardIfNeeded() async {
+    if (!mounted) {
+      return;
+    }
+    try {
+      final snapshot = await _permissionService.checkAll();
+      if (!mounted) {
+        return;
+      }
+      // 둘 다 허용된 경우 다이얼로그 없이 조용히 진행.
+      if (snapshot.alarmWillFire) {
+        return;
+      }
+
+      final missingExact = !snapshot.exactAlarmsGranted;
+      final missingBattery = !snapshot.batteryOptimizationIgnored;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => _AlarmPermissionGuardDialog(
+          missingExactAlarm: missingExact,
+          missingBatteryOptimization: missingBattery,
+          onFixExactAlarm: () async {
+            Navigator.of(dialogContext).pop();
+            await _permissionService.openAlarmSettings();
+          },
+          onFixBatteryOptimization: () async {
+            Navigator.of(dialogContext).pop();
+            await _permissionService.requestIgnoreBatteryOptimizations();
+          },
+        ),
+      );
+    } catch (error) {
+      debugPrint('Alarm permission guard check failed (non-blocking): $error');
+    }
+  }
+
   DateTime _eventRangeEnd(DateTime startAt, DateTime? endAt) {
     if (endAt != null && endAt.isAfter(startAt)) {
       return endAt;
@@ -969,7 +1010,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         unawaited(AnalyticsService.logScheduleConfirmed());
         unawaited(AnalyticsService.logEventCreated(source: 'voice'));
         unawaited(ReviewService.onEventSaved());
-        context.go(AppRoutes.home);
+        // 알람 권한 가드 — 저장 성공 후 권한이 누락된 경우 안내 다이얼로그.
+        // 저장 자체는 항상 성공 처리. 다이얼로그 dismiss 후 홈으로 이동.
+        await _showAlarmPermissionGuardIfNeeded();
+        if (mounted) {
+          context.go(AppRoutes.home);
+        }
       }
     } on StateError catch (error) {
       debugPrint('ConfirmScreen save state error: $error');
@@ -2284,6 +2330,91 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return value.toDouble();
     }
     return double.tryParse(value.toString());
+  }
+}
+
+/// 알람 권한이 부족할 때 저장 직후 표시하는 안내 다이얼로그.
+///
+/// 정확한 알람 권한 누락 / 배터리 최적화 예외 미적용 여부에 따라
+/// 해당 설정 화면으로 이동하는 버튼을 표시한다.
+/// [저장을 막지 않으며] dismiss 후 홈으로 이동한다.
+class _AlarmPermissionGuardDialog extends StatelessWidget {
+  const _AlarmPermissionGuardDialog({
+    required this.missingExactAlarm,
+    required this.missingBatteryOptimization,
+    required this.onFixExactAlarm,
+    required this.onFixBatteryOptimization,
+  });
+
+  final bool missingExactAlarm;
+  final bool missingBatteryOptimization;
+  final VoidCallback onFixExactAlarm;
+  final VoidCallback onFixBatteryOptimization;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final missingBoth = missingExactAlarm && missingBatteryOptimization;
+
+    return AlertDialog(
+      icon: const Icon(
+        Icons.alarm_off_outlined,
+        color: PlanFlowColors.primaryMid,
+        size: 32,
+      ),
+      title: const Text('알람이 제때 울리지 않을 수 있어요'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            missingBoth
+                ? '정확한 알람 권한과 절전(배터리 최적화) 예외가 꺼져 있습니다. '
+                    '두 가지 모두 켜야 알람이 정확한 시각에 울립니다.'
+                : missingExactAlarm
+                    ? '정확한 알람 권한이 꺼져 있습니다. '
+                        'Android 알람 설정에서 PlanFlow를 허용해야 알람이 정확한 시각에 울립니다.'
+                    : '절전(배터리 최적화) 예외가 꺼져 있습니다. '
+                        '삼성·샤오미 등 일부 기기에서 백그라운드 알람을 막을 수 있어요.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: PlanFlowColors.textSecondary,
+            ),
+          ),
+          if (missingExactAlarm) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: onFixExactAlarm,
+              icon: const Icon(Icons.alarm_outlined, size: 18),
+              label: const Text('정확한 알람 설정으로 이동'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(40),
+                foregroundColor: PlanFlowColors.primaryMid,
+                side: const BorderSide(color: PlanFlowColors.primaryFaint),
+              ),
+            ),
+          ],
+          if (missingBatteryOptimization) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: onFixBatteryOptimization,
+              icon: const Icon(Icons.battery_saver_outlined, size: 18),
+              label: const Text('절전 예외 설정으로 이동'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(40),
+                foregroundColor: PlanFlowColors.primaryMid,
+                side: const BorderSide(color: PlanFlowColors.primaryFaint),
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('나중에'),
+        ),
+      ],
+    );
   }
 }
 

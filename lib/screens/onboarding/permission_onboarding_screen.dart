@@ -236,14 +236,21 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
       snapshot,
       requiresFullScreenIntent: requiresFullScreenIntent,
     );
+    final warningParts = <String>[];
+    if (snapshot?.exactAlarmsGranted == false) {
+      warningParts.add('정확한 알람');
+    }
+    if (snapshot?.batteryOptimizationIgnored == false) {
+      warningParts.add('절전 예외');
+    }
     setState(() {
       _message = allGranted
-          ? snapshot?.exactAlarmsGranted == false
-              ? '필수 권한은 준비되었습니다. 정확한 알람은 꺼져 있어 일부 알림이 조금 늦게 울릴 수 있어요.'
-              : '필요 권한이 모두 준비되었습니다.'
-          : failures.isEmpty
-              ? '권한 요청을 마쳤습니다. 허용되지 않은 항목은 아래 상태를 확인한 뒤 Android 설정에서 다시 켤 수 있어요.'
-              : '일부 권한을 아직 확인하지 못했습니다: ${failures.join(', ')}. 설정에서 켠 뒤 돌아오면 다음 단계부터 이어집니다.';
+          ? '필요 권한이 모두 준비되었습니다.'
+          : warningParts.isNotEmpty && failures.isEmpty
+              ? '필수 권한은 준비되었습니다. ${warningParts.join(', ')}이 꺼져 있어 일부 알람이 늦게 울릴 수 있어요.'
+              : failures.isEmpty
+                  ? '권한 요청을 마쳤습니다. 허용되지 않은 항목은 아래 상태를 확인한 뒤 Android 설정에서 다시 켤 수 있어요.'
+                  : '일부 권한을 아직 확인하지 못했습니다: ${failures.join(', ')}. 설정에서 켠 뒤 돌아오면 다음 단계부터 이어집니다.';
     });
   }
 
@@ -297,6 +304,15 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         isGranted: (snapshot) => snapshot.exactAlarmsGranted,
         request: _permissionService.requestExactAlarmPermission,
         openSettings: _permissionService.openAlarmSettings,
+      ),
+      _PermissionStep(
+        key: 'batteryOptimization',
+        label: '절전 예외',
+        grantedMessage: '절전 예외가 설정되었습니다. 알람이 정시에 울립니다.',
+        deniedMessage:
+            '절전(배터리 최적화) 예외가 꺼져 있습니다. 삼성·샤오미 등 일부 기기에서 백그라운드 알람을 막을 수 있어요. 설정에서 PlanFlow를 절전 예외로 추가해 주세요.',
+        isGranted: (snapshot) => snapshot.batteryOptimizationIgnored,
+        request: _permissionService.requestIgnoreBatteryOptimizations,
       ),
       if (requiresFullScreenIntent)
         _PermissionStep(
@@ -415,6 +431,8 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         return snapshot.notificationsGranted;
       case '정확한 알람':
         return snapshot.exactAlarmsGranted;
+      case '절전 예외':
+        return snapshot.batteryOptimizationIgnored;
       case '위치':
         return snapshot.locationGranted;
       case '기기 캘린더':
@@ -656,6 +674,28 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
                   request: _permissionService.requestExactAlarmPermission,
                 ),
               ),
+              const SizedBox(height: 9),
+              _PermissionTile(
+                icon: Icons.battery_saver_outlined,
+                title: '절전 예외',
+                description:
+                    '삼성·샤오미 등 일부 기기는 절전(배터리 최적화)으로 백그라운드 알람을 막습니다. '
+                    '예외로 추가하면 알람이 정시에 울립니다.',
+                descriptionMaxLines: 3,
+                granted: snapshot?.batteryOptimizationIgnored == true,
+                isRequesting: _activeRequestKey == 'batteryOptimization',
+                key: const ValueKey(
+                  'permission-onboarding-battery-optimization-tile',
+                ),
+                onRequest: () => _requestOne(
+                  key: 'batteryOptimization',
+                  grantedMessage: '절전 예외가 설정되었습니다. 알람이 정시에 울립니다.',
+                  deniedMessage:
+                      '절전 예외가 아직 꺼져 있습니다. 설정에서 PlanFlow를 절전 예외로 추가해 주세요.',
+                  isGranted: (snapshot) => snapshot.batteryOptimizationIgnored,
+                  request: _permissionService.requestIgnoreBatteryOptimizations,
+                ),
+              ),
               if (showFullScreenIntentPermission) ...[
                 const SizedBox(height: 9),
                 _PermissionTile(
@@ -706,7 +746,8 @@ class _PermissionOnboardingScreenState extends State<PermissionOnboardingScreen>
         snapshot.notificationsGranted &&
         snapshot.locationGranted &&
         snapshot.calendarGranted &&
-        snapshot.exactAlarmsGranted;
+        snapshot.exactAlarmsGranted &&
+        snapshot.batteryOptimizationIgnored;
     if (!requiresFullScreenIntent) {
       return baseReady;
     }

@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import android.provider.CalendarContract
@@ -133,6 +134,8 @@ class MainActivity : FlutterActivity() {
                     }
                     "openAppSettings" -> result.success(openAppSettings())
                     "openAlarmSettings" -> result.success(openAlarmSettings())
+                    "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
+                    "requestIgnoreBatteryOptimizations" -> result.success(requestIgnoreBatteryOptimizations())
                     else -> result.notImplemented()
                 }
             }
@@ -262,6 +265,42 @@ class MainActivity : FlutterActivity() {
             try {
                 val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                     data = Uri.parse("package:$packageName")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(fallback)
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        return try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            pm.isIgnoringBatteryOptimizations(packageName)
+        } catch (_: Exception) {
+            // PowerManager 접근 실패 시 허용된 것으로 간주해 흐름을 막지 않는다.
+            true
+        }
+    }
+
+    /**
+     * ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS 로 원탭 허용 다이얼로그 시도.
+     * 실패 시 ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS(목록) 으로 폴백.
+     * 어떤 경우에도 true를 반환해 Flutter 쪽이 화면 전환 여부를 알게 한다.
+     */
+    private fun requestIgnoreBatteryOptimizations(): Boolean {
+        return try {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            true
+        } catch (_: Exception) {
+            try {
+                val fallback = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 startActivity(fallback)

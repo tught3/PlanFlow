@@ -2,14 +2,18 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'battery_optimization_service.dart';
 import 'notification_service.dart';
 
 class AppPermissionService {
   AppPermissionService({
     NotificationService? notificationService,
     SharedPreferencesAsync? preferences,
+    BatteryOptimizationService? batteryOptimizationService,
   })  : _notificationService = notificationService ?? NotificationService(),
-        _preferences = preferences;
+        _preferences = preferences,
+        _batteryOptimizationService =
+            batteryOptimizationService ?? const BatteryOptimizationService();
 
   static const MethodChannel _androidPermissionsChannel =
       MethodChannel('planflow/android_permissions');
@@ -17,6 +21,7 @@ class AppPermissionService {
 
   final NotificationService _notificationService;
   final SharedPreferencesAsync? _preferences;
+  final BatteryOptimizationService _batteryOptimizationService;
 
   SharedPreferencesAsync get _resolvedPreferences =>
       _preferences ?? SharedPreferencesAsync();
@@ -37,7 +42,19 @@ class AppPermissionService {
       locationGranted: await checkLocationPermission(),
       calendarGranted: await checkCalendarPermission(),
       notificationStatus: notificationStatus,
+      batteryOptimizationIgnored:
+          await _batteryOptimizationService.isIgnoringBatteryOptimizations(),
     );
+  }
+
+  /// 배터리 최적화 예외 적용 여부 확인.
+  Future<bool> isBatteryOptimizationIgnored() {
+    return _batteryOptimizationService.isIgnoringBatteryOptimizations();
+  }
+
+  /// 배터리 최적화 예외 요청 화면을 연다.
+  Future<bool> requestIgnoreBatteryOptimizations() {
+    return _batteryOptimizationService.requestIgnoreBatteryOptimizations();
   }
 
   Future<bool> requestMicrophonePermission() async {
@@ -281,12 +298,17 @@ class AppPermissionSnapshot {
     required this.locationGranted,
     required this.calendarGranted,
     required this.notificationStatus,
+    this.batteryOptimizationIgnored = true,
   });
 
   final bool microphoneGranted;
   final bool locationGranted;
   final bool calendarGranted;
   final NotificationPermissionStatus notificationStatus;
+
+  /// true이면 배터리 최적화 예외가 적용된 것(절전이 알람을 막지 않음).
+  /// 기본값 true — 비안드로이드나 확인 실패 시 흐름을 막지 않는다.
+  final bool batteryOptimizationIgnored;
 
   bool get notificationsGranted =>
       notificationStatus.notificationsEnabled == true;
@@ -305,6 +327,9 @@ class AppPermissionSnapshot {
       exactAlarmsGranted &&
       locationGranted &&
       calendarGranted;
+
+  /// 알람이 정시에 울리기 위한 최소 조건 (알람 예약 가드에서 사용).
+  bool get alarmWillFire => exactAlarmsGranted && batteryOptimizationIgnored;
 }
 
 class GeoPoint {
