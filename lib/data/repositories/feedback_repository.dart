@@ -152,6 +152,8 @@ class FeedbackRepository {
       'route_or_screen': routeOrScreen,
       'diagnostics': diagnostics.diagnostics,
       'status': 'new',
+      // source가 NOT NULL이라 명시 전송(default 의존 제거 + admin에서 앱/웹 출처 구분).
+      'source': 'android-app',
     };
 
     try {
