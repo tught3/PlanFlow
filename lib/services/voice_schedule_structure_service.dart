@@ -775,11 +775,29 @@ class VoiceScheduleStructureService {
     return result.isEmpty ? title.trim() : result;
   }
 
+  /// 제목에서 시간 표현 찌꺼기(고아 조사)를 제거한다.
+  /// "3분뒤에 확인 메시지 출력"에서 GPT가 "3분뒤에"를 날짜로 처리한 뒤
+  /// 남은 "뒤에"만 단독 토큰으로 남는 경우 등을 처리.
+  /// 단어 경계(앞뒤에 한글·영문·숫자가 없을 때)로만 매칭해 "뒤풀이" 같은 일반어 오제거 방지.
+  /// 전부 찌꺼기뿐인 비정상 입력이면 원본 유지(빈 제목 방지).
+  static final RegExp _trailingTimeParticlePattern = RegExp(
+    r'(?<![가-힣ㄱ-ㅎa-zA-Z0-9])(뒤에|뒤로|후에|후로|이따가|이따|있다가)(?![가-힣ㄱ-ㅎa-zA-Z0-9])',
+  );
+  String _stripOrphanTimeParticles(String title) {
+    final result = title
+        .replaceAll(_trailingTimeParticlePattern, ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return result.isEmpty ? title.trim() : result;
+  }
+
   String ensurePeopleInTitle(String title, String rawText) {
-    final normalizedTitle = _stripStandaloneParticles(
-      _preserveRoleRecipientInTitle(
-        normalizeSpacingForSchedule(title),
-        rawText,
+    final normalizedTitle = _stripOrphanTimeParticles(
+      _stripStandaloneParticles(
+        _preserveRoleRecipientInTitle(
+          normalizeSpacingForSchedule(title),
+          rawText,
+        ),
       ),
     );
     final compactTitle =

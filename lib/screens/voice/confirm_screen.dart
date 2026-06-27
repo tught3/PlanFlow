@@ -1886,6 +1886,28 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             context.pop('cancelled');
           },
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton.icon(
+              onPressed: _isSaving ? null : _save,
+              icon: _isSaving
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined, size: 18),
+              label: const Text('저장'),
+              style: FilledButton.styleFrom(
+                backgroundColor: PlanFlowColors.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(92, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: _ConfirmBottomNavigation(
         onHome: () => context.go(AppRoutes.home),

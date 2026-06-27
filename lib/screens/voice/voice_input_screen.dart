@@ -376,6 +376,12 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   /// STT 종료 결과(result.isSuccess)에 의존하지 않고, 화면에 인식된 텍스트가 있으면
   /// 즉시 제출해 한 번의 클릭으로 다음 화면으로 넘어가게 한다.
   /// (기존엔 stop만 하고 listen() result가 실패로 오면 제출이 누락되어 두 번 눌러야 했음)
+  ///
+  /// [성능 개선] stopActiveListen()을 unawaited로 전환해 화면 전환 지연 제거.
+  /// 네이티브 STT stop은 350ms 고정 지연이 있어 await 시 confirm 화면 진입이 2초 이상 걸렸음.
+  /// rawText는 stop 호출 전에 이미 캡처되므로 텍스트 오염 없음.
+  /// _isListening = false / _isFinishingVoiceFlow = true 로 먼저 가드를 세우므로
+  /// 부분 transcript 갱신·재진입 레이스는 기존과 동일하게 차단됨.
   Future<void> _handleVoiceDonePressed() async {
     if (!_isListening) {
       return;
@@ -385,7 +391,15 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         : _recognizedText?.trim() ?? '';
     _isFinishingVoiceFlow = true;
     _partialTranscriptToken++;
-    await widget.sttService.stopActiveListen();
+    // listenSessionGeneration을 증가시켜 listen() 루프가 이 세션의 result를
+    // 처리하지 못하도록 무효화한다. 이렇게 하면 stop이 listen future를
+    // 완료시켜도 _isCurrentListenSession() 가드에 막혀 _continueWithRawText
+    // 중복 호출이 발생하지 않는다.
+    _listenSessionGeneration++;
+    // STT 종료를 백그라운드에서 실행 — stop을 await하지 않으므로 화면 전환이 즉시 시작된다.
+    // deactivate()에서 cancelActiveListen()이 추가로 호출될 수 있으나
+    // SttService 내부에서 _userRequestedStop 플래그로 중복 처리를 막는다.
+    unawaited(widget.sttService.stopActiveListen());
     if (!mounted) {
       return;
     }
@@ -658,10 +672,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       return rawText;
     }
     // 보정 규칙은 부가 기능이므로 Supabase 조회가 느려도 확인 페이지 이동을
-    // 막지 않는다. 500ms 안에 못 끝내면 원본 텍스트로 즉시 진행한다.
+    // 막지 않는다. 150ms 안에 못 끝내면 원본 텍스트로 즉시 진행한다.
+    // (기존 500ms → 150ms: stopActiveListen이 unawaited로 백그라운드 전환되었으므로
+    //  correction이 남은 화면 전환 지연의 주범이 되지 않도록 timeout을 단축한다.
+    //  Supabase가 캐시 히트 상태면 50~100ms 안에 완료되므로 정상 경로에서도 적용됨.)
     try {
       return await _applyTranscriptCorrectionRulesInner(rawText).timeout(
-        const Duration(milliseconds: 500),
+        const Duration(milliseconds: 150),
         onTimeout: () => rawText,
       );
     } catch (error) {

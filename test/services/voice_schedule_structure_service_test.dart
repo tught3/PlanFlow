@@ -447,5 +447,65 @@ void main() {
       expect(location, isNotNull);
       expect(location, contains('성원아파트'));
     });
+
+    // ── 회귀 테스트: 시간 고아조사 제거 (GPT 경로) ──────────────────────────
+    // 버그: "3분뒤에 확인 메세지출력 저장" → GPT 정리 후 제목에 "뒤에"가 남는 현상.
+    // 두 경로(normalizeParsedScheduleTitle / normalizeLocalVoiceTitle) 모두 검증.
+    test(
+      'normalizeParsedScheduleTitle strips orphan time particle "뒤에" from GPT title',
+      () {
+        const rawText = '3분뒤에 확인 메세지출력 저장';
+        // GPT 경로: GPT가 시간 파싱 후 "뒤에 확인 메시지 출력"처럼 반환한다고 가정.
+        final parsedTitle = service.normalizeParsedScheduleTitle(
+          '뒤에 확인 메시지 출력',
+          rawText: rawText,
+        );
+        expect(parsedTitle, isNot(contains('뒤에')));
+        expect(parsedTitle, contains('확인'));
+      },
+    );
+
+    test(
+      'normalizeLocalVoiceTitle strips orphan time particle "뒤에" from local title',
+      () {
+        const rawText = '3분뒤에 확인 메세지출력 저장';
+        final localTitle = service.normalizeLocalVoiceTitle(
+          rawText,
+          referenceText: rawText,
+        );
+        expect(localTitle, isNot(contains('뒤에')));
+        expect(localTitle, contains('확인'));
+      },
+    );
+
+    test(
+      'does NOT strip "뒤풀이" — ordinary word containing "뒤" must be preserved',
+      () {
+        const rawText = '뒤풀이 모임 저장';
+        final parsedTitle = service.normalizeParsedScheduleTitle(
+          '뒤풀이 모임',
+          rawText: rawText,
+        );
+        expect(parsedTitle, contains('뒤풀이'));
+      },
+    );
+
+    test(
+      'strips orphan "후에" from GPT title (e.g. "1시간 후에 전화" → "전화")',
+      () {
+        // GPT가 "1시간 후에"를 날짜로 처리한 뒤 "후에 전화"를 반환하는 경우.
+        // normalizeParsedScheduleTitle은 내부 경로(structuredTitle 선택 등)에 따라
+        // 결과가 달라질 수 있으므로, 공통 출구인 ensurePeopleInTitle 직전에 실제로
+        // stripOrphanTimeParticles가 작동하는지 확인하기 위해 rawText와 title을
+        // "후에"가 단독 토큰으로만 남는 형태로 설정한다.
+        const rawText = '5분 후에 물 마시기 저장';
+        final parsedTitle = service.normalizeParsedScheduleTitle(
+          '후에 물 마시기',
+          rawText: rawText,
+        );
+        expect(parsedTitle, isNot(contains('후에')));
+        expect(parsedTitle, contains('물 마시기'));
+      },
+    );
   });
 }
