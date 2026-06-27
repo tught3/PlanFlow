@@ -7,6 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import '../core/constants.dart';
+import '../core/diag_logger.dart';
 import '../core/router.dart';
 import 'departure_acknowledgement_store.dart';
 
@@ -505,6 +506,15 @@ class NotificationService {
         await android?.areNotificationsEnabled() ?? false;
     final exactAlarmsEnabled =
         await android?.canScheduleExactNotifications() ?? false;
+
+    // 권한이 미허용이면 알람이 안 울리는 직접 원인이므로 기기 진단로그에 남긴다.
+    if (!notificationsEnabled || !exactAlarmsEnabled) {
+      DiagLogger.log(
+        'AlarmPerm',
+        '권한 미허용 → 알람 누락 가능: notifications=$notificationsEnabled '
+            'exact=$exactAlarmsEnabled',
+      );
+    }
 
     return NotificationPermissionStatus(
       notificationsEnabled: notificationsEnabled,
