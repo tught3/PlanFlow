@@ -9,6 +9,7 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:planflow/l10n/app_localizations.dart';
 
 import 'core/constants.dart';
+import 'core/diag_logger.dart';
 import 'core/env.dart';
 import 'core/region_settings.dart';
 import 'core/router.dart';
@@ -84,6 +85,23 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       _handleHomeWidgetUri,
     );
     unawaited(_scheduleDeferredUpdateCheck());
+    unawaited(_logStartupAlarmPermissions());
+  }
+
+  /// 앱 시작 시 알림/정확알람 권한 상태를 진단로그에 항상 기록한다.
+  /// 전체 알람(브리핑 포함) 미발생의 1차 원인이 권한 거부인지 기기에서 바로 확인용.
+  Future<void> _logStartupAlarmPermissions() async {
+    try {
+      final status = await _notificationService.checkPermissionStatus();
+      DiagLogger.log(
+        'AlarmPerm',
+        'startup notifications=${status.notificationsEnabled} '
+            'exact=${status.exactAlarmsEnabled} '
+            'fullScreen=${status.fullScreenIntentStatus}',
+      );
+    } catch (error) {
+      DiagLogger.log('AlarmPerm', 'startup check failed: $error');
+    }
   }
 
   Future<void> _syncCalendarInBackground() async {
