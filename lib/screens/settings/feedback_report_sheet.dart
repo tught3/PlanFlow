@@ -37,6 +37,8 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
   bool _isSubmitting = false;
   String? _statusMessage;
   bool _isStatusError = false;
+  // 진단 로그 자동 첨부 여부 (기본 ON)
+  bool _attachDiagLog = true;
 
   @override
   void dispose() {
@@ -88,18 +90,49 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
                 ),
                 const SizedBox(height: 10),
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  key: const ValueKey('feedback-diag-log-panel'),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
                   decoration: BoxDecoration(
                     color: PlanFlowColors.primaryFaint.withValues(alpha: 0.45),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: PlanFlowColors.primaryFaint),
                   ),
-                  child: Text(
-                    '음성 파일, 캘린더 전체 내용, 위치 이력은 자동 첨부하지 않아요.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: PlanFlowColors.textPrimary,
-                          height: 1.35,
-                        ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '음성 파일, 캘린더 전체 내용, 위치 이력은 자동 첨부하지 않아요.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.textPrimary,
+                              height: 1.35,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '진단 로그 함께 전송 (오류 분석에 도움이 돼요)',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: PlanFlowColors.textPrimary,
+                                    height: 1.35,
+                                  ),
+                            ),
+                          ),
+                          Switch.adaptive(
+                            key: const ValueKey('feedback-diag-log-toggle'),
+                            value: _attachDiagLog,
+                            onChanged: _isSubmitting
+                                ? null
+                                : (value) =>
+                                    setState(() => _attachDiagLog = value),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -200,6 +233,7 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
         message: _messageController.text,
         expectedBehavior: _expectedController.text,
         routeOrScreen: widget.routeOrScreen,
+        attachDiagLog: _attachDiagLog,
       );
       if (mounted) {
         _messageController.clear();

@@ -8,7 +8,8 @@ void main() {
     final repository = FeedbackRepository(
       gateway: gateway,
       currentUserId: () => 'user-1',
-      diagnosticsProvider: (_) async => const FeedbackDiagnostics(
+      diagnosticsProvider: (_, {bool attachDiagLog = true}) async =>
+          const FeedbackDiagnostics(
         appVersion: '1.0.0+1',
         platform: 'android',
         deviceSummary: 'Android 15',
@@ -47,7 +48,8 @@ void main() {
     final repository = FeedbackRepository(
       gateway: _FakeFeedbackGateway(),
       currentUserId: () => null,
-      diagnosticsProvider: (_) async => const FeedbackDiagnostics(
+      diagnosticsProvider: (_, {bool attachDiagLog = true}) async =>
+          const FeedbackDiagnostics(
         appVersion: '1.0.0+1',
         platform: 'android',
         deviceSummary: 'Android',
@@ -83,6 +85,70 @@ void main() {
       ),
       throwsA(isA<FeedbackSubmissionException>()),
     );
+  });
+
+  test('submitReport includes diag_log in diagnostics when attachDiagLog=true',
+      () async {
+    final gateway = _FakeFeedbackGateway();
+    final repository = FeedbackRepository(
+      gateway: gateway,
+      currentUserId: () => 'user-1',
+      diagnosticsProvider: (_, {bool attachDiagLog = true}) async =>
+          FeedbackDiagnostics(
+        appVersion: '1.0.0+1',
+        platform: 'android',
+        deviceSummary: 'Android 15',
+        diagnostics: <String, Object?>{
+          if (attachDiagLog) 'diag_log': '[00:00:01][TEST] 진단 로그 샘플',
+        },
+      ),
+      analyticsLogger: (_) async {},
+      crashlyticsLogger: (_, __) async {},
+    );
+
+    await repository.submitReport(
+      type: FeedbackReportType.bug,
+      message: '진단 로그가 함께 전송되는지 테스트해요',
+      routeOrScreen: 'settings',
+      attachDiagLog: true,
+    );
+
+    expect(gateway.payloads, hasLength(1));
+    final diag = gateway.payloads.single['diagnostics'] as Map<String, Object?>;
+    expect(diag.containsKey('diag_log'), isTrue);
+    expect(diag['diag_log'], '[00:00:01][TEST] 진단 로그 샘플');
+  });
+
+  test(
+      'submitReport omits diag_log from diagnostics when attachDiagLog=false',
+      () async {
+    final gateway = _FakeFeedbackGateway();
+    final repository = FeedbackRepository(
+      gateway: gateway,
+      currentUserId: () => 'user-1',
+      diagnosticsProvider: (_, {bool attachDiagLog = true}) async =>
+          FeedbackDiagnostics(
+        appVersion: '1.0.0+1',
+        platform: 'android',
+        deviceSummary: 'Android 15',
+        diagnostics: <String, Object?>{
+          if (attachDiagLog) 'diag_log': '[00:00:01][TEST] 진단 로그 샘플',
+        },
+      ),
+      analyticsLogger: (_) async {},
+      crashlyticsLogger: (_, __) async {},
+    );
+
+    await repository.submitReport(
+      type: FeedbackReportType.bug,
+      message: '진단 로그 없이 전송되는지 테스트해요',
+      routeOrScreen: 'settings',
+      attachDiagLog: false,
+    );
+
+    expect(gateway.payloads, hasLength(1));
+    final diag = gateway.payloads.single['diagnostics'] as Map<String, Object?>;
+    expect(diag.containsKey('diag_log'), isFalse);
   });
 
   test('countNewAdminReports counts only new admin rows', () async {
@@ -127,7 +193,8 @@ FeedbackRepository _testRepository(_FakeFeedbackGateway gateway) {
   return FeedbackRepository(
     gateway: gateway,
     currentUserId: () => 'user-1',
-    diagnosticsProvider: (_) async => const FeedbackDiagnostics(
+    diagnosticsProvider: (_, {bool attachDiagLog = true}) async =>
+        const FeedbackDiagnostics(
       appVersion: '1.0.0+1',
       platform: 'android',
       deviceSummary: 'Android',

@@ -44,6 +44,9 @@ void main() {
     );
     expect(find.text('버그'), findsOneWidget);
 
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('feedback-submit-button')),
+    );
     await tester.tap(find.byKey(const ValueKey('feedback-submit-button')));
     await tester.pumpAndSettle();
     expect(find.text('내용을 5자 이상 입력해 주세요.'), findsOneWidget);
@@ -58,6 +61,9 @@ void main() {
     );
     await tester.tap(find.text('음성 인식 오류'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('feedback-submit-button')),
+    );
     await tester.tap(find.byKey(const ValueKey('feedback-submit-button')));
     await tester.pumpAndSettle();
 
@@ -85,6 +91,9 @@ void main() {
       ),
     );
 
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('feedback-email-button')),
+    );
     await tester.tap(find.byKey(const ValueKey('feedback-email-button')));
     await tester.pumpAndSettle();
 
@@ -156,6 +165,84 @@ void main() {
     expect(find.text('새 기능 안내가 보이지 않아요'), findsOneWidget);
   });
 
+  testWidgets('FeedbackReportSheet passes attachDiagLog=true by default',
+      (tester) async {
+    final gateway = _FakeFeedbackGateway();
+    bool? capturedAttachDiagLog;
+    final repository = FeedbackRepository(
+      gateway: gateway,
+      currentUserId: () => 'user-1',
+      diagnosticsProvider: (_, {bool attachDiagLog = true}) async {
+        capturedAttachDiagLog = attachDiagLog;
+        return FeedbackDiagnostics(
+          appVersion: '1.0.0+1',
+          platform: 'android',
+          deviceSummary: 'Android',
+          diagnostics: <String, Object?>{
+            if (attachDiagLog) 'diag_log': '로그 샘플',
+          },
+        );
+      },
+      analyticsLogger: (_) async {},
+      crashlyticsLogger: (_, __) async {},
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: FeedbackReportSheet(repository: repository)),
+      ),
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('feedback-message-field')),
+      '기본 ON 상태에서 진단 로그가 첨부되는지 확인해요',
+    );
+    await tester.tap(find.byKey(const ValueKey('feedback-submit-button')));
+    await tester.pumpAndSettle();
+
+    expect(capturedAttachDiagLog, isTrue);
+  });
+
+  testWidgets('FeedbackReportSheet toggle OFF excludes diag log',
+      (tester) async {
+    final gateway = _FakeFeedbackGateway();
+    bool? capturedAttachDiagLog;
+    final repository = FeedbackRepository(
+      gateway: gateway,
+      currentUserId: () => 'user-1',
+      diagnosticsProvider: (_, {bool attachDiagLog = true}) async {
+        capturedAttachDiagLog = attachDiagLog;
+        return FeedbackDiagnostics(
+          appVersion: '1.0.0+1',
+          platform: 'android',
+          deviceSummary: 'Android',
+          diagnostics: <String, Object?>{},
+        );
+      },
+      analyticsLogger: (_) async {},
+      crashlyticsLogger: (_, __) async {},
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: FeedbackReportSheet(repository: repository)),
+      ),
+    );
+
+    // 토글 OFF
+    await tester.tap(find.byKey(const ValueKey('feedback-diag-log-toggle')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('feedback-message-field')),
+      '토글 OFF 시 진단 로그가 제외되는지 확인해요',
+    );
+    await tester.tap(find.byKey(const ValueKey('feedback-submit-button')));
+    await tester.pumpAndSettle();
+
+    expect(capturedAttachDiagLog, isFalse);
+  });
+
   testWidgets('FeedbackReportSection shows new admin report badge',
       (tester) async {
     await tester.pumpWidget(
@@ -182,7 +269,8 @@ FeedbackRepository _testRepository(_FakeFeedbackGateway gateway) {
   return FeedbackRepository(
     gateway: gateway,
     currentUserId: () => 'user-1',
-    diagnosticsProvider: (_) async => const FeedbackDiagnostics(
+    diagnosticsProvider: (_, {bool attachDiagLog = true}) async =>
+        const FeedbackDiagnostics(
       appVersion: '1.0.0+1',
       platform: 'android',
       deviceSummary: 'Android',

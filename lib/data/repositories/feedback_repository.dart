@@ -9,7 +9,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/analytics_service.dart';
+import '../../core/diag_logger.dart';
 import '../../core/env.dart';
+import '../../services/departure_alarm_service.dart';
 import '../models/feedback_report_model.dart';
 
 abstract class FeedbackReportGateway {
@@ -77,8 +79,10 @@ class FeedbackRepository {
   FeedbackRepository({
     required FeedbackReportGateway gateway,
     required String? Function() currentUserId,
-    Future<FeedbackDiagnostics> Function(String routeOrScreen)?
-        diagnosticsProvider,
+    Future<FeedbackDiagnostics> Function(
+      String routeOrScreen, {
+      bool attachDiagLog,
+    })? diagnosticsProvider,
     Future<void> Function(FeedbackReportType type)? analyticsLogger,
     Future<void> Function(FeedbackReportType type, String userId)?
         crashlyticsLogger,
@@ -100,10 +104,15 @@ class FeedbackRepository {
     );
   }
 
+  /// 진단 로그 첨부 시 8000자를 넘지 않도록 자른다.
+  static const int _diagLogMaxChars = 8000;
+
   final FeedbackReportGateway _gateway;
   final String? Function() _currentUserId;
-  final Future<FeedbackDiagnostics> Function(String routeOrScreen)
-      _diagnosticsProvider;
+  final Future<FeedbackDiagnostics> Function(
+    String routeOrScreen, {
+    bool attachDiagLog,
+  }) _diagnosticsProvider;
   final Future<void> Function(FeedbackReportType type) _analyticsLogger;
   final Future<void> Function(FeedbackReportType type, String userId)
       _crashlyticsLogger;
@@ -113,6 +122,7 @@ class FeedbackRepository {
     required String message,
     required String routeOrScreen,
     String? expectedBehavior,
+    bool attachDiagLog = true,
   }) async {
     final trimmedMessage = message.trim();
     if (trimmedMessage.length < 5) {
@@ -124,7 +134,10 @@ class FeedbackRepository {
       throw const FeedbackSubmissionException('로그인 후 문제를 보낼 수 있어요.');
     }
 
-    final diagnostics = await _diagnosticsProvider(routeOrScreen);
+    final diagnostics = await _diagnosticsProvider(
+      routeOrScreen,
+      attachDiagLog: attachDiagLog,
+    );
     final payload = <String, Object?>{
       'user_id': userId,
       'product': 'planflow',
@@ -248,13 +261,26 @@ class FeedbackRepository {
   }
 
   static Future<FeedbackDiagnostics> _defaultDiagnostics(
-    String routeOrScreen,
-  ) async {
+    String routeOrScreen, {
+    bool attachDiagLog = true,
+  }) async {
     final packageInfo = await PackageInfo.fromPlatform();
     final prefs = await SharedPreferences.getInstance();
     final platform = kIsWeb ? 'web' : Platform.operatingSystem;
     final osVersion = kIsWeb ? 'web' : Platform.operatingSystemVersion;
     final appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+
+    // 진단 로그 스냅샷 (사용자가 동의한 경우에만 첨부)
+    String? diagLog;
+    String? preflightLastRun;
+    if (attachDiagLog) {
+      final rawLog = DiagLogger.dump();
+      diagLog = rawLog.length > _diagLogMaxChars
+          ? rawLog.substring(rawLog.length - _diagLogMaxChars)
+          : rawLog;
+      preflightLastRun =
+          prefs.getString(departurePreflightLastRunKey);
+    }
 
     return FeedbackDiagnostics(
       appVersion: appVersion,
@@ -275,6 +301,10 @@ class FeedbackRepository {
         'calendar_sync_last_failed':
             prefs.getStringList('calendar_sync:last_failed'),
         'client_created_at': DateTime.now().toUtc().toIso8601String(),
+        if (attachDiagLog) ...{
+          'diag_log': diagLog,
+          'departure_preflight_last_run': preflightLastRun,
+        },
       },
     );
   }
