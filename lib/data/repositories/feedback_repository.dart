@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -173,6 +175,15 @@ class FeedbackRepository {
         '요청 시간이 초과됐어요. 잠시 후 다시 보내 주세요.',
       );
     }
+
+    // insert 성공 후 Homepage 알림 엔드포인트 트리거 (실패해도 제출 성공 처리)
+    unawaited(_triggerNotify(
+      type: type,
+      message: trimmedMessage,
+      diagnostics: diagnostics,
+      routeOrScreen: routeOrScreen,
+    ));
+
     await _analyticsLogger(type);
     await _crashlyticsLogger(type, userId);
   }
@@ -244,6 +255,43 @@ class FeedbackRepository {
       return gateway;
     }
     throw const FeedbackSubmissionException('관리자 문제 신고 기능을 사용할 수 없어요.');
+  }
+
+  /// Homepage 알림 전용 엔드포인트 베이스 URL
+  static const String _kHomepageBaseUrl = 'https://fluxstudio.co.kr';
+
+  /// insert 성공 후 서버에 알림을 요청한다. 실패해도 제출은 성공으로 처리.
+  static Future<void> _triggerNotify({
+    required FeedbackReportType type,
+    required String message,
+    required FeedbackDiagnostics diagnostics,
+    required String routeOrScreen,
+    String? contactEmail,
+  }) async {
+    try {
+      final uri = Uri.parse('$_kHomepageBaseUrl/api/feedback/notify');
+      final body = <String, Object?>{
+        'type': type.value,
+        'message': message,
+        'source': 'android-app',
+        if (contactEmail != null && contactEmail.isNotEmpty)
+          'email': contactEmail,
+        'device_summary': diagnostics.deviceSummary,
+        'route_or_screen': routeOrScreen,
+      };
+
+      await http
+          .post(
+            uri,
+            headers: <String, String>{'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      // 알림 실패는 디버그 로그만 남기고 무시
+      debugPrint('[FeedbackRepository] notify 호출 실패: $e');
+      DiagLogger.log('FeedbackNotify', '알림 호출 실패: $e');
+    }
   }
 
   static String _messageForPostgrest(PostgrestException error) {
