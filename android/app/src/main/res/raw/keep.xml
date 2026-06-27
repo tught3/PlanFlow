@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 알림 아이콘은 flutter_local_notifications가 코드에서 문자열 이름으로만
+     참조하므로(R.drawable 직접 참조 없음) shrinkResources가 '미사용'으로 보고
+     제거한다 → 런타임에 'ic_stat_planflow could not be found'. 명시적으로 보존.
+     @drawable/ic_stat_planflow 하나로 모든 dpi 변형이 함께 보존된다. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_planflow" />

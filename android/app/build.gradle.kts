@@ -113,7 +113,11 @@ android {
         release {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
-            isShrinkResources = true
+            // shrinkResources를 켜면 리소스 이름이 난독화/제거되어,
+            // flutter_local_notifications가 문자열 이름(getIdentifier)으로 찾는
+            // 알림 아이콘 ic_stat_planflow가 'could not be found'로 실패한다.
+            // 알림 정상 동작을 위해 리소스 축소는 끈다(코드 minify는 유지).
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
