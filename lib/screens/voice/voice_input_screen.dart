@@ -997,20 +997,10 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   Future<VoiceTextCleanupResult> _cleanupVoiceTextForRouting(
     String normalizedText,
   ) async {
-    final local = VoiceTextCleanupService.cleanLocally(normalizedText);
-    if (_didEditTranscriptManually ||
-        !VoiceTextCleanupService.shouldAskAi(local.cleanedText)) {
-      return local;
-    }
-    try {
-      return await (widget.gptService ?? GptService()).cleanupVoiceText(
-        local.cleanedText,
-        context: VoiceTextCleanupContext.add,
-      );
-    } catch (error) {
-      debugPrint('VoiceInputScreen text cleanup failed: $error');
-      return local;
-    }
+    // 확인 화면 전환 속도를 위해 라우팅 단계의 GPT 정제를 생략하고 로컬 정제만 한다.
+    // (확인 화면에서 어차피 GPT 파싱으로 정제·구조화되므로, 여기서 GPT를 또 부르면
+    //  이중 호출 + 완료→확인 전환 1~2초 지연이 발생함)
+    return VoiceTextCleanupService.cleanLocally(normalizedText);
   }
 
   _VoiceCommandAction _detectCommandAction(String text) {
@@ -1020,39 +1010,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
   Future<_VoiceCommandAction> _detectCommandActionForSubmit(
     String text,
   ) async {
-    final localAction = _detectCommandAction(text);
-    if (_didEditTranscriptManually || localAction != _VoiceCommandAction.add) {
-      return localAction;
-    }
-
-    try {
-      final analysis = await _voiceAnalysisService.analyze(
-        text,
-        stage: VoiceCommandAnalysisStage.complete,
-      );
-      final analyzedAction = _actionFromAnalysisIntent(analysis.intent);
-      if (localAction == _VoiceCommandAction.add &&
-          analyzedAction == _VoiceCommandAction.query &&
-          _voiceCommandRouter.resolveIntent(text) ==
-              VoiceCommandRouteIntent.add) {
-        return _VoiceCommandAction.add;
-      }
-      return analyzedAction;
-    } catch (error) {
-      debugPrint('VoiceInputScreen submit analysis failed: $error');
-      return localAction;
-    }
+    // 완료 → 확인 화면 전환 지연(1~2초)의 주원인이던 GPT 의도 재분류
+    // (_voiceAnalysisService.analyze, stage:complete)를 제거한다.
+    // 로컬 규칙(_detectCommandAction)으로 즉시 판별해 곧바로 화면을 전환하고,
+    // 정밀 일정 파싱은 확인 화면에서 로더와 함께 처리된다.
+    return _detectCommandAction(text);
   }
 
-  _VoiceCommandAction _actionFromAnalysisIntent(VoiceCommandIntent intent) {
-    return switch (intent) {
-      VoiceCommandIntent.add => _VoiceCommandAction.add,
-      VoiceCommandIntent.edit => _VoiceCommandAction.edit,
-      VoiceCommandIntent.delete => _VoiceCommandAction.delete,
-      VoiceCommandIntent.query => _VoiceCommandAction.query,
-      VoiceCommandIntent.choose => _VoiceCommandAction.choose,
-    };
-  }
 
   _VoiceCommandAction _actionFromRouteIntent(VoiceCommandRouteIntent intent) {
     return switch (intent) {
