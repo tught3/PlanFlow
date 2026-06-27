@@ -1129,6 +1129,7 @@ class _FakeTravelTimeBufferService extends TravelTimeBufferService {
     required double destinationLng,
     MapTravelMode mode = MapTravelMode.car,
     String? locationText,
+    bool skipRemote = false,
   }) async {
     lastMode = mode;
     lastOriginLat = originLat;

@@ -424,19 +424,27 @@ class CalendarAutoSyncService {
             events.map((event) => event.id).where((id) => id.isNotEmpty),
         departureSafetyMargin: departureSafetyMargin,
         travelMode: travelMode,
+        cacheOnlyLocation: true, // 백그라운드 동기화: 라이브 GPS 조회 금지
       );
 
+      // 백그라운드 동기화는 좌표가 이미 있는 일정만 알람 처리한다.
+      // 좌표가 없는 일정은 TMAP POI 검색이 필요한데, 백그라운드에서 해석에
+      // 실패하면 매 동기화마다 같은 일정을 재검색해 POI API가 폭주한다.
+      // 좌표 해석은 foreground 사용자 저장 시 1회성으로만 수행한다.
       final upcomingLocationEvents = upcomingEvents.where((event) {
         final startAt = event.startAt;
         return startAt != null &&
             startAt.isBefore(now.add(DepartureAlarmService.monitorLookAhead)) &&
-            _hasPlace(event);
+            event.locationLat != null &&
+            event.locationLng != null;
       }).toList(growable: false);
 
       for (final event in upcomingLocationEvents) {
+        // resolveCoordinates: false → 백그라운드에서 POI 검색 금지.
         await _eventPreparation.prepareAfterSave(
           event,
           departureSafetyMargin: departureSafetyMargin,
+          resolveCoordinates: false,
         );
       }
 
@@ -448,12 +456,6 @@ class CalendarAutoSyncService {
       debugPrint('Calendar auto sync preparation resync failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
-  }
-
-  bool _hasPlace(EventModel event) {
-    final location = event.location?.trim();
-    return (location != null && location.isNotEmpty) ||
-        (event.locationLat != null && event.locationLng != null);
   }
 
   CalendarAutoSyncStepOutcome _calendarOutcome(

@@ -445,6 +445,8 @@ class ManualEventSideEffectService {
         SmartPreparationAlarmService.defaultDepartPreAlarmOffset,
     Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
+    // 백그라운드 동기화에서 호출하면 true로 설정해 라이브 GPS 조회를 막는다.
+    bool cacheOnlyLocation = false,
   }) async {
     final effectiveNow = now ?? _currentTime;
     final effectiveUntil = until ?? effectiveNow.add(const Duration(days: 7));
@@ -485,6 +487,7 @@ class ManualEventSideEffectService {
         departPreAlarmOffset: departPreAlarmOffset,
         now: effectiveNow,
         travelMode: travelMode,
+        cacheOnlyLocation: cacheOnlyLocation,
       );
       preparationDays += 1;
       preparationFailed = preparationFailed || !ok;
@@ -534,6 +537,7 @@ class ManualEventSideEffectService {
           event,
           rescheduleMonitor: false,
           safetyMarginOverride: departureSafetyMargin,
+          cacheOnlyLocation: cacheOnlyLocation,
         );
         // 출발 알람 등록/스킵 결과 기록
         DiagLogger.log(
@@ -648,6 +652,8 @@ class ManualEventSideEffectService {
     Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
     DateTime? now,
+    // 백그라운드 동기화에서 호출하면 true로 설정해 라이브 GPS 조회를 막는다.
+    bool cacheOnlyLocation = false,
   }) async {
     final resyncKey = _externalPreparationResyncKey(userId, dayReference);
     final existing = _externalPreparationResyncs[resyncKey];
@@ -667,6 +673,7 @@ class ManualEventSideEffectService {
       departureSafetyMargin: departureSafetyMargin,
       travelMode: travelMode,
       now: now,
+      cacheOnlyLocation: cacheOnlyLocation,
     );
     _externalPreparationResyncs[resyncKey] = resyncFuture;
     try {
@@ -689,6 +696,7 @@ class ManualEventSideEffectService {
     required Duration departureSafetyMargin,
     required String travelMode,
     DateTime? now,
+    bool cacheOnlyLocation = false,
   }) async {
     final smartService = SmartPreparationAlarmService(
       notificationService: _notifications,
@@ -726,7 +734,9 @@ class ManualEventSideEffectService {
     );
 
     // 위치를 루프 밖에서 1회만 조회해 이벤트마다 중복 LocationManager 호출을 막는다.
-    final sharedOrigin = await _resolveOriginLocation();
+    // 백그라운드(cacheOnlyLocation=true)에서는 라이브 GPS 조회 자체를 건너뛴다.
+    final sharedOrigin =
+        await _resolveOriginLocation(cacheOnly: cacheOnlyLocation);
     DiagLogger.log(
       'ManualSideEffect',
       'resyncExternalPrep origin=${sharedOrigin != null ? '${sharedOrigin.latitude},${sharedOrigin.longitude}' : 'null'} '
@@ -935,12 +945,17 @@ class ManualEventSideEffectService {
     }
   }
 
-  Future<GeoPoint?> _resolveOriginLocation() async {
+  /// [cacheOnly] 가 true이면 라이브 GPS(getCurrentLocationWithPermission) 조회를
+  /// 건너뛴다. 백그라운드 알람 재계산 경로에서 호출할 때는 반드시 true로 설정해
+  /// LocationManager 폭주와 삼성 강제종료를 막는다.
+  /// 이 서비스는 자체 위치 캐시를 두지 않으므로 cacheOnly이면 origin이 없을 때
+  /// null을 반환하고, 출발 알람은 fallback travel time을 사용한다.
+  Future<GeoPoint?> _resolveOriginLocation({bool cacheOnly = false}) async {
     final current = await _currentLocationProvider?.call();
     if (current != null) {
       return current;
     }
-    if (kIsWeb) {
+    if (kIsWeb || cacheOnly) {
       return null;
     }
     final permissionService = AppPermissionService();

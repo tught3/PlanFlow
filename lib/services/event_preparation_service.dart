@@ -32,27 +32,41 @@ class EventPreparationService {
   DepartureAlarmService get _departureAlarms =>
       _departureAlarmService ?? const DepartureAlarmService();
 
+  /// [resolveCoordinates] 가 false이면 좌표 해석(TMAP POI 검색)을 건너뛰고
+  /// 이미 좌표가 있는 일정만 알람 처리한다. 백그라운드 알람 재계산
+  /// (calendar_auto_sync / recalculateAlarmsForEvents / refreshUpcoming) 처럼
+  /// 사용자가 직접 저장하지 않는 모든 호출은 반드시 false로 설정해야 한다.
+  ///
+  /// 좌표 해석에 실패한 일정은 좌표가 저장되지 않으므로, 백그라운드 동기화가
+  /// 돌 때마다(앱 시작·resume·주기) 그 일정의 POI 검색이 무한 반복돼
+  /// TMAP POI API 호출이 하루 수만 회로 폭주(네트워크/CPU 폭주 → 삼성 강제종료)한다.
+  /// POI 검색은 foreground 사용자 저장(prepareAfterSave 기본 호출)에서 1회성으로만 수행한다.
   Future<EventPreparationResult> prepareAfterSave(
     EventModel event, {
     Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
+    bool resolveCoordinates = true,
   }) async {
     var preparedEvent = event;
     var locationResolved = false;
     var travelEstimateCount = 0;
 
-    try {
-      preparedEvent = await _ensureLocationCoordinates(preparedEvent);
-      locationResolved = preparedEvent.locationLat != event.locationLat ||
-          preparedEvent.locationLng != event.locationLng;
-    } catch (error, stackTrace) {
-      debugPrint('Event preparation location lookup skipped: $error');
-      debugPrintStack(stackTrace: stackTrace);
+    if (resolveCoordinates) {
+      try {
+        preparedEvent = await _ensureLocationCoordinates(preparedEvent);
+        locationResolved = preparedEvent.locationLat != event.locationLat ||
+            preparedEvent.locationLng != event.locationLng;
+      } catch (error, stackTrace) {
+        debugPrint('Event preparation location lookup skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
     }
 
     try {
       final departureResult = await _departureAlarms.scheduleForEvent(
         preparedEvent,
         safetyMarginOverride: departureSafetyMargin,
+        // 백그라운드(resolveCoordinates=false)면 라이브 GPS·routes API를 모두 건너뛴다.
+        cacheOnlyLocation: !resolveCoordinates,
       );
       debugPrint(
         'Event preparation departure alarm: event=${preparedEvent.id} '
@@ -65,11 +79,15 @@ class EventPreparationService {
       debugPrintStack(stackTrace: stackTrace);
     }
 
-    try {
-      travelEstimateCount = await _precomputeAdjacentTravel(preparedEvent);
-    } catch (error, stackTrace) {
-      debugPrint('Event preparation adjacent travel skipped: $error');
-      debugPrintStack(stackTrace: stackTrace);
+    // 인접 일정 이동시간 사전계산은 routes API를 부르므로 foreground 저장 때만 수행.
+    // 백그라운드(resolveCoordinates=false)에선 건너뛰어 API 폭주를 막는다.
+    if (resolveCoordinates) {
+      try {
+        travelEstimateCount = await _precomputeAdjacentTravel(preparedEvent);
+      } catch (error, stackTrace) {
+        debugPrint('Event preparation adjacent travel skipped: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
     }
 
     return EventPreparationResult(

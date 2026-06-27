@@ -300,12 +300,15 @@ void main() {
   test(
       'syncConnectedCalendars resyncs preparation for imported external events',
       () async {
+    // 백그라운드 동기화는 좌표가 있는 일정만 prepare 한다(POI 검색 폭주 방지).
     final tomorrowExternalEvent = EventModel(
       id: 'event-1',
       userId: 'user-1',
       title: '아이스크림 전달',
       startAt: DateTime(2026, 5, 10, 9),
       location: '강릉아산병원',
+      locationLat: 37.7563,
+      locationLng: 128.8758,
       source: 'naver_device',
     );
     final repository = _FakeEventRepository(
@@ -371,6 +374,14 @@ void main() {
         containsAll(<String>['event-1', 'event-2']));
     expect(preparation.preparedEventIds, contains('event-1'));
     expect(preparation.preparedEventIds, isNot(contains('event-2')));
+    // [PREVENT] 백그라운드 동기화는 좌표 해석(TMAP POI 검색)을 하면 안 된다.
+    // resolveCoordinates: false로만 prepareAfterSave를 호출해야 POI API 폭주를 막는다.
+    expect(
+      preparation.resolveCoordinatesCalls,
+      everyElement(isFalse),
+      reason: '백그라운드 동기화의 prepareAfterSave는 resolveCoordinates: false여야 합니다. '
+          'true이면 TMAP POI 검색이 매 동기화마다 실행돼 API가 폭주합니다.',
+    );
     expect(repository.requestedUserIds, everyElement('user-1'));
     expect(sideEffects.lastUserId, 'user-1');
   });
@@ -784,6 +795,7 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     int travelMinutes = 30,
     String travelMode = 'car',
     DateTime? now,
+    bool cacheOnlyLocation = false,
   }) async {
     resyncCallCount += 1;
     lastDayEvents = dayEvents.toList(growable: false);
@@ -807,6 +819,7 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
     int departPreAlarmOffset = 30,
     Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
     String travelMode = 'car',
+    bool cacheOnlyLocation = false,
   }) async {
     alarmRecalculateCallCount += 1;
     lastAlarmEvents = events.toList(growable: false);
@@ -844,13 +857,16 @@ class _FakeManualEventSideEffectService extends ManualEventSideEffectService {
 
 class _FakeEventPreparationService extends EventPreparationService {
   final List<String> preparedEventIds = <String>[];
+  final List<bool> resolveCoordinatesCalls = <bool>[];
 
   @override
   Future<EventPreparationResult> prepareAfterSave(
     EventModel event, {
     Duration departureSafetyMargin = DepartureAlarmService.safetyMargin,
+    bool resolveCoordinates = true,
   }) async {
     preparedEventIds.add(event.id);
+    resolveCoordinatesCalls.add(resolveCoordinates);
     return EventPreparationResult(
       event: event,
       locationResolved: false,

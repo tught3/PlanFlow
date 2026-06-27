@@ -229,6 +229,8 @@ class DepartureAlarmService {
       destinationLng: destinationLng,
       mode: travelModeOverride ?? _travelModeFromEvent(event),
       locationText: event.location,
+      // 백그라운드(모니터/동기화)에선 routes API 대신 로컬 추정만 사용해 폭주 방지.
+      skipRemote: cacheOnlyLocation,
     );
     final resolvedSafetyMargin =
         safetyMarginOverride ?? const Duration(minutes: defaultSafetyMarginMin);

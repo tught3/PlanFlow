@@ -226,7 +226,19 @@ class TravelTimeBufferService {
     required double destinationLng,
     MapTravelMode mode = MapTravelMode.car,
     String? locationText,
+    /// 백그라운드(모니터·동기화 반복)에서 true로 설정한다.
+    /// 원격 지도 API(TMAP routes/Google) 호출을 건너뛰고 로컬 거리 추정만 사용해
+    /// routes API가 매 동기화마다 모든 일정에 호출되며 폭주하는 것을 막는다.
+    /// 정확한 이동시간은 출발 직전 preflight(1회성)에서만 원격 API로 계산한다.
+    bool skipRemote = false,
   }) async {
+    if (skipRemote) {
+      return estimate(
+        latitude: destinationLat,
+        longitude: destinationLng,
+        locationText: locationText,
+      );
+    }
     final mapEstimate = await (_mapService ?? MapService()).getTravelMinutes(
       originLat: originLat,
       originLng: originLng,

@@ -77,6 +77,60 @@ void main() {
 
     expect(departure.lastSafetyMarginOverride, const Duration(minutes: 27));
   });
+
+  // [PREVENT] 백그라운드 알람 재계산에서 TMAP POI 검색 금지 회귀 테스트
+  // 실증: 좌표 없는 일정에 대해 백그라운드 동기화(calendar_auto_sync)가 매번
+  // _ensureLocationCoordinates → _locations.search(TMAP POI)를 호출하고, 해석
+  // 실패 시 좌표를 저장하지 않아 다음 동기화에서 또 검색 → POI API 하루 16,000회+
+  // 폭주 → 삼성 네트워크/CPU excessive kill로 앱 종료 → 알람 미발생.
+  // resolveCoordinates: false이면 POI 검색을 0회 호출해야 한다.
+  test(
+      'prepareAfterSave with resolveCoordinates:false does NOT call POI search',
+      () async {
+    final repository = _FakeEventRepository();
+    final lookup = _FakeLocationLookupService(
+      result: const LocationLookupResult(
+        name: 'Wonju Severance Christian Hospital',
+        address: 'Gangwon-do Wonju-si',
+        latitude: 37.3421,
+        longitude: 127.9421,
+      ),
+    );
+    final service = EventPreparationService(
+      eventRepository: repository,
+      locationLookupService: lookup,
+      departureAlarmService: _FakeDepartureAlarmService(),
+      travelTimeBufferService: _FakeTravelTimeBufferService(),
+    );
+
+    final result = await service.prepareAfterSave(
+      EventModel(
+        id: 'title-only-event',
+        userId: 'user-1',
+        title: 'Wonju Severance Christian Hospital visit',
+        startAt: DateTime(2026, 5, 8, 10),
+        // 좌표 없음 → 평소라면 POI 검색을 트리거하는 일정
+      ),
+      resolveCoordinates: false,
+    );
+
+    expect(
+      lookup.searchQueries,
+      isEmpty,
+      reason: '백그라운드 경로(resolveCoordinates:false)는 TMAP POI 검색을 호출하면 안 됩니다. '
+          '좌표 해석은 foreground 사용자 저장에서만 수행되어야 합니다.',
+    );
+    expect(
+      result.locationResolved,
+      false,
+      reason: 'POI 검색을 건너뛰었으므로 좌표는 해석되지 않아야 합니다.',
+    );
+    expect(
+      repository.updatedEvents,
+      isEmpty,
+      reason: 'POI 검색 없이 일정 좌표를 업데이트하면 안 됩니다.',
+    );
+  });
 }
 
 class _FakeLocationLookupService extends LocationLookupService {

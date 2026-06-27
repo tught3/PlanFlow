@@ -598,6 +598,61 @@ void main() {
     expect(notifications.criticalTitles, contains('지금 출발해야 해요'));
   });
 
+  // [PREVENT] 백그라운드(cacheOnlyLocation)에선 이동시간 routes API(원격)를 호출하지 않는다.
+  // 실증: scheduleForEvent가 cacheOnly여도 estimateWithMapApis를 원격 호출하면
+  // TMAP routes API가 매 모니터/동기화마다 모든 일정에 호출돼 폭주 → 네트워크/CPU 폭주
+  // → 삼성 excessive cpu kill → 알람 미발생. 정확한 이동시간은 출발 직전 preflight(1회)만.
+  test('cacheOnlyLocation일 때 이동시간은 로컬 추정만 사용한다(skipRemote=true)', () async {
+    final now = DateTime(2026, 5, 8, 9);
+    final event = EventModel(
+      id: 'event-skip-remote',
+      userId: 'user-1',
+      title: '판교 방문',
+      startAt: DateTime(2026, 5, 8, 10),
+      location: '판교',
+      locationLat: 37.39,
+      locationLng: 127.11,
+    );
+    final travel = _FakeTravelTimeBufferService(
+      routeEstimate: const TravelTimeBufferEstimate(
+        buffer: Duration(minutes: 20),
+        source: TravelTimeBufferSource.coordinates,
+        reason: 'test',
+      ),
+    );
+    // 먼저 라이브로 origin 캐시를 채운다.
+    await DepartureAlarmService(
+      currentLocationProvider: () async =>
+          const GeoPoint(latitude: 37.5, longitude: 127.0),
+      travelTimeBufferService: travel,
+      notificationService: _FakeNotificationService(),
+      preflightScheduler:
+          _FakeDeparturePreflightScheduler(shouldSchedule: false).call,
+      now: () => now,
+    ).scheduleForEvent(event, rescheduleMonitor: false);
+
+    // 백그라운드: cacheOnlyLocation=true → estimateWithMapApis가 skipRemote=true로 호출돼야 함.
+    travel.lastSkipRemote = false;
+    await DepartureAlarmService(
+      currentLocationProvider: () async => null,
+      travelTimeBufferService: travel,
+      notificationService: _FakeNotificationService(),
+      preflightScheduler:
+          _FakeDeparturePreflightScheduler(shouldSchedule: false).call,
+      now: () => now.add(const Duration(minutes: 1)),
+    ).scheduleForEvent(
+      event,
+      rescheduleMonitor: false,
+      cacheOnlyLocation: true,
+    );
+
+    expect(
+      travel.lastSkipRemote,
+      isTrue,
+      reason: '백그라운드(cacheOnly)에선 routes 원격 API 대신 로컬 추정(skipRemote)만 써야 합니다.',
+    );
+  });
+
   // [PREVENT] 백그라운드 모니터 콜백에서 AppPermissionService 라이브 위치 조회 금지 회귀 테스트
   // 실증: refreshUpcoming이 cacheOnlyLocation=true 없이 scheduleForEvent를 호출하면
   // LocationManager 폭주 → 삼성 기기 excessive cpu kill로 앱 종료 → 알람 미발생
@@ -670,6 +725,8 @@ class _FakeTravelTimeBufferService extends TravelTimeBufferService {
   double? lastOriginLat;
   double? lastOriginLng;
 
+  bool lastSkipRemote = false;
+
   @override
   Future<TravelTimeBufferEstimate> estimateWithMapApis({
     required double originLat,
@@ -678,9 +735,11 @@ class _FakeTravelTimeBufferService extends TravelTimeBufferService {
     required double destinationLng,
     MapTravelMode mode = MapTravelMode.car,
     String? locationText,
+    bool skipRemote = false,
   }) async {
     lastOriginLat = originLat;
     lastOriginLng = originLng;
+    lastSkipRemote = skipRemote;
     return routeEstimate;
   }
 }
