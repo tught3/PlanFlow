@@ -1142,6 +1142,30 @@ class NotificationService {
     }
     return '${warnings.join(' ')} 휴대폰 설정에서 PlanFlow 알림, 알람 및 리마인더, 전체 화면 알림 허용 상태를 확인해 주세요.';
   }
+
+  /// 진단용: event_reminders_v2 채널로 즉시 테스트 알림을 1건 발송한다.
+  /// 이 알림이 뜨고 소리가 나면 알림 표시 자체는 정상 → 스케줄/타이밍 문제로 범위 좁힘.
+  /// 알림이 전혀 안 뜨면 채널 또는 시스템 차단으로 확정.
+  Future<void> showDiagnosticTestNotification() async {
+    await initialize();
+    final now = DateTime.now();
+    final timeLabel =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+    await _plugin.show(
+      id: _stableNotificationId('diag_test_notification'),
+      title: 'PlanFlow 테스트 알림',
+      body: '알림 표시 진단 — $timeLabel 발송',
+      notificationDetails: _eventReminderDetails(),
+      payload: 'diag_test',
+    );
+  }
+
+  /// 현재 예약된 알림(pendingNotificationRequests) 개수를 반환한다.
+  Future<int> pendingNotificationCount() async {
+    await initialize();
+    final pending = await _plugin.pendingNotificationRequests();
+    return pending.length;
+  }
 }
 
 /// 앱이 백그라운드 상태에서 알림 액션 버튼 탭 시 호출되는 top-level 콜백.

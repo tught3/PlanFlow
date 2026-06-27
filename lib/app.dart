@@ -93,11 +93,13 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   Future<void> _logStartupAlarmPermissions() async {
     try {
       final status = await _notificationService.checkPermissionStatus();
+      final pending = await _notificationService.pendingNotificationCount();
       DiagLogger.log(
         'AlarmPerm',
         'startup notifications=${status.notificationsEnabled} '
             'exact=${status.exactAlarmsEnabled} '
-            'fullScreen=${status.fullScreenIntentStatus}',
+            'fullScreen=${status.fullScreenIntentStatus} '
+            'pending=$pending',
       );
     } catch (error) {
       DiagLogger.log('AlarmPerm', 'startup check failed: $error');
