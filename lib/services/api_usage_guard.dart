@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/diag_logger.dart';
 
-/// 폭주 통보 전송기 시그니처. (api, 일일카운트, 날짜, 폭주 호출 스택)
+/// 폭주 통보 전송기 시그니처. (api, 윈도우카운트, 윈도우길이(초), 폭주 호출 스택)
 typedef OverloadAlertSender = Future<void> Function(
   String api,
   int count,
@@ -14,152 +14,184 @@ typedef OverloadAlertSender = Future<void> Function(
   StackTrace stack,
 );
 
-/// 외부 API 호출을 날짜별·API별로 카운트하고,
-/// 임계 초과 시 호출을 차단하는 circuit breaker.
+/// 외부 API 호출을 **슬라이딩 윈도우 빈도** 기반으로 감시하고,
+/// 윈도우 내 호출 수가 rateLimit 이상이면 **자동 차단**,
+/// 시간이 흘러 윈도우 내 호출 수가 줄면 **자동 재개**하는 circuit breaker.
 ///
-/// - warn 임계: 이상 징후 조기 포착 → SharedPreferences + DiagLogger에 1회 기록
-/// - block 임계: 폭주 확정 차단 → tryConsume()이 false 반환
+/// ## 동작 요약
+/// - 각 API별로 최근 [windowSeconds]초 동안의 호출 타임스탬프 버킷을
+///   SharedPreferences에 영속 저장한다(백그라운드 isolate와 공유 가능).
+/// - `tryConsume(api)`: 윈도우 내 카운트 >= rateLimit이면 false(차단),
+///   아니면 타임스탬프 기록 후 true(허용).
+/// - 차단된 호출은 타임스탬프에 추가하지 않아 폭주를 가속하지 않는다.
+/// - 별도 해제 플래그 없이, 시간이 흘러 오래된 타임스탬프가 윈도우 밖으로
+///   밀려나면 자연히 다시 허용된다(자동 재개).
+/// - 차단이 시작(closed→open 전이)될 때 [overloadAlertSender]로 1회 통보,
+///   같은 API는 [alertCooldownMinutes]분 동안 추가 통보 없음(도배 방지).
 ///
-/// 차단은 그날만 적용되고 다음 날 자동 리셋된다.
-/// SharedPreferences를 영속화 저장소로 사용하므로 백그라운드 isolate와
-/// 값을 공유할 수 있다(isolate별로 SharedPreferences.getInstance() 호출).
+/// ## rateLimit / windowSeconds 기본값 근거
+/// - 정상 1인 사용: 60초에 최대 한두 자리 호출 (사용자가 직접 검색해도 수~10회)
+/// - 과거 폭주 사례: 좌표 해석 실패 루프 → 하루 16,000회 (초당 수십 회)
+/// - 기본값: windowSeconds=60, tmapPoi rateLimit=60 (사용자 검색 포함으로 여유),
+///   tmapRoutes=40 (일정 저장·출발 전에만 호출, 정상 비율이 낮음)
+///   → 루프 폭주는 60초 40~60회가 넘는 순간 즉시 차단, 정상 사용은 통과.
 class ApiUsageGuard {
   ApiUsageGuard({
-    Map<String, ApiUsageThreshold>? thresholds,
+    Map<String, ApiRateConfig>? configs,
     Future<SharedPreferences> Function()? prefsFactory,
     DateTime Function()? now,
     OverloadAlertSender? overloadAlertSender,
-  })  : _thresholds = thresholds ?? const {},
+    int alertCooldownMinutes = 5,
+  })  : _configs = configs ?? const {},
         _prefsFactory = prefsFactory ?? SharedPreferences.getInstance,
         _now = now ?? DateTime.now,
-        _overloadAlertSender = overloadAlertSender;
+        _overloadAlertSender = overloadAlertSender,
+        _alertCooldownMinutes = alertCooldownMinutes;
 
-  // --- 기본 임계값 ---
-  // 1인 사용자의 정상 외부 API 호출은 하루 수십 회 수준이다. 100회만 넘어도
-  // 비정상 신호이므로 warn은 낮게(로그만, 기능 영향 없음), block은 정상 헤비
-  // 사용자가 억울하게 막히지 않을 안전 마진만 둔다. (과거 1000/5000 → 폭주를
-  // 수천 회까지 허용해 SK 한도/비용 낭비 → 대폭 하향)
-  static const int defaultWarnThreshold = 100;
-  static const int defaultBlockThreshold = 600;
+  // --- 기본 설정 ---
+  static const int defaultWindowSeconds = 60;
+  static const int defaultRateLimit = 60;
 
-  // --- SharedPreferences 키 접두사 ---
-  static const String _countKeyPrefix = 'api_usage:';
-  static const String _warnFlagPrefix = 'api_usage_warned:';
-  static const String keyLastWarning = 'api_usage_last_warning';
+  // --- SharedPreferences 키 ---
+  /// 버킷 저장소: `api_rate:{api}` → JSON `List<int>` (epoch 밀리초 버킷)
+  static const String _bucketKeyPrefix = 'api_rate:';
+
+  /// 차단 상태 진단 키 (피드백 첨부용)
   static const String keyBlocked = 'api_usage_blocked';
 
-  final Map<String, ApiUsageThreshold> _thresholds;
+  /// 마지막 경고 진단 키
+  static const String keyLastWarning = 'api_usage_last_warning';
+
+  /// 통보 쿨다운 키 접두사: `api_rate_alert_ts:{api}` → int (epoch ms)
+  static const String _alertTsPrefix = 'api_rate_alert_ts:';
+
+  final Map<String, ApiRateConfig> _configs;
   final Future<SharedPreferences> Function() _prefsFactory;
   final DateTime Function() _now;
-
-  /// 폭주 통보 전송기. null이면 통보하지 않는다(테스트 기본값).
-  /// 운영 싱글톤(instance)만 실제 HTTP 전송기를 주입한다.
   final OverloadAlertSender? _overloadAlertSender;
+  final int _alertCooldownMinutes;
 
-  /// 오늘의 날짜 문자열 (yyyy-MM-dd)
-  String _todayKey() {
-    final d = _now();
-    final y = d.year.toString().padLeft(4, '0');
-    final m = d.month.toString().padLeft(2, '0');
-    final day = d.day.toString().padLeft(2, '0');
-    return '$y-$m-$day';
-  }
-
-  /// count 영속 키: `api_usage:{date}:{api}`
-  String _countKey(String api) => '$_countKeyPrefix${_todayKey()}:$api';
-
-  /// warn 1회성 플래그 키: `api_usage_warned:{date}:{api}`
-  String _warnFlagKey(String api) => '$_warnFlagPrefix${_todayKey()}:$api';
-
-  ApiUsageThreshold _thresholdFor(String api) {
-    return _thresholds[api] ??
-        const ApiUsageThreshold(
-          warn: ApiUsageGuard.defaultWarnThreshold,
-          block: ApiUsageGuard.defaultBlockThreshold,
+  ApiRateConfig _configFor(String api) {
+    return _configs[api] ??
+        const ApiRateConfig(
+          windowSeconds: ApiUsageGuard.defaultWindowSeconds,
+          rateLimit: ApiUsageGuard.defaultRateLimit,
         );
   }
 
-  /// 해당 API의 오늘 사용 횟수를 반환한다.
-  Future<int> todayCount(String api) async {
-    final prefs = await _prefsFactory();
-    return prefs.getInt(_countKey(api)) ?? 0;
+  /// 버킷 키: `api_rate:{api}`
+  String _bucketKey(String api) => '$_bucketKeyPrefix$api';
+
+  /// SharedPreferences에서 해당 API의 타임스탬프 버킷(epoch ms 리스트)을 읽는다.
+  List<int> _readBuckets(SharedPreferences prefs, String api) {
+    final raw = prefs.getString(_bucketKey(api));
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return decoded.cast<int>();
+      }
+    } catch (_) {}
+    return [];
   }
+
+  /// 슬라이딩 윈도우 내 타임스탬프만 남기고 저장.
+  Future<List<int>> _prunedBuckets(
+    SharedPreferences prefs,
+    String api,
+    int windowMs,
+    int nowMs,
+  ) async {
+    final all = _readBuckets(prefs, api);
+    final cutoff = nowMs - windowMs;
+    final pruned = all.where((ts) => ts > cutoff).toList();
+    await prefs.setString(_bucketKey(api), jsonEncode(pruned));
+    return pruned;
+  }
+
+  /// 해당 API의 현재 윈도우 내 호출 수를 반환한다.
+  Future<int> windowCount(String api) async {
+    final prefs = await _prefsFactory();
+    final config = _configFor(api);
+    final windowMs = config.windowSeconds * 1000;
+    final nowMs = _now().millisecondsSinceEpoch;
+    final pruned = await _prunedBuckets(prefs, api, windowMs, nowMs);
+    return pruned.length;
+  }
+
+  /// 하위 호환성: 기존 적용처가 todayCount를 사용하는 경우를 위해 유지.
+  /// 슬라이딩 윈도우 카운트를 반환한다.
+  Future<int> todayCount(String api) => windowCount(api);
 
   /// API 호출 시도를 소비한다.
   ///
-  /// - block 임계 초과 → `false` 반환 (호출 차단)
-  /// - 그 외 → 카운트 증가 후 `true` 반환
-  /// - warn 임계 첫 도달 시 진단 기록 (중복 방지)
+  /// - 윈도우 내 호출수 >= rateLimit → `false` 반환 (자동 차단)
+  /// - 그 외 → 타임스탬프 기록 후 `true` 반환
+  /// - 차단된 호출은 타임스탬프에 추가하지 않는다(폭주 가속 방지).
+  /// - 시간이 흘러 윈도우 내 카운트가 줄면 자연히 `true`로 복구(자동 재개).
   Future<bool> tryConsume(String api) async {
     final prefs = await _prefsFactory();
-    final key = _countKey(api);
-    final threshold = _thresholdFor(api);
+    final config = _configFor(api);
+    final windowMs = config.windowSeconds * 1000;
+    final now = _now();
+    final nowMs = now.millisecondsSinceEpoch;
 
-    // 현재 카운트 읽기 (과거 날짜 키는 오늘 키와 다르므로 자동 무시)
-    final current = prefs.getInt(key) ?? 0;
+    // 오래된 타임스탬프를 제거하고 현재 윈도우 내 카운트를 얻는다
+    final current = await _prunedBuckets(prefs, api, windowMs, nowMs);
+    final count = current.length;
 
-    // 이미 block 임계 초과 상태이면 즉시 차단
-    if (current >= threshold.block) {
-      await _recordBlocked(prefs, api, current, StackTrace.current);
+    if (count >= config.rateLimit) {
+      // 폭주 감지 — 차단
+      await _recordBlocked(prefs, api, count, StackTrace.current, now);
       return false;
     }
 
-    // 카운트 +1
-    final next = current + 1;
-    await prefs.setInt(key, next);
-
-    // warn 임계 도달 시 1회성 경고 기록
-    if (next >= threshold.warn) {
-      final warnFlag = _warnFlagKey(api);
-      final alreadyWarned = prefs.getBool(warnFlag) ?? false;
-      if (!alreadyWarned) {
-        await prefs.setBool(warnFlag, true);
-        await _recordWarning(prefs, api, next);
-      }
-    }
-
-    // block 임계 도달(이번 호출로 처음 초과)하면 차단
-    if (next >= threshold.block) {
-      await _recordBlocked(prefs, api, next, StackTrace.current);
-      return false;
-    }
-
+    // 허용 — 타임스탬프 추가 후 저장
+    final updated = [...current, nowMs];
+    await prefs.setString(_bucketKey(api), jsonEncode(updated));
     return true;
   }
 
-  /// 경고 수준 진단 기록.
-  Future<void> _recordWarning(
-      SharedPreferences prefs, String api, int count) async {
-    final date = _todayKey();
-    final message = 'WARN api=$api count=$count date=$date';
-    await prefs.setString(keyLastWarning, message);
-    DiagLogger.log('ApiUsageGuard', message);
-  }
-
-  /// 차단 수준 진단 기록 + 폭주 원인 자동 통보(1일 1회).
+  /// 차단 수준 진단 기록 + 폭주 자동 통보(쿨다운 내 중복 방지).
   Future<void> _recordBlocked(
     SharedPreferences prefs,
     String api,
     int count,
     StackTrace stack,
+    DateTime now,
   ) async {
-    final date = _todayKey();
-    final message = 'BLOCKED api=$api count=$count date=$date';
+    final config = _configFor(api);
+    final message =
+        'BLOCKED api=$api window_count=$count limit=${config.rateLimit} window=${config.windowSeconds}s';
     await prefs.setString(keyBlocked, message);
     DiagLogger.log('ApiUsageGuard', message);
 
-    // 단순 차단에 그치지 않고, 폭주를 일으킨 호출 스택(원인 코드 위치)과
-    // 최근 진단을 서버 경유로 텔레그램/디스코드에 자동 통보한다.
-    // 알림 자체가 폭주하지 않도록 같은 API는 하루 1회만 전송한다.
-    final alertFlag = 'api_usage_alert_sent:$date:$api';
-    if (prefs.getBool(alertFlag) ?? false) {
+    // 통보 쿨다운 확인: 같은 api는 [_alertCooldownMinutes]분에 1회만 전송
+    final alertTsKey = '$_alertTsPrefix$api';
+    final lastAlertMs = prefs.getInt(alertTsKey) ?? 0;
+    final cooldownMs = _alertCooldownMinutes * 60 * 1000;
+    final nowMs = now.millisecondsSinceEpoch;
+
+    if (nowMs - lastAlertMs < cooldownMs) {
+      // 쿨다운 중 — 전송 스킵
       return;
     }
-    await prefs.setBool(alertFlag, true);
+
+    // 쿨다운 타임스탬프 갱신
+    await prefs.setInt(alertTsKey, nowMs);
+
     final sender = _overloadAlertSender;
     if (sender != null) {
+      final date = _dateStr(now);
       unawaited(sender(api, count, date, stack));
     }
+  }
+
+  String _dateStr(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$day';
   }
 
   /// 폭주 진단(호출 스택 + 최근 로그)을 서버 알림 엔드포인트로 전송한다.
@@ -186,7 +218,7 @@ class ApiUsageGuard {
             body: jsonEncode(<String, dynamic>{
               'type': 'bug',
               'source': 'android-app',
-              'message': '[API 폭주 차단] api=$api count=$count date=$date\n'
+              'message': '[API 폭주 차단] api=$api window_count=$count date=$date\n'
                   '— 폭주를 일으킨 호출 스택(원인 위치) —\n$trimmedStack\n'
                   '— 최근 진단 로그 —\n$recentDiag',
             }),
@@ -197,45 +229,56 @@ class ApiUsageGuard {
     }
   }
 
-  /// 과거 날짜 키를 정리한다 (선택적 유지보수 — 앱이 장기 설치될 때).
-  /// [today]를 주입하지 않으면 _todayKey()를 사용한다.
+  /// 해당 API의 버킷 데이터를 지운다 (선택적 유지보수).
   Future<void> cleanupOldKeys({String? today}) async {
+    // 슬라이딩 윈도우 방식에서는 날짜별 키가 없으므로
+    // 오래된 타임스탬프는 tryConsume/windowCount 호출 때 자동 프루닝된다.
+    // 이 메서드는 하위 호환성을 위해 유지하되 실질 동작은 없다.
+    // 필요 시 버킷 전체를 초기화하려면 clearAll()을 사용한다.
     final prefs = await _prefsFactory();
-    final todayPrefix = '$_countKeyPrefix${today ?? _todayKey()}:';
-    final warnTodayPrefix = '$_warnFlagPrefix${today ?? _todayKey()}:';
+    // 경고/차단 진단 키 중 날짜 기반 구 형식 키 제거 (마이그레이션 지원)
+    const oldCountPrefix = 'api_usage:';
+    const oldWarnPrefix = 'api_usage_warned:';
     final toRemove = prefs
         .getKeys()
-        .where((key) =>
-            (key.startsWith(_countKeyPrefix) &&
-                !key.startsWith(todayPrefix)) ||
-            (key.startsWith(_warnFlagPrefix) &&
-                !key.startsWith(warnTodayPrefix)))
+        .where((k) =>
+            k.startsWith(oldCountPrefix) || k.startsWith(oldWarnPrefix))
         .toList();
-    for (final key in toRemove) {
-      await prefs.remove(key);
+    for (final k in toRemove) {
+      await prefs.remove(k);
     }
   }
 
   // --- 싱글톤 ---
   static ApiUsageGuard? _instance;
 
-  /// 기본 임계값을 사용하는 싱글톤 인스턴스.
+  /// 기본 설정을 사용하는 싱글톤 인스턴스.
   /// 테스트에서는 생성자로 직접 주입하고 이 getter는 사용하지 않는다.
   ///
-  /// API 성격별 차등: routes(이동시간)는 일정 저장/출발 직전에만 쓰여 정상량이
-  /// 가장 적으므로 가장 낮게, POI(장소 검색)는 사용자 직접 검색도 포함하므로
-  /// 약간 높게 둔다. warn은 모두 100(조기 진단 로그), block은 정상 상한 위.
+  /// ## rateLimit 선택 근거
+  /// - tmapPoi: 사용자 직접 검색 포함 → 60초당 60회 (정상 인터랙션은 수~10회)
+  /// - tmapRoutes: 일정 저장·출발 직전에만 호출 → 60초당 40회
+  /// - 나머지 geocode: routes와 유사한 빈도 → 60초당 40회
+  /// - 과거 폭주: 60초 수백~수천 → 위 기준값으로 즉시 감지.
   static ApiUsageGuard get instance {
     _instance ??= ApiUsageGuard(
-      thresholds: const <String, ApiUsageThreshold>{
-        // warn은 낮게(100) 유지 → 하루 100회만 넘어도 진단 로그로 조기 인지.
-        // block(실제 차단)은 정상·개발 사용을 막지 않고 확실한 폭주(과거 16,000회)
-        // 만 끊도록 상향. (이전 routes 300은 하루 종일 개발 테스트 누적에 걸려
-        // 지도 좌표 해석이 막히는 부작용이 있었음)
-        ApiName.tmapPoi: ApiUsageThreshold(warn: 100, block: 2000),
-        ApiName.tmapRoutes: ApiUsageThreshold(warn: 100, block: 2000),
-        ApiName.naverGeocode: ApiUsageThreshold(warn: 100, block: 2000),
-        ApiName.googleGeocode: ApiUsageThreshold(warn: 100, block: 2000),
+      configs: const <String, ApiRateConfig>{
+        ApiName.tmapPoi: ApiRateConfig(
+          windowSeconds: 60,
+          rateLimit: 60,
+        ),
+        ApiName.tmapRoutes: ApiRateConfig(
+          windowSeconds: 60,
+          rateLimit: 40,
+        ),
+        ApiName.naverGeocode: ApiRateConfig(
+          windowSeconds: 60,
+          rateLimit: 40,
+        ),
+        ApiName.googleGeocode: ApiRateConfig(
+          windowSeconds: 60,
+          rateLimit: 40,
+        ),
       },
       overloadAlertSender: _defaultHttpOverloadAlert,
     );
@@ -248,15 +291,36 @@ class ApiUsageGuard {
   }
 }
 
-/// API별 임계값 설정.
-class ApiUsageThreshold {
-  const ApiUsageThreshold({
-    required this.warn,
-    required this.block,
-  }) : assert(warn < block, 'warn must be less than block');
+/// API별 슬라이딩 윈도우 설정 기반 클래스.
+///
+/// - [windowSeconds]: 빈도를 측정할 시간 윈도우 (초 단위). 기본 60.
+/// - [rateLimit]: 윈도우 내 최대 허용 호출 수. 이 수 이상이면 즉시 차단.
+class ApiRateConfig {
+  const ApiRateConfig({
+    this.windowSeconds = ApiUsageGuard.defaultWindowSeconds,
+    required this.rateLimit,
+  });
 
+  final int windowSeconds;
+  final int rateLimit;
+}
+
+/// 하위 호환성을 위한 구 임계값 설정 클래스.
+/// 신규 코드는 [ApiRateConfig]를 사용한다.
+///
+/// [block]이 [ApiRateConfig.rateLimit]으로 매핑된다. [warn]은 현재 무시된다.
+class ApiUsageThreshold extends ApiRateConfig {
+  const ApiUsageThreshold({required this.warn, required int block})
+      : super(
+          windowSeconds: ApiUsageGuard.defaultWindowSeconds,
+          rateLimit: block,
+        );
+
+  /// 조기 경고 임계 (현재 슬라이딩 윈도우 방식에서는 사용되지 않음).
   final int warn;
-  final int block;
+
+  /// 구 block 임계 (rateLimit과 동일).
+  int get block => rateLimit;
 }
 
 /// 애플리케이션에서 사용하는 API 이름 상수.
