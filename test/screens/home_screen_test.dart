@@ -7,9 +7,11 @@ import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/home/home_screen.dart';
+import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/event_prefetch_service.dart';
 import 'package:planflow/services/home_widget_platform.dart';
 import 'package:planflow/services/home_widget_service.dart';
+import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/smart_preparation_alarm_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -299,6 +301,69 @@ void main() {
       );
     },
   );
+
+  // 회귀: 좌표 못 찾는 일정이 매 홈 새로고침마다 외부 지오코딩 API를 재호출해
+  // tmap_poi 800회까지 폭주하던 사건(2026-06-28). 근본 2종:
+  //  (1) _resolveEventsMissingCoords가 끝에서 무조건 notifyChanged를 쏴
+  //      홈 리로드 → 좌표 보정 → notifyChanged의 자기피드백 루프를 만들고,
+  //  (2) 실패(빈 결과)한 (일정,위치)에 쿨다운이 없어 매 패스마다 재검색.
+  // 수정: 재진입 가드 + (일정,위치) 24h 쿨다운 + 좌표를 실제로 채운 경우에만
+  //       notifyChanged. 이 테스트는 반복 새로고침에도 재검색이 1회로 묶이는지 본다.
+  testWidgets(
+    'HomeScreen는 좌표 못 찾는 일정을 반복 새로고침에도 한 번만 검색한다(폭주 방지)',
+    (tester) async {
+      final now = DateTime(2026, 6, 28, 12);
+      final unresolved = EventModel(
+        id: 'no-coords-1',
+        userId: 'user-1',
+        title: '좌표 없는 일정',
+        startAt: DateTime(2026, 6, 28, 13),
+        location: '존재하지 않는 장소 zzz',
+      );
+      final repository =
+          _StuckUnresolvedEventRepository(<EventModel>[unresolved]);
+      final lookup = _CountingLocationLookupService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: repository,
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            locationLookupService: lookup,
+            loadHeaderSummary: false,
+            nowProvider: () => now,
+          ),
+        ),
+      );
+
+      // 초기 로드 → 좌표 보정 1회(검색 1회).
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+        lookup.searchCallCount,
+        1,
+        reason: '미해결 일정은 처음 한 번만 검색해야 한다',
+      );
+
+      // 홈 새로고침(앱 재개)을 여러 번 일으켜도 쿨다운 때문에 재검색 금지.
+      for (var i = 0; i < 5; i++) {
+        tester.binding
+            .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      expect(
+        lookup.searchCallCount,
+        1,
+        reason: '반복 새로고침에도 같은 미해결 (일정,위치)는 재검색되지 않아야 한다 '
+            '— 자기피드백 루프 + 무쿨다운이 tmap_poi 800회 폭주를 일으켰던 회귀',
+      );
+    },
+  );
 }
 
 class _FakeSmartPreparationAlarmService extends SmartPreparationAlarmService {
@@ -449,4 +514,37 @@ class _QueuedEventRepository extends EventRepository {
   @override
   Future<EventModel> upsertEventBySourceExternalId(EventModel event) async =>
       event;
+}
+
+/// 매 listEvents 호출마다 같은 (미해결) 일정 목록을 반환해, 반복 새로고침에도
+/// 좌표 보정 대상이 계속 남아있는 폭주 시나리오를 재현한다.
+class _StuckUnresolvedEventRepository extends _QueuedEventRepository {
+  _StuckUnresolvedEventRepository(this._events)
+      : super(responses: const <Future<List<EventModel>> Function()>[]);
+
+  final List<EventModel> _events;
+
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    listEventsCallCount += 1;
+    return _events;
+  }
+}
+
+/// search() 호출 횟수를 세고 항상 빈 결과(좌표 못 찾음)를 돌려주는 fake.
+/// 빈 결과 = 폭주를 유발하던 "영영 못 찾는 위치" 케이스.
+class _CountingLocationLookupService extends LocationLookupService {
+  int searchCallCount = 0;
+  final List<String> searchedQueries = <String>[];
+
+  @override
+  Future<List<LocationLookupResult>> search(
+    String query, {
+    GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
+  }) async {
+    searchCallCount += 1;
+    searchedQueries.add(query);
+    return const <LocationLookupResult>[];
+  }
 }

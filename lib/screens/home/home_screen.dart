@@ -65,6 +65,7 @@ class HomeScreen extends StatefulWidget {
     this.homeWidgetService,
     this.loadHeaderSummary = true,
     this.nowProvider,
+    this.locationLookupService,
     BriefingSchedulerService? briefingSchedulerService,
   }) : _briefingSchedulerService = briefingSchedulerService;
 
@@ -75,6 +76,10 @@ class HomeScreen extends StatefulWidget {
   final HomeWidgetService? homeWidgetService;
   final bool loadHeaderSummary;
   final DateTime Function()? nowProvider;
+
+  /// 좌표 보정에 쓰는 장소 검색 서비스. 테스트에서 호출 횟수를 세는 fake를
+  /// 주입하기 위한 진입점(미주입 시 기본 LocationLookupService 사용).
+  final LocationLookupService? locationLookupService;
   final BriefingSchedulerService? _briefingSchedulerService;
 
   @override
@@ -102,6 +107,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isPlayingEveningBriefing = false;
   int _homeWidgetRefreshGeneration = 0;
   Future<void> _homeWidgetRefreshQueue = Future<void>.value();
+
+  /// 좌표 보정(_resolveEventsMissingCoords) 재진입 가드.
+  /// 좌표 보정 끝에서 EventRefreshBus.notifyChanged를 쏘면 다시 홈 리로드가
+  /// 일어나 보정이 재호출된다. 가드가 없으면 보정 패스가 겹쳐 돌며 외부
+  /// 지오코딩 API(tmap_poi 등)를 폭주시킨다(2026-06-28 tmap_poi 800회 차단 사건).
+  bool _resolvingCoords = false;
+
+  /// 같은 (event, location) 조합의 지오코딩 재시도 쿨다운.
+  /// tmap이 못 찾는 위치 문자열은 좌표가 영원히 안 채워져 매 홈 리로드마다
+  /// 재검색된다. 시도 시각을 영속 기록해 이 기간 동안은 재검색을 건너뛴다.
+  /// 사용자가 위치를 수정하면 키가 바뀌어 즉시 재시도된다(쿨다운 우회).
+  static const Duration _geoRetryCooldown = Duration(hours: 24);
+  static const String _geoAttemptKeyPrefix = 'geo_resolve_attempt:';
 
   @override
   void initState() {
@@ -390,6 +408,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     List<EventModel> allEvents,
     EventRepository repository,
   ) async {
+    // 재진입 차단: 좌표 보정 끝의 notifyChanged가 홈 리로드를 다시 일으켜
+    // 이 함수를 재호출하므로, 이미 보정 중이면 새 패스를 시작하지 않는다.
+    if (_resolvingCoords) return;
     final missing = allEvents
         .where(
           (e) =>
@@ -399,49 +420,79 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         )
         .toList();
     if (missing.isEmpty) return;
-    final service = LocationLookupService();
-    for (final event in missing) {
-      try {
-        final results = await service.search(event.location!, origin: null);
-        if (results.isEmpty) {
-          await Future.delayed(const Duration(milliseconds: 300));
+
+    _resolvingCoords = true;
+    var resolvedAny = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final cooldownMs = _geoRetryCooldown.inMilliseconds;
+      final service = widget.locationLookupService ?? LocationLookupService();
+      for (final event in missing) {
+        // 쿨다운: 같은 (event, location)을 최근에 시도했으면 재검색 스킵.
+        // location 문자열을 키에 넣어, 사용자가 위치를 고치면 키가 바뀌어
+        // 즉시 재시도된다. 시도 기록은 성공/실패/예외 모두에 남겨,
+        // 영영 못 찾는 위치가 매 리로드마다 API를 두드리지 않게 한다.
+        final attemptKey =
+            '$_geoAttemptKeyPrefix${event.id}:${event.location!.trim()}';
+        final lastAttemptMs = prefs.getInt(attemptKey);
+        if (lastAttemptMs != null && nowMs - lastAttemptMs < cooldownMs) {
           continue;
         }
-        final best = results.first;
-        await repository.updateEvent(EventModel(
-          id: event.id,
-          userId: event.userId,
-          title: event.title,
-          startAt: event.startAt,
-          endAt: event.endAt,
-          location: event.location,
-          locationLat: best.latitude,
-          locationLng: best.longitude,
-          memo: event.memo,
-          supplies: event.supplies,
-          suppliesChecked: event.suppliesChecked,
-          participants: event.participants,
-          targets: event.targets,
-          isCritical: event.isCritical,
-          useStrongAlarm: event.useStrongAlarm,
-          recurrenceRule: event.recurrenceRule,
-          isAllDay: event.isAllDay,
-          isMultiDay: event.isMultiDay,
-          parentEventId: event.parentEventId,
-          category: event.category,
-          source: event.source,
-          externalId: event.externalId,
-          externalCalendarId: event.externalCalendarId,
-          externalEtag: event.externalEtag,
-          externalUpdatedAt: event.externalUpdatedAt,
-          lastSyncedAt: event.lastSyncedAt,
-          createdAt: event.createdAt,
-          updatedAt: event.updatedAt,
-        ));
-      } catch (e) { debugPrint('HomeScreen 위치 동기화 무시: $e'); }
-      await Future.delayed(const Duration(milliseconds: 300));
+        try {
+          final results = await service.search(event.location!, origin: null);
+          // 시도 자체를 기록(빈 결과여도) → 쿨다운 동안 재검색 차단.
+          await prefs.setInt(attemptKey, nowMs);
+          if (results.isEmpty) {
+            await Future.delayed(const Duration(milliseconds: 300));
+            continue;
+          }
+          final best = results.first;
+          await repository.updateEvent(EventModel(
+            id: event.id,
+            userId: event.userId,
+            title: event.title,
+            startAt: event.startAt,
+            endAt: event.endAt,
+            location: event.location,
+            locationLat: best.latitude,
+            locationLng: best.longitude,
+            memo: event.memo,
+            supplies: event.supplies,
+            suppliesChecked: event.suppliesChecked,
+            participants: event.participants,
+            targets: event.targets,
+            isCritical: event.isCritical,
+            useStrongAlarm: event.useStrongAlarm,
+            recurrenceRule: event.recurrenceRule,
+            isAllDay: event.isAllDay,
+            isMultiDay: event.isMultiDay,
+            parentEventId: event.parentEventId,
+            category: event.category,
+            source: event.source,
+            externalId: event.externalId,
+            externalCalendarId: event.externalCalendarId,
+            externalEtag: event.externalEtag,
+            externalUpdatedAt: event.externalUpdatedAt,
+            lastSyncedAt: event.lastSyncedAt,
+            createdAt: event.createdAt,
+            updatedAt: event.updatedAt,
+          ));
+          resolvedAny = true;
+        } catch (e) {
+          // 예외(인증 실패 등)도 시도로 기록해 쿨다운 동안 재호출을 막는다.
+          await prefs.setInt(attemptKey, nowMs);
+          debugPrint('HomeScreen 위치 동기화 무시: $e');
+        }
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+    } finally {
+      _resolvingCoords = false;
     }
-    if (mounted) {
+    // 실제로 좌표를 채운 경우에만 새로고침을 트리거한다. 무조건 쏘면
+    // 홈 리로드 → 좌표 보정 → notifyChanged의 자기피드백 루프가 되어
+    // 아무것도 못 풀어도 외부 지오코딩 API를 끝없이 호출한다(폭주 근본 원인).
+    if (resolvedAny && mounted) {
       EventRefreshBus.instance.notifyChanged(reason: 'location_resolved');
       unawaited(const DepartureAlarmService().refreshUpcoming());
     }
@@ -919,4 +970,3 @@ List<EventModel> homeVisiblePastTodayEvents(Iterable<EventModel> pastEvents) {
       .map((e) => e.event)
       .toList(growable: false);
 }
-
