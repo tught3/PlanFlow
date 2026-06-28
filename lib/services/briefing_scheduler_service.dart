@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:isolate';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -132,11 +134,44 @@ class BriefingSchedulerService {
   static const String _lastExecutionFailureReasonKey =
       'briefing:last_execution_failure_reason';
   static const String _appForegroundKey = 'briefing:app_foreground';
+  static const String foregroundPortName = 'briefing:foreground_port';
   static const Duration _briefingLeadBeforePrepStart = Duration(minutes: 30);
+
+  static ReceivePort? _foregroundReceivePort;
+  static final StreamController<bool> _foregroundBriefingController =
+      StreamController<bool>.broadcast();
+
+  /// 앱이 포그라운드일 때 브리핑 알람이 도착하면 true(모닝)/false(이브닝) 이벤트를 발행한다.
+  static Stream<bool> get foregroundBriefingStream =>
+      _foregroundBriefingController.stream;
+
+  static void _registerForegroundPort() {
+    _foregroundReceivePort?.close();
+    IsolateNameServer.removePortNameMapping(foregroundPortName);
+    final port = ReceivePort();
+    _foregroundReceivePort = port;
+    IsolateNameServer.registerPortWithName(port.sendPort, foregroundPortName);
+    port.listen((message) {
+      if (message is String && !_foregroundBriefingController.isClosed) {
+        _foregroundBriefingController.add(message == 'morning');
+      }
+    });
+  }
+
+  static void _unregisterForegroundPort() {
+    IsolateNameServer.removePortNameMapping(foregroundPortName);
+    _foregroundReceivePort?.close();
+    _foregroundReceivePort = null;
+  }
 
   static Future<void> recordAppForegroundState(bool isForeground) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool(_appForegroundKey, isForeground);
+    if (isForeground) {
+      _registerForegroundPort();
+    } else {
+      _unregisterForegroundPort();
+    }
   }
 
   Future<BriefingDailyScheduleResult> scheduleDaily({

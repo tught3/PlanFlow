@@ -42,6 +42,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   StreamSubscription<Uri?>? _homeWidgetClickSubscription;
   StreamSubscription<Uri>? _planFlowLinkSubscription;
   StreamSubscription<List<SharedMediaFile>>? _sharedIcsSubscription;
+  StreamSubscription<bool>? _foregroundBriefingSubscription;
   bool _reauthSnackBarShown = false;
   bool _startupUpdateCheckRunning = false;
   int _startupUpdateCheckGeneration = 0;
@@ -75,6 +76,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       },
     );
     unawaited(BriefingSchedulerService.recordAppForegroundState(true));
+    _foregroundBriefingSubscription =
+        BriefingSchedulerService.foregroundBriefingStream
+            .listen(_showForegroundBriefingDialog);
     unawaited(_syncSessionAndCalendar(reason: 'startup'));
     unawaited(_listenForSharedIcsFiles());
     unawaited(_notificationService.scheduleMonthlyNaverIcsReminder());
@@ -325,6 +329,33 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     }
   }
 
+  void _showForegroundBriefingDialog(bool isMorning) {
+    final context = appRouter.routerDelegate.navigatorKey.currentContext;
+    if (context == null || !mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: Text(isMorning ? '모닝 브리핑' : '이브닝 브리핑'),
+        content: const Text('브리핑 알람이 도착했습니다.\n지금 재생하시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('나중에'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              final type = isMorning ? 'morning' : 'evening';
+              appRouter.go('${AppRoutes.briefing}?type=$type');
+            },
+            child: const Text('재생'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _onAuthProviderChange() {
     if (authProvider.hasResolvedInitialSession &&
         authProvider.hasAttemptedStartupSync &&
@@ -361,6 +392,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _homeWidgetClickSubscription?.cancel();
     _planFlowLinkSubscription?.cancel();
     _sharedIcsSubscription?.cancel();
+    _foregroundBriefingSubscription?.cancel();
     unawaited(_oauthCallbackHandler.dispose());
     unawaited(BriefingSchedulerService.recordAppForegroundState(false));
     _lifecycleListener.dispose();

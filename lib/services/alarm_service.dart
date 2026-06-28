@@ -1,3 +1,6 @@
+import 'dart:isolate';
+import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -143,8 +146,21 @@ Future<void> _briefingAlarmCallback(
       AppEnv.markSupabaseInitialized();
     }
 
-    final scheduler = BriefingSchedulerService();
-    await scheduler.showBriefingStartNotification(isMorning: isMorning);
+    // 앱이 포그라운드면 IsolateNameServer 포트로 모달 신호를 보내고,
+    // 백그라운드면 기존 알림 발송 경로를 사용한다.
+    final SendPort? foregroundPort = IsolateNameServer.lookupPortByName(
+      BriefingSchedulerService.foregroundPortName,
+    );
+    if (foregroundPort != null) {
+      foregroundPort.send(isMorning ? 'morning' : 'evening');
+      DiagLogger.log(
+        'BriefingAlarm',
+        'foreground_modal_signal type=$briefingType',
+      );
+    } else {
+      final scheduler = BriefingSchedulerService();
+      await scheduler.showBriefingStartNotification(isMorning: isMorning);
+    }
   } catch (_) {
     // Background isolate must never crash
   } finally {
