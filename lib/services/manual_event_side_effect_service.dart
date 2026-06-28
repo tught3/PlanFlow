@@ -1090,8 +1090,16 @@ class ManualEventSideEffectService {
     }
 
     final now = DateTime.now();
-    final reminderNotifyAt =
+    var reminderNotifyAt =
         reminderOffset == null ? null : startAt.subtract(reminderOffset);
+    // 기본 60분 전 알림 시각이 이미 지났지만 일정 시작은 아직 미래라면
+    // (= 지금부터 1시간 이내에 시작하는 일정), 알림을 스킵하지 말고
+    // 일정 시작 정각에 알린다. (시작 시각마저 과거면 아래 isAfter(now)에서 스킵)
+    if (reminderNotifyAt != null &&
+        !reminderNotifyAt.isAfter(now) &&
+        startAt.isAfter(now)) {
+      reminderNotifyAt = startAt;
+    }
     if (reminderNotifyAt != null && reminderNotifyAt.isAfter(now)) {
       await _notifications.scheduleEventReminder(
         id: _notifications.notificationIdFor('${event.id}:push'),

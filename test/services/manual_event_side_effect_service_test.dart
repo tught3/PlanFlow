@@ -45,6 +45,32 @@ void main() {
       expect(payloads.single['is_sent'], false);
     });
 
+    // [PREVENT] 1시간 이내 시작 일정은 reminder(기본 60분 전)가 과거가 되어
+    // 스킵되던 버그 → 시작 정각으로 보정해 알림이 오게 한다.
+    test('1시간 이내 시작 일정은 reminder를 시작 정각에 예약한다(60분 전이 과거여도 스킵 안 함)',
+        () async {
+      final notifications = _FakeNotificationService();
+      final service = ManualEventSideEffectService(
+        gateway: _FakeManualEventGateway(),
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: notifications,
+      );
+      // 지금부터 30분 뒤 시작 → 60분 전 알림은 과거 → 시작 정각(startAt)으로 보정돼야 함
+      final startAt = DateTime.now().add(const Duration(minutes: 30));
+      final event = EventModel(
+        id: 'event-soon',
+        userId: 'user-1',
+        title: '곧 시작',
+        startAt: startAt,
+      );
+
+      await service.scheduleLocalNotifications(event);
+
+      expect(notifications.scheduledEventReminderNotifyAts, hasLength(1));
+      expect(notifications.scheduledEventReminderNotifyAts.single, startAt);
+    });
+
     test('replaces reminders and clears pre-actions before rescheduling',
         () async {
       final gateway = _FakeManualEventGateway();
@@ -1201,6 +1227,7 @@ class _FakeNotificationService extends NotificationService {
   final cancelledEventIds = <String>[];
   final cancelledNotificationIds = <int>[];
   final scheduledEventReminderIds = <int>[];
+  final scheduledEventReminderNotifyAts = <DateTime>[];
   final scheduledCriticalAlarmIds = <int>[];
   final scheduledCriticalNotifyAts = <DateTime>[];
   final cancelledSmartPreparationEventIds = <String>[];
@@ -1229,6 +1256,7 @@ class _FakeNotificationService extends NotificationService {
     String? payload,
   }) async {
     scheduledEventReminderIds.add(id);
+    scheduledEventReminderNotifyAts.add(notifyAt);
   }
 
   @override
