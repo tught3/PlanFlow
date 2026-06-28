@@ -29,6 +29,7 @@ import '../../services/event_range_utils.dart';
 import '../../services/gpt_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/voice_correction_learning_service.dart';
+import '../../services/voice_schedule_structure_service.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/manual_event_side_effect_service.dart';
@@ -226,9 +227,19 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _initialParsedForLearning = Map<String, dynamic>.from(
       widget.parsedSchedule,
     );
-    _titleController = TextEditingController(
-      text: _stringValue(widget.parsedSchedule['title']) ?? '',
-    );
+    final rawTextForLocalParse =
+        _stringValue(widget.parsedSchedule['raw_text']);
+    final parsedTitle = _stringValue(widget.parsedSchedule['title']) ?? '';
+    // parse_pending이면 GPT 결과를 기다리는 동안 제목이 비어 보임.
+    // rawText로 로컬 파싱 제목을 즉시 채워 1초대에 표시되도록 한다.
+    // GPT hydrate 완료 시 _titleEditedByUser=false라 덮어씌워진다.
+    final initialTitle = parsedTitle.isNotEmpty
+        ? parsedTitle
+        : (rawTextForLocalParse != null && rawTextForLocalParse.isNotEmpty
+            ? const VoiceScheduleStructureService()
+                .normalizeLocalVoiceTitle(rawTextForLocalParse)
+            : '');
+    _titleController = TextEditingController(text: initialTitle);
     _locationController = TextEditingController(
       text: _stringValue(widget.parsedSchedule['location']) ?? '',
     );
