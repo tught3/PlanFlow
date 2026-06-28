@@ -190,7 +190,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   );
   final FocusNode _newSupplyFocusNode = FocusNode();
   final GlobalKey _suppliesKey = GlobalKey();
-  final GlobalKey _preActionsKey = GlobalKey();
   late final List<_SupplyDraft> _supplies;
   late final List<_PreActionDraft> _preActions;
   late DateTime _startAt;
@@ -205,11 +204,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   late bool _isCritical;
   bool _strongAlarm = false;
   bool _isSaving = false;
-  bool _isLoadingPastSupplies = false;
   bool _isLookingUpLocation = false;
   bool _isHydratingParsedSchedule = false;
   Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
-  List<String> _pastSupplies = const <String>[];
   bool _detailsSectionInitiallyExpanded = false;
   Timer? _locationDebounce;
   String? _supplyErrorText;
@@ -275,10 +272,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _titleController.addListener(_markTitleEdited);
     _locationController.addListener(_markLocationEdited);
     _memoController.addListener(_markMemoEdited);
-    _locationController.addListener(_schedulePastSupplyLookup);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadPastSupplies();
       _maybeHydrateParsedSchedule();
       unawaited(_resolveLocationCoordinatesIfNeeded());
     });
@@ -304,7 +299,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _titleController.removeListener(_markTitleEdited);
     _locationController.removeListener(_markLocationEdited);
     _memoController.removeListener(_markMemoEdited);
-    _locationController.removeListener(_schedulePastSupplyLookup);
     _titleController.dispose();
     _locationController.dispose();
     _memoController.dispose();
@@ -407,60 +401,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-  }
-
-  void _schedulePastSupplyLookup() {
-    _locationDebounce?.cancel();
-    _locationDebounce = Timer(const Duration(milliseconds: 250), () {
-      if (mounted) {
-        _loadPastSupplies();
-      }
-    });
-  }
-
-  Future<void> _loadPastSupplies() async {
-    final location = _locationController.text.trim();
-    final userId = _resolveUserId();
-    if (location.isEmpty || userId == null) {
-      if (mounted) {
-        setState(() {
-          _pastSupplies = const <String>[];
-          _isLoadingPastSupplies = false;
-        });
-      }
-      return;
-    }
-
-    if (mounted) {
-      setState(() {
-        _isLoadingPastSupplies = true;
-      });
-    }
-
-    try {
-      final pastSupplies = await widget.backend.fetchPastSupplies(
-        userId: userId,
-        location: location,
-      );
-      if (!mounted || location != _locationController.text.trim()) {
-        return;
-      }
-      setState(() {
-        _pastSupplies = pastSupplies;
-      });
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _pastSupplies = const <String>[];
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingPastSupplies = false;
-        });
-      }
-    }
   }
 
   Future<void> _lookupLocation() async {
@@ -1740,35 +1680,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     });
   }
 
-  void _addPreAction() {
-    final draft = _PreActionDraft.manual();
-    setState(() {
-      _preActions.add(draft);
-    });
-    _showMessage('스마트 준비 알람을 추가했어요. 내용을 바로 입력해 주세요.');
-    _focusNewPreAction(draft);
-  }
-
-  void _removePreAction(_PreActionDraft draft) {
-    setState(() {
-      _preActions.remove(draft);
-      draft.dispose();
-    });
-  }
-
-  bool _addAutoPreAction(String title, int offsetHours) {
-    final normalizedTitle = title.trim();
-    if (normalizedTitle.isEmpty ||
-        _preActions.any(
-          (draft) => draft.titleController.text.trim() == normalizedTitle,
-        )) {
-      return false;
-    }
-    _preActions.add(
-      _PreActionDraft.auto(title: normalizedTitle, offsetHours: offsetHours),
-    );
-    return true;
-  }
 
   bool get _shouldShowPurposeClarification {
     if (_selectedAmbiguousPurpose != null || _preActions.isNotEmpty) {
@@ -1826,34 +1737,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return keywords.any(text.contains);
   }
 
-  void _selectAmbiguousPurpose(String purpose) {
-    bool added = false;
-    setState(() {
-      _selectedAmbiguousPurpose = purpose;
-      if (purpose == 'medical') {
-        added = _addAutoPreAction('병원 준비사항 확인', 24) || added;
-        added = _addAutoPreAction('금식/복약 안내 확인', 12) || added;
-        added = _addAutoPreAction('신분증과 서류 챙기기', 3) || added;
-      } else if (purpose == 'work') {
-        added = _addAutoPreAction('이동시간과 출발 시간 확인', 2) || added;
-      } else if (purpose == 'visit') {
-        added = _addAutoPreAction('꽃이나 선물 챙기기', 3) || added;
-      }
-    });
-
-    if (added) {
-      _scrollToKey(_preActionsKey);
-    }
-  }
-
-  void _applyPastSupply(String supply) {
-    late final bool wasAdded;
-    setState(() {
-      wasAdded = _addSupply(supply);
-    });
-    _showMessage(wasAdded ? '$supply 준비물을 추가했어요.' : '이미 추가된 준비물이에요.');
-    _scrollToKey(_suppliesKey);
-  }
 
   List<_PreActionDraft> _initialPreActions() {
     return _preActionsFromValue(
@@ -1907,41 +1790,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     AppFeedbackService.showSnackBar(message, context: context);
   }
 
-  void _showSmartPreparationAlarmInfo() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) {
-        final theme = Theme.of(context);
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  SmartPreparationAlarmService.label,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    color: PlanFlowColors.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  '일정 등록 시 AI가 준비물, 이동시간, 금식/출발처럼 미리 해야 할 일을 감지해 적절한 시간에 알려주는 기능입니다.',
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  '자동으로 제안된 항목도 저장 전에 직접 수정하거나 삭제할 수 있어요.',
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+
 
   void _scrollToKey(GlobalKey key, {FocusNode? focusNode}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1959,28 +1808,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     });
   }
 
-  void _focusNewPreAction(_PreActionDraft draft) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      final targetContext = draft.key.currentContext;
-      if (targetContext != null) {
-        Scrollable.ensureVisible(
-          targetContext,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
-          alignment: 0.2,
-        );
-      }
-      draft.titleFocusNode.requestFocus();
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final location = _locationController.text.trim();
 
     return Scaffold(
       appBar: AppBar(
@@ -2200,90 +2030,16 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                           });
                         },
                         onLocationPick: _lookupLocation,
-                        extraAfterLocation: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (_isLoadingPastSupplies)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 8),
-                                child: LinearProgressIndicator(),
-                              )
-                            else if (_pastSupplies.isNotEmpty &&
-                                location.isNotEmpty)
-                              _SuggestionsCard(
-                                title: '같은 장소의 준비물',
-                                subtitle: '이전 일정에서 자주 쓰던 준비물을 눌러 바로 추가할 수 있어요.',
-                                chips: _pastSupplies
-                                    .map(
-                                      (supply) => ActionChip(
-                                        label: Text(supply),
-                                        onPressed: () =>
-                                            _applyPastSupply(supply),
-                                      ),
-                                    )
-                                    .toList(growable: false),
-                              ),
-                            KeyedSubtree(
-                              key: _suppliesKey,
-                              child: _SuppliesEditor(
-                                supplies: _supplies,
-                                newSupplyController: _newSupplyController,
-                                newSupplyFocusNode: _newSupplyFocusNode,
-                                errorText: _supplyErrorText,
-                                onAdd: _addSupplyFromInput,
-                                onRemove: _removeSupply,
-                              ),
-                            ),
-                            const SizedBox(height: AppConstants.sectionSpacing),
-                            KeyedSubtree(
-                              key: _preActionsKey,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _SectionHeader(
-                                    title: SmartPreparationAlarmService.label,
-                                    actionLabel: '추가',
-                                    onAction: _addPreAction,
-                                    infoTooltip: '스마트 준비 알람 안내',
-                                    onInfo: _showSmartPreparationAlarmInfo,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  if (_shouldShowPurposeClarification) ...[
-                                    _PurposeClarificationCard(
-                                      onSelected: _selectAmbiguousPurpose,
-                                    ),
-                                    const SizedBox(height: 8),
-                                  ],
-                                  if (_preActions.isEmpty)
-                                    _EmptyInlineHint(
-                                      message:
-                                          '스마트 준비 알람이 없어요. 추가 버튼을 누르면 바로 아래에 입력 카드가 생겨요.',
-                                      actionLabel: '스마트 준비 알람 추가',
-                                      onAction: _addPreAction,
-                                    )
-                                  else
-                                    ..._preActions.asMap().entries.map(
-                                          (entry) => Padding(
-                                            padding: const EdgeInsets.only(
-                                              bottom: 8,
-                                            ),
-                                            child: KeyedSubtree(
-                                              key: entry.value.key,
-                                              child: _PreActionEditorCard(
-                                                draft: entry.value,
-                                                index: entry.key + 1,
-                                                onDelete: () =>
-                                                    _removePreAction(
-                                                  entry.value,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        extraAfterLocation: KeyedSubtree(
+                          key: _suppliesKey,
+                          child: _SuppliesEditor(
+                            supplies: _supplies,
+                            newSupplyController: _newSupplyController,
+                            newSupplyFocusNode: _newSupplyFocusNode,
+                            errorText: _supplyErrorText,
+                            onAdd: _addSupplyFromInput,
+                            onRemove: _removeSupply,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 24),
