@@ -1287,7 +1287,14 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
     final reminderOffset = _reminderOffset;
     if (reminderOffset != null) {
-      final eventReminderNotifyAt = eventStartAt.subtract(reminderOffset);
+      var eventReminderNotifyAt = eventStartAt.subtract(reminderOffset);
+      // 기본 60분 전 알림 시각이 이미 과거지만 일정 시작은 아직 미래라면
+      // (= 1시간 이내 시작 일정) 스킵되지 않도록 시작 정각으로 보정한다.
+      final reminderNow = DateTime.now();
+      if (!eventReminderNotifyAt.isAfter(reminderNow) &&
+          eventStartAt.isAfter(reminderNow)) {
+        eventReminderNotifyAt = eventStartAt;
+      }
       await _tryFollowUp(
         () => widget.notificationService.scheduleEventReminder(
           id: widget.notificationService.notificationIdFor('${event.id}:push'),
