@@ -280,6 +280,13 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         unawaited(AnalyticsService.logVoiceInputCompleted(
           textLength: (result.text ?? '').trim().length,
         ));
+        // 자동완료(말 멈춤)로 listen이 끝난 경우에도 리스닝 상태를 정리한다.
+        // 정리하지 않으면 일정확인→뒤로→재입력 시 _isListening이 true로 남아,
+        // 재시작 진입부에서 불필요한 STT 취소(cancelActiveListen)가 일어나
+        // 2초가량 음성이 안 먹는 텀이 생긴다.
+        if (mounted && _isListening) {
+          setState(() => _isListening = false);
+        }
         // 완료 버튼(_handleVoiceDonePressed)이 먼저 정지를 요청했으면
         // capturedText 경로에서 제출하므로 여기서는 건너뛴다.
         if (!_isFinishingVoiceFlow) {
