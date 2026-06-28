@@ -1001,7 +1001,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       );
 
       if (mounted) {
-        _showMessage('일정을 저장했어요.');
+        // 저장 성공 SnackBar는 바로 뒤이은 홈 화면 전환과 겹쳐 잔상으로 보이므로
+        // 띄우지 않는다. 홈 진입 + 목록에 새 일정 표시가 저장 완료 피드백을 대신한다.
+        // (저장 실패 시에는 화면이 그대로라 SnackBar를 정상 표시한다.)
         EventRefreshBus.instance.notifyChanged(
           reason: 'confirm_saved',
           eventId: savedEvent.id,
