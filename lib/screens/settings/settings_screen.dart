@@ -118,6 +118,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   int _departureRepeatIntervalMin =
       DepartureAlarmService.defaultRepeatIntervalMin;
   String _travelMode = 'car';
+  bool _briefingEnabled = true;
   bool _voiceAutoStart = false;
   bool _voiceCorrectionLearningEnabled = true;
   bool _voiceCommonLearningOptIn = false;
@@ -2046,6 +2047,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       final current = await _settingsForSave(userId);
       final draft = current.copyWith(
         userId: userId,
+        briefingEnabled: _briefingEnabled,
         morningBriefingAt: _formatTimeValue(_morningBriefingAt),
         eveningBriefingAt: _formatTimeValue(_eveningBriefingAt),
         defaultReminderMin: _defaultReminderMinutes,
@@ -2067,6 +2069,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         return;
       }
       final currentUiSettings = saved.copyWith(
+        briefingEnabled: draft.briefingEnabled,
         morningBriefingAt: draft.morningBriefingAt,
         eveningBriefingAt: draft.eveningBriefingAt,
         defaultReminderMin: draft.defaultReminderMin,
@@ -2137,6 +2140,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         morningTime: settings.morningBriefingAt,
         eveningTime: settings.eveningBriefingAt,
         userId: userId,
+        briefingEnabled: settings.briefingEnabled,
       );
       debugPrint(
         'Briefing schedule updated ($reason): '
@@ -2455,6 +2459,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   void _resetToDefaults() {
     setState(() {
+      _briefingEnabled = true;
       _morningBriefingAt = const TimeOfDay(hour: 7, minute: 30);
       _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
       _defaultReminderMinutes = 60;
@@ -2485,6 +2490,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   void _applySettings(UserSettingsModel settings) {
+    _briefingEnabled = settings.briefingEnabled;
     _morningBriefingAt = _parseTime(settings.morningBriefingAt);
     _eveningBriefingAt = _parseTime(settings.eveningBriefingAt);
     _defaultReminderMinutes = settings.defaultReminderMin;
@@ -2864,33 +2870,56 @@ class _SettingsScreenState extends State<SettingsScreen>
                 subtitle: '모닝/이브닝 브리핑이 울릴 시간을 정합니다.',
                 child: Column(
                   children: [
-                    _TimeSettingTile(
-                      title: '모닝 브리핑',
-                      subtitle:
-                          '다음 예약 ${_formatDateTime(nextBriefings.morning)}',
-                      value: morningLabel,
-                      icon: Icons.wb_sunny_outlined,
-                      onTap: () => _pickTime(isMorning: true),
-                      trailingAction: _BriefingTestButton(
-                        isLoading: _isTestingMorningBriefing,
-                        tooltip: '모닝 브리핑 테스트 재생',
-                        onPressed: () => _testBriefing(isMorning: true),
+                    SwitchListTile(
+                      key: const ValueKey('settings-briefing-enabled-toggle'),
+                      title: const Text('브리핑 알람 사용'),
+                      subtitle: Text(
+                        _briefingEnabled ? '브리핑 알람이 활성화되어 있습니다.' : '브리핑 알람이 꺼져 있습니다.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _briefingEnabled
+                              ? PlanFlowColors.textSecondary
+                              : PlanFlowColors.textSecondary.withValues(alpha: 0.6),
+                        ),
                       ),
+                      value: _briefingEnabled,
+                      onChanged: (value) {
+                        setState(() {
+                          _briefingEnabled = value;
+                        });
+                        unawaited(_persistSettings());
+                      },
                     ),
-                    const Divider(height: 1),
-                    _TimeSettingTile(
-                      title: '이브닝 브리핑',
-                      subtitle:
-                          '다음 예약 ${_formatDateTime(nextBriefings.evening)}',
-                      value: eveningLabel,
-                      icon: Icons.nightlight_outlined,
-                      onTap: () => _pickTime(isMorning: false),
-                      trailingAction: _BriefingTestButton(
-                        isLoading: _isTestingEveningBriefing,
-                        tooltip: '이브닝 브리핑 테스트 재생',
-                        onPressed: () => _testBriefing(isMorning: false),
+                    if (_briefingEnabled) ...[
+                      const Divider(height: 1),
+                      _TimeSettingTile(
+                        title: '모닝 브리핑',
+                        subtitle:
+                            '다음 예약 ${_formatDateTime(nextBriefings.morning)}',
+                        value: morningLabel,
+                        icon: Icons.wb_sunny_outlined,
+                        onTap: () => _pickTime(isMorning: true),
+                        trailingAction: _BriefingTestButton(
+                          isLoading: _isTestingMorningBriefing,
+                          tooltip: '모닝 브리핑 테스트 재생',
+                          onPressed: () => _testBriefing(isMorning: true),
+                        ),
                       ),
-                    ),
+                      const Divider(height: 1),
+                      _TimeSettingTile(
+                        title: '이브닝 브리핑',
+                        subtitle:
+                            '다음 예약 ${_formatDateTime(nextBriefings.evening)}',
+                        value: eveningLabel,
+                        icon: Icons.nightlight_outlined,
+                        onTap: () => _pickTime(isMorning: false),
+                        trailingAction: _BriefingTestButton(
+                          isLoading: _isTestingEveningBriefing,
+                          tooltip: '이브닝 브리핑 테스트 재생',
+                          onPressed: () => _testBriefing(isMorning: false),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

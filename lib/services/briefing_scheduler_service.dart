@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/diag_logger.dart';
 import '../core/env.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
@@ -142,6 +143,7 @@ class BriefingSchedulerService {
     required String morningTime,
     required String eveningTime,
     String? userId,
+    bool briefingEnabled = true,
   }) async {
     final resolvedUserId = _resolveUserId(userId);
     final settings = await _loadSettings(resolvedUserId);
@@ -157,6 +159,25 @@ class BriefingSchedulerService {
         'Briefing schedule skipped: remote config disabled, '
         'userId=${resolvedUserId ?? 'none'}',
       );
+      return BriefingDailyScheduleResult(
+        morning: BriefingScheduleEntry(
+          scheduledAt: morningAt,
+          scheduled: false,
+        ),
+        evening: BriefingScheduleEntry(
+          scheduledAt: eveningAt,
+          scheduled: false,
+        ),
+      );
+    }
+
+    if (!briefingEnabled) {
+      DiagLogger.log(
+        'Briefing',
+        'schedule_cancelled: user disabled briefing alarms',
+      );
+      await _alarmService.cancelBriefing(id: _morningAlarmId);
+      await _alarmService.cancelBriefing(id: _eveningAlarmId);
       return BriefingDailyScheduleResult(
         morning: BriefingScheduleEntry(
           scheduledAt: morningAt,
@@ -379,6 +400,11 @@ class BriefingSchedulerService {
         ? '알림을 누르면 오늘 일정을 시간순으로 정리해 드릴게요.'
         : '알림을 누르면 내일 일정을 시간순으로 정리해 드릴게요.';
     if (await _shouldSuppressNotification(false)) {
+      DiagLogger.log(
+        'Briefing',
+        'notification_suppressed type=${isMorning ? 'morning' : 'evening'} '
+        'reason=app_foreground',
+      );
       debugPrint(
         'Briefing start notification suppressed: '
         'type=${isMorning ? 'morning' : 'evening'} app_foreground=true',
@@ -386,6 +412,10 @@ class BriefingSchedulerService {
       return;
     }
 
+    DiagLogger.log(
+      'Briefing',
+      'notification_sent type=${isMorning ? 'morning' : 'evening'}',
+    );
     return _notificationService.scheduleEventReminder(
       id: isMorning ? 91001 : 91002,
       title: title,

@@ -19,6 +19,7 @@ class UserSettingsModel {
     this.timeZoneId = 'Asia/Seoul',
     this.googleCalendarToken,
     this.naverCalendarToken,
+    this.briefingEnabled = true,
     this.createdAt,
   });
 
@@ -79,6 +80,7 @@ class UserSettingsModel {
       ),
       googleCalendarToken: json['google_calendar_token'] as String?,
       naverCalendarToken: json['naver_calendar_token'] as String?,
+      briefingEnabled: _boolValue(json['briefing_enabled'], true),
       createdAt: _dateTimeValue(json['created_at']),
     );
   }
@@ -102,6 +104,7 @@ class UserSettingsModel {
   final String timeZoneId;
   final String? googleCalendarToken;
   final String? naverCalendarToken;
+  final bool briefingEnabled;
   final DateTime? createdAt;
 
   UserSettingsModel copyWith({
@@ -124,6 +127,7 @@ class UserSettingsModel {
     String? timeZoneId,
     String? googleCalendarToken,
     String? naverCalendarToken,
+    bool? briefingEnabled,
     DateTime? createdAt,
     bool clearGoogleCalendarToken = false,
     bool clearNaverCalendarToken = false,
@@ -156,6 +160,7 @@ class UserSettingsModel {
       naverCalendarToken: clearNaverCalendarToken
           ? null
           : naverCalendarToken ?? this.naverCalendarToken,
+      briefingEnabled: briefingEnabled ?? this.briefingEnabled,
       createdAt: clearCreatedAt ? null : createdAt ?? this.createdAt,
     );
   }
@@ -182,6 +187,7 @@ class UserSettingsModel {
       'time_zone_id': timeZoneId,
       'google_calendar_token': googleCalendarToken,
       'naver_calendar_token': naverCalendarToken,
+      'briefing_enabled': briefingEnabled,
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
     };
   }

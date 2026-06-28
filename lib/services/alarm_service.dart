@@ -101,6 +101,11 @@ class AlarmService {
     return null;
   }
 
+  Future<void> cancelBriefing({required String id}) async {
+    await AndroidAlarmManager.cancel(_alarmIdFrom(id));
+    DiagLogger.log('AlarmService', 'briefing alarm cancelled id=$id');
+  }
+
   int _alarmIdFrom(String id) => id.hashCode & 0x7fffffff;
 }
 
