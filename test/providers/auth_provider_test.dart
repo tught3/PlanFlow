@@ -215,9 +215,64 @@ void main() {
     expect(provider.provider, 'custom:planflow-naver');
     expect(provider.providerLabel, '네이버 로그인됨');
     expect(provider.accountDisplayName, '네이버 로그인됨');
+    // 이메일/식별자가 없으면 로그인 방식을 중복으로 덧붙이지 않는다.
+    expect(provider.accountDisplayWithMethod, '네이버 로그인됨');
     expect(provider.socialAccountInfoIncomplete, isTrue);
 
     provider.dispose();
+  });
+
+  test('appends login method label next to the email', () async {
+    final googleService = _FakeAuthService(
+      currentSession: _session(
+        userId: 'google-user',
+        email: 'tught2@gmail.com',
+        provider: 'google',
+      ),
+    );
+    final googleProvider = AuthProvider(authService: googleService);
+    googleProvider.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(googleProvider.loginMethodLabel, '구글 간편로그인');
+    expect(
+      googleProvider.accountDisplayWithMethod,
+      'tught2@gmail.com (구글 간편로그인)',
+    );
+    googleProvider.dispose();
+
+    final kakaoService = _FakeAuthService(
+      currentSession: _session(
+        userId: 'kakao-user',
+        email: 'user@kakao.com',
+        provider: 'kakao',
+      ),
+    );
+    final kakaoProvider = AuthProvider(authService: kakaoService);
+    kakaoProvider.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(kakaoProvider.loginMethodLabel, '카카오 간편로그인');
+    expect(
+      kakaoProvider.accountDisplayWithMethod,
+      'user@kakao.com (카카오 간편로그인)',
+    );
+    kakaoProvider.dispose();
+
+    final emailService = _FakeAuthService(
+      currentSession: _session(
+        userId: 'email-user',
+        email: 'me@example.com',
+        provider: 'email',
+      ),
+    );
+    final emailProvider = AuthProvider(authService: emailService);
+    emailProvider.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(emailProvider.loginMethodLabel, '이메일 로그인');
+    expect(
+      emailProvider.accountDisplayWithMethod,
+      'me@example.com (이메일 로그인)',
+    );
+    emailProvider.dispose();
   });
 
   test('keeps restored startup user when refresh has a transient failure',

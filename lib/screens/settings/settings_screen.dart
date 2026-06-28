@@ -3425,14 +3425,12 @@ class _AccountSection extends StatelessWidget {
             children: [
               _StatusRow(
                 label: '로그인 상태',
-                value: signedIn ? authProvider.accountDisplayName : '로그아웃됨',
+                value: signedIn
+                    ? authProvider.accountDisplayWithMethod
+                    : '로그아웃됨',
                 icon: Icons.account_circle_outlined,
                 isConfigured: signedIn,
               ),
-              if (signedIn && authProvider.provider != null) ...[
-                const SizedBox(height: 6),
-                _AccountDetailText('로그인 방식: ${authProvider.providerLabel}'),
-              ],
               if (authProvider.socialAccountInfoIncomplete) ...[
                 const SizedBox(height: 8),
                 const _InlineNotice(
@@ -4046,25 +4044,3 @@ class _InlineNotice extends StatelessWidget {
   }
 }
 
-class _AccountDetailText extends StatelessWidget {
-  const _AccountDetailText(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(left: 52),
-        child: Text(
-          text,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: PlanFlowColors.textSecondary,
-          ),
-        ),
-      ),
-    );
-  }
-}

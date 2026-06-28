@@ -70,6 +70,30 @@ class AuthProvider extends ChangeNotifier {
     };
   }
 
+  /// 설정 화면에서 이메일 옆 괄호로 보여줄 "무엇으로 로그인했는지" 라벨.
+  /// 연결(linking) 계정은 primary provider 기준이라 단일 provider 사용자에 정확하다.
+  String? get loginMethodLabel {
+    return switch (_providerKey) {
+      'google' => '구글 간편로그인',
+      'kakao' => '카카오 간편로그인',
+      'naver' => '네이버 간편로그인',
+      'email' => '이메일 로그인',
+      _ => null,
+    };
+  }
+
+  /// 계정 식별자(이메일/이름)가 있을 때만 "식별자 (로그인 방식)" 형태로 조합한다.
+  /// 식별자가 없어 providerLabel로 대체되는 경우엔 중복을 피해 라벨만 보여준다.
+  String get accountDisplayWithMethod {
+    final method = loginMethodLabel;
+    final hasIdentifier =
+        _email != null || _displayName != null || _accountIdentifier != null;
+    if (method == null || !hasIdentifier) {
+      return accountDisplayName;
+    }
+    return '$accountDisplayName ($method)';
+  }
+
   bool get isSignedIn => hasActiveSession;
   bool get isPasswordRecovery => _isPasswordRecovery;
   bool get hasResolvedInitialSession {
