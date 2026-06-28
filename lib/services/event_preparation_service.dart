@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/diag_logger.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
@@ -68,13 +69,17 @@ class EventPreparationService {
         // 백그라운드(resolveCoordinates=false)면 라이브 GPS·routes API를 모두 건너뛴다.
         cacheOnlyLocation: !resolveCoordinates,
       );
-      debugPrint(
-        'Event preparation departure alarm: event=${preparedEvent.id} '
-        'scheduled=${departureResult.isScheduled} '
-        'reason=${departureResult.skippedReason ?? 'scheduled'} '
-        'travel=${departureResult.travelMinutes ?? 'n/a'}',
-      );
+      final logMsg =
+          'departure_alarm event=${preparedEvent.id} '
+          'location=${preparedEvent.location ?? 'none'} '
+          'lat=${preparedEvent.locationLat} lng=${preparedEvent.locationLng} '
+          'scheduled=${departureResult.isScheduled} '
+          'reason=${departureResult.skippedReason ?? 'ok'} '
+          'travel=${departureResult.travelMinutes ?? 'n/a'}';
+      DiagLogger.log('EventPrep', logMsg);
+      debugPrint('Event preparation $logMsg');
     } catch (error, stackTrace) {
+      DiagLogger.log('EventPrep', 'departure_alarm error: $error');
       debugPrint('Event preparation departure alarm skipped: $error');
       debugPrintStack(stackTrace: stackTrace);
     }

@@ -176,7 +176,11 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
   }
 }
 
-class _ConfirmScreenState extends State<ConfirmScreen> {
+class _ConfirmScreenState extends State<ConfirmScreen>
+    with WidgetsBindingObserver {
+  // 권한 설정 화면으로 이동 중일 때 true — 앱 복귀(resumed) 시 홈으로 이동
+  bool _pendingNavigateHome = false;
+
   late final TextEditingController _titleController;
   late final TextEditingController _locationController;
   late final TextEditingController _memoController;
@@ -224,6 +228,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initialParsedForLearning = Map<String, dynamic>.from(
       widget.parsedSchedule,
     );
@@ -280,7 +285,21 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 권한 설정 화면에서 돌아왔을 때 홈으로 이동
+    if (state == AppLifecycleState.resumed && _pendingNavigateHome && mounted) {
+      _pendingNavigateHome = false;
+      if (context.canPop()) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      } else {
+        context.go(AppRoutes.home);
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _locationDebounce?.cancel();
     _titleController.removeListener(_markTitleEdited);
     _locationController.removeListener(_markLocationEdited);
@@ -854,40 +873,48 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   ///
   /// 정확한 알람 권한 또는 배터리 최적화 예외가 꺼져 있을 때만 표시.
   /// 저장 자체를 막지 않으며, 다이얼로그는 권한 화면으로 이동하는 버튼을 제공.
-  Future<void> _showAlarmPermissionGuardIfNeeded() async {
+  /// 알람 권한이 부족할 때 안내 다이얼로그를 표시한다.
+  /// 사용자가 "설정하기"를 눌러 시스템 권한 화면으로 이동하면 true를 반환한다.
+  /// 단순 dismiss 또는 권한이 이미 충분한 경우 false를 반환한다.
+  Future<bool> _showAlarmPermissionGuardIfNeeded() async {
     if (!mounted) {
-      return;
+      return false;
     }
     try {
       final snapshot = await _permissionService.checkAll();
       if (!mounted) {
-        return;
+        return false;
       }
       // 둘 다 허용된 경우 다이얼로그 없이 조용히 진행.
       if (snapshot.alarmWillFire) {
-        return;
+        return false;
       }
 
       final missingExact = !snapshot.exactAlarmsGranted;
       final missingBattery = !snapshot.batteryOptimizationIgnored;
 
+      var openedSystemSettings = false;
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => _AlarmPermissionGuardDialog(
           missingExactAlarm: missingExact,
           missingBatteryOptimization: missingBattery,
           onFixExactAlarm: () async {
+            openedSystemSettings = true;
             Navigator.of(dialogContext).pop();
             await _permissionService.openAlarmSettings();
           },
           onFixBatteryOptimization: () async {
+            openedSystemSettings = true;
             Navigator.of(dialogContext).pop();
             await _permissionService.requestIgnoreBatteryOptimizations();
           },
         ),
       );
+      return openedSystemSettings;
     } catch (error) {
       debugPrint('Alarm permission guard check failed (non-blocking): $error');
+      return false;
     }
   }
 
@@ -1024,16 +1051,23 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         unawaited(AnalyticsService.logEventCreated(source: 'voice'));
         unawaited(ReviewService.onEventSaved());
         // 알람 권한 가드 — 저장 성공 후 권한이 누락된 경우 안내 다이얼로그.
-        // 저장 자체는 항상 성공 처리. 다이얼로그 dismiss 후 홈으로 이동.
-        await _showAlarmPermissionGuardIfNeeded();
+        // 시스템 설정 화면이 열렸으면 true 반환 → 앱 복귀(resumed) 시 홈 이동.
+        // 다이얼로그만 닫혔거나 권한 충분이면 false → 즉시 홈 이동.
+        final openedPermissionSettings =
+            await _showAlarmPermissionGuardIfNeeded();
         if (mounted) {
-          // voice→confirm는 홈 위에 push로 쌓였으므로, go(home)으로 홈을 새로
-          // 만들면 ShellScreen이 재생성되며 전환이 튄다(잔상). 기존 홈까지 pop해
-          // 그대로 복원하면 재생성 없이 부드럽게 닫힌다.
-          if (context.canPop()) {
-            Navigator.of(context).popUntil((route) => route.isFirst);
+          if (openedPermissionSettings) {
+            // 시스템 설정으로 이동 중 — didChangeAppLifecycleState(resumed)에서 처리
+            _pendingNavigateHome = true;
           } else {
-            context.go(AppRoutes.home);
+            // voice→confirm는 홈 위에 push로 쌓였으므로, go(home)으로 홈을 새로
+            // 만들면 ShellScreen이 재생성되며 전환이 튄다(잔상). 기존 홈까지 pop해
+            // 그대로 복원하면 재생성 없이 부드럽게 닫힌다.
+            if (context.canPop()) {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            } else {
+              context.go(AppRoutes.home);
+            }
           }
         }
       }
