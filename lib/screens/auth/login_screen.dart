@@ -104,6 +104,9 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
 
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
+    // 이전에 중단된 소셜 로그인 pending이 남아있으면 이메일 로그인 시작 전에 제거한다.
+    // signUp 흐름의 markPendingEmailConfirmation은 아래에서 별도로 설정하므로 영향 없음.
+    OAuthCallbackHandler.clearPendingCallback();
     final authService = await _resolveAuthServiceWhenReady();
     if (!mounted) {
       return;
@@ -184,6 +187,10 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _socialLogin(PlanFlowOAuthProvider provider) async {
+    // 이전에 중단된 다른 소셜 플로우의 stale pending을 먼저 제거한다.
+    // Kakao/Naver는 아래에서 markPendingLogin으로 새로 설정한다.
+    OAuthCallbackHandler.clearPendingCallback();
+
     final authService = await _resolveAuthServiceWhenReady();
     if (!mounted) {
       return;
@@ -191,6 +198,12 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     final l10n = appL10n(context);
     if (authService == null) {
       _setMessage(_supabaseUnavailableMessage(forSocialLogin: true));
+      return;
+    }
+
+    // 이미 로그인된 상태라면 새 소셜 로그인을 시작하지 않는다.
+    if (authProvider.isSignedIn) {
+      _setMessage('이미 로그인된 상태입니다.');
       return;
     }
 
@@ -203,6 +216,8 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     try {
       if (provider == PlanFlowOAuthProvider.google) {
         await authService.signInWithGoogleNative();
+        // Google 네이티브 성공 후에도 stale pending이 남지 않도록 제거한다.
+        OAuthCallbackHandler.clearPendingCallback();
         final signedIn = await authProvider.syncCurrentSession();
         if (mounted && signedIn) {
           keepLoadingForCallback = true;
@@ -211,6 +226,8 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
           _setMessage(l10n.loginSessionFailed);
         }
       } else {
+        // clearPendingCallback은 메서드 시작 시 이미 호출했으므로
+        // 여기서 바로 새 pending을 마킹한다.
         OAuthCallbackHandler.markPendingLogin(provider);
         final launched = await authService.signInWithOAuth(provider);
         if (!launched) {
@@ -221,9 +238,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
         }
       }
     } catch (error) {
-      if (provider != PlanFlowOAuthProvider.google) {
-        OAuthCallbackHandler.clearPendingCallback();
-      }
+      OAuthCallbackHandler.clearPendingCallback();
       _setMessage(_friendlyAuthMessage(error, provider: provider));
     } finally {
       if (mounted && !keepLoadingForCallback) {
@@ -246,23 +261,29 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final signedIn = await authProvider.syncCurrentSession();
-    if (!mounted) {
-      return;
-    }
-    if (signedIn) {
-      setState(() {
-        _isLoading = false;
-      });
-      return;
-    }
-
+    // 재개 시점의 pending 메서드를 읽어둔다 (clearPendingCallback 전에 확보).
     final method = switch (OAuthCallbackHandler.pendingLoginMethod) {
       'naver' => '네이버',
       'kakao' => '카카오',
       'google' => 'Google',
       _ => '소셜',
     };
+
+    final signedIn = await authProvider.syncCurrentSession();
+    if (!mounted) {
+      return;
+    }
+    if (signedIn) {
+      // 로그인 성공 — 콜백 핸들러가 이미 pending을 정리했을 수 있지만
+      // 만약 남아있는 경우를 대비해 여기서도 명시적으로 제거한다.
+      OAuthCallbackHandler.clearPendingCallback();
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+
+    // 인증 미완료: pending을 정리하고 재시도 안내 메시지를 표시한다.
     OAuthCallbackHandler.clearPendingCallback();
     _setMessage(
       '$method 인증이 완료되지 않았어요. 브라우저에서 PlanFlow로 돌아오기 허용을 확인한 뒤 다시 시도해 주세요.',
