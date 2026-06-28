@@ -196,7 +196,16 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     bool autoRetryOnEarlyFailure = false,
   }) async {
     if (_isListening) {
-      return;
+      // 이전 세션이 자동완료(말 멈춤)·화면 이동 등으로 _isListening을 정리하지
+      // 못한 채 남아 있으면, 여기서 막혀 재입력이 안 먹는다(일정확인→뒤로→재입력).
+      // 막지 말고 남아있는 STT 세션을 강제로 취소·리셋한 뒤 새로 시작한다.
+      _listenSessionGeneration++;
+      _isFinishingVoiceFlow = true;
+      await widget.sttService.cancelActiveListen();
+      if (!mounted || _isDisposing) {
+        return;
+      }
+      setState(() => _isListening = false);
     }
 
     final listenGeneration = ++_listenSessionGeneration;
