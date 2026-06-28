@@ -256,6 +256,22 @@ void main() {
       expect(location, '원주 세브란스 기독병원');
     });
 
+    // [PREVENT] "모란역으로"가 greedy 매칭으로 "모란역으"+"로"로 잘려, 장소·제목·
+    // 지도 검색이 모두 "모란역으"로 깨지던 버그. "으로" 조사를 온전히 떼야 한다.
+    test('extractLeadingLocation은 "으로" 조사를 온전히 떼어 장소를 추출한다', () {
+      expect(service.extractLeadingLocation('모란역으로 가기'), '모란역');
+      expect(service.extractLeadingLocation('강남역으로 가기'), '강남역');
+      // 기존 조사("에서", "에")도 그대로 동작해야 한다.
+      expect(service.extractLeadingLocation('모란역에서 만남'), '모란역');
+      expect(service.extractLeadingLocation('병원에 가기'), '병원');
+      // 제목에도 "모란역으"가 남지 않는다.
+      final title = service.normalizeParsedScheduleTitle(
+        '모란역으로 가기',
+        rawText: '모란역으로 가기',
+      );
+      expect(title, isNot(contains('모란역으 ')));
+    });
+
     test('strips organization-like leading names from the title', () {
       const rawText = '우리회사에서 매월 월례 조회 메모에 주차장 B2 확인';
 

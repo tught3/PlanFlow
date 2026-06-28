@@ -1071,14 +1071,20 @@ class VoiceScheduleStructureService {
 
   String? extractLeadingLocation(String text) {
     final match = RegExp(
-      r'^([가-힣A-Za-z0-9·.]+(?:\s+[가-힣A-Za-z0-9·.]+){0,4})\s*(?:에서|에|로|으로)\s+(.+)$',
+      r'^([가-힣A-Za-z0-9·.]+(?:\s+[가-힣A-Za-z0-9·.]+){0,4})\s*(에서|에|으로|로)\s+(.+)$',
     ).firstMatch(text.trim());
     if (match == null) {
       return null;
     }
 
-    final rawLocation = match.group(1)?.trim();
-    final remainder = match.group(2)?.trim();
+    var rawLocation = match.group(1)?.trim();
+    final particle = match.group(2);
+    final remainder = match.group(3)?.trim();
+    // group1이 greedy 매칭으로 "모란역으로"를 "모란역으" + 조사 "로"로 잘라낸 경우
+    // (조사 "으로"의 "으"가 장소 끝에 붙음) → 끝의 "으"를 떼어 "모란역"으로 복원한다.
+    if (rawLocation != null && particle == '로' && rawLocation.endsWith('으')) {
+      rawLocation = rawLocation.substring(0, rawLocation.length - 1);
+    }
     if (rawLocation == null ||
         rawLocation.isEmpty ||
         remainder == null ||
