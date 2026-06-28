@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
+import '../../core/time_format_controller.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
@@ -699,14 +700,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final localStart = planflowLocal(start);
     final dateStr =
         '${localStart.year}-${localStart.month.toString().padLeft(2, '0')}-${localStart.day.toString().padLeft(2, '0')}';
-    final startTimeStr =
-        '${localStart.hour.toString().padLeft(2, '0')}:${localStart.minute.toString().padLeft(2, '0')}';
+    final startTimeStr = planflowFormatTime(localStart.hour, localStart.minute);
     if (end == null) {
       return '$dateStr $startTimeStr';
     }
     final localEnd = planflowLocal(end);
-    final endTimeStr =
-        '${localEnd.hour.toString().padLeft(2, '0')}:${localEnd.minute.toString().padLeft(2, '0')}';
+    final endTimeStr = planflowFormatTime(localEnd.hour, localEnd.minute);
     return '$dateStr $startTimeStr - $endTimeStr';
   }
 

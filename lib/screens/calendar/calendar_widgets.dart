@@ -913,14 +913,12 @@ class _EventAgendaCard extends StatelessWidget {
       return null;
     }
     final localStart = planflowLocal(start);
-    final startStr =
-        '${localStart.hour.toString().padLeft(2, '0')}:${localStart.minute.toString().padLeft(2, '0')}';
+    final startStr = planflowFormatTime(localStart.hour, localStart.minute);
     if (end == null) {
       return startStr;
     }
     final localEnd = planflowLocal(end);
-    final endStr =
-        '${localEnd.hour.toString().padLeft(2, '0')}:${localEnd.minute.toString().padLeft(2, '0')}';
+    final endStr = planflowFormatTime(localEnd.hour, localEnd.minute);
     return '$startStr - $endStr';
   }
 }

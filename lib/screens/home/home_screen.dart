@@ -9,6 +9,7 @@ import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/local_time.dart';
 import '../../core/responsive.dart';
+import '../../core/time_format_controller.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
@@ -40,8 +41,7 @@ String formatHomeUpcomingDateTime(DateTime value, {DateTime? now}) {
   final localNow = planflowLocal(now ?? DateTime.now());
   final today = DateTime(localNow.year, localNow.month, localNow.day);
   final targetDay = DateTime(value.year, value.month, value.day);
-  final time =
-      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+  final time = planflowFormatTime(value.hour, value.minute);
 
   if (targetDay == today.add(const Duration(days: 1))) {
     return '내일 $time';

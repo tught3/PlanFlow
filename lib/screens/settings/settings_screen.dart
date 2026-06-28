@@ -12,6 +12,7 @@ import '../../core/constants.dart';
 import '../../core/env.dart';
 import '../../core/log_text.dart';
 import '../../core/region_settings.dart';
+import '../../core/time_format_controller.dart';
 import '../../core/responsive.dart';
 import '../../core/theme.dart';
 import '../../data/models/calendar_connection_model.dart';
@@ -119,6 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       DepartureAlarmService.defaultRepeatIntervalMin;
   String _travelMode = 'car';
   bool _briefingEnabled = true;
+  bool _use24HourFormat = false;
   bool _voiceAutoStart = false;
   bool _voiceCorrectionLearningEnabled = true;
   bool _voiceCommonLearningOptIn = false;
@@ -2009,7 +2011,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       initialTime: isMorning ? _morningBriefingAt : _eveningBriefingAt,
       builder: (context, child) {
         return MediaQuery(
-          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: _use24HourFormat),
           child: child ?? const SizedBox.shrink(),
         );
       },
@@ -2048,6 +2050,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       final draft = current.copyWith(
         userId: userId,
         briefingEnabled: _briefingEnabled,
+        use24HourFormat: _use24HourFormat,
         morningBriefingAt: _formatTimeValue(_morningBriefingAt),
         eveningBriefingAt: _formatTimeValue(_eveningBriefingAt),
         defaultReminderMin: _defaultReminderMinutes,
@@ -2460,6 +2463,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   void _resetToDefaults() {
     setState(() {
       _briefingEnabled = true;
+      _use24HourFormat = false;
       _morningBriefingAt = const TimeOfDay(hour: 7, minute: 30);
       _eveningBriefingAt = const TimeOfDay(hour: 21, minute: 0);
       _defaultReminderMinutes = 60;
@@ -2479,6 +2483,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _localeCode = PlanFlowRegions.korea.localeCode;
       _timeZoneId = PlanFlowRegions.korea.timeZoneId;
       PlanFlowRegionController.instance.reset();
+      TimeFormatController.instance.reset();
     });
     unawaited(_homeWidgetService.setHideWeekends(false));
     unawaited(
@@ -2491,6 +2496,8 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   void _applySettings(UserSettingsModel settings) {
     _briefingEnabled = settings.briefingEnabled;
+    _use24HourFormat = settings.use24HourFormat;
+    TimeFormatController.instance.setUse24HourFormat(settings.use24HourFormat);
     _morningBriefingAt = _parseTime(settings.morningBriefingAt);
     _eveningBriefingAt = _parseTime(settings.eveningBriefingAt);
     _defaultReminderMinutes = settings.defaultReminderMin;
@@ -2529,38 +2536,59 @@ class _SettingsScreenState extends State<SettingsScreen>
     return _SectionCard(
       title: l10n.regionSettingsTitle,
       subtitle: l10n.regionSettingsSubtitle,
-      child: DropdownButtonFormField<String>(
-        key: const ValueKey('settings-region-country-selector'),
-        initialValue: selectedRegion.countryCode,
-        decoration: InputDecoration(
-          labelText: l10n.countryLabel,
-          isDense: true,
-          prefixIcon: const Icon(Icons.public_outlined),
-        ),
-        items: PlanFlowRegions.supported
-            .map(
-              (region) => DropdownMenuItem<String>(
-                value: region.countryCode,
-                child: Text(
-                  '${_localizedRegionName(context, region)} · ${region.timeZoneId}',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            )
-            .toList(growable: false),
-        onChanged: (value) {
-          if (value == null) {
-            return;
-          }
-          final region = PlanFlowRegions.byCountryCode(value);
-          setState(() {
-            _countryCode = region.countryCode;
-            _localeCode = region.localeCode;
-            _timeZoneId = region.timeZoneId;
-          });
-          PlanFlowRegionController.instance.setRegion(region);
-          unawaited(_persistSettings());
-        },
+      child: Column(
+        children: [
+          DropdownButtonFormField<String>(
+            key: const ValueKey('settings-region-country-selector'),
+            initialValue: selectedRegion.countryCode,
+            decoration: InputDecoration(
+              labelText: l10n.countryLabel,
+              isDense: true,
+              prefixIcon: const Icon(Icons.public_outlined),
+            ),
+            items: PlanFlowRegions.supported
+                .map(
+                  (region) => DropdownMenuItem<String>(
+                    value: region.countryCode,
+                    child: Text(
+                      '${_localizedRegionName(context, region)} · ${region.timeZoneId}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(growable: false),
+            onChanged: (value) {
+              if (value == null) {
+                return;
+              }
+              final region = PlanFlowRegions.byCountryCode(value);
+              setState(() {
+                _countryCode = region.countryCode;
+                _localeCode = region.localeCode;
+                _timeZoneId = region.timeZoneId;
+              });
+              PlanFlowRegionController.instance.setRegion(region);
+              unawaited(_persistSettings());
+            },
+          ),
+          const Divider(height: 24),
+          SwitchListTile(
+            key: const ValueKey('settings-time-format-toggle'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('시간 표시 형식'),
+            subtitle: Text(
+              _use24HourFormat ? '24시간제 (14:30)' : '12시간제 (오후 2:30)',
+            ),
+            value: _use24HourFormat,
+            onChanged: (value) {
+              setState(() {
+                _use24HourFormat = value;
+              });
+              TimeFormatController.instance.setUse24HourFormat(value);
+              unawaited(_persistSettings());
+            },
+          ),
+        ],
       ),
     );
   }
@@ -3560,7 +3588,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _formatTime(BuildContext context, TimeOfDay timeOfDay) {
     return MaterialLocalizations.of(
       context,
-    ).formatTimeOfDay(timeOfDay, alwaysUse24HourFormat: true);
+    ).formatTimeOfDay(timeOfDay, alwaysUse24HourFormat: _use24HourFormat);
   }
 
   String _formatTimeValue(TimeOfDay timeOfDay) {
