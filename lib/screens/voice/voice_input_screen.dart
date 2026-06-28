@@ -88,6 +88,8 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         widget.voiceAnalysisService ?? VoiceCommandAnalysisService();
     _voiceCommandRouter = const VoiceCommandRouter();
     _rawTextController.addListener(_handleRawTextChanged);
+    // 화면 진입 즉시 STT 엔진을 백그라운드로 미리 깨워, 첫 음성 입력 지연을 줄인다.
+    unawaited(widget.sttService.warmUp());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeAutoStartVoiceInput();
     });
@@ -771,6 +773,9 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
         if (!mounted) {
           return;
         }
+        // 일정확인 등에서 돌아오면 다음 음성 입력에 대비해 STT 엔진을 미리 깨운다.
+        // (재입력 시 엔진 재초기화로 생기던 텀을 줄임)
+        unawaited(widget.sttService.warmUp());
         // confirm에서 'cancelled'로 돌아온 경우 텍스트를 유지해 재편집·재제출 허용.
         // 저장 완료(context.go(home))나 기타 pop은 리셋.
         final shouldResetTranscript =

@@ -228,10 +228,14 @@ class ApiUsageGuard {
   static ApiUsageGuard get instance {
     _instance ??= ApiUsageGuard(
       thresholds: const <String, ApiUsageThreshold>{
-        ApiName.tmapPoi: ApiUsageThreshold(warn: 100, block: 800),
-        ApiName.tmapRoutes: ApiUsageThreshold(warn: 80, block: 300),
-        ApiName.naverGeocode: ApiUsageThreshold(warn: 100, block: 500),
-        ApiName.googleGeocode: ApiUsageThreshold(warn: 100, block: 500),
+        // warn은 낮게(100) 유지 → 하루 100회만 넘어도 진단 로그로 조기 인지.
+        // block(실제 차단)은 정상·개발 사용을 막지 않고 확실한 폭주(과거 16,000회)
+        // 만 끊도록 상향. (이전 routes 300은 하루 종일 개발 테스트 누적에 걸려
+        // 지도 좌표 해석이 막히는 부작용이 있었음)
+        ApiName.tmapPoi: ApiUsageThreshold(warn: 100, block: 2000),
+        ApiName.tmapRoutes: ApiUsageThreshold(warn: 100, block: 2000),
+        ApiName.naverGeocode: ApiUsageThreshold(warn: 100, block: 2000),
+        ApiName.googleGeocode: ApiUsageThreshold(warn: 100, block: 2000),
       },
       overloadAlertSender: _defaultHttpOverloadAlert,
     );

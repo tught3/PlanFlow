@@ -884,6 +884,17 @@ class SttService {
     return '';
   }
 
+  /// 음성 입력 화면 진입/복귀 시 호출해 OS STT 엔진을 미리 깨워 둔다.
+  /// 첫 listen의 SpeechToText.initialize 지연(재입력 시 2초가량 안 먹던 텀)을
+  /// 줄이기 위함. listen 로직과 독립이며 실패는 조용히 무시한다.
+  Future<void> warmUp() async {
+    try {
+      await SpeechToText().initialize(debugLogging: kDebugMode);
+    } catch (_) {
+      // 워밍업 실패는 listen 시 재시도되므로 무시한다.
+    }
+  }
+
   Future<SttListenResult> listen({
     ValueChanged<String>? onPartialResult,
     ValueChanged<int>? onRestart,
