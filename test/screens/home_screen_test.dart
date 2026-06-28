@@ -364,6 +364,72 @@ void main() {
       );
     },
   );
+
+  // 쿨다운 키가 무한히 쌓이지 않도록, 삭제된 일정의 시도 키는 정리되어야 한다.
+  testWidgets(
+    'HomeScreen는 삭제된 일정의 좌표 쿨다운 키를 정리한다',
+    (tester) async {
+      final now = DateTime(2026, 6, 28, 12);
+      final eventA = EventModel(
+        id: 'evt-A',
+        userId: 'user-1',
+        title: '일정 A',
+        startAt: DateTime(2026, 6, 28, 13),
+        location: '못 찾는 장소 A',
+      );
+      final eventB = EventModel(
+        id: 'evt-B',
+        userId: 'user-1',
+        title: '일정 B',
+        startAt: DateTime(2026, 6, 28, 14),
+        location: '못 찾는 장소 B',
+      );
+      final repository = _StuckUnresolvedEventRepository(<EventModel>[eventA]);
+      final lookup = _CountingLocationLookupService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: repository,
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            locationLookupService: lookup,
+            loadHeaderSummary: false,
+            nowProvider: () => now,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getKeys().any((k) => k.contains('evt-A')),
+        isTrue,
+        reason: 'A 시도 후 A의 쿨다운 키가 있어야 한다',
+      );
+
+      // A 삭제, B 추가 → 새로고침 시 A의 키는 정리되고 B의 키가 생겨야 한다.
+      repository.events = <EventModel>[eventB];
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(
+        prefs.getKeys().any((k) => k.contains('evt-A')),
+        isFalse,
+        reason: '삭제된 일정 A의 쿨다운 키는 정리되어야 한다(무한 증가 방지)',
+      );
+      expect(
+        prefs.getKeys().any((k) => k.contains('evt-B')),
+        isTrue,
+        reason: '현재 일정 B의 쿨다운 키는 유지되어야 한다',
+      );
+    },
+  );
 }
 
 class _FakeSmartPreparationAlarmService extends SmartPreparationAlarmService {
@@ -519,15 +585,16 @@ class _QueuedEventRepository extends EventRepository {
 /// 매 listEvents 호출마다 같은 (미해결) 일정 목록을 반환해, 반복 새로고침에도
 /// 좌표 보정 대상이 계속 남아있는 폭주 시나리오를 재현한다.
 class _StuckUnresolvedEventRepository extends _QueuedEventRepository {
-  _StuckUnresolvedEventRepository(this._events)
+  _StuckUnresolvedEventRepository(this.events)
       : super(responses: const <Future<List<EventModel>> Function()>[]);
 
-  final List<EventModel> _events;
+  /// 현재 일정 목록(테스트에서 삭제/추가를 흉내내려 가변).
+  List<EventModel> events;
 
   @override
   Future<List<EventModel>> listEvents({String? userId}) async {
     listEventsCallCount += 1;
-    return _events;
+    return events;
   }
 }
 

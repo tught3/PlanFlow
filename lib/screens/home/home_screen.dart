@@ -428,6 +428,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final nowMs = DateTime.now().millisecondsSinceEpoch;
       final cooldownMs = _geoRetryCooldown.inMilliseconds;
       final service = widget.locationLookupService ?? LocationLookupService();
+
+      // 쿨다운 키 누적 방지: 더 이상 존재하지 않는(삭제된) 일정의 시도 키를
+      // 정리한다. 키는 현재 일정 id로 시작할 때만 살아있는 것으로 본다
+      // (location에 ':'가 있어도 안전하도록 split 대신 prefix 매칭 사용).
+      final liveIds = allEvents.map((e) => e.id).toSet();
+      final staleKeys = prefs
+          .getKeys()
+          .where((key) =>
+              key.startsWith(_geoAttemptKeyPrefix) &&
+              !liveIds.any((id) => key.startsWith('$_geoAttemptKeyPrefix$id:')))
+          .toList(growable: false);
+      for (final key in staleKeys) {
+        await prefs.remove(key);
+      }
       for (final event in missing) {
         // 쿨다운: 같은 (event, location)을 최근에 시도했으면 재검색 스킵.
         // location 문자열을 키에 넣어, 사용자가 위치를 고치면 키가 바뀌어
