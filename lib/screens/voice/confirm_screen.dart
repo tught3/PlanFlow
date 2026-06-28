@@ -1016,7 +1016,14 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         // 저장 자체는 항상 성공 처리. 다이얼로그 dismiss 후 홈으로 이동.
         await _showAlarmPermissionGuardIfNeeded();
         if (mounted) {
-          context.go(AppRoutes.home);
+          // voice→confirm는 홈 위에 push로 쌓였으므로, go(home)으로 홈을 새로
+          // 만들면 ShellScreen이 재생성되며 전환이 튄다(잔상). 기존 홈까지 pop해
+          // 그대로 복원하면 재생성 없이 부드럽게 닫힌다.
+          if (context.canPop()) {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          } else {
+            context.go(AppRoutes.home);
+          }
         }
       }
     } on StateError catch (error) {
