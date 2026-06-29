@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-29 ConfirmScreen 저장 후 이동 보정
+- 음성 입력에서 일정 확인 화면을 push한 뒤 저장하면 기존 `popUntil(route.isFirst)`가 첫 route인 음성 입력으로 되돌리는 문제를 고쳤다.
+- 저장 성공 후와 알람 권한 설정 복귀 후 모두 `AppRoutes.calendar`로 명시 이동하게 `_navigateAfterSave()`를 사용한다.
+- 검증: `git diff --check -- lib\screens\voice\confirm_screen.dart test\screens\confirm_screen_test.dart` 통과. 현재 Flutter/Dart tool이 `flutter --version`, focused test, analyze에서 출력 없이 타임아웃되어 실행 검증은 환경 문제로 완료하지 못했다. 회귀 테스트 `ConfirmScreen save leaves voice stack for calendar tab`은 현재 HEAD에 존재한다.
+
 ## 2026-06-29 Crashlytics 딥링크/네트워크 이슈 방어
 - `planflow://` 커스텀 스킴 cold-start intent가 Flutter initial route로 전달되지 않도록 Android `MainActivity.getInitialRoute()`에서 초기 route를 `/`로 고정했다. 실제 딥링크 라우팅은 기존 `app_links`/home widget 경로가 처리한다.
 - Supabase/Postgrest DNS/SocketException 같은 사용자 네트워크 오류는 Crashlytics 이슈로 기록하지 않고 debug 로그만 남기도록 런타임 오류 필터를 분리했다. 일시적 플랫폼 channel 오류는 기존처럼 non-fatal로만 기록한다.

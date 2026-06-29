@@ -179,7 +179,7 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
 class _ConfirmScreenState extends State<ConfirmScreen>
     with WidgetsBindingObserver {
   // 권한 설정 화면으로 이동 중일 때 true — 앱 복귀(resumed) 시 홈으로 이동
-  bool _pendingNavigateHome = false;
+  bool _pendingNavigateAfterSave = false;
 
   late final TextEditingController _titleController;
   late final TextEditingController _locationController;
@@ -281,14 +281,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 권한 설정 화면에서 돌아왔을 때 홈으로 이동
-    if (state == AppLifecycleState.resumed && _pendingNavigateHome && mounted) {
-      _pendingNavigateHome = false;
-      if (context.canPop()) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      } else {
-        context.go(AppRoutes.home);
-      }
+    // 권한 설정 화면에서 돌아왔을 때 저장된 일정을 바로 확인하게 이동.
+    if (state == AppLifecycleState.resumed &&
+        _pendingNavigateAfterSave &&
+        mounted) {
+      _pendingNavigateAfterSave = false;
+      _navigateAfterSave();
     }
   }
 
@@ -541,8 +539,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       DiagLogger.log(
         'GeoResolve',
         '스킵: 쿼리="${query.isEmpty ? '(빈값)' : query}" '
-        '이미보유=${_locationLat != null && _locationLng != null} '
-        '개인별칭=${query.isNotEmpty && _shouldSkipAutomaticLocationResolution(query)}',
+            '이미보유=${_locationLat != null && _locationLng != null} '
+            '개인별칭=${query.isNotEmpty && _shouldSkipAutomaticLocationResolution(query)}',
       );
       return;
     }
@@ -571,7 +569,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       DiagLogger.log(
         'GeoResolve',
         '검색결과: 쿼리="$query" 결과수=${results.length}'
-        '${results.isNotEmpty ? ' 1위="${results.first.name}" lat=${results.first.latitude} lng=${results.first.longitude}' : ''}',
+            '${results.isNotEmpty ? ' 1위="${results.first.name}" lat=${results.first.latitude} lng=${results.first.longitude}' : ''}',
       );
       if (!mounted ||
           query != _locationController.text.trim() ||
@@ -998,16 +996,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         if (mounted) {
           if (openedPermissionSettings) {
             // 시스템 설정으로 이동 중 — didChangeAppLifecycleState(resumed)에서 처리
-            _pendingNavigateHome = true;
+            _pendingNavigateAfterSave = true;
           } else {
-            // voice→confirm는 홈 위에 push로 쌓였으므로, go(home)으로 홈을 새로
-            // 만들면 ShellScreen이 재생성되며 전환이 튄다(잔상). 기존 홈까지 pop해
-            // 그대로 복원하면 재생성 없이 부드럽게 닫힌다.
-            if (context.canPop()) {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            } else {
-              context.go(AppRoutes.home);
-            }
+            _navigateAfterSave();
           }
         }
       }
@@ -1048,6 +1039,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return '로그인한 계정과 저장하려는 일정의 사용자 정보가 맞지 않아요. 다시 로그인해 주세요.';
     }
     return '저장할 준비가 아직 안 되었어요. 로그인 상태를 다시 확인해 주세요.';
+  }
+
+  void _navigateAfterSave() {
+    if (!mounted) {
+      return;
+    }
+    context.go(AppRoutes.calendar);
   }
 
   String _messageForPostgrestError(PostgrestException error) {
@@ -1600,7 +1598,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
               await _resolveTravelBufferMinutesForWidget(nextEvent),
         ),
       );
-    } catch (e) { debugPrint('ConfirmScreen 위젯 갱신 무시: $e'); }
+    } catch (e) {
+      debugPrint('ConfirmScreen 위젯 갱신 무시: $e');
+    }
   }
 
   Future<int> _resolveTravelBufferMinutesForWidget(EventModel event) {
@@ -1680,7 +1680,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     });
   }
 
-
   bool get _shouldShowPurposeClarification {
     if (_selectedAmbiguousPurpose != null || _preActions.isNotEmpty) {
       return false;
@@ -1737,7 +1736,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return keywords.any(text.contains);
   }
 
-
   List<_PreActionDraft> _initialPreActions() {
     return _preActionsFromValue(
       _smartPreparationAlarmValues(widget.parsedSchedule),
@@ -1789,8 +1787,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   void _showMessage(String message) {
     AppFeedbackService.showSnackBar(message, context: context);
   }
-
-
 
   void _scrollToKey(GlobalKey key, {FocusNode? focusNode}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1968,8 +1964,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                               currentEnd: _endAt,
                               endEditedByUser: _endEditedByUser,
                             );
-                            if (_endAt != null &&
-                                _endAt!.isBefore(_startAt)) {
+                            if (_endAt != null && _endAt!.isBefore(_startAt)) {
                               _endAt = _startAt;
                             }
                           });
@@ -2234,4 +2229,3 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
     );
   }
 }
-
