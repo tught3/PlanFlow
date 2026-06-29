@@ -18,7 +18,13 @@ import '../../services/event_refresh_bus.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
 
-enum _CalendarLoadState { loading, ready, supabaseMissing, signedOut, error }
+enum _CalendarLoadState {
+  loading,
+  ready,
+  supabaseMissing,
+  signedOut,
+  error,
+}
 
 const calendarCriticalEventMarkerColor = Color(0xFFB42318);
 const calendarMultiDayEventBackgroundColor = Color(0xFFDDEFE6);
@@ -44,7 +50,8 @@ List<EventModel> mergeCalendarEventsAfterReload({
         if (event.id.trim().isNotEmpty) event.id: event,
       for (final event in loaded)
         if (event.id.trim().isNotEmpty) event.id: event,
-    }.values.toList(growable: false)..sort(compareCalendarEventsForDisplay);
+    }.values.toList(growable: false)
+      ..sort(compareCalendarEventsForDisplay);
   }
 
   return loaded;
@@ -127,11 +134,9 @@ Map<int, Color> buildCalendarEventMarkerColorsByDay({
     final lastDay = !eventEnd.isBefore(monthEnd)
         ? monthEnd.subtract(const Duration(days: 1))
         : eventEndDay;
-    for (
-      var day = firstDay;
-      !day.isAfter(lastDay);
-      day = day.add(const Duration(days: 1))
-    ) {
+    for (var day = firstDay;
+        !day.isAfter(lastDay);
+        day = day.add(const Duration(days: 1))) {
       final currentColor = markerColors[day.day];
       if (event.isCritical ||
           currentColor != calendarCriticalEventMarkerColor) {
@@ -179,7 +184,10 @@ bool _looksLikeHolidayTitle(String title) {
   });
 }
 
-List<EventModel> _eventsForLocalDay(Iterable<EventModel> events, DateTime day) {
+List<EventModel> _eventsForLocalDay(
+  Iterable<EventModel> events,
+  DateTime day,
+) {
   final result = <EventModel>[];
   for (final event in events) {
     final startAt = event.startAt;
@@ -284,24 +292,16 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       .toList(growable: false)
     ..sort(compareCalendarEventsForDisplay);
 
-  final sortedEvents =
-      events.where((event) => event.startAt != null).toList(growable: false)
-        ..sort(compareCalendarEventsForDisplay);
-
-  final multiDayEvents = sortedEvents
-      .where((event) {
-        final startAt = event.startAt;
-        if (startAt == null) {
-          return false;
-        }
-        final firstDay = planflowLocalDay(startAt);
-        final lastEventDay = _calendarDisplayEndDay(
-          startAt,
-          event.endAt ?? startAt,
-        );
-        return lastEventDay.isAfter(firstDay);
-      })
-      .toList(growable: false);
+  final multiDayEvents = sortedEvents.where((event) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final firstDay = planflowLocalDay(startAt);
+    final lastEventDay =
+        _calendarDisplayEndDay(startAt, event.endAt ?? startAt);
+    return lastEventDay.isAfter(firstDay);
+  }).toList(growable: false);
 
   for (final event in multiDayEvents) {
     final startAt = event.startAt;
@@ -309,10 +309,8 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       continue;
     }
     final firstDay = planflowLocalDay(startAt);
-    final lastEventDay = _calendarDisplayEndDay(
-      startAt,
-      event.endAt ?? startAt,
-    );
+    final lastEventDay =
+        _calendarDisplayEndDay(startAt, event.endAt ?? startAt);
     final cellIndices = <int>[
       for (var i = 0; i < cellDates.length; i += 1)
         if (cellDates[i] != null &&
@@ -346,20 +344,16 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     if (day == null) {
       continue;
     }
-    final singleEvents = sortedEvents
-        .where((event) {
-          final startAt = event.startAt;
-          if (startAt == null) {
-            return false;
-          }
-          final firstDay = planflowLocalDay(startAt);
-          final lastEventDay = _calendarDisplayEndDay(
-            startAt,
-            event.endAt ?? startAt,
-          );
-          return !lastEventDay.isAfter(firstDay) && firstDay == day;
-        })
-        .toList(growable: false);
+    final singleEvents = sortedEvents.where((event) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        return false;
+      }
+      final firstDay = planflowLocalDay(startAt);
+      final lastEventDay =
+          _calendarDisplayEndDay(startAt, event.endAt ?? startAt);
+      return !lastEventDay.isAfter(firstDay) && firstDay == day;
+    }).toList(growable: false);
     for (final event in singleEvents) {
       var placed = false;
       for (var slot = 0; slot < _calendarMiniMonthEventRows; slot += 1) {
@@ -387,26 +381,21 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
 
   return List.generate(cellCount, (index) {
     final day = cellDates[index];
-    final visibleEvents = slotMap[index].whereType<EventModel>().toList(
-      growable: false,
-    );
+    final visibleEvents =
+        slotMap[index].whereType<EventModel>().toList(growable: false);
     return CalendarMiniMonthCellData(
       index: index,
       date: day,
       dayNumber: day?.day,
-      inMonth:
-          day != null &&
+      inMonth: day != null &&
           day.year == monthStart.year &&
           day.month == monthStart.month,
       events: visibleEvents,
       overlayEvents: overlayItemsByCell[index],
       overflowCount: overflowCounts[index],
-      isHoliday:
-          day != null &&
-          _eventsForLocalDay(
-            sortedEvents,
-            day,
-          ).any((event) => _looksLikeHolidayTitle(event.title)),
+      isHoliday: day != null &&
+          _eventsForLocalDay(sortedEvents, day)
+              .any((event) => _looksLikeHolidayTitle(event.title)),
     );
   }, growable: false);
 }
@@ -510,8 +499,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final repositoryOverride = widget.eventRepository;
     final explicitUserId = widget.userId?.trim();
-    final canUseInjectedRepository =
-        repositoryOverride != null &&
+    final canUseInjectedRepository = repositoryOverride != null &&
         explicitUserId != null &&
         explicitUserId.isNotEmpty;
 
@@ -640,31 +628,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   List<EventModel> get _eventsForSelectedDate {
-    return _visibleEvents
-        .where((event) {
-          final startAt = event.startAt;
-          if (startAt == null) {
-            return false;
-          }
-          return _eventIntersectsDay(event, _selectedDate);
-        })
-        .toList(growable: false);
-  }
-
-  List<CalendarOverlayItem> get _overlayEventsForSelectedDate {
-    return _visibleGroupOverlayEvents
-        .where((event) {
-          return event.spansLocalDay(_selectedDate);
-        })
-        .toList(growable: false);
-  }
-
-  List<CalendarOverlayItem> _overlayEventsForDay(DateTime day) {
-    return _visibleGroupOverlayEvents
-        .where((event) {
-          return event.spansLocalDay(day);
-        })
-        .toList(growable: false);
+    return _visibleEvents.where((event) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        return false;
+      }
+      return _eventIntersectsDay(event, _selectedDate);
+    }).toList(growable: false);
   }
 
   List<CalendarOverlayItem> get _overlayEventsForSelectedDate {
@@ -720,26 +690,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (query.isEmpty) {
       return _allEvents;
     }
-    return _allEvents
-        .where((event) {
-          final searchable = <String>[
-            event.title,
-            event.location ?? '',
-            event.memo ?? '',
-            event.category,
-          ].join(' ').toLowerCase();
-          return searchable.contains(query);
-        })
-        .toList(growable: false);
+    return _allEvents.where((event) {
+      final searchable = <String>[
+        event.title,
+        event.location ?? '',
+        event.memo ?? '',
+        event.category,
+      ].join(' ').toLowerCase();
+      return searchable.contains(query);
+    }).toList(growable: false);
   }
 
   List<EventModel> get _visibleEvents {
     final monthStart = DateTime(_focusedMonth.year, _focusedMonth.month);
-    final monthEnd = DateTime(
-      _focusedMonth.year,
-      _focusedMonth.month + 1,
-      0,
-    ).add(const Duration(days: 1));
+    final monthEnd = DateTime(_focusedMonth.year, _focusedMonth.month + 1, 0)
+        .add(const Duration(days: 1));
     final expanded = <EventModel>[];
     for (final event in _filteredEvents) {
       expanded.addAll(
@@ -761,33 +726,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
     List<EventModel> events,
   ) {
     final overrides = events
-        .where(
-          (event) =>
-              event.parentEventId != null &&
-              event.parentEventId!.trim().isNotEmpty &&
-              event.startAt != null,
-        )
+        .where((event) =>
+            event.parentEventId != null &&
+            event.parentEventId!.trim().isNotEmpty &&
+            event.startAt != null)
         .toList(growable: false);
     if (overrides.isEmpty) {
       return events;
     }
-    return events
-        .where((event) {
-          final startAt = event.startAt;
-          if (startAt == null) {
-            return true;
-          }
-          final isOverridden = overrides.any((override) {
-            if (override.parentEventId != event.id) {
-              return false;
-            }
-            final overrideStart = override.startAt;
-            return overrideStart != null &&
-                planflowIsSameLocalDay(overrideStart, startAt);
-          });
-          return !isOverridden;
-        })
-        .toList(growable: false);
+    return events.where((event) {
+      final startAt = event.startAt;
+      if (startAt == null) {
+        return true;
+      }
+      final isOverridden = overrides.any((override) {
+        if (override.parentEventId != event.id) {
+          return false;
+        }
+        final overrideStart = override.startAt;
+        return overrideStart != null &&
+            planflowIsSameLocalDay(overrideStart, startAt);
+      });
+      return !isOverridden;
+    }).toList(growable: false);
   }
 
   bool _eventIntersectsDay(EventModel event, DateTime day) {
@@ -843,9 +804,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
         while (weekStart.isBefore(hardEnd) && safety < 120) {
           safety += 1;
           for (final weekday in byDays) {
-            final day = weekStart.add(
-              Duration(days: weekday - DateTime.monday),
-            );
+            final day =
+                weekStart.add(Duration(days: weekday - DateTime.monday));
             final current = DateTime(
               day.year,
               day.month,
@@ -857,9 +817,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             if (current.isBefore(localStartAt) || !current.isBefore(hardEnd)) {
               continue;
             }
-            final occurrenceEnd = duration == null
-                ? null
-                : current.add(duration);
+            final occurrenceEnd =
+                duration == null ? null : current.add(duration);
             final candidate = _copyEventWithTime(
               event,
               startAt: current,
@@ -892,21 +851,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
         'DAILY' => current.add(Duration(days: interval)),
         'WEEKLY' => current.add(Duration(days: 7 * interval)),
         'MONTHLY' => DateTime(
-          current.year,
-          current.month + interval,
-          current.day,
-          current.hour,
-          current.minute,
-          current.second,
-        ),
+            current.year,
+            current.month + interval,
+            current.day,
+            current.hour,
+            current.minute,
+            current.second,
+          ),
         'YEARLY' => DateTime(
-          current.year + interval,
-          current.month,
-          current.day,
-          current.hour,
-          current.minute,
-          current.second,
-        ),
+            current.year + interval,
+            current.month,
+            current.day,
+            current.hour,
+            current.minute,
+            current.second,
+          ),
         _ => hardEnd,
       };
     }
@@ -922,10 +881,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (startAt == null) {
       return false;
     }
-    final localDisplayEnd = _calendarDisplayEndDay(
-      startAt,
-      event.endAt ?? startAt,
-    );
+    final localDisplayEnd =
+        _calendarDisplayEndDay(startAt, event.endAt ?? startAt);
     final eventDisplayEndExclusive = DateTime(
       localDisplayEnd.year,
       localDisplayEnd.month,
@@ -960,18 +917,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return raw
         .split(',')
         .map((item) => item.replaceAll(RegExp(r'[-0-9]'), ''))
-        .map(
-          (item) => switch (item) {
-            'MO' => DateTime.monday,
-            'TU' => DateTime.tuesday,
-            'WE' => DateTime.wednesday,
-            'TH' => DateTime.thursday,
-            'FR' => DateTime.friday,
-            'SA' => DateTime.saturday,
-            'SU' => DateTime.sunday,
-            _ => null,
-          },
-        )
+        .map((item) => switch (item) {
+              'MO' => DateTime.monday,
+              'TU' => DateTime.tuesday,
+              'WE' => DateTime.wednesday,
+              'TH' => DateTime.thursday,
+              'FR' => DateTime.friday,
+              'SA' => DateTime.saturday,
+              'SU' => DateTime.sunday,
+              _ => null,
+            })
         .whereType<int>()
         .toList(growable: false);
   }
@@ -1076,7 +1031,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   void _changeMonth(int delta) {
     setState(() {
-      _focusedMonth = DateTime(_focusedMonth.year, _focusedMonth.month + delta);
+      _focusedMonth = DateTime(
+        _focusedMonth.year,
+        _focusedMonth.month + delta,
+      );
     });
     unawaited(_loadGroupOverlay());
   }
@@ -1169,8 +1127,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             maxWidth: context.planflowWindowInfo.wideContentMaxWidth,
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final useTwoPane =
-                    constraints.maxWidth >=
+                final useTwoPane = constraints.maxWidth >=
                         PlanFlowResponsive.twoPaneBreakpoint &&
                     MediaQuery.sizeOf(context).height >=
                         PlanFlowResponsive.minimumTwoPaneHeight;
@@ -1334,8 +1291,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   String _eventEditRouteForDay(DateTime day) {
-    final date =
-        '${day.year.toString().padLeft(4, '0')}-'
+    final date = '${day.year.toString().padLeft(4, '0')}-'
         '${day.month.toString().padLeft(2, '0')}-'
         '${day.day.toString().padLeft(2, '0')}';
     return '${AppRoutes.eventEdit}?date=$date';
@@ -1648,30 +1604,30 @@ class _CalendarStatusCard extends StatelessWidget {
     final theme = Theme.of(context);
     final (icon, title, body) = switch (state) {
       _CalendarLoadState.supabaseMissing => (
-        Icons.cloud_off_outlined,
-        'Supabase 설정이 필요해요',
-        '빌드 설정값이 없어서 캘린더 데이터를 가져올 수 없어요.',
-      ),
+          Icons.cloud_off_outlined,
+          'Supabase 설정이 필요해요',
+          '빌드 설정값이 없어서 캘린더 데이터를 가져올 수 없어요.',
+        ),
       _CalendarLoadState.signedOut => (
-        Icons.lock_outline,
-        '로그인이 필요해요',
-        '로그인한 뒤 내 일정 목록을 다시 불러올 수 있어요.',
-      ),
+          Icons.lock_outline,
+          '로그인이 필요해요',
+          '로그인한 뒤 내 일정 목록을 다시 불러올 수 있어요.',
+        ),
       _CalendarLoadState.error => (
-        Icons.error_outline,
-        '캘린더 불러오기 실패',
-        message ?? '캘린더 일정 목록을 불러오지 못했습니다.',
-      ),
+          Icons.error_outline,
+          '캘린더 불러오기 실패',
+          message ?? '캘린더 일정 목록을 불러오지 못했습니다.',
+        ),
       _CalendarLoadState.loading => (
-        Icons.hourglass_top_outlined,
-        '캘린더 확인 중',
-        '잠시만 기다려 주세요.',
-      ),
+          Icons.hourglass_top_outlined,
+          '캘린더 확인 중',
+          '잠시만 기다려 주세요.',
+        ),
       _CalendarLoadState.ready => (
-        Icons.check_circle_outline,
-        '정상',
-        '캘린더 데이터를 불러왔어요.',
-      ),
+          Icons.check_circle_outline,
+          '정상',
+          '캘린더 데이터를 불러왔어요.',
+        ),
     };
 
     return Container(
@@ -1768,9 +1724,14 @@ class _MonthHeader extends StatelessWidget {
             onPressed: onToday,
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white,
-              side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
+              side: BorderSide(
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
               backgroundColor: Colors.white.withValues(alpha: 0.08),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
               minimumSize: const Size(0, 38),
               visualDensity: VisualDensity.compact,
               shape: RoundedRectangleBorder(
@@ -1823,7 +1784,10 @@ class _MiniCalendarGrid extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1842,8 +1806,8 @@ class _MiniCalendarGrid extends StatelessWidget {
                         color: isSunday
                             ? const Color(0xFFB42318)
                             : isSaturday
-                            ? PlanFlowColors.primaryMid
-                            : PlanFlowColors.textSecondary,
+                                ? PlanFlowColors.primaryMid
+                                : PlanFlowColors.textSecondary,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1854,71 +1818,73 @@ class _MiniCalendarGrid extends StatelessWidget {
             const SizedBox(height: 8),
 
             // Day cells
-            ...List.generate(rows, (weekIndex) {
-              return Row(
-                children: List.generate(7, (dayIndex) {
-                  final cellIndex = weekIndex * 7 + dayIndex;
-                  if (cellIndex >= monthCells.length) {
-                    return const Expanded(child: SizedBox(height: 74));
-                  }
-                  final cell = monthCells[cellIndex];
-                  final dayDate = cell.date;
-                  if (dayDate == null) {
-                    return const Expanded(child: SizedBox(height: 74));
-                  }
-                  final dayNumber = cell.dayNumber ?? dayDate.day;
+            ...List.generate(
+              rows,
+              (weekIndex) {
+                return Row(
+                  children: List.generate(7, (dayIndex) {
+                    final cellIndex = weekIndex * 7 + dayIndex;
+                    if (cellIndex >= monthCells.length) {
+                      return const Expanded(child: SizedBox(height: 74));
+                    }
+                    final cell = monthCells[cellIndex];
+                    final dayDate = cell.date;
+                    if (dayDate == null) {
+                      return const Expanded(child: SizedBox(height: 74));
+                    }
+                    final dayNumber = cell.dayNumber ?? dayDate.day;
 
-                  final isToday =
-                      today.year == dayDate.year &&
-                      today.month == dayDate.month &&
-                      today.day == dayDate.day;
-                  final isSelected =
-                      selectedDate.year == dayDate.year &&
-                      selectedDate.month == dayDate.month &&
-                      selectedDate.day == dayDate.day;
+                    final isToday = today.year == dayDate.year &&
+                        today.month == dayDate.month &&
+                        today.day == dayDate.day;
+                    final isSelected = selectedDate.year == dayDate.year &&
+                        selectedDate.month == dayDate.month &&
+                        selectedDate.day == dayDate.day;
 
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => onDaySelected(dayDate),
-                      child: Container(
-                        key: ValueKey(
-                          'calendar-mini-cell-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
-                        ),
-                        height: 74,
-                        margin: const EdgeInsets.all(1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? PlanFlowColors.primaryMid
-                              : isToday
-                              ? PlanFlowColors.primaryFaint
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 3,
-                              ),
-                              child: Text(
-                                '$dayNumber',
-                                key: ValueKey(
-                                  'calendar-mini-day-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
-                                ),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: isToday || isSelected
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : isToday
-                                      ? PlanFlowColors.primaryMid
-                                      : cell.isHoliday
-                                      ? calendarCriticalEventMarkerColor
-                                      : PlanFlowColors.textPrimary,
+                    return Expanded(
+                      child: GestureDetector(
+                        onTap: () => onDaySelected(dayDate),
+                        child: Container(
+                          key: ValueKey(
+                            'calendar-mini-cell-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
+                          ),
+                          height: 74,
+                          margin: const EdgeInsets.all(1.5),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? PlanFlowColors.primaryMid
+                                : isToday
+                                    ? PlanFlowColors.primaryFaint
+                                    : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 3),
+                                child: Text(
+                                  '$dayNumber',
+                                  key: ValueKey(
+                                    'calendar-mini-day-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
+                                  ),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: isToday || isSelected
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : isToday
+                                            ? PlanFlowColors.primaryMid
+                                            : cell.isHoliday
+                                                ? calendarCriticalEventMarkerColor
+                                                : PlanFlowColors.textPrimary,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -1933,21 +1899,16 @@ class _MiniCalendarGrid extends StatelessWidget {
                                   isSelected: isSelected,
                                   day: dayDate,
                                 ),
-                                events: cell.events,
-                                overlayEvents: cell.overlayEvents,
-                                overflowCount: cell.overflowCount,
-                                isSelected: isSelected,
-                                day: dayDate,
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                }),
-              );
-            }),
+                    );
+                  }),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -1979,18 +1940,16 @@ class _CalendarMiniEventList extends StatelessWidget {
     final requiresOverflowLabel =
         overflowCount > 0 || events.length > _calendarMiniMonthEventRows;
     final maxVisibleEvents = requiresOverflowLabel
-        ? (_calendarMiniMonthEventRows - 1).clamp(
-            1,
-            _calendarMiniMonthEventRows,
-          )
+        ? (_calendarMiniMonthEventRows - 1)
+            .clamp(1, _calendarMiniMonthEventRows)
         : _calendarMiniMonthEventRows;
     final displayEvents = events.length > maxVisibleEvents
         ? events.take(maxVisibleEvents).toList(growable: false)
         : events;
     final hiddenCount = requiresOverflowLabel
         ? (overflowCount > 0
-              ? overflowCount
-              : events.length - displayEvents.length)
+            ? overflowCount
+            : events.length - displayEvents.length)
         : 0;
     return Column(
       mainAxisSize: MainAxisSize.max,
@@ -2275,17 +2234,17 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final bg = isMultiDay
         ? calendarMultiDayEventBackgroundColor
         : isSelected
-        ? Colors.white.withValues(alpha: 0.18)
-        : event.isCritical
-        ? const Color(0xFFB42318).withValues(alpha: 0.12)
-        : _categoryColor(event.category).withValues(alpha: 0.16);
+            ? Colors.white.withValues(alpha: 0.18)
+            : event.isCritical
+                ? const Color(0xFFB42318).withValues(alpha: 0.12)
+                : _categoryColor(event.category).withValues(alpha: 0.16);
     final fg = isMultiDay
         ? calendarMultiDayEventTextColor
         : isSelected
-        ? Colors.white
-        : event.isCritical
-        ? const Color(0xFFB42318)
-        : _categoryColor(event.category);
+            ? Colors.white
+            : event.isCritical
+                ? const Color(0xFFB42318)
+                : _categoryColor(event.category);
     final showTitle = !isMultiDay || segment.$1;
     final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
     // Neighboring day cells have 1.5px margins on each side, so extending
@@ -2327,15 +2286,16 @@ class _CalendarMiniEventLabel extends StatelessWidget {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: hPadding)
-                          .copyWith(
-                            top: isCriticalMultiDay && showTitle ? 1.0 : 0.0,
-                          ),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: hPadding,
+                      ).copyWith(
+                        top: isCriticalMultiDay && showTitle ? 1.0 : 0.0,
+                      ),
                       child: Text(
                         showTitle
                             ? (event.isAllDay && !isMultiDay
-                                  ? '종일 ${event.title}'
-                                  : event.title)
+                                ? '종일 ${event.title}'
+                                : event.title)
                             : '',
                         maxLines: 1,
                         softWrap: false,
@@ -2369,14 +2329,17 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final last = _calendarDisplayEndDay(event.startAt!, event.endAt!);
     return (
       current == first || current.weekday == DateTime.sunday,
-      current == last || current.weekday == DateTime.saturday,
+      current == last || current.weekday == DateTime.saturday
     );
   }
 }
 
 // --- Event Agenda Card ---
 class _EventAgendaCard extends StatelessWidget {
-  const _EventAgendaCard({required this.event, this.onTap});
+  const _EventAgendaCard({
+    required this.event,
+    this.onTap,
+  });
 
   final EventModel event;
   final VoidCallback? onTap;
@@ -2699,7 +2662,10 @@ class _EmptyAgendaCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.5,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),

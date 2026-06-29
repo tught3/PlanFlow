@@ -8,7 +8,6 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:xml/xml.dart';
 
-import '../core/diag_logger.dart';
 import '../core/env.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
@@ -719,20 +718,12 @@ class NaverCalDavService {
           appPassword: credentials.appPassword,
           body: _calendarListPropfindBody,
         );
-        DiagLogger.log(
-          'NaverCalDav',
-          'getCalendars propfind status=${response.statusCode}',
-        );
         if (response.statusCode == 404) {
           lastError = StateError('CalDAV calendar-home not found: $endpoint');
           continue;
         }
         _throwForCalDavStatus(response.statusCode, endpoint);
         final calendars = _parseCalendarsFromResponse(response.body);
-        DiagLogger.log(
-          'NaverCalDav',
-          'getCalendars found=${calendars.length}',
-        );
         debugPrint('Naver CalDAV 캘린더 목록: $path / ${calendars.length}개');
         for (final calendar in calendars) {
           debugPrint(
@@ -745,18 +736,10 @@ class NaverCalDavService {
         }
       } catch (error) {
         lastError = error;
-        DiagLogger.log(
-          'NaverCalDav',
-          'getCalendars pathFailed error=${error.runtimeType}',
-        );
         debugPrint('Naver CalDAV calendar path failed: $path / $error');
       }
     }
     if (lastError != null) {
-      DiagLogger.log(
-        'NaverCalDav',
-        'getCalendars allPathsFailed lastError=${lastError.runtimeType}',
-      );
       throw StateError('네이버 CalDAV 캘린더 경로를 찾지 못했습니다. 서버 경로를 추가 확인해야 합니다.');
     }
     return const <NaverCalDavCalendar>[];
@@ -1135,7 +1118,6 @@ class NaverCalDavService {
         message: '네이버 CalDAV 연결을 확인하는 중입니다.',
       ));
       final calendars = await getCalendars();
-      DiagLogger.log('NaverCalDav', 'syncAll calendars=${calendars.length}');
       if (calendars.isEmpty) {
         return NaverCalDavSyncResult(
           success: false,
@@ -1157,43 +1139,33 @@ class NaverCalDavService {
       var savedCount = 0;
       var skippedCount = 0;
       var failedCount = 0;
-
-      // 기존에 가져온 Naver 이벤트 external_id 사전 일괄 조회 (per-event DB 쿼리 제거)
-      final existingNaverIds = await _eventRepository.fetchExternalIdsBySource(
-        source: 'naver_caldav',
-        userId: resolvedUserId,
-      );
-
-      // 모든 캘린더에서 이벤트 병렬 조회
-      emit(NaverCalDavSyncProgress(
-        mode: mode,
-        stage: NaverCalDavSyncStage.querying,
-        message: '${calendars.length}개 캘린더 일정을 조회하는 중입니다.',
-        totalCalendars: calendars.length,
-        savedEvents: 0,
-        skippedEvents: 0,
-        failedEvents: 0,
-      ));
-      final allCalendarEvents = await Future.wait(
-        calendars.map((calendar) => getEvents(
-              calendarPath: calendar.path,
-              from: range.from,
-              to: range.to,
-              allowFullFallback: true,
-              allowResourceFallback: true,
-              parseStats: NaverCalDavParseStats._(
-                calendarPath: calendar.path,
-                diagnostics: diagnostics,
-                from: range.from,
-                to: range.to,
-              ),
-            )),
-      );
-
       for (var index = 0; index < calendars.length; index += 1) {
         final calendar = calendars[index];
         final calendarNumber = index + 1;
-        final events = allCalendarEvents[index];
+        emit(NaverCalDavSyncProgress(
+          mode: mode,
+          stage: NaverCalDavSyncStage.querying,
+          message: '일정을 조회하는 중입니다.',
+          currentCalendar: calendar.displayName,
+          currentCalendarIndex: calendarNumber,
+          totalCalendars: calendars.length,
+          savedEvents: savedCount,
+          skippedEvents: skippedCount,
+          failedEvents: failedCount,
+        ));
+        final events = await getEvents(
+          calendarPath: calendar.path,
+          from: range.from,
+          to: range.to,
+          allowFullFallback: true,
+          allowResourceFallback: true,
+          parseStats: NaverCalDavParseStats._(
+            calendarPath: calendar.path,
+            diagnostics: diagnostics,
+            from: range.from,
+            to: range.to,
+          ),
+        );
         eventCount += events.length;
         for (var eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
           final event = events[eventIndex];
@@ -1300,29 +1272,6 @@ class NaverCalDavService {
                 'title="${event.title}", reason=$broadDuplicateReason',
               );
             }
-          }
-          // 사전 조회된 Set으로 먼저 빠르게 체크 (DB 쿼리 없이)
-          final externalId = eventModel.externalId;
-          if (skipUnchanged &&
-              externalId != null &&
-              existingNaverIds.contains(externalId)) {
-            skippedCount += 1;
-            diagnostics.unchangedSkipped += 1;
-            diagnostics.addSkipReason('이미 가져온 일정 (캐시)');
-            emit(NaverCalDavSyncProgress(
-              mode: mode,
-              stage: NaverCalDavSyncStage.saving,
-              message: '이미 가져온 일정은 건너뛰는 중입니다.',
-              currentCalendar: calendar.displayName,
-              currentCalendarIndex: calendarNumber,
-              totalCalendars: calendars.length,
-              processedEvents: eventIndex + 1,
-              totalEvents: events.length,
-              savedEvents: savedCount,
-              skippedEvents: skippedCount,
-              failedEvents: failedCount,
-            ));
-            continue;
           }
           final skipReason =
               skipUnchanged ? await _skipUnchangedReason(eventModel) : null;
@@ -1432,10 +1381,6 @@ class NaverCalDavService {
         diagnostics: frozenDiagnostics,
       );
     } catch (error, stackTrace) {
-      DiagLogger.log(
-        'NaverCalDav',
-        'syncAll failed error=${error.runtimeType}',
-      );
       debugPrint('Naver CalDAV sync failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return NaverCalDavSyncResult(

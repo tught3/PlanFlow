@@ -555,10 +555,6 @@ END:VCALENDAR
   });
 
   test('syncAll skips unchanged events by etag and reports progress', () async {
-    final incomingExternalId = _naverCalDavExternalId(
-      uid: 'naver-event-1',
-      calendarPath: '/calendars/tught3/default/',
-    );
     final client = _FakePropfindClient(
       responses: <int>[404, 207, 207],
       bodies: <String>[
@@ -568,8 +564,20 @@ END:VCALENDAR
       ],
     );
     final repository = _FakeEventRepository(
-      existing: incomingExternalId,
-      initialExternalIds: <String>{incomingExternalId},
+      existing: NaverCalDavEvent(
+        uid: 'naver-event-1',
+        href: '/calendars/tught3/default/event-1.ics',
+        etag: '"etag-1"',
+        icsData: _eventIcs,
+        title: 'Existing',
+        startAt: DateTime.utc(2026, 5, 5, 1),
+      )
+          .toEventModel(
+            userId: 'user-1',
+            calendarPath: '/calendars/tught3/default/',
+            syncedAt: DateTime.utc(2026, 5, 5, 3),
+          )
+          .externalId,
     );
     final progress = <NaverCalDavSyncProgress>[];
     final service = NaverCalDavService(
@@ -606,10 +614,6 @@ END:VCALENDAR
 
   test('syncAll links same title/start duplicate instead of inserting',
       () async {
-    final incomingExternalId = _naverCalDavExternalId(
-      uid: 'naver-event-1',
-      calendarPath: '/calendars/tught3/default/',
-    );
     final client = _FakePropfindClient(
       responses: <int>[404, 207, 207],
       bodies: <String>[
@@ -619,7 +623,6 @@ END:VCALENDAR
       ],
     );
     final repository = _FakeEventRepository(
-      initialExternalIds: <String>{incomingExternalId},
       seedEvents: <EventModel>[
         EventModel(
           id: 'manual-1',
@@ -652,49 +655,6 @@ END:VCALENDAR
       repository.updated.single.externalCalendarId,
       'naver-caldav:/calendars/tught3/default/',
     );
-  });
-
-  test('syncAll fast-paths new external ids after one prefetch', () async {
-    final client = _FakePropfindClient(
-      responses: <int>[404, 207, 207],
-      bodies: <String>[
-        _emptyEventReportXml,
-        _calendarListXml,
-        _eventReportXml,
-      ],
-    );
-    final repository = _FakeEventRepository(
-      seedEvents: <EventModel>[
-        EventModel(
-          id: 'manual-1',
-          userId: 'user-1',
-          title: '한강 피크닉',
-          startAt: DateTime.utc(2026, 5, 5, 1),
-          source: 'manual',
-        ),
-      ],
-    );
-    final service = NaverCalDavService(
-      httpClient: client,
-      credentialStore: _FakeCredentialStore(
-        savedId: 'tught3',
-        savedPassword: 'app-password',
-      ),
-      eventRepository: repository,
-      currentUserId: 'user-1',
-    );
-
-    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
-
-    expect(result.success, isTrue);
-    expect(result.createdOrUpdated, 1);
-    expect(result.skipped, 0);
-    expect(repository.upserted, hasLength(1));
-    expect(repository.fetchExternalIdSetCalls, 1);
-    expect(repository.fetchByExternalIdCalls, 0);
-    expect(repository.findTitleStartCalls, 0);
-    expect(repository.externalIdSet,
-        contains(repository.upserted.single.externalId));
   });
 
   test('syncAll skips reflected PlanFlow CalDAV event by UID marker', () async {
@@ -912,10 +872,6 @@ END:VCALENDAR
 
   test('syncAll normal import records broad duplicate skip separately',
       () async {
-    final incomingExternalId = _naverCalDavExternalId(
-      uid: 'naver-event-1',
-      calendarPath: '/calendars/tught3/default/',
-    );
     final client = _FakePropfindClient(
       responses: <int>[404, 207, 207],
       bodies: <String>[
@@ -925,7 +881,6 @@ END:VCALENDAR
       ],
     );
     final repository = _FakeEventRepository(
-      initialExternalIds: <String>{incomingExternalId},
       seedEvents: <EventModel>[
         EventModel(
           id: 'manual-1',
@@ -1133,21 +1088,15 @@ class _FakeEventRepository extends EventRepository {
   _FakeEventRepository({
     this.existing,
     this.existingEvent,
-    Set<String> initialExternalIds = const <String>{},
     List<EventModel> seedEvents = const <EventModel>[],
-  })  : externalIdSet = Set<String>.from(initialExternalIds),
-        events = List<EventModel>.from(seedEvents);
+  }) : events = List<EventModel>.from(seedEvents);
 
   final String? existing;
   final EventModel? existingEvent;
-  final Set<String> externalIdSet;
   final List<EventModel> events;
   final List<EventModel> upserted = <EventModel>[];
   final List<EventModel> updated = <EventModel>[];
   final List<String> deletedIds = <String>[];
-  int fetchExternalIdSetCalls = 0;
-  int fetchByExternalIdCalls = 0;
-  int findTitleStartCalls = 0;
 
   @override
   Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
@@ -1165,7 +1114,6 @@ class _FakeEventRepository extends EventRepository {
     required String externalId,
     String? userId,
   }) async {
-    fetchByExternalIdCalls += 1;
     final seededExisting = existingEvent;
     if (seededExisting != null && externalId == seededExisting.externalId) {
       return seededExisting;
@@ -1181,33 +1129,6 @@ class _FakeEventRepository extends EventRepository {
       externalId: externalId,
       externalEtag: '"etag-1"',
       externalUpdatedAt: DateTime.utc(2026, 5, 4, 12),
-    );
-  }
-
-  @override
-  Future<Set<String>> fetchExternalIdsBySource({
-    required String source,
-    String? userId,
-  }) async {
-    fetchExternalIdSetCalls += 1;
-    return Set<String>.from(externalIdSet);
-  }
-
-  @override
-  Future<EventModel?> findEventByTitleAndStart({
-    required String title,
-    required DateTime startAt,
-    String? userId,
-    Duration tolerance = const Duration(minutes: 1),
-    Set<String> excludedSources = const <String>{},
-  }) async {
-    findTitleStartCalls += 1;
-    return super.findEventByTitleAndStart(
-      title: title,
-      startAt: startAt,
-      userId: userId,
-      tolerance: tolerance,
-      excludedSources: excludedSources,
     );
   }
 
@@ -1233,10 +1154,6 @@ class _FakeEventRepository extends EventRepository {
   @override
   Future<EventModel> upsertEventBySourceExternalId(EventModel event) async {
     upserted.add(event);
-    final externalId = event.externalId;
-    if (externalId != null && externalId.trim().isNotEmpty) {
-      externalIdSet.add(externalId);
-    }
     return event;
   }
 
@@ -1250,26 +1167,6 @@ class _FakeEventRepository extends EventRepository {
   Future<List<EventModel>> listEvents({String? userId}) async => events
       .where((event) => userId == null || event.userId == userId)
       .toList(growable: false);
-}
-
-String _naverCalDavExternalId({
-  required String uid,
-  required String calendarPath,
-}) {
-  return NaverCalDavEvent(
-    uid: uid,
-    href: '$calendarPath$uid.ics',
-    etag: '"etag"',
-    icsData: '',
-    title: 'event',
-    startAt: DateTime.utc(2026),
-  )
-      .toEventModel(
-        userId: 'user-1',
-        calendarPath: calendarPath,
-        syncedAt: DateTime.utc(2026),
-      )
-      .externalId!;
 }
 
 class _FakePropfindClient extends http.BaseClient {

@@ -21,14 +21,6 @@ abstract class EventRepository {
     return Future<EventModel?>.value(null);
   }
 
-  /// 특정 source의 external_id 전체를 Set으로 일괄 조회 (중복 스킵용 사전 조회)
-  Future<Set<String>> fetchExternalIdsBySource({
-    required String source,
-    String? userId,
-  }) {
-    return Future.value(<String>{});
-  }
-
   Future<List<EventModel>> findOverlappingEvents({
     required DateTime rangeStart,
     required DateTime rangeEnd,
@@ -534,7 +526,7 @@ class SupabaseEventRepository extends EventRepository {
   static const String _tableName = 'events';
   static const String _selectColumns =
       'id, user_id, title, start_at, end_at, location, location_lat, '
-      'location_lng, memo, supplies, supplies_checked, is_critical, use_strong_alarm, source, '
+      'location_lng, memo, supplies, supplies_checked, is_critical, source, '
       'participants, targets, '
       'recurrence_rule, is_all_day, is_multi_day, parent_event_id, '
       'group_event_id, category, '
@@ -542,7 +534,7 @@ class SupabaseEventRepository extends EventRepository {
       'last_synced_at, created_at, updated_at';
   static const String _legacySelectColumns =
       'id, user_id, title, start_at, end_at, location, location_lat, '
-      'location_lng, memo, supplies, supplies_checked, is_critical, use_strong_alarm, source, '
+      'location_lng, memo, supplies, supplies_checked, is_critical, source, '
       'external_id, created_at';
 
   final SupabaseClient _client;
@@ -591,28 +583,6 @@ class SupabaseEventRepository extends EventRepository {
       return null;
     }
     return EventModel.fromJson(_rowAsJson(response));
-  }
-
-  @override
-  Future<Set<String>> fetchExternalIdsBySource({
-    required String source,
-    String? userId,
-  }) async {
-    final resolvedUserId = _resolveUserId(userId);
-    final normalizedSource = source.trim();
-    if (normalizedSource.isEmpty) {
-      return <String>{};
-    }
-    final rows = await _client
-        .from(_tableName)
-        .select('external_id')
-        .eq('user_id', resolvedUserId)
-        .eq('source', normalizedSource)
-        .not('external_id', 'is', null);
-    return {
-      for (final row in rows)
-        if (row['external_id'] != null) row['external_id'] as String,
-    };
   }
 
   @override
@@ -890,9 +860,8 @@ class SupabaseEventRepository extends EventRepository {
       return _client
           .from(_tableName)
           .insert(
-            _payloadWithoutMissingSyncColumns(
+            _legacyPayload(
               event.toJson(includeId: event.id.trim().isNotEmpty),
-              error,
             ),
           )
           .select(_legacySelectColumns)
@@ -918,10 +887,7 @@ class SupabaseEventRepository extends EventRepository {
       }
       return _client
           .from(_tableName)
-          .update(_payloadWithoutMissingSyncColumns(
-            event.toUpdateJson(),
-            error,
-          ))
+          .update(_legacyPayload(event.toUpdateJson()))
           .eq('id', event.id)
           .eq('user_id', userId)
           .select(_legacySelectColumns)
@@ -946,9 +912,8 @@ class SupabaseEventRepository extends EventRepository {
       return _client
           .from(_tableName)
           .upsert(
-            _payloadWithoutMissingSyncColumns(
+            _legacyPayload(
               event.toJson(includeId: event.id.trim().isNotEmpty),
-              error,
             ),
             onConflict: 'id',
           )
@@ -984,14 +949,7 @@ class SupabaseEventRepository extends EventRepository {
     }
   }
 
-  Map<String, dynamic> _payloadWithoutMissingSyncColumns(
-    Map<String, dynamic> payload,
-    PostgrestException error,
-  ) {
-    final missingColumns = _missingPayloadColumns(error, payload.keys.toSet());
-    if (missingColumns.isEmpty) {
-      throw error;
-    }
+  Map<String, dynamic> _legacyPayload(Map<String, dynamic> payload) {
     return Map<String, dynamic>.from(payload)
       ..remove('external_calendar_id')
       ..remove('external_etag')
@@ -1027,23 +985,6 @@ class SupabaseEventRepository extends EventRepository {
         text.contains('pgrst204') ||
         text.contains('42703');
   }
-
-  bool _mentionsColumn(String text, String column) {
-    final escapedColumn = RegExp.escape(column);
-    return RegExp('(^|[^a-z0-9_])$escapedColumn' r'([^a-z0-9_]|$)')
-        .hasMatch(text);
-  }
-
-  static const Set<String> _fallbackRemovablePayloadColumns = <String>{
-    'external_calendar_id',
-    'external_etag',
-  'external_updated_at',
-  'last_synced_at',
-  'parent_event_id',
-  'participants',
-  'targets',
-  'updated_at',
-};
 }
 
 extension on EventModel {
