@@ -506,6 +506,46 @@ void main() {
       expect(result['memo'], isNull);
     });
 
+    test('keeps GPT period choice for ambiguous 7 to 11 oclock text', () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '모란역 가기',
+                    'start_at': '2026-05-18T19:40:00.000',
+                    'end_at': null,
+                    'location': '모란역',
+                    'memo': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 18, 9),
+      );
+
+      final result = await service.parseSchedule('7시 40분까지 모란역 가기');
+
+      expect(result['start_at'], '2026-05-18T19:40:00.000');
+      expect(result['time_period_ambiguous'], isTrue);
+    });
+
     test('infers a Korean relative start time when JSON omits start_at',
         () async {
       final client = MockClient((request) async {
@@ -664,7 +704,8 @@ void main() {
       );
     });
 
-    test('public local inference treats day-only dates as this month or next month',
+    test(
+        'public local inference treats day-only dates as this month or next month',
         () {
       final now = DateTime(2026, 6, 10, 9, 30);
       final service = GptService(

@@ -531,6 +531,46 @@ void main() {
     expect(saved.isMultiDay, isTrue);
   });
 
+  testWidgets('ConfirmScreen lets users choose PM for ambiguous evening time',
+      (tester) async {
+    final repository = _FakeEventRepository();
+    final start = DateTime(2030, 6, 13, 7, 40);
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '모란역 가기',
+            startAt: start,
+            location: '모란역',
+            rawText: '7시 40분까지 모란역 가기',
+          )..['time_period_ambiguous'] = true,
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    expect(find.text('오전/오후를 확인해 주세요'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ActionChip, '오후 7:40'));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    final saved = repository.createdEvents.single;
+    expect(planflowLocal(saved.startAt!), DateTime(2030, 6, 13, 19, 40));
+  });
+
   testWidgets('ConfirmScreen shows supplies as compact editable rows',
       (tester) async {
     await tester.pumpWidget(

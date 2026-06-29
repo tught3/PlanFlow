@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-29 음성 입력 7~12시 오전/오후 확인 보정
+- 오전/오후를 말하지 않은 7~12시 입력은 `time_period_ambiguous`로 표시해 확인 화면에서 오전/오후 선택 칩을 보여주도록 했다.
+- GPT가 문맥상 오후로 판단한 7~11시를 로컬 시간 보정이 다음날 오전으로 덮어쓰지 않게 막았다.
+- 검증: focused `gpt_service_test`, focused `confirm_screen_test`, 전체 `gpt_service_test`, 변경 파일 analyzer, `git diff --check` 통과. `confirm_screen_test.dart` 전체는 기존 단독 실패 2건(`스마트 준비 알람 1`, `일정 목적을 선택해 주세요`)이 남아 이번 변경 범위와 분리해 기록했다.
+
 ## 2026-06-29 ConfirmScreen 저장 후 이동 보정
 - 음성 입력에서 일정 확인 화면을 push한 뒤 저장하면 기존 `popUntil(route.isFirst)`가 첫 route인 음성 입력으로 되돌리는 문제를 고쳤다.
 - 저장 성공 후와 알람 권한 설정 복귀 후 모두 `AppRoutes.calendar`로 명시 이동하게 `_navigateAfterSave()`를 사용한다.

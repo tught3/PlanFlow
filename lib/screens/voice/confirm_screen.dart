@@ -178,7 +178,7 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
 
 class _ConfirmScreenState extends State<ConfirmScreen>
     with WidgetsBindingObserver {
-  // 권한 설정 화면으로 이동 중일 때 true — 앱 복귀(resumed) 시 홈으로 이동
+  // 권한 설정 화면으로 이동 중일 때 true — 앱 복귀(resumed) 시 저장 후 목적지로 이동
   bool _pendingNavigateAfterSave = false;
 
   late final TextEditingController _titleController;
@@ -218,6 +218,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   bool _memoEditedByUser = false;
   bool _startEditedByUser = false;
   bool _endEditedByUser = false;
+  bool _timePeriodAmbiguous = false;
+  int? _ambiguousTimeHour;
+  int? _ambiguousTimeMinute;
   Map<String, dynamic>? _initialParsedForLearning;
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
@@ -257,6 +260,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         _supplies.isNotEmpty || _memoController.text.trim().isNotEmpty;
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
+    _setAmbiguousTimeFromParsed(widget.parsedSchedule);
     _locationLat = _doubleValue(widget.parsedSchedule['location_lat']);
     _locationLng = _doubleValue(widget.parsedSchedule['location_lng']);
     if (_locationLat != null && _locationLng != null) {
@@ -753,6 +757,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         if (!_startEditedByUser) {
           _startAt = _safeStartAt(parsed['start_at'] ?? _startAt);
         }
+        _setAmbiguousTimeFromParsed(parsed);
         if (!_endEditedByUser) {
           _endAt = _safeEndAt(parsed['end_at'], _startAt);
         }
@@ -1041,11 +1046,134 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return '저장할 준비가 아직 안 되었어요. 로그인 상태를 다시 확인해 주세요.';
   }
 
+  bool get _shouldShowTimePeriodClarification {
+    return _timePeriodAmbiguous &&
+        !_isAllDay &&
+        _ambiguousTimeHour != null &&
+        _ambiguousTimeMinute != null;
+  }
+
+  void _applyAmbiguousTimePeriod({required bool afternoon}) {
+    final hour = _ambiguousTimeHour;
+    final minute = _ambiguousTimeMinute;
+    if (hour == null || minute == null) {
+      return;
+    }
+    final resolvedHour = afternoon
+        ? hour == 12
+            ? 12
+            : hour + 12
+        : hour == 12
+            ? 0
+            : hour;
+    final previousStart = _startAt;
+    final nextStart = DateTime(
+      _startAt.year,
+      _startAt.month,
+      _startAt.day,
+      resolvedHour,
+      minute,
+    );
+    setState(() {
+      _startEditedByUser = true;
+      _startAt = nextStart;
+      _endAt = shiftEventEndWhenStartChanges(
+        previousStart: previousStart,
+        newStart: _startAt,
+        currentEnd: _endAt,
+        endEditedByUser: _endEditedByUser,
+      );
+      if (_endAt != null && _endAt!.isBefore(_startAt)) {
+        _endAt = _startAt;
+      }
+    });
+  }
+
+  String _ambiguousTimeLabel({required bool afternoon}) {
+    final hour = _ambiguousTimeHour ?? _startAt.hour;
+    final minute = _ambiguousTimeMinute ?? _startAt.minute;
+    final minuteText = minute.toString().padLeft(2, '0');
+    return '${afternoon ? '오후' : '오전'} $hour:$minuteText';
+  }
+
+  bool _isAmbiguousPeriodSelected({required bool afternoon}) {
+    final hour = _ambiguousTimeHour;
+    if (hour == null) {
+      return false;
+    }
+    final resolvedHour = afternoon
+        ? hour == 12
+            ? 12
+            : hour + 12
+        : hour == 12
+            ? 0
+            : hour;
+    return _startAt.hour == resolvedHour;
+  }
+
   void _navigateAfterSave() {
     if (!mounted) {
       return;
     }
     context.go(AppRoutes.calendar);
+  }
+
+  Widget _buildTimePeriodClarificationCard() {
+    final theme = Theme.of(context);
+    return Card(
+      color: PlanFlowColors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(
+          color: PlanFlowColors.primaryFaint,
+          width: 0.8,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '오전/오후를 확인해 주세요',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: PlanFlowColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '말한 시간이 오전과 오후 모두 가능한 시간대라 저장 전에 확정이 필요해요.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ActionChip(
+                  label: Text(_ambiguousTimeLabel(afternoon: false)),
+                  avatar: _isAmbiguousPeriodSelected(afternoon: false)
+                      ? const Icon(Icons.check, size: 16)
+                      : null,
+                  onPressed: () => _applyAmbiguousTimePeriod(afternoon: false),
+                ),
+                ActionChip(
+                  label: Text(_ambiguousTimeLabel(afternoon: true)),
+                  avatar: _isAmbiguousPeriodSelected(afternoon: true)
+                      ? const Icon(Icons.check, size: 16)
+                      : null,
+                  onPressed: () => _applyAmbiguousTimePeriod(afternoon: true),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   String _messageForPostgrestError(PostgrestException error) {
@@ -1067,6 +1195,105 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return '일정 저장 테이블이 아직 준비되지 않았어요. Supabase 설정을 확인해 주세요.';
     }
     return '저장하지 못했어요. Supabase 연결 상태를 확인해 주세요.';
+  }
+
+  void _setAmbiguousTimeFromParsed(Map<String, dynamic> parsed) {
+    final rawText = _stringValue(parsed['raw_text']);
+    final clock = _ambiguousClockFromRawText(rawText) ??
+        (parsed['time_period_ambiguous'] == true
+            ? _AmbiguousMeridiemClock.fromDateTime(_startAt)
+            : null);
+    _timePeriodAmbiguous = clock != null;
+    _ambiguousTimeHour = clock?.hour;
+    _ambiguousTimeMinute = clock?.minute;
+  }
+
+  _AmbiguousMeridiemClock? _ambiguousClockFromRawText(String? rawText) {
+    if (rawText == null || rawText.trim().isEmpty) {
+      return null;
+    }
+    final text = rawText.replaceAll(RegExp(r'\s+'), '');
+    final numericMatch = RegExp(
+      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽))?(\d{1,2})시(?:(\d{1,2})분?|(반))?',
+    ).firstMatch(text);
+    if (numericMatch != null) {
+      if (numericMatch.group(1) != null) {
+        return null;
+      }
+      final hour = int.tryParse(numericMatch.group(2) ?? '');
+      final minute = numericMatch.group(4) != null
+          ? 30
+          : int.tryParse(numericMatch.group(3) ?? '') ?? 0;
+      return _ambiguousClockFromParts(hour: hour, minute: minute);
+    }
+    final koreanMatch = RegExp(
+      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽))?([가-힣]{1,8})시(?:([가-힣]{1,8}|\d{1,2})분?|(반))?',
+    ).firstMatch(text);
+    if (koreanMatch == null || koreanMatch.group(1) != null) {
+      return null;
+    }
+    final minuteText = koreanMatch.group(3);
+    final minute = koreanMatch.group(4) != null || minuteText == '반'
+        ? 30
+        : int.tryParse(minuteText ?? '') ?? _koreanNumber(minuteText) ?? 0;
+    return _ambiguousClockFromParts(
+      hour: _koreanNumber(koreanMatch.group(2)),
+      minute: minute,
+    );
+  }
+
+  _AmbiguousMeridiemClock? _ambiguousClockFromParts({
+    required int? hour,
+    required int minute,
+  }) {
+    if (hour == null || hour < 7 || hour > 12 || minute < 0 || minute > 59) {
+      return null;
+    }
+    return _AmbiguousMeridiemClock(hour: hour, minute: minute);
+  }
+
+  int? _koreanNumber(String? rawText) {
+    if (rawText == null || rawText.isEmpty) {
+      return null;
+    }
+    const values = <String, int>{
+      '영': 0,
+      '공': 0,
+      '한': 1,
+      '하나': 1,
+      '일': 1,
+      '두': 2,
+      '둘': 2,
+      '이': 2,
+      '세': 3,
+      '셋': 3,
+      '삼': 3,
+      '네': 4,
+      '넷': 4,
+      '사': 4,
+      '다섯': 5,
+      '오': 5,
+      '여섯': 6,
+      '육': 6,
+      '일곱': 7,
+      '칠': 7,
+      '여덟': 8,
+      '팔': 8,
+      '아홉': 9,
+      '구': 9,
+      '열': 10,
+      '십': 10,
+      '열한': 11,
+      '열하나': 11,
+      '십일': 11,
+      '열두': 12,
+      '열둘': 12,
+      '십이': 12,
+      '삼십': 30,
+      '사십': 40,
+      '오십': 50,
+    };
+    return values[rawText.replaceAll(' ', '')];
   }
 
   Future<void> _recordVoiceCorrectionLearning({
@@ -1929,6 +2156,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                             child: Text('자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
                           ),
                         ),
+                      if (_shouldShowTimePeriodClarification) ...[
+                        const SizedBox(height: AppConstants.sectionSpacing),
+                        _buildTimePeriodClarificationCard(),
+                      ],
                       const SizedBox(height: AppConstants.sectionSpacing),
                       CalendarStyleEventEditor(
                         titleController: _titleController,
@@ -2143,6 +2374,25 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     return double.tryParse(value.toString());
   }
+}
+
+class _AmbiguousMeridiemClock {
+  const _AmbiguousMeridiemClock({
+    required this.hour,
+    required this.minute,
+  });
+
+  factory _AmbiguousMeridiemClock.fromDateTime(DateTime value) {
+    final hour = value.hour == 0
+        ? 12
+        : value.hour > 12
+            ? value.hour - 12
+            : value.hour;
+    return _AmbiguousMeridiemClock(hour: hour, minute: value.minute);
+  }
+
+  final int hour;
+  final int minute;
 }
 
 /// 알람 권한이 부족할 때 저장 직후 표시하는 안내 다이얼로그.

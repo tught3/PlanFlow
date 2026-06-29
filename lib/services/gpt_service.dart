@@ -247,8 +247,7 @@ class GptService {
   /// 장소명이면 정제된 장소명 반환, 아니면 null.
   Future<String?> validateLocation(String candidate) async {
     if (candidate.trim().isEmpty) return null;
-    const systemPrompt =
-        'You are a location name validator for Korean text. '
+    const systemPrompt = 'You are a location name validator for Korean text. '
         'If the input is a real place name (building, landmark, address, region, or business name), '
         'return ONLY the clean place name without any explanation. '
         'If the input is NOT a place name (e.g. a sentence, a task description, or random text), '
@@ -438,7 +437,9 @@ class GptService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (e) { debugPrint('GptService JSON 파싱 실패 무시: $e'); }
+    } catch (e) {
+      debugPrint('GptService JSON 파싱 실패 무시: $e');
+    }
 
     final start = trimmed.indexOf('{');
     final end = trimmed.lastIndexOf('}');
@@ -451,7 +452,9 @@ class GptService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (e) { debugPrint('GptService JSON 파싱 실패 무시: $e'); }
+    } catch (e) {
+      debugPrint('GptService JSON 파싱 실패 무시: $e');
+    }
 
     return null;
   }
@@ -483,6 +486,9 @@ class GptService {
     normalized['supplies'] = _normalizeSupplies(normalized['supplies']);
     normalized['pre_actions'] = _normalizePreActions(normalized['pre_actions']);
     final inferredStartAt = _inferStartAtFromRawText(rawText);
+    if (_hasAmbiguousMeridiemTime(rawText)) {
+      normalized['time_period_ambiguous'] = true;
+    }
     if (inferredStartAt != null &&
         _shouldPreferInferredStartAt(
           rawText: rawText,
@@ -513,6 +519,7 @@ class GptService {
       'title': rawText.trim(),
       'date': null,
       'start_at': inferredStartAt?.toIso8601String(),
+      if (_hasAmbiguousMeridiemTime(rawText)) 'time_period_ambiguous': true,
       'end_at': null,
       'location': null,
       'location_lat': null,
@@ -761,7 +768,8 @@ class GptService {
       return relative;
     }
 
-    final recurringDate = _extractMonthlyRecurringDateFromText(dateTimeText, now);
+    final recurringDate =
+        _extractMonthlyRecurringDateFromText(dateTimeText, now);
     final date = recurringDate ?? _extractDateFromText(dateTimeText, now);
     final time = _normalizeAmbiguousLeadingTime(
       dateTimeText,
@@ -905,8 +913,7 @@ class GptService {
     final weekEnd = weekStart.add(const Duration(days: 6));
     final nextWeekStart = weekStart.add(const Duration(days: 7));
     final nextWeekEnd = nextWeekStart.add(const Duration(days: 6));
-    String ymd(DateTime d) =>
-        '${d.year.toString().padLeft(4, '0')}-'
+    String ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
         '${d.month.toString().padLeft(2, '0')}-'
         '${d.day.toString().padLeft(2, '0')}';
     const weekdayNames = ['월', '화', '수', '목', '금', '토', '일'];
@@ -943,6 +950,9 @@ $_scheduleSystemPrompt
     if (parsedStartAt == null) {
       return true;
     }
+    if (_hasAmbiguousMeridiemTime(rawText)) {
+      return false;
+    }
     // "이번주/다음주 X요일"처럼 시간 표현이 없는 상대 요일 표현은 로컬 파서가
     // 결정적으로 정확하다. GPT는 주차 경계(특히 월을 넘는 다음주) 계산을 자주
     // 틀리므로, 이 경우 로컬 추론 날짜를 우선한다. (시간이 있는 표현은 기존
@@ -967,6 +977,51 @@ $_scheduleSystemPrompt
     final text = _normalizeKoreanText(rawText);
     // 이번주/다음주 + 요일, 또는 이번주/다음주 단독 표현
     return RegExp(r'(이번|다음)\s*주').hasMatch(text);
+  }
+
+  bool _hasAmbiguousMeridiemTime(String rawText) {
+    final clock = _extractAmbiguousMeridiemClock(rawText);
+    return clock != null && clock.hour >= 7 && clock.hour <= 12;
+  }
+
+  _ClockTime? _extractAmbiguousMeridiemClock(String rawText) {
+    final text = _normalizeKoreanText(rawText);
+    final numericMatch = RegExp(
+      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분?|\s*(반))?',
+    ).firstMatch(text);
+    if (numericMatch != null) {
+      if (numericMatch.group(1) != null) {
+        return null;
+      }
+      final hasHalf = numericMatch.group(4) != null;
+      return _clockTimeFromParts(
+        period: null,
+        hour: int.tryParse(numericMatch.group(2) ?? ''),
+        minute: hasHalf
+            ? 30
+            : numericMatch.group(3) == null
+                ? 0
+                : int.tryParse(numericMatch.group(3)!),
+      );
+    }
+
+    final koreanMatch = RegExp(
+      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?([가-힣]{1,8})\s*시(?:\s*([가-힣]{1,8}|\d{1,2})\s*분?|\s*(반))?',
+    ).firstMatch(text);
+    if (koreanMatch == null || koreanMatch.group(1) != null) {
+      return null;
+    }
+    final minuteText = koreanMatch.group(3);
+    final hasHalf = koreanMatch.group(4) != null || minuteText == '반';
+    return _clockTimeFromParts(
+      period: null,
+      hour: _parseKoreanNumber(koreanMatch.group(2)),
+      minute: hasHalf
+          ? 30
+          : minuteText == null
+              ? 0
+              : int.tryParse(minuteText) ?? _parseKoreanNumber(minuteText),
+    );
   }
 
   bool _hasRecurringDateHint(String rawText) {
@@ -1203,9 +1258,7 @@ $_scheduleSystemPrompt
 
     // '내일모레'/'내일모래'(STT 오인식)/'모레'는 2일 뒤. '내일' 단독보다 먼저 검사한다
     // ('내일모레'가 '내일'에 먼저 걸려 1일 뒤로 오인되는 것 방지).
-    if (text.contains('내일모레') ||
-        text.contains('내일모래') ||
-        text.contains('모레')) {
+    if (text.contains('내일모레') || text.contains('내일모래') || text.contains('모레')) {
       return today.add(const Duration(days: 2));
     }
     if (text.contains('글피')) {
@@ -1249,8 +1302,8 @@ $_scheduleSystemPrompt
       }
     }
 
-    final dayOnly = RegExp(r'(?<!\d)(?<day>\d{1,2})일(?:로|에|부터|까지)?')
-        .firstMatch(text);
+    final dayOnly =
+        RegExp(r'(?<!\d)(?<day>\d{1,2})일(?:로|에|부터|까지)?').firstMatch(text);
     if (dayOnly != null) {
       final day = int.tryParse(dayOnly.namedGroup('day') ?? '');
       if (day != null && day >= 1) {
