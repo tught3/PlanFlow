@@ -15,7 +15,6 @@ import '../providers/auth_provider.dart';
 import '../services/app_permission_service.dart';
 import '../services/briefing_scheduler_service.dart';
 import '../services/calendar_auto_sync_service.dart';
-import '../services/calendar_sync_service.dart';
 import '../services/critical_alarm_channel_migration_service.dart';
 import '../services/departure_alarm_service.dart';
 import '../services/external_calendar_sync_guide_service.dart';
@@ -81,8 +80,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       CalendarAutoSyncService();
   late final ExternalCalendarSyncGuideService _externalCalendarGuideService =
       ExternalCalendarSyncGuideService(
-    calendarAutoSyncService: _calendarAutoSyncService,
-  );
+        calendarAutoSyncService: _calendarAutoSyncService,
+      );
   final DepartureAlarmService _departureAlarmService =
       const DepartureAlarmService();
   final CriticalAlarmChannelMigrationService _criticalAlarmMigrationService =
@@ -91,7 +90,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       BriefingSchedulerService();
   bool _checkedPermissionOnboarding = false;
   bool _checkedExternalCalendarGuide = false;
-  bool _checkedGoogleCalendarAutoPrompt = false;
   String? _observedUserId;
 
   @override
@@ -104,15 +102,13 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     authProvider.addListener(_handleAuthChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeOpenPermissionOnboarding();
-      unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-        reason: 'app_start',
-      ));
+      unawaited(
+        _calendarAutoSyncService.syncConnectedCalendars(reason: 'app_start'),
+      );
       unawaited(_migrateFutureCriticalAlarms());
       unawaited(_refreshDepartureAlarmsAndMonitor());
       unawaited(_ensureBriefingsScheduled(reason: 'app_start'));
       unawaited(_maybeRecalculateAllAlarms());
-      debugPrint('[GCAL] _maybeAutoConnect 호출 시도 (initState)');
-      unawaited(_maybeAutoConnectGoogleCalendar());
     });
   }
 
@@ -128,9 +124,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-        reason: 'app_resumed',
-      ));
+      unawaited(
+        _calendarAutoSyncService.syncConnectedCalendars(reason: 'app_resumed'),
+      );
       unawaited(_refreshDepartureAlarmsAndMonitor());
     }
   }
@@ -144,7 +140,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _observedUserId = currentUserId;
     _checkedPermissionOnboarding = false;
     _checkedExternalCalendarGuide = false;
-    _checkedGoogleCalendarAutoPrompt = false;
 
     if (!mounted) {
       return;
@@ -154,15 +149,15 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _maybeOpenPermissionOnboarding();
-        unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-          reason: 'auth_changed',
-          force: true,
-        ));
+        unawaited(
+          _calendarAutoSyncService.syncConnectedCalendars(
+            reason: 'auth_changed',
+            force: true,
+          ),
+        );
         unawaited(_migrateFutureCriticalAlarms());
         unawaited(_refreshDepartureAlarmsAndMonitor());
         unawaited(_ensureBriefingsScheduled(reason: 'auth_changed'));
-        debugPrint('[GCAL] _maybeAutoConnect 호출 시도 (auth_changed)');
-        unawaited(_maybeAutoConnectGoogleCalendar());
       }
     });
   }
@@ -302,8 +297,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final shouldShow =
-        await _externalCalendarGuideService.shouldShowForUser(userId);
+    final shouldShow = await _externalCalendarGuideService.shouldShowForUser(
+      userId,
+    );
     if (!shouldShow || !mounted) {
       return;
     }
@@ -351,53 +347,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     if (openSettings == true) {
       context.go('${AppRoutes.settings}?open=naver-caldav');
     }
-  }
-
-  /// Google 계정 로그인 사용자이고 Google Calendar가 미연동 상태이면
-  /// interactive sync를 1회 자동 호출해 팝업을 띄운다.
-  Future<void> _maybeAutoConnectGoogleCalendar() async {
-    debugPrint('[GCAL] _maybeAutoConnect 진입');
-    if (_checkedGoogleCalendarAutoPrompt || !mounted) {
-      debugPrint('[GCAL] return: alreadyChecked=$_checkedGoogleCalendarAutoPrompt mounted=$mounted');
-      return;
-    }
-    _checkedGoogleCalendarAutoPrompt = true;
-
-    // Google 계정이 아니면 스킵
-    debugPrint('[GCAL] isGoogleAccount=${authProvider.isGoogleAccount}');
-    if (!authProvider.isGoogleAccount) {
-      debugPrint('[GCAL] return: isGoogleAccount=false');
-      return;
-    }
-
-    final userId = authProvider.userId;
-    debugPrint('[GCAL] userId=$userId');
-    if (userId == null || userId.isEmpty) {
-      debugPrint('[GCAL] return: userId is null or empty');
-      return;
-    }
-
-    // Google Calendar 연동 상태 확인
-    final calendarSync = CalendarSyncService(
-      googleServerClientId: AppEnv.googleServerClientId,
-    );
-    final status = await calendarSync.getGoogleStatus();
-    final isConnected = status.status == CalendarIntegrationStatus.ready ||
-        status.status == CalendarIntegrationStatus.synced;
-    debugPrint('[GCAL] googleStatus=${status.status} isConnected=$isConnected');
-    if (isConnected) {
-      // 이미 연동됐으면 종료
-      debugPrint('[GCAL] return: already connected');
-      return;
-    }
-
-    // 미연동 상태 → interactive sync 팝업 호출
-    if (!mounted) {
-      debugPrint('[GCAL] return: !mounted before interactive sync');
-      return;
-    }
-    debugPrint('[GCAL] interactive sync 호출!');
-    unawaited(calendarSync.syncGoogleCalendar(interactive: true));
   }
 
   List<NavigationDestination> _buildNavigationBarDestinations() {
@@ -591,10 +540,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 }
 
 class _ShellTabSwipeEdge extends StatelessWidget {
-  const _ShellTabSwipeEdge({
-    super.key,
-    required this.onHorizontalDragEnd,
-  });
+  const _ShellTabSwipeEdge({super.key, required this.onHorizontalDragEnd});
 
   final GestureDragEndCallback onHorizontalDragEnd;
 

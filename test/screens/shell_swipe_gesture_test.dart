@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -57,11 +59,7 @@ void main() {
   testWidgets('center horizontal fling is ignored', (tester) async {
     await _pumpShell(tester);
 
-    await tester.flingFrom(
-      const Offset(200, 360),
-      const Offset(-280, 0),
-      900,
-    );
+    await tester.flingFrom(const Offset(200, 360), const Offset(-280, 0), 900);
     await tester.pumpAndSettle();
 
     expect(_selectedTabIndex(tester), 0);
@@ -70,25 +68,18 @@ void main() {
   testWidgets('right edge left fling switches to next tab', (tester) async {
     await _pumpShell(tester);
 
-    await tester.flingFrom(
-      const Offset(388, 360),
-      const Offset(-260, 0),
-      900,
-    );
+    await tester.flingFrom(const Offset(388, 360), const Offset(-260, 0), 900);
     await tester.pumpAndSettle();
 
     expect(_selectedTabIndex(tester), 1);
   });
 
-  testWidgets('edge swipes stay clamped at first and last tabs',
-      (tester) async {
+  testWidgets('edge swipes stay clamped at first and last tabs', (
+    tester,
+  ) async {
     await _pumpShell(tester);
 
-    await tester.flingFrom(
-      const Offset(12, 360),
-      const Offset(260, 0),
-      900,
-    );
+    await tester.flingFrom(const Offset(12, 360), const Offset(260, 0), 900);
     await tester.pumpAndSettle();
     expect(_selectedTabIndex(tester), 0);
 
@@ -97,13 +88,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(_selectedTabIndex(tester), 2);
 
-    await tester.flingFrom(
-      const Offset(388, 360),
-      const Offset(-260, 0),
-      900,
-    );
+    await tester.flingFrom(const Offset(388, 360), const Offset(-260, 0), 900);
     await tester.pumpAndSettle();
     expect(_selectedTabIndex(tester), 2);
+  });
+
+  test('ShellScreen does not auto launch Google Calendar interactive sync', () {
+    final source = File('lib/screens/shell_screen.dart').readAsStringSync();
+
+    expect(source, isNot(contains('_maybeAutoConnectGoogleCalendar')));
+    expect(source, isNot(contains('syncGoogleCalendar(interactive: true')));
   });
 }
 

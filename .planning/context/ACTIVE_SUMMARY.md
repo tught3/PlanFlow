@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-29 TASK_20260629_083105 Shell Google Calendar 자동 팝업 제거
+- `ShellScreen`의 app start/auth changed 후킹에서 Google Calendar 미연동 상태를 보고 `syncGoogleCalendar(interactive: true)`를 자동 호출하던 경로를 제거했다.
+- Google Calendar interactive 연결은 설정 화면의 수동 버튼 경로에만 남겼고, `shell_swipe_gesture_test.dart`에 ShellScreen 자동 interactive 재도입 방지 소스 가드를 추가했다.
+- 검증: `flutter analyze lib\screens\shell_screen.dart test\screens\shell_swipe_gesture_test.dart --no-pub`, `flutter test test\screens\shell_swipe_gesture_test.dart --no-pub -r compact`, `git diff --check -- lib\screens\shell_screen.dart test\screens\shell_swipe_gesture_test.dart` 통과. `scripts\flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 경로 부재로 실패해 원시 Flutter로 대체했다. guarded release APK 빌드는 `android/key.properties` 부재로 실패했다.
+
 ## 2026-06-29 ConfirmScreen 저장 후 이동 보정
 - 음성 입력에서 일정 확인 화면을 push한 뒤 저장하면 기존 `popUntil(route.isFirst)`가 첫 route인 음성 입력으로 되돌리는 문제를 고쳤다.
 - 저장 성공 후와 알람 권한 설정 복귀 후 모두 `AppRoutes.calendar`로 명시 이동하게 `_navigateAfterSave()`를 사용한다.
