@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-29 포그라운드 브리핑 모달 SharedPreferences 브리지 보강
+- `android_alarm_manager_plus` 알람 콜백이 별도 FlutterEngine/Dart VM에서 실행되어 `IsolateNameServer` 포트가 메인 앱에 닿지 않는 문제를 이어받아, SharedPreferences pending modal 브리지의 경계 조건을 보강했다.
+- pending modal은 앱이 실제 foreground일 때만 소비하고, background 상태에서는 키를 유지한다. 앱 시작/복귀 직후에는 2초 폴링을 기다리지 않고 즉시 pending modal을 확인한다.
+- 검증: `scripts/flutter-local.ps1 test test\services\briefing_scheduler_service_test.dart --no-pub -r compact` 통과, `scripts/flutter-local.ps1 analyze lib\app.dart lib\services\briefing_scheduler_service.dart test\services\briefing_scheduler_service_test.dart --no-pub` 통과.
+
 ## 2026-06-27 TASK_20260627_112532 feedback_reports 웹 피드백 마이그레이션
 - `public.feedback_reports`를 Homepage 웹 익명 제출과 PlanFlow 앱 인증 제출이 함께 쓰도록 `user_id` nullable, `source`/`email` 컬럼, `source` 기본값 `app`, `feedback_reports_source_idx`를 번호 마이그레이션으로 추적했다.
 - 운영 Supabase `xqvvfnvmytjlblcngipn`에 idempotent SQL을 재적용했고, 컬럼/제약/인덱스/RLS 정책을 실측 확인했다. Homepage Production 배포는 Vercel Ready이며 `/api/feedback` 스모크 POST가 200 `{ok:true}`로 통과했고 테스트 행은 삭제했다.

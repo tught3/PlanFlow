@@ -307,6 +307,57 @@ void main() {
     expect(notification.calls, 0);
   });
 
+  test('pending foreground briefing modal emits and clears stored trigger',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      BriefingSchedulerService.appForegroundKey: true,
+      BriefingSchedulerService.pendingModalKey: 'morning',
+    });
+    final preferences = await SharedPreferences.getInstance();
+    final modal = BriefingSchedulerService.foregroundBriefingStream.first;
+
+    await BriefingSchedulerService.checkPendingModalTrigger();
+
+    expect(await modal, isTrue);
+    expect(
+      preferences.getString(BriefingSchedulerService.pendingModalKey),
+      isNull,
+    );
+  });
+
+  test('pending briefing modal remains stored while app is background',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      BriefingSchedulerService.appForegroundKey: false,
+      BriefingSchedulerService.pendingModalKey: 'evening',
+    });
+    final preferences = await SharedPreferences.getInstance();
+    var emitted = false;
+    final subscription = BriefingSchedulerService.foregroundBriefingStream
+        .listen((_) => emitted = true);
+
+    await BriefingSchedulerService.checkPendingModalTrigger();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(emitted, isFalse);
+    expect(
+      preferences.getString(BriefingSchedulerService.pendingModalKey),
+      'evening',
+    );
+
+    await subscription.cancel();
+    await preferences.setBool(BriefingSchedulerService.appForegroundKey, true);
+    final modal = BriefingSchedulerService.foregroundBriefingStream.first;
+
+    await BriefingSchedulerService.checkPendingModalTrigger();
+
+    expect(await modal, isFalse);
+    expect(
+      preferences.getString(BriefingSchedulerService.pendingModalKey),
+      isNull,
+    );
+  });
+
   test('local briefing does not mention movement when events have no location',
       () async {
     AppEnv.markSupabaseInitialized();

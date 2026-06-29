@@ -69,17 +69,17 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         unawaited(_syncCalendarInBackground());
       },
       onResume: () {
-        unawaited(BriefingSchedulerService.recordAppForegroundState(true));
+        unawaited(_markForegroundAndCheckPendingBriefing());
         // widgetClicked 스트림이 유실된 warm-start를 복구하기 위해 먼저 실행
         unawaited(_resumeHomeWidgetCheck());
         unawaited(_syncSessionAndCalendar(reason: 'resume'));
         unawaited(_scheduleDeferredUpdateCheck());
       },
     );
-    unawaited(BriefingSchedulerService.recordAppForegroundState(true));
-    _foregroundBriefingSubscription =
-        BriefingSchedulerService.foregroundBriefingStream
-            .listen(_showForegroundBriefingDialog);
+    _foregroundBriefingSubscription = BriefingSchedulerService
+        .foregroundBriefingStream
+        .listen(_showForegroundBriefingDialog);
+    unawaited(_markForegroundAndCheckPendingBriefing());
     // alarm_service의 알람 콜백은 별도 Dart VM에서 실행되므로 IsolateNameServer가
     // 작동하지 않는다. SharedPreferences pending key를 2초마다 확인해 모달로 전환한다.
     _foregroundBriefingPollTimer = Timer.periodic(
@@ -97,6 +97,11 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     );
     unawaited(_scheduleDeferredUpdateCheck());
     unawaited(_logStartupAlarmPermissions());
+  }
+
+  Future<void> _markForegroundAndCheckPendingBriefing() async {
+    await BriefingSchedulerService.recordAppForegroundState(true);
+    await BriefingSchedulerService.checkPendingModalTrigger();
   }
 
   /// 앱 시작 시 알림/정확알람 권한 상태를 진단로그에 항상 기록한다.
@@ -508,7 +513,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     try {
       await _settingsMethodChannel
           .invokeMethod<void>('consumeHomeWidgetLaunch');
-    } catch (e) { debugPrint('App consumeHomeWidgetLaunch 무시: $e'); }
+    } catch (e) {
+      debugPrint('App consumeHomeWidgetLaunch 무시: $e');
+    }
   }
 
   /// warm-start fallback: widgetClicked 스트림이 유실된 경우 onResume에서 재확인
@@ -635,8 +642,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
               ],
               routerConfig: appRouter,
               builder: (context, child) {
-                final showUpdateOverlay = updateState == UpdateUiState.updating ||
-                    updateState == UpdateUiState.openingPlayStore;
+                final showUpdateOverlay =
+                    updateState == UpdateUiState.updating ||
+                        updateState == UpdateUiState.openingPlayStore;
                 return Stack(
                   children: <Widget>[
                     child ?? const SizedBox.shrink(),
@@ -725,13 +733,13 @@ class _UpdateProgressOverlay extends StatelessWidget {
                       ),
                     ],
                   ),
-                  ),
                 ),
               ),
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -149,11 +149,17 @@ class BriefingSchedulerService {
   static Future<void> checkPendingModalTrigger() async {
     final prefs = await SharedPreferences.getInstance();
     final pending = prefs.getString(pendingModalKey);
-    if (pending != null) {
-      await prefs.remove(pendingModalKey);
-      if (!_foregroundBriefingController.isClosed) {
-        _foregroundBriefingController.add(pending == 'morning');
-      }
+    if (pending == null) {
+      return;
+    }
+
+    if (prefs.getBool(appForegroundKey) != true) {
+      return;
+    }
+
+    await prefs.remove(pendingModalKey);
+    if (!_foregroundBriefingController.isClosed) {
+      _foregroundBriefingController.add(pending == 'morning');
     }
   }
 
@@ -426,7 +432,7 @@ class BriefingSchedulerService {
       DiagLogger.log(
         'Briefing',
         'notification_suppressed type=${isMorning ? 'morning' : 'evening'} '
-        'reason=app_foreground',
+            'reason=app_foreground',
       );
       debugPrint(
         'Briefing start notification suppressed: '
@@ -847,7 +853,9 @@ class BriefingSchedulerService {
       if (currentUserId != null && currentUserId.isNotEmpty) {
         return currentUserId;
       }
-    } catch (e) { debugPrint('BriefingScheduler 사용자ID 조회 무시: $e'); }
+    } catch (e) {
+      debugPrint('BriefingScheduler 사용자ID 조회 무시: $e');
+    }
 
     return null;
   }
