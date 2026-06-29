@@ -16,11 +16,14 @@ class GroupMemberScreen extends StatefulWidget {
     super.key,
     GroupMemberProvider? provider,
     String? currentUserIdOverride,
+    String? initialGroupId,
   })  : _provider = provider,
-        _currentUserIdOverride = currentUserIdOverride;
+        _currentUserIdOverride = currentUserIdOverride,
+        _initialGroupId = initialGroupId;
 
   final GroupMemberProvider? _provider;
   final String? _currentUserIdOverride;
+  final String? _initialGroupId;
 
   @override
   State<GroupMemberScreen> createState() => _GroupMemberScreenState();
@@ -48,7 +51,7 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
 
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
-    await _provider.load(userId);
+    await _provider.load(userId, preferredGroupId: widget._initialGroupId);
   }
 
   Future<void> _openGroupList() async {
@@ -66,7 +69,7 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
         return AlertDialog(
           title: const Text('멤버 제거'),
           content: Text(
-            '${member.userId} 멤버를 그룹에서 제거할까요?',
+            '${member.effectiveDisplayName} 멤버를 그룹에서 제거할까요?',
           ),
           actions: [
             TextButton(
@@ -92,6 +95,60 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${member.userId} 멤버를 제거했어요.')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
+    }
+  }
+
+  Future<void> _editMemberDisplayName(GroupMemberModel member) async {
+    final controller = TextEditingController(text: member.effectiveDisplayName);
+    final displayName = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('멤버 이름 변경'),
+          content: TextField(
+            key: const ValueKey('group-member-display-name-dialog-field'),
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: '표시 이름',
+              hintText: '예: 민수, 엄마, 디자인팀장',
+            ),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(controller.text),
+              child: const Text('저장'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (displayName == null) {
+      return;
+    }
+
+    try {
+      await _provider.updateMemberDisplayName(member, displayName);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('멤버 이름을 저장했어요.')),
       );
     } catch (error) {
       if (!mounted) {
@@ -281,6 +338,10 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
                   key: ValueKey<String>('group-member-item-${member.id}'),
                   member: member,
                   canRemove: _provider.canRemoveMember(member),
+                  canEditDisplayName:
+                      _provider.canEditMemberDisplayName(member),
+                  onEditDisplayNamePressed: () =>
+                      _editMemberDisplayName(member),
                   onRemovePressed: () => _confirmRemoveMember(member),
                 ),
               ),
@@ -410,11 +471,15 @@ class _MemberTile extends StatelessWidget {
     super.key,
     required this.member,
     required this.canRemove,
+    required this.canEditDisplayName,
+    required this.onEditDisplayNamePressed,
     required this.onRemovePressed,
   });
 
   final GroupMemberModel member;
   final bool canRemove;
+  final bool canEditDisplayName;
+  final VoidCallback onEditDisplayNamePressed;
   final VoidCallback onRemovePressed;
 
   @override
@@ -434,14 +499,38 @@ class _MemberTile extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  member.userId,
+                  member.effectiveDisplayName,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (canEditDisplayName) ...[
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  key: ValueKey<String>('group-member-rename-${member.id}'),
+                  onPressed: onEditDisplayNamePressed,
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('이름 변경'),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
               _InfoChip(label: _roleLabel(member.role)),
-              const SizedBox(width: 8),
               _InfoChip(label: _statusLabel(member.status)),
             ],
           ),
@@ -450,6 +539,12 @@ class _MemberTile extends StatelessWidget {
             spacing: 12,
             runSpacing: 6,
             children: [
+              Text(
+                member.secondaryLabel,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
+              ),
               Text(
                 _dateLabel('가입', member.joinedAt),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -473,14 +568,16 @@ class _MemberTile extends StatelessWidget {
           ),
           if (canRemove) ...[
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.tonalIcon(
-                key: ValueKey<String>('group-member-remove-${member.id}'),
-                onPressed: onRemovePressed,
-                icon: const Icon(Icons.remove_circle_outline),
-                label: const Text('제거'),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                FilledButton.tonalIcon(
+                  key: ValueKey<String>('group-member-remove-${member.id}'),
+                  onPressed: onRemovePressed,
+                  icon: const Icon(Icons.remove_circle_outline),
+                  label: const Text('제거'),
+                ),
+              ],
             ),
           ],
         ],

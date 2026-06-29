@@ -34,7 +34,7 @@ class GroupMemberProvider extends ChangeNotifier {
   bool get isPersonalMode => _state.isPersonalMode;
   bool get isLeaderOfSelectedGroup => _state.isLeaderOfSelectedGroup;
 
-  Future<void> load(String userId) async {
+  Future<void> load(String userId, {String? preferredGroupId}) async {
     if (userId.isEmpty) {
       _currentUserId = null;
       _setState(const GroupMemberState.initial());
@@ -50,7 +50,7 @@ class GroupMemberProvider extends ChangeNotifier {
     );
 
     try {
-      await _contextProvider.load(userId);
+      await _contextProvider.load(userId, preferredGroupId: preferredGroupId);
       if (_contextProvider.error != null) {
         throw StateError(_contextProvider.error!);
       }
@@ -75,7 +75,7 @@ class GroupMemberProvider extends ChangeNotifier {
       await load('');
       return;
     }
-    await load(userId);
+    await load(userId, preferredGroupId: _state.selectedGroup?.id);
   }
 
   Future<void> reload() async => refresh();
@@ -120,6 +120,43 @@ class GroupMemberProvider extends ChangeNotifier {
     }
   }
 
+  Future<GroupMemberModel> updateMemberDisplayName(
+    GroupMemberModel member,
+    String displayName,
+  ) async {
+    _requireCurrentUserId();
+    _requireSelectedGroup();
+    if (!_state.isLeaderOfSelectedGroup) {
+      throw StateError('멤버 이름을 변경할 권한이 없어요.');
+    }
+    if (!member.isActive) {
+      throw StateError('제거된 멤버의 이름은 변경할 수 없어요.');
+    }
+
+    _setState(
+      _state.copyWith(
+        isSubmitting: true,
+        clearError: true,
+      ),
+    );
+    try {
+      final updated = await _repository.updateMemberDisplayName(
+        member.id,
+        displayName,
+      );
+      await _reloadMembers();
+      return updated;
+    } catch (error) {
+      _setState(
+        _state.copyWith(
+          isSubmitting: false,
+          error: error.toString(),
+        ),
+      );
+      rethrow;
+    }
+  }
+
   bool canRemoveMember(GroupMemberModel member) {
     final currentUserId = _currentUserId;
     if (currentUserId == null || currentUserId.isEmpty) {
@@ -138,6 +175,10 @@ class GroupMemberProvider extends ChangeNotifier {
       return false;
     }
     return true;
+  }
+
+  bool canEditMemberDisplayName(GroupMemberModel member) {
+    return _state.isLeaderOfSelectedGroup && member.isActive;
   }
 
   Future<void> _reloadMembers() async {
@@ -174,7 +215,8 @@ class GroupMemberProvider extends ChangeNotifier {
   List<GroupMemberModel> _sortMembers(List<GroupMemberModel> members) {
     final sorted = members.toList(growable: false);
     sorted.sort((a, b) {
-      final statusOrder = _statusOrder(a.status).compareTo(_statusOrder(b.status));
+      final statusOrder =
+          _statusOrder(a.status).compareTo(_statusOrder(b.status));
       if (statusOrder != 0) {
         return statusOrder;
       }
@@ -182,8 +224,10 @@ class GroupMemberProvider extends ChangeNotifier {
       if (roleOrder != 0) {
         return roleOrder;
       }
-      final aJoined = a.joinedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final bJoined = b.joinedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final aJoined =
+          a.joinedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bJoined =
+          b.joinedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       return aJoined.compareTo(bJoined);
     });
     return sorted;

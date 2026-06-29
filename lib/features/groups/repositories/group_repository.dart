@@ -23,15 +23,29 @@ abstract class GroupRepository {
 
   Future<GroupMemberModel> updateMember(GroupMemberModel member);
 
+  Future<GroupMemberModel> updateMemberDisplayName(
+    String memberId,
+    String? displayName,
+  ) async {
+    throw UnimplementedError();
+  }
+
   Future<GroupMemberModel> removeGroupMember(
     String groupId,
     String userId,
   ) async {
     throw UnimplementedError();
   }
+
+  Future<void> deleteGroup(String groupId) async {
+    throw UnimplementedError();
+  }
 }
 
 class SupabaseGroupRepository extends GroupRepository {
+  static const _memberUserSelect =
+      '*, users!group_members_user_id_fkey(display_name,name,email,invite_code)';
+
   SupabaseGroupRepository({
     SupabaseClient? client,
     String? Function()? currentUserIdProvider,
@@ -77,12 +91,17 @@ class SupabaseGroupRepository extends GroupRepository {
 
   @override
   Future<GroupModel> createGroup(GroupModel group) async {
-    final response = await _client
-        .from('groups')
-        .insert(group.toJson(includeId: group.id.trim().isNotEmpty))
-        .select()
-        .single();
-    return GroupModel.fromJson(_rowAsJson(response));
+    // INSERT...RETURNING은 PostgreSQL READ COMMITTED 스냅샷 특성상 같은 statement 내
+    // AFTER 트리거(handle_new_group → group_members INSERT)가 보이지 않아
+    // is_group_member → FALSE → SELECT 정책 42501이 발생한다.
+    // security definer RPC로 우회하면 트리거는 정상 작동하고 RLS 스냅샷 문제를 피할 수 있다.
+    final response = await _client.rpc('create_group_for_user', params: {
+      'p_name': group.name,
+      'p_description': group.description,
+      'p_created_by': group.createdBy,
+      'p_status': group.status,
+    });
+    return GroupModel.fromJson(Map<String, dynamic>.from(response as Map));
   }
 
   @override
@@ -100,7 +119,7 @@ class SupabaseGroupRepository extends GroupRepository {
   Future<List<GroupMemberModel>> listMembers(String groupId) async {
     final response = await _client
         .from('group_members')
-        .select()
+        .select(_memberUserSelect)
         .eq('group_id', groupId)
         .order('created_at', ascending: true);
     return response
@@ -132,6 +151,23 @@ class SupabaseGroupRepository extends GroupRepository {
   }
 
   @override
+  Future<GroupMemberModel> updateMemberDisplayName(
+    String memberId,
+    String? displayName,
+  ) async {
+    final trimmed = displayName?.trim();
+    final response = await _client
+        .from('group_members')
+        .update(<String, dynamic>{
+          'display_name': trimmed == null || trimmed.isEmpty ? null : trimmed,
+        })
+        .eq('id', memberId)
+        .select(_memberUserSelect)
+        .single();
+    return GroupMemberModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
   Future<GroupMemberModel> removeGroupMember(
     String groupId,
     String userId,
@@ -141,8 +177,7 @@ class SupabaseGroupRepository extends GroupRepository {
       groupId,
       currentUserId,
     );
-    final response =
-        await (_removeGroupMemberRpc ?? _removeGroupMemberWithRpc)(
+    final response = await (_removeGroupMemberRpc ?? _removeGroupMemberWithRpc)(
       groupId,
       userId,
     );
@@ -184,6 +219,14 @@ class SupabaseGroupRepository extends GroupRepository {
     if (response == null) {
       throw StateError('팀 리더만 멤버를 제거할 수 있습니다.');
     }
+  }
+
+  @override
+  Future<void> deleteGroup(String groupId) async {
+    await _client.rpc(
+      'delete_group_for_user',
+      params: {'p_group_id': groupId},
+    );
   }
 
   Map<String, dynamic> _rowAsJson(Object row) {

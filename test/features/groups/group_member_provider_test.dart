@@ -73,6 +73,26 @@ class FakeGroupRepository extends GroupRepository {
   }
 
   @override
+  Future<GroupMemberModel> updateMemberDisplayName(
+    String memberId,
+    String? displayName,
+  ) async {
+    for (final entry in membersByGroupId.entries) {
+      final index = entry.value.indexWhere((item) => item.id == memberId);
+      if (index == -1) {
+        continue;
+      }
+      final updated = entry.value[index].copyWith(
+        displayName: displayName,
+        clearDisplayName: displayName == null || displayName.trim().isEmpty,
+      );
+      entry.value[index] = updated;
+      return updated;
+    }
+    throw StateError('missing member');
+  }
+
+  @override
   Future<GroupMemberModel> removeGroupMember(
     String groupId,
     String userId,
@@ -279,6 +299,50 @@ void main() {
     expect(removed.removedBy, 'user-1');
     expect(removed.removedAt, isNotNull);
     expect(provider.members.last.status, 'removed');
+  });
+
+  test('leader updates member display name', () async {
+    final repository = FakeGroupRepository(
+      groups: <GroupModel>[
+        _group(
+          id: 'group-1',
+          name: 'Leader Group',
+          createdBy: 'user-1',
+          createdAt: DateTime.utc(2026, 6, 11),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          _member(
+            id: 'leader-1',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'leader',
+            createdAt: DateTime.utc(2026, 6, 11, 1),
+          ),
+          _member(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'user-2',
+            role: 'member',
+            createdAt: DateTime.utc(2026, 6, 11, 2),
+          ),
+        ],
+      },
+    );
+    final provider = GroupMemberProvider(
+      contextProvider: GroupContextProvider(repository: repository),
+      repository: repository,
+    );
+
+    await provider.load('user-1');
+    final updated = await provider.updateMemberDisplayName(
+      provider.members.last,
+      '민수',
+    );
+
+    expect(updated.displayName, '민수');
+    expect(provider.members.last.effectiveDisplayName, '민수');
   });
 
   test('records error state when repository load fails', () async {
