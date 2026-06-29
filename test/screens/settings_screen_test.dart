@@ -428,9 +428,30 @@ void main() {
     );
 
     await tester.pumpAndSettle();
+    expect(find.text('익명 공통 개선 참여'), findsNothing);
+    expect(find.text('검증된 공통 교정 사용'), findsOneWidget);
     final section = find.text('스마트 출발 알림 설정');
     await _scrollUntilHitTestable(tester, section);
     expect(section, findsOneWidget);
+    final planFlowNotificationNotice = find.byKey(
+      const ValueKey('settings-planflow-notification-notice'),
+    );
+    expect(planFlowNotificationNotice, findsOneWidget);
+    final noticeCard = find.ancestor(
+      of: planFlowNotificationNotice,
+      matching: find.byType(Card),
+    );
+    expect(
+      find.descendant(
+        of: noticeCard,
+        matching: find.text('스마트 출발 알림 설정'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: noticeCard, matching: find.text('캘린더 연동')),
+      findsNothing,
+    );
     expect(find.text('출발 여유 시간'), findsOneWidget);
     expect(find.text('출발 사전 알림'), findsOneWidget);
     expect(find.text('출발 알림 반복 주기'), findsOneWidget);
@@ -1113,6 +1134,7 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
   Future<BriefingDailyScheduleResult> scheduleDaily({
     required String morningTime,
     required String eveningTime,
+    bool briefingEnabled = true,
     String? userId,
   }) async {
     callCount += 1;

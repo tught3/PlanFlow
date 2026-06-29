@@ -578,7 +578,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
   }
 
-
   Future<void> _loadNotificationPermissionStatus() async {
     final status = await _notificationService.checkPermissionStatus();
     if (!mounted) return;
@@ -2011,7 +2010,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       initialTime: isMorning ? _morningBriefingAt : _eveningBriefingAt,
       builder: (context, child) {
         return MediaQuery(
-          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: _use24HourFormat),
+          data: MediaQuery.of(context)
+              .copyWith(alwaysUse24HourFormat: _use24HourFormat),
           child: child ?? const SizedBox.shrink(),
         );
       },
@@ -2690,6 +2690,25 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  Widget _buildPlanFlowNotificationNotice() {
+    return Container(
+      key: const ValueKey('settings-planflow-notification-notice'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.primaryFaint.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: PlanFlowColors.primaryFaint),
+      ),
+      child: Text(
+        '알림은 PlanFlow 기준으로 울립니다. 외부 캘린더 앱의 기본 알림이 켜져 있으면 해당 앱에서도 알림이 울릴 수 있어요.',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+    );
+  }
+
   Widget _buildSmartAlarmSettings() {
     return _SectionCard(
       title: '스마트 출발 알림 설정',
@@ -2697,6 +2716,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildPlanFlowNotificationNotice(),
+          const SizedBox(height: 16),
           _SmartAlarmControl(
             title: '출발 여유 시간',
             helperText: '이동시간에 더해 늦지 않도록 미리 출발할 여유를 둡니다.',
@@ -2855,7 +2876,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final contentMaxWidth = context.planflowWindowInfo.contentMaxWidth;
@@ -2902,12 +2922,15 @@ class _SettingsScreenState extends State<SettingsScreen>
                       key: const ValueKey('settings-briefing-enabled-toggle'),
                       title: const Text('브리핑 알람 사용'),
                       subtitle: Text(
-                        _briefingEnabled ? '브리핑 알람이 활성화되어 있습니다.' : '브리핑 알람이 꺼져 있습니다.',
+                        _briefingEnabled
+                            ? '브리핑 알람이 활성화되어 있습니다.'
+                            : '브리핑 알람이 꺼져 있습니다.',
                         style: TextStyle(
                           fontSize: 12,
                           color: _briefingEnabled
                               ? PlanFlowColors.textSecondary
-                              : PlanFlowColors.textSecondary.withValues(alpha: 0.6),
+                              : PlanFlowColors.textSecondary
+                                  .withValues(alpha: 0.6),
                         ),
                       ),
                       value: _briefingEnabled,
@@ -3071,9 +3094,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                       value: _voiceCommonLearningOptIn,
                       activeThumbColor: PlanFlowColors.primary,
                       activeTrackColor: PlanFlowColors.primaryFaint,
-                      title: const Text('익명 공통 개선 참여'),
+                      title: const Text('검증된 공통 교정 사용'),
                       subtitle: const Text(
-                        '이 스위치를 켠 경우에만 사람·장소·메모를 뺀 최소 패턴을 익명으로 모아 전체 AI 학습 능력 향상에 참고합니다. 끄면 내 개인 교정에만 사용합니다.',
+                        '켜면 관리자가 검증한 공통 교정 패턴을 내 음성 입력과 일정 정리에 함께 참고합니다. 내 교정 패턴은 내 계정에만 저장됩니다.',
                       ),
                       onChanged: _voiceCorrectionLearningEnabled
                           ? (value) {
@@ -3122,27 +3145,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: PlanFlowColors.primaryFaint.withValues(
-                            alpha: 0.42,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: PlanFlowColors.primaryFaint,
-                          ),
-                        ),
-                        child: Text(
-                          '알림은 PlanFlow 기준으로 울립니다. 외부 캘린더 앱의 기본 알림이 켜져 있으면 해당 앱에서도 알림이 울릴 수 있어요.',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: PlanFlowColors.textPrimary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
                       _StatusRow(
                         label: 'Google Calendar',
                         value: _googleCalendarSimpleStatusLabel(),
@@ -3828,4 +3830,3 @@ class _SettingsScreenState extends State<SettingsScreen>
     };
   }
 }
-
