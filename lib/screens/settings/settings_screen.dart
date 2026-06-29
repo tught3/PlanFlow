@@ -2686,9 +2686,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       children: [
                         Expanded(
                           child: Text(
-                            _use24HourFormat
-                                ? '24시간제(14:30)'
-                                : '12시간제(오전 2:30)',
+                            _use24HourFormat ? '24시간제' : '12시간제',
                             style: theme.textTheme.titleSmall?.copyWith(
                               color: PlanFlowColors.primary,
                               fontWeight: FontWeight.w700,
@@ -3021,7 +3019,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           maxWidth: contentMaxWidth,
           child: ListView(
             controller: _settingsScrollController,
-            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            padding: EdgeInsets.fromLTRB(
+              AppConstants.defaultPadding,
+              AppConstants.defaultPadding,
+              AppConstants.defaultPadding,
+              AppConstants.defaultPadding + 80,
+            ),
             children: [
               _AccountSection(
                 authService: _authService,
