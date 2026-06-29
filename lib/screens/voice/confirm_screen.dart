@@ -225,6 +225,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   final GlobalKey _suppliesKey = GlobalKey();
   late final List<_SupplyDraft> _supplies;
   late final List<_PreActionDraft> _preActions;
+  late List<String> _participants;
+  late List<String> _targets;
   late DateTime _startAt;
   DateTime? _endAt;
   double? _locationLat;
@@ -265,8 +267,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _initialParsedForLearning = Map<String, dynamic>.from(
       widget.parsedSchedule,
     );
-    final rawTextForLocalParse =
-        _stringValue(widget.parsedSchedule['raw_text']);
+    final rawTextForLocalParse = _stringValue(
+      widget.parsedSchedule['raw_text'],
+    );
     final parsedTitle = _stringValue(widget.parsedSchedule['title']) ?? '';
     // parse_pending이면 GPT 결과를 기다리는 동안 제목이 비어 보임.
     // rawText로 로컬 파싱 제목을 즉시 채워 1초대에 표시되도록 한다.
@@ -274,8 +277,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     final initialTitle = parsedTitle.isNotEmpty
         ? parsedTitle
         : (rawTextForLocalParse != null && rawTextForLocalParse.isNotEmpty
-            ? const VoiceScheduleStructureService()
-                .normalizeLocalVoiceTitle(rawTextForLocalParse)
+            ? const VoiceScheduleStructureService().normalizeLocalVoiceTitle(
+                rawTextForLocalParse,
+              )
             : '');
     _titleController = TextEditingController(text: initialTitle);
     _locationController = TextEditingController(
@@ -289,8 +293,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       widget.parsedSchedule['supplies'],
     ).map(_SupplyDraft.new).toList(growable: true);
     _preActions = _initialPreActions();
-    _detailsSectionInitiallyExpanded =
-        _supplies.isNotEmpty || _hasExplicitPreActions(widget.parsedSchedule);
+    _participants = _stringListValue(widget.parsedSchedule['participants']);
+    _targets = _stringListValue(widget.parsedSchedule['targets']);
+    _detailsSectionInitiallyExpanded = _supplies.isNotEmpty ||
+        _participants.isNotEmpty ||
+        _targets.isNotEmpty ||
+        _hasExplicitPreActions(widget.parsedSchedule);
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
     _setAmbiguousTimeFromParsed(widget.parsedSchedule);
@@ -426,14 +434,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       normalizedCandidate.replaceAll(RegExp(r'\s+'), ''),
     );
     return title
-        .replaceFirst(
-          RegExp('^\\s*$escaped\\s*(?:에서|으로|로|에)?\\s*'),
-          '',
-        )
-        .replaceFirst(
-          RegExp('^\\s*$compactEscaped\\s*(?:에서|으로|로|에)?\\s*'),
-          '',
-        )
+        .replaceFirst(RegExp('^\\s*$escaped\\s*(?:에서|으로|로|에)?\\s*'), '')
+        .replaceFirst(RegExp('^\\s*$compactEscaped\\s*(?:에서|으로|로|에)?\\s*'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
@@ -519,9 +521,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     try {
       final gpsFuture = _permissionService
-          .getCurrentLocationWithPermission(
-        requestIfMissing: false,
-      )
+          .getCurrentLocationWithPermission(requestIfMissing: false)
           .catchError((Object error, StackTrace stackTrace) {
         debugPrint('ConfirmScreen background GPS lookup skipped: $error');
         debugPrintStack(stackTrace: stackTrace);
@@ -589,9 +589,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     try {
       final gpsFuture = _permissionService
-          .getCurrentLocationWithPermission(
-        requestIfMissing: false,
-      )
+          .getCurrentLocationWithPermission(requestIfMissing: false)
           .catchError((Object error, StackTrace stackTrace) {
         debugPrint('ConfirmScreen save-time GPS lookup skipped: $error');
         debugPrintStack(stackTrace: stackTrace);
@@ -725,9 +723,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       }
 
       if (parsed['parse_failed'] == true) {
-        unawaited(
-          AnalyticsService.logScheduleParseFailed(reason: 'fallback'),
-        );
+        unawaited(AnalyticsService.logScheduleParseFailed(reason: 'fallback'));
       }
 
       if (parsed['parse_failed'] != true) {
@@ -770,6 +766,15 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           _detailsSectionInitiallyExpanded = true;
         }
 
+        final participants = _stringListValue(parsed['participants']);
+        if (participants.isNotEmpty && _participants.isEmpty) {
+          _participants = participants;
+        }
+        final targets = _stringListValue(parsed['targets']);
+        if (targets.isNotEmpty && _targets.isEmpty) {
+          _targets = targets;
+        }
+
         final parsedPreActions = _preActionsFromValue(
           _smartPreparationAlarmValues(parsed),
         );
@@ -802,9 +807,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       unawaited(_resolveLocationCoordinatesIfNeeded());
     } catch (error) {
       if (mounted) {
-        unawaited(
-          AnalyticsService.logScheduleParseFailed(reason: 'gpt_error'),
-        );
+        unawaited(AnalyticsService.logScheduleParseFailed(reason: 'gpt_error'));
         setState(() {
           _hydrateMessage = '일정을 바로 정리하지 못했어요. 필요한 내용만 직접 수정해 주세요.';
         });
@@ -967,8 +970,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             .map((draft) => draft.titleController.text.trim())
             .where((item) => item.isNotEmpty),
       ),
-      participants: const <String>[],
-      targets: const <String>[],
+      participants: List<String>.unmodifiable(_participants),
+      targets: List<String>.unmodifiable(_targets),
       isCritical: _isCritical,
       useStrongAlarm: _strongAlarm,
       recurrenceRule: _recurrenceSelection.toRRule(),
@@ -1166,10 +1169,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(
-          color: PlanFlowColors.primaryFaint,
-          width: 0.8,
-        ),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.8),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -1337,15 +1337,14 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return values[rawText.replaceAll(' ', '')];
   }
 
-  Future<void> _recordVoiceCorrectionLearning({
-    required String userId,
-  }) async {
+  Future<void> _recordVoiceCorrectionLearning({required String userId}) async {
     if (!AppEnv.isSupabaseReady) {
       return;
     }
     try {
-      final settings =
-          await SettingsRepository.supabase().fetchSettings(userId);
+      final settings = await SettingsRepository.supabase().fetchSettings(
+        userId,
+      );
       if (settings?.voiceCorrectionLearningEnabled == false) {
         return;
       }
@@ -1353,8 +1352,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           VoiceCorrectionRuleRepository.supabase();
       final rules = <VoiceCorrectionRule>[];
 
-      final originalStt =
-          _stringValue(widget.parsedSchedule['stt_original_text']);
+      final originalStt = _stringValue(
+        widget.parsedSchedule['stt_original_text'],
+      );
       final rawText = _stringValue(widget.parsedSchedule['raw_text']);
       if (widget.parsedSchedule['manual_text_confirmed'] == true &&
           originalStt != null &&
@@ -1373,10 +1373,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
       final initial = _initialParsedForLearning ?? widget.parsedSchedule;
       rules.addAll(
-        _extractParseCorrectionRules(
-          userId: userId,
-          initial: initial,
-        ),
+        _extractParseCorrectionRules(userId: userId, initial: initial),
       );
 
       var recorded = false;
@@ -1476,42 +1473,37 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       () => widget.backend.insertPreActions(preActionPayloads),
       label: 'pre_actions',
     );
-    await _tryFollowUp(
-      () {
-        DiagLogger.log('SmartPrep',
-            'payloads=${preActionPayloads.length} loc="${event.location ?? ''}"');
-        return widget.smartPreparationAlarmService.schedulePayloads(
-          eventId: event.id,
-          eventTitle: event.title,
-          payloads: preActionPayloads,
-          notificationKeyPrefix: 'pre_action',
-        );
-      },
-      label: 'smart_preparation_alarm_notifications',
-    );
+    await _tryFollowUp(() {
+      DiagLogger.log(
+        'SmartPrep',
+        'payloads=${preActionPayloads.length} loc="${event.location ?? ''}"',
+      );
+      return widget.smartPreparationAlarmService.schedulePayloads(
+        eventId: event.id,
+        eventTitle: event.title,
+        payloads: preActionPayloads,
+        notificationKeyPrefix: 'pre_action',
+      );
+    }, label: 'smart_preparation_alarm_notifications');
     await _tryFollowUp(
       () => widget.backend.insertReminders(reminderPayloads),
       label: 'reminders',
     );
-    await _tryFollowUp(
-      () async {
-        final result = await const DepartureAlarmService().scheduleForEvent(
-          event,
-          safetyMarginOverride: departureSafetyMargin,
-        );
-        final hasCoords =
-            event.locationLat != null && event.locationLng != null;
-        // 릴리즈 기기에서도 확인 가능하도록 DiagLogger로 등록/스킵 사유를 남긴다.
-        DiagLogger.log(
-          'DepartureAlarm',
-          result.isScheduled
-              ? 'scheduled hasCoords=$hasCoords loc="${event.location ?? ''}"'
-              : 'skipped reason=${result.skippedReason ?? 'unknown'} '
-                  'hasCoords=$hasCoords loc="${event.location ?? ''}"',
-        );
-      },
-      label: 'departure_alarm',
-    );
+    await _tryFollowUp(() async {
+      final result = await const DepartureAlarmService().scheduleForEvent(
+        event,
+        safetyMarginOverride: departureSafetyMargin,
+      );
+      final hasCoords = event.locationLat != null && event.locationLng != null;
+      // 릴리즈 기기에서도 확인 가능하도록 DiagLogger로 등록/스킵 사유를 남긴다.
+      DiagLogger.log(
+        'DepartureAlarm',
+        result.isScheduled
+            ? 'scheduled hasCoords=$hasCoords loc="${event.location ?? ''}"'
+            : 'skipped reason=${result.skippedReason ?? 'unknown'} '
+                'hasCoords=$hasCoords loc="${event.location ?? ''}"',
+      );
+    }, label: 'departure_alarm');
 
     final location = _emptyToNull(_locationController.text);
     if (location != null) {
@@ -1567,26 +1559,23 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           eventStartAt.isAfter(reminderNow)) {
         eventReminderNotifyAt = eventStartAt;
       }
-      await _tryFollowUp(
-        () async {
-          final result =
-              await widget.notificationService.scheduleEventReminderWithResult(
-            id: widget.notificationService.notificationIdFor(
-              '${event.id}:push',
-            ),
-            title: event.title,
-            body: '일정 시작: ${event.title}',
-            notifyAt: eventReminderNotifyAt,
-            payload: 'event:${event.id}',
-          );
-          _recordAlarmScheduleResult(
-            result,
-            label: 'local_event_reminder',
-            failures: alarmFailures,
-          );
-        },
-        label: 'local_event_reminder',
-      );
+      await _tryFollowUp(() async {
+        final result =
+            await widget.notificationService.scheduleEventReminderWithResult(
+          id: widget.notificationService.notificationIdFor(
+            '${event.id}:push',
+          ),
+          title: event.title,
+          body: '일정 시작: ${event.title}',
+          notifyAt: eventReminderNotifyAt,
+          payload: 'event:${event.id}',
+        );
+        _recordAlarmScheduleResult(
+          result,
+          label: 'local_event_reminder',
+          failures: alarmFailures,
+        );
+      }, label: 'local_event_reminder');
     }
     return _PostSaveFollowUpResult(alarmFailures: alarmFailures);
   }
@@ -1613,26 +1602,23 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
-    await _tryFollowUp(
-      () async {
-        final result =
-            await widget.notificationService.scheduleCriticalAlarmWithResult(
-          id: widget.notificationService.notificationIdFor(
-            '${event.id}:critical',
-          ),
-          title: event.title,
-          notifyAt: notifyAt,
-          body: '중요 일정이 곧 시작됩니다.',
-          payload: 'event:${event.id}',
-        );
-        _recordAlarmScheduleResult(
-          result,
-          label: 'critical_alarm',
-          failures: alarmFailures,
-        );
-      },
-      label: 'critical_alarm',
-    );
+    await _tryFollowUp(() async {
+      final result =
+          await widget.notificationService.scheduleCriticalAlarmWithResult(
+        id: widget.notificationService.notificationIdFor(
+          '${event.id}:critical',
+        ),
+        title: event.title,
+        notifyAt: notifyAt,
+        body: '중요 일정이 곧 시작됩니다.',
+        payload: 'event:${event.id}',
+      );
+      _recordAlarmScheduleResult(
+        result,
+        label: 'critical_alarm',
+        failures: alarmFailures,
+      );
+    }, label: 'critical_alarm');
   }
 
   void _recordAlarmScheduleResult(
@@ -1920,8 +1906,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           emptyTitle: fallbackEvent.startAt == null
               ? '예정된 일정이 없어요'
               : fallbackEvent.title,
-          nextTravelBufferMinutes:
-              await _resolveTravelBufferMinutesForWidget(nextEvent),
+          nextTravelBufferMinutes: await _resolveTravelBufferMinutesForWidget(
+            nextEvent,
+          ),
         ),
       );
     } catch (e) {
@@ -2254,8 +2241,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         Card(
                           color: theme.colorScheme.errorContainer,
                           child: const Padding(
-                            padding:
-                                EdgeInsets.all(AppConstants.defaultPadding),
+                            padding: EdgeInsets.all(
+                              AppConstants.defaultPadding,
+                            ),
                             child: Text('자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
                           ),
                         ),
@@ -2361,13 +2349,26 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         onLocationPick: _lookupLocation,
                         extraAfterLocation: KeyedSubtree(
                           key: _suppliesKey,
-                          child: _SuppliesEditor(
-                            supplies: _supplies,
-                            newSupplyController: _newSupplyController,
-                            newSupplyFocusNode: _newSupplyFocusNode,
-                            errorText: _supplyErrorText,
-                            onAdd: _addSupplyFromInput,
-                            onRemove: _removeSupply,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (_participants.isNotEmpty ||
+                                  _targets.isNotEmpty) ...[
+                                _PeopleFieldsCard(
+                                  participants: _participants,
+                                  targets: _targets,
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              _SuppliesEditor(
+                                supplies: _supplies,
+                                newSupplyController: _newSupplyController,
+                                newSupplyFocusNode: _newSupplyFocusNode,
+                                errorText: _supplyErrorText,
+                                onAdd: _addSupplyFromInput,
+                                onRemove: _removeSupply,
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -2377,8 +2378,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         icon: _isSaving
                             ? const SizedBox.square(
                                 dimension: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.save),
                         label: Text(_isSaving ? '저장 중' : '일정 저장'),
@@ -2480,10 +2482,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 }
 
 class _AmbiguousMeridiemClock {
-  const _AmbiguousMeridiemClock({
-    required this.hour,
-    required this.minute,
-  });
+  const _AmbiguousMeridiemClock({required this.hour, required this.minute});
 
   factory _AmbiguousMeridiemClock.fromDateTime(DateTime value) {
     final hour = value.hour == 0

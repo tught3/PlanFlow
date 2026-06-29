@@ -23,90 +23,95 @@ void main() {
   });
 
   testWidgets(
-      'ConfirmScreen shows a smart preparation card from both add buttons',
-      (tester) async {
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(memo: null),
-          backend: _FakeConfirmBackend(),
-          eventRepository: _FakeEventRepository(),
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
+    'ConfirmScreen shows a smart preparation card from both add buttons',
+    (tester) async {
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(memo: null),
+            backend: _FakeConfirmBackend(),
+            eventRepository: _FakeEventRepository(),
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
         ),
-      ),
-    );
+      );
 
-    await tester.ensureVisible(find.text('설명 · 준비물'));
-    await tester.pump(const Duration(milliseconds: 200));
-    await tester.tap(find.text('설명 · 준비물'));
-    await tester.pump(const Duration(milliseconds: 200));
+      await tester.ensureVisible(find.text('설명 · 준비물'));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.tap(find.text('설명 · 준비물'));
+      await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('스마트 준비 알람 1'), findsOneWidget);
+      expect(find.text('스마트 준비 알람 1'), findsOneWidget);
 
-    await tester.ensureVisible(find.widgetWithText(TextButton, '추가'));
-    await tester.tap(find.widgetWithText(TextButton, '추가'));
-    await tester.pump(const Duration(milliseconds: 200));
+      await tester.ensureVisible(find.widgetWithText(TextButton, '추가'));
+      await tester.tap(find.widgetWithText(TextButton, '추가'));
+      await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('스마트 준비 알람 2'), findsOneWidget);
-  });
+      expect(find.text('스마트 준비 알람 2'), findsOneWidget);
+    },
+  );
 
   testWidgets(
-      'ConfirmScreen schedules critical alarm when important is enabled',
-      (tester) async {
-    final backend = _FakeConfirmBackend();
-    final notifications = _FakeNotificationService();
-    final repository = _FakeEventRepository();
+    'ConfirmScreen schedules critical alarm when important is enabled',
+    (tester) async {
+      final backend = _FakeConfirmBackend();
+      final notifications = _FakeNotificationService();
+      final repository = _FakeEventRepository();
 
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(
-            isCritical: true,
-            startAt: DateTime.now().add(const Duration(hours: 2)),
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(
+              isCritical: true,
+              startAt: DateTime.now().add(const Duration(hours: 2)),
+            ),
+            backend: backend,
+            eventRepository: repository,
+            notificationService: notifications,
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
           ),
-          backend: backend,
-          eventRepository: repository,
-          notificationService: notifications,
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
         ),
-      ),
-    );
+      );
 
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    for (var i = 0;
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      for (
+        var i = 0;
         i < 30 &&
             (notifications.criticalAlarmTitles.isEmpty ||
                 backend.reminderPayloads
                     .where((row) => row['type'] == 'system_alarm')
                     .isEmpty);
-        i += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+        i += 1
+      ) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
-    expect(repository.createdEvents, hasLength(1));
-    expect(
-      backend.reminderPayloads.where((row) => row['type'] == 'system_alarm'),
-      hasLength(1),
-    );
-    expect(notifications.criticalAlarmTitles, contains('성남 출발'));
-    expect(
-      notifications.criticalAlarmNotifyAts.single.difference(
-        repository.createdEvents.single.startAt!,
-      ),
-      Duration.zero,
-    );
-  });
+      expect(repository.createdEvents, hasLength(1));
+      expect(
+        backend.reminderPayloads.where((row) => row['type'] == 'system_alarm'),
+        hasLength(1),
+      );
+      expect(notifications.criticalAlarmTitles, contains('성남 출발'));
+      expect(
+        notifications.criticalAlarmNotifyAts.single.difference(
+          repository.createdEvents.single.startAt!,
+        ),
+        Duration.zero,
+      );
+    },
+  );
 
-  testWidgets('ConfirmScreen surfaces local reminder scheduling failures',
-      (tester) async {
+  testWidgets('ConfirmScreen surfaces local reminder scheduling failures', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
     final notifyAt = DateTime.now().add(const Duration(hours: 2));
     final notifications = _FakeNotificationService(
@@ -134,26 +139,61 @@ void main() {
 
     await tester.ensureVisible(find.text('일정 저장'));
     await tester.tap(find.text('일정 저장'));
-    for (var i = 0;
-        i < 40 &&
-            find
-                .text('일정은 저장했지만 알림 권한이 꺼져 있어 알람을 예약하지 못했어요.')
-                .evaluate()
-                .isEmpty;
-        i += 1) {
+    for (
+      var i = 0;
+      i < 40 &&
+          find.text('일정은 저장했지만 알림 권한이 꺼져 있어 알람을 예약하지 못했어요.').evaluate().isEmpty;
+      i += 1
+    ) {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
     expect(repository.createdEvents, hasLength(1));
     expect(notifications.eventReminderTitles, contains('성남 출발'));
-    expect(
-      find.text('일정은 저장했지만 알림 권한이 꺼져 있어 알람을 예약하지 못했어요.'),
-      findsOneWidget,
-    );
+    expect(find.text('일정은 저장했지만 알림 권한이 꺼져 있어 알람을 예약하지 못했어요.'), findsOneWidget);
   });
 
-  testWidgets('ConfirmScreen preserves parsed recurrence when saving',
-      (tester) async {
+  testWidgets('ConfirmScreen saves parsed participants and targets', (
+    tester,
+  ) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            participants: const <String>['팀장님'],
+            targets: const <String>['김대리'],
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    expect(find.text('참석자 · 대상'), findsOneWidget);
+    expect(find.text('팀장님'), findsOneWidget);
+    expect(find.text('김대리'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0; i < 30 && repository.createdEvents.isEmpty; i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(repository.createdEvents.single.participants, <String>['팀장님']);
+    expect(repository.createdEvents.single.targets, <String>['김대리']);
+  });
+
+  testWidgets('ConfirmScreen preserves parsed recurrence when saving', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
 
     await tester.pumpWidget(
@@ -187,8 +227,9 @@ void main() {
     );
   });
 
-  testWidgets('ConfirmScreen save leaves voice stack for calendar tab',
-      (tester) async {
+  testWidgets('ConfirmScreen save leaves voice stack for calendar tab', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
 
     await tester.pumpWidget(
@@ -220,32 +261,35 @@ void main() {
     expect(find.text('음성 입력'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen shows login guidance when save session is missing',
-      (tester) async {
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(),
-          backend: _FakeConfirmBackend(),
-          eventRepository: _ThrowingEventRepository(),
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
+  testWidgets(
+    'ConfirmScreen shows login guidance when save session is missing',
+    (tester) async {
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(),
+            backend: _FakeConfirmBackend(),
+            eventRepository: _ThrowingEventRepository(),
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
         ),
-      ),
-    );
+      );
 
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    await tester.pump(const Duration(milliseconds: 200));
+      await tester.ensureVisible(find.text('일정 저장'));
+      await tester.tap(find.text('일정 저장'));
+      await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('로그인 상태를 다시 확인해 주세요.'), findsOneWidget);
-  });
+      expect(find.text('로그인 상태를 다시 확인해 주세요.'), findsOneWidget);
+    },
+  );
 
-  testWidgets('ConfirmScreen warns before saving overlapping events',
-      (tester) async {
+  testWidgets('ConfirmScreen warns before saving overlapping events', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
     final existingStart = DateTime.now().add(const Duration(hours: 3));
     repository.createdEvents.add(
@@ -294,44 +338,52 @@ void main() {
     expect(find.text('일정이 겹쳐요'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen opens location picker even when location is empty',
-      (tester) async {
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(location: ''),
-          backend: _FakeConfirmBackend(),
-          eventRepository: _FakeEventRepository(),
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
+  testWidgets(
+    'ConfirmScreen opens location picker even when location is empty',
+    (tester) async {
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule: _parsedSchedule(location: ''),
+            backend: _FakeConfirmBackend(),
+            eventRepository: _FakeEventRepository(),
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+            locationLookupService: _EmptyLocationLookupService(),
+            permissionService: _DeniedPermissionService(),
+          ),
         ),
-      ),
-    );
+      );
 
-    await tester.ensureVisible(find.byTooltip('지도에서 위치 선택'));
-    await tester.tap(find.byTooltip('지도에서 위치 선택'));
-    await tester.pump(const Duration(milliseconds: 500));
-    if (find.text('위치 권한이 필요해요').evaluate().isNotEmpty) {
-      await tester.tap(find.text('계속 선택'));
+      await tester.ensureVisible(find.byTooltip('지도에서 위치 선택'));
+      await tester.tap(find.byTooltip('지도에서 위치 선택'));
       await tester.pump(const Duration(milliseconds: 500));
-    }
-    for (var i = 0;
+      if (find.text('위치 권한이 필요해요').evaluate().isNotEmpty) {
+        await tester.tap(find.text('계속 선택'));
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+      for (
+        var i = 0;
         i < 20 && find.text('지도에서 장소 선택').evaluate().isEmpty;
-        i += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
+        i += 1
+      ) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
-    expect(find.text('지도에서 장소 선택'), findsOneWidget);
-    expect(find.byKey(const ValueKey('location-search-field')), findsOneWidget);
-    expect(find.text('검색'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 5));
-  });
+      expect(find.text('지도에서 장소 선택'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('location-search-field')),
+        findsOneWidget,
+      );
+      expect(find.text('검색'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+    },
+  );
 
-  testWidgets('ConfirmScreen auto-resolves parsed voice location coordinates',
-      (tester) async {
+  testWidgets('ConfirmScreen auto-resolves parsed voice location coordinates', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
 
     await tester.pumpWidget(
@@ -381,8 +433,9 @@ void main() {
     expect(saved.locationLng, 127.9458);
   });
 
-  testWidgets('ConfirmScreen keeps empty details section collapsed',
-      (tester) async {
+  testWidgets('ConfirmScreen keeps empty details section collapsed', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _testApp(
         ConfirmScreen(
@@ -402,8 +455,9 @@ void main() {
     expect(find.widgetWithText(TextFormField, '설명'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen keeps details collapsed for memo-only parses',
-      (tester) async {
+  testWidgets('ConfirmScreen keeps details collapsed for memo-only parses', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _testApp(
         ConfirmScreen(
@@ -428,8 +482,9 @@ void main() {
     expect(find.text('AI가 만든 설명'), findsNothing);
   });
 
-  testWidgets('ConfirmScreen waits for location coordinates before saving',
-      (tester) async {
+  testWidgets('ConfirmScreen waits for location coordinates before saving', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
     final lookup = _DelayedSingleLocationLookupService();
 
@@ -467,8 +522,9 @@ void main() {
     expect(saved.locationLng, 127.9458);
   });
 
-  testWidgets('ConfirmScreen does not auto-resolve personal place aliases',
-      (tester) async {
+  testWidgets('ConfirmScreen does not auto-resolve personal place aliases', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
 
     await tester.pumpWidget(
@@ -493,10 +549,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     final locationField = _textFieldWithLabel('장소');
-    expect(
-      tester.widget<TextFormField>(locationField).controller?.text,
-      '원주집',
-    );
+    expect(tester.widget<TextFormField>(locationField).controller?.text, '원주집');
 
     await tester.ensureVisible(find.text('일정 저장'));
     await tester.tap(find.text('일정 저장'));
@@ -509,48 +562,48 @@ void main() {
   });
 
   testWidgets(
-      'ConfirmScreen keeps user-edited fields while hydrating and does not seed memo from raw text',
-      (tester) async {
-    final parseCompleter = Completer<Map<String, dynamic>>();
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(
-            title: '초기 제목',
-            location: '',
-            memo: null,
-            rawText: '내일 오전 9시에 대전출발',
-          )
-            ..['parse_pending'] = true
-            ..['manual_text_confirmed'] = true,
-          gptService: _DeferredGptService(parseCompleter.future),
-          backend: _FakeConfirmBackend(),
-          eventRepository: _FakeEventRepository(),
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
+    'ConfirmScreen keeps user-edited fields while hydrating and does not seed memo from raw text',
+    (tester) async {
+      final parseCompleter = Completer<Map<String, dynamic>>();
+      await tester.pumpWidget(
+        _testApp(
+          ConfirmScreen(
+            userId: 'user-1',
+            parsedSchedule:
+                _parsedSchedule(
+                    title: '초기 제목',
+                    location: '',
+                    memo: null,
+                    rawText: '내일 오전 9시에 대전출발',
+                  )
+                  ..['parse_pending'] = true
+                  ..['manual_text_confirmed'] = true,
+            gptService: _DeferredGptService(parseCompleter.future),
+            backend: _FakeConfirmBackend(),
+            eventRepository: _FakeEventRepository(),
+            notificationService: _FakeNotificationService(),
+            homeWidgetService: _FakeHomeWidgetService(),
+          ),
         ),
-      ),
-    );
+      );
 
-    await tester.pump();
+      await tester.pump();
 
-    await tester.ensureVisible(find.text('설명 · 준비물'));
-    await tester.tap(find.text('설명 · 준비물'));
-    await tester.pump(const Duration(milliseconds: 250));
+      await tester.ensureVisible(find.text('설명 · 준비물'));
+      await tester.tap(find.text('설명 · 준비물'));
+      await tester.pump(const Duration(milliseconds: 250));
 
-    final titleField = _textFieldWithLabel('제목');
-    final locationField = _textFieldWithLabel('장소');
-    final memoField = _textFieldWithLabel('설명');
+      final titleField = _textFieldWithLabel('제목');
+      final locationField = _textFieldWithLabel('장소');
+      final memoField = _textFieldWithLabel('설명');
 
-    expect(tester.widget<TextFormField>(memoField).controller?.text, isEmpty);
+      expect(tester.widget<TextFormField>(memoField).controller?.text, isEmpty);
 
-    await tester.enterText(titleField, '사용자 제목');
-    await tester.enterText(memoField, '사용자 메모');
-    await tester.pump();
+      await tester.enterText(titleField, '사용자 제목');
+      await tester.enterText(memoField, '사용자 메모');
+      await tester.pump();
 
-    parseCompleter.complete(
-      <String, dynamic>{
+      parseCompleter.complete(<String, dynamic>{
         'title': 'AI 제목',
         'location': 'AI 장소',
         'memo': 'AI 메모',
@@ -560,20 +613,29 @@ void main() {
         'is_critical': false,
         'pre_actions': <Map<String, dynamic>>[],
         'parse_failed': false,
-      },
-    );
-    await tester.pump(const Duration(milliseconds: 200));
+      });
+      await tester.pump(const Duration(milliseconds: 200));
 
-    expect(tester.widget<TextFormField>(titleField).controller?.text, '사용자 제목');
-    expect(
-        tester.widget<TextFormField>(locationField).controller?.text, 'AI 장소');
-    expect(tester.widget<TextFormField>(memoField).controller?.text, '사용자 메모');
-    expect(find.text('AI 제목'), findsNothing);
-    expect(find.text('AI 메모'), findsNothing);
-  });
+      expect(
+        tester.widget<TextFormField>(titleField).controller?.text,
+        '사용자 제목',
+      );
+      expect(
+        tester.widget<TextFormField>(locationField).controller?.text,
+        'AI 장소',
+      );
+      expect(
+        tester.widget<TextFormField>(memoField).controller?.text,
+        '사용자 메모',
+      );
+      expect(find.text('AI 제목'), findsNothing);
+      expect(find.text('AI 메모'), findsNothing);
+    },
+  );
 
-  testWidgets('ConfirmScreen stores Korean wall time as UTC once',
-      (tester) async {
+  testWidgets('ConfirmScreen stores Korean wall time as UTC once', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
     // 2030년 고정 날짜 사용: _safeStartAt의 "과거 1일 이전이면 now로 교체" 로직에 걸리지 않도록
     // KST(Asia/Seoul) 10:00 → UTC 01:00 변환 검증
@@ -608,8 +670,9 @@ void main() {
     expect(saved.isMultiDay, isTrue);
   });
 
-  testWidgets('ConfirmScreen lets users choose PM for ambiguous evening time',
-      (tester) async {
+  testWidgets('ConfirmScreen lets users choose PM for ambiguous evening time', (
+    tester,
+  ) async {
     final repository = _FakeEventRepository();
     final start = DateTime(2030, 6, 13, 7, 40);
 
@@ -648,15 +711,14 @@ void main() {
     expect(planflowLocal(saved.startAt!), DateTime(2030, 6, 13, 19, 40));
   });
 
-  testWidgets('ConfirmScreen shows supplies as compact editable rows',
-      (tester) async {
+  testWidgets('ConfirmScreen shows supplies as compact editable rows', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _testApp(
         ConfirmScreen(
           userId: 'user-1',
-          parsedSchedule: _parsedSchedule(
-            supplies: const <String>['물', '충전기'],
-          ),
+          parsedSchedule: _parsedSchedule(supplies: const <String>['물', '충전기']),
           backend: _FakeConfirmBackend(),
           eventRepository: _FakeEventRepository(),
           notificationService: _FakeNotificationService(),
@@ -675,8 +737,9 @@ void main() {
     expect(find.textContaining('체크리스트로'), findsNothing);
     expect(find.text('진행 중'), findsNothing);
   });
-  testWidgets('ConfirmScreen asks purpose for ambiguous hospital place only',
-      (tester) async {
+  testWidgets('ConfirmScreen asks purpose for ambiguous hospital place only', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _testApp(
         ConfirmScreen(
@@ -717,10 +780,7 @@ Widget _testApp(Widget child) {
   final router = GoRouter(
     initialLocation: AppRoutes.confirm,
     routes: [
-      GoRoute(
-        path: AppRoutes.confirm,
-        builder: (_, __) => child,
-      ),
+      GoRoute(path: AppRoutes.confirm, builder: (_, __) => child),
       GoRoute(
         path: AppRoutes.home,
         builder: (_, __) => const Scaffold(body: Text('홈')),
@@ -760,10 +820,7 @@ Widget _voiceStackTestApp(Widget confirmScreen) {
           ),
         ),
       ),
-      GoRoute(
-        path: AppRoutes.confirm,
-        builder: (_, __) => confirmScreen,
-      ),
+      GoRoute(path: AppRoutes.confirm, builder: (_, __) => confirmScreen),
       GoRoute(
         path: AppRoutes.calendar,
         builder: (_, __) => const Scaffold(body: Text('일정')),
@@ -793,6 +850,8 @@ Map<String, dynamic> _parsedSchedule({
   DateTime? startAt,
   DateTime? endAt,
   List<String> supplies = const <String>[],
+  List<String> participants = const <String>[],
+  List<String> targets = const <String>[],
   String? title,
   String? location,
   String? rawText,
@@ -807,6 +866,8 @@ Map<String, dynamic> _parsedSchedule({
     'location': location ?? '성남',
     'memo': memo,
     'supplies': supplies,
+    'participants': participants,
+    'targets': targets,
     'is_critical': isCritical,
     'recurrence_rule': recurrenceRule,
     'pre_actions': <Map<String, dynamic>>[],
@@ -920,18 +981,20 @@ class _FakeEventRepository extends EventRepository {
     String? userId,
     String? excludedEventId,
   }) async {
-    return createdEvents.where((event) {
-      if (excludedEventId != null && event.id == excludedEventId) {
-        return false;
-      }
-      final startAt = event.startAt;
-      if (startAt == null) {
-        return false;
-      }
-      final endAt = event.endAt ?? startAt.add(const Duration(minutes: 30));
-      return startAt.toUtc().isBefore(rangeEnd.toUtc()) &&
-          rangeStart.toUtc().isBefore(endAt.toUtc());
-    }).toList(growable: false);
+    return createdEvents
+        .where((event) {
+          if (excludedEventId != null && event.id == excludedEventId) {
+            return false;
+          }
+          final startAt = event.startAt;
+          if (startAt == null) {
+            return false;
+          }
+          final endAt = event.endAt ?? startAt.add(const Duration(minutes: 30));
+          return startAt.toUtc().isBefore(rangeEnd.toUtc()) &&
+              rangeStart.toUtc().isBefore(endAt.toUtc());
+        })
+        .toList(growable: false);
   }
 
   @override
@@ -947,6 +1010,8 @@ class _FakeEventRepository extends EventRepository {
       locationLng: event.locationLng,
       memo: event.memo,
       supplies: event.supplies,
+      participants: event.participants,
+      targets: event.targets,
       isCritical: event.isCritical,
       recurrenceRule: event.recurrenceRule,
       isAllDay: event.isAllDay,

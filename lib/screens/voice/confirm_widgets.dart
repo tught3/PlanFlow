@@ -51,20 +51,20 @@ class _ConfirmBottomNavigation extends StatelessWidget {
 
 class _PreActionDraft {
   _PreActionDraft.auto({String? title, int? offsetHours})
-      : isAuto = true,
-        key = GlobalKey(),
-        titleController = TextEditingController(text: title ?? ''),
-        offsetController = TextEditingController(
-          text: (offsetHours ?? 1).toString(),
-        ),
-        titleFocusNode = FocusNode();
+    : isAuto = true,
+      key = GlobalKey(),
+      titleController = TextEditingController(text: title ?? ''),
+      offsetController = TextEditingController(
+        text: (offsetHours ?? 1).toString(),
+      ),
+      titleFocusNode = FocusNode();
 
   _PreActionDraft.manual()
-      : isAuto = false,
-        key = GlobalKey(),
-        titleController = TextEditingController(),
-        offsetController = TextEditingController(text: '1'),
-        titleFocusNode = FocusNode();
+    : isAuto = false,
+      key = GlobalKey(),
+      titleController = TextEditingController(),
+      offsetController = TextEditingController(text: '1'),
+      titleFocusNode = FocusNode();
 
   final bool isAuto;
   final GlobalKey key;
@@ -81,9 +81,9 @@ class _PreActionDraft {
 
 class _SupplyDraft {
   _SupplyDraft(String title)
-      : key = GlobalKey(),
-        titleController = TextEditingController(text: title),
-        focusNode = FocusNode();
+    : key = GlobalKey(),
+      titleController = TextEditingController(text: title),
+      focusNode = FocusNode();
 
   final GlobalKey key;
   final TextEditingController titleController;
@@ -325,6 +325,98 @@ class _SupplyInputRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PeopleFieldsCard extends StatelessWidget {
+  const _PeopleFieldsCard({required this.participants, required this.targets});
+
+  final List<String> participants;
+  final List<String> targets;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      color: PlanFlowColors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: PlanFlowColors.primaryFaint, width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '참석자 · 대상',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: PlanFlowColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '음성에서 찾은 사람 정보를 일정에 함께 저장합니다.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (participants.isNotEmpty) ...[
+              _PeopleChipRow(label: '함께', values: participants),
+              if (targets.isNotEmpty) const SizedBox(height: 8),
+            ],
+            if (targets.isNotEmpty)
+              _PeopleChipRow(label: '대상', values: targets),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PeopleChipRow extends StatelessWidget {
+  const _PeopleChipRow({required this.label, required this.values});
+
+  final String label;
+  final List<String> values;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: PlanFlowColors.textSecondary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: values
+              .map(
+                (value) => Chip(
+                  label: Text(value),
+                  visualDensity: VisualDensity.compact,
+                  side: const BorderSide(
+                    color: PlanFlowColors.primaryFaint,
+                    width: 0.5,
+                  ),
+                ),
+              )
+              .toList(growable: false),
+        ),
+      ],
     );
   }
 }
