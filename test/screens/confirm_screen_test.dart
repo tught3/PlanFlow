@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -134,6 +134,39 @@ void main() {
       repository.createdEvents.single.recurrenceRule,
       'FREQ=WEEKLY;BYDAY=MO',
     );
+  });
+
+  testWidgets('ConfirmScreen leaves voice stack after saving from voice input',
+      (tester) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testAppWithVoiceEntry(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _GrantedAlarmPermissionService(),
+        ),
+      ),
+    );
+
+    expect(find.text('음성 입력'), findsOneWidget);
+
+    await tester.tap(find.text('확인으로 이동'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pumpAndSettle();
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(find.text('일정'), findsOneWidget);
+    expect(find.text('음성 입력'), findsNothing);
   });
 
   testWidgets('ConfirmScreen shows login guidance when save session is missing',
@@ -592,6 +625,49 @@ Widget _testApp(Widget child) {
   );
 }
 
+Widget _testAppWithVoiceEntry(Widget confirmScreen) {
+  final router = GoRouter(
+    initialLocation: AppRoutes.voice,
+    routes: [
+      GoRoute(
+        path: AppRoutes.voice,
+        builder: (context, __) => Scaffold(
+          body: Column(
+            children: [
+              const Text('음성 입력'),
+              ElevatedButton(
+                onPressed: () => context.push(AppRoutes.confirm),
+                child: const Text('확인으로 이동'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.confirm,
+        builder: (_, __) => confirmScreen,
+      ),
+      GoRoute(
+        path: AppRoutes.home,
+        builder: (_, __) => const Scaffold(body: Text('홈')),
+      ),
+      GoRoute(
+        path: AppRoutes.calendar,
+        builder: (_, __) => const Scaffold(body: Text('일정')),
+      ),
+      GoRoute(
+        path: AppRoutes.settings,
+        builder: (_, __) => const Scaffold(body: Text('설정')),
+      ),
+    ],
+  );
+
+  return MaterialApp.router(
+    scaffoldMessengerKey: AppFeedbackService.scaffoldMessengerKey,
+    routerConfig: router,
+  );
+}
+
 Finder _textFieldWithLabel(String label) {
   return find.ancestor(
     of: find.text(label),
@@ -907,4 +983,21 @@ class _DeniedPermissionService extends AppPermissionService {
 
   @override
   Future<bool> openAppSettings() async => true;
+}
+
+class _GrantedAlarmPermissionService extends AppPermissionService {
+  @override
+  Future<AppPermissionSnapshot> checkAll() async {
+    return const AppPermissionSnapshot(
+      microphoneGranted: true,
+      locationGranted: true,
+      calendarGranted: true,
+      notificationStatus: NotificationPermissionStatus(
+        notificationsEnabled: true,
+        exactAlarmsEnabled: true,
+        fullScreenIntentStatus: PermissionCheckState.granted,
+      ),
+      batteryOptimizationIgnored: true,
+    );
+  }
 }

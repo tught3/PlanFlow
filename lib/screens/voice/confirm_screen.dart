@@ -284,11 +284,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     // 권한 설정 화면에서 돌아왔을 때 홈으로 이동
     if (state == AppLifecycleState.resumed && _pendingNavigateHome && mounted) {
       _pendingNavigateHome = false;
-      if (context.canPop()) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      } else {
-        context.go(AppRoutes.home);
-      }
+      _navigateAfterSuccessfulSave();
     }
   }
 
@@ -1000,14 +996,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             // 시스템 설정으로 이동 중 — didChangeAppLifecycleState(resumed)에서 처리
             _pendingNavigateHome = true;
           } else {
-            // voice→confirm는 홈 위에 push로 쌓였으므로, go(home)으로 홈을 새로
-            // 만들면 ShellScreen이 재생성되며 전환이 튄다(잔상). 기존 홈까지 pop해
-            // 그대로 복원하면 재생성 없이 부드럽게 닫힌다.
-            if (context.canPop()) {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            } else {
-              context.go(AppRoutes.home);
-            }
+            _navigateAfterSuccessfulSave();
           }
         }
       }
@@ -1069,6 +1058,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return '일정 저장 테이블이 아직 준비되지 않았어요. Supabase 설정을 확인해 주세요.';
     }
     return '저장하지 못했어요. Supabase 연결 상태를 확인해 주세요.';
+  }
+
+  void _navigateAfterSuccessfulSave() {
+    context.go(AppRoutes.calendar);
   }
 
   Future<void> _recordVoiceCorrectionLearning({
@@ -1680,7 +1673,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     });
   }
 
-
   bool get _shouldShowPurposeClarification {
     if (_selectedAmbiguousPurpose != null || _preActions.isNotEmpty) {
       return false;
@@ -2150,6 +2142,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   }
 }
 
+
 /// 알람 권한이 부족할 때 저장 직후 표시하는 안내 다이얼로그.
 ///
 /// 정확한 알람 권한 누락 / 배터리 최적화 예외 미적용 여부에 따라
@@ -2234,4 +2227,3 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
     );
   }
 }
-

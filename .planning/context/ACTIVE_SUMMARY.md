@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-29 TASK_20260629_054817 음성 확인 저장 후 네비게이션 보정
+- 음성입력에서 일정확인페이지를 push한 뒤 저장하면 `popUntil(route.isFirst)`가 첫 음성입력 route로 되돌리는 문제를 확인하고, 저장 성공 후 항상 일정탭으로 이동하도록 `ConfirmScreen` 저장 완료 네비게이션을 정리했다.
+- 권한 설정 화면 복귀 후 pending navigation도 같은 저장 완료 이동 헬퍼를 사용해 동일 회귀를 막았다.
+- 검증: 신규 회귀 테스트 `ConfirmScreen leaves voice stack after saving from voice input` RED 확인 후 통과, 관련 저장 테스트 2개 통과, `flutter analyze lib\screens\voice\confirm_screen.dart test\screens\confirm_screen_test.dart --no-pub` 통과. `confirm_screen_test.dart` 전체는 기존 스마트 준비 알람/목적 선택 테스트 실패가 남아 있고, guarded release APK 빌드는 `android/key.properties` 부재로 실패했다.
+
 ## 2026-06-29 포그라운드 브리핑 모달 SharedPreferences 브리지 보강
 - `android_alarm_manager_plus` 알람 콜백이 별도 FlutterEngine/Dart VM에서 실행되어 `IsolateNameServer` 포트가 메인 앱에 닿지 않는 문제를 이어받아, SharedPreferences pending modal 브리지의 경계 조건을 보강했다.
 - pending modal은 앱이 실제 foreground일 때만 소비하고, background 상태에서는 키를 유지한다. 앱 시작/복귀 직후에는 2초 폴링을 기다리지 않고 즉시 pending modal을 확인한다.
