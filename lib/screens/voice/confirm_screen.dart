@@ -272,7 +272,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _isAllDay = widget.parsedSchedule['is_all_day'] == true;
     _isMultiDay = widget.parsedSchedule['is_multi_day'] == true;
     _category = '기타';
-    _isCritical = widget.parsedSchedule['is_critical'] == true;
+    _isCritical = _boolValue(widget.parsedSchedule['is_critical']);
+    _strongAlarm = _boolValue(
+      widget.parsedSchedule['use_strong_alarm'],
+      defaultValue: _isCritical,
+    );
     _titleController.addListener(_markTitleEdited);
     _locationController.addListener(_markLocationEdited);
     _memoController.addListener(_markMemoEdited);
@@ -761,8 +765,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         if (!_endEditedByUser) {
           _endAt = _safeEndAt(parsed['end_at'], _startAt);
         }
-        if (parsed['is_critical'] == true) {
+        if (_boolValue(parsed['is_critical'])) {
           _isCritical = true;
+          _strongAlarm = _boolValue(
+            parsed['use_strong_alarm'],
+            defaultValue: true,
+          );
         }
       });
       _isApplyingHydration = false;
@@ -1771,7 +1779,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       eventStartAt: eventStartAt,
       offset: Duration.zero,
     );
-    if (_isCritical &&
+    if (_strongAlarm &&
         criticalNotifyAt != null &&
         criticalNotifyAt.isAfter(now)) {
       payloads.add(
@@ -2373,6 +2381,23 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return value.toDouble();
     }
     return double.tryParse(value.toString());
+  }
+
+  bool _boolValue(Object? value, {bool defaultValue = false}) {
+    if (value == null) {
+      return defaultValue;
+    }
+    if (value is bool) {
+      return value;
+    }
+    if (value is num) {
+      return value != 0;
+    }
+    final text = value.toString().trim().toLowerCase();
+    if (text.isEmpty) {
+      return defaultValue;
+    }
+    return text == 'true' || text == '1' || text == 'yes' || text == 'y';
   }
 }
 

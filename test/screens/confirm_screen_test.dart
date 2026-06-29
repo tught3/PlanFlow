@@ -92,6 +92,7 @@ void main() {
       backend.reminderPayloads.where((row) => row['type'] == 'system_alarm'),
       hasLength(1),
     );
+    expect(repository.createdEvents.single.useStrongAlarm, isTrue);
     expect(notifications.criticalAlarmTitles, contains('성남 출발'));
     expect(
       notifications.criticalAlarmNotifyAts.single.difference(
@@ -99,6 +100,46 @@ void main() {
       ),
       Duration.zero,
     );
+  });
+
+  testWidgets(
+      'ConfirmScreen does not schedule strong alarm when parsed strong alarm is explicitly off',
+      (tester) async {
+    final backend = _FakeConfirmBackend();
+    final notifications = _FakeNotificationService();
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            isCritical: true,
+            useStrongAlarm: false,
+            startAt: DateTime.now().add(const Duration(hours: 2)),
+          ),
+          backend: backend,
+          eventRepository: repository,
+          notificationService: notifications,
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(repository.createdEvents.single.isCritical, isTrue);
+    expect(repository.createdEvents.single.useStrongAlarm, isFalse);
+    expect(
+      backend.reminderPayloads.where((row) => row['type'] == 'system_alarm'),
+      isEmpty,
+    );
+    expect(notifications.criticalAlarmTitles, isEmpty);
   });
 
   testWidgets('ConfirmScreen preserves parsed recurrence when saving',
@@ -713,6 +754,7 @@ Finder _textFieldWithLabel(String label) {
 
 Map<String, dynamic> _parsedSchedule({
   bool isCritical = false,
+  bool? useStrongAlarm,
   DateTime? startAt,
   DateTime? endAt,
   List<String> supplies = const <String>[],
@@ -731,6 +773,7 @@ Map<String, dynamic> _parsedSchedule({
     'memo': memo,
     'supplies': supplies,
     'is_critical': isCritical,
+    if (useStrongAlarm != null) 'use_strong_alarm': useStrongAlarm,
     'recurrence_rule': recurrenceRule,
     'pre_actions': <Map<String, dynamic>>[],
     'raw_text': rawText ?? '내일 오전 10시에 성남으로 출발',
@@ -871,6 +914,7 @@ class _FakeEventRepository extends EventRepository {
       memo: event.memo,
       supplies: event.supplies,
       isCritical: event.isCritical,
+      useStrongAlarm: event.useStrongAlarm,
       recurrenceRule: event.recurrenceRule,
       isAllDay: event.isAllDay,
       isMultiDay: event.isMultiDay,
