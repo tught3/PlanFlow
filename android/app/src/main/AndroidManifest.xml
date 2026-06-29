@@ -83,6 +83,9 @@
                 <data
                     android:host="event"
                     android:scheme="planflow-v2" />
+                <data
+                    android:host="group-invite"
+                    android:scheme="planflow-v2" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

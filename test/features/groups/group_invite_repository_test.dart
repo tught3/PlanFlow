@@ -52,6 +52,44 @@ void main() {
     expect(invite.actedBy, 'user-1');
   });
 
+  test('acceptInviteLink uses link RPC and maps the accepted invite', () async {
+    String? receivedGroupId;
+    String? receivedToken;
+    final repository = SupabaseGroupInviteRepository(
+      client: _createClient(),
+      currentUserIdProvider: () => 'user-1',
+      acceptInviteLinkRpc: ({
+        required String groupId,
+        required String inviteToken,
+      }) async {
+        receivedGroupId = groupId;
+        receivedToken = inviteToken;
+        return <String, dynamic>{
+          'id': 'invite-link-1',
+          'group_id': groupId,
+          'invited_user_id': 'user-1',
+          'invited_email': 'member@example.com',
+          'invited_invite_code': 'invite-1234',
+          'invited_by': 'leader-1',
+          'status': 'accepted',
+          'expires_at': DateTime.utc(2026, 6, 18).toIso8601String(),
+          'accepted_at': DateTime.utc(2026, 6, 11).toIso8601String(),
+          'acted_by': 'user-1',
+        };
+      },
+    );
+
+    final invite = await repository.acceptInviteLink(
+      groupId: 'group-1',
+      inviteToken: 'token-123',
+    );
+
+    expect(receivedGroupId, 'group-1');
+    expect(receivedToken, 'token-123');
+    expect(invite.id, 'invite-link-1');
+    expect(invite.isAccepted, isTrue);
+  });
+
   test('acceptInvite requires an authenticated user', () async {
     final repository = SupabaseGroupInviteRepository(
       client: _createClient(),

@@ -6,6 +6,7 @@ class GroupInviteState {
     required this.isLoading,
     required this.isSubmitting,
     this.currentInviteCode,
+    this.currentDisplayName,
     this.error,
     this.message,
   });
@@ -13,6 +14,7 @@ class GroupInviteState {
   const GroupInviteState.initial()
       : pendingInvites = const <GroupInviteModel>[],
         currentInviteCode = null,
+        currentDisplayName = null,
         isLoading = false,
         isSubmitting = false,
         error = null,
@@ -20,6 +22,7 @@ class GroupInviteState {
 
   final List<GroupInviteModel> pendingInvites;
   final String? currentInviteCode;
+  final String? currentDisplayName;
   final bool isLoading;
   final bool isSubmitting;
   final String? error;
@@ -33,6 +36,8 @@ class GroupInviteState {
     List<GroupInviteModel>? pendingInvites,
     String? currentInviteCode,
     bool clearCurrentInviteCode = false,
+    String? currentDisplayName,
+    bool clearCurrentDisplayName = false,
     bool? isLoading,
     bool? isSubmitting,
     String? error,
@@ -45,6 +50,9 @@ class GroupInviteState {
       currentInviteCode: clearCurrentInviteCode
           ? null
           : currentInviteCode ?? this.currentInviteCode,
+      currentDisplayName: clearCurrentDisplayName
+          ? null
+          : currentDisplayName ?? this.currentDisplayName,
       isLoading: isLoading ?? this.isLoading,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       error: clearError ? null : error ?? this.error,

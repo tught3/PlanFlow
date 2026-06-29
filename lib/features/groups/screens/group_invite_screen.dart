@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/theme.dart';
 import '../../../providers/auth_provider.dart';
@@ -18,13 +19,16 @@ class GroupInviteScreen extends StatefulWidget {
     GroupContextProvider? contextProvider,
     GroupInviteProvider? inviteProvider,
     String? currentUserIdOverride,
+    String? initialGroupId,
   })  : _contextProvider = contextProvider,
         _inviteProvider = inviteProvider,
-        _currentUserIdOverride = currentUserIdOverride;
+        _currentUserIdOverride = currentUserIdOverride,
+        _initialGroupId = initialGroupId;
 
   final GroupContextProvider? _contextProvider;
   final GroupInviteProvider? _inviteProvider;
   final String? _currentUserIdOverride;
+  final String? _initialGroupId;
 
   @override
   State<GroupInviteScreen> createState() => _GroupInviteScreenState();
@@ -37,7 +41,9 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
   late final bool _ownsInviteProvider;
   late final TextEditingController _inviteCodeController;
   late final TextEditingController _emailController;
+  late final TextEditingController _displayNameController;
   bool _copyingCode = false;
+  bool _copyingInviteLink = false;
 
   @override
   void initState() {
@@ -48,6 +54,7 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
     _inviteProvider = widget._inviteProvider ?? GroupInviteProvider();
     _inviteCodeController = TextEditingController();
     _emailController = TextEditingController();
+    _displayNameController = TextEditingController();
     unawaited(_load());
   }
 
@@ -55,6 +62,7 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
   void dispose() {
     _inviteCodeController.dispose();
     _emailController.dispose();
+    _displayNameController.dispose();
     if (_ownsInviteProvider) {
       _inviteProvider.dispose();
     }
@@ -66,10 +74,15 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
 
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
-    await Future.wait(<Future<void>>[
-      _contextProvider.load(userId),
-      _inviteProvider.load(userId),
-    ]);
+    await _contextProvider.load(
+      userId,
+      preferredGroupId: widget._initialGroupId,
+    );
+    await _inviteProvider.load(userId);
+    if (mounted) {
+      _displayNameController.text =
+          _inviteProvider.currentDisplayName?.trim() ?? '';
+    }
   }
 
   Future<void> _copyInviteCode(String code) async {
@@ -88,6 +101,39 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
       if (mounted) {
         setState(() {
           _copyingCode = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _copyGroupInviteLink(GroupModel group) async {
+    final token = group.inviteToken?.trim() ?? '';
+    if (token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('초대 링크를 만들 수 없어요.')),
+      );
+      return;
+    }
+    setState(() {
+      _copyingInviteLink = true;
+    });
+    try {
+      final link = _groupInviteDeepLink(group);
+      await Clipboard.setData(
+        ClipboardData(
+          text: 'PlanFlow V2 그룹 초대\n${group.name}\n$link',
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('초대 링크를 복사했어요.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _copyingInviteLink = false;
         });
       }
     }
@@ -135,6 +181,18 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
       _emailController.clear();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('이메일 초대를 보냈어요.')),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _saveMyDisplayName() async {
+    try {
+      await _inviteProvider.updateMyDisplayName(_displayNameController.text);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('내 표시 이름을 저장했어요.')),
       );
     } catch (_) {}
   }
@@ -190,6 +248,7 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
             onRefresh: _load,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
+              cacheExtent: 5000,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
                 _buildInviteCodeCard(context, inviteState),
@@ -197,6 +256,8 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
                 _buildSelectedGroupCard(context, contextState),
                 const SizedBox(height: 16),
                 if (canInvite) ...[
+                  _buildInviteLinkCard(context, selectedGroup),
+                  const SizedBox(height: 16),
                   _buildInviteFormCard(context, selectedGroup),
                   const SizedBox(height: 16),
                 ] else ...[
@@ -224,24 +285,75 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.badge_outlined),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '내 초대 코드',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final title = Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.badge_outlined),
+                    const SizedBox(width: 8),
+                    Text(
+                      '내 초대 코드',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ],
+                );
+                final nameControls = Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: const ValueKey('my-display-name-field'),
+                        controller: _displayNameController,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          labelText: '내 표시 이름',
+                          hintText: '멤버 목록에 보일 이름',
                         ),
-                  ),
-                ),
-                if (_copyingCode)
-                  const SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-              ],
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _saveMyDisplayName(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      key: const ValueKey('my-display-name-save-button'),
+                      onPressed: state.isSubmitting
+                          ? null
+                          : () => _saveMyDisplayName(),
+                      icon: const Icon(Icons.save_outlined, size: 18),
+                      label: const Text('이름 저장'),
+                    ),
+                    if (_copyingCode) ...[
+                      const SizedBox(width: 8),
+                      const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ],
+                  ],
+                );
+
+                if (constraints.maxWidth < 560) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      title,
+                      const SizedBox(height: 12),
+                      nameControls,
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    title,
+                    const SizedBox(width: 16),
+                    Expanded(child: nameControls),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 12),
             Text(
@@ -341,6 +453,95 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildInviteLinkCard(BuildContext context, GroupModel group) {
+    final hasToken = group.inviteToken?.trim().isNotEmpty == true;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.link_outlined),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '초대 링크',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+                if (_copyingInviteLink)
+                  const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              hasToken
+                  ? '카톡이나 문자에 붙여넣으면 팀원이 링크를 눌러 바로 참여할 수 있어요.'
+                  : '이 그룹에는 아직 초대 링크 토큰이 없어요.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
+            ),
+            if (hasToken) ...[
+              const SizedBox(height: 14),
+              Center(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE4E7EC)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: QrImageView(
+                      key: const ValueKey('group-invite-link-qr-code'),
+                      data: _groupInviteDeepLink(group),
+                      version: QrVersions.auto,
+                      size: 168,
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  '카메라로 QR을 스캔해도 참여할 수 있어요.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              key: const ValueKey('group-invite-link-copy-button'),
+              onPressed: hasToken && !_copyingInviteLink
+                  ? () => _copyGroupInviteLink(group)
+                  : null,
+              icon: const Icon(Icons.copy_outlined),
+              label: const Text('초대 링크 복사'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _groupInviteDeepLink(GroupModel group) {
+    return 'planflow-v2://group-invite?'
+        'groupId=${Uri.encodeQueryComponent(group.id)}'
+        '&token=${Uri.encodeQueryComponent(group.inviteToken?.trim() ?? '')}';
   }
 
   Widget _buildInviteFormCard(BuildContext context, GroupModel group) {

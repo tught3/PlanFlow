@@ -57,6 +57,11 @@ class FakeGroupRepository extends GroupRepository {
   Future<GroupMemberModel> updateMember(GroupMemberModel member) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<void> deleteGroup(String groupId) {
+    throw UnimplementedError();
+  }
 }
 
 class FakeGroupInviteRepository extends GroupInviteRepository {
@@ -81,6 +86,14 @@ class FakeGroupInviteRepository extends GroupInviteRepository {
       actedBy: 'user-1',
       acceptedAt: DateTime.utc(2026, 6, 11, 9),
     );
+  }
+
+  @override
+  Future<GroupInviteModel> acceptInviteLink({
+    required String groupId,
+    required String inviteToken,
+  }) {
+    throw UnimplementedError();
   }
 
   @override
@@ -132,11 +145,13 @@ GroupModel _group({
   required String name,
   required String createdBy,
   required DateTime createdAt,
+  String? inviteToken,
 }) {
   return GroupModel(
     id: id,
     createdBy: createdBy,
     name: name,
+    inviteToken: inviteToken,
     createdAt: createdAt,
   );
 }
@@ -172,6 +187,7 @@ void main() {
             name: 'Leader Group',
             createdBy: 'user-1',
             createdAt: DateTime.utc(2026, 6, 11),
+            inviteToken: 'token-123',
           ),
         ],
         membersByGroupId: <String, List<GroupMemberModel>>{
@@ -207,10 +223,31 @@ void main() {
 
     expect(find.text('내 초대 코드'), findsOneWidget);
     expect(find.text('INVITE-0001'), findsOneWidget);
-    expect(find.byKey(const ValueKey('group-invite-code-field')), findsOneWidget);
-    expect(find.byKey(const ValueKey('group-invite-email-field')), findsOneWidget);
-    expect(find.text('코드로 초대'), findsOneWidget);
-    expect(find.text('이메일 초대'), findsOneWidget);
+    expect(
+      find.byKey(
+        const ValueKey('group-invite-code-field'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('group-invite-email-field'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('group-invite-link-copy-button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('group-invite-link-qr-code')),
+      findsOneWidget,
+    );
+    expect(find.text('카메라로 QR을 스캔해도 참여할 수 있어요.'), findsOneWidget);
+    expect(find.text('코드로 초대', skipOffstage: false), findsOneWidget);
+    expect(find.text('이메일 초대', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('hides invitation form when the selected group is a member group',
@@ -258,7 +295,8 @@ void main() {
 
     expect(find.text('현재 그룹의 리더만 초대를 보낼 수 있어요.'), findsOneWidget);
     expect(find.byKey(const ValueKey('group-invite-code-field')), findsNothing);
-    expect(find.byKey(const ValueKey('group-invite-email-field')), findsNothing);
+    expect(
+        find.byKey(const ValueKey('group-invite-email-field')), findsNothing);
   });
 
   testWidgets('shows pending invite accept and reject buttons', (tester) async {
@@ -298,7 +336,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('invite-accept-invite-1')), findsOneWidget);
-    expect(find.byKey(const ValueKey('invite-reject-invite-1')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('invite-accept-invite-1')),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(
+        find.byKey(const ValueKey('invite-accept-invite-1')), findsOneWidget);
+    expect(
+        find.byKey(const ValueKey('invite-reject-invite-1')), findsOneWidget);
   });
 }

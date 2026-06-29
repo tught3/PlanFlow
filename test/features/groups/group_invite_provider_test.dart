@@ -37,6 +37,24 @@ class FakeGroupInviteRepository extends GroupInviteRepository {
   }
 
   @override
+  Future<GroupInviteModel> acceptInviteLink({
+    required String groupId,
+    required String inviteToken,
+  }) async {
+    final invite = GroupInviteModel(
+      id: 'invite-link',
+      groupId: groupId,
+      invitedBy: 'leader-1',
+      invitedUserId: 'user-1',
+      status: 'accepted',
+      expiresAt: DateTime.utc(2026, 6, 18, 9),
+      acceptedAt: DateTime.utc(2026, 6, 11, 9),
+      actedBy: 'user-1',
+    );
+    return invite;
+  }
+
+  @override
   Future<GroupInviteModel> cancelInvite(String inviteId) async {
     lastCancelledInviteId = inviteId;
     final invite = pendingInvites.firstWhere((item) => item.id == inviteId);
