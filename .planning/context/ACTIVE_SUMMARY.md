@@ -1,4 +1,10 @@
 # ACTIVE SUMMARY
+## 2026-06-30 TASK_20260629_231352 그룹 일정 공유 서비스 복구
+- stale ownership 재작업 worktree에 누락되어 있던 `GroupEventShareService`와 회귀 테스트를 현재 HEAD에 다시 추가했다.
+- 오늘 이후 `source == manual` 개인 일정만 그룹 복사본으로 만들고, `source='group'`, `external_calendar_id=<groupId>`, `external_id=group:<groupId>:personal:<personalEventId>` 규칙으로 연결한다.
+- `parent_event_id`는 반복 일정 예외와 충돌하지 않도록 그룹 링크에 쓰지 않으며, 개인->그룹/그룹->개인 편집 동기화 경로를 테스트로 고정했다.
+- 검증: `flutter test test\services\group_event_share_service_test.dart test\data\models\event_model_test.dart --no-pub -r compact` 통과, `flutter analyze lib\data\models\event_model.dart lib\services\group_event_share_service.dart test\services\group_event_share_service_test.dart test\data\models\event_model_test.dart --no-pub` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 Flutter 진입 전 실패해 raw `flutter`로 대체했다. guarded release APK 빌드는 `android/key.properties` 부재로 Gradle 설정 단계에서 중단됐다.
+
 ## 2026-06-30 시간 표시 형식 라벨 문구 압축
 - 설정 화면의 `시간 표시 형식` 줄에서 토글 라벨을 `12시간제(오전 2:30)` / `24시간제(14:30)`로 직접 보여주게 바꿔, 스위치가 텍스트 오른쪽에 붙은 상태에서도 한 눈에 현재 포맷을 읽을 수 있게 했다.
 - 기존의 아래 보조 시간 텍스트는 제거해 카드가 두 줄로 벌어지지 않게 정리했다.
