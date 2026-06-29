@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-30 음성 확인 설명/준비물 자동 확장 억제
+- 음성 일정 확인 화면에서 AI 파싱 결과가 memo만 가진 경우에도 `설명 · 준비물` 섹션이 자동으로 펼쳐지던 조건을 정리했다.
+- 자동 확장은 실제 준비물 또는 명시적 pre_actions가 있을 때만 유지하고, memo-only 일반 일정은 접힌 상태로 시작한다.
+- 검증: focused `confirm_screen_test` 3건(memo-only collapse, empty collapse, supplies expand) 통과, 변경 파일 analyzer 통과, `git diff --check` 통과.
+
 ## 2026-06-30 음성 확인 저장 후 알림 예약 실패 노출
 - 음성 일정 확인 화면에서 저장 성공 후 로컬 일정 알림/중요 알람 예약이 백그라운드 후속작업 안에서 조용히 실패할 수 있던 흐름을 분리했다.
 - 저장 직후 `scheduleEventReminderWithResult`/`scheduleCriticalAlarmWithResult` 결과를 즉시 확인하고, 권한 차단/예약 오류는 DiagLogger와 사용자 경고 메시지로 남긴다. 스마트 준비/출발 알림/위젯/외부 동기화는 기존처럼 백그라운드 후속작업으로 유지했다.
