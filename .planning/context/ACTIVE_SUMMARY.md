@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-29 TASK_20260629_011605 출발 알람 위치 확인 fallback 보정
+- AndroidAlarmManager preflight 콜백의 `runPreflightForEvent`가 백그라운드 isolate에서 live 위치 조회를 다시 시도하지 않고 foreground에서 저장된 최근 origin 캐시만 사용하도록 `cacheOnlyLocation: true`를 연결했다.
+- 캐시 origin이 있으면 이동시간 재계산 알림 문구가 `현재 위치 확인 불가` fallback으로 떨어지지 않고, 백그라운드 경로의 map routes 원격 호출도 `skipRemote=true`로 막히는 회귀 테스트를 추가했다.
+- 검증: `flutter test test\services\departure_alarm_service_test.dart --no-pub -r compact`, `flutter analyze lib\services\departure_alarm_service.dart test\services\departure_alarm_service_test.dart --no-pub`, `git diff --check -- lib/services/departure_alarm_service.dart test/services/departure_alarm_service_test.dart` 통과. `scripts/flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 경로 부재로 실패했고, `flutter-build-guarded.ps1 ... apk --release --no-pub`는 `android/key.properties` 부재로 실패했다.
+
 ## 2026-06-29 포그라운드 브리핑 모달 SharedPreferences 브리지 보강
 - `android_alarm_manager_plus` 알람 콜백이 별도 FlutterEngine/Dart VM에서 실행되어 `IsolateNameServer` 포트가 메인 앱에 닿지 않는 문제를 이어받아, SharedPreferences pending modal 브리지의 경계 조건을 보강했다.
 - pending modal은 앱이 실제 foreground일 때만 소비하고, background 상태에서는 키를 유지한다. 앱 시작/복귀 직후에는 2초 폴링을 기다리지 않고 즉시 pending modal을 확인한다.

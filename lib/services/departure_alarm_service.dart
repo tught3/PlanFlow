@@ -323,6 +323,11 @@ class DepartureAlarmService {
       safetyMarginOverride: safetyMargin,
       travelModeOverride: travelMode,
       fireDueDeparture: true,
+      // AndroidAlarmManager preflight는 별도 백그라운드 isolate에서 실행된다.
+      // 이 경로에서 라이브 위치 조회를 시도하면 실패하거나 OS 위치 요청이 폭주해
+      // 매번 "현재 위치를 다시 확인하지 못했지만" fallback 알림으로 떨어진다.
+      // foreground에서 저장한 최근 origin 캐시로만 출발 시간을 재계산한다.
+      cacheOnlyLocation: true,
     );
   }
 
@@ -706,6 +711,10 @@ class DepartureAlarmService {
   /// 라이브 위치 요청은 백그라운드에서 LocationManager 폭주와 CPU 과다 사용을
   /// 일으키며 삼성 계열 기기에서 앱 강제 종료의 직접 원인이 된다.
   Future<GeoPoint?> _resolveOriginLocation({bool cacheOnly = false}) async {
+    // cacheOnly 모드: 테스트 주입 provider를 포함해 어떤 live 위치 경로도 타지 않는다.
+    if (cacheOnly) {
+      return _loadCachedOrigin();
+    }
     final provider = _currentLocationProvider;
     if (provider != null) {
       final origin = await provider();
@@ -713,10 +722,6 @@ class DepartureAlarmService {
         await _cacheLastOrigin(origin);
         return origin;
       }
-    }
-    // cacheOnly 모드: 라이브 위치 조회 없이 캐시만 사용
-    if (cacheOnly) {
-      return _loadCachedOrigin();
     }
     try {
       final permissionGranted = await _permissions.checkLocationPermission();

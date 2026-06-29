@@ -255,6 +255,12 @@ void main() {
       () async {
     AppEnv.markSupabaseInitialized();
     final now = DateTime(2026, 5, 8, 10, 10);
+    SharedPreferences.setMockInitialValues({
+      DepartureAlarmService.cachedOriginLatKey: 37.5,
+      DepartureAlarmService.cachedOriginLngKey: 127.0,
+      DepartureAlarmService.cachedOriginAtKey:
+          now.subtract(const Duration(minutes: 20)).toIso8601String(),
+    });
     final notifications = _FakeNotificationService();
     final service = DepartureAlarmService(
       eventRepository: _FakeEventRepository(
@@ -300,6 +306,12 @@ void main() {
       () async {
     AppEnv.markSupabaseInitialized();
     final now = DateTime(2026, 5, 8, 9);
+    SharedPreferences.setMockInitialValues({
+      DepartureAlarmService.cachedOriginLatKey: 37.5,
+      DepartureAlarmService.cachedOriginLngKey: 127.0,
+      DepartureAlarmService.cachedOriginAtKey:
+          now.subtract(const Duration(minutes: 20)).toIso8601String(),
+    });
     final notifications = _FakeNotificationService();
     final preflight = _FakeDeparturePreflightScheduler();
     final service = DepartureAlarmService(
@@ -380,6 +392,65 @@ void main() {
     expect(notifications.criticalBodies.single, contains('대전 성심당'));
   });
 
+  test('preflight uses recent cached origin instead of live location lookup',
+      () async {
+    AppEnv.markSupabaseInitialized();
+    final now = DateTime(2026, 5, 8, 10, 10);
+    SharedPreferences.setMockInitialValues({
+      DepartureAlarmService.cachedOriginLatKey: 37.5,
+      DepartureAlarmService.cachedOriginLngKey: 127.0,
+      DepartureAlarmService.cachedOriginAtKey:
+          now.subtract(const Duration(minutes: 20)).toIso8601String(),
+    });
+    final notifications = _FakeNotificationService();
+    var liveLocationCalls = 0;
+    final travel = _FakeTravelTimeBufferService(
+      routeEstimate: const TravelTimeBufferEstimate(
+        buffer: Duration(minutes: 90),
+        source: TravelTimeBufferSource.coordinates,
+        reason: 'cached-origin',
+      ),
+    );
+    final service = DepartureAlarmService(
+      eventRepository: _FakeEventRepository(
+        events: <EventModel>[
+          EventModel(
+            id: 'event-cached-preflight',
+            userId: 'user-1',
+            title: '성심당',
+            startAt: DateTime(2026, 5, 8, 12),
+            location: '대전 성심당',
+            locationLat: 36.327,
+            locationLng: 127.427,
+          ),
+        ],
+      ),
+      currentLocationProvider: () async {
+        liveLocationCalls += 1;
+        return const GeoPoint(latitude: 1, longitude: 1);
+      },
+      travelTimeBufferService: travel,
+      notificationService: notifications,
+      preflightScheduler:
+          _FakeDeparturePreflightScheduler(shouldSchedule: false).call,
+      now: () => now,
+    );
+
+    final result = await service.runPreflightForEvent(
+      'event-cached-preflight',
+      userId: 'user-1',
+    );
+
+    expect(result.isScheduled, isTrue);
+    expect(result.travelMinutes, 90);
+    expect(liveLocationCalls, 0);
+    expect(travel.lastOriginLat, 37.5);
+    expect(travel.lastOriginLng, 127.0);
+    expect(travel.lastSkipRemote, isTrue);
+    expect(notifications.criticalBodies.single, contains('90분'));
+    expect(notifications.criticalBodies.single, isNot(contains('현재 위치')));
+  });
+
   test('refreshUpcoming records signed-out monitor status', () async {
     final service = DepartureAlarmService(
       now: () => DateTime(2026, 5, 8, 9),
@@ -434,6 +505,13 @@ void main() {
   test('refreshUpcoming uses urgent interval when event is within six hours',
       () async {
     AppEnv.markSupabaseInitialized();
+    final now = DateTime(2026, 5, 8, 9);
+    SharedPreferences.setMockInitialValues({
+      DepartureAlarmService.cachedOriginLatKey: 37.5,
+      DepartureAlarmService.cachedOriginLngKey: 127.0,
+      DepartureAlarmService.cachedOriginAtKey:
+          now.subtract(const Duration(minutes: 20)).toIso8601String(),
+    });
     final service = DepartureAlarmService(
       eventRepository: _FakeEventRepository(
         events: <EventModel>[
@@ -458,7 +536,7 @@ void main() {
         ),
       ),
       preflightScheduler: _FakeDeparturePreflightScheduler().call,
-      now: () => DateTime(2026, 5, 8, 9),
+      now: () => now,
     );
 
     final result = await service.refreshUpcoming(userId: 'user-1');
@@ -474,6 +552,13 @@ void main() {
       'refreshUpcoming uses default interval when events are farther than six hours',
       () async {
     AppEnv.markSupabaseInitialized();
+    final now = DateTime(2026, 5, 8, 9);
+    SharedPreferences.setMockInitialValues({
+      DepartureAlarmService.cachedOriginLatKey: 37.5,
+      DepartureAlarmService.cachedOriginLngKey: 127.0,
+      DepartureAlarmService.cachedOriginAtKey:
+          now.subtract(const Duration(minutes: 20)).toIso8601String(),
+    });
     final service = DepartureAlarmService(
       eventRepository: _FakeEventRepository(
         events: <EventModel>[
@@ -498,7 +583,7 @@ void main() {
         ),
       ),
       preflightScheduler: _FakeDeparturePreflightScheduler().call,
-      now: () => DateTime(2026, 5, 8, 9),
+      now: () => now,
     );
 
     final result = await service.refreshUpcoming(userId: 'user-1');
