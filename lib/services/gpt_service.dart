@@ -761,7 +761,8 @@ class GptService {
       return relative;
     }
 
-    final recurringDate = _extractMonthlyRecurringDateFromText(dateTimeText, now);
+    final recurringDate =
+        _extractMonthlyRecurringDateFromText(dateTimeText, now);
     final date = recurringDate ?? _extractDateFromText(dateTimeText, now);
     final time = _normalizeAmbiguousLeadingTime(
       dateTimeText,
@@ -781,6 +782,15 @@ class GptService {
       clock.hour,
       clock.minute,
     );
+
+    if (time != null &&
+        candidate.isBefore(now) &&
+        _isAmbiguousSevenToElevenTime(dateTimeText, time)) {
+      final eveningCandidate = candidate.add(const Duration(hours: 12));
+      if (eveningCandidate.isAfter(now)) {
+        return eveningCandidate;
+      }
+    }
 
     if (date == null && time != null && candidate.isBefore(now)) {
       candidate = candidate.add(const Duration(days: 1));
@@ -895,6 +905,16 @@ class GptService {
       hour: clock.hour,
       minute: clock.minute,
     );
+  }
+
+  bool _isAmbiguousSevenToElevenTime(String text, _ClockTime clock) {
+    if (clock.hour < 7 || clock.hour > 11) {
+      return false;
+    }
+    return RegExp(
+          r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?(?:\d{1,2}|[가-힣]{1,8})\s*시',
+        ).firstMatch(text)?.group(1) ==
+        null;
   }
 
   String _scheduleSystemPromptForRegion() {

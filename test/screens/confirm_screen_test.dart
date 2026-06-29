@@ -101,6 +101,48 @@ void main() {
     );
   });
 
+  testWidgets('ConfirmScreen lets users choose PM for ambiguous 7 to 11 time',
+      (tester) async {
+    final repository = _FakeEventRepository();
+    final startAt = DateTime.now().add(const Duration(days: 1));
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            title: '병원',
+            startAt: DateTime(startAt.year, startAt.month, startAt.day, 7),
+            rawText: '내일 7시 병원',
+            timePeriodAmbiguous: true,
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _GrantedPermissionService(),
+        ),
+      ),
+    );
+
+    expect(find.text('오전/오후를 확인해 주세요'), findsOneWidget);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(SegmentedButton<bool>),
+        matching: find.text('오후'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pumpAndSettle();
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(planflowLocal(repository.createdEvents.single.startAt!).hour, 19);
+  });
+
   testWidgets('ConfirmScreen preserves parsed recurrence when saving',
       (tester) async {
     final repository = _FakeEventRepository();
@@ -681,6 +723,7 @@ Map<String, dynamic> _parsedSchedule({
   String? rawText,
   String? memo = '테스트 일정',
   String? recurrenceRule,
+  bool timePeriodAmbiguous = false,
 }) {
   return {
     'title': title ?? '성남 출발',
@@ -694,6 +737,7 @@ Map<String, dynamic> _parsedSchedule({
     'recurrence_rule': recurrenceRule,
     'pre_actions': <Map<String, dynamic>>[],
     'raw_text': rawText ?? '내일 오전 10시에 성남으로 출발',
+    'time_period_ambiguous': timePeriodAmbiguous,
   };
 }
 
@@ -980,4 +1024,19 @@ class _DeniedPermissionService extends AppPermissionService {
 
   @override
   Future<bool> openAppSettings() async => true;
+}
+
+class _GrantedPermissionService extends AppPermissionService {
+  @override
+  Future<bool> checkLocationPermission() async => true;
+
+  @override
+  Future<bool> requestLocationPermission() async => true;
+
+  @override
+  Future<GeoPoint?> getCurrentLocationWithPermission({
+    bool requestIfMissing = true,
+  }) async {
+    return null;
+  }
 }

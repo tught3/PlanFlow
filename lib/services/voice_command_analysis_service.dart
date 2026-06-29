@@ -159,6 +159,7 @@ class VoiceCommandAnalysisResult {
       'voice_intent': intent.name,
       'confidence': confidence,
       'uncertain_fields': uncertainFields,
+      'time_period_ambiguous': scheduleFields['time_period_ambiguous'] == true,
     };
     if (targetEventHint != null) {
       schedule['target_event_hint'] = targetEventHint;
@@ -526,6 +527,7 @@ class VoiceCommandAnalysisService {
         'is_multi_day',
         'category',
         'pre_actions',
+        'time_period_ambiguous',
       };
       source = <String, dynamic>{};
       for (final entry in parsed.entries) {
@@ -651,6 +653,13 @@ class VoiceCommandAnalysisService {
       'pre_actions': _normalizePreActions(source['pre_actions']),
       'voice_intent': intent.name,
     };
+    if (_shouldMarkTimePeriodAmbiguous(
+      rawText: rawText,
+      normalizedText: normalizedText,
+      scheduleFields: scheduleFields,
+    )) {
+      scheduleFields['time_period_ambiguous'] = true;
+    }
     _preserveDeliveryContent(scheduleFields, titleSource);
     _preservePeopleFields(scheduleFields, titleSource);
     return scheduleFields;
@@ -765,6 +774,9 @@ class VoiceCommandAnalysisService {
             scheduleFields['start_at'].toString().trim().isEmpty)) {
       fields.add('start_at');
     }
+    if (scheduleFields['time_period_ambiguous'] == true) {
+      fields.add('start_at_period');
+    }
     if (context != VoiceTextCleanupContext.add && targetEventHint == null) {
       fields.add('target_event_hint');
     }
@@ -794,6 +806,34 @@ class VoiceCommandAnalysisService {
       confidence += 0.1;
     }
     return confidence.clamp(0.05, 0.95).toDouble();
+  }
+
+  bool _shouldMarkTimePeriodAmbiguous({
+    required String rawText,
+    required String normalizedText,
+    required Map<String, dynamic> scheduleFields,
+  }) {
+    final startAt = _parseDateTime(scheduleFields['start_at']);
+    if (startAt == null) {
+      return false;
+    }
+    final text = '$rawText $normalizedText';
+    final match = RegExp(
+      r'(?:(오전|오후|아침|낮|점심|저녁|밤|새벽)\s*)?(?:([7-9]|1[01])|(?:일곱|여덟|아홉|열|열한))\s*시',
+    ).firstMatch(text);
+    if (match == null || match.group(1) != null) {
+      return false;
+    }
+    if (startAt.hour >= 19 && startAt.hour <= 23) {
+      return false;
+    }
+    final now = _now();
+    final today = DateTime(now.year, now.month, now.day);
+    final startDay = DateTime(startAt.year, startAt.month, startAt.day);
+    if (startDay == today && startAt.isBefore(now)) {
+      return false;
+    }
+    return true;
   }
 
   VoiceCommandIntent _inferLocalIntent(
@@ -1210,7 +1250,9 @@ class VoiceCommandAnalysisService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (e) { debugPrint('VoiceCommandAnalysis JSON 파싱 무시: $e'); }
+    } catch (e) {
+      debugPrint('VoiceCommandAnalysis JSON 파싱 무시: $e');
+    }
 
     final start = trimmed.indexOf('{');
     final end = trimmed.lastIndexOf('}');
@@ -1223,7 +1265,9 @@ class VoiceCommandAnalysisService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (e) { debugPrint('VoiceCommandAnalysis JSON 파싱 무시: $e'); }
+    } catch (e) {
+      debugPrint('VoiceCommandAnalysis JSON 파싱 무시: $e');
+    }
 
     return null;
   }

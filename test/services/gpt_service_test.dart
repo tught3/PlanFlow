@@ -664,7 +664,21 @@ void main() {
       );
     });
 
-    test('public local inference treats day-only dates as this month or next month',
+    test('public local inference uses today context for ambiguous evening time',
+        () {
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 7, 14, 30),
+      );
+
+      expect(
+        service.inferStartAtFromRawText('오늘 7시 병원'),
+        DateTime(2026, 5, 7, 19),
+      );
+    });
+
+    test(
+        'public local inference treats day-only dates as this month or next month',
         () {
       final now = DateTime(2026, 6, 10, 9, 30);
       final service = GptService(

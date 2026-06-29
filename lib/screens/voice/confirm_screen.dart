@@ -221,6 +221,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   Map<String, dynamic>? _initialParsedForLearning;
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
+  bool get _hasAmbiguousTimePeriod =>
+      widget.parsedSchedule['time_period_ambiguous'] == true && !_isAllDay;
 
   @override
   void initState() {
@@ -1929,6 +1931,13 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                             child: Text('자동 파싱에 실패했어요. 내용을 확인하고 직접 입력해 주세요.'),
                           ),
                         ),
+                      if (_hasAmbiguousTimePeriod) ...[
+                        const SizedBox(height: AppConstants.sectionSpacing),
+                        _TimePeriodChoice(
+                          startAt: _startAt,
+                          onChanged: _applyAmbiguousTimePeriod,
+                        ),
+                      ],
                       const SizedBox(height: AppConstants.sectionSpacing),
                       CalendarStyleEventEditor(
                         titleController: _titleController,
@@ -2118,6 +2127,32 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return parsed;
   }
 
+  void _applyAmbiguousTimePeriod(bool afternoon) {
+    final targetHour = afternoon
+        ? (_startAt.hour < 12 ? _startAt.hour + 12 : _startAt.hour)
+        : (_startAt.hour >= 12 ? _startAt.hour - 12 : _startAt.hour);
+    setState(() {
+      final previousStart = _startAt;
+      _startEditedByUser = true;
+      _startAt = DateTime(
+        _startAt.year,
+        _startAt.month,
+        _startAt.day,
+        targetHour,
+        _startAt.minute,
+      );
+      _endAt = shiftEventEndWhenStartChanges(
+        previousStart: previousStart,
+        newStart: _startAt,
+        currentEnd: _endAt,
+        endEditedByUser: _endEditedByUser,
+      );
+      if (_endAt != null && _endAt!.isBefore(_startAt)) {
+        _endAt = _startAt;
+      }
+    });
+  }
+
   int? _intValue(Object? value) {
     if (value == null) {
       return null;
@@ -2142,6 +2177,66 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return value.toDouble();
     }
     return double.tryParse(value.toString());
+  }
+}
+
+class _TimePeriodChoice extends StatelessWidget {
+  const _TimePeriodChoice({
+    required this.startAt,
+    required this.onChanged,
+  });
+
+  final DateTime startAt;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isAfternoon = startAt.hour >= 12;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surfaceFaint,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: PlanFlowColors.primaryFaint, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.schedule_outlined,
+                  color: PlanFlowColors.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '오전/오후를 확인해 주세요',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: PlanFlowColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment<bool>(value: false, label: Text('오전')),
+                ButtonSegment<bool>(value: true, label: Text('오후')),
+              ],
+              selected: <bool>{isAfternoon},
+              onSelectionChanged: (selection) {
+                onChanged(selection.single);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

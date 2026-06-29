@@ -780,5 +780,25 @@ void main() {
       expect(parsed['is_all_day'], isTrue);
       expect(parsed['is_multi_day'], isTrue);
     });
+
+    test('marks future 7 to 11 oclock without period as AM PM ambiguous',
+        () async {
+      final service = VoiceCommandAnalysisService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 5, 7, 14, 30),
+        maxAiRequests: 0,
+      );
+
+      final result = await service.analyze(
+        '내일 7시 병원',
+        stage: VoiceCommandAnalysisStage.complete,
+      );
+      final parsed = result.toParsedScheduleMap();
+
+      expect(result.method, VoiceCommandAnalysisMethod.local);
+      expect(result.uncertainFields, contains('start_at_period'));
+      expect(parsed['time_period_ambiguous'], isTrue);
+      expect(parsed['start_at'], DateTime(2026, 5, 8, 7).toIso8601String());
+    });
   });
 }
