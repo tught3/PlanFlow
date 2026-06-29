@@ -2686,7 +2686,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                       children: [
                         Expanded(
                           child: Text(
-                            _use24HourFormat ? '24시간제' : '12시간제',
+                            _use24HourFormat
+                                ? '24시간제(15:30)'
+                                : '12시간제(오후 3:30)',
                             style: theme.textTheme.titleSmall?.copyWith(
                               color: PlanFlowColors.primary,
                               fontWeight: FontWeight.w700,
