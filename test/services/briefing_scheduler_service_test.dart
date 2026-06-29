@@ -307,6 +307,22 @@ void main() {
     expect(notification.calls, 0);
   });
 
+  test('background briefing start notification records scheduler result',
+      () async {
+    final notification = _FakeNotificationService();
+    final service = BriefingSchedulerService(
+      alarmService: _FakeAlarmService(),
+      notificationService: notification,
+      eventRepository: _FakeEventRepository(),
+      isAppInForeground: () => false,
+    );
+
+    await service.showBriefingStartNotification(isMorning: false);
+
+    expect(notification.calls, 1);
+    expect(notification.lastBody, contains('내일 일정을 시간순으로 정리'));
+  });
+
   test('pending foreground briefing modal emits and clears stored trigger',
       () async {
     SharedPreferences.setMockInitialValues({
@@ -522,5 +538,22 @@ class _FakeNotificationService extends NotificationService {
   }) async {
     calls += 1;
     lastBody = body;
+  }
+
+  @override
+  Future<NotificationScheduleResult> scheduleEventReminderWithResult({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime notifyAt,
+    String? payload,
+    bool includeDepartureAction = false,
+  }) async {
+    calls += 1;
+    lastBody = body;
+    return NotificationScheduleResult(
+      status: NotificationScheduleStatus.scheduled,
+      notifyAt: notifyAt,
+    );
   }
 }

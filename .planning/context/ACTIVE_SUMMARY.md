@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-29 브리핑 알람 미발생 진단 로그 보강
+- 103 기기 실측에서 `com.fluxstudio.planflow.v2` 브리핑/보조 알람은 Android `dumpsys alarm` 대기열에 존재했고, 일부 non-wakeup 백그라운드 알람은 `Pending user blocked background alarms`에 남아 있었다. 알림 채널 블록은 앱 설정만 있고 채널 목록이 비어 있어 다음 재현 시 채널/스케줄 실패 원인을 더 직접적으로 봐야 한다.
+- 브리핑 알람 콜백의 `catch (_)`를 제거해 background isolate 실패를 `BriefingAlarm callback failed...`로 남기고, 브리핑 시작 알림은 실제 `scheduleEventReminderWithResult` 결과(`scheduled`/`permissionBlocked`/`error`)를 진단 로그에 기록하도록 바꿨다.
+- 검증: `scripts/flutter-local.ps1 test test\services\briefing_scheduler_service_test.dart --no-pub -r compact` 통과, `scripts/flutter-local.ps1 analyze lib\services\alarm_service.dart lib\services\briefing_scheduler_service.dart test\services\briefing_scheduler_service_test.dart --no-pub` 통과.
+
 ## 2026-06-29 음성 입력 7~12시 오전/오후 확인 보정
 - 오전/오후를 말하지 않은 7~12시 입력은 `time_period_ambiguous`로 표시해 확인 화면에서 오전/오후 선택 칩을 보여주도록 했다.
 - GPT가 문맥상 오후로 판단한 7~11시를 로컬 시간 보정이 다음날 오전으로 덮어쓰지 않게 막았다.

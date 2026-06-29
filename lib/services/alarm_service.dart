@@ -126,7 +126,7 @@ Future<void> _briefingAlarmCallback(
   DiagLogger.log(
     'BriefingAlarm',
     'briefingCallback 시작 type=$briefingType '
-    'at=${DateTime.now().toIso8601String()}',
+        'at=${DateTime.now().toIso8601String()}',
   );
 
   try {
@@ -163,8 +163,14 @@ Future<void> _briefingAlarmCallback(
       final scheduler = BriefingSchedulerService();
       await scheduler.showBriefingStartNotification(isMorning: isMorning);
     }
-  } catch (_) {
-    // Background isolate must never crash
+  } catch (error, stackTrace) {
+    // Background isolate must never crash, but failures must stay visible.
+    DiagLogger.log(
+      'BriefingAlarm',
+      'callback failed type=$briefingType error=$error',
+    );
+    debugPrint('Briefing alarm callback failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
   } finally {
     // Supabase 초기화 실패 여부와 무관하게 항상 다음 알람 등록
     try {
@@ -173,6 +179,8 @@ Future<void> _briefingAlarmCallback(
         isMorning: isMorning,
         userId: userId,
       );
-    } catch (e) { debugPrint('AlarmService 무시된 예외: $e'); }
+    } catch (e) {
+      debugPrint('AlarmService 무시된 예외: $e');
+    }
   }
 }

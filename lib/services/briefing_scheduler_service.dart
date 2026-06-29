@@ -441,16 +441,18 @@ class BriefingSchedulerService {
       return;
     }
 
-    DiagLogger.log(
-      'Briefing',
-      'notification_sent type=${isMorning ? 'morning' : 'evening'}',
-    );
-    return _notificationService.scheduleEventReminder(
+    final result = await _notificationService.scheduleEventReminderWithResult(
       id: isMorning ? 91001 : 91002,
       title: title,
       body: body,
       notifyAt: DateTime.now().add(const Duration(seconds: 1)),
       payload: isMorning ? 'briefing:morning' : 'briefing:evening',
+    );
+    DiagLogger.log(
+      'Briefing',
+      'notification_schedule_result type=${isMorning ? 'morning' : 'evening'} '
+          'status=${result.status.name} '
+          'message=${result.message ?? 'none'}',
     );
   }
 
