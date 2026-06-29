@@ -1,4 +1,15 @@
 # ACTIVE SUMMARY
+## 2026-06-30 설정 화면 배치 재정렬과 실제 설치 재검증
+- 설정 화면에서 `음성으로 일정 관리`는 다시 플로팅 액션 버튼으로 복구하고, `시간 표시 형식` 카드에는 24/12시간제 텍스트와 스위치만 남겨 두었다. `진단 로그 보기`는 `앱 정보` 줄 오른쪽으로 다시 옮겼다.
+- `내 교정 패턴 사용`은 기존처럼 저장/복원 경로가 살아 있는 상태를 다시 확인했다. 이 변경은 배치 수정이 중심이어서 기능 로직은 건드리지 않았다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/settings_screen_test.dart --no-pub -r compact` 통과, `scripts/flutter-local.ps1 analyze lib/screens/settings/settings_screen.dart test/screens/settings_screen_test.dart --no-pub` 통과, `scripts/flutter-local.ps1 build apk --release --no-pub` 통과, `adb install -r`로 3대 설치 확인, `adb shell am start -W` 실행 확인.
+
+## 2026-06-30 설정 화면 첫 진입 스크롤 버벅임 완화
+- 설정 화면 진입 직후 캘린더 상태/자동 동기화/휴대폰 캘린더/백업 후속 작업이 한꺼번에 붙던 흐름을 스크롤 위치 기반 지연 시작으로 분리했다.
+- 백업 목록은 진입/스크롤 중 자동 조회하지 않고 복원 버튼을 누를 때만 읽도록 유지해, 아래쪽 백업 오류 스낵바와 rebuild가 첫 스크롤을 방해하지 않게 했다.
+- 회귀 테스트는 첫 렌더 직후 캘린더/백업 조회가 0회이고, 캘린더 영역 접근 시 캘린더만 조회되며, 복원 버튼 전까지 백업 목록을 읽지 않는 조건을 추가했다.
+- 검증: `scripts/flutter-local.ps1 analyze lib\screens\settings\settings_screen.dart test\screens\settings_screen_test.dart --no-pub` 통과, `settings_screen_test.dart` focused/전체 통과.
+
 ## 2026-06-30 진단 로그 버튼 피드백 카드 이동
 - 설정 화면의 `진단 로그 보기` 버튼을 `앱 정보` 카드에서 `문제 신고 / 의견 보내기` 카드로 옮겼다.
 - 다이얼로그 진입 함수의 async context 경고를 별도 동기 표시 함수로 분리해 해소했다.

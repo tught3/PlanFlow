@@ -39,6 +39,7 @@ import '../../services/naver_caldav_service.dart';
 import '../../services/notification_service.dart';
 import '../../core/diag_logger.dart';
 import '../../widgets/planflow_logo.dart';
+import '../../widgets/planflow_voice_fab.dart';
 import '../../l10n/app_l10n.dart';
 import 'beta_survey_sheet.dart';
 import 'feedback_report_sheet.dart';
@@ -163,6 +164,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isRetryingCalendarAutoSync = false;
   int? _lastHandledCalendarRefreshSequence;
   bool _isNaverCalDavProgressDialogOpen = false;
+  late final ScrollController _settingsScrollController;
+  bool _calendarDeferredLoadsStarted = false;
+  bool _backupDeferredLoadsStarted = false;
   int? _newFeedbackReportCount;
   bool _isLoadingNewFeedbackReportCount = false;
   String? _lastFeedbackAdminEmail;
@@ -189,6 +193,8 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   void initState() {
     super.initState();
+    _settingsScrollController = ScrollController();
+    _settingsScrollController.addListener(_handleSettingsScroll);
     WidgetsBinding.instance.addObserver(this);
     EventRefreshBus.instance.latest.addListener(_handleCalendarRefreshSignal);
     _settingsRepository = widget._settingsRepository ??
@@ -220,9 +226,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     unawaited(_loadSettings());
     unawaited(_loadAppVersionInfo());
     unawaited(_loadWidgetDisplaySettings());
-    unawaited(_loadCalendarStatus());
-    unawaited(_loadAutoSyncSnapshot());
-    unawaited(_loadDeviceCalendarSyncedState());
     final naverCalDavStateLoaded = _loadNaverCalDavState();
     unawaited(naverCalDavStateLoaded);
     if (widget._initialAction != null) {
@@ -230,10 +233,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         unawaited(_runInitialAction(naverCalDavStateLoaded));
       });
     }
-    if (AppEnv.isSupabaseReady) {
-      unawaited(_loadBackups(showSignedOutMessage: false));
-      unawaited(_ensureAutomaticBackup());
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _handleSettingsScroll();
+    });
     if (AppEnv.isSupabaseReady) {
       authProvider.addListener(_handleFeedbackAdminAuthChanged);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -257,8 +262,48 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     _deviceCalendarImportTimer?.cancel();
     _autoSyncReloadDebounce?.cancel();
+    _settingsScrollController.removeListener(_handleSettingsScroll);
+    _settingsScrollController.dispose();
     _naverCalDavProgress.dispose();
     super.dispose();
+  }
+
+  void _handleSettingsScroll() {
+    if (!_settingsScrollController.hasClients) {
+      return;
+    }
+    final position = _settingsScrollController.position;
+    final maxExtent = position.maxScrollExtent;
+    if (maxExtent <= 0) {
+      _startCalendarDeferredLoads();
+      _startBackupDeferredLoads();
+      return;
+    }
+
+    if (position.pixels >= maxExtent * 0.25) {
+      _startCalendarDeferredLoads();
+    }
+    if (position.pixels >= maxExtent * 0.65) {
+      _startBackupDeferredLoads();
+    }
+  }
+
+  void _startCalendarDeferredLoads() {
+    if (_calendarDeferredLoadsStarted) {
+      return;
+    }
+    _calendarDeferredLoadsStarted = true;
+    unawaited(_loadCalendarStatus());
+    unawaited(_loadAutoSyncSnapshot());
+    unawaited(_loadDeviceCalendarSyncedState());
+  }
+
+  void _startBackupDeferredLoads() {
+    if (_backupDeferredLoadsStarted) {
+      return;
+    }
+    _backupDeferredLoadsStarted = true;
+    unawaited(_ensureAutomaticBackup());
   }
 
   @override
@@ -1909,6 +1954,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       return;
     }
 
+    _startCalendarDeferredLoads();
     await _scrollToCalendarSyncSection();
     if (!mounted) {
       return;
@@ -2637,44 +2683,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: Text(
-                            '시간 표시 형식',
+                            _use24HourFormat ? '24시간제' : '12시간제',
                             style: theme.textTheme.titleSmall?.copyWith(
                               color: PlanFlowColors.primary,
                               fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        OutlinedButton.icon(
-                          key: const ValueKey('settings-voice-action-button'),
-                          onPressed: () => context.push(AppRoutes.voice),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            visualDensity: VisualDensity.compact,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          icon: const Icon(Icons.mic, size: 18),
-                          label: const Text('음성으로 일정 관리'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _use24HourFormat
-                                ? '24시간제 (14:30)'
-                                : '12시간제 (오후 2:30)',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: PlanFlowColors.textSecondary,
                             ),
                           ),
                         ),
@@ -2683,6 +2698,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                           onChanged: _setUse24HourFormat,
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _use24HourFormat ? '14:30' : '오후 2:30',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -3003,6 +3025,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         child: ResponsiveContent(
           maxWidth: contentMaxWidth,
           child: ListView(
+            controller: _settingsScrollController,
             padding: const EdgeInsets.all(AppConstants.defaultPadding),
             children: [
               _AccountSection(
@@ -3460,7 +3483,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: 16),
               FeedbackReportSection(
                 onPressed: _openFeedbackReportSheet,
-                onOpenDiagnosticLog: _showDiagnosticLogDialog,
                 onOpenBetaSurvey: _openBetaSurveySheet,
                 onOpenAdminInbox:
                     _isFeedbackAdmin ? _openFeedbackAdminReportsSheet : null,
@@ -3544,6 +3566,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                             ),
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      key: const ValueKey('settings-diagnostic-log-button'),
+                      onPressed: _showDiagnosticLogDialog,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: const Icon(Icons.bug_report_outlined, size: 18),
+                      label: const Text('진단 로그 보기'),
+                    ),
                   ],
                 ),
               ),
@@ -3552,6 +3589,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
         ),
+      ),
+      floatingActionButton: PlanFlowVoiceFab(
+        onPressed: () => context.push(AppRoutes.voice),
       ),
     );
   }

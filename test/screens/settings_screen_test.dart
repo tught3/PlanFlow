@@ -48,8 +48,8 @@ void main() {
     PackageInfo.setMockInitialValues(
       appName: 'PlanFlow',
       packageName: 'com.fluxstudio.planflow',
-      version: '1.1.0',
-      buildNumber: '3',
+      version: '1.1.1',
+      buildNumber: '48',
       buildSignature: '',
     );
   });
@@ -139,25 +139,6 @@ void main() {
       expect(find.text('Naver CalDAV 직접 연결'), findsNothing);
       expect(find.text('네이버 CalDAV 연결 테스트'), findsNothing);
       expect(find.text('네이버 CalDAV 일정 가져오기'), findsNothing);
-      final feedbackButton = find.byKey(
-        const ValueKey('settings-feedback-report-button'),
-      );
-      await _scrollUntilHitTestable(tester, feedbackButton);
-      expect(find.text('문제 신고 / 의견 보내기'), findsOneWidget);
-      expect(feedbackButton, findsOneWidget);
-      expect(find.byKey(const ValueKey('settings-diagnostic-log-button')),
-          findsOneWidget);
-      final feedbackCard = find.ancestor(
-        of: feedbackButton,
-        matching: find.byType(Card),
-      );
-      expect(
-        find.descendant(
-          of: feedbackCard,
-          matching: find.text('문제 신고 / 의견 보내기'),
-        ),
-        findsOneWidget,
-      );
       final versionLabel = find.byKey(
         const ValueKey('settings-app-version-label'),
       );
@@ -169,13 +150,12 @@ void main() {
       expect(
         find.descendant(
           of: appInfoCard,
-          matching: find.byKey(
-            const ValueKey('settings-diagnostic-log-button'),
-          ),
+          matching:
+              find.byKey(const ValueKey('settings-diagnostic-log-button')),
         ),
-        findsNothing,
+        findsOneWidget,
       );
-      expect(find.text('버전 1.1.0 (빌드 3)'), findsOneWidget);
+      expect(find.text('버전 1.1.1 (빌드 48)'), findsOneWidget);
       expect(settingsRepository.fetchUserIds.single, 'user-1');
     },
   );
@@ -228,19 +208,21 @@ void main() {
       expect(
         find.descendant(
           of: timeFormatCard,
-          matching: find.byType(OutlinedButton),
+          matching: find.byType(Switch),
         ),
         findsOneWidget,
       );
 
-      expect(find.text('12시간제 (오후 2:30)'), findsOneWidget);
+      expect(find.text('12시간제'), findsOneWidget);
+      expect(find.text('오후 2:30'), findsOneWidget);
 
       await tester.tap(timeFormatToggle.hitTestable().first);
       await tester.pumpAndSettle();
 
       expect(settingsRepository.savedSettings, isNotNull);
       expect(settingsRepository.savedSettings!.use24HourFormat, isTrue);
-      expect(find.text('24시간제 (14:30)'), findsOneWidget);
+      expect(find.text('24시간제'), findsOneWidget);
+      expect(find.text('14:30'), findsOneWidget);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -266,7 +248,8 @@ void main() {
 
       await tester.pumpAndSettle();
       await _scrollUntilHitTestable(tester, timeFormatToggle);
-      expect(find.text('24시간제 (14:30)'), findsOneWidget);
+      expect(find.text('24시간제'), findsOneWidget);
+      expect(find.text('14:30'), findsOneWidget);
     },
   );
 
@@ -738,6 +721,63 @@ void main() {
       );
     },
   );
+
+  testWidgets('SettingsScreen defers lower settings data until needed', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => authProvider.setUser(null));
+
+    AppEnv.markSupabaseInitialized();
+    authProvider.setUser('user-1');
+
+    final calendarSyncService = _FakeCalendarSyncService(
+      summary: CalendarSyncSummary(
+        google: CalendarIntegrationResult.ready(CalendarProvider.google),
+        naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+      ),
+    );
+    final backupService = _FakeBackupService();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: calendarSyncService,
+          calendarAutoSyncService: _FakeCalendarAutoSyncService(),
+          notificationService: _FakeNotificationService(),
+          backupService: backupService,
+          naverCalDavService: _FakeNaverCalDavService(),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(calendarSyncService.fetchStatusCallCount, 0);
+    expect(backupService.listBackupsCallCount, 0);
+
+    final syncButton = find.byKey(
+      const ValueKey('settings-google-calendar-sync-button'),
+    );
+    await _scrollUntilHitTestable(tester, syncButton);
+    expect(calendarSyncService.fetchStatusCallCount, greaterThan(0));
+    expect(backupService.listBackupsCallCount, 0);
+
+    final restoreButton = find.byKey(
+      const ValueKey('settings-restore-backup-button'),
+    );
+    await _scrollUntilHitTestable(tester, restoreButton, maxScrolls: 80);
+    expect(backupService.listBackupsCallCount, 0);
+
+    await tester.tap(restoreButton);
+    await tester.pumpAndSettle();
+
+    expect(backupService.listBackupsCallCount, 1);
+  });
 
   testWidgets('SettingsScreen retries failed calendar auto sync on resume', (
     tester,
@@ -1395,9 +1435,11 @@ class _FakeBackupService extends BackupService {
   _FakeBackupService({this.listError});
 
   final Object? listError;
+  int listBackupsCallCount = 0;
 
   @override
   Future<List<BackupSnapshot>> listBackups() async {
+    listBackupsCallCount += 1;
     final error = listError;
     if (error != null) {
       throw error;
