@@ -1,4 +1,10 @@
 # ACTIVE SUMMARY
+## 2026-06-30 TASK_20260629_163309 그룹 일정 공유 서비스 기반 구현
+- 기존 개인 일정을 그룹 복사본으로 공유하는 `GroupEventShareService`를 추가했다. 현재 worktree에는 그룹 화면/전용 테이블이 없어 DB 스키마 변경 없이 `source='group'`, `external_calendar_id=<groupId>`, deterministic `external_id=group:<groupId>:personal:<personalEventId>` 규칙으로 개인-그룹 링크를 표현한다.
+- `parent_event_id`는 반복 일정 예외/override 표시 로직과 충돌하므로 그룹 링크에 쓰지 않도록 고정했다. 공유 대상은 오늘 이후 `source == manual` 개인 일정이며, 이미 반복 예외처럼 `parent_event_id`가 있는 일정은 제외한다.
+- 회귀 테스트는 미래 개인 일정 공유, 과거/외부/반복예외 제외, 같은 그룹 중복 스킵, 다른 그룹 별도 복사, 개인->그룹 수정 전파, 그룹->개인 수정 전파를 검증한다.
+- 검증: `flutter test test\services\group_event_share_service_test.dart test\data\models\event_model_test.dart --no-pub -r compact` 통과, `flutter analyze lib\data\models\event_model.dart lib\services\group_event_share_service.dart test\services\group_event_share_service_test.dart test\data\models\event_model_test.dart --no-pub` 통과, `git diff --check` 통과. `scripts\flutter-local.ps1`는 worktree 상위 `.fluxos` bootstrap 부재로 실패했고, guarded release APK 빌드는 `android/key.properties` 부재로 실패했다.
+
 ## 2026-06-30 설정 화면 배치 재정렬과 실제 설치 재검증
 - 설정 화면에서 `음성으로 일정 관리`는 다시 플로팅 액션 버튼으로 복구하고, `시간 표시 형식` 카드에는 24/12시간제 텍스트와 스위치만 남겨 두었다. `진단 로그 보기`는 `앱 정보` 줄 오른쪽으로 다시 옮겼다.
 - `내 교정 패턴 사용`은 기존처럼 저장/복원 경로가 살아 있는 상태를 다시 확인했다. 이 변경은 배치 수정이 중심이어서 기능 로직은 건드리지 않았다.
