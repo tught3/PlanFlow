@@ -41,6 +41,29 @@ try {
   $flutterArgs = @($Args)
   $defineSupportedCommands = @('build', 'run', 'test', 'drive')
 
+  if ($command -eq 'deploy') {
+    $deployHelper = 'E:\AI_WIKI\scripts\flutter-deploy-or-copy.ps1'
+    if (-not (Test-Path -LiteralPath $deployHelper)) {
+      throw "Missing deploy helper: $deployHelper"
+    }
+    $tailArgs = @()
+    if ($Args.Count -gt 1) {
+      $tailArgs = @($Args[1..($Args.Count - 1)])
+    }
+    $extraJson = ConvertTo-Json -Compress -InputObject @($defineArgs)
+    $deployCommand = @(
+      '-NoProfile', '-ExecutionPolicy', 'Bypass',
+      '-File', $deployHelper,
+      '-ProjectPath', (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
+      '-Project', 'PlanFlow',
+      '-Owner', 'PlanFlow-local',
+      '-ExtraBuildArgsJson', $extraJson
+    ) + $tailArgs
+    & powershell @deployCommand
+    $exitCode = $LASTEXITCODE
+    return
+  }
+
   if ($defineArgs.Count -gt 0 -and ($defineSupportedCommands -contains $command)) {
     if ($command -eq 'build' -and $Args.Count -ge 2) {
       $flutterArgs = @($command, $Args[1]) + $defineArgs + $Args[2..($Args.Count - 1)]
