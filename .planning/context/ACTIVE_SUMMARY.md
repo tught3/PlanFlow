@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-30 음성 확인 참석자/대상 저장 보존
+- 음성 일정 확인 화면이 GPT/로컬 파싱 결과의 `participants`/`targets`를 버리지 않고 저장하도록 보강했다.
+- 참석자/대상 정보가 있으면 `설명 · 준비물` 섹션을 자동 확장하고, `참석자 · 대상` 카드에서 함께/대상 칩으로 확인할 수 있게 했다. 실제 그룹 공유/멤버 권한은 현 스키마에 없어 추가하지 않았다.
+- 검증: `flutter pub get` 후 focused `confirm_screen_test`(`ConfirmScreen saves parsed participants and targets`) 통과, `git diff --check` 통과. 전체 `confirm_screen_test.dart`와 `flutter analyze --no-pub`는 기존 실패/경고가 남아 별도 위험으로 기록했다.
+
 ## 2026-06-30 진단 로그 버튼 피드백 카드 이동
 - 설정 화면의 `진단 로그 보기` 버튼을 `앱 정보` 카드에서 `문제 신고 / 의견 보내기` 카드로 옮겼다.
 - 다이얼로그 진입 함수의 async context 경고를 별도 동기 표시 함수로 분리해 해소했다.
