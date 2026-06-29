@@ -60,7 +60,7 @@ class GroupEventProvider extends ChangeNotifier {
   bool get canArchiveEvent => _state.canArchiveEvent;
   bool get canManageEvents => _state.canManageEvents;
 
-  Future<void> load(String userId) async {
+  Future<void> load(String userId, {String? preferredGroupId}) async {
     if (userId.isEmpty) {
       _currentUserId = null;
       _setState(const GroupEventState.initial());
@@ -69,15 +69,11 @@ class GroupEventProvider extends ChangeNotifier {
 
     _currentUserId = userId;
     _setState(
-      _state.copyWith(
-        isLoading: true,
-        clearError: true,
-        clearMessage: true,
-      ),
+      _state.copyWith(isLoading: true, clearError: true, clearMessage: true),
     );
 
     try {
-      await _contextProvider.load(userId);
+      await _contextProvider.load(userId, preferredGroupId: preferredGroupId);
       await _reloadEvents();
     } catch (error) {
       _setState(
@@ -147,20 +143,10 @@ class GroupEventProvider extends ChangeNotifier {
         ),
       );
       await refresh();
-      _setState(
-        _state.copyWith(
-          isSubmitting: false,
-          message: '그룹 일정을 만들었어요.',
-        ),
-      );
+      _setState(_state.copyWith(isSubmitting: false, message: '그룹 일정을 만들었어요.'));
       return created;
     } catch (error) {
-      _setState(
-        _state.copyWith(
-          isSubmitting: false,
-          error: error.toString(),
-        ),
-      );
+      _setState(_state.copyWith(isSubmitting: false, error: error.toString()));
       rethrow;
     }
   }
@@ -178,20 +164,10 @@ class GroupEventProvider extends ChangeNotifier {
     try {
       final updated = await _repository.updateGroupEvent(event);
       await refresh();
-      _setState(
-        _state.copyWith(
-          isSubmitting: false,
-          message: '그룹 일정을 수정했어요.',
-        ),
-      );
+      _setState(_state.copyWith(isSubmitting: false, message: '그룹 일정을 수정했어요.'));
       return updated;
     } catch (error) {
-      _setState(
-        _state.copyWith(
-          isSubmitting: false,
-          error: error.toString(),
-        ),
-      );
+      _setState(_state.copyWith(isSubmitting: false, error: error.toString()));
       rethrow;
     }
   }
@@ -205,20 +181,10 @@ class GroupEventProvider extends ChangeNotifier {
     try {
       final cancelled = await _repository.cancelGroupEvent(eventId);
       await refresh();
-      _setState(
-        _state.copyWith(
-          isSubmitting: false,
-          message: '그룹 일정을 취소했어요.',
-        ),
-      );
+      _setState(_state.copyWith(isSubmitting: false, message: '그룹 일정을 취소했어요.'));
       return cancelled;
     } catch (error) {
-      _setState(
-        _state.copyWith(
-          isSubmitting: false,
-          error: error.toString(),
-        ),
-      );
+      _setState(_state.copyWith(isSubmitting: false, error: error.toString()));
       rethrow;
     }
   }
@@ -232,20 +198,10 @@ class GroupEventProvider extends ChangeNotifier {
     try {
       final archived = await _repository.archiveGroupEvent(eventId);
       await refresh();
-      _setState(
-        _state.copyWith(
-          isSubmitting: false,
-          message: '그룹 일정을 보관했어요.',
-        ),
-      );
+      _setState(_state.copyWith(isSubmitting: false, message: '그룹 일정을 보관했어요.'));
       return archived;
     } catch (error) {
-      _setState(
-        _state.copyWith(
-          isSubmitting: false,
-          error: error.toString(),
-        ),
-      );
+      _setState(_state.copyWith(isSubmitting: false, error: error.toString()));
       rethrow;
     }
   }
@@ -288,8 +244,11 @@ class GroupEventProvider extends ChangeNotifier {
     }
 
     final range = _defaultWeekRange();
-    final events =
-        await _repository.getEventsForGroup(group.id, range.start, range.end);
+    final events = await _repository.getEventsForGroup(
+      group.id,
+      range.start,
+      range.end,
+    );
     final activePermissions = await _loadActivePermissions(group.id);
     final canCreate = activePermissions.contains('create_group_event');
     final canUpdate = activePermissions.contains('update_group_event');
@@ -361,8 +320,11 @@ class GroupEventProvider extends ChangeNotifier {
 
   ({DateTime start, DateTime end}) _defaultWeekRange() {
     final now = planflowLocal(_nowProvider().toUtc());
-    final weekStart = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - DateTime.monday));
+    final weekStart = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - DateTime.monday));
     final weekEnd = weekStart.add(const Duration(days: 7));
     return (start: weekStart, end: weekEnd);
   }

@@ -16,11 +16,14 @@ class GroupMemberScreen extends StatefulWidget {
     super.key,
     GroupMemberProvider? provider,
     String? currentUserIdOverride,
+    String? initialGroupId,
   })  : _provider = provider,
-        _currentUserIdOverride = currentUserIdOverride;
+        _currentUserIdOverride = currentUserIdOverride,
+        _initialGroupId = initialGroupId;
 
   final GroupMemberProvider? _provider;
   final String? _currentUserIdOverride;
+  final String? _initialGroupId;
 
   @override
   State<GroupMemberScreen> createState() => _GroupMemberScreenState();
@@ -29,12 +32,14 @@ class GroupMemberScreen extends StatefulWidget {
 class _GroupMemberScreenState extends State<GroupMemberScreen> {
   late final GroupMemberProvider _provider;
   late final bool _ownsProvider;
+  String? _pendingInitialGroupId;
 
   @override
   void initState() {
     super.initState();
     _ownsProvider = widget._provider == null;
     _provider = widget._provider ?? GroupMemberProvider();
+    _pendingInitialGroupId = widget._initialGroupId;
     unawaited(_load());
   }
 
@@ -48,7 +53,9 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
 
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
-    await _provider.load(userId);
+    final preferredGroupId = _pendingInitialGroupId;
+    _pendingInitialGroupId = null;
+    await _provider.load(userId, preferredGroupId: preferredGroupId);
   }
 
   Future<void> _openGroupList() async {
@@ -65,9 +72,7 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
       builder: (context) {
         return AlertDialog(
           title: const Text('멤버 제거'),
-          content: Text(
-            '${member.userId} 멤버를 그룹에서 제거할까요?',
-          ),
+          content: Text('${member.userId} 멤버를 그룹에서 제거할까요?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -90,16 +95,16 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${member.userId} 멤버를 제거했어요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${member.userId} 멤버를 제거했어요.')));
     } catch (error) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
 
@@ -159,10 +164,7 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
     );
   }
 
-  Widget _buildSelectedGroupCard(
-    BuildContext context,
-    GroupMemberState state,
-  ) {
+  Widget _buildSelectedGroupCard(BuildContext context, GroupMemberState state) {
     final selectedGroup = state.selectedGroup;
     final title = selectedGroup?.name ?? '선택된 그룹이 없어요';
     final subtitle = selectedGroup == null
@@ -198,9 +200,9 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
             const SizedBox(height: 12),
             Text(
               title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
@@ -224,9 +226,7 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
                       : PlanFlowColors.primary,
                 ),
                 if (selectedGroup != null)
-                  _InfoChip(
-                    label: state.isLeaderOfSelectedGroup ? '리더' : '멤버',
-                  ),
+                  _InfoChip(label: state.isLeaderOfSelectedGroup ? '리더' : '멤버'),
                 if (selectedGroup != null)
                   _InfoChip(label: _statusLabel(selectedGroup.status)),
                 _InfoChip(label: '멤버 ${state.members.length}명'),
@@ -238,10 +238,7 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
     );
   }
 
-  Widget _buildMembersSection(
-    BuildContext context,
-    GroupMemberState state,
-  ) {
+  Widget _buildMembersSection(BuildContext context, GroupMemberState state) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -304,9 +301,9 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
             const SizedBox(height: 12),
             Text(
               '선택된 그룹이 없어요',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
@@ -336,9 +333,9 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
             const SizedBox(height: 12),
             Text(
               '등록된 멤버가 없어요',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
@@ -380,15 +377,12 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
             const SizedBox(height: 8),
             Text(
               error,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF7A271A),
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF7A271A)),
             ),
             const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: _load,
-              child: const Text('다시 시도'),
-            ),
+            OutlinedButton(onPressed: _load, child: const Text('다시 시도')),
           ],
         ),
       ),

@@ -81,12 +81,7 @@ GroupMemberModel _member({
   required String userId,
   required String role,
 }) {
-  return GroupMemberModel(
-    id: id,
-    groupId: groupId,
-    userId: userId,
-    role: role,
-  );
+  return GroupMemberModel(id: id, groupId: groupId, userId: userId, role: role);
 }
 
 void main() {
@@ -234,6 +229,110 @@ void main() {
 
     expect(provider.selectedGroup?.id, 'group-member');
     expect(provider.selectedGroupRole, 'member');
+  });
+
+  test('preferred group from navigation overrides stored selection', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'planflow:group_context:selected_group_id:v1:user-1': 'group-leader',
+    });
+
+    final provider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-member',
+            name: 'Member Group',
+            createdBy: 'leader-2',
+            createdAt: DateTime.utc(2026, 6, 11, 2),
+          ),
+          _group(
+            id: 'group-leader',
+            name: 'Leader Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11, 1),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-member': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-member',
+              userId: 'user-1',
+              role: 'member',
+            ),
+          ],
+          'group-leader': <GroupMemberModel>[
+            _member(
+              id: 'leader-1',
+              groupId: 'group-leader',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+
+    await provider.load('user-1', preferredGroupId: 'group-member');
+
+    expect(provider.selectedGroup?.id, 'group-member');
+    expect(provider.selectedGroupRole, 'member');
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getString(
+        'planflow:group_context:selected_group_id:v1:user-1',
+      ),
+      'group-member',
+    );
+  });
+
+  test('invalid preferred group falls back to the stored selection', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'planflow:group_context:selected_group_id:v1:user-1': 'group-leader',
+    });
+
+    final provider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-member',
+            name: 'Member Group',
+            createdBy: 'leader-2',
+            createdAt: DateTime.utc(2026, 6, 11, 2),
+          ),
+          _group(
+            id: 'group-leader',
+            name: 'Leader Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11, 1),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-member': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-member',
+              userId: 'user-1',
+              role: 'member',
+            ),
+          ],
+          'group-leader': <GroupMemberModel>[
+            _member(
+              id: 'leader-1',
+              groupId: 'group-leader',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+
+    await provider.load('user-1', preferredGroupId: 'missing-group');
+
+    expect(provider.selectedGroup?.id, 'group-leader');
+    expect(provider.selectedGroupRole, 'leader');
   });
 
   test('can switch selected group and clear back to personal mode', () async {

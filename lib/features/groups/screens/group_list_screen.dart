@@ -77,7 +77,10 @@ class _GroupListScreenState extends State<GroupListScreen> {
   }
 
   Future<void> _openDashboard() async {
-    final result = await context.push<String>(AppRoutes.groupDashboard);
+    final result = await context.push<String>(
+      AppRoutes.groupDashboard,
+      extra: _selectedGroupIdForNavigation(),
+    );
     if (!mounted) {
       return;
     }
@@ -95,13 +98,16 @@ class _GroupListScreenState extends State<GroupListScreen> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('내 초대 코드를 복사했어요.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('내 초대 코드를 복사했어요.')));
   }
 
   Future<void> _openInviteManagement() async {
-    final result = await context.push<String>(AppRoutes.groupInvites);
+    final result = await context.push<String>(
+      AppRoutes.groupInvites,
+      extra: _selectedGroupIdForNavigation(),
+    );
     if (!mounted) {
       return;
     }
@@ -111,7 +117,10 @@ class _GroupListScreenState extends State<GroupListScreen> {
   }
 
   Future<void> _openGroupEvents() async {
-    final result = await context.push<String>(AppRoutes.groupEvents);
+    final result = await context.push<String>(
+      AppRoutes.groupEvents,
+      extra: _selectedGroupIdForNavigation(),
+    );
     if (!mounted) {
       return;
     }
@@ -121,11 +130,22 @@ class _GroupListScreenState extends State<GroupListScreen> {
   }
 
   Future<void> _openGroupMembers() async {
-    await context.push<String>(AppRoutes.groupMembers);
+    await context.push<String>(
+      AppRoutes.groupMembers,
+      extra: _selectedGroupIdForNavigation(),
+    );
     if (!mounted) {
       return;
     }
     await _load();
+  }
+
+  String? _selectedGroupIdForNavigation() {
+    final selectedGroupId = _provider.selectedGroup?.id.trim();
+    if (selectedGroupId != null && selectedGroupId.isNotEmpty) {
+      return selectedGroupId;
+    }
+    return null;
   }
 
   @override
@@ -232,10 +252,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
     );
   }
 
-  Widget _buildInviteCodeCard(
-    BuildContext context,
-    GroupInviteState state,
-  ) {
+  Widget _buildInviteCodeCard(BuildContext context, GroupInviteState state) {
     final code = state.currentInviteCode?.trim() ?? '';
     return Card(
       child: Padding(
@@ -343,9 +360,9 @@ class _GroupListScreenState extends State<GroupListScreen> {
             const SizedBox(height: 12),
             Text(
               title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
@@ -369,9 +386,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
                       : PlanFlowColors.primary,
                 ),
                 if (selectedGroup != null)
-                  _InfoChip(
-                    label: _roleLabelForGroup(state, selectedGroup),
-                  ),
+                  _InfoChip(label: _roleLabelForGroup(state, selectedGroup)),
                 if (selectedGroup != null)
                   _InfoChip(label: _statusLabel(selectedGroup.status)),
               ],
@@ -396,9 +411,9 @@ class _GroupListScreenState extends State<GroupListScreen> {
             const SizedBox(height: 12),
             Text(
               '아직 속한 그룹이 없어요',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
@@ -440,15 +455,12 @@ class _GroupListScreenState extends State<GroupListScreen> {
             const SizedBox(height: 8),
             Text(
               error,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF7A271A),
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF7A271A)),
             ),
             const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: _load,
-              child: const Text('다시 시도'),
-            ),
+            OutlinedButton(onPressed: _load, child: const Text('다시 시도')),
           ],
         ),
       ),
@@ -461,16 +473,16 @@ class _GroupListScreenState extends State<GroupListScreen> {
         Expanded(
           child: Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
         ),
         Text(
           '선택해서 전환',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: PlanFlowColors.textSecondary),
         ),
       ],
     );

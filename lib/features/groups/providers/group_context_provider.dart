@@ -35,7 +35,7 @@ class GroupContextProvider extends ChangeNotifier {
   bool get hasGroups => _state.hasGroups;
   bool get isLeaderOfSelectedGroup => _state.isLeaderOfSelectedGroup;
 
-  Future<void> load(String userId) async {
+  Future<void> load(String userId, {String? preferredGroupId}) async {
     if (userId.isEmpty) {
       _currentUserId = null;
       _setState(
@@ -51,18 +51,16 @@ class GroupContextProvider extends ChangeNotifier {
     }
 
     _currentUserId = userId;
-    _setState(
-      _state.copyWith(
-        isLoading: true,
-        clearError: true,
-      ),
-    );
+    _setState(_state.copyWith(isLoading: true, clearError: true));
 
     try {
       final groups = await _repository.listGroups();
       final memberships = await _loadMembershipsForGroups(groups, userId);
-      final selectedGroupId =
-          await _resolveSelectedGroupId(groups, memberships);
+      final selectedGroupId = await _resolveSelectedGroupId(
+        groups,
+        memberships,
+        preferredGroupId: preferredGroupId,
+      );
       final selectedGroup = _findGroupById(groups, selectedGroupId);
       final selectedRole =
           selectedGroupId == null ? null : memberships[selectedGroupId]?.role;
@@ -159,10 +157,7 @@ class GroupContextProvider extends ChangeNotifier {
           break;
         }
       }
-      return MapEntry<String, GroupMemberModel?>(
-        group.id,
-        activeMembership,
-      );
+      return MapEntry<String, GroupMemberModel?>(group.id, activeMembership);
     });
 
     final resolved = await Future.wait(futures);
@@ -178,8 +173,17 @@ class GroupContextProvider extends ChangeNotifier {
 
   Future<String?> _resolveSelectedGroupId(
     List<GroupModel> groups,
-    Map<String, GroupMemberModel> memberships,
-  ) async {
+    Map<String, GroupMemberModel> memberships, {
+    String? preferredGroupId,
+  }) async {
+    final normalizedPreferredGroupId = preferredGroupId?.trim();
+    if (normalizedPreferredGroupId != null &&
+        normalizedPreferredGroupId.isNotEmpty &&
+        groups.any((group) => group.id == normalizedPreferredGroupId) &&
+        memberships.containsKey(normalizedPreferredGroupId)) {
+      return normalizedPreferredGroupId;
+    }
+
     final storedSelectedGroupId = await _readSelectedGroupId();
     if (storedSelectedGroupId != null &&
         groups.any((group) => group.id == storedSelectedGroupId) &&
@@ -234,10 +238,7 @@ class GroupContextProvider extends ChangeNotifier {
     return null;
   }
 
-  Future<String?> _resolveRoleForGroup(
-    String groupId,
-    String? userId,
-  ) async {
+  Future<String?> _resolveRoleForGroup(String groupId, String? userId) async {
     if (userId == null || userId.isEmpty) {
       return null;
     }

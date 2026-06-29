@@ -34,7 +34,7 @@ class GroupMemberProvider extends ChangeNotifier {
   bool get isPersonalMode => _state.isPersonalMode;
   bool get isLeaderOfSelectedGroup => _state.isLeaderOfSelectedGroup;
 
-  Future<void> load(String userId) async {
+  Future<void> load(String userId, {String? preferredGroupId}) async {
     if (userId.isEmpty) {
       _currentUserId = null;
       _setState(const GroupMemberState.initial());
@@ -42,15 +42,10 @@ class GroupMemberProvider extends ChangeNotifier {
     }
 
     _currentUserId = userId;
-    _setState(
-      _state.copyWith(
-        isLoading: true,
-        clearError: true,
-      ),
-    );
+    _setState(_state.copyWith(isLoading: true, clearError: true));
 
     try {
-      await _contextProvider.load(userId);
+      await _contextProvider.load(userId, preferredGroupId: preferredGroupId);
       if (_contextProvider.error != null) {
         throw StateError(_contextProvider.error!);
       }
@@ -96,12 +91,7 @@ class GroupMemberProvider extends ChangeNotifier {
       throw StateError('마지막 리더는 제거할 수 없어요.');
     }
 
-    _setState(
-      _state.copyWith(
-        isSubmitting: true,
-        clearError: true,
-      ),
-    );
+    _setState(_state.copyWith(isSubmitting: true, clearError: true));
     try {
       final updated = await _repository.removeGroupMember(
         _requireSelectedGroup().id,
@@ -110,12 +100,7 @@ class GroupMemberProvider extends ChangeNotifier {
       await _reloadMembers();
       return updated;
     } catch (error) {
-      _setState(
-        _state.copyWith(
-          isSubmitting: false,
-          error: error.toString(),
-        ),
-      );
+      _setState(_state.copyWith(isSubmitting: false, error: error.toString()));
       rethrow;
     }
   }
@@ -174,7 +159,9 @@ class GroupMemberProvider extends ChangeNotifier {
   List<GroupMemberModel> _sortMembers(List<GroupMemberModel> members) {
     final sorted = members.toList(growable: false);
     sorted.sort((a, b) {
-      final statusOrder = _statusOrder(a.status).compareTo(_statusOrder(b.status));
+      final statusOrder = _statusOrder(
+        a.status,
+      ).compareTo(_statusOrder(b.status));
       if (statusOrder != 0) {
         return statusOrder;
       }
@@ -182,8 +169,10 @@ class GroupMemberProvider extends ChangeNotifier {
       if (roleOrder != 0) {
         return roleOrder;
       }
-      final aJoined = a.joinedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final bJoined = b.joinedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final aJoined =
+          a.joinedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bJoined =
+          b.joinedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       return aJoined.compareTo(bJoined);
     });
     return sorted;

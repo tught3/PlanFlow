@@ -18,13 +18,16 @@ class GroupInviteScreen extends StatefulWidget {
     GroupContextProvider? contextProvider,
     GroupInviteProvider? inviteProvider,
     String? currentUserIdOverride,
+    String? initialGroupId,
   })  : _contextProvider = contextProvider,
         _inviteProvider = inviteProvider,
-        _currentUserIdOverride = currentUserIdOverride;
+        _currentUserIdOverride = currentUserIdOverride,
+        _initialGroupId = initialGroupId;
 
   final GroupContextProvider? _contextProvider;
   final GroupInviteProvider? _inviteProvider;
   final String? _currentUserIdOverride;
+  final String? _initialGroupId;
 
   @override
   State<GroupInviteScreen> createState() => _GroupInviteScreenState();
@@ -37,6 +40,7 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
   late final bool _ownsInviteProvider;
   late final TextEditingController _inviteCodeController;
   late final TextEditingController _emailController;
+  String? _pendingInitialGroupId;
   bool _copyingCode = false;
 
   @override
@@ -48,6 +52,7 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
     _inviteProvider = widget._inviteProvider ?? GroupInviteProvider();
     _inviteCodeController = TextEditingController();
     _emailController = TextEditingController();
+    _pendingInitialGroupId = widget._initialGroupId;
     unawaited(_load());
   }
 
@@ -66,8 +71,10 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
 
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
+    final preferredGroupId = _pendingInitialGroupId;
+    _pendingInitialGroupId = null;
     await Future.wait(<Future<void>>[
-      _contextProvider.load(userId),
+      _contextProvider.load(userId, preferredGroupId: preferredGroupId),
       _inviteProvider.load(userId),
     ]);
   }
@@ -81,9 +88,9 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('내 초대 코드를 복사했어요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('내 초대 코드를 복사했어요.')));
     } finally {
       if (mounted) {
         setState(() {
@@ -96,9 +103,9 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
   Future<void> _sendInviteByCode(GroupModel group) async {
     final code = _inviteCodeController.text.trim();
     if (code.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('초대 코드를 입력해 주세요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('초대 코드를 입력해 주세요.')));
       return;
     }
     try {
@@ -110,18 +117,18 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
         return;
       }
       _inviteCodeController.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('초대 코드를 보냈어요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('초대 코드를 보냈어요.')));
     } catch (_) {}
   }
 
   Future<void> _sendInviteByEmail(GroupModel group) async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이메일을 입력해 주세요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이메일을 입력해 주세요.')));
       return;
     }
     try {
@@ -133,9 +140,9 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
         return;
       }
       _emailController.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이메일 초대를 보냈어요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('이메일 초대를 보냈어요.')));
     } catch (_) {}
   }
 
@@ -145,9 +152,9 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('초대를 수락했어요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('초대를 수락했어요.')));
     } catch (_) {}
   }
 
@@ -157,17 +164,19 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('초대를 거절했어요.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('초대를 거절했어요.')));
     } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation:
-          Listenable.merge(<Listenable>[_contextProvider, _inviteProvider]),
+      animation: Listenable.merge(<Listenable>[
+        _contextProvider,
+        _inviteProvider,
+      ]),
       builder: (context, _) {
         final contextState = _contextProvider.state;
         final inviteState = _inviteProvider.state;
@@ -291,16 +300,16 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
           children: [
             Text(
               '현재 그룹',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
             Text(
               selectedGroup?.name ?? '선택된 그룹이 없어요',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
@@ -335,9 +344,9 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
         padding: const EdgeInsets.all(16),
         child: Text(
           message,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: PlanFlowColors.textSecondary),
         ),
       ),
     );
@@ -442,9 +451,9 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
               const SizedBox(height: 12),
               Text(
                 '받은 초대가 없어요',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
               Text(
@@ -465,9 +474,9 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
       children: [
         Text(
           '받은 초대',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 12),
         ...state.pendingInvites.map(
@@ -492,9 +501,9 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
         padding: const EdgeInsets.all(16),
         child: Text(
           error,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF7A271A),
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF7A271A)),
         ),
       ),
     );

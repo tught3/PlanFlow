@@ -129,9 +129,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => ShellScreen(
         key: ValueKey<String>('calendar-${state.uri.query}'),
         initialIndex: 1,
-        initialCalendarDate: _parseRouteDate(
-          state.uri.queryParameters['date'],
-        ),
+        initialCalendarDate: _parseRouteDate(state.uri.queryParameters['date']),
       ),
     ),
     GoRoute(
@@ -195,9 +193,7 @@ final GoRouter appRouter = GoRouter(
         );
         final rawText = extra['raw_text']?.toString() ?? '';
         return VoiceActionScreen(
-          key: ValueKey(
-            'voice-action-${action.name}-${rawText.hashCode}',
-          ),
+          key: ValueKey('voice-action-${action.name}-${rawText.hashCode}'),
           rawText: rawText,
           action: action,
         );
@@ -271,19 +267,27 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: AppRoutes.groupInvites,
-      builder: (context, state) => const GroupInviteScreen(),
+      builder: (context, state) => GroupInviteScreen(
+        initialGroupId: state.extra is String ? state.extra! as String : null,
+      ),
     ),
     GoRoute(
       path: AppRoutes.groupMembers,
-      builder: (context, state) => const GroupMemberScreen(),
+      builder: (context, state) => GroupMemberScreen(
+        initialGroupId: state.extra is String ? state.extra! as String : null,
+      ),
     ),
     GoRoute(
       path: AppRoutes.groupEvents,
-      builder: (context, state) => const GroupEventListScreen(),
+      builder: (context, state) => GroupEventListScreen(
+        initialGroupId: state.extra is String ? state.extra! as String : null,
+      ),
     ),
     GoRoute(
       path: AppRoutes.groupDashboard,
-      builder: (context, state) => const GroupDashboardScreen(),
+      builder: (context, state) => GroupDashboardScreen(
+        initialGroupId: state.extra is String ? state.extra! as String : null,
+      ),
     ),
     GoRoute(
       path: AppRoutes.groupEventCreate,

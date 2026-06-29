@@ -40,7 +40,7 @@ class GroupDashboardProvider extends ChangeNotifier {
   bool get isLeaderOfSelectedGroup => _state.isLeaderOfSelectedGroup;
   bool get hasUpcomingEvents => _state.hasUpcomingEvents;
 
-  Future<void> load(String userId) async {
+  Future<void> load(String userId, {String? preferredGroupId}) async {
     if (userId.isEmpty) {
       _currentUserId = null;
       _setState(const GroupDashboardState.initial());
@@ -51,7 +51,7 @@ class GroupDashboardProvider extends ChangeNotifier {
     _setState(_state.copyWith(isLoading: true, clearError: true));
 
     try {
-      await _contextProvider.load(userId);
+      await _contextProvider.load(userId, preferredGroupId: preferredGroupId);
       await _reloadDashboard();
     } catch (error) {
       _setState(

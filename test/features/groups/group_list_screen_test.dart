@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_invite_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
@@ -266,5 +268,115 @@ void main() {
       ),
       findsNothing,
     );
+  });
+
+  testWidgets('passes the selected group id to child group routes',
+      (tester) async {
+    final provider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-member',
+            name: 'Member Group',
+            createdBy: 'leader-2',
+            createdAt: DateTime.utc(2026, 6, 11, 2),
+          ),
+          _group(
+            id: 'group-leader',
+            name: 'Leader Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11, 1),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-member': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-member',
+              userId: 'user-1',
+              role: 'member',
+            ),
+          ],
+          'group-leader': <GroupMemberModel>[
+            _member(
+              id: 'leader-1',
+              groupId: 'group-leader',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final inviteProvider = GroupInviteProvider(
+      repository: FakeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+      },
+    );
+    final capturedExtras = <String, Object?>{};
+    Widget extraCapture(String routeName, GoRouterState state) {
+      capturedExtras[routeName] = state.extra;
+      return Scaffold(
+        body: Text('$routeName:${state.extra}'),
+      );
+    }
+
+    final router = GoRouter(
+      initialLocation: '/',
+      routes: <RouteBase>[
+        GoRoute(
+          path: '/',
+          builder: (context, state) => GroupListScreen(
+            provider: provider,
+            inviteProvider: inviteProvider,
+            currentUserIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.groupDashboard,
+          builder: (context, state) => extraCapture('dashboard', state),
+        ),
+        GoRoute(
+          path: AppRoutes.groupEvents,
+          builder: (context, state) => extraCapture('events', state),
+        ),
+        GoRoute(
+          path: AppRoutes.groupInvites,
+          builder: (context, state) => extraCapture('invites', state),
+        ),
+        GoRoute(
+          path: AppRoutes.groupMembers,
+          builder: (context, state) => extraCapture('members', state),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    await tester
+        .tap(find.byKey(const ValueKey('group-list-item-group-member')));
+    await tester.pumpAndSettle();
+
+    for (final entry in <String, String>{
+      'dashboard': 'group-list-dashboard-button',
+      'events': 'group-list-events-button',
+      'invites': 'group-list-invite-button',
+      'members': 'group-list-members-button',
+    }.entries) {
+      await tester.scrollUntilVisible(
+        find.byKey(ValueKey<String>(entry.value)),
+        300,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>(entry.value)));
+      await tester.pumpAndSettle();
+
+      expect(capturedExtras[entry.key], 'group-member');
+
+      router.pop();
+      await tester.pumpAndSettle();
+    }
   });
 }

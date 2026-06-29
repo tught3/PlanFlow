@@ -1,4 +1,8 @@
 # ACTIVE SUMMARY
+## 2026-06-29 TASK_20260629_013340 그룹 하위 화면 선택 컨텍스트 유지
+- 그룹 목록에서 대시보드/그룹 일정/초대 관리/멤버 관리로 이동할 때 현재 선택된 group id를 라우터 extra로 전달하고, 각 하위 화면/provider가 최초 로드에서 해당 group id를 저장된 선택값보다 우선하도록 정리했다.
+- 저장된 group id가 있더라도 navigation preferred group이 유효하면 그 그룹을 선택하고, 유효하지 않으면 기존 저장 선택 fallback을 유지하는 회귀 테스트와 그룹 목록 버튼 라우팅 extra 전달 테스트를 추가했다.
+- 검증: `flutter analyze --no-pub`, `flutter test test\features\groups\group_context_provider_test.dart --no-pub -r compact`, `flutter test test\features\groups\group_list_screen_test.dart --no-pub -r compact`, `flutter test test\features\groups --no-pub -r compact`, `git diff --check` 통과. `flutter build apk --debug --no-pub`는 로컬 비밀 파일 `android/key.properties` 누락으로 빌드 스크립트에서 중단됐다.
 ## 2026-06-21 Google login and onboarding order cleanup
 - Google 로그인 성공 직후에 바로 `CalendarSyncService.syncGoogleCalendar(interactive: true)`를 띄우던 경로를 제거해, 계정 선택이 로그인 온보딩 화면 위로 뒤늦게 튀어나오지 않도록 정리했다.
 - `ShellScreen`은 이제 권한 온보딩이 끝난 뒤에만 Google Calendar 자동 연결과 나머지 시작 작업을 실행하도록 순서를 묶어서, 로그인 -> 온보딩 -> 캘린더 계정 확인 순서로 정돈했다.

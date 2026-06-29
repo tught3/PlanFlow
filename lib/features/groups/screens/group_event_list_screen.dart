@@ -17,11 +17,14 @@ class GroupEventListScreen extends StatefulWidget {
     super.key,
     GroupEventProvider? provider,
     String? currentUserIdOverride,
+    String? initialGroupId,
   })  : _provider = provider,
-        _currentUserIdOverride = currentUserIdOverride;
+        _currentUserIdOverride = currentUserIdOverride,
+        _initialGroupId = initialGroupId;
 
   final GroupEventProvider? _provider;
   final String? _currentUserIdOverride;
+  final String? _initialGroupId;
 
   @override
   State<GroupEventListScreen> createState() => _GroupEventListScreenState();
@@ -30,12 +33,14 @@ class GroupEventListScreen extends StatefulWidget {
 class _GroupEventListScreenState extends State<GroupEventListScreen> {
   late final GroupEventProvider _provider;
   late final bool _ownsProvider;
+  String? _pendingInitialGroupId;
 
   @override
   void initState() {
     super.initState();
     _ownsProvider = widget._provider == null;
     _provider = widget._provider ?? GroupEventProvider();
+    _pendingInitialGroupId = widget._initialGroupId;
     unawaited(_load());
   }
 
@@ -49,7 +54,9 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
 
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
-    await _provider.load(userId);
+    final preferredGroupId = _pendingInitialGroupId;
+    _pendingInitialGroupId = null;
+    await _provider.load(userId, preferredGroupId: preferredGroupId);
   }
 
   Future<void> _openCreateEvent() async {
@@ -178,9 +185,9 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
             const SizedBox(height: 12),
             Text(
               title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
@@ -322,9 +329,9 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
         padding: const EdgeInsets.all(16),
         child: Text(
           error,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF7A271A),
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF7A271A)),
         ),
       ),
     );
@@ -344,9 +351,9 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
             const SizedBox(height: 12),
             Text(
               '선택된 그룹이 없어요',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
@@ -363,16 +370,23 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
   }
 
   List<GroupEventModel> _eventsForDay(
-      List<GroupEventModel> events, DateTime day) {
+    List<GroupEventModel> events,
+    DateTime day,
+  ) {
     return events
         .where((event) => groupEventOccursOnLocalDay(event, day))
         .toList(growable: false);
   }
 
   List<GroupEventModel> _eventsForWeek(
-      List<GroupEventModel> events, DateTime day) {
-    final weekStart = DateTime(day.year, day.month, day.day)
-        .subtract(Duration(days: day.weekday - DateTime.monday));
+    List<GroupEventModel> events,
+    DateTime day,
+  ) {
+    final weekStart = DateTime(
+      day.year,
+      day.month,
+      day.day,
+    ).subtract(Duration(days: day.weekday - DateTime.monday));
     return events.where((event) {
       for (var offset = 0; offset < 7; offset++) {
         final weekDay = weekStart.add(Duration(days: offset));

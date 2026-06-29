@@ -16,11 +16,14 @@ class GroupDashboardScreen extends StatefulWidget {
     super.key,
     GroupDashboardProvider? provider,
     String? currentUserIdOverride,
+    String? initialGroupId,
   })  : _provider = provider,
-        _currentUserIdOverride = currentUserIdOverride;
+        _currentUserIdOverride = currentUserIdOverride,
+        _initialGroupId = initialGroupId;
 
   final GroupDashboardProvider? _provider;
   final String? _currentUserIdOverride;
+  final String? _initialGroupId;
 
   @override
   State<GroupDashboardScreen> createState() => _GroupDashboardScreenState();
@@ -29,12 +32,14 @@ class GroupDashboardScreen extends StatefulWidget {
 class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
   late final GroupDashboardProvider _provider;
   late final bool _ownsProvider;
+  String? _pendingInitialGroupId;
 
   @override
   void initState() {
     super.initState();
     _ownsProvider = widget._provider == null;
     _provider = widget._provider ?? GroupDashboardProvider();
+    _pendingInitialGroupId = widget._initialGroupId;
     unawaited(_load());
   }
 
@@ -48,7 +53,9 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
 
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
-    await _provider.load(userId);
+    final preferredGroupId = _pendingInitialGroupId;
+    _pendingInitialGroupId = null;
+    await _provider.load(userId, preferredGroupId: preferredGroupId);
   }
 
   Future<void> _openGroupList() async {
@@ -156,9 +163,9 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
             const SizedBox(height: 12),
             Text(
               title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             Text(
@@ -195,10 +202,7 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
     );
   }
 
-  Widget _buildMetricsGrid(
-    BuildContext context,
-    GroupDashboardState state,
-  ) {
+  Widget _buildMetricsGrid(BuildContext context, GroupDashboardState state) {
     return Column(
       children: [
         Row(
@@ -283,7 +287,8 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
                       padding: const EdgeInsets.only(bottom: 12),
                       child: _UpcomingEventTile(
                         key: ValueKey<String>(
-                            'group-dashboard-event-${event.id}'),
+                          'group-dashboard-event-${event.id}',
+                        ),
                         event: event,
                       ),
                     ),
@@ -309,9 +314,9 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
             const SizedBox(height: 12),
             Text(
               '선택된 그룹이 없어요',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
@@ -376,9 +381,9 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
             const SizedBox(height: 8),
             Text(
               error,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF7A271A),
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF7A271A)),
             ),
           ],
         ),
@@ -433,9 +438,9 @@ class _MetricCard extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               value,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
           ],
         ),
@@ -445,10 +450,7 @@ class _MetricCard extends StatelessWidget {
 }
 
 class _UpcomingEventTile extends StatelessWidget {
-  const _UpcomingEventTile({
-    super.key,
-    required this.event,
-  });
+  const _UpcomingEventTile({super.key, required this.event});
 
   final GroupEventModel event;
 
