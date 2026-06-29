@@ -56,7 +56,16 @@ class NotificationService {
       '중요 일정 알람. 일반 알림보다 강한 진동과 전용 알림음으로 구분합니다.';
   static const Color _criticalAlarmColor = Color(0xFFD32F2F);
   static const String departureAcknowledgedActionId = 'departure_ack';
-  static const String departureArrivedActionId = 'departure_arrived';
+  static const List<AndroidNotificationAction> _departureActions =
+      <AndroidNotificationAction>[
+    AndroidNotificationAction(
+      departureAcknowledgedActionId,
+      '출발',
+      cancelNotification: true,
+      showsUserInterface: false,
+      semanticAction: SemanticAction.none,
+    ),
+  ];
   static const MethodChannel _settingsChannel = MethodChannel(
     'planflow/android_settings',
   );
@@ -89,6 +98,7 @@ class NotificationService {
     required String body,
     required DateTime notifyAt,
     String? payload,
+    bool includeDepartureAction = false,
   }) async {
     await scheduleEventReminderWithResult(
       id: id,
@@ -96,6 +106,7 @@ class NotificationService {
       body: body,
       notifyAt: notifyAt,
       payload: payload,
+      includeDepartureAction: includeDepartureAction,
     );
   }
 
@@ -105,6 +116,7 @@ class NotificationService {
     required String body,
     required DateTime notifyAt,
     String? payload,
+    bool includeDepartureAction = false,
   }) async {
     if (!notifyAt.isAfter(DateTime.now())) {
       debugPrint('Notification skipped because notifyAt is past: $notifyAt');
@@ -131,7 +143,9 @@ class NotificationService {
         title: title,
         body: body,
         notifyAt: notifyAt,
-        details: _eventReminderDetails(),
+        details: _eventReminderDetails(
+          actions: includeDepartureAction ? _departureActions : null,
+        ),
         androidScheduleMode: reminderScheduleModeForStatus(status),
         payload: payload,
       );
@@ -409,22 +423,7 @@ class NotificationService {
         body: body,
         notifyAt: notifyAt,
         details: _eventReminderDetails(
-          actions: const [
-            AndroidNotificationAction(
-              departureAcknowledgedActionId,
-              '출발했어요',
-              cancelNotification: true,
-              showsUserInterface: true,
-              semanticAction: SemanticAction.none,
-            ),
-            AndroidNotificationAction(
-              departureArrivedActionId,
-              '도착',
-              cancelNotification: true,
-              showsUserInterface: true,
-              semanticAction: SemanticAction.none,
-            ),
-          ],
+          actions: _departureActions,
         ),
         androidScheduleMode: reminderScheduleModeForStatus(status),
         payload: payload,
@@ -686,8 +685,7 @@ class NotificationService {
           _backgroundNotificationResponseCallback,
       onDidReceiveNotificationResponse: (response) {
         final route = routeForNotificationResponse(response);
-        if ((response.actionId == departureAcknowledgedActionId ||
-                response.actionId == departureArrivedActionId) &&
+        if (response.actionId == departureAcknowledgedActionId &&
             (response.payload ?? '').startsWith('departure:')) {
           final eventId =
               (response.payload ?? '').substring('departure:'.length).trim();
@@ -911,22 +909,7 @@ class NotificationService {
         ),
         visibility: NotificationVisibility.public,
         ticker: '중요 일정 알림',
-        actions: const [
-          AndroidNotificationAction(
-            departureAcknowledgedActionId,
-            '출발했어요',
-            cancelNotification: true,
-            showsUserInterface: true,
-            semanticAction: SemanticAction.none,
-          ),
-          AndroidNotificationAction(
-            departureArrivedActionId,
-            '도착',
-            cancelNotification: true,
-            showsUserInterface: true,
-            semanticAction: SemanticAction.none,
-          ),
-        ],
+        actions: _departureActions,
       ),
       iOS: const DarwinNotificationDetails(
         presentAlert: true,
@@ -1066,9 +1049,8 @@ class NotificationService {
       }
       final eventRoute =
           '${AppRoutes.eventDetail}/${Uri.encodeComponent(eventId)}';
-      if (response.actionId == departureAcknowledgedActionId ||
-          response.actionId == departureArrivedActionId) {
-        return eventRoute;
+      if (response.actionId == departureAcknowledgedActionId) {
+        return null;
       }
       return '$eventRoute?departureAction=prompt';
     }
@@ -1176,8 +1158,7 @@ Future<void> _backgroundNotificationResponseCallback(
 ) async {
   final payload = response.payload ?? '';
   final actionId = response.actionId;
-  if ((actionId == NotificationService.departureAcknowledgedActionId ||
-          actionId == NotificationService.departureArrivedActionId) &&
+  if (actionId == NotificationService.departureAcknowledgedActionId &&
       payload.startsWith('departure:')) {
     final eventId = payload.substring('departure:'.length).trim();
     if (eventId.isNotEmpty) {

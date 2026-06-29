@@ -1,4 +1,15 @@
 # ACTIVE SUMMARY
+## 2026-06-29 Crashlytics 딥링크/네트워크 이슈 방어
+- `planflow://` 커스텀 스킴 cold-start intent가 Flutter initial route로 전달되지 않도록 Android `MainActivity.getInitialRoute()`에서 초기 route를 `/`로 고정했다. 실제 딥링크 라우팅은 기존 `app_links`/home widget 경로가 처리한다.
+- Supabase/Postgrest DNS/SocketException 같은 사용자 네트워크 오류는 Crashlytics 이슈로 기록하지 않고 debug 로그만 남기도록 런타임 오류 필터를 분리했다. 일시적 플랫폼 channel 오류는 기존처럼 non-fatal로만 기록한다.
+- 검증: focused Flutter tests(`runtime_error_filter`, `android_deep_link_guard`, `app_home_widget_route`) 통과, 변경 파일 analyzer 통과, guarded release APK 산출 후 `apksigner verify`와 `aapt dump badging` 확인 통과. guarded wrapper는 타임아웃으로 종료 메시지를 못 받았지만 새 APK timestamp와 서명 검증으로 산출물 정상 확인.
+
+## 2026-06-29 출발 알림 위치 fallback 및 출발 액션 정리
+- 스마트 준비 알림의 출발 payload 생성 시 목적지 좌표가 있는데 현재 위치(origin)만 없는 경우, "위치 확인 불가, 기본값"으로 표시하지 않고 목적지 좌표 기반 로컬 이동시간 추정을 사용하도록 보정했다.
+- "지금 출발하세요" 스마트 준비 알림은 `departure:<eventId>` payload와 출발 액션을 사용하게 연결했고, 출발 알림 액션은 `도착`을 제거해 `출발` 단일 버튼만 남겼다. 알림 본문 탭은 일정 상세의 출발 확인 모달로 이동하고, 버튼 탭은 앱을 열지 않고 출발 인정 처리만 한다.
+- 일정 상세 출발 확인 모달 문구를 `아직 출발 전` / `출발`로 정리했다.
+- 검증: `dart format` 및 `git diff --check` 통과. focused Flutter test/analyze는 동시에 실행 중인 release build 및 별도 Flutter test 프로세스와 충돌해 120초 타임아웃으로 완료하지 못했다.
+
 ## 2026-06-29 포그라운드 브리핑 모달 SharedPreferences 브리지 보강
 - `android_alarm_manager_plus` 알람 콜백이 별도 FlutterEngine/Dart VM에서 실행되어 `IsolateNameServer` 포트가 메인 앱에 닿지 않는 문제를 이어받아, SharedPreferences pending modal 브리지의 경계 조건을 보강했다.
 - pending modal은 앱이 실제 foreground일 때만 소비하고, background 상태에서는 키를 유지한다. 앱 시작/복귀 직후에는 2초 폴링을 기다리지 않고 즉시 pending modal을 확인한다.

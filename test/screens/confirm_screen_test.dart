@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -134,6 +134,39 @@ void main() {
       repository.createdEvents.single.recurrenceRule,
       'FREQ=WEEKLY;BYDAY=MO',
     );
+  });
+
+  testWidgets('ConfirmScreen save leaves voice stack for calendar tab',
+      (tester) async {
+    final repository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _voiceStackTestApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(title: '저장 후 이동 확인'),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    expect(find.text('음성 입력'), findsOneWidget);
+
+    await tester.tap(find.text('확인 화면 열기'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pumpAndSettle();
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(find.text('일정'), findsOneWidget);
+    expect(find.text('음성 입력'), findsNothing);
   });
 
   testWidgets('ConfirmScreen shows login guidance when save session is missing',
@@ -592,6 +625,45 @@ Widget _testApp(Widget child) {
   );
 }
 
+Widget _voiceStackTestApp(Widget confirmScreen) {
+  final router = GoRouter(
+    initialLocation: AppRoutes.voice,
+    routes: [
+      GoRoute(
+        path: AppRoutes.voice,
+        builder: (context, __) => Scaffold(
+          body: Column(
+            children: [
+              const Text('음성 입력'),
+              TextButton(
+                onPressed: () => context.push(AppRoutes.confirm),
+                child: const Text('확인 화면 열기'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.confirm,
+        builder: (_, __) => confirmScreen,
+      ),
+      GoRoute(
+        path: AppRoutes.calendar,
+        builder: (_, __) => const Scaffold(body: Text('일정')),
+      ),
+      GoRoute(
+        path: AppRoutes.home,
+        builder: (_, __) => const Scaffold(body: Text('홈')),
+      ),
+    ],
+  );
+
+  return MaterialApp.router(
+    scaffoldMessengerKey: AppFeedbackService.scaffoldMessengerKey,
+    routerConfig: router,
+  );
+}
+
 Finder _textFieldWithLabel(String label) {
   return find.ancestor(
     of: find.text(label),
@@ -804,6 +876,7 @@ class _FakeNotificationService extends NotificationService {
     required String body,
     required DateTime notifyAt,
     String? payload,
+    bool includeDepartureAction = false,
   }) async {}
 
   @override

@@ -194,11 +194,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         actions: [
           FilledButton.tonal(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('아직 아니에요'),
+            child: const Text('아직 출발 전'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('출발했어요'),
+            child: const Text('출발'),
           ),
         ],
       ),

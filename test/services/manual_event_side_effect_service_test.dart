@@ -47,8 +47,7 @@ void main() {
 
     // [PREVENT] 1시간 이내 시작 일정은 reminder(기본 60분 전)가 과거가 되어
     // 스킵되던 버그 → 시작 정각으로 보정해 알림이 오게 한다.
-    test('1시간 이내 시작 일정은 reminder를 시작 정각에 예약한다(60분 전이 과거여도 스킵 안 함)',
-        () async {
+    test('1시간 이내 시작 일정은 reminder를 시작 정각에 예약한다(60분 전이 과거여도 스킵 안 함)', () async {
       final notifications = _FakeNotificationService();
       final service = ManualEventSideEffectService(
         gateway: _FakeManualEventGateway(),
@@ -431,6 +430,49 @@ void main() {
       );
     });
 
+    test(
+        'resyncExternalPreparationForDay uses destination coordinates when current location is unavailable',
+        () async {
+      final gateway = _FakeManualEventGateway();
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        notificationService: _FakeNotificationService(),
+        currentLocationProvider: () async => null,
+        now: () => DateTime(2026, 5, 8, 6),
+      );
+      final event = EventModel(
+        id: 'coords-no-origin',
+        userId: 'user-1',
+        title: '거래처 방문',
+        startAt: DateTime(2026, 5, 8, 10),
+        location: '강남역',
+        locationLat: 37.4979,
+        locationLng: 127.0276,
+      );
+
+      final result = await service.resyncExternalPreparationForDay(
+        dayEvents: <EventModel>[event],
+        userId: 'user-1',
+        dayReference: DateTime(2026, 5, 8),
+        now: DateTime(2026, 5, 8, 6),
+        cacheOnlyLocation: true,
+      );
+
+      expect(result, true);
+      final titles = gateway.insertedPreActions
+          .where((row) => row['event_id'] == 'coords-no-origin')
+          .map((row) => row['title'].toString())
+          .toList();
+      expect(titles.any(_isDepartureExternalAlarmTitle), true);
+      expect(
+        titles.any((title) => title.contains('위치 확인 불가, 기본값')),
+        false,
+      );
+      expect(titles, isNot(contains('지금 출발하세요 🚗 (이동 약 30분)')));
+    });
+
     test('syncAfterSave geocodes title text when location is missing',
         () async {
       final gateway = _FakeManualEventGateway();
@@ -809,9 +851,7 @@ void main() {
     group('DiagLogger 로깅', () {
       setUp(DiagLogger.clear);
 
-      test(
-          'syncAfterSave: 장소 있는 일정 저장 시 ManualSideEffect 로그가 기록된다',
-          () async {
+      test('syncAfterSave: 장소 있는 일정 저장 시 ManualSideEffect 로그가 기록된다', () async {
         final service = ManualEventSideEffectService(
           gateway: _FakeManualEventGateway(),
           eventRepository: _FakeEventRepository(),
@@ -850,9 +890,7 @@ void main() {
         );
       });
 
-      test(
-          'syncAfterSave: 장소 없는 일정 저장 시 hasLocation=false가 기록된다',
-          () async {
+      test('syncAfterSave: 장소 없는 일정 저장 시 hasLocation=false가 기록된다', () async {
         final service = ManualEventSideEffectService(
           gateway: _FakeManualEventGateway(),
           eventRepository: _FakeEventRepository(),
@@ -876,8 +914,7 @@ void main() {
         );
       });
 
-      test(
-          'recalculateAlarmsForEvents: 장소 없는 일정은 DepartureAlarm 스킵 로그가 기록된다',
+      test('recalculateAlarmsForEvents: 장소 없는 일정은 DepartureAlarm 스킵 로그가 기록된다',
           () async {
         final departure = _FakeDepartureAlarmService();
         final service = ManualEventSideEffectService(
@@ -912,8 +949,7 @@ void main() {
         );
       });
 
-      test(
-          'recalculateAlarmsForEvents: 장소 있는 일정은 DepartureAlarm 등록 로그가 기록된다',
+      test('recalculateAlarmsForEvents: 장소 있는 일정은 DepartureAlarm 등록 로그가 기록된다',
           () async {
         final departure = _FakeDepartureAlarmService();
         final service = ManualEventSideEffectService(
@@ -1254,6 +1290,7 @@ class _FakeNotificationService extends NotificationService {
     required String body,
     required DateTime notifyAt,
     String? payload,
+    bool includeDepartureAction = false,
   }) async {
     scheduledEventReminderIds.add(id);
     scheduledEventReminderNotifyAts.add(notifyAt);

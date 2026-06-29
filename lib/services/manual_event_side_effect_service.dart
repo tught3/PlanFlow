@@ -209,10 +209,10 @@ class ManualEventSideEffectService {
     DiagLogger.log(
       'ManualSideEffect',
       'syncAfterSave 시작 eventId=${event.id} '
-      'hasLocation=$hasLocation '
-      'locationText="${event.location ?? ''}" '
-      'hasCoords=${event.locationLat != null && event.locationLng != null} '
-      'isFirstExternal=$isFirstExternalEventOfDay',
+          'hasLocation=$hasLocation '
+          'locationText="${event.location ?? ''}" '
+          'hasCoords=${event.locationLat != null && event.locationLng != null} '
+          'isFirstExternal=$isFirstExternalEventOfDay',
     );
 
     try {
@@ -245,9 +245,9 @@ class ManualEventSideEffectService {
       DiagLogger.log(
         'ManualSideEffect',
         'SmartPrep DB payload count=${externalPreparationPayloads.length} '
-        'includePrep=$isFirstExternalEventOfDay '
-        'travelMin=${resolvedTravelMinutes.minutes} '
-        'travelIsFallback=${resolvedTravelMinutes.isFallback}',
+            'includePrep=$isFirstExternalEventOfDay '
+            'travelMin=${resolvedTravelMinutes.minutes} '
+            'travelIsFallback=${resolvedTravelMinutes.isFallback}',
       );
       await gateway.insertPreActions(externalPreparationPayloads);
       reminderEvent = await _syncEventCriticalFlagForPreActions(
@@ -264,7 +264,8 @@ class ManualEventSideEffectService {
       );
       remindersSynced = true;
     } catch (e, st) {
-      debugPrint('[PlanFlow] reminder DB sync failed for event ${event.id}: $e\n$st');
+      debugPrint(
+          '[PlanFlow] reminder DB sync failed for event ${event.id}: $e\n$st');
       DiagLogger.log(
         'ManualSideEffect',
         'DB 동기화 실패 eventId=${event.id} error=$e',
@@ -299,7 +300,7 @@ class ManualEventSideEffectService {
       DiagLogger.log(
         'ManualSideEffect',
         'SmartPrep 로컬알람 payload count=${localSmartPrepPayloads.length} '
-        'eventId=${event.id}',
+            'eventId=${event.id}',
       );
       await const SmartPreparationAlarmService().schedulePayloads(
         eventId: event.id,
@@ -309,7 +310,8 @@ class ManualEventSideEffectService {
       );
       notificationsSynced = true;
     } catch (e, st) {
-      debugPrint('[PlanFlow] local notification sync failed for event ${event.id}: $e\n$st');
+      debugPrint(
+          '[PlanFlow] local notification sync failed for event ${event.id}: $e\n$st');
       DiagLogger.log(
         'ManualSideEffect',
         '로컬 알람 동기화 실패 eventId=${event.id} error=$e',
@@ -522,7 +524,7 @@ class ManualEventSideEffectService {
           DiagLogger.log(
             'ManualSideEffect',
             'DepartureAlarm 스킵(장소없음) eventId=${event.id} '
-            'title="${event.title}"',
+                'title="${event.title}"',
           );
           departureSkipped += 1;
           continue;
@@ -729,8 +731,8 @@ class ManualEventSideEffectService {
     DiagLogger.log(
       'ManualSideEffect',
       'resyncExternalPrep 외부일정 count=${externalEvents.length} '
-      'firstId=$firstExternalEventId '
-      'day=${dayReference.toIso8601String()}',
+          'firstId=$firstExternalEventId '
+          'day=${dayReference.toIso8601String()}',
     );
 
     // 위치를 루프 밖에서 1회만 조회해 이벤트마다 중복 LocationManager 호출을 막는다.
@@ -740,7 +742,7 @@ class ManualEventSideEffectService {
     DiagLogger.log(
       'ManualSideEffect',
       'resyncExternalPrep origin=${sharedOrigin != null ? '${sharedOrigin.latitude},${sharedOrigin.longitude}' : 'null'} '
-      'day=${dayReference.toIso8601String()}',
+          'day=${dayReference.toIso8601String()}',
     );
 
     final payloadsByEvent = <EventModel, List<Map<String, dynamic>>>{};
@@ -772,11 +774,11 @@ class ManualEventSideEffectService {
       DiagLogger.log(
         'ManualSideEffect',
         'resyncExternalPrep payload eventId=${event.id} '
-        'isFirst=$isFirst '
-        'includePrep=$isFirst '
-        'payloadCount=${payloads.length} '
-        'travelMin=${resolvedTravelMinutes.minutes} '
-        'travelIsFallback=${resolvedTravelMinutes.isFallback}',
+            'isFirst=$isFirst '
+            'includePrep=$isFirst '
+            'payloadCount=${payloads.length} '
+            'travelMin=${resolvedTravelMinutes.minutes} '
+            'travelIsFallback=${resolvedTravelMinutes.isFallback}',
       );
       payloadsByEvent[event] = payloads;
     }
@@ -848,9 +850,18 @@ class ManualEventSideEffectService {
 
     if (origin == null) {
       debugPrint(
-        'Smart preparation travel fallback: no current location for ${event.id}.',
+        'Smart preparation travel estimate: no current location for '
+        '${event.id}; using destination coordinate heuristic.',
       );
-      return _TravelMinutesResolution.fallback(fallbackTravelMinutes);
+      final estimate = _travelTimeBuffer.estimate(
+        latitude: destination.latitude,
+        longitude: destination.longitude,
+        locationText: event.location,
+      );
+      return _TravelMinutesResolution(
+        minutes: estimate.minutes,
+        isFallback: estimate.source == TravelTimeBufferSource.defaultFallback,
+      );
     }
 
     try {

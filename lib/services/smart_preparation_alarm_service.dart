@@ -356,6 +356,7 @@ class SmartPreparationAlarmService {
         continue;
       }
       final title = _stringValue(payload['title']) ?? label;
+      final isDeparturePrompt = _isDeparturePromptTitle(title);
       final bodySuffix = sourceLabel.isNotEmpty ? ' ($sourceLabel)' : '';
       await _notifications.scheduleEventReminder(
         id: _notifications.notificationIdFor(
@@ -364,9 +365,14 @@ class SmartPreparationAlarmService {
         title: label,
         body: '$label: $title\n$eventTitle 일정 전에 필요한 준비를 확인해 주세요.$bodySuffix',
         notifyAt: notifyAt,
-        payload: 'event:$eventId',
+        payload: isDeparturePrompt ? 'departure:$eventId' : 'event:$eventId',
+        includeDepartureAction: isDeparturePrompt,
       );
     }
+  }
+
+  bool _isDeparturePromptTitle(String title) {
+    return title.trim().startsWith('지금 출발하세요');
   }
 
   static String _calendarSourceLabel(String? source) {

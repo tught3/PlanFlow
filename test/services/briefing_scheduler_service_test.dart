@@ -518,6 +518,7 @@ class _FakeNotificationService extends NotificationService {
     required String body,
     required DateTime notifyAt,
     String? payload,
+    bool includeDepartureAction = false,
   }) async {
     calls += 1;
     lastBody = body;

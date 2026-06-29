@@ -156,6 +156,30 @@ void main() {
     );
   });
 
+  test(
+      'schedulePayloads wires departure prompt notifications to departure flow',
+      () async {
+    final notifications = _FakeNotificationService();
+    final service = SmartPreparationAlarmService(
+      notificationService: notifications,
+    );
+
+    await service.schedulePayloads(
+      eventId: 'event-departure',
+      eventTitle: '강남 미팅',
+      payloads: <Map<String, dynamic>>[
+        <String, dynamic>{
+          'title': '지금 출발하세요 🚗 (이동 약 45분)',
+          'notify_at':
+              DateTime.now().add(const Duration(minutes: 30)).toIso8601String(),
+        },
+      ],
+    );
+
+    expect(notifications.payloads.single, 'departure:event-departure');
+    expect(notifications.includeDepartureActions.single, true);
+  });
+
   test('buildExternalEventPayloads creates departure-only external flow', () {
     final service = SmartPreparationAlarmService();
     final payloads = service.buildExternalEventPayloads(
@@ -344,6 +368,8 @@ class _FakeNotificationService extends NotificationService {
   final scheduledIds = <int>[];
   final titles = <String>[];
   final bodies = <String>[];
+  final payloads = <String?>[];
+  final includeDepartureActions = <bool>[];
 
   @override
   Future<void> scheduleEventReminder({
@@ -352,9 +378,12 @@ class _FakeNotificationService extends NotificationService {
     required String body,
     required DateTime notifyAt,
     String? payload,
+    bool includeDepartureAction = false,
   }) async {
     scheduledIds.add(id);
     titles.add(title);
     bodies.add(body);
+    payloads.add(payload);
+    includeDepartureActions.add(includeDepartureAction);
   }
 }

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -77,7 +77,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('출발하셨나요?'), findsOneWidget);
-    await tester.tap(find.text('출발했어요'));
+    expect(find.text('아직 출발 전'), findsOneWidget);
+    await tester.tap(find.text('출발'));
     await tester.pumpAndSettle();
 
     expect(departureAlarmService.acknowledgedEventIds, ['event-2']);

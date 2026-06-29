@@ -707,7 +707,8 @@ void main() {
     expect(
       result.skipped,
       greaterThanOrEqualTo(1),
-      reason: '캐시된 위치가 없고 cacheOnly=true이면 출발 알람이 missing_origin으로 skip되어야 합니다.',
+      reason:
+          '캐시된 위치가 없고 cacheOnly=true이면 출발 알람이 missing_origin으로 skip되어야 합니다.',
     );
     // 중요: 알림이 등록되지 않아야 한다 (원인 없이 발화하면 안 됨)
     expect(
@@ -822,6 +823,7 @@ class _FakeNotificationService extends NotificationService {
     required String body,
     required DateTime notifyAt,
     String? payload,
+    bool includeDepartureAction = false,
   }) async {
     titles.add(title);
     bodies.add(body);
