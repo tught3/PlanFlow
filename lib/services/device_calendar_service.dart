@@ -21,6 +21,8 @@ class DeviceCalendarImportResult {
     required this.status,
     required this.message,
     this.importedCount = 0,
+    this.skippedCount = 0,
+    this.failedCount = 0,
     this.calendars = const <DeviceCalendarInfo>[],
     this.error,
   });
@@ -28,6 +30,8 @@ class DeviceCalendarImportResult {
   final DeviceCalendarImportStatus status;
   final String message;
   final int importedCount;
+  final int skippedCount;
+  final int failedCount;
   final List<DeviceCalendarInfo> calendars;
   final Object? error;
 
@@ -432,73 +436,40 @@ class DeviceCalendarService {
         );
       }
 
-      var imported = 0;
-      var skipped = 0;
       final calendarById = <String, DeviceCalendarInfo>{
         for (final calendar in naverCalendars) calendar.id: calendar,
       };
-      for (final event in events) {
-        final eventModel = event.toEventModel(
-          userId: resolvedUserId,
-          importedAt: now,
-          calendar: calendarById[event.calendarId],
-        );
-        final planFlowOriginId = _planFlowEventIdFromDeviceEventKey(
-          event.eventKey,
-        );
-        final planFlowOrigin = planFlowOriginId == null
-            ? null
-            : await _eventRepository.fetchEvent(
-                planFlowOriginId,
+      final outcomes = <_DeviceCalendarEventImportOutcome>[];
+      const batchSize = 6;
+      for (var index = 0; index < events.length; index += batchSize) {
+        final batch = events.skip(index).take(batchSize);
+        outcomes.addAll(
+          await Future.wait(
+            batch.map(
+              (event) => _importSingleNaverEvent(
+                event: event,
                 userId: resolvedUserId,
-              );
-        if (planFlowOrigin != null) {
-          await _eventRepository.attachExternalSyncMetadataIfCompatible(
-            existing: planFlowOrigin,
-            incoming: eventModel,
-          );
-          skipped += 1;
-          debugPrint(
-            'Device calendar reflected PlanFlow event handled: '
-            'incoming="${eventModel.title}" ${eventModel.startAt} '
-            'existing=${planFlowOrigin.id}',
-          );
-          continue;
-        }
-
-        final duplicate = await _eventRepository.findEventByTitleAndStart(
-          title: eventModel.title,
-          startAt: eventModel.startAt!,
-          userId: resolvedUserId,
-          excludedSources: const <String>{'device_calendar', 'naver_device'},
+                importedAt: now,
+                calendar: calendarById[event.calendarId],
+              ),
+            ),
+          ),
         );
-        if (duplicate != null) {
-          final linked =
-              await _eventRepository.attachExternalSyncMetadataIfCompatible(
-            existing: duplicate,
-            incoming: eventModel,
-          );
-          skipped += 1;
-          debugPrint(
-            'Device calendar import duplicate handled by title/start: '
-            'incoming="${eventModel.title}" ${eventModel.startAt} '
-            'existing=${duplicate.id} source=${duplicate.source} '
-            'linked=${linked != null}',
-          );
-          continue;
-        }
-        await _eventRepository.upsertEventBySourceExternalId(
-          eventModel,
-        );
-        imported += 1;
       }
+      final imported = outcomes.where((outcome) => outcome.imported).length;
+      final skipped = outcomes.where((outcome) => outcome.skipped).length;
+      final failed = outcomes.where((outcome) => outcome.failed).length;
 
       return DeviceCalendarImportResult(
         status: DeviceCalendarImportStatus.imported,
-        message: skipped > 0
-            ? '휴대폰 내부 캘린더 일정 $imported개를 가져오고, 중복 $skipped개는 건너뛰었습니다.'
-            : '휴대폰 내부 캘린더 일정 $imported개를 PlanFlow로 가져왔습니다.',
+        message: failed > 0
+            ? '휴대폰 내부 캘린더 일정 $imported개를 가져오고, 중복 $skipped개는 건너뛰었습니다. 실패 $failed개는 다음 동기화 때 다시 시도해 주세요.'
+            : skipped > 0
+                ? '휴대폰 내부 캘린더 일정 $imported개를 가져오고, 중복 $skipped개는 건너뛰었습니다.'
+                : '휴대폰 내부 캘린더 일정 $imported개를 PlanFlow로 가져왔습니다.',
         importedCount: imported,
+        skippedCount: skipped,
+        failedCount: failed,
         calendars: naverCalendars,
       );
     } catch (error, stackTrace) {
@@ -509,6 +480,72 @@ class DeviceCalendarService {
         message: '휴대폰 내부 캘린더 일정 가져오기에 실패했습니다. 권한과 캘린더 동기화 상태를 확인해 주세요.',
         error: error,
       );
+    }
+  }
+
+  Future<_DeviceCalendarEventImportOutcome> _importSingleNaverEvent({
+    required DeviceCalendarEvent event,
+    required String userId,
+    required DateTime importedAt,
+    required DeviceCalendarInfo? calendar,
+  }) async {
+    final eventModel = event.toEventModel(
+      userId: userId,
+      importedAt: importedAt,
+      calendar: calendar,
+    );
+    try {
+      final planFlowOriginId = _planFlowEventIdFromDeviceEventKey(
+        event.eventKey,
+      );
+      final planFlowOrigin = planFlowOriginId == null
+          ? null
+          : await _eventRepository.fetchEvent(
+              planFlowOriginId,
+              userId: userId,
+            );
+      if (planFlowOrigin != null) {
+        await _eventRepository.attachExternalSyncMetadataIfCompatible(
+          existing: planFlowOrigin,
+          incoming: eventModel,
+        );
+        debugPrint(
+          'Device calendar reflected PlanFlow event handled: '
+          'incoming="${eventModel.title}" ${eventModel.startAt} '
+          'existing=${planFlowOrigin.id}',
+        );
+        return _DeviceCalendarEventImportOutcome.skipped();
+      }
+
+      final duplicate = await _eventRepository.findEventByTitleAndStart(
+        title: eventModel.title,
+        startAt: eventModel.startAt!,
+        userId: userId,
+        excludedSources: const <String>{'device_calendar', 'naver_device'},
+      );
+      if (duplicate != null) {
+        final linked =
+            await _eventRepository.attachExternalSyncMetadataIfCompatible(
+          existing: duplicate,
+          incoming: eventModel,
+        );
+        debugPrint(
+          'Device calendar import duplicate handled by title/start: '
+          'incoming="${eventModel.title}" ${eventModel.startAt} '
+          'existing=${duplicate.id} source=${duplicate.source} '
+          'linked=${linked != null}',
+        );
+        return _DeviceCalendarEventImportOutcome.skipped();
+      }
+      await _eventRepository.upsertEventBySourceExternalId(eventModel);
+      return _DeviceCalendarEventImportOutcome.imported();
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Device calendar event import failed: '
+        'incoming="${eventModel.title}" ${eventModel.startAt} error=$error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      return _DeviceCalendarEventImportOutcome.failed();
     }
   }
 
@@ -549,6 +586,27 @@ class DeviceCalendarService {
     final id = normalized.substring('planflow:'.length);
     return id.isEmpty ? null : id;
   }
+}
+
+class _DeviceCalendarEventImportOutcome {
+  const _DeviceCalendarEventImportOutcome._({
+    required this.imported,
+    required this.skipped,
+    required this.failed,
+  });
+
+  const _DeviceCalendarEventImportOutcome.imported()
+      : this._(imported: true, skipped: false, failed: false);
+
+  const _DeviceCalendarEventImportOutcome.skipped()
+      : this._(imported: false, skipped: true, failed: false);
+
+  const _DeviceCalendarEventImportOutcome.failed()
+      : this._(imported: false, skipped: false, failed: true);
+
+  final bool imported;
+  final bool skipped;
+  final bool failed;
 }
 
 String _stringValue(Object? value) => value?.toString() ?? '';

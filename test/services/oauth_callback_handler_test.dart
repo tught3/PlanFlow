@@ -1,8 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/services/auth_service.dart';
 import 'package:planflow/services/oauth_callback_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('OAuthCallbackHandler', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      OAuthCallbackHandler.clearInMemoryPendingCallbackForTest();
+    });
+
+    tearDown(OAuthCallbackHandler.clearInMemoryPendingCallbackForTest);
+
     test('detects Supabase password recovery callback type', () {
       expect(
         OAuthCallbackHandler.isPasswordRecoveryCallback(
@@ -110,6 +119,95 @@ void main() {
 
       expect(message, contains('인증이 완료되지 않았습니다'));
       expect(message, isNot(contains('소셜 동의')));
+    });
+
+    test('tracks pending calendar link callbacks', () {
+      OAuthCallbackHandler.markPendingCalendarLink(
+        PlanFlowOAuthProvider.naver,
+      );
+
+      expect(OAuthCallbackHandler.hasPendingCalendarLink(), isTrue);
+      expect(OAuthCallbackHandler.hasPendingLogin(), isFalse);
+    });
+
+    test('restores pending Naver calendar link callback from storage',
+        () async {
+      OAuthCallbackHandler.markPendingCalendarLink(
+        PlanFlowOAuthProvider.naver,
+      );
+      await OAuthCallbackHandler.persistCurrentPendingCallback();
+      OAuthCallbackHandler.clearInMemoryPendingCallbackForTest();
+
+      expect(
+        await OAuthCallbackHandler
+            .hasRecoverableNaverCalendarLinkCallbackForTest(),
+        isTrue,
+      );
+    });
+
+    test('exchanges calendar link callbacks even with an active session', () {
+      expect(
+        OAuthCallbackHandler.shouldExchangeOAuthCallback(
+          currentSessionPresent: true,
+          isPasswordRecovery: false,
+          hasPendingCalendarLink: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('trusts provider token only for Naver calendar link callback', () {
+      expect(
+        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
+          pendingPurpose: OAuthCallbackPurpose.calendarLink,
+          pendingMethod: 'naver',
+        ),
+        isTrue,
+      );
+      expect(
+        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
+          pendingPurpose: OAuthCallbackPurpose.login,
+          pendingMethod: 'naver',
+        ),
+        isFalse,
+      );
+      expect(
+        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
+          pendingPurpose: OAuthCallbackPurpose.calendarLink,
+          pendingMethod: 'google',
+        ),
+        isFalse,
+      );
+    });
+
+    test('does not re-exchange normal callbacks after a session exists', () {
+      expect(
+        OAuthCallbackHandler.shouldExchangeOAuthCallback(
+          currentSessionPresent: true,
+          isPasswordRecovery: false,
+          hasPendingCalendarLink: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('exchanges password recovery and missing-session callbacks', () {
+      expect(
+        OAuthCallbackHandler.shouldExchangeOAuthCallback(
+          currentSessionPresent: true,
+          isPasswordRecovery: true,
+          hasPendingCalendarLink: false,
+        ),
+        isTrue,
+      );
+      expect(
+        OAuthCallbackHandler.shouldExchangeOAuthCallback(
+          currentSessionPresent: false,
+          isPasswordRecovery: false,
+          hasPendingCalendarLink: false,
+        ),
+        isTrue,
+      );
     });
   });
 

@@ -132,9 +132,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => ShellScreen(
         key: ValueKey<String>('calendar-${state.uri.query}'),
         initialIndex: 1,
-        initialCalendarDate: _parseRouteDate(
-          state.uri.queryParameters['date'],
-        ),
+        initialCalendarDate: _parseRouteDate(state.uri.queryParameters['date']),
       ),
     ),
     GoRoute(
@@ -156,9 +154,9 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final paths = state.extra is List
             ? (state.extra! as List)
-                .map((item) => item.toString())
-                .where((path) => path.trim().isNotEmpty)
-                .toList(growable: false)
+                  .map((item) => item.toString())
+                  .where((path) => path.trim().isNotEmpty)
+                  .toList(growable: false)
             : const <String>[];
         return NaverIcsImportScreen(initialPaths: paths);
       },
@@ -198,9 +196,7 @@ final GoRouter appRouter = GoRouter(
         );
         final rawText = extra['raw_text']?.toString() ?? '';
         return VoiceActionScreen(
-          key: ValueKey(
-            'voice-action-${action.name}-${rawText.hashCode}',
-          ),
+          key: ValueKey('voice-action-${action.name}-${rawText.hashCode}'),
           rawText: rawText,
           action: action,
         );
@@ -218,8 +214,9 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.eventDetail,
       builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
+        final event = state.extra is EventModel
+            ? state.extra! as EventModel
+            : null;
         return EventDetailScreen(
           event: event,
           eventId: _resolveEventId(state, event),
@@ -231,8 +228,9 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.eventDetailWithId,
       builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
+        final event = state.extra is EventModel
+            ? state.extra! as EventModel
+            : null;
         return EventDetailScreen(
           event: event,
           eventId: _resolveEventId(state, event),
@@ -244,8 +242,9 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.eventEdit,
       builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
+        final event = state.extra is EventModel
+            ? state.extra! as EventModel
+            : null;
         return EventEditScreen(
           event: event,
           eventId: _resolveEventId(state, event),
@@ -256,8 +255,9 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: AppRoutes.eventEditWithId,
       builder: (context, state) {
-        final event =
-            state.extra is EventModel ? state.extra! as EventModel : null;
+        final event = state.extra is EventModel
+            ? state.extra! as EventModel
+            : null;
         return EventEditScreen(
           event: event,
           eventId: _resolveEventId(state, event),
@@ -395,7 +395,8 @@ String? _resolveEventId(GoRouterState state, EventModel? event) {
 }
 
 bool _isAutoStart(GoRouterState state) {
-  final value = state.uri.queryParameters['autoStart'] ??
+  final value =
+      state.uri.queryParameters['autoStart'] ??
       state.uri.queryParameters['autostart'];
   return value == '1' || value == 'true';
 }

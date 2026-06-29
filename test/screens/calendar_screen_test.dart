@@ -19,13 +19,10 @@ import 'package:planflow/screens/calendar/calendar_screen.dart';
 import 'package:planflow/services/event_refresh_bus.dart';
 
 void main() {
-  testWidgets('CalendarScreen does not show a loading panel while loading',
-      (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: CalendarScreen(),
-      ),
-    );
+  testWidgets('CalendarScreen does not show a loading panel while loading', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
 
     await tester.pumpAndSettle();
 
@@ -35,64 +32,65 @@ void main() {
   });
 
   test(
-      'mergeCalendarEventsAfterReload preserves existing events after suspiciously small reload',
-      () {
-    final now = DateTime.now();
-    final merged = mergeCalendarEventsAfterReload(
-      previous: [
-        _event('old-1', '기존 일정 1', now.add(const Duration(minutes: 1))),
-        _event('old-2', '기존 일정 2', now.add(const Duration(minutes: 2))),
-      ],
-      loaded: [
-        _event('new-1', '새 일정', now.add(const Duration(minutes: 3))),
-      ],
-    );
+    'mergeCalendarEventsAfterReload preserves existing events after suspiciously small reload',
+    () {
+      final now = DateTime.now();
+      final merged = mergeCalendarEventsAfterReload(
+        previous: [
+          _event('old-1', '기존 일정 1', now.add(const Duration(minutes: 1))),
+          _event('old-2', '기존 일정 2', now.add(const Duration(minutes: 2))),
+        ],
+        loaded: [_event('new-1', '새 일정', now.add(const Duration(minutes: 3)))],
+      );
 
-    expect(merged.map((event) => event.id), ['old-1', 'old-2', 'new-1']);
-  });
+      expect(merged.map((event) => event.id), ['old-1', 'old-2', 'new-1']);
+    },
+  );
 
   testWidgets(
-      'CalendarScreen runs a queued reload after refresh signal arrives while loading',
-      (tester) async {
-    final now = DateTime.now();
-    final firstLoad = Completer<List<EventModel>>();
-    final repository = _AsyncEventRepository([
-      firstLoad.future,
-      Future.value([
-        _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
-        _event('new-1', '새 일정', now.add(const Duration(hours: 2))),
-      ]),
-    ]);
+    'CalendarScreen runs a queued reload after refresh signal arrives while loading',
+    (tester) async {
+      final now = DateTime.now();
+      final firstLoad = Completer<List<EventModel>>();
+      final repository = _AsyncEventRepository([
+        firstLoad.future,
+        Future.value([
+          _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
+          _event('new-1', '새 일정', now.add(const Duration(hours: 2))),
+        ]),
+      ]);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CalendarScreen(
-          eventRepository: repository,
-          userId: 'user-1',
-          initialDate: now,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CalendarScreen(
+            eventRepository: repository,
+            userId: 'user-1',
+            initialDate: now,
+          ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    EventRefreshBus.instance.notifyChanged(
-      reason: 'test_queued',
-      startAt: now,
-    );
-    await tester.pump();
+      EventRefreshBus.instance.notifyChanged(
+        reason: 'test_queued',
+        startAt: now,
+      );
+      await tester.pump();
 
-    firstLoad.complete([
-      _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
-    ]);
-    await tester.pumpAndSettle();
+      firstLoad.complete([
+        _event('old-1', '기존 일정', now.add(const Duration(hours: 1))),
+      ]);
+      await tester.pumpAndSettle();
 
-    expect(repository.listCalls, 2);
-    expect(find.text('기존 일정'), findsWidgets);
-    expect(find.text('새 일정'), findsWidgets);
-  });
+      expect(repository.listCalls, 2);
+      expect(find.text('기존 일정'), findsWidgets);
+      expect(find.text('새 일정'), findsWidgets);
+    },
+  );
 
-  testWidgets('CalendarScreen opens selected day sheet from initialDate',
-      (tester) async {
+  testWidgets('CalendarScreen opens selected day sheet from initialDate', (
+    tester,
+  ) async {
     final selectedDay = DateTime(2026, 5, 15, 9);
     final repository = _AsyncEventRepository([
       Future.value([
@@ -116,32 +114,26 @@ void main() {
       find.byKey(const ValueKey('calendar-day-events-draggable-sheet')),
       findsOneWidget,
     );
-    final dayEventsList =
-        find.byKey(const ValueKey('calendar-day-events-list'));
+    final dayEventsList = find.byKey(
+      const ValueKey('calendar-day-events-list'),
+    );
     expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('선택한 날짜 일정'),
-      ),
+      find.descendant(of: dayEventsList, matching: find.text('선택한 날짜 일정')),
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('다른 날짜 일정'),
-      ),
+      find.descendant(of: dayEventsList, matching: find.text('다른 날짜 일정')),
       findsNothing,
     );
   });
 
-  testWidgets('CalendarScreen direct add passes selected date to edit route',
-      (tester) async {
+  testWidgets('CalendarScreen direct add passes selected date to edit route', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(900, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final selectedDay = DateTime(2026, 6, 15, 9);
-    final repository = _AsyncEventRepository([
-      Future.value(<EventModel>[]),
-    ]);
+    final repository = _AsyncEventRepository([Future.value(<EventModel>[])]);
     final router = GoRouter(
       initialLocation: '/',
       routes: [
@@ -218,41 +210,40 @@ void main() {
   });
 
   test(
-      'calendar mini month cells reserve multi-day bands and overflow after four slots',
-      () {
-    final cells = buildCalendarMiniMonthCells(
-      focusedMonth: DateTime(2026, 6),
-      events: <EventModel>[
-        EventModel(
-          id: 'multi',
-          userId: 'user-1',
-          title: '연속 일정',
-          startAt: DateTime(2026, 6, 1, 9),
-          endAt: DateTime(2026, 6, 3, 9),
-          isMultiDay: true,
-        ),
-        _event('a', 'A', DateTime(2026, 6, 1, 10)),
-        _event('b', 'B', DateTime(2026, 6, 1, 11)),
-        _event('c', 'C', DateTime(2026, 6, 1, 12)),
-        _event('d', 'D', DateTime(2026, 6, 1, 13)),
-        _event('e', 'E', DateTime(2026, 6, 1, 14)),
-      ],
-    );
+    'calendar mini month cells reserve multi-day bands and overflow after four slots',
+    () {
+      final cells = buildCalendarMiniMonthCells(
+        focusedMonth: DateTime(2026, 6),
+        events: <EventModel>[
+          EventModel(
+            id: 'multi',
+            userId: 'user-1',
+            title: '연속 일정',
+            startAt: DateTime(2026, 6, 1, 9),
+            endAt: DateTime(2026, 6, 3, 9),
+            isMultiDay: true,
+          ),
+          _event('a', 'A', DateTime(2026, 6, 1, 10)),
+          _event('b', 'B', DateTime(2026, 6, 1, 11)),
+          _event('c', 'C', DateTime(2026, 6, 1, 12)),
+          _event('d', 'D', DateTime(2026, 6, 1, 13)),
+          _event('e', 'E', DateTime(2026, 6, 1, 14)),
+        ],
+      );
 
-    final day1 = cells.firstWhere((cell) => cell.dayNumber == 1);
-    final day2 = cells.firstWhere((cell) => cell.dayNumber == 2);
+      final day1 = cells.firstWhere((cell) => cell.dayNumber == 1);
+      final day2 = cells.firstWhere((cell) => cell.dayNumber == 2);
 
-    expect(day1.events.length, 4);
-    expect(day1.events.first.id, 'multi');
-    expect(day1.overflowCount, 2);
-    expect(day2.events.first.id, 'multi');
-  });
+      expect(day1.events.length, 4);
+      expect(day1.events.first.id, 'multi');
+      expect(day1.overflowCount, 2);
+      expect(day2.events.first.id, 'multi');
+    },
+  );
 
   testWidgets('CalendarScreen paints holiday day numbers red', (tester) async {
     final repository = _AsyncEventRepository([
-      Future.value([
-        _event('holiday', '현충일', DateTime(2026, 6, 6, 9)),
-      ]),
+      Future.value([_event('holiday', '현충일', DateTime(2026, 6, 6, 9))]),
     ]);
 
     await tester.pumpWidget(
@@ -272,8 +263,9 @@ void main() {
     expect(dayLabel.style?.color, calendarCriticalEventMarkerColor);
   });
 
-  testWidgets('CalendarScreen shows cross-month range on selected end day',
-      (tester) async {
+  testWidgets('CalendarScreen shows cross-month range on selected end day', (
+    tester,
+  ) async {
     final selectedDay = DateTime(2026, 6);
     final repository = _AsyncEventRepository([
       Future.value([
@@ -300,13 +292,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final dayEventsList =
-        find.byKey(const ValueKey('calendar-day-events-list'));
+    final dayEventsList = find.byKey(
+      const ValueKey('calendar-day-events-list'),
+    );
     expect(
-      find.descendant(
-        of: dayEventsList,
-        matching: find.text('원주집방문'),
-      ),
+      find.descendant(of: dayEventsList, matching: find.text('원주집방문')),
       findsOneWidget,
     );
   });

@@ -1,12 +1,13 @@
-﻿param(
+param(
   [Parameter(Mandatory = $true)]
   [string]$ProjectKey,
 
   [string]$ConfigPath = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..\tools')).Path 'deploy-play-config.json'),
 
+  [switch]$SkipVersionBump,
+
   [switch]$SkipUpload
 )
-
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -285,7 +286,14 @@ try {
   try {
     Push-Location $projectPath
     try {
-      $buildResult = & $buildScript -StatusPath $statusPath 2>&1
+      $buildArgs = @{
+        StatusPath = $statusPath
+        SkipFluxOsSession = $true
+      }
+      if ($SkipVersionBump) {
+        $buildArgs.SkipVersionBump = $true
+      }
+      $buildResult = & $buildScript @buildArgs 2>&1
       if ($LASTEXITCODE -ne 0) {
         $buildErrorText = (($buildResult | ForEach-Object { $_.ToString() }) -join "`n")
         $stageFromStatus = Get-FailureStage -FallbackStage 'build' -StatusPath $statusPath -ErrorText $buildErrorText

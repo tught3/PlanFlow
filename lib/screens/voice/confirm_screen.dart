@@ -196,6 +196,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   bool _isMultiDay = false;
   String _category = '기타';
   late bool _isCritical;
+  bool _strongAlarm = false;
   bool _isSaving = false;
   bool _isLoadingPastSupplies = false;
   bool _isLookingUpLocation = false;
@@ -891,6 +892,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       participants: const <String>[],
       targets: const <String>[],
       isCritical: _isCritical,
+      useStrongAlarm: _strongAlarm,
       recurrenceRule: _recurrenceSelection.toRRule(),
       isAllDay: _isAllDay,
       isMultiDay: isMultiDayByRange,
@@ -1952,6 +1954,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         recurrence: _recurrenceSelection,
                         reminderOffset: _reminderOffset,
                         isCritical: _isCritical,
+                        useStrongAlarm: _strongAlarm,
                         isLookingUpLocation: _isLookingUpLocation,
                         isSearchingLocation: _isLookingUpLocation,
                         locationLat: _locationLat,
@@ -1974,12 +1977,20 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                               currentEnd: _endAt,
                               endEditedByUser: _endEditedByUser,
                             );
+                            if (_endAt != null &&
+                                _endAt!.isBefore(_startAt)) {
+                              _endAt = _startAt;
+                            }
                           });
                         },
                         onEndChanged: (value) {
                           setState(() {
                             _endEditedByUser = true;
-                            _endAt = value;
+                            if (value != null && value.isBefore(_startAt)) {
+                              _endAt = _startAt;
+                            } else {
+                              _endAt = value;
+                            }
                           });
                         },
                         onAllDayChanged: (value) {
@@ -2019,6 +2030,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                         onCriticalChanged: (value) {
                           setState(() {
                             _isCritical = value;
+                            if (!value) _strongAlarm = false;
+                          });
+                        },
+                        onStrongAlarmChanged: (value) {
+                          setState(() {
+                            _strongAlarm = value;
                           });
                         },
                         onLocationPick: _lookupLocation,

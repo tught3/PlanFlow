@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/diag_logger.dart';
 import '../core/env.dart';
+import '../core/log_text.dart';
 import '../core/supabase_auth_options.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
@@ -28,6 +30,10 @@ class CalendarAutoSyncService {
     ManualEventSideEffectService? sideEffectService,
     EventPreparationService? eventPreparationService,
     Duration throttle = const Duration(minutes: 15),
+    List<Duration> retryBackoffs = const <Duration>[
+      Duration(seconds: 2),
+      Duration(seconds: 5),
+    ],
     DateTime Function()? now,
   })  : _calendarSyncService = calendarSyncService,
         _naverCalDavService = naverCalDavService,
@@ -36,10 +42,12 @@ class CalendarAutoSyncService {
         _sideEffectService = sideEffectService,
         _eventPreparationService = eventPreparationService,
         _throttle = throttle,
+        _retryBackoffs = retryBackoffs,
         _now = now ?? DateTime.now;
 
   static const String _lastAttemptAtKey = 'calendar_sync:last_attempt_at';
   static const String _lastStartedAtKey = 'calendar_sync:last_started_at';
+  static const int _maxFailureRetries = 2;
   static bool _globalSyncInProgress = false;
 
   final CalendarSyncService? _calendarSyncService;
@@ -49,6 +57,7 @@ class CalendarAutoSyncService {
   final ManualEventSideEffectService? _sideEffectService;
   final EventPreparationService? _eventPreparationService;
   final Duration _throttle;
+  final List<Duration> _retryBackoffs;
   final DateTime Function() _now;
 
   DateTime? _lastAttemptAt;
@@ -119,6 +128,11 @@ class CalendarAutoSyncService {
     String reason = 'app_lifecycle',
     bool force = false,
   }) async {
+    DiagLogger.log(
+      'DIAG',
+      'autoSync enter method=syncConnectedCalendars reason=${logSafeText(reason)} '
+          'force=$force currentUser=${logSafeText(_currentSupabaseUserId())}',
+    );
     if (!_canSync) {
       await _recordProviderStatus(
         'all',
@@ -143,52 +157,27 @@ class CalendarAutoSyncService {
 
     _isSyncing = true;
     _globalSyncInProgress = true;
-    final result = CalendarAutoSyncResult();
+    var result = CalendarAutoSyncResult();
     try {
       await _storeLastStartedAt(now);
-      await _runStep(result, 'google_auto_sync', () async {
-        final google = await _calendarSync.syncGoogleCalendar(
-          interactive: false,
+      for (var retryCount = 0;; retryCount += 1) {
+        result = await _syncConnectedCalendarsOnce(reason: reason);
+        if (!result.hasFailures || retryCount >= _maxFailureRetries) {
+          break;
+        }
+
+        final retryDelay = retryCount < _retryBackoffs.length
+            ? _retryBackoffs[retryCount]
+            : Duration.zero;
+        DiagLogger.log(
+          'DIAG',
+          'autoSync retry scheduled reason=${logSafeText(reason)} '
+              'retry=${retryCount + 1} failed=${result.failed.join(',')}',
         );
-        return _calendarOutcome(google);
-      });
-      await _runStep(result, 'naver_api_auto_export', () async {
-        final naver = await _calendarSync.syncNaverCalendar();
-        return _calendarOutcome(naver);
-      });
-      await _runStep(result, 'naver_caldav_auto_import', () async {
-        if (!await _naverCalDav.hasCredentials()) {
-          return CalendarAutoSyncStepOutcome.skipped(
-            'Naver CalDAV가 아직 연결되지 않아 자동 가져오기를 건너뜁니다.',
-          );
+        if (retryDelay > Duration.zero) {
+          await Future<void>.delayed(retryDelay);
         }
-        final naver = await _naverCalDav.syncAll(
-          mode: NaverCalDavSyncMode.quick,
-          skipUnchanged: true,
-        );
-        if (naver.success) {
-          return CalendarAutoSyncStepOutcome.completed(naver.message);
-        }
-        return CalendarAutoSyncStepOutcome.attention(naver.message);
-      });
-      await _runStep(result, 'device_calendar_auto_import', () async {
-        final hasPermission = await _deviceCalendar.checkCalendarPermission();
-        if (!hasPermission) {
-          return CalendarAutoSyncStepOutcome.skipped(
-            '휴대폰 캘린더 권한이 없어 자동 가져오기를 건너뜁니다.',
-          );
-        }
-        final imported = await _deviceCalendar.importNaverEvents();
-        if (imported.status == DeviceCalendarImportStatus.failed ||
-            imported.status == DeviceCalendarImportStatus.permissionDenied) {
-          return CalendarAutoSyncStepOutcome.attention(imported.message);
-        }
-        return CalendarAutoSyncStepOutcome.completed(imported.message);
-      });
-      await _resyncUpcomingPreparation(
-        userId: _resolvedUserId(),
-        reason: reason,
-      );
+      }
       EventRefreshBus.instance.notifyChanged(
         reason: 'calendar_auto_sync:$reason',
       );
@@ -202,6 +191,52 @@ class CalendarAutoSyncService {
       _isSyncing = false;
       _globalSyncInProgress = false;
     }
+  }
+
+  Future<CalendarAutoSyncResult> _syncConnectedCalendarsOnce({
+    required String reason,
+  }) async {
+    final result = CalendarAutoSyncResult();
+    await _runStep(result, 'google_auto_sync', () async {
+      final google = await _calendarSync.syncGoogleCalendar(
+        interactive: false,
+      );
+      return _calendarOutcome(google);
+    });
+    await _runStep(result, 'naver_caldav_auto_import', () async {
+      if (!await _naverCalDav.hasCredentials()) {
+        return CalendarAutoSyncStepOutcome.skipped(
+          'Naver CalDAV가 아직 연결되지 않아 자동 가져오기를 건너뜁니다.',
+        );
+      }
+      final naver = await _naverCalDav.syncAll(
+        mode: NaverCalDavSyncMode.quick,
+        skipUnchanged: true,
+      );
+      if (naver.success) {
+        return CalendarAutoSyncStepOutcome.completed(naver.message);
+      }
+      return CalendarAutoSyncStepOutcome.attention(naver.message);
+    });
+    await _runStep(result, 'device_calendar_auto_import', () async {
+      final hasPermission = await _deviceCalendar.checkCalendarPermission();
+      if (!hasPermission) {
+        return CalendarAutoSyncStepOutcome.skipped(
+          '휴대폰 캘린더 권한이 없어 자동 가져오기를 건너뜁니다.',
+        );
+      }
+      final imported = await _deviceCalendar.importNaverEvents();
+      if (imported.status == DeviceCalendarImportStatus.failed ||
+          imported.status == DeviceCalendarImportStatus.permissionDenied) {
+        return CalendarAutoSyncStepOutcome.attention(imported.message);
+      }
+      return CalendarAutoSyncStepOutcome.completed(imported.message);
+    });
+    await _resyncUpcomingPreparation(
+      userId: _resolvedUserId(),
+      reason: reason,
+    );
+    return result;
   }
 
   bool get _canSync {
@@ -477,7 +512,6 @@ class CalendarAutoSyncService {
 
   static const Map<String, String> _knownProviderLabels = <String, String>{
     'google_auto_sync': 'Google Calendar',
-    'naver_api_auto_export': 'Naver 직접 연동',
     'naver_caldav_auto_import': 'Naver CalDAV',
     'device_calendar_auto_import': '휴대폰 내부 캘린더',
   };

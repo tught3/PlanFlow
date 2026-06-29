@@ -77,8 +77,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       CalendarAutoSyncService();
   late final ExternalCalendarSyncGuideService _externalCalendarGuideService =
       ExternalCalendarSyncGuideService(
-    calendarAutoSyncService: _calendarAutoSyncService,
-  );
+        calendarAutoSyncService: _calendarAutoSyncService,
+      );
   final DepartureAlarmService _departureAlarmService =
       const DepartureAlarmService();
   final CriticalAlarmChannelMigrationService _criticalAlarmMigrationService =
@@ -119,9 +119,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-        reason: 'app_resumed',
-      ));
+      unawaited(
+        _calendarAutoSyncService.syncConnectedCalendars(reason: 'app_resumed'),
+      );
       unawaited(_refreshDepartureAlarmsAndMonitor());
     }
   }
@@ -301,8 +301,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final shouldShow =
-        await _externalCalendarGuideService.shouldShowForUser(userId);
+    final shouldShow = await _externalCalendarGuideService.shouldShowForUser(
+      userId,
+    );
     if (!shouldShow || !mounted) {
       return;
     }
@@ -560,10 +561,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 }
 
 class _ShellTabSwipeEdge extends StatelessWidget {
-  const _ShellTabSwipeEdge({
-    super.key,
-    required this.onHorizontalDragEnd,
-  });
+  const _ShellTabSwipeEdge({super.key, required this.onHorizontalDragEnd});
 
   final GestureDragEndCallback onHorizontalDragEnd;
 

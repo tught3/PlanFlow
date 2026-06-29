@@ -4,7 +4,10 @@ param(
 )
 
 $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-. (Join-Path $WorkspaceRoot '.fluxos\scripts\fluxos-session-bootstrap.ps1')
+$SkipFluxOsSession = $env:PLANFLOW_SKIP_FLUXOS_SESSION -in @('1', 'true', 'TRUE', 'yes', 'YES')
+if (-not $SkipFluxOsSession) {
+  . (Join-Path $WorkspaceRoot '.fluxos\scripts\fluxos-session-bootstrap.ps1')
+}
 
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ProjectGradleHome = Join-Path $ProjectRoot '.gradle-local\gradle-home'
@@ -43,6 +46,7 @@ try {
 
   $command = $Args[0]
   $flutterArgs = @($Args)
+  $defineSupportedCommands = @('build', 'run', 'test', 'drive')
 
   if ($command -eq 'deploy') {
     $deployHelper = 'E:\AI_WIKI\scripts\flutter-deploy-or-copy.ps1'

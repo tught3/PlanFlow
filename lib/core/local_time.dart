@@ -7,7 +7,7 @@ const Duration planflowKstOffset = Duration(hours: 9);
 
 bool _timeZonesInitialized = false;
 
-void _ensureTimeZonesInitialized() {
+void ensureTimeZonesInitialized() {
   if (_timeZonesInitialized) {
     return;
   }
@@ -16,7 +16,7 @@ void _ensureTimeZonesInitialized() {
 }
 
 tz.Location _planflowLocation([String? timeZoneId]) {
-  _ensureTimeZonesInitialized();
+  ensureTimeZonesInitialized();
   final id = timeZoneId ?? PlanFlowRegionController.instance.region.timeZoneId;
   try {
     return tz.getLocation(id);
@@ -92,17 +92,15 @@ bool planflowEventIntersectsLocalDay({
 
 DateTime planflowSeoulDateTimeToUtc(DateTime seoulTime) {
   final location = _planflowLocation(PlanFlowRegions.korea.timeZoneId);
-  return tz
-      .TZDateTime(
-        location,
-        seoulTime.year,
-        seoulTime.month,
-        seoulTime.day,
-        seoulTime.hour,
-        seoulTime.minute,
-        seoulTime.second,
-        seoulTime.millisecond,
-        seoulTime.microsecond,
-      )
-      .toUtc();
+  return tz.TZDateTime(
+    location,
+    seoulTime.year,
+    seoulTime.month,
+    seoulTime.day,
+    seoulTime.hour,
+    seoulTime.minute,
+    seoulTime.second,
+    seoulTime.millisecond,
+    seoulTime.microsecond,
+  ).toUtc();
 }

@@ -18,7 +18,6 @@ import 'package:planflow/services/departure_alarm_service.dart';
 import 'package:planflow/services/device_calendar_service.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
-import 'package:planflow/services/naver_open_api_calendar_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -555,8 +554,7 @@ void main() {
     );
   });
 
-  testWidgets(
-      'Naver calendar button runs Open API quick sync and shows feedback',
+  testWidgets('Naver calendar button runs CalDAV quick sync and shows feedback',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -568,6 +566,7 @@ void main() {
       ),
     );
     final naverCalDavService = _FakeNaverCalDavService(
+      initialHasCredentials: true,
       syncDelay: const Duration(seconds: 1),
       syncResult: const NaverCalDavSyncResult(
         success: true,
@@ -576,10 +575,6 @@ void main() {
         events: 1,
       ),
     );
-    final naverImportService = _FakeNaverOpenApiCalendarService(
-      initialHasAccess: true,
-    );
-
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
@@ -588,7 +583,6 @@ void main() {
           calendarSyncService: calendarSyncService,
           notificationService: _FakeNotificationService(),
           naverCalDavService: naverCalDavService,
-          naverImportService: naverImportService,
           userId: 'user-1',
         ),
       ),
@@ -599,27 +593,21 @@ void main() {
         find.byKey(const ValueKey('settings-naver-calendar-sync-button'));
     await _scrollUntilHitTestable(tester, syncButton);
     await tester.tap(syncButton.hitTestable().first);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    expect(find.text('네이버 일정 가져오기'), findsOneWidget);
-    expect(
-      find.textContaining('앱을 백그라운드로 보내도 계속 진행됩니다.'),
-      findsOneWidget,
-    );
-
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
 
     expect(calendarSyncService.naverSyncCallCount, 0);
     expect(naverCalDavService.syncCallCount, 1);
-    expect(naverImportService.syncCallCount, 0);
   });
 
-  testWidgets('initial Naver calendar action triggers OAuth connect flow',
+  testWidgets(
+      'Naver calendar sync does not show permission failure when fallback starts',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => authProvider.setUser(null));
+
+    authProvider.setUser('user-1');
 
     await tester.pumpWidget(
       MaterialApp(
@@ -637,51 +625,8 @@ void main() {
             ),
           ),
           notificationService: _FakeNotificationService(),
-          naverImportService: _FakeNaverOpenApiCalendarService(
-            initialHasAccess: false,
-          ),
-          userId: 'user-1',
-          initialAction: SettingsInitialAction.naverCalDav,
-        ),
-      ),
-    );
-
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pumpAndSettle();
-
-    // Open API 전환 후: CalDAV 앱비번 다이얼로그 대신 Supabase 미설정 안내가 표시됨
-    // (테스트 환경에서 authService가 null → Supabase 설정 안내 스낵바)
-    expect(find.text('네이버 ID'), findsNothing);
-    expect(find.text('앱 비밀번호'), findsNothing);
-  });
-
-  testWidgets('Naver OAuth launch does not immediately fail permission check',
-      (tester) async {
-    await tester.binding.setSurfaceSize(const Size(800, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final authService = _FakeAuthService(connectCalendarResult: true);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsScreen(
-          settingsRepository: _FakeSettingsRepository(),
-          briefingSchedulerService: _FakeBriefingSchedulerService(),
-          calendarSyncService: _FakeCalendarSyncService(
-            summary: CalendarSyncSummary(
-              google: CalendarIntegrationResult.ready(CalendarProvider.google),
-              naver: CalendarIntegrationResult.signedOut(
-                CalendarProvider.naver,
-              ),
-            ),
-          ),
-          notificationService: _FakeNotificationService(),
-          authService: authService,
+          authService: _FakeAuthService(connectCalendarResult: false),
           naverCalDavService: _FakeNaverCalDavService(),
-          naverImportService: _FakeNaverOpenApiCalendarService(
-            initialHasAccess: false,
-          ),
           userId: 'user-1',
         ),
       ),
@@ -693,18 +638,15 @@ void main() {
     await _scrollUntilHitTestable(tester, syncButton);
     await tester.tap(syncButton.hitTestable().first);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
 
-    expect(authService.connectCalendarCallCount, 1);
     expect(
       find.textContaining('권한 동의가 확인되지 않았습니다'),
       findsNothing,
     );
-    expect(
-      find.textContaining('캘린더 권한을 허용하고 PlanFlow로 돌아온 뒤 다시 동기화'),
-      findsWidgets,
-    );
+    expect(find.text('네이버 캘린더 연결'), findsOneWidget);
+    expect(find.text('네이버 ID'), findsOneWidget);
+    expect(find.text('앱 비밀번호'), findsOneWidget);
   });
 
   testWidgets('logout does not clear saved Naver calendar credentials',
@@ -717,8 +659,8 @@ void main() {
     authProvider.setUser('user-1');
 
     final authService = _FakeAuthService();
-    final naverImportService = _FakeNaverOpenApiCalendarService(
-      initialHasAccess: true,
+    final naverCalDavService = _FakeNaverCalDavService(
+      initialHasCredentials: true,
     );
     final router = GoRouter(
       initialLocation: '/',
@@ -737,7 +679,7 @@ void main() {
             ),
             notificationService: _FakeNotificationService(),
             authService: authService,
-            naverImportService: naverImportService,
+            naverCalDavService: naverCalDavService,
             userId: 'user-1',
           ),
         ),
@@ -764,8 +706,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(authService.signOutCallCount, 1);
-    // Open API 전환 후: CalDAV clearCredentials 대신 OAuth 토큰이 관리되며 logout 시 자동 정리됨
-    expect(naverImportService.syncCallCount, 0);
+    expect(naverCalDavService.clearCallCount, 0);
   });
 
   testWidgets('device Naver calendar import button imports phone calendars',
@@ -811,6 +752,65 @@ void main() {
     expect(deviceCalendarService.importCallCount, 1);
     expect(
       find.textContaining('휴대폰 내부 캘린더 일정 2개를 PlanFlow로 가져왔습니다.'),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('device Naver calendar import shows long-running progress dialog',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final deviceCalendarService = _FakeDeviceCalendarService(
+      result: const DeviceCalendarImportResult(
+        status: DeviceCalendarImportStatus.imported,
+        message: '휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.',
+        importedCount: 1,
+      ),
+      delay: const Duration(seconds: 4),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: _FakeCalendarSyncService(
+            summary: CalendarSyncSummary(
+              google: CalendarIntegrationResult.ready(CalendarProvider.google),
+              naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+            ),
+          ),
+          deviceCalendarService: deviceCalendarService,
+          notificationService: _FakeNotificationService(),
+          naverCalDavService: _FakeNaverCalDavService(),
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+    final importButton = find.byKey(
+      const ValueKey('settings-device-calendar-import-button'),
+    );
+    await _scrollUntilHitTestable(tester, importButton);
+    await tester.tap(importButton.hitTestable().first);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+
+    expect(find.text('휴대폰 내부 캘린더 가져오기'), findsOneWidget);
+    expect(
+      find.textContaining('일정이 많아 조금 걸리고 있습니다'),
+      findsWidgets,
+    );
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('휴대폰 내부 캘린더 가져오기'), findsNothing);
+    expect(deviceCalendarService.importCallCount, 1);
+    expect(
+      find.textContaining('휴대폰 내부 캘린더 일정 1개를 PlanFlow로 가져왔습니다.'),
       findsWidgets,
     );
   });
@@ -1085,14 +1085,17 @@ class _FakeNotificationService extends NotificationService {
 }
 
 class _FakeDeviceCalendarService extends DeviceCalendarService {
-  _FakeDeviceCalendarService({required this.result})
-      : super(
+  _FakeDeviceCalendarService({
+    required this.result,
+    this.delay = Duration.zero,
+  }) : super(
           gateway: _FakeDeviceCalendarGateway(),
           eventRepository: _FakeDeviceEventRepository(),
           currentUserId: 'user-1',
         );
 
   final DeviceCalendarImportResult result;
+  final Duration delay;
   int importCallCount = 0;
 
   @override
@@ -1102,6 +1105,9 @@ class _FakeDeviceCalendarService extends DeviceCalendarService {
     DateTime? endAt,
   }) async {
     importCallCount += 1;
+    if (delay > Duration.zero) {
+      await Future<void>.delayed(delay);
+    }
     return result;
   }
 }
@@ -1294,58 +1300,4 @@ class _FakeAuthService extends AuthService {
     signOutCallCount += 1;
     authProvider.setUser(null);
   }
-}
-
-class _FakeNaverOpenApiCalendarService extends NaverOpenApiCalendarService {
-  // ignore: unused_element_parameter
-  _FakeNaverOpenApiCalendarService({
-    this.initialHasAccess = false,
-    // ignore: unused_element_parameter
-    this.syncDelay = Duration.zero,
-    // ignore: unused_element_parameter
-    this.syncResult = const NaverCalDavSyncResult(
-      success: true,
-      message: '네이버 캘린더 연결은 성공했지만 가져올 일정이 없습니다.',
-    ),
-  });
-
-  final bool initialHasAccess;
-  final Duration syncDelay;
-  final NaverCalDavSyncResult syncResult;
-  int syncCallCount = 0;
-
-  @override
-  Future<bool> hasCalendarAccess() async => initialHasAccess;
-
-  @override
-  Future<NaverCalDavSyncResult> syncAll({
-    String? userId,
-    DateTime? from,
-    DateTime? to,
-    NaverCalDavSyncMode mode = NaverCalDavSyncMode.custom,
-    bool skipUnchanged = true,
-    bool diagnosticImport = false,
-    NaverCalDavProgressCallback? onProgress,
-  }) async {
-    syncCallCount += 1;
-    onProgress?.call(
-      NaverCalDavSyncProgress(
-        mode: mode,
-        stage: NaverCalDavSyncStage.saving,
-        message: '일정을 저장하는 중입니다.',
-        processedEvents: syncResult.events,
-        totalEvents: syncResult.events,
-        savedEvents: syncResult.createdOrUpdated,
-        skippedEvents: syncResult.skipped,
-        failedEvents: syncResult.failed,
-      ),
-    );
-    if (syncDelay > Duration.zero) {
-      await Future<void>.delayed(syncDelay);
-    }
-    return syncResult;
-  }
-
-  @override
-  void dispose() {}
 }

@@ -59,6 +59,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    authProvider.removeListener(_onAuthProviderChanged);
     OAuthCallbackHandler.latestUserMessage.removeListener(_handleOAuthMessage);
     _emailController.dispose();
     _passwordController.dispose();
@@ -78,6 +79,15 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed && _isLoading) {
       unawaited(_resolvePendingOAuthOnResume());
     }
+  }
+
+  void _onAuthProviderChanged() {
+    if (!mounted) return;
+    // Supabase 초기화가 완료되면 _authService를 지연 초기화
+    if (AppEnv.isSupabaseReady && _authService == null) {
+      _authService = widget._authService ?? AuthService();
+    }
+    setState(() {});
   }
 
   void _handleOAuthMessage() {

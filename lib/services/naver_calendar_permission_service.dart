@@ -6,6 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/diag_logger.dart';
+import '../core/log_text.dart';
+
 enum NaverCalendarPermissionStatus {
   granted,
   denied,
@@ -51,6 +54,7 @@ class NaverCalendarPermissionService {
   static const String _statusKey = 'naver_calendar_permission_status';
   static const String _lastCheckedAtKey =
       'naver_calendar_permission_checked_at';
+  static const String _logTag = 'PlanFlowNaverCalendar';
 
   final SupabaseClient? _supabaseClient;
   final http.Client _httpClient;
@@ -92,7 +96,9 @@ class NaverCalendarPermissionService {
         onConflict: 'user_id',
       );
     } catch (error, stackTrace) {
-      debugPrint('Naver calendar token clear skipped: $error');
+      debugPrint(
+        'Naver calendar token clear skipped: ${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
     }
   }
@@ -126,11 +132,15 @@ class NaverCalendarPermissionService {
 
   Future<NaverCalendarPermissionResult> refreshStatus() async {
     final accessToken = await _resolveAccessToken();
+    _log(
+      'refreshStatus start tokenPresent=${accessToken?.trim().isNotEmpty == true}',
+    );
     if (accessToken == null || accessToken.trim().isEmpty) {
       const result = NaverCalendarPermissionResult(
         status: NaverCalendarPermissionStatus.unknown,
         message: '네이버 로그인 토큰을 확인하지 못했습니다.',
       );
+      _log('refreshStatus result=${result.status.name} reason=missing_token');
       await saveStatus(result.status);
       return result;
     }
@@ -157,8 +167,9 @@ class NaverCalendarPermissionService {
       ).timeout(const Duration(seconds: 8));
 
       final result = _classifyResponse(response);
-      debugPrint(
-        'Naver calendar permission probe: status=${response.statusCode} result=${result.status.name}',
+      _log(
+        'permission probe status=${response.statusCode} '
+        'result=${result.status.name} bodyLength=${response.body.length}',
       );
       if (result.isGranted) {
         await _persistCurrentProviderToken();
@@ -171,6 +182,7 @@ class NaverCalendarPermissionService {
         message: '네이버 캘린더 권한 확인 중 연결 시간이 초과되었습니다.',
         error: error,
       );
+      _log('refreshStatus timeout error=${logSafeText(error)}');
       await saveStatus(result.status);
       return result;
     } on SocketException catch (error) {
@@ -179,6 +191,7 @@ class NaverCalendarPermissionService {
         message: '네이버 캘린더 권한 확인 중 네트워크 문제가 발생했습니다.',
         error: error,
       );
+      _log('refreshStatus socket error=${logSafeText(error)}');
       await saveStatus(result.status);
       return result;
     } catch (error) {
@@ -187,6 +200,7 @@ class NaverCalendarPermissionService {
         message: '네이버 캘린더 권한 상태를 확인하지 못했습니다.',
         error: error,
       );
+      _log('refreshStatus unknown error=${logSafeText(error)}');
       await saveStatus(result.status);
       return result;
     }
@@ -209,15 +223,22 @@ class NaverCalendarPermissionService {
   Future<String?> _resolveAccessToken() async {
     final provider = _accessTokenProvider;
     if (provider != null) {
-      return provider();
+      final token = await provider();
+      _log(
+          'accessToken source=injected present=${token?.trim().isNotEmpty == true}');
+      return token;
     }
 
     final providerToken = _currentProviderToken();
     if (providerToken != null && providerToken.trim().isNotEmpty) {
+      _log('accessToken source=current_provider_token present=true');
       return providerToken;
     }
 
-    return _storedNaverCalendarToken();
+    final storedToken = await _storedNaverCalendarToken();
+    _log(
+        'accessToken source=stored_token present=${storedToken?.trim().isNotEmpty == true}');
+    return storedToken;
   }
 
   String? _currentProviderToken() {
@@ -242,7 +263,9 @@ class NaverCalendarPermissionService {
       }
       return row['naver_calendar_token']?.toString();
     } catch (error, stackTrace) {
-      debugPrint('Stored Naver calendar token lookup failed: $error');
+      debugPrint(
+        'Stored Naver calendar token lookup failed: ${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
       return null;
     }
@@ -254,6 +277,8 @@ class NaverCalendarPermissionService {
     final token = _currentProviderToken();
     final client = _clientOrNull;
     final userId = client?.auth.currentUser?.id;
+    final naverSignedIn = client != null && isNaverSignedIn();
+    final tokenPresent = token?.trim().isNotEmpty == true;
     if (client == null ||
         userId == null ||
         userId.trim().isEmpty ||
@@ -267,14 +292,18 @@ class NaverCalendarPermissionService {
       await client.from('user_settings').upsert(
         <String, dynamic>{
           'user_id': userId,
-          'naver_calendar_token': token,
+          'naver_calendar_token': token!.trim(),
         },
         onConflict: 'user_id',
       );
-      debugPrint('Naver calendar provider token captured.');
+      _log(
+          'provider token captured calendarLinkToken=$allowWithoutNaverIdentity.');
+      DiagLogger.log('DIAG', 'persistToken SAVED calendarLinkToken=$allowWithoutNaverIdentity');
       return true;
     } catch (error, stackTrace) {
-      debugPrint('Naver calendar token persistence skipped: $error');
+      _log(
+        'provider token persistence skipped: ${logSafeText(error)}',
+      );
       debugPrintStack(stackTrace: stackTrace);
       return false;
     }
@@ -358,11 +387,19 @@ class NaverCalendarPermissionService {
       );
     }
 
-    if (statusCode >= 200 && statusCode < 500) {
+    if (statusCode >= 200 && statusCode < 300) {
       return NaverCalendarPermissionResult(
         status: NaverCalendarPermissionStatus.granted,
         statusCode: statusCode,
         message: '네이버 캘린더 권한을 확인했습니다.',
+      );
+    }
+
+    if (statusCode >= 400 && statusCode < 500) {
+      return NaverCalendarPermissionResult(
+        status: NaverCalendarPermissionStatus.unknown,
+        statusCode: statusCode,
+        message: '네이버 캘린더 권한 확인 응답을 해석하지 못했습니다.',
       );
     }
 
@@ -378,6 +415,10 @@ class NaverCalendarPermissionService {
     String two(int number) => number.toString().padLeft(2, '0');
     return '${utc.year}${two(utc.month)}${two(utc.day)}T'
         '${two(utc.hour)}${two(utc.minute)}${two(utc.second)}Z';
+  }
+
+  static void _log(String message) {
+    debugPrint('[$_logTag] ${logSafeText(message)}');
   }
 
   static NaverCalendarPermissionStatus _parseStatus(String? value) {
