@@ -272,7 +272,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _isAllDay = widget.parsedSchedule['is_all_day'] == true;
     _isMultiDay = widget.parsedSchedule['is_multi_day'] == true;
     _category = '기타';
-    _isCritical = widget.parsedSchedule['is_critical'] == true;
+    _strongAlarm = _shouldDefaultStrongAlarm(widget.parsedSchedule);
+    _isCritical = widget.parsedSchedule['is_critical'] == true || _strongAlarm;
     _titleController.addListener(_markTitleEdited);
     _locationController.addListener(_markLocationEdited);
     _memoController.addListener(_markMemoEdited);
@@ -1771,7 +1772,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       eventStartAt: eventStartAt,
       offset: Duration.zero,
     );
-    if (_isCritical &&
+    if (_strongAlarm &&
         criticalNotifyAt != null &&
         criticalNotifyAt.isAfter(now)) {
       payloads.add(
@@ -2247,7 +2248,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         onCriticalChanged: (value) {
                           setState(() {
                             _isCritical = value;
-                            if (!value) _strongAlarm = false;
+                            _strongAlarm = value;
                           });
                         },
                         onStrongAlarmChanged: (value) {
@@ -2289,6 +2290,21 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         ),
       ),
     );
+  }
+
+  bool _shouldDefaultStrongAlarm(Map<String, dynamic> parsed) {
+    if (parsed['use_strong_alarm'] == false ||
+        parsed['strong_alarm'] == false ||
+        parsed['is_all_day'] == true) {
+      return false;
+    }
+    if (parsed['use_strong_alarm'] == true || parsed['strong_alarm'] == true) {
+      return true;
+    }
+
+    final rawText = _stringValue(parsed['raw_text']);
+    final startAt = _dateTimeValue(parsed['start_at']);
+    return rawText != null && startAt != null && startAt.isAfter(planflowNow());
   }
 
   String? _stringValue(Object? value) {

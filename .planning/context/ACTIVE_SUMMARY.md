@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-29 음성 일정 강한 알람 기본값 보정
+- S23 실측에서 PlanFlow 앱/채널 권한은 허용이고 Android는 예약 알림을 dispatch/post하고 있었으나, 음성으로 저장한 일반 일정은 기본적으로 짧은 일반 알림에 가까워 사용자가 기대하는 알람처럼 울리지 않았다.
+- 음성 raw text와 미래 시작 시각이 있는 일정은 확인 화면에서 중요한 일정 + 강한 알람을 기본 켜짐으로 두고, 시스템 알람 예약 조건을 실제 강한 알람 토글과 일치시켰다. 사용자가 중요한 일정을 끄면 강한 알람도 함께 꺼진다.
+- 검증: focused `ConfirmScreen defaults voice schedules to strong alarm` 테스트 로그상 `All tests passed!`, `git diff --check` 통과. analyzer는 동시 실행 중인 별도 Dart debug build 프로세스 때문에 시작 단계에서 타임아웃되어 별도 확인 필요.
+
 ## 2026-06-29 음성 확인 뒤로가기 후 재입력 STT 복구
 - 음성 입력 완료 버튼이 `stopActiveListen()`을 백그라운드로 실행한 채 일정 확인 화면으로 이동한 뒤, 저장하지 않고 시스템 뒤로가기/null pop으로 돌아오면 남은 STT stop 상태 때문에 다음 음성 입력이 즉시 실패할 수 있었다.
 - `VoiceInputScreen`의 route 복귀 처리에서 confirm/voice action/conversation 복귀 시 잔여 STT listen을 먼저 cancel로 정리한 뒤 warm-up과 텍스트/제출 가드 리셋을 수행하도록 분리했다.
