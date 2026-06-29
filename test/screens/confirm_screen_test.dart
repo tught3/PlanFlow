@@ -402,6 +402,32 @@ void main() {
     expect(find.widgetWithText(TextFormField, '설명'), findsNothing);
   });
 
+  testWidgets('ConfirmScreen keeps details collapsed for memo-only parses',
+      (tester) async {
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(
+            memo: 'AI가 만든 설명',
+            supplies: const <String>[],
+          ),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('설명 · 준비물'));
+
+    expect(find.widgetWithText(TextFormField, '설명'), findsNothing);
+    expect(find.text('AI가 만든 설명'), findsNothing);
+  });
+
   testWidgets('ConfirmScreen waits for location coordinates before saving',
       (tester) async {
     final repository = _FakeEventRepository();

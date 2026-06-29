@@ -290,7 +290,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     ).map(_SupplyDraft.new).toList(growable: true);
     _preActions = _initialPreActions();
     _detailsSectionInitiallyExpanded =
-        _supplies.isNotEmpty || _memoController.text.trim().isNotEmpty;
+        _supplies.isNotEmpty || _hasExplicitPreActions(widget.parsedSchedule);
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
     _setAmbiguousTimeFromParsed(widget.parsedSchedule);
@@ -2066,6 +2066,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     return _preActionsFromValue(
       _smartPreparationAlarmValues(widget.parsedSchedule),
     );
+  }
+
+  bool _hasExplicitPreActions(Map<String, dynamic> schedule) {
+    return _preActionsFromValue(schedule['pre_actions']).isNotEmpty;
   }
 
   List<Map<String, dynamic>> _smartPreparationAlarmValues(
