@@ -2686,7 +2686,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                       children: [
                         Expanded(
                           child: Text(
-                            _use24HourFormat ? '24시간제' : '12시간제',
+                            _use24HourFormat
+                                ? '24시간제(14:30)'
+                                : '12시간제(오전 2:30)',
                             style: theme.textTheme.titleSmall?.copyWith(
                               color: PlanFlowColors.primary,
                               fontWeight: FontWeight.w700,
@@ -2698,13 +2700,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                           onChanged: _setUse24HourFormat,
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _use24HourFormat ? '14:30' : '오후 2:30',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                      ),
                     ),
                   ],
                 ),

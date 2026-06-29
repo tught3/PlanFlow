@@ -213,16 +213,14 @@ void main() {
         findsOneWidget,
       );
 
-      expect(find.text('12시간제'), findsOneWidget);
-      expect(find.text('오후 2:30'), findsOneWidget);
+      expect(find.text('12시간제(오전 2:30)'), findsOneWidget);
 
       await tester.tap(timeFormatToggle.hitTestable().first);
       await tester.pumpAndSettle();
 
       expect(settingsRepository.savedSettings, isNotNull);
       expect(settingsRepository.savedSettings!.use24HourFormat, isTrue);
-      expect(find.text('24시간제'), findsOneWidget);
-      expect(find.text('14:30'), findsOneWidget);
+      expect(find.text('24시간제(14:30)'), findsOneWidget);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -248,8 +246,7 @@ void main() {
 
       await tester.pumpAndSettle();
       await _scrollUntilHitTestable(tester, timeFormatToggle);
-      expect(find.text('24시간제'), findsOneWidget);
-      expect(find.text('14:30'), findsOneWidget);
+      expect(find.text('24시간제(14:30)'), findsOneWidget);
     },
   );
 

@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-30 시간 표시 형식 라벨 문구 압축
+- 설정 화면의 `시간 표시 형식` 줄에서 토글 라벨을 `12시간제(오전 2:30)` / `24시간제(14:30)`로 직접 보여주게 바꿔, 스위치가 텍스트 오른쪽에 붙은 상태에서도 한 눈에 현재 포맷을 읽을 수 있게 했다.
+- 기존의 아래 보조 시간 텍스트는 제거해 카드가 두 줄로 벌어지지 않게 정리했다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/settings_screen_test.dart --no-pub -r compact` 통과, `scripts/flutter-local.ps1 analyze lib/screens/settings/settings_screen.dart test/screens/settings_screen_test.dart --no-pub` 통과, `scripts/flutter-local.ps1 build apk --release --no-pub` 통과, 3대 `adb install -r` 성공, `adb shell am start -W` 실행 확인.
+
 ## 2026-06-30 설정 화면 배치 재정렬과 실제 설치 재검증
 - 설정 화면에서 `음성으로 일정 관리`는 다시 플로팅 액션 버튼으로 복구하고, `시간 표시 형식` 카드에는 24/12시간제 텍스트와 스위치만 남겨 두었다. `진단 로그 보기`는 `앱 정보` 줄 오른쪽으로 다시 옮겼다.
 - `내 교정 패턴 사용`은 기존처럼 저장/복원 경로가 살아 있는 상태를 다시 확인했다. 이 변경은 배치 수정이 중심이어서 기능 로직은 건드리지 않았다.
