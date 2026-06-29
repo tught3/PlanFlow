@@ -108,6 +108,39 @@ abstract class ConfirmScreenBackend {
   Future<void> insertVoiceLog(Map<String, dynamic> payload);
 }
 
+class _PostSaveFollowUpResult {
+  const _PostSaveFollowUpResult({
+    this.alarmFailures = const <_AlarmScheduleFailure>[],
+  });
+
+  final List<_AlarmScheduleFailure> alarmFailures;
+
+  String? get alarmWarningMessage {
+    if (alarmFailures.isEmpty) {
+      return null;
+    }
+    if (alarmFailures.any(
+      (failure) =>
+          failure.status == NotificationScheduleStatus.permissionBlocked,
+    )) {
+      return '일정은 저장했지만 알림 권한이 꺼져 있어 알람을 예약하지 못했어요.';
+    }
+    return '일정은 저장했지만 알람 예약에 실패했어요. 알림 설정을 확인해 주세요.';
+  }
+}
+
+class _AlarmScheduleFailure {
+  const _AlarmScheduleFailure({
+    required this.label,
+    required this.status,
+    required this.message,
+  });
+
+  final String label;
+  final NotificationScheduleStatus status;
+  final String message;
+}
+
 class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
   const SupabaseConfirmScreenBackend();
 
@@ -973,6 +1006,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       final savedEvent = await repository.createEvent(draftEvent);
       unawaited(_recordVoiceCorrectionLearning(userId: userId));
 
+      final postSaveResult = await _scheduleImmediateAlarmNotifications(
+        event: savedEvent,
+      );
+
       unawaited(
         _runPostSaveFollowUps(
           userId: userId,
@@ -993,6 +1030,10 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         unawaited(AnalyticsService.logScheduleConfirmed());
         unawaited(AnalyticsService.logEventCreated(source: 'voice'));
         unawaited(ReviewService.onEventSaved());
+        final alarmWarning = postSaveResult.alarmWarningMessage;
+        if (alarmWarning != null) {
+          _showMessage(alarmWarning);
+        }
         // 알람 권한 가드 — 저장 성공 후 권한이 누락된 경우 안내 다이얼로그.
         // 시스템 설정 화면이 열렸으면 true 반환 → 앱 복귀(resumed) 시 홈 이동.
         // 다이얼로그만 닫혔거나 권한 충분이면 false → 즉시 홈 이동.
@@ -1452,10 +1493,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       () => widget.backend.insertReminders(reminderPayloads),
       label: 'reminders',
     );
-    await _scheduleCriticalAlarmFromReminderPayloads(
-      event: event,
-      reminderPayloads: reminderPayloads,
-    );
     await _tryFollowUp(
       () async {
         final result = await const DepartureAlarmService().scheduleForEvent(
@@ -1501,6 +1538,24 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         label: 'voice_logs',
       );
     }
+  }
+
+  Future<_PostSaveFollowUpResult> _scheduleImmediateAlarmNotifications({
+    required EventModel event,
+  }) async {
+    final alarmFailures = <_AlarmScheduleFailure>[];
+    final eventStartAt = event.startAt ?? _startAt;
+    final reminderPayloads = _buildReminderPayloads(
+      userId: event.userId,
+      eventId: event.id,
+      eventStartAt: eventStartAt,
+      reminderOffset: _reminderOffset,
+    );
+    await _scheduleCriticalAlarmFromReminderPayloads(
+      event: event,
+      reminderPayloads: reminderPayloads,
+      alarmFailures: alarmFailures,
+    );
 
     final reminderOffset = _reminderOffset;
     if (reminderOffset != null) {
@@ -1513,21 +1568,33 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         eventReminderNotifyAt = eventStartAt;
       }
       await _tryFollowUp(
-        () => widget.notificationService.scheduleEventReminder(
-          id: widget.notificationService.notificationIdFor('${event.id}:push'),
-          title: event.title,
-          body: '일정 시작: ${event.title}',
-          notifyAt: eventReminderNotifyAt,
-          payload: 'event:${event.id}',
-        ),
+        () async {
+          final result =
+              await widget.notificationService.scheduleEventReminderWithResult(
+            id: widget.notificationService.notificationIdFor(
+              '${event.id}:push',
+            ),
+            title: event.title,
+            body: '일정 시작: ${event.title}',
+            notifyAt: eventReminderNotifyAt,
+            payload: 'event:${event.id}',
+          );
+          _recordAlarmScheduleResult(
+            result,
+            label: 'local_event_reminder',
+            failures: alarmFailures,
+          );
+        },
         label: 'local_event_reminder',
       );
     }
+    return _PostSaveFollowUpResult(alarmFailures: alarmFailures);
   }
 
   Future<void> _scheduleCriticalAlarmFromReminderPayloads({
     required EventModel event,
     required List<Map<String, dynamic>> reminderPayloads,
+    required List<_AlarmScheduleFailure> alarmFailures,
   }) async {
     final payload = reminderPayloads
         .where((row) => row['type'] == 'system_alarm')
@@ -1558,11 +1625,43 @@ class _ConfirmScreenState extends State<ConfirmScreen>
           body: '중요 일정이 곧 시작됩니다.',
           payload: 'event:${event.id}',
         );
-        if (!result.isScheduled) {
-          throw StateError(result.message ?? '중요 알람 예약 실패');
-        }
+        _recordAlarmScheduleResult(
+          result,
+          label: 'critical_alarm',
+          failures: alarmFailures,
+        );
       },
       label: 'critical_alarm',
+    );
+  }
+
+  void _recordAlarmScheduleResult(
+    NotificationScheduleResult result, {
+    required String label,
+    required List<_AlarmScheduleFailure> failures,
+  }) {
+    if (result.isScheduled) {
+      DiagLogger.log(
+        'ConfirmScreen',
+        '$label scheduled notifyAt=${result.notifyAt.toIso8601String()}',
+      );
+      return;
+    }
+    final message = result.message ?? '알림을 예약하지 못했습니다.';
+    DiagLogger.log(
+      'ConfirmScreen',
+      '$label failed status=${result.status.name} '
+          'notifyAt=${result.notifyAt.toIso8601String()} message=$message',
+    );
+    if (result.status == NotificationScheduleStatus.skippedPast) {
+      return;
+    }
+    failures.add(
+      _AlarmScheduleFailure(
+        label: label,
+        status: result.status,
+        message: message,
+      ),
     );
   }
 

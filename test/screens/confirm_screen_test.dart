@@ -82,7 +82,11 @@ void main() {
     await tester.ensureVisible(find.text('일정 저장'));
     await tester.tap(find.text('일정 저장'));
     for (var i = 0;
-        i < 30 && notifications.criticalAlarmTitles.isEmpty;
+        i < 30 &&
+            (notifications.criticalAlarmTitles.isEmpty ||
+                backend.reminderPayloads
+                    .where((row) => row['type'] == 'system_alarm')
+                    .isEmpty);
         i += 1) {
       await tester.pump(const Duration(milliseconds: 100));
     }
@@ -98,6 +102,53 @@ void main() {
         repository.createdEvents.single.startAt!,
       ),
       Duration.zero,
+    );
+  });
+
+  testWidgets('ConfirmScreen surfaces local reminder scheduling failures',
+      (tester) async {
+    final repository = _FakeEventRepository();
+    final notifyAt = DateTime.now().add(const Duration(hours: 2));
+    final notifications = _FakeNotificationService(
+      eventReminderResult: NotificationScheduleResult(
+        status: NotificationScheduleStatus.permissionBlocked,
+        notifyAt: notifyAt,
+        message: '앱 알림 권한이 꺼져 있어 알림을 예약하지 못했습니다.',
+      ),
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(startAt: notifyAt),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          notificationService: notifications,
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _AlarmReadyPermissionService(),
+        ),
+      ),
+    );
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    for (var i = 0;
+        i < 40 &&
+            find
+                .text('일정은 저장했지만 알림 권한이 꺼져 있어 알람을 예약하지 못했어요.')
+                .evaluate()
+                .isEmpty;
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(notifications.eventReminderTitles, contains('성남 출발'));
+    expect(
+      find.text('일정은 저장했지만 알림 권한이 꺼져 있어 알람을 예약하지 못했어요.'),
+      findsOneWidget,
     );
   });
 
@@ -903,6 +954,10 @@ class _ThrowingEventRepository extends _FakeEventRepository {
 }
 
 class _FakeNotificationService extends NotificationService {
+  _FakeNotificationService({this.eventReminderResult});
+
+  final NotificationScheduleResult? eventReminderResult;
+  final eventReminderTitles = <String>[];
   final criticalAlarmTitles = <String>[];
   final criticalAlarmNotifyAts = <DateTime>[];
 
@@ -917,7 +972,33 @@ class _FakeNotificationService extends NotificationService {
     required DateTime notifyAt,
     String? payload,
     bool includeDepartureAction = false,
-  }) async {}
+  }) async {
+    await scheduleEventReminderWithResult(
+      id: id,
+      title: title,
+      body: body,
+      notifyAt: notifyAt,
+      payload: payload,
+      includeDepartureAction: includeDepartureAction,
+    );
+  }
+
+  @override
+  Future<NotificationScheduleResult> scheduleEventReminderWithResult({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime notifyAt,
+    String? payload,
+    bool includeDepartureAction = false,
+  }) async {
+    eventReminderTitles.add(title);
+    return eventReminderResult ??
+        NotificationScheduleResult(
+          status: NotificationScheduleStatus.scheduled,
+          notifyAt: notifyAt,
+        );
+  }
 
   @override
   Future<void> scheduleCriticalAlarm({
@@ -1020,4 +1101,21 @@ class _DeniedPermissionService extends AppPermissionService {
 
   @override
   Future<bool> openAppSettings() async => true;
+}
+
+class _AlarmReadyPermissionService extends _DeniedPermissionService {
+  @override
+  Future<AppPermissionSnapshot> checkAll() async {
+    return const AppPermissionSnapshot(
+      microphoneGranted: true,
+      locationGranted: true,
+      calendarGranted: true,
+      notificationStatus: NotificationPermissionStatus(
+        notificationsEnabled: true,
+        exactAlarmsEnabled: true,
+        fullScreenIntentStatus: PermissionCheckState.granted,
+      ),
+      batteryOptimizationIgnored: true,
+    );
+  }
 }
