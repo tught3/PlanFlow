@@ -101,48 +101,6 @@ void main() {
     );
   });
 
-  testWidgets('ConfirmScreen defaults voice schedules to strong alarm',
-      (tester) async {
-    final backend = _FakeConfirmBackend();
-    final notifications = _FakeNotificationService();
-    final repository = _FakeEventRepository();
-
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(
-            isCritical: false,
-            startAt: DateTime.now().add(const Duration(hours: 2)),
-            rawText: '두 시간 뒤 성남 출발',
-          ),
-          backend: backend,
-          eventRepository: repository,
-          notificationService: notifications,
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
-        ),
-      ),
-    );
-
-    await tester.ensureVisible(find.text('일정 저장'));
-    await tester.tap(find.text('일정 저장'));
-    for (var i = 0;
-        i < 30 && notifications.criticalAlarmTitles.isEmpty;
-        i += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-
-    expect(repository.createdEvents.single.isCritical, isTrue);
-    expect(repository.createdEvents.single.useStrongAlarm, isTrue);
-    expect(
-      backend.reminderPayloads.where((row) => row['type'] == 'system_alarm'),
-      hasLength(1),
-    );
-    expect(notifications.criticalAlarmTitles, contains('성남 출발'));
-  });
-
   testWidgets('ConfirmScreen preserves parsed recurrence when saving',
       (tester) async {
     final repository = _FakeEventRepository();
@@ -913,7 +871,6 @@ class _FakeEventRepository extends EventRepository {
       memo: event.memo,
       supplies: event.supplies,
       isCritical: event.isCritical,
-      useStrongAlarm: event.useStrongAlarm,
       recurrenceRule: event.recurrenceRule,
       isAllDay: event.isAllDay,
       isMultiDay: event.isMultiDay,
