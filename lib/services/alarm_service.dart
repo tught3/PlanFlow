@@ -113,7 +113,6 @@ Future<void> _briefingAlarmCallback(
 ) async {
   final briefingType = params['briefing_type'] as String? ?? 'morning';
   final isMorning = briefingType == 'morning';
-  final userId = params['user_id'] as String?;
 
   try {
     if (!AppEnv.isSupabaseReady && AppEnv.hasValidSupabaseConfig) {
@@ -131,17 +130,16 @@ Future<void> _briefingAlarmCallback(
     }
 
     final scheduler = BriefingSchedulerService();
-    await scheduler.showBriefingStartNotification(isMorning: isMorning);
-  } catch (_) {
-    // Background isolate must never crash
-  } finally {
-    // Supabase 초기화 실패 여부와 무관하게 항상 다음 알람 등록
+    final userId = params['user_id'] as String?;
     try {
-      final scheduler = BriefingSchedulerService();
+      await scheduler.showBriefingStartNotification(isMorning: isMorning);
+    } finally {
       await scheduler.rescheduleNextBriefing(
         isMorning: isMorning,
         userId: userId,
       );
-    } catch (_) {}
+    }
+  } catch (_) {
+    // Background isolate must never crash
   }
 }

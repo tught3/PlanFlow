@@ -93,12 +93,6 @@ class PlanFlowResponsive {
     List<ui.DisplayFeature> displayFeatures,
   ) {
     return displayFeatures.any((feature) {
-      final isFoldableFeature = feature.type == ui.DisplayFeatureType.hinge ||
-          feature.type == ui.DisplayFeatureType.fold;
-      if (!isFoldableFeature) {
-        return false;
-      }
-
       final bounds = feature.bounds;
       if (bounds.isEmpty) {
         return false;

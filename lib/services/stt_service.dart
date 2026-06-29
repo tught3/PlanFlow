@@ -938,7 +938,6 @@ class SttService {
     final completer = Completer<SttListenResult>();
     final listenGeneration = ++_activeListenGeneration;
     String? latestRecognizedText;
-    String? latestSpeechError;
     _activeSpeech = speech;
     _activeCompleter = completer;
     _activeRecognizedText = null;
@@ -993,11 +992,6 @@ class SttService {
           if (listenGeneration != _activeListenGeneration) {
             return;
           }
-          latestSpeechError = error.errorMsg;
-          debugPrint(
-            'PlanFlow STT speech_to_text error: '
-            'message=${error.errorMsg}, permanent=${error.permanent}',
-          );
           onStatus?.call(
             SttNativeStatusEvent(
               status: SttNativeStatus.error,
@@ -1009,13 +1003,6 @@ class SttService {
             _completeActiveFailure(
               failure: SttListenFailure.permissionDenied,
               message: _permissionMessage,
-            );
-          } else if (_isEmptySpeechError(error.errorMsg) &&
-              (latestRecognizedText == null ||
-                  latestRecognizedText!.trim().isEmpty)) {
-            _completeActiveFailure(
-              failure: SttListenFailure.silence,
-              message: _messageForSpeechError(error.errorMsg),
             );
           }
         },
@@ -1094,15 +1081,13 @@ class SttService {
           if (normalized == null || normalized.isEmpty) {
             return SttListenResult.failure(
               failure: SttListenFailure.silence,
-              message: _messageForSpeechError(latestSpeechError),
+              message: _silenceMessage,
             );
           }
           return SttListenResult.success(normalized);
         },
       );
-    } catch (error, stackTrace) {
-      debugPrint('PlanFlow STT speech_to_text start failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
+    } catch (_) {
       return SttListenResult.failure(
         failure: SttListenFailure.unavailable,
         message: _genericMessage,
@@ -1555,19 +1540,6 @@ class SttService {
       }
     }
   }
-
-  static bool _isEmptySpeechError(String? errorMsg) {
-    return errorMsg == 'error_no_match' ||
-        errorMsg == 'error_speech_timeout' ||
-        errorMsg == 'error_no_speech';
-  }
-
-  static String _messageForSpeechError(String? errorMsg) {
-    if (_isEmptySpeechError(errorMsg)) {
-      return _emptySpeechResultMessage;
-    }
-    return _silenceMessage;
-  }
 }
 
 enum SttVoiceCommand {
@@ -1583,8 +1555,6 @@ const String _unsupportedLocaleMessage =
 const String _permissionMessage =
     '마이크 권한이 없어요. 설정에서 권한을 허용한 뒤 다시 시도하거나 직접 입력으로 이어가 주세요.';
 const String _silenceMessage = '음성이 인식되지 않았어요. 조금 더 크게 말하거나 직접 입력으로 이어가 주세요.';
-const String _emptySpeechResultMessage =
-    '기기 음성 인식 결과가 비어 있어요. 한국어 오프라인 음성 인식을 확인하거나 직접 입력으로 이어가 주세요.';
 const String _genericMessage = '음성 입력을 시작하지 못했어요. 직접 입력으로 이어가 주세요.';
 
 const Set<String> _timePrefixTokens = <String>{

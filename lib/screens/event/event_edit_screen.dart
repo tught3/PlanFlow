@@ -94,7 +94,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
   double? _locationLng;
   String? _resolvedLocationLabel;
   late bool _critical;
-  late bool _strongAlarm;
   late RecurrenceSelection _recurrenceSelection;
   bool _isAllDay = false;
   String _category = '기타';
@@ -205,13 +204,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
   void _handleCriticalChanged(bool value) {
     setState(() {
       _critical = value;
-      if (!value) _strongAlarm = false;
-    });
-  }
-
-  void _handleStrongAlarmChanged(bool value) {
-    setState(() {
-      _strongAlarm = value;
     });
     if (value) {
       unawaited(_ensureCriticalAlarmPermissions());
@@ -288,40 +280,22 @@ class _EventEditScreenState extends State<EventEditScreen> {
       if (_criticalAlarmPermissionsReady(snapshot) || !mounted) {
         return;
       }
-      // exactAlarm은 허용됐지만 알림 권한만 없는 경우: 조용히 요청 후 재확인
-      if (snapshot.exactAlarmsGranted && !snapshot.notificationsGranted) {
-        await _permissionService.requestNotificationPermissions();
-        if (!mounted) return;
-        final refreshed = await _permissionService.checkAll();
-        if (_criticalAlarmPermissionsReady(refreshed) || !mounted) return;
-      }
       final shouldOpen = await showDialog<bool>(
             context: context,
             builder: (dialogContext) => AlertDialog(
               title: const Text('중요한 일정 알림 권한이 필요해요'),
               content: const Text(
-                '강한 알람을 울리려면 앱 알림과 정확한 알람 권한이 필요합니다. 지금 권한을 확인할게요.',
+                '중요한 일정을 시작 시점에 더 강한 소리와 진동으로 알려드리려면 앱 알림, 정확한 알람, 전체 화면 알림 권한이 필요합니다. 지금 권한을 확인할게요.',
               ),
-              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
               actions: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () =>
-                            Navigator.of(dialogContext).pop(false),
-                        child: const Text('나중에'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () =>
-                            Navigator.of(dialogContext).pop(true),
-                        child: const Text('허용하러 가기'),
-                      ),
-                    ),
-                  ],
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('나중에'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: const Text('허용하러 가기'),
                 ),
               ],
             ),
@@ -336,8 +310,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
       _showMessage(
         granted
-            ? '강한 알람 권한을 확인했습니다.'
-            : '설정에서 PlanFlow의 알림과 정확한 알람을 허용한 뒤 돌아와 주세요.',
+            ? '중요한 일정 알림 권한을 확인했습니다.'
+            : '설정에서 PlanFlow의 알림, 정확한 알람, 전체 화면 알림을 허용한 뒤 돌아와 주세요.',
       );
     } catch (error, stackTrace) {
       debugPrint('Critical alarm permission request skipped: $error');
@@ -346,7 +320,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   bool _criticalAlarmPermissionsReady(AppPermissionSnapshot snapshot) {
-    return snapshot.notificationsGranted && snapshot.exactAlarmsGranted;
+    return snapshot.notificationsGranted &&
+        snapshot.exactAlarmsGranted &&
+        snapshot.fullScreenIntentGranted;
   }
 
   Future<bool> _requestCriticalAlarmPermissions() async {
@@ -356,19 +332,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
         notificationStatus.notificationsEnabled == true;
     final exactAlarmsGranted = notificationStatus.exactAlarmsEnabled == true ||
         await _permissionService.requestExactAlarmPermission();
-    if (!exactAlarmsGranted && mounted) {
-      await _permissionService.openAlarmSettings();
-    }
-    // fullScreenIntent는 향상된 기능(잠금화면 오버레이)이며 필수 아님 — 가능하면 요청
-    if (notificationStatus.fullScreenIntentStatus !=
-            PermissionCheckState.granted &&
-        notificationStatus.fullScreenIntentStatus !=
-            PermissionCheckState.unsupported) {
-      unawaited(_permissionService.requestFullScreenIntentPermission());
-    }
+    final fullScreenIntentGranted = notificationStatus.fullScreenIntentStatus ==
+            PermissionCheckState.granted ||
+        await _permissionService.requestFullScreenIntentPermission();
     final latest = await _permissionService.checkAll();
     return notificationsGranted &&
         exactAlarmsGranted &&
+        fullScreenIntentGranted &&
         _criticalAlarmPermissionsReady(latest);
   }
 
@@ -393,7 +363,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
       _resolvedLocationLabel = _locationController.text.trim();
     }
     _critical = event?.isCritical ?? false;
-    _strongAlarm = event?.useStrongAlarm ?? false;
     _recurrenceSelection = RecurrenceSelection.fromRRule(event?.recurrenceRule);
     _isAllDay = event?.isAllDay ?? false;
     _category = event?.category ?? '기타';
@@ -586,18 +555,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   Future<void> _handleSave() async {
-    debugPrint('EventEditScreen save start');
-    final formState = _formKey.currentState;
-    if (formState == null) {
-      debugPrint('EventEditScreen save blocked: form state missing');
-      _showMessage('저장 폼 상태를 찾지 못했어요. 화면을 다시 열어 주세요.');
-      return;
-    }
-    final isValid = formState.validate();
+    final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) {
-      debugPrint('EventEditScreen save blocked: form validation failed');
-      _showMessage('필수 항목(제목 등)을 확인해 주세요.');
-      _revealFirstFormError();
       return;
     }
 
@@ -625,21 +584,21 @@ class _EventEditScreenState extends State<EventEditScreen> {
         return;
       }
 
+      if (_critical) {
+        await _ensureCriticalAlarmPermissions();
+      }
+
       String? recurrenceScope;
       if (!_isNewEvent &&
           _loadedEvent?.recurrenceRule?.trim().isNotEmpty == true) {
         recurrenceScope = await _chooseRecurrenceEditScopeSafe();
         if (recurrenceScope == null) {
-          debugPrint('EventEditScreen save canceled: recurrence scope dialog');
           return;
         }
       }
 
-      debugPrint('EventEditScreen save before ensureLocationCoordinates');
       await _ensureLocationCoordinatesBeforeSave();
-      debugPrint('EventEditScreen save after ensureLocationCoordinates');
       if (!mounted) {
-        debugPrint('EventEditScreen save stopped: unmounted after location');
         return;
       }
 
@@ -670,7 +629,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
         participants: _loadedEvent?.participants ?? const <String>[],
         targets: _loadedEvent?.targets ?? const <String>[],
         isCritical: _critical,
-        useStrongAlarm: _strongAlarm,
         recurrenceRule: _recurrenceSelection.toRRule(),
         isAllDay: _isAllDay,
         isMultiDay: isMultiDayByRange,
@@ -833,37 +791,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
   }
 
-  void _revealFirstFormError() {
-    final formContext = _formKey.currentContext;
-    if (formContext == null) {
-      return;
-    }
-
-    BuildContext? firstErrorContext;
-    void visit(Element element) {
-      if (firstErrorContext != null) {
-        return;
-      }
-      if (element is StatefulElement) {
-        final state = element.state;
-        if (state is FormFieldState<dynamic> && state.hasError) {
-          firstErrorContext = element;
-          return;
-        }
-      }
-      element.visitChildren(visit);
-    }
-
-    (formContext as Element).visitChildren(visit);
-    final targetContext = firstErrorContext ?? formContext;
-    Scrollable.ensureVisible(
-      targetContext,
-      duration: const Duration(milliseconds: 250),
-      alignment: 0.1,
-    );
-    Focus.maybeOf(targetContext)?.requestFocus();
-  }
-
   String _messageForSaveStateError(StateError error) {
     final text = error.message.toLowerCase();
     if (text.contains('signed-in user') || text.contains('current user')) {
@@ -1015,7 +942,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
             event.startAt == null ? _startAt : planflowLocal(event.startAt!);
         _endAt = event.endAt == null ? null : planflowLocal(event.endAt!);
         _critical = event.isCritical;
-        _strongAlarm = event.useStrongAlarm;
         _recurrenceSelection =
             RecurrenceSelection.fromRRule(event.recurrenceRule);
         _isAllDay = event.isAllDay;
@@ -1234,43 +1160,29 @@ class _EventEditScreenState extends State<EventEditScreen> {
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        titlePadding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
-        title: Row(
-          children: [
-            const Expanded(child: Text('반복 일정 수정')),
-            IconButton(
-              icon: const Icon(Icons.close),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () => Navigator.of(context).pop(null),
-            ),
-          ],
+        title: const Text('반복 일정 수정'),
+        content: const Text(
+          '반복 일정입니다. 어떤 범위에 수정 내용을 적용할까요?',
         ),
-        content: const Text('어떤 범위에 수정 내용을 적용할까요?'),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop('single'),
-                      child: const Text('이 일정만'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop('future'),
-                      child: const Text('이후 모든 일정'),
-                    ),
-                  ),
-                ],
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(null),
+                child: const Text('취소'),
               ),
-              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop('single'),
+                child: const Text('이 일정만'),
+              ),
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop('future'),
+                child: const Text('이후 모든 일정'),
+              ),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop('all'),
                 child: const Text('전체 반복 일정'),
@@ -1476,7 +1388,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   recurrence: _recurrenceSelection,
                   reminderOffset: _reminderOffset,
                   isCritical: _critical,
-                  useStrongAlarm: _strongAlarm,
                   locationLat: _locationLat,
                   locationLng: _locationLng,
                   memoMaxLines: 5,
@@ -1496,19 +1407,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
                         currentEnd: _endAt,
                         endEditedByUser: _endEditedByUser,
                       );
-                      if (_endAt != null && _endAt!.isBefore(_startAt)) {
-                        _endAt = _startAt;
-                      }
                     });
                   },
                   onEndChanged: (value) {
                     setState(() {
                       _endEditedByUser = true;
-                      if (value != null && value.isBefore(_startAt)) {
-                        _endAt = _startAt;
-                      } else {
-                        _endAt = value;
-                      }
+                      _endAt = value;
                     });
                   },
                   onAllDayChanged: (value) {
@@ -1546,7 +1450,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
                     });
                   },
                   onCriticalChanged: _handleCriticalChanged,
-                  onStrongAlarmChanged: _handleStrongAlarmChanged,
                   onLocationTextChanged: _handleLocationTextChanged,
                   onLocationPick: _pickLocationOnMap,
                   isSearchingLocation: _isLookingUpLocation,

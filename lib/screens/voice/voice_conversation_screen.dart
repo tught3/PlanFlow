@@ -12,7 +12,6 @@ import '../../data/repositories/event_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/event_refresh_bus.dart';
-import '../../services/gpt_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/stt_service.dart';
 import '../../services/voice_conversation_controller.dart';
@@ -313,17 +312,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         if (!updated) {
           return;
         }
-      } else if (result.action == VoiceConversationAction.createEvent) {
-        await _openCreateEventScreen(result.inputText, result.draftEvent);
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText != null) {
-        final validatedLocation = await GptService().validateLocation(result.locationText!);
-        if (validatedLocation != null) {
-          await _openEditWithLocation(result.targetEvent!, validatedLocation);
-        } else {
-          await _openGeneralEditScreen(result.targetEvent!);
-        }
+        await _openEditWithLocation(result.targetEvent!, result.locationText!);
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
           result.locationText == null) {
@@ -741,60 +733,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     await _loadEvents();
   }
 
-  Future<void> _openCreateEventScreen(
-    String rawInput,
-    EventModel? fallbackDraft,
-  ) async {
-    await _stopVoiceBeforeNavigation();
-    if (!mounted) return;
-
-    EventModel draft;
-    try {
-      final parsed = await GptService().parseSchedule(rawInput);
-      final title = (parsed['title'] as String?)?.trim();
-      final startAtRaw = parsed['start_at']?.toString();
-      DateTime? startAt;
-      if (startAtRaw != null) {
-        final dt = DateTime.tryParse(startAtRaw);
-        startAt = dt?.isUtc == true ? dt!.toLocal() : dt;
-      }
-      final endAtRaw = parsed['end_at']?.toString();
-      DateTime? endAt;
-      if (endAtRaw != null) {
-        final dt = DateTime.tryParse(endAtRaw);
-        endAt = dt?.isUtc == true ? dt!.toLocal() : dt;
-      }
-      final now = planflowNow();
-      final resolvedStart = startAt ?? now;
-      final resolvedEnd = endAt ?? resolvedStart.add(const Duration(hours: 1));
-      draft = EventModel(
-        id: '',
-        userId: '',
-        title: (title?.isNotEmpty == true) ? title! : rawInput,
-        startAt: resolvedStart,
-        endAt: resolvedEnd,
-        isCritical: parsed['is_critical'] == true,
-        recurrenceRule: (parsed['recurrence_rule'] as String?)?.trim(),
-        location: (parsed['location'] as String?)?.trim(),
-        locationLat: parsed['location_lat'] as double?,
-        locationLng: parsed['location_lng'] as double?,
-        createdAt: now,
-      );
-    } catch (_) {
-      draft = fallbackDraft ??
-          EventModel(
-            id: '',
-            userId: '',
-            title: rawInput,
-            createdAt: planflowNow(),
-          );
-    }
-
-    if (!mounted) return;
-    await context.push('${AppRoutes.eventEdit}/${draft.id}', extra: draft);
-    await _loadEvents();
-  }
-
   /// 날짜·시간 이동 등 일반 수정: 편집 화면으로 바로 이동해 GPT 파이프라인이 처리한다.
   Future<void> _openGeneralEditScreen(EventModel event) async {
     await _stopVoiceBeforeNavigation();
@@ -1082,7 +1020,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     _manualEditInterruptedListening = false;
     _didRetryConversationEarlyFailure = false;
     if (!mounted) return;
-    context.go(AppRoutes.home);
+    context.pop(voiceConversationClosedResult);
   }
 
   void _handleInputChanged(String value) {
@@ -1191,9 +1129,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         return '삭제를 진행했어요.';
       case VoiceConversationAction.deleteCanceled:
         return '삭제를 취소했어요.';
-      case VoiceConversationAction.createEvent:
-        if (result.draftEvent == null) return '일정 정보를 파악하지 못했어요. 날짜와 제목을 포함해서 다시 말해 주세요.';
-        return '일정 편집 화면을 열게요. 내용 확인 후 저장해 주세요.';
       case VoiceConversationAction.none:
         if (result.selectedEvents.length > 1) {
           return '${result.selectedEvents.length}개의 일정을 선택했어요. 무엇을 바꿀지 이어서 말해 주세요.';
@@ -1467,12 +1402,8 @@ class _ConversationEventCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 15,
-                backgroundColor: event.isCritical
-                    ? const Color(0xFFFFE3DD)
-                    : PlanFlowColors.primaryFaint,
-                foregroundColor: event.isCritical
-                    ? const Color(0xFFB42318)
-                    : PlanFlowColors.primary,
+                backgroundColor: PlanFlowColors.primaryFaint,
+                foregroundColor: PlanFlowColors.primary,
                 child: Text('$index'),
               ),
               const SizedBox(width: 10),
@@ -1485,9 +1416,7 @@ class _ConversationEventCard extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: event.isCritical
-                                ? const Color(0xFFB42318)
-                                : PlanFlowColors.primary,
+                            color: PlanFlowColors.primary,
                             fontWeight: FontWeight.w800,
                           ),
                     ),

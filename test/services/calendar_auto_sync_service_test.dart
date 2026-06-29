@@ -50,6 +50,7 @@ void main() {
     final result = await service.syncConnectedCalendars(force: true);
     final snapshot = await service.loadSnapshot();
 
+    expect(result.completed, contains('naver_api_auto_export'));
     expect(result.skipped, contains('google_auto_sync'));
     expect(result.skipped, contains('naver_caldav_auto_import'));
     expect(result.skipped, contains('device_calendar_auto_import'));
@@ -81,7 +82,7 @@ void main() {
         ),
         naverResult: CalendarIntegrationResult.signedOut(
           CalendarProvider.naver,
-          message: 'Naver CalDAV가 아직 연결되지 않아 건너뜁니다.',
+          message: 'Naver 직접 연동이 연결되어 있지 않아 건너뜁니다.',
         ),
       ),
       naverCalDavService: _FakeNaverCalDavService(
@@ -155,7 +156,7 @@ void main() {
 
     expect(result.didRun, isTrue);
     expect(calendarSyncService.googleSyncCallCount, 1);
-    expect(calendarSyncService.naverSyncCallCount, 0);
+    expect(calendarSyncService.naverSyncCallCount, 1);
     expect(naverCalDavService.syncAllCallCount, 1);
     expect(deviceCalendarService.importCallCount, 1);
   });
@@ -177,7 +178,7 @@ void main() {
         ),
         naverResult: CalendarIntegrationResult.signedOut(
           CalendarProvider.naver,
-          message: 'Naver CalDAV가 아직 연결되지 않아 건너뜁니다.',
+          message: 'Naver 직접 연동이 연결되어 있지 않아 건너뜁니다.',
         ),
       ),
       naverCalDavService: naverCalDav,
@@ -237,64 +238,15 @@ void main() {
     final snapshot = await service.loadSnapshot();
 
     expect(result.failed, contains('google_auto_sync'));
+    expect(result.failed, contains('naver_api_auto_export'));
     expect(result.failed, contains('naver_caldav_auto_import'));
     expect(result.failed, contains('device_calendar_auto_import'));
     expect(snapshot.provider('google_auto_sync').status, 'attention');
+    expect(snapshot.provider('naver_api_auto_export').status, 'attention');
     expect(snapshot.provider('naver_caldav_auto_import').message,
         'Naver CalDAV 앱 비밀번호를 확인해 주세요.');
     expect(
         snapshot.provider('device_calendar_auto_import').status, 'attention');
-  });
-
-  test(
-      'syncConnectedCalendars quietly retries failures before recording success',
-      () async {
-    final calendarSyncService = _FakeCalendarSyncService.sequence(
-      googleResults: <CalendarIntegrationResult>[
-        CalendarIntegrationResult.failed(
-          CalendarProvider.google,
-          error: 'temporary-google-error',
-          message: 'Google Calendar 일시 오류',
-        ),
-        CalendarIntegrationResult.synced(
-          CalendarProvider.google,
-          message: 'Google Calendar 동기화 완료',
-        ),
-      ],
-      naverResults: <CalendarIntegrationResult>[
-        CalendarIntegrationResult.synced(
-          CalendarProvider.naver,
-          message: 'Naver Calendar 동기화 완료',
-        ),
-      ],
-    );
-    final service = CalendarAutoSyncService(
-      calendarSyncService: calendarSyncService,
-      naverCalDavService: _FakeNaverCalDavService(
-        hasSavedCredentials: false,
-      ),
-      deviceCalendarService: _FakeDeviceCalendarService(
-        hasPermission: false,
-      ),
-      eventRepository: _FakeEventRepository(),
-      throttle: Duration.zero,
-      retryBackoffs: const <Duration>[Duration.zero, Duration.zero],
-      now: () => DateTime(2026, 5, 9, 10, 30),
-    );
-
-    final result = await service.syncConnectedCalendars(force: true);
-    final snapshot = await service.loadSnapshot();
-
-    expect(calendarSyncService.googleSyncCallCount, 2);
-    expect(calendarSyncService.naverSyncCallCount, 0);
-    expect(result.failed, isEmpty);
-    expect(result.completed, contains('google_auto_sync'));
-    expect(snapshot.failed, isEmpty);
-    expect(snapshot.provider('google_auto_sync').status, 'connected');
-    expect(
-      snapshot.provider('google_auto_sync').message,
-      'Google Calendar 동기화 완료',
-    );
   });
 
   test(
@@ -330,7 +282,7 @@ void main() {
         ),
         naverResult: CalendarIntegrationResult.signedOut(
           CalendarProvider.naver,
-          message: 'Naver CalDAV가 아직 연결되지 않아 건너뜁니다.',
+          message: 'Naver 직접 연동이 연결되어 있지 않아 건너뜁니다.',
         ),
       ),
       naverCalDavService: _FakeNaverCalDavService(
@@ -427,7 +379,7 @@ void main() {
         ),
         naverResult: CalendarIntegrationResult.signedOut(
           CalendarProvider.naver,
-          message: 'Naver CalDAV가 아직 연결되지 않아 건너뜁니다.',
+          message: 'Naver 직접 연동이 연결되어 있지 않아 건너뜁니다.',
         ),
       ),
       naverCalDavService: _FakeNaverCalDavService(
@@ -508,7 +460,7 @@ void main() {
         ),
         naverResult: CalendarIntegrationResult.signedOut(
           CalendarProvider.naver,
-          message: 'Naver CalDAV가 아직 연결되지 않아 건너뜁니다.',
+          message: 'Naver 직접 연동이 연결되어 있지 않아 건너뜁니다.',
         ),
       ),
       naverCalDavService: _FakeNaverCalDavService(
@@ -545,27 +497,7 @@ class _FakeCalendarSyncService extends CalendarSyncService {
   _FakeCalendarSyncService({
     required this.googleResult,
     required this.naverResult,
-  })  : _googleResults = null,
-        _naverResults = null,
-        super(
-          naverStatusProvider: () async {
-            return const NaverCalendarPermissionResult(
-              status: NaverCalendarPermissionStatus.granted,
-              message: '테스트 권한 상태',
-            );
-          },
-          naverAccessTokenProvider: () async => 'naver-token',
-          naverStatusSaver: (_) async {},
-        );
-
-  _FakeCalendarSyncService.sequence({
-    required List<CalendarIntegrationResult> googleResults,
-    required List<CalendarIntegrationResult> naverResults,
-  })  : googleResult = googleResults.last,
-        naverResult = naverResults.last,
-        _googleResults = googleResults,
-        _naverResults = naverResults,
-        super(
+  }) : super(
           naverStatusProvider: () async {
             return const NaverCalendarPermissionResult(
               status: NaverCalendarPermissionStatus.granted,
@@ -578,8 +510,6 @@ class _FakeCalendarSyncService extends CalendarSyncService {
 
   final CalendarIntegrationResult googleResult;
   final CalendarIntegrationResult naverResult;
-  final List<CalendarIntegrationResult>? _googleResults;
-  final List<CalendarIntegrationResult>? _naverResults;
   int googleSyncCallCount = 0;
   int naverSyncCallCount = 0;
 
@@ -588,27 +518,13 @@ class _FakeCalendarSyncService extends CalendarSyncService {
     bool interactive = true,
   }) async {
     googleSyncCallCount += 1;
-    return _resultAt(_googleResults, googleSyncCallCount) ?? googleResult;
+    return googleResult;
   }
 
   @override
   Future<CalendarIntegrationResult> syncNaverCalendar() async {
     naverSyncCallCount += 1;
-    return _resultAt(_naverResults, naverSyncCallCount) ?? naverResult;
-  }
-
-  CalendarIntegrationResult? _resultAt(
-    List<CalendarIntegrationResult>? results,
-    int callCount,
-  ) {
-    if (results == null || results.isEmpty) {
-      return null;
-    }
-    final index = callCount - 1;
-    if (index >= results.length) {
-      return results.last;
-    }
-    return results[index];
+    return naverResult;
   }
 }
 

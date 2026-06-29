@@ -1,9 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/diag_logger.dart';
 import '../core/env.dart';
-import '../core/log_text.dart';
 import '../providers/auth_provider.dart';
 import 'calendar_sync_service.dart';
 import 'event_refresh_bus.dart';
@@ -25,11 +22,6 @@ class GoogleCalendarAutoSyncService {
   bool _isSyncing = false;
 
   Future<void> syncIfAllowed({String reason = 'app_lifecycle'}) async {
-    DiagLogger.log(
-      'DIAG',
-      'googleAutoSync enter reason=${logSafeText(reason)} '
-          'currentUser=${logSafeText(Supabase.instance.client.auth.currentUser?.id)}',
-    );
     if (_isSyncing || !AppEnv.isSupabaseReady || !authProvider.isSignedIn) {
       return;
     }
@@ -48,11 +40,6 @@ class GoogleCalendarAutoSyncService {
             googleClientId: kIsWeb ? AppEnv.googleWebClientId : null,
             googleServerClientId: kIsWeb ? null : AppEnv.googleServerClientId,
           );
-      DiagLogger.log(
-        'DIAG',
-        'googleAutoSync calling syncGoogleCalendar(interactive:false) '
-            'currentUser=${logSafeText(Supabase.instance.client.auth.currentUser?.id)}',
-      );
       final result = await service.syncGoogleCalendar(interactive: false);
       if (result.status == CalendarIntegrationStatus.synced ||
           result.status == CalendarIntegrationStatus.ready) {

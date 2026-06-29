@@ -156,35 +156,6 @@ void main() {
       expect(requestCount, 0);
     });
 
-    test('requires Naver re-consent when provider token is missing', () async {
-      final connectionRepository = _FakeCalendarConnectionRepository();
-      final service = CalendarSyncService(
-        currentUserId: 'user-1',
-        calendarConnectionRepository: connectionRepository,
-        naverStatusProvider: () async {
-          return const NaverCalendarPermissionResult(
-            status: NaverCalendarPermissionStatus.granted,
-            message: '권한 확인',
-          );
-        },
-        naverAccessTokenProvider: () async => null,
-        naverStatusSaver: (_) async {},
-      );
-
-      final result = await service.getNaverStatus();
-
-      expect(result.status, CalendarIntegrationStatus.signedOut);
-      expect(result.message, contains('토큰'));
-      expect(
-        connectionRepository.connection?.status,
-        CalendarConnectionStatus.reauthRequired,
-      );
-      expect(
-        connectionRepository.connection?.lastError,
-        'Naver provider token missing',
-      );
-    });
-
     test('builds an iCalendar payload for Naver createSchedule', () {
       final event = EventModel(
         id: 'event-1',
@@ -306,7 +277,7 @@ void main() {
       expect(googleSignIn.signInCallCount, 1);
     });
 
-    test('non-interactive Google sync marks connection reauth on token miss',
+    test('non-interactive Google sync keeps existing connection on token miss',
         () async {
       final connectionRepository = _FakeCalendarConnectionRepository(
         initial: const CalendarConnectionModel(
@@ -329,7 +300,7 @@ void main() {
 
       expect(result.status, CalendarIntegrationStatus.reauthRequired);
       expect(connectionRepository.connection?.status,
-          CalendarConnectionStatus.reauthRequired);
+          CalendarConnectionStatus.connected);
       expect(connectionRepository.connection?.providerAccountEmail,
           'user@example.com');
     });
@@ -372,9 +343,7 @@ void main() {
 
       expect(result.status, CalendarIntegrationStatus.failed);
       expect(result.message, contains('OAuth 설정'));
-      expect(result.message, contains('SHA-1'));
-      expect(result.message, contains('com.fluxstudio.planflow'));
-      expect(result.message, contains('google-services.json'));
+      expect(result.message, contains('Android SHA'));
     });
 
     test('imports events from non-primary Google calendars with calendar id',
