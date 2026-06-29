@@ -12,6 +12,10 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../features/groups/models/group_event_model.dart';
+import '../../features/groups/models/group_model.dart';
+import '../../features/groups/providers/group_context_provider.dart';
+import '../../features/groups/repositories/group_event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../location/location_pick_flow.dart';
@@ -40,6 +44,9 @@ class EventEditScreen extends StatefulWidget {
     this.eventId,
     this.initialDate,
     this.eventRepository,
+    this.groupContextProvider,
+    this.groupEventRepository,
+    this.currentUserIdOverride,
     this.permissionService,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
@@ -51,6 +58,9 @@ class EventEditScreen extends StatefulWidget {
   final String? eventId;
   final DateTime? initialDate;
   final EventRepository? eventRepository;
+  final GroupContextProvider? groupContextProvider;
+  final GroupEventRepository? groupEventRepository;
+  final String? currentUserIdOverride;
   final AppPermissionService? permissionService;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
@@ -59,12 +69,25 @@ class EventEditScreen extends StatefulWidget {
   State<EventEditScreen> createState() => _EventEditScreenState();
 }
 
+enum _ScheduleSaveTarget {
+  personalOnly,
+  personalAndGroup,
+  groupOnly,
+}
+
+enum _LinkedGroupEditScope {
+  personalOnly,
+  personalAndGroup,
+}
+
 class _EventEditScreenState extends State<EventEditScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
   late final TextEditingController _locationController;
   late final TextEditingController _memoController;
   late final TextEditingController _suppliesController;
+  GroupContextProvider? _groupContextProvider;
+  bool _ownsGroupContextProvider = false;
   late DateTime _startAt;
   DateTime? _endAt;
   double? _locationLat;
@@ -80,6 +103,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   bool _isSaving = false;
   bool _isLookingUpLocation = false;
   bool _endEditedByUser = false;
+  _ScheduleSaveTarget _saveTarget = _ScheduleSaveTarget.personalOnly;
   Timer? _locationDebounceTimer;
 
   bool get _isNewEvent => _loadedEvent == null && _resolvedEventId == null;
@@ -98,6 +122,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
+
+  GroupEventRepository get _groupEventRepository =>
+      widget.groupEventRepository ?? GroupEventRepository.supabase();
 
   AppPermissionService get _permissionService =>
       widget.permissionService ?? AppPermissionService();
@@ -339,8 +366,18 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _recurrenceSelection = RecurrenceSelection.fromRRule(event?.recurrenceRule);
     _isAllDay = event?.isAllDay ?? false;
     _category = event?.category ?? '기타';
+    _groupContextProvider = widget.groupContextProvider;
+    if (_groupContextProvider == null && AppEnv.isSupabaseReady) {
+      try {
+        _groupContextProvider = GroupContextProvider();
+        _ownsGroupContextProvider = true;
+      } catch (error) {
+        debugPrint('EventEditScreen group context unavailable: $error');
+      }
+    }
+    unawaited(_loadGroupContextIfNeeded());
     _loadEventIfNeeded();
-    if (event != null) {
+    if (event != null && AppEnv.isSupabaseReady) {
       unawaited(_loadReminderOffsetIfNeeded(event));
     }
   }
@@ -367,7 +404,154 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _locationController.dispose();
     _memoController.dispose();
     _suppliesController.dispose();
+    if (_ownsGroupContextProvider) {
+      _groupContextProvider?.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _loadGroupContextIfNeeded() async {
+    final provider = _groupContextProvider;
+    if (provider == null) {
+      return;
+    }
+    var userId = widget.currentUserIdOverride ?? authProvider.userId;
+    if (userId == null || userId.trim().isEmpty) {
+      try {
+        userId = Supabase.instance.client.auth.currentUser?.id;
+      } catch (_) {
+        userId = null;
+      }
+    }
+    if (userId == null || userId.trim().isEmpty) {
+      return;
+    }
+    await provider.load(userId.trim());
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  GroupModel? get _selectedGroupForSharing {
+    final group = _groupContextProvider?.selectedGroup;
+    if (group == null || !group.isActive) {
+      return null;
+    }
+    return group;
+  }
+
+  bool get _canShareToSelectedGroup => _selectedGroupForSharing != null;
+
+  bool get _shouldSavePersonalEvent =>
+      !_canShareToSelectedGroup ||
+      _saveTarget == _ScheduleSaveTarget.personalOnly ||
+      _saveTarget == _ScheduleSaveTarget.personalAndGroup;
+
+  bool get _shouldSaveGroupEvent =>
+      _canShareToSelectedGroup &&
+      (_saveTarget == _ScheduleSaveTarget.personalAndGroup ||
+          _saveTarget == _ScheduleSaveTarget.groupOnly);
+
+  String? _currentUserId() {
+    final override = widget.currentUserIdOverride?.trim();
+    if (override != null && override.isNotEmpty) {
+      return override;
+    }
+    return Supabase.instance.client.auth.currentUser?.id;
+  }
+
+  Future<GroupEventModel?> _createGroupEventFromDraft(
+    EventModel draft, {
+    String? personalEventId,
+  }) async {
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return null;
+    }
+    final startAt = draft.startAt;
+    if (startAt == null) {
+      throw StateError('그룹 일정에는 시작 시간이 필요합니다.');
+    }
+    final endAt = draft.endAt ?? _eventRangeEnd(startAt, draft.endAt);
+    final recurrenceType = _groupRecurrenceTypeFor(draft.recurrenceRule);
+    return _groupEventRepository.createGroupEvent(
+      GroupEventModel(
+        id: '',
+        groupId: group.id,
+        title: draft.title,
+        description: draft.memo,
+        location: draft.location,
+        startAt: startAt,
+        endAt: endAt,
+        allDay: draft.isAllDay,
+        recurrenceType: recurrenceType,
+        createdBy: draft.userId,
+        personalEventId: personalEventId,
+        status: 'active',
+      ),
+    );
+  }
+
+  Future<GroupEventModel> _updateLinkedGroupEventFromDraft(
+    EventModel draft,
+    String groupEventId,
+  ) async {
+    final existing = await _groupEventRepository.fetchGroupEvent(groupEventId);
+    final startAt = draft.startAt;
+    if (startAt == null) {
+      throw StateError('그룹 일정에는 시작 시간이 필요합니다.');
+    }
+    return _groupEventRepository.updateGroupEvent(
+      existing.copyWith(
+        title: draft.title,
+        description: draft.memo,
+        location: draft.location,
+        startAt: startAt,
+        endAt: draft.endAt ?? _eventRangeEnd(startAt, draft.endAt),
+        allDay: draft.isAllDay,
+        recurrenceType: _groupRecurrenceTypeFor(draft.recurrenceRule),
+        personalEventId:
+            draft.id.trim().isEmpty ? existing.personalEventId : draft.id,
+      ),
+    );
+  }
+
+  Future<_LinkedGroupEditScope?> _chooseLinkedGroupEditScope() {
+    return showDialog<_LinkedGroupEditScope>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('그룹 일정도 같이 수정할까요?'),
+        content: const Text(
+          '이 일정은 그룹 일정과 연결되어 있어요. 개인 일정만 바꾸거나, 그룹 일정도 같은 내용으로 바꿀 수 있습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(_LinkedGroupEditScope.personalOnly),
+            child: const Text('개인만 수정'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(ctx).pop(_LinkedGroupEditScope.personalAndGroup),
+            child: const Text('그룹도 같이 수정'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _groupRecurrenceTypeFor(String? recurrenceRule) {
+    final rule = recurrenceRule?.toUpperCase() ?? '';
+    if (rule.contains('FREQ=DAILY')) {
+      return 'daily';
+    }
+    if (rule.contains('FREQ=WEEKLY')) {
+      return 'weekly';
+    }
+    if (rule.contains('FREQ=MONTHLY')) {
+      return 'monthly';
+    }
+    return 'none';
   }
 
   Future<void> _handleSave() async {
@@ -381,19 +565,21 @@ class _EventEditScreenState extends State<EventEditScreen> {
     });
 
     try {
-      if (!AppEnv.isSupabaseReady) {
+      if (!AppEnv.isSupabaseReady && widget.currentUserIdOverride == null) {
         _showMessage('Supabase 빌드 설정값이 주입되지 않았습니다.');
         return;
       }
 
-      try {
-        await authProvider.syncCurrentSession();
-      } catch (error) {
-        debugPrint('EventEditScreen session sync failed before save: $error');
+      if (widget.currentUserIdOverride == null) {
+        try {
+          await authProvider.syncCurrentSession();
+        } catch (error) {
+          debugPrint('EventEditScreen session sync failed before save: $error');
+        }
       }
 
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) {
+      final userId = _currentUserId();
+      if (userId == null || userId.trim().isEmpty) {
         _showMessage('로그인 후 저장할 수 있습니다.');
         return;
       }
@@ -430,7 +616,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
       final updatedEvent = EventModel(
         id: _loadedEvent?.id ?? _resolvedEventId ?? '',
-        userId: user.id,
+        userId: userId,
         title: _titleController.text.trim(),
         startAt: normalizedStartAt,
         endAt: normalizedEndAt,
@@ -447,6 +633,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         isAllDay: _isAllDay,
         isMultiDay: isMultiDayByRange,
         parentEventId: _loadedEvent?.parentEventId,
+        groupEventId: _loadedEvent?.groupEventId,
         category: _category,
         source: _loadedEvent?.source ?? 'manual',
         externalId: _loadedEvent?.externalId,
@@ -458,81 +645,121 @@ class _EventEditScreenState extends State<EventEditScreen> {
         updatedAt: _loadedEvent?.updatedAt,
       );
 
-      final overlapStart = updatedEvent.startAt ?? _startAt;
-      final overlappingEvents = await _repository.findOverlappingEvents(
-        rangeStart: overlapStart,
-        rangeEnd: _eventRangeEnd(overlapStart, updatedEvent.endAt),
-        userId: user.id,
-        excludedEventId: _loadedEvent?.id ?? updatedEvent.id,
-      );
-      final duplicateWarningEvents = filterDuplicateWarningEvents(
-        draft: updatedEvent,
-        candidates: overlappingEvents,
-      );
-      if (!mounted) {
-        return;
-      }
-      if (duplicateWarningEvents.isNotEmpty) {
-        final shouldContinue =
-            await _showOverlapWarning(duplicateWarningEvents);
-        if (!shouldContinue || !mounted) {
+      if (_shouldSavePersonalEvent) {
+        final overlapStart = updatedEvent.startAt ?? _startAt;
+        final overlappingEvents = await _repository.findOverlappingEvents(
+          rangeStart: overlapStart,
+          rangeEnd: _eventRangeEnd(overlapStart, updatedEvent.endAt),
+          userId: userId,
+          excludedEventId: _loadedEvent?.id ?? updatedEvent.id,
+        );
+        final duplicateWarningEvents = filterDuplicateWarningEvents(
+          draft: updatedEvent,
+          candidates: overlappingEvents,
+        );
+        if (!mounted) {
           return;
+        }
+        if (duplicateWarningEvents.isNotEmpty) {
+          final shouldContinue =
+              await _showOverlapWarning(duplicateWarningEvents);
+          if (!shouldContinue || !mounted) {
+            return;
+          }
         }
       }
 
       final previousStartAt = _loadedEvent?.startAt;
-      late final EventModel savedEvent;
-      if (_isNewEvent) {
-        savedEvent = await _repository.createEvent(updatedEvent);
-      } else if (recurrenceScope == 'single' && _loadedEvent != null) {
-        savedEvent = await _repository.createEvent(
-          _detachedRecurringEvent(
-            updatedEvent,
-            parentEventId: _loadedEvent!.id,
-            keepRecurrence: false,
-          ),
-        );
-      } else if (recurrenceScope == 'future' && _loadedEvent != null) {
-        final original = _loadedEvent!;
-        final originalStart = original.startAt;
-        final isFirstOccurrence = originalStart == null ||
-            planflowIsSameLocalDay(originalStart, normalizedStartAt);
-        if (isFirstOccurrence) {
-          savedEvent = await _repository.updateEvent(updatedEvent);
-        } else {
-          await _repository.updateEvent(
-            _eventWithRecurrenceRule(
-              original,
-              _truncateRRuleBefore(original.recurrenceRule, _startAt),
-            ),
-          );
+      _LinkedGroupEditScope? linkedGroupEditScope;
+      final linkedGroupEventId = _loadedEvent?.groupEventId?.trim();
+      if (!_isNewEvent &&
+          linkedGroupEventId != null &&
+          linkedGroupEventId.isNotEmpty &&
+          _shouldSavePersonalEvent) {
+        linkedGroupEditScope = await _chooseLinkedGroupEditScope();
+        if (linkedGroupEditScope == null || !mounted) {
+          return;
+        }
+      }
+
+      EventModel? savedEvent;
+      if (_shouldSavePersonalEvent) {
+        if (_isNewEvent) {
+          savedEvent = await _repository.createEvent(updatedEvent);
+        } else if (recurrenceScope == 'single' && _loadedEvent != null) {
           savedEvent = await _repository.createEvent(
             _detachedRecurringEvent(
               updatedEvent,
-              parentEventId: original.id,
-              keepRecurrence: true,
+              parentEventId: _loadedEvent!.id,
+              keepRecurrence: false,
             ),
           );
+        } else if (recurrenceScope == 'future' && _loadedEvent != null) {
+          final original = _loadedEvent!;
+          final originalStart = original.startAt;
+          final isFirstOccurrence = originalStart == null ||
+              planflowIsSameLocalDay(originalStart, normalizedStartAt);
+          if (isFirstOccurrence) {
+            savedEvent = await _repository.updateEvent(updatedEvent);
+          } else {
+            await _repository.updateEvent(
+              _eventWithRecurrenceRule(
+                original,
+                _truncateRRuleBefore(original.recurrenceRule, _startAt),
+              ),
+            );
+            savedEvent = await _repository.createEvent(
+              _detachedRecurringEvent(
+                updatedEvent,
+                parentEventId: original.id,
+                keepRecurrence: true,
+              ),
+            );
+          }
+        } else {
+          savedEvent = await _repository.updateEvent(updatedEvent);
         }
-      } else {
-        savedEvent = await _repository.updateEvent(updatedEvent);
       }
 
-      unawaited(
-        _runPostSaveSideEffects(
-          userId: user.id,
-          savedEvent: savedEvent,
-          previousStartAt: previousStartAt,
-        ),
-      );
+      if (_shouldSaveGroupEvent) {
+        if (savedEvent == null) {
+          await _createGroupEventFromDraft(updatedEvent);
+        } else {
+          final createdGroupEvent = await _createGroupEventFromDraft(
+            savedEvent,
+            personalEventId: savedEvent.id,
+          );
+          if (createdGroupEvent != null) {
+            savedEvent = await _repository.updateEvent(
+              savedEvent.copyWith(groupEventId: createdGroupEvent.id),
+            );
+          }
+        }
+      } else if (linkedGroupEditScope ==
+              _LinkedGroupEditScope.personalAndGroup &&
+          savedEvent != null &&
+          linkedGroupEventId != null &&
+          linkedGroupEventId.isNotEmpty) {
+        await _updateLinkedGroupEventFromDraft(savedEvent, linkedGroupEventId);
+      }
+
+      if (savedEvent != null) {
+        unawaited(
+          _runPostSaveSideEffects(
+            userId: userId,
+            savedEvent: savedEvent,
+            previousStartAt: previousStartAt,
+          ),
+        );
+      }
 
       if (mounted) {
         final actionText = _isNewEvent ? '일정을 만들었습니다.' : '일정을 수정했습니다.';
         _showMessage(actionText);
         EventRefreshBus.instance.notifyChanged(
           reason: _isNewEvent ? 'event_created' : 'event_updated',
-          eventId: savedEvent.id,
-          startAt: savedEvent.startAt,
+          eventId: savedEvent?.id,
+          startAt: savedEvent?.startAt ?? updatedEvent.startAt,
         );
         context.go(AppRoutes.calendar);
       }
@@ -620,6 +847,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       isAllDay: event.isAllDay,
       isMultiDay: event.isMultiDay,
       parentEventId: parentEventId,
+      groupEventId: null,
       category: event.category,
       source: 'manual',
       externalId: null,
@@ -652,6 +880,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       isAllDay: event.isAllDay,
       isMultiDay: event.isMultiDay,
       parentEventId: event.parentEventId,
+      groupEventId: event.groupEventId,
       category: event.category,
       source: event.source,
       externalId: event.externalId,
@@ -1022,6 +1251,73 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
   }
 
+  Widget _buildSaveTargetCard(BuildContext context) {
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.groups_2_outlined),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '저장 범위',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '이 일정을 나만 볼지, 선택된 그룹에도 공유할지 정해 주세요.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<_ScheduleSaveTarget>(
+              segments: <ButtonSegment<_ScheduleSaveTarget>>[
+                const ButtonSegment<_ScheduleSaveTarget>(
+                  value: _ScheduleSaveTarget.personalOnly,
+                  icon: Icon(Icons.person_outline),
+                  label: Text('개인 일정만'),
+                ),
+                ButtonSegment<_ScheduleSaveTarget>(
+                  value: _ScheduleSaveTarget.personalAndGroup,
+                  icon: const Icon(Icons.compare_arrows_outlined),
+                  label: Text('개인 + ${group.name}'),
+                ),
+                ButtonSegment<_ScheduleSaveTarget>(
+                  value: _ScheduleSaveTarget.groupOnly,
+                  icon: const Icon(Icons.groups_outlined),
+                  label: Text('${group.name}만'),
+                ),
+              ],
+              selected: <_ScheduleSaveTarget>{_saveTarget},
+              onSelectionChanged: (selection) {
+                setState(() {
+                  _saveTarget = selection.first;
+                });
+              },
+              showSelectedIcon: false,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1078,6 +1374,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   const LinearProgressIndicator(),
                 ],
                 const SizedBox(height: AppConstants.sectionSpacing),
+                _buildSaveTargetCard(context),
+                if (_selectedGroupForSharing != null)
+                  const SizedBox(height: AppConstants.sectionSpacing),
                 CalendarStyleEventEditor(
                   titleController: _titleController,
                   locationController: _locationController,

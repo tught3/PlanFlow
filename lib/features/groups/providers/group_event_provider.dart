@@ -60,7 +60,7 @@ class GroupEventProvider extends ChangeNotifier {
   bool get canArchiveEvent => _state.canArchiveEvent;
   bool get canManageEvents => _state.canManageEvents;
 
-  Future<void> load(String userId) async {
+  Future<void> load(String userId, {String? preferredGroupId}) async {
     if (userId.isEmpty) {
       _currentUserId = null;
       _setState(const GroupEventState.initial());
@@ -77,7 +77,7 @@ class GroupEventProvider extends ChangeNotifier {
     );
 
     try {
-      await _contextProvider.load(userId);
+      await _contextProvider.load(userId, preferredGroupId: preferredGroupId);
       await _reloadEvents();
     } catch (error) {
       _setState(
@@ -106,7 +106,7 @@ class GroupEventProvider extends ChangeNotifier {
       await load('');
       return;
     }
-    await load(userId);
+    await load(userId, preferredGroupId: _state.selectedGroup?.id);
   }
 
   Future<GroupEventModel> createGroupEvent({
@@ -314,17 +314,20 @@ class GroupEventProvider extends ChangeNotifier {
   }
 
   Future<Set<String>> _loadActivePermissions(String groupId) async {
+    final permissions = <String>{};
+
     if (_contextProvider.isLeaderOfSelectedGroup) {
-      return <String>{
+      permissions.addAll(<String>{
         'create_group_event',
         'update_group_event',
         'cancel_group_event',
-      };
+      });
+    } else if (_contextProvider.selectedGroupRole == 'member') {
+      permissions.add('create_group_event');
     }
 
     final delegations = await _delegationRepository.getDelegationsForMe();
     final now = _nowProvider().toUtc();
-    final permissions = <String>{};
     for (final delegation in delegations) {
       if (delegation.groupId != groupId || !delegation.isActive) {
         continue;

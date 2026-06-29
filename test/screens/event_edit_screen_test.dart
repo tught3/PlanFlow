@@ -4,15 +4,24 @@ import 'package:go_router/go_router.dart';
 
 import 'package:planflow/core/constants.dart';
 import 'package:planflow/data/models/event_model.dart';
+import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/features/groups/models/group_event_model.dart';
+import 'package:planflow/features/groups/models/group_member_model.dart';
+import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/providers/group_context_provider.dart';
+import 'package:planflow/features/groups/repositories/group_event_repository.dart';
+import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/event/event_edit_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:planflow/widgets/calendar_style_event_editor.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
   });
@@ -64,6 +73,48 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('26. 6. 15.(월)'), findsWidgets);
+  });
+
+  testWidgets('EventEditScreen shows save target options for selected group',
+      (tester) async {
+    final contextProvider = GroupContextProvider(
+      repository: _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'leader-1',
+            name: '우리 팀',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'member',
+            ),
+          ],
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventEditScreen(
+          initialDate: DateTime(2026, 6, 15),
+          currentUserIdOverride: 'user-1',
+          groupContextProvider: contextProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('저장 범위'), findsOneWidget);
+    expect(find.text('개인 일정만'), findsOneWidget);
+    expect(find.text('개인 + 우리 팀'), findsOneWidget);
+    expect(find.text('우리 팀만'), findsOneWidget);
   });
 
   testWidgets('EventEditScreen keeps duration when start date changes',
@@ -229,6 +280,46 @@ void main() {
 
     expect(find.text('홈탭'), findsOneWidget);
   });
+
+  testWidgets('EventEditScreen asks edit scope for linked group event',
+      (tester) async {
+    final router = GoRouter(
+      initialLocation: AppRoutes.eventEdit,
+      routes: [
+        GoRoute(
+          path: AppRoutes.eventEdit,
+          builder: (_, __) => EventEditScreen(
+            currentUserIdOverride: 'user-1',
+            eventRepository: _FakeEventRepository(),
+            groupEventRepository: _FakeGroupEventRepository(),
+            event: EventModel(
+              id: 'event-1',
+              userId: 'user-1',
+              title: '팀 회의',
+              startAt: DateTime.utc(2026, 6, 29, 1),
+              endAt: DateTime.utc(2026, 6, 29, 2),
+              category: '업무',
+              groupEventId: 'group-event-1',
+            ),
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.calendar,
+          builder: (_, __) => const Scaffold(body: Text('달력')),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('저장').last);
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('그룹 일정도 같이 수정할까요?'), findsOneWidget);
+    expect(find.text('개인만 수정'), findsOneWidget);
+    expect(find.text('그룹도 같이 수정'), findsOneWidget);
+  });
 }
 
 class _FakePermissionService extends AppPermissionService {
@@ -272,5 +363,132 @@ class _FakePermissionService extends AppPermissionService {
   Future<bool> requestFullScreenIntentPermission() async {
     fullScreenIntentRequested = true;
     return true;
+  }
+}
+
+class _FakeGroupRepository extends GroupRepository {
+  _FakeGroupRepository({
+    required this.groups,
+    required this.membersByGroupId,
+  });
+
+  final List<GroupModel> groups;
+  final Map<String, List<GroupMemberModel>> membersByGroupId;
+
+  @override
+  Future<List<GroupModel>> listGroups() async => groups;
+
+  @override
+  Future<GroupModel?> fetchGroup(String groupId) async {
+    for (final group in groups) {
+      if (group.id == groupId) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<GroupModel> createGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupModel> updateGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<GroupMemberModel>> listMembers(String groupId) async {
+    return membersByGroupId[groupId] ?? const <GroupMemberModel>[];
+  }
+
+  @override
+  Future<GroupMemberModel> addMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupMemberModel> updateMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+}
+
+class _FakeEventRepository extends EventRepository {
+  @override
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    return const <EventModel>[];
+  }
+
+  @override
+  Future<EventModel?> fetchEvent(String eventId, {String? userId}) async {
+    return null;
+  }
+
+  @override
+  Future<List<EventModel>> findOverlappingEvents({
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+    String? userId,
+    String? excludedEventId,
+  }) async {
+    return const <EventModel>[];
+  }
+
+  @override
+  Future<EventModel> createEvent(EventModel event) async {
+    return event.copyWith(id: event.id.isEmpty ? 'event-created' : event.id);
+  }
+
+  @override
+  Future<EventModel> updateEvent(EventModel event) async {
+    return event;
+  }
+
+  @override
+  Future<void> deleteEvent(String eventId, {String? userId}) async {}
+}
+
+class _FakeGroupEventRepository extends GroupEventRepository {
+  @override
+  Future<List<GroupEventModel>> getEventsForGroup(
+    String groupId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    return const <GroupEventModel>[];
+  }
+
+  @override
+  Future<GroupEventModel> createGroupEvent(GroupEventModel event) async {
+    return event.copyWith(id: 'group-event-created');
+  }
+
+  @override
+  Future<GroupEventModel> updateGroupEvent(GroupEventModel event) async {
+    return event;
+  }
+
+  @override
+  Future<GroupEventModel> cancelGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> archiveGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> fetchGroupEvent(String eventId) async {
+    return GroupEventModel(
+      id: eventId,
+      groupId: 'group-1',
+      title: '팀 회의',
+      startAt: DateTime.utc(2026, 6, 29, 1),
+      endAt: DateTime.utc(2026, 6, 29, 2),
+      createdBy: 'user-1',
+      personalEventId: 'event-1',
+    );
   }
 }

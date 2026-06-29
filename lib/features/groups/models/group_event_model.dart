@@ -16,6 +16,7 @@ class GroupEventModel {
     this.updatedBy,
     this.cancelledAt,
     this.cancelledBy,
+    this.personalEventId,
     this.status = 'active',
     this.createdAt,
     this.updatedAt,
@@ -46,6 +47,7 @@ class GroupEventModel {
       updatedBy: optionalStringValue(json['updated_by']),
       cancelledAt: dateTimeValue(json['cancelled_at']),
       cancelledBy: optionalStringValue(json['cancelled_by']),
+      personalEventId: optionalStringValue(json['personal_event_id']),
       status: stringValue(json['status']).isEmpty
           ? 'active'
           : stringValue(json['status']),
@@ -68,6 +70,7 @@ class GroupEventModel {
   final String? updatedBy;
   final DateTime? cancelledAt;
   final String? cancelledBy;
+  final String? personalEventId;
   final String status;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -94,6 +97,7 @@ class GroupEventModel {
       'updated_by': updatedBy,
       'cancelled_at': utcIsoValue(cancelledAt),
       'cancelled_by': cancelledBy,
+      'personal_event_id': personalEventId,
       'status': status,
       if (createdAt != null) 'created_at': utcIsoValue(createdAt),
       if (updatedAt != null) 'updated_at': utcIsoValue(updatedAt),
@@ -113,8 +117,62 @@ class GroupEventModel {
       'updated_by': updatedBy,
       'cancelled_at': utcIsoValue(cancelledAt),
       'cancelled_by': cancelledBy,
+      'personal_event_id': personalEventId,
       'status': status,
       if (updatedAt != null) 'updated_at': utcIsoValue(updatedAt),
     };
+  }
+
+  GroupEventModel copyWith({
+    String? id,
+    String? groupId,
+    String? title,
+    String? description,
+    bool clearDescription = false,
+    String? location,
+    bool clearLocation = false,
+    DateTime? startAt,
+    DateTime? endAt,
+    bool? allDay,
+    String? recurrenceType,
+    DateTime? recurrenceUntil,
+    bool clearRecurrenceUntil = false,
+    String? createdBy,
+    String? updatedBy,
+    bool clearUpdatedBy = false,
+    DateTime? cancelledAt,
+    bool clearCancelledAt = false,
+    String? cancelledBy,
+    bool clearCancelledBy = false,
+    String? personalEventId,
+    bool clearPersonalEventId = false,
+    String? status,
+    DateTime? createdAt,
+    bool clearCreatedAt = false,
+    DateTime? updatedAt,
+    bool clearUpdatedAt = false,
+  }) {
+    return GroupEventModel(
+      id: id ?? this.id,
+      groupId: groupId ?? this.groupId,
+      title: title ?? this.title,
+      description: clearDescription ? null : description ?? this.description,
+      location: clearLocation ? null : location ?? this.location,
+      startAt: startAt ?? this.startAt,
+      endAt: endAt ?? this.endAt,
+      allDay: allDay ?? this.allDay,
+      recurrenceType: recurrenceType ?? this.recurrenceType,
+      recurrenceUntil:
+          clearRecurrenceUntil ? null : recurrenceUntil ?? this.recurrenceUntil,
+      createdBy: createdBy ?? this.createdBy,
+      updatedBy: clearUpdatedBy ? null : updatedBy ?? this.updatedBy,
+      cancelledAt: clearCancelledAt ? null : cancelledAt ?? this.cancelledAt,
+      cancelledBy: clearCancelledBy ? null : cancelledBy ?? this.cancelledBy,
+      personalEventId:
+          clearPersonalEventId ? null : personalEventId ?? this.personalEventId,
+      status: status ?? this.status,
+      createdAt: clearCreatedAt ? null : createdAt ?? this.createdAt,
+      updatedAt: clearUpdatedAt ? null : updatedAt ?? this.updatedAt,
+    );
   }
 }

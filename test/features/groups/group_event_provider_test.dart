@@ -385,6 +385,44 @@ void main() {
     expect(provider.canManageEvents, isTrue);
   });
 
+  test('active group members can create group events without delegation',
+      () async {
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-1',
+            name: 'Member Group',
+            createdBy: 'leader-1',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'member',
+            ),
+          ],
+        },
+      ),
+    );
+    final provider = GroupEventProvider(
+      contextProvider: contextProvider,
+      repository: FakeGroupEventRepository(),
+      delegationRepository: FakeGroupDelegationRepository(),
+      nowProvider: () => DateTime.utc(2026, 6, 11, 9),
+    );
+
+    await provider.load('user-1');
+
+    expect(provider.selectedGroupRole, 'member');
+    expect(provider.canCreateEvent, isTrue);
+    expect(provider.canManageEvents, isFalse);
+  });
+
   test('createGroupEvent stores the event and refreshes the list', () async {
     final contextProvider = GroupContextProvider(
       repository: FakeGroupRepository(
