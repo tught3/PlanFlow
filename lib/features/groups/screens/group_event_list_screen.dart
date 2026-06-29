@@ -17,11 +17,14 @@ class GroupEventListScreen extends StatefulWidget {
     super.key,
     GroupEventProvider? provider,
     String? currentUserIdOverride,
+    String? initialGroupId,
   })  : _provider = provider,
-        _currentUserIdOverride = currentUserIdOverride;
+        _currentUserIdOverride = currentUserIdOverride,
+        _initialGroupId = initialGroupId;
 
   final GroupEventProvider? _provider;
   final String? _currentUserIdOverride;
+  final String? _initialGroupId;
 
   @override
   State<GroupEventListScreen> createState() => _GroupEventListScreenState();
@@ -49,11 +52,15 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
 
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
-    await _provider.load(userId);
+    await _provider.load(userId, preferredGroupId: widget._initialGroupId);
   }
 
   Future<void> _openCreateEvent() async {
-    final result = await context.push<String>(AppRoutes.groupEventCreate);
+    final selectedGroup = _provider.selectedGroup;
+    final route = selectedGroup == null
+        ? AppRoutes.groupEventCreate
+        : AppRoutes.groupEventCreateForId(selectedGroup.id);
+    final result = await context.push<String>(route);
     if (!mounted) {
       return;
     }
