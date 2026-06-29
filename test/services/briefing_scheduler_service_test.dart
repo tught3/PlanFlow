@@ -327,6 +327,8 @@ void main() {
       () async {
     SharedPreferences.setMockInitialValues({
       BriefingSchedulerService.appForegroundKey: true,
+      BriefingSchedulerService.appForegroundUpdatedAtKey:
+          DateTime.now().toIso8601String(),
       BriefingSchedulerService.pendingModalKey: 'morning',
     });
     final preferences = await SharedPreferences.getInstance();
@@ -363,6 +365,10 @@ void main() {
 
     await subscription.cancel();
     await preferences.setBool(BriefingSchedulerService.appForegroundKey, true);
+    await preferences.setString(
+      BriefingSchedulerService.appForegroundUpdatedAtKey,
+      DateTime.now().toIso8601String(),
+    );
     final modal = BriefingSchedulerService.foregroundBriefingStream.first;
 
     await BriefingSchedulerService.checkPendingModalTrigger();
@@ -372,6 +378,22 @@ void main() {
       preferences.getString(BriefingSchedulerService.pendingModalKey),
       isNull,
     );
+  });
+
+  test('stale foreground marker is not treated as active foreground', () async {
+    final recordedAt = DateTime(2026, 6, 29, 8);
+    SharedPreferences.setMockInitialValues({
+      BriefingSchedulerService.appForegroundKey: true,
+      BriefingSchedulerService.appForegroundUpdatedAtKey:
+          recordedAt.toIso8601String(),
+    });
+
+    final isForeground = await BriefingSchedulerService.isRecordedAppForeground(
+      now: () => recordedAt.add(const Duration(minutes: 10)),
+      maxAge: const Duration(minutes: 2),
+    );
+
+    expect(isForeground, isFalse);
   });
 
   test('local briefing does not mention movement when events have no location',

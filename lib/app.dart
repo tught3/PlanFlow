@@ -64,9 +64,18 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     authProvider.addListener(_onAuthProviderChange);
     startupRouteGate.addListener(_onStartupRouteGateChange);
     _lifecycleListener = AppLifecycleListener(
+      onInactive: () {
+        unawaited(BriefingSchedulerService.recordAppForegroundState(false));
+      },
+      onHide: () {
+        unawaited(BriefingSchedulerService.recordAppForegroundState(false));
+      },
       onPause: () {
         unawaited(BriefingSchedulerService.recordAppForegroundState(false));
         unawaited(_syncCalendarInBackground());
+      },
+      onDetach: () {
+        unawaited(BriefingSchedulerService.recordAppForegroundState(false));
       },
       onResume: () {
         unawaited(_markForegroundAndCheckPendingBriefing());

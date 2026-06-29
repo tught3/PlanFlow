@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-30 브리핑 알람 foreground 플래그 고착 방지
+- `briefing:app_foreground`가 앱 비정상 종료/특수 lifecycle 전환 후 true로 남으면 background 알람 콜백이 알림을 띄우지 않고 foreground pending modal만 남겨 브리핑 알람이 안 울릴 수 있었다.
+- foreground 기록에 `briefing:app_foreground_updated_at` timestamp를 추가하고, 알람 콜백과 pending modal 소비 경로가 2분 이내의 fresh foreground 기록만 신뢰하도록 보강했다. 앱 lifecycle도 inactive/hide/detach에서 false를 기록한다.
+- 검증: stale foreground 회귀 테스트 RED->GREEN, `briefing_scheduler_service_test.dart` 전체 통과, 변경 파일 analyzer 통과, `git diff --check` 통과.
+
 ## 2026-06-29 음성 확인 뒤로가기 후 재입력 STT 복구
 - 음성 입력 완료 버튼이 `stopActiveListen()`을 백그라운드로 실행한 채 일정 확인 화면으로 이동한 뒤, 저장하지 않고 시스템 뒤로가기/null pop으로 돌아오면 남은 STT stop 상태 때문에 다음 음성 입력이 즉시 실패할 수 있었다.
 - `VoiceInputScreen`의 route 복귀 처리에서 confirm/voice action/conversation 복귀 시 잔여 STT listen을 먼저 cancel로 정리한 뒤 warm-up과 텍스트/제출 가드 리셋을 수행하도록 분리했다.

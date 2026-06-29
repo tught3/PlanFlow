@@ -134,7 +134,10 @@ class BriefingSchedulerService {
   // alarm callback(별도 Dart VM)이 포그라운드 앱에게 모달 신호를 전달하는 키.
   // IsolateNameServer는 같은 VM 내에서만 작동하므로 SharedPreferences를 사용한다.
   static const String appForegroundKey = 'briefing:app_foreground';
+  static const String appForegroundUpdatedAtKey =
+      'briefing:app_foreground_updated_at';
   static const String pendingModalKey = 'briefing:pending_modal';
+  static const Duration appForegroundMaxAge = Duration(minutes: 2);
   static const Duration _briefingLeadBeforePrepStart = Duration(minutes: 30);
 
   static final StreamController<bool> _foregroundBriefingController =
@@ -153,7 +156,7 @@ class BriefingSchedulerService {
       return;
     }
 
-    if (prefs.getBool(appForegroundKey) != true) {
+    if (!await isRecordedAppForeground(preferences: prefs)) {
       return;
     }
 
@@ -163,9 +166,37 @@ class BriefingSchedulerService {
     }
   }
 
-  static Future<void> recordAppForegroundState(bool isForeground) async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool(appForegroundKey, isForeground);
+  static Future<void> recordAppForegroundState(
+    bool isForeground, {
+    SharedPreferences? preferences,
+    DateTime Function()? now,
+  }) async {
+    final resolvedPreferences =
+        preferences ?? await SharedPreferences.getInstance();
+    final timestamp = (now ?? DateTime.now)().toIso8601String();
+    await resolvedPreferences.setBool(appForegroundKey, isForeground);
+    await resolvedPreferences.setString(appForegroundUpdatedAtKey, timestamp);
+  }
+
+  static Future<bool> isRecordedAppForeground({
+    SharedPreferences? preferences,
+    DateTime Function()? now,
+    Duration maxAge = appForegroundMaxAge,
+  }) async {
+    final resolvedPreferences =
+        preferences ?? await SharedPreferences.getInstance();
+    if (resolvedPreferences.getBool(appForegroundKey) != true) {
+      return false;
+    }
+    final updatedAt = DateTime.tryParse(resolvedPreferences.getString(
+          appForegroundUpdatedAtKey,
+        ) ??
+        '');
+    if (updatedAt == null) {
+      return false;
+    }
+    final age = (now ?? DateTime.now)().difference(updatedAt);
+    return !age.isNegative && age <= maxAge;
   }
 
   Future<BriefingDailyScheduleResult> scheduleDaily({
