@@ -1,8 +1,6 @@
-import 'dart:isolate';
-import 'dart:ui';
-
 import 'package:flutter/foundation.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/diag_logger.dart';
@@ -146,16 +144,20 @@ Future<void> _briefingAlarmCallback(
       AppEnv.markSupabaseInitialized();
     }
 
-    // 앱이 포그라운드면 IsolateNameServer 포트로 모달 신호를 보내고,
-    // 백그라운드면 기존 알림 발송 경로를 사용한다.
-    final SendPort? foregroundPort = IsolateNameServer.lookupPortByName(
-      BriefingSchedulerService.foregroundPortName,
-    );
-    if (foregroundPort != null) {
-      foregroundPort.send(isMorning ? 'morning' : 'evening');
+    // IsolateNameServer는 같은 Dart VM 내에서만 동작한다.
+    // android_alarm_manager_plus는 별도 FlutterEngine(별도 VM)을 생성하므로
+    // SharedPreferences 기반 pending key로 포그라운드 신호를 전달한다.
+    final prefs = await SharedPreferences.getInstance();
+    final isForeground =
+        prefs.getBool(BriefingSchedulerService.appForegroundKey) ?? false;
+    if (isForeground) {
+      await prefs.setString(
+        BriefingSchedulerService.pendingModalKey,
+        briefingType,
+      );
       DiagLogger.log(
         'BriefingAlarm',
-        'foreground_modal_signal type=$briefingType',
+        'foreground_modal_pending type=$briefingType',
       );
     } else {
       final scheduler = BriefingSchedulerService();

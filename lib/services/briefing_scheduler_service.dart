@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:isolate';
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -133,11 +131,12 @@ class BriefingSchedulerService {
       'briefing:last_execution_message';
   static const String _lastExecutionFailureReasonKey =
       'briefing:last_execution_failure_reason';
-  static const String _appForegroundKey = 'briefing:app_foreground';
-  static const String foregroundPortName = 'briefing:foreground_port';
+  // alarm callback(별도 Dart VM)이 포그라운드 앱에게 모달 신호를 전달하는 키.
+  // IsolateNameServer는 같은 VM 내에서만 작동하므로 SharedPreferences를 사용한다.
+  static const String appForegroundKey = 'briefing:app_foreground';
+  static const String pendingModalKey = 'briefing:pending_modal';
   static const Duration _briefingLeadBeforePrepStart = Duration(minutes: 30);
 
-  static ReceivePort? _foregroundReceivePort;
   static final StreamController<bool> _foregroundBriefingController =
       StreamController<bool>.broadcast();
 
@@ -145,33 +144,22 @@ class BriefingSchedulerService {
   static Stream<bool> get foregroundBriefingStream =>
       _foregroundBriefingController.stream;
 
-  static void _registerForegroundPort() {
-    _foregroundReceivePort?.close();
-    IsolateNameServer.removePortNameMapping(foregroundPortName);
-    final port = ReceivePort();
-    _foregroundReceivePort = port;
-    IsolateNameServer.registerPortWithName(port.sendPort, foregroundPortName);
-    port.listen((message) {
-      if (message is String && !_foregroundBriefingController.isClosed) {
-        _foregroundBriefingController.add(message == 'morning');
+  /// 알람 콜백이 [pendingModalKey]에 남긴 트리거를 확인해 모달 스트림으로 전달한다.
+  /// 앱이 포그라운드일 때 주기적으로 호출한다.
+  static Future<void> checkPendingModalTrigger() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pending = prefs.getString(pendingModalKey);
+    if (pending != null) {
+      await prefs.remove(pendingModalKey);
+      if (!_foregroundBriefingController.isClosed) {
+        _foregroundBriefingController.add(pending == 'morning');
       }
-    });
-  }
-
-  static void _unregisterForegroundPort() {
-    IsolateNameServer.removePortNameMapping(foregroundPortName);
-    _foregroundReceivePort?.close();
-    _foregroundReceivePort = null;
+    }
   }
 
   static Future<void> recordAppForegroundState(bool isForeground) async {
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool(_appForegroundKey, isForeground);
-    if (isForeground) {
-      _registerForegroundPort();
-    } else {
-      _unregisterForegroundPort();
-    }
+    await preferences.setBool(appForegroundKey, isForeground);
   }
 
   Future<BriefingDailyScheduleResult> scheduleDaily({
@@ -656,7 +644,7 @@ class BriefingSchedulerService {
     }
 
     final preferences = await SharedPreferences.getInstance();
-    return preferences.getBool(_appForegroundKey) == true;
+    return preferences.getBool(appForegroundKey) == true;
   }
 
   Future<bool> _rescheduleForTomorrow({

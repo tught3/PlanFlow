@@ -43,6 +43,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   StreamSubscription<Uri>? _planFlowLinkSubscription;
   StreamSubscription<List<SharedMediaFile>>? _sharedIcsSubscription;
   StreamSubscription<bool>? _foregroundBriefingSubscription;
+  Timer? _foregroundBriefingPollTimer;
   bool _reauthSnackBarShown = false;
   bool _startupUpdateCheckRunning = false;
   int _startupUpdateCheckGeneration = 0;
@@ -79,6 +80,12 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _foregroundBriefingSubscription =
         BriefingSchedulerService.foregroundBriefingStream
             .listen(_showForegroundBriefingDialog);
+    // alarm_service의 알람 콜백은 별도 Dart VM에서 실행되므로 IsolateNameServer가
+    // 작동하지 않는다. SharedPreferences pending key를 2초마다 확인해 모달로 전환한다.
+    _foregroundBriefingPollTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => unawaited(BriefingSchedulerService.checkPendingModalTrigger()),
+    );
     unawaited(_syncSessionAndCalendar(reason: 'startup'));
     unawaited(_listenForSharedIcsFiles());
     unawaited(_notificationService.scheduleMonthlyNaverIcsReminder());
@@ -393,6 +400,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _planFlowLinkSubscription?.cancel();
     _sharedIcsSubscription?.cancel();
     _foregroundBriefingSubscription?.cancel();
+    _foregroundBriefingPollTimer?.cancel();
     unawaited(_oauthCallbackHandler.dispose());
     unawaited(BriefingSchedulerService.recordAppForegroundState(false));
     _lifecycleListener.dispose();
