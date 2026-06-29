@@ -1,4 +1,26 @@
 # ACTIVE SUMMARY
+## 2026-06-29 V2 group invite link target constraint fix
+- QR/초대 링크 참여 시 운영 DB의 `group_invites_target_check`가 `invited_user_id`, `invited_email`, `invited_invite_code` 중 정확히 하나만 허용하는데 링크 RPC가 세 값을 함께 넣어 실패하던 문제를 수정했다.
+- `accept_group_invite_link`는 이제 링크로 참여하는 로그인 사용자를 `invited_user_id` 하나로만 기록하고, 앱 화면은 원문 PostgresException 대신 사용자용 안내 문구를 보여준다.
+- 검증: 운영 Supabase 함수 정의에서 insert values가 `auth.uid(), null, null`임을 확인, targeted analyze 통과, release APK 재빌드 성공, 3기기 install 및 launch OK.
+## 2026-06-29 S8 tab Google prompt loop fix
+- `ShellScreen` 시작 작업에서 Google Calendar 미연동 상태일 때 `syncGoogleCalendar(interactive: true)`를 자동 호출하던 경로를 제거했다.
+- 탭 이동으로 `/home`, `/calendar`, `/settings` route가 바뀌며 `ShellScreen`이 재생성될 때마다 Google 계정 선택창이 다시 뜰 수 있던 원인을 차단했다.
+- 수동 Google Calendar 연결은 설정탭 버튼에만 남겼고, 백그라운드 자동 동기화는 기존처럼 `interactive: false` 경로만 사용한다.
+- 검증: `scripts/flutter-local.ps1 analyze lib\screens\shell_screen.dart --no-pub`, `scripts/flutter-local.ps1 test test\screens\shell_swipe_gesture_test.dart --no-pub -r compact` 통과.
+## 2026-06-29 V2 group invite QR
+- `qr_flutter`를 추가하고 초대관리의 초대 링크 카드에 QR 코드를 표시해, 팀원이 카메라로 스캔해 `planflow-v2://group-invite?...` 초대 화면으로 들어갈 수 있게 했다.
+- 기존 링크 복사와 이메일/초대코드 입력은 유지했고, QR은 리더에게만 보이는 초대 링크 카드 안에 배치했다.
+- 검증: QR 화면 테스트 포함 초대 관련 테스트 통과, targeted `dart analyze` 통과, release APK 빌드 성공, 3기기 install 및 launch OK.
+## 2026-06-29 V2 group invite link UX
+- 그룹 리더가 초대관리에서 `초대 링크 복사`를 누르면 `planflow-v2://group-invite?groupId=...&token=...` 링크를 카톡/문자 등에 붙여넣을 수 있게 했다.
+- 앱 딥링크 resolver/router/Android manifest에 `group-invite` 경로를 추가하고, 링크 수신자는 로그인 후 `그룹 초대` 화면에서 `그룹 참여하기`로 멤버 참여 RPC를 호출한다.
+- Supabase 운영 프로젝트 `xqvvfnvmytjlblcngipn`에 `groups.invite_token`과 `accept_group_invite_link(uuid, text)` migration을 적용했고 존재 확인도 마쳤다.
+- 검증: `flutter test test/app_home_widget_route_test.dart test/features/groups/group_invite_repository_test.dart test/features/groups/group_invite_screen_test.dart test/features/groups/group_invite_provider_test.dart --no-pub -r compact`, targeted `dart analyze`, release APK build, 3기기 install, 3기기 `planflow-v2://group-invite` launch OK.
+## 2026-06-29 V2 group sub-route context fix
+- 그룹 상세의 대시보드/그룹 일정/초대 관리/멤버 관리 진입 경로를 `/groups/{groupId}/...` 형태로 분리하고, 각 화면/provider가 route groupId를 우선 선택하도록 연결했다.
+- `GroupContextProvider.load`는 preferred groupId를 지원하며, 잘못된 groupId는 예외로 터뜨리지 않고 기존 저장값/리더/멤버 fallback으로 처리한다.
+- 검증: `flutter test test/features/groups/group_context_provider_test.dart --no-pub -r compact` 통과. `dart analyze`와 그룹 화면 테스트 묶음, release APK 빌드는 로컬 analyzer/Gradle 프로세스가 출력 없이 장시간 대기해 중단했으며 APK는 갱신되지 않았다.
 ## 2026-06-21 Google login and onboarding order cleanup
 - Google 로그인 성공 직후에 바로 `CalendarSyncService.syncGoogleCalendar(interactive: true)`를 띄우던 경로를 제거해, 계정 선택이 로그인 온보딩 화면 위로 뒤늦게 튀어나오지 않도록 정리했다.
 - `ShellScreen`은 이제 권한 온보딩이 끝난 뒤에만 Google Calendar 자동 연결과 나머지 시작 작업을 실행하도록 순서를 묶어서, 로그인 -> 온보딩 -> 캘린더 계정 확인 순서로 정돈했다.
@@ -1842,3 +1864,17 @@
 ## 2026-06-13 배포 자동화 기본 정책 변경
 - 앞으로 Flutter/Android 코드 수정 후 배포 파이프라인은 자동 실행하지 않고, 사용자가 명시적으로 배포를 요청할 때만 수행하도록 프로젝트 운영 규칙을 바꿨다.
 - 변경 대상은 AGENTS.md의 배포 규칙이며, 앱 코드/스키마/Android 파일은 건드리지 않았다.
+
+## 2026-06-29 그룹 멤버 표시 이름과 초대코드 보정
+- 그룹 초대 관리의 `내 초대 코드` 카드에서 본인 표시 이름을 저장할 수 있게 했고, 멤버 관리는 `group_members.display_name -> users.display_name/name/email/invite_code -> 짧은 userId` 순서로 사람을 보여주도록 바꿨다.
+- 그룹장은 멤버 관리에서 각 멤버 표시 이름을 변경할 수 있고, 그룹 상세 상단에서 팀 이름을 바꿀 수 있다.
+- 운영 Supabase `xqvvfnvmytjlblcngipn`에 `users.display_name`, `group_members.display_name`, `ensure_current_user_profile()` 및 같은 그룹 멤버 프로필 조회 RLS를 적용했고, `group_invites` target 제약을 정확히 하나만 허용하도록 로컬 schema와 맞췄다.
+- 이메일 초대는 같은 이메일의 Google/일반 로그인 계정이 분리돼 있어도 이메일 target 하나로 처리되게 하고, 초대코드 초대는 invite_code target 하나만 저장하도록 DB 제약과 앱 payload를 맞췄다.
+- 검증: 운영 DB 객체/제약 SQL 확인 OK, `dart analyze` 대상 파일 OK, `group_invite_screen_test` 단독 PASS. Flutter 묶음 테스트와 debug/release APK 빌드는 Gradle/Flutter 실행이 출력 없이 장시간 멈춰 중단했고, 해당 빌드 PIDs는 정리했다.
+
+## 2026-06-30 기존 일정 공유와 개인-그룹 일정 연결
+- 그룹 상세 최초 진입 시 그룹별 1회 기존 일정 공유 모달을 띄우고, 선택 결과를 `planflow:group_event_share_prompt:v1:{userId}:{groupId}` SharedPreferences 키로 저장한다.
+- 기존 개인 일정 공유 서비스는 오늘 00:00 이후 `source='manual'` 일정만 그룹 일정으로 복사하고, `group_id + title + start_at + end_at` 중복은 건너뛰며 결과 카운트를 반환한다.
+- `events.group_event_id`, `group_events.personal_event_id` 연결 컬럼과 인덱스를 로컬 schema/migration 및 운영 Supabase `xqvvfnvmytjlblcngipn`에 반영했다.
+- 일반 일정 저장에서 `개인 + 그룹`은 양쪽 row 생성 후 id를 연결하고, 이미 연결된 개인 일정 수정 시 `개인만 수정 / 그룹도 같이 수정` 선택 다이얼로그를 띄운다.
+- 검증: 운영 DB 컬럼/인덱스 확인 OK, `dart analyze` PASS, 관련 그룹/일정 테스트 PASS, release APK build PASS, 3기기 install/launch PASS.

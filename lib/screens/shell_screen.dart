@@ -88,6 +88,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   bool _checkedPermissionOnboarding = false;
   bool _checkedExternalCalendarGuide = false;
   String? _observedUserId;
+  // 로그인 직후 홈이 깜빡였다가 온보딩으로 넘어가는 플래시를 막기 위해,
+  // 온보딩 필요 여부 판단이 끝날 때까지 홈 대신 로딩 화면을 보여준다.
+  bool _onboardingDecisionPending = false;
 
   @override
   void initState() {
@@ -95,6 +98,8 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _currentIndex = widget.initialIndex;
     _homeScrollController = ScrollController(keepScrollOffset: false);
     _observedUserId = authProvider.userId;
+    _onboardingDecisionPending =
+        _observedUserId != null && _observedUserId!.isNotEmpty;
     WidgetsBinding.instance.addObserver(this);
     authProvider.addListener(_handleAuthChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -135,7 +140,10 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
 
-    setState(() {});
+    setState(() {
+      _onboardingDecisionPending =
+          currentUserId != null && currentUserId.isNotEmpty;
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         unawaited(_runSignedInStartupTasks(reason: 'auth_changed'));
@@ -239,27 +247,47 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   Future<void> _maybeOpenPermissionOnboarding() async {
     if (_checkedPermissionOnboarding || !mounted) {
+      _clearOnboardingGate();
       return;
     }
     _checkedPermissionOnboarding = true;
 
     final userId = authProvider.userId;
     if (userId == null || userId.isEmpty) {
+      _clearOnboardingGate();
       return;
     }
 
-    final completed = await _permissionService.isOnboardingCompleted(userId);
-    if (!mounted) {
-      return;
-    }
-
-    if (!completed) {
-      await context.push(AppRoutes.permissionOnboarding);
+    try {
+      final completed = await _permissionService.isOnboardingCompleted(userId);
+      if (!mounted) {
+        _clearOnboardingGate();
+        return;
+      }
+      // 온보딩 필요 여부 판단이 끝났으므로 로딩 게이트를 해제한다.
+      // push 이후에 해제하면 context.go()로 복귀하는 기기(태블릿 등)에서
+      // push Future가 완료되지 않아 로딩 화면이 영구히 남는 문제가 있다.
+      _clearOnboardingGate();
+      if (!completed && mounted) {
+        await context.push(AppRoutes.permissionOnboarding);
+      }
+    } finally {
+      // push Future 완료 전에 이미 해제됐으면 no-op, 예외 발생 시 안전망.
+      _clearOnboardingGate();
     }
 
     if (mounted) {
       await _maybeShowExternalCalendarSyncGuide();
     }
+  }
+
+  void _clearOnboardingGate() {
+    if (!mounted || !_onboardingDecisionPending) {
+      return;
+    }
+    setState(() {
+      _onboardingDecisionPending = false;
+    });
   }
 
   Future<void> _maybeShowExternalCalendarSyncGuide() async {
@@ -467,6 +495,23 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (_onboardingDecisionPending) {
+      // 로그인 직후 온보딩 여부 판단 중에는 홈 대신 로딩 화면을 보여줘
+      // 홈이 깜빡였다가 온보딩으로 넘어가는 플래시를 막는다.
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('로딩 중'),
+            ],
+          ),
+        ),
+      );
+    }
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {

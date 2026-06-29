@@ -71,6 +71,18 @@ order by c.relname;
 - 1·2번 결과가 전부 `OK` / `RLS_ON`이면 → **배포 완료**. 실기기에서 그룹 생성/초대/일정이 정상 동작할 조건은 갖춰진 것이다(앱 빌드의 `SUPABASE_URL`이 이 프로젝트를 가리키는지도 함께 확인).
 - 하나라도 `MISSING` / 행 없음 / `RLS_OFF`이면 → **미배포**. 이 경우 [16-v2-schema-sql-final-draft.md](./16-v2-schema-sql-final-draft.md) 또는 저장소의 `supabase/schema.sql`의 V2 구간을 [21-v2-existing-supabase-apply-plan.md](./21-v2-existing-supabase-apply-plan.md) 절차에 따라 적용해야 한다.
 
+## 3.5. ⚠️ OAuth Redirect URL 허용목록 (카카오/네이버 로그인 필수)
+
+V2는 딥링크 스킴을 `planflow-v2://`로 분리했으므로, **Supabase Auth의 Redirect URL 허용목록에
+`planflow-v2://auth-callback`이 반드시 포함**돼야 한다. 이게 없으면 카카오/네이버 웹 OAuth가
+인증 후 빈 Supabase 콜백 페이지에서 멈추고 앱으로 복귀하지 못한다(구글은 네이티브 로그인이라 무관).
+
+- Supabase 대시보드 → **Authentication → URL Configuration → Redirect URLs**
+- 다음 두 개가 모두 있어야 한다(메인 PlanFlow와 V2 공존):
+  - `planflow://auth-callback`      (메인 PlanFlow)
+  - `planflow-v2://auth-callback`   (V2 — 누락되기 쉬움)
+- 증상 메모: 신규 로그인만 깨지고, 이미 세션이 있는 기기는 세션 복원이라 멀쩡해 보일 수 있다.
+
 ## 4. 앱이 보는 Supabase가 맞는지 확인
 
 실기기 release APK가 위 프로젝트를 보는지 확인한다(`--dart-define` 또는 `env/local.json`의 `SUPABASE_URL`):

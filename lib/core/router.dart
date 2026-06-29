@@ -15,13 +15,16 @@ import '../screens/settings/naver_ics_import_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/splash/splash_screen.dart';
 import '../features/groups/screens/group_dashboard_screen.dart';
+import '../features/groups/screens/group_detail_screen.dart';
 import '../features/groups/screens/group_create_screen.dart';
 import '../features/groups/screens/group_event_create_screen.dart';
 import '../features/groups/screens/group_event_detail_screen.dart';
 import '../features/groups/screens/group_event_list_screen.dart';
+import '../features/groups/screens/group_invite_link_screen.dart';
 import '../features/groups/screens/group_invite_screen.dart';
 import '../features/groups/screens/group_list_screen.dart';
 import '../features/groups/screens/group_member_screen.dart';
+import '../features/groups/providers/group_context_provider.dart';
 import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
@@ -270,8 +273,56 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const GroupCreateScreen(),
     ),
     GoRoute(
+      path: AppRoutes.groupInviteLink,
+      builder: (context, state) => GroupInviteLinkScreen(
+        groupId: state.uri.queryParameters['groupId']?.trim() ??
+            state.uri.queryParameters['group_id']?.trim() ??
+            '',
+        inviteToken: state.uri.queryParameters['token']?.trim() ?? '',
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupInvitesForGroup,
+      builder: (context, state) => GroupInviteScreen(
+        contextProvider: _groupContextProviderExtra(state),
+        initialGroupId: state.pathParameters['groupId']?.trim(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupMembersForGroup,
+      builder: (context, state) => GroupMemberScreen(
+        initialGroupId: state.pathParameters['groupId']?.trim(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEventsForGroup,
+      builder: (context, state) => GroupEventListScreen(
+        initialGroupId: state.pathParameters['groupId']?.trim(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupDashboardForGroup,
+      builder: (context, state) => GroupDashboardScreen(
+        initialGroupId: state.pathParameters['groupId']?.trim(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEventCreateForGroup,
+      builder: (context, state) => GroupEventCreateScreen(
+        initialGroupId: state.pathParameters['groupId']?.trim(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupDetail,
+      builder: (context, state) => GroupDetailScreen(
+        groupId: state.pathParameters['groupId'] ?? '',
+      ),
+    ),
+    GoRoute(
       path: AppRoutes.groupInvites,
-      builder: (context, state) => const GroupInviteScreen(),
+      builder: (context, state) => GroupInviteScreen(
+        contextProvider: _groupContextProviderExtra(state),
+      ),
     ),
     GoRoute(
       path: AppRoutes.groupMembers,
@@ -304,6 +355,20 @@ final GoRouter appRouter = GoRouter(
     message: '요청한 화면 경로를 찾지 못했습니다.',
   ),
 );
+
+GroupContextProvider? _groupContextProviderExtra(GoRouterState state) {
+  final extra = state.extra;
+  if (extra is GroupContextProvider) {
+    return extra;
+  }
+  if (extra is Map<String, Object?>) {
+    final provider = extra['contextProvider'];
+    if (provider is GroupContextProvider) {
+      return provider;
+    }
+  }
+  return null;
+}
 
 String? _resolveEventId(GoRouterState state, EventModel? event) {
   final pathId = state.pathParameters['eventId']?.trim();

@@ -16,11 +16,14 @@ class GroupDashboardScreen extends StatefulWidget {
     super.key,
     GroupDashboardProvider? provider,
     String? currentUserIdOverride,
+    String? initialGroupId,
   })  : _provider = provider,
-        _currentUserIdOverride = currentUserIdOverride;
+        _currentUserIdOverride = currentUserIdOverride,
+        _initialGroupId = initialGroupId;
 
   final GroupDashboardProvider? _provider;
   final String? _currentUserIdOverride;
+  final String? _initialGroupId;
 
   @override
   State<GroupDashboardScreen> createState() => _GroupDashboardScreenState();
@@ -48,7 +51,7 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
 
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
-    await _provider.load(userId);
+    await _provider.load(userId, preferredGroupId: widget._initialGroupId);
   }
 
   Future<void> _openGroupList() async {

@@ -57,11 +57,24 @@ class FakeGroupRepository extends GroupRepository {
   Future<GroupMemberModel> updateMember(GroupMemberModel member) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<void> deleteGroup(String groupId) {
+    throw UnimplementedError();
+  }
 }
 
 class FakeGroupInviteRepository extends GroupInviteRepository {
   @override
   Future<GroupInviteModel> acceptInvite(String inviteId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupInviteModel> acceptInviteLink({
+    required String groupId,
+    required String inviteToken,
+  }) {
     throw UnimplementedError();
   }
 
@@ -148,6 +161,7 @@ void main() {
       profileLoader: (userId) async => <String, dynamic>{
         'id': userId,
         'invite_code': 'INVITE-0001',
+        'display_name': '민수',
       },
     );
 
@@ -170,16 +184,24 @@ void main() {
     expect(find.text('아직 속한 그룹이 없어요'), findsOneWidget);
     expect(
         find.byKey(const ValueKey('group-list-create-button')), findsOneWidget);
-    expect(find.byKey(const ValueKey('group-list-dashboard-button')),
-        findsOneWidget);
     expect(
-        find.byKey(const ValueKey('group-list-events-button')), findsOneWidget);
-    expect(find.byKey(const ValueKey('group-list-members-button')),
-        findsOneWidget);
+      find.byKey(
+        const ValueKey('group-list-display-name-edit-button'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('(민수)'), findsOneWidget);
+    expect(
+      find.byKey(
+        const ValueKey('group-list-invite-management-button'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('highlights the selected leader group and changes selection',
-      (tester) async {
+  testWidgets('highlights the selected leader group', (tester) async {
     final provider = GroupContextProvider(
       repository: FakeGroupRepository(
         groups: <GroupModel>[
@@ -221,6 +243,7 @@ void main() {
       profileLoader: (userId) async => <String, dynamic>{
         'id': userId,
         'invite_code': 'INVITE-0001',
+        'display_name': '민수',
       },
     );
 
@@ -248,14 +271,17 @@ void main() {
       findsOneWidget,
     );
 
-    await tester
-        .tap(find.byKey(const ValueKey('group-list-item-group-member')));
-    await tester.pumpAndSettle();
-
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('group-list-item-group-member')),
-        matching: find.text('선택됨'),
+      find.byKey(
+        const ValueKey('group-list-display-name-edit-button'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const ValueKey('group-list-invite-management-button'),
+        skipOffstage: false,
       ),
       findsOneWidget,
     );
@@ -264,7 +290,7 @@ void main() {
         of: find.byKey(const ValueKey('group-list-item-group-leader')),
         matching: find.text('선택됨'),
       ),
-      findsNothing,
+      findsOneWidget,
     );
   });
 }

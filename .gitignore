@@ -40,3 +40,14 @@ planflow-*.png
 TASK_2[0-9]*_done.md
 TASK_2[0-9]*_plan.md
 TASK_2[0-9]*_review.md
+
+# 빌드/analyze 임시 출력 로그 (AI 세션 산출물, 보존 불필요)
+/ab.txt
+/bld.txt
+/build.txt
+/sa.txt
+/st.txt
+build-v2-release-debug.*.log
+
+# Flutter Linux 빌드 캐시 (자동 생성)
+linux/flutter/ephemeral/

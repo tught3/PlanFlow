@@ -26,10 +26,30 @@ class AppRoutes {
   static const String groups = '/groups';
   static const String groupCreate = '/groups/create';
   static const String groupInvites = '/groups/invites';
+  static const String groupInviteLink = '/groups/invite-link';
   static const String groupMembers = '/groups/members';
   static const String groupEvents = '/groups/events';
   static const String groupDashboard = '/groups/dashboard';
+  static const String groupDetail = '/groups/:groupId';
+  static String groupDetailForId(String id) => '/groups/$id';
   static const String groupEventCreate = '/groups/events/create';
+  static const String groupInvitesForGroup = '/groups/:groupId/invites';
+  static const String groupMembersForGroup = '/groups/:groupId/members';
+  static const String groupEventsForGroup = '/groups/:groupId/events';
+  static const String groupDashboardForGroup = '/groups/:groupId/dashboard';
+  static const String groupEventCreateForGroup =
+      '/groups/:groupId/events/create';
+  static String groupInvitesForId(String id) => '/groups/$id/invites';
+  static String groupMembersForId(String id) => '/groups/$id/members';
+  static String groupEventsForId(String id) => '/groups/$id/events';
+  static String groupDashboardForId(String id) => '/groups/$id/dashboard';
+  static String groupEventCreateForId(String id) => '/groups/$id/events/create';
+  static String groupInviteLinkFor({
+    required String groupId,
+    required String token,
+  }) =>
+      '$groupInviteLink?groupId=${Uri.encodeQueryComponent(groupId)}'
+      '&token=${Uri.encodeQueryComponent(token)}';
   static const String groupEventDetail = '/groups/events/:eventId';
   static const String settings = '/settings';
   static const String briefing = '/briefing';

@@ -8,6 +8,7 @@ create table if not exists public.users (
   id uuid primary key references auth.users (id) on delete cascade,
   email text,
   name text,
+  display_name text,
   created_at timestamptz not null default now()
 );
 
@@ -18,10 +19,15 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.users (id, email, name)
+  insert into public.users (id, email, name, display_name)
   values (
     new.id,
     new.email,
+    coalesce(
+      new.raw_user_meta_data ->> 'name',
+      new.raw_user_meta_data ->> 'full_name',
+      new.raw_user_meta_data ->> 'nickname'
+    ),
     coalesce(
       new.raw_user_meta_data ->> 'name',
       new.raw_user_meta_data ->> 'full_name',
@@ -30,7 +36,8 @@ begin
   )
   on conflict (id) do update
     set email = excluded.email,
-        name = coalesce(excluded.name, public.users.name);
+        name = coalesce(excluded.name, public.users.name),
+        display_name = coalesce(public.users.display_name, excluded.display_name);
 
   return new;
 end;
@@ -56,6 +63,58 @@ alter table public.users
 
 create unique index if not exists users_invite_code_uidx
   on public.users (invite_code);
+
+create or replace function public.ensure_current_user_profile()
+returns public.users
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  auth_user_row auth.users%rowtype;
+  profile public.users%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  select *
+    into auth_user_row
+    from auth.users
+   where id = auth.uid();
+
+  insert into public.users (id, email, name, display_name, invite_code)
+  values (
+    auth.uid(),
+    auth_user_row.email,
+    coalesce(
+      auth_user_row.raw_user_meta_data ->> 'name',
+      auth_user_row.raw_user_meta_data ->> 'full_name',
+      auth_user_row.raw_user_meta_data ->> 'nickname'
+    ),
+    coalesce(
+      auth_user_row.raw_user_meta_data ->> 'name',
+      auth_user_row.raw_user_meta_data ->> 'full_name',
+      auth_user_row.raw_user_meta_data ->> 'nickname'
+    ),
+    lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10))
+  )
+  on conflict (id) do update
+    set email = excluded.email,
+        name = coalesce(public.users.name, excluded.name),
+        display_name = coalesce(public.users.display_name, excluded.display_name),
+        invite_code = coalesce(
+          nullif(public.users.invite_code, ''),
+          lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10))
+        )
+  returning * into profile;
+
+  return profile;
+end;
+$$;
+
+grant execute on function public.ensure_current_user_profile()
+  to authenticated;
 
 -- 2. events
 create table if not exists public.events (
@@ -143,6 +202,7 @@ create table if not exists public.groups (
   parent_group_id uuid references public.groups (id) on delete set null,
   name text not null,
   description text,
+  invite_token text not null default lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 16)),
   status text not null default 'active' check (status in ('active', 'archived', 'deleted_pending')),
   created_by uuid not null references public.users (id) on delete restrict,
   archived_at timestamptz,
@@ -156,6 +216,7 @@ create table if not exists public.group_members (
   user_id uuid not null references public.users (id) on delete cascade,
   role text not null default 'member' check (role in ('leader', 'member')),
   status text not null default 'active' check (status in ('active', 'removed')),
+  display_name text,
   joined_at timestamptz not null default now(),
   removed_at timestamptz,
   removed_by uuid references public.users (id) on delete set null,
@@ -169,6 +230,20 @@ create index if not exists groups_parent_group_id_idx
 
 create index if not exists groups_status_idx
   on public.groups (status);
+
+alter table public.groups
+  add column if not exists invite_token text;
+
+update public.groups
+set invite_token = lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 16))
+where invite_token is null or trim(invite_token) = '';
+
+alter table public.groups
+  alter column invite_token set default lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 16)),
+  alter column invite_token set not null;
+
+create unique index if not exists groups_invite_token_uidx
+  on public.groups (invite_token);
 
 create index if not exists groups_created_by_idx
   on public.groups (created_by);
@@ -319,8 +394,8 @@ create table if not exists public.group_invites (
   acted_by uuid references public.users (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint group_invites_target_required_check
-    check (num_nonnulls(invited_user_id, invited_email, invited_invite_code) > 0)
+  constraint group_invites_target_check
+    check (num_nonnulls(invited_user_id, invited_email, invited_invite_code) = 1)
 );
 
 create index if not exists group_invites_group_id_idx
@@ -522,6 +597,139 @@ end;
 $$;
 
 grant execute on function public.accept_group_invite(uuid) to authenticated;
+
+create or replace function public.accept_group_invite_link(
+  group_id_input uuid,
+  invite_token_input text
+)
+returns public.group_invites
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  group_row public.groups%rowtype;
+  profile_row public.users%rowtype;
+  invite_row public.group_invites%rowtype;
+  updated_invite public.group_invites%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  if group_id_input is null or trim(coalesce(invite_token_input, '')) = '' then
+    raise exception '초대 링크가 올바르지 않습니다.';
+  end if;
+
+  select *
+    into group_row
+    from public.groups
+   where id = group_id_input
+     and invite_token = lower(trim(invite_token_input))
+     and status = 'active';
+
+  if not found then
+    raise exception '초대 링크가 유효하지 않습니다.';
+  end if;
+
+  if exists (
+    select 1
+      from public.group_members
+     where group_id = group_row.id
+       and user_id = auth.uid()
+       and status = 'active'
+  ) then
+    raise exception '이미 활성 멤버입니다.';
+  end if;
+
+  select *
+    into profile_row
+    from public.users
+   where id = auth.uid();
+
+  select *
+    into invite_row
+    from public.group_invites
+   where group_id = group_row.id
+     and invited_user_id = auth.uid()
+     and status = 'pending'
+   order by created_at desc
+   limit 1
+   for update;
+
+  if not found then
+    insert into public.group_invites (
+      group_id,
+      invited_user_id,
+      invited_email,
+      invited_invite_code,
+      invited_by,
+      status,
+      expires_at,
+      created_at,
+      updated_at
+    )
+    values (
+      group_row.id,
+      auth.uid(),
+      null,
+      null,
+      group_row.created_by,
+      'pending',
+      now() + interval '7 days',
+      now(),
+      now()
+    )
+    returning * into invite_row;
+  end if;
+
+  if invite_row.expires_at <= now() then
+    raise exception '만료된 초대는 수락할 수 없습니다.';
+  end if;
+
+  insert into public.group_members (
+    group_id,
+    user_id,
+    role,
+    status,
+    joined_at,
+    removed_at,
+    removed_by,
+    created_at,
+    updated_at
+  )
+  values (
+    group_row.id,
+    auth.uid(),
+    'member',
+    'active',
+    now(),
+    null,
+    null,
+    now(),
+    now()
+  )
+  on conflict (group_id, user_id) do update
+     set role = 'member',
+         status = 'active',
+         joined_at = now(),
+         removed_at = null,
+         removed_by = null,
+         updated_at = now();
+
+  update public.group_invites
+     set status = 'accepted',
+         accepted_at = now(),
+         acted_by = auth.uid()
+   where id = invite_row.id
+   returning * into updated_invite;
+
+  return updated_invite;
+end;
+$$;
+
+grant execute on function public.accept_group_invite_link(uuid, text)
+  to authenticated;
 
 alter table public.group_invites enable row level security;
 
@@ -976,6 +1184,7 @@ create table if not exists public.group_events (
   updated_by uuid references public.users (id) on delete set null,
   cancelled_at timestamptz,
   cancelled_by uuid references public.users (id) on delete set null,
+  personal_event_id uuid references public.events (id) on delete set null,
   status text not null default 'active' check (status in ('active', 'cancelled', 'archived')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -994,6 +1203,9 @@ create index if not exists group_events_updated_by_idx
 create index if not exists group_events_cancelled_by_idx
   on public.group_events (cancelled_by);
 
+create index if not exists group_events_personal_event_id_idx
+  on public.group_events (personal_event_id);
+
 create index if not exists group_events_status_idx
   on public.group_events (status);
 
@@ -1005,6 +1217,15 @@ create index if not exists group_events_group_start_at_idx
 
 create index if not exists group_events_group_status_start_at_idx
   on public.group_events (group_id, status, start_at);
+
+alter table public.events
+  add column if not exists group_event_id uuid references public.group_events (id) on delete set null;
+
+alter table public.group_events
+  add column if not exists personal_event_id uuid references public.events (id) on delete set null;
+
+create index if not exists events_group_event_id_idx
+  on public.events (group_event_id);
 
 create or replace function public.prevent_group_event_immutable_changes()
 returns trigger
@@ -1040,6 +1261,7 @@ grant select, insert, update on table public.group_events to authenticated;
 
 drop policy if exists "group_events_select_access" on public.group_events;
 drop policy if exists "group_events_insert_access" on public.group_events;
+drop policy if exists "group_events_insert_leader_or_delegate" on public.group_events;
 drop policy if exists "group_events_update_access" on public.group_events;
 drop policy if exists "group_events_cancel_access" on public.group_events;
 create policy "group_events_select_access"
@@ -1062,7 +1284,7 @@ create policy "group_events_select_access"
       or public.has_group_delegated_permission(group_id, auth.uid(), 'view_group_dashboard')
     )
   );
-create policy "group_events_insert_access"
+create policy "group_events_insert_leader_or_delegate"
   on public.group_events
   for insert
   with check (
@@ -1075,7 +1297,8 @@ create policy "group_events_insert_access"
         and groups.status = 'active'
     )
     and (
-      public.is_group_leader(group_id, auth.uid())
+      public.is_group_member(group_id, auth.uid())
+      or public.is_group_leader(group_id, auth.uid())
       or public.has_group_delegated_permission(group_id, auth.uid(), 'create_group_event')
     )
   );
@@ -1788,6 +2011,7 @@ grant select, insert, update, delete on table public.voice_correction_rules to a
 grant select on table public.voice_common_correction_rules to authenticated;
 
 drop policy if exists "users_select_own" on public.users;
+drop policy if exists "users_select_group_members" on public.users;
 drop policy if exists "users_insert_own" on public.users;
 drop policy if exists "users_update_own" on public.users;
 drop policy if exists "users_delete_own" on public.users;
@@ -1795,6 +2019,24 @@ create policy "users_select_own"
   on public.users
   for select
   using (auth.uid() = id);
+create policy "users_select_group_members"
+  on public.users
+  for select
+  using (
+    exists (
+      select 1
+      from public.group_members my_membership
+      join public.group_members target_membership
+        on target_membership.group_id = my_membership.group_id
+      join public.groups
+        on groups.id = my_membership.group_id
+      where my_membership.user_id = auth.uid()
+        and my_membership.status = 'active'
+        and target_membership.user_id = public.users.id
+        and target_membership.status = 'active'
+        and groups.status = 'active'
+    )
+  );
 create policy "users_insert_own"
   on public.users
   for insert

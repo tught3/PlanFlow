@@ -59,6 +59,11 @@ class FakeGroupRepository extends GroupRepository {
   Future<GroupMemberModel> updateMember(GroupMemberModel member) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<void> deleteGroup(String groupId) {
+    throw UnimplementedError();
+  }
 }
 
 GroupModel _group({
@@ -234,6 +239,86 @@ void main() {
 
     expect(provider.selectedGroup?.id, 'group-member');
     expect(provider.selectedGroupRole, 'member');
+  });
+
+  test('preferred group id overrides saved and leader fallback selection',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'planflow:group_context:selected_group_id:v1:user-1': 'group-saved',
+    });
+
+    final provider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-saved',
+            name: 'Saved Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11, 1),
+          ),
+          _group(
+            id: 'group-route',
+            name: 'Route Group',
+            createdBy: 'leader-2',
+            createdAt: DateTime.utc(2026, 6, 11, 2),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-saved': <GroupMemberModel>[
+            _member(
+              id: 'leader-1',
+              groupId: 'group-saved',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+          'group-route': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-route',
+              userId: 'user-1',
+              role: 'member',
+            ),
+          ],
+        },
+      ),
+    );
+
+    await provider.load('user-1', preferredGroupId: 'group-route');
+
+    expect(provider.selectedGroup?.id, 'group-route');
+    expect(provider.selectedGroupRole, 'member');
+  });
+
+  test('invalid preferred group id falls back without throwing', () async {
+    final provider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-leader',
+            name: 'Leader Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11, 1),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-leader': <GroupMemberModel>[
+            _member(
+              id: 'leader-1',
+              groupId: 'group-leader',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+
+    await provider.load('user-1', preferredGroupId: 'missing-group');
+
+    expect(provider.error, isNull);
+    expect(provider.selectedGroup?.id, 'group-leader');
+    expect(provider.selectedGroupRole, 'leader');
   });
 
   test('can switch selected group and clear back to personal mode', () async {

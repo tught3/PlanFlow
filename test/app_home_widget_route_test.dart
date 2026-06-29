@@ -50,4 +50,13 @@ void main() {
       '${AppRoutes.eventDetail}/event-456',
     );
   });
+
+  test('resolveHomeWidgetRoute maps group invite links', () {
+    expect(
+      resolveHomeWidgetRoute(
+        Uri.parse('planflow-v2://group-invite?groupId=group-1&token=abc123'),
+      ),
+      '${AppRoutes.groupInviteLink}?groupId=group-1&token=abc123',
+    );
+  });
 }

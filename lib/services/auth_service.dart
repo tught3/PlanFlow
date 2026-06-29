@@ -295,11 +295,14 @@ class AuthService implements AuthSessionClient {
     required String purpose,
   }) async {
     final launchMode = switch (appProvider) {
-      // Google OAuth는 풀 브라우저보다 커스텀 탭이 S8 같은 구형 기기에서
-      // 계정 선택/리다이렉트 복귀 안정성이 더 나은 경우가 있어 우선 사용한다.
+      // Google은 이제 네이티브 로그인(signInWithGoogleNative)을 쓰므로 이 경로를
+      // 타지 않는다. 남은 값은 호환용.
       PlanFlowOAuthProvider.google => LaunchMode.inAppBrowserView,
-      PlanFlowOAuthProvider.kakao => LaunchMode.inAppBrowserView,
-      PlanFlowOAuthProvider.naver => LaunchMode.inAppBrowserView,
+      // Kakao/Naver 웹 OAuth: 구형 기기(S8 등)에서 커스텀 탭이 planflow-v2://
+      // 커스텀 스킴 리다이렉트로 앱에 복귀하지 못하고 브라우저에서 멈추는 경우가
+      // 있어, OS가 딥링크 복귀를 처리하는 외부 브라우저로 띄운다.
+      PlanFlowOAuthProvider.kakao => LaunchMode.externalApplication,
+      PlanFlowOAuthProvider.naver => LaunchMode.externalApplication,
     };
     _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
     await OAuthCallbackHandler.persistCurrentPendingCallback();

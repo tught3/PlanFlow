@@ -76,18 +76,9 @@ class _GroupListScreenState extends State<GroupListScreen> {
     }
   }
 
-  Future<void> _openDashboard() async {
-    final result = await context.push<String>(AppRoutes.groupDashboard);
-    if (!mounted) {
-      return;
-    }
-    if (result != null) {
-      await _load();
-    }
-  }
-
-  Future<void> _selectGroup(GroupModel group) async {
-    await _provider.selectGroup(group.id);
+  Future<void> _openGroupDetail(GroupModel group) async {
+    await context.push(AppRoutes.groupDetailForId(group.id));
+    if (mounted) await _load();
   }
 
   Future<void> _copyInviteCode(String code) async {
@@ -101,31 +92,66 @@ class _GroupListScreenState extends State<GroupListScreen> {
   }
 
   Future<void> _openInviteManagement() async {
-    final result = await context.push<String>(AppRoutes.groupInvites);
-    if (!mounted) {
-      return;
-    }
-    if (result != null) {
-      await _load();
-    }
+    final result = await context.push<String>(
+      AppRoutes.groupInvites,
+      extra: _provider,
+    );
+    if (!mounted) return;
+    if (result != null) await _load();
   }
 
-  Future<void> _openGroupEvents() async {
-    final result = await context.push<String>(AppRoutes.groupEvents);
-    if (!mounted) {
+  Future<void> _editMyDisplayName() async {
+    final controller = TextEditingController(
+      text: _inviteProvider.currentDisplayName?.trim() ?? '',
+    );
+    final displayName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('내 이름 변경'),
+        content: TextField(
+          key: const ValueKey('group-list-display-name-dialog-field'),
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '이름(닉네임)',
+            hintText: '멤버 목록에 보일 이름',
+          ),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (displayName == null) {
       return;
     }
-    if (result != null) {
-      await _load();
-    }
-  }
 
-  Future<void> _openGroupMembers() async {
-    await context.push<String>(AppRoutes.groupMembers);
-    if (!mounted) {
-      return;
+    try {
+      await _inviteProvider.updateMyDisplayName(displayName);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('내 이름을 저장했어요.')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString())),
+      );
     }
-    await _load();
   }
 
   @override
@@ -177,7 +203,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
                           group: group,
                           roleLabel: _roleLabelForGroup(state, group),
                           isSelected: state.selectedGroup?.id == group.id,
-                          onTap: () => _selectGroup(group),
+                          onTap: () => _openGroupDetail(group),
                         ),
                       ),
                     ),
@@ -188,41 +214,6 @@ class _GroupListScreenState extends State<GroupListScreen> {
                   onPressed: _openCreateGroup,
                   icon: const Icon(Icons.add_circle_outline),
                   label: const Text('새 그룹 만들기'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  key: const ValueKey('group-list-dashboard-button'),
-                  onPressed: _openDashboard,
-                  icon: const Icon(Icons.dashboard_outlined),
-                  label: const Text('그룹 대시보드'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  key: const ValueKey('group-list-events-button'),
-                  onPressed: _openGroupEvents,
-                  icon: const Icon(Icons.event_available_outlined),
-                  label: const Text('그룹 일정'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  key: const ValueKey('group-list-invite-button'),
-                  onPressed: _openInviteManagement,
-                  icon: const Icon(Icons.mail_outline),
-                  label: const Text('초대 관리'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  key: const ValueKey('group-list-members-button'),
-                  onPressed: _openGroupMembers,
-                  icon: const Icon(Icons.groups_2_outlined),
-                  label: const Text('멤버 관리'),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '팀 기능은 현재 그룹 목록과 생성부터 시작합니다.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                      ),
                 ),
               ],
             ),
@@ -237,6 +228,7 @@ class _GroupListScreenState extends State<GroupListScreen> {
     GroupInviteState state,
   ) {
     final code = state.currentInviteCode?.trim() ?? '';
+    final displayName = state.currentDisplayName?.trim() ?? '';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -248,12 +240,44 @@ class _GroupListScreenState extends State<GroupListScreen> {
                 const Icon(Icons.badge_outlined),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    '내 초대 코드',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '내 초대 코드',
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                         ),
+                      ),
+                      if (displayName.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            '($displayName)',
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: PlanFlowColors.textSecondary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('group-list-display-name-edit-button'),
+                  onPressed:
+                      state.isSubmitting ? null : () => _editMyDisplayName(),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('이름 변경'),
                 ),
               ],
             ),
@@ -552,6 +576,11 @@ class _GroupListTile extends StatelessWidget {
                           ),
                         ),
                         if (isSelected) const _InfoChip(label: '선택됨'),
+                        const Icon(
+                          Icons.chevron_right,
+                          color: Colors.grey,
+                          size: 20,
+                        ),
                       ],
                     ),
                     if ((group.description ?? '').trim().isNotEmpty) ...[

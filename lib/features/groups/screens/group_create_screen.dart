@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/theme.dart';
 import '../../../providers/auth_provider.dart';
@@ -62,11 +63,26 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
     super.dispose();
   }
 
+  // Supabase가 초기화되지 않은 환경(위젯 테스트 등)에서는 null을 돌려준다.
+  // 프로덕션에서는 항상 초기화돼 있으므로 동작이 달라지지 않는다.
+  SupabaseClient? get _safeSupabaseClient {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _createGroup() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    final userId = widget._currentUserIdOverride ?? authProvider.userId;
+    // 실제 Supabase 세션 user ID를 우선한다.
+    // authProvider.userId는 캐시라 세션이 다른 계정으로 교체된 경우(OAuth 오염 등)
+    // created_by != auth.uid()가 되어 42501 RLS 에러가 발생할 수 있다.
+    final sessionUserId = _safeSupabaseClient?.auth.currentUser?.id;
+    final userId =
+        widget._currentUserIdOverride ?? sessionUserId ?? authProvider.userId;
     if (userId == null || userId.trim().isEmpty) {
       setState(() {
         _errorMessage = '로그인 후 그룹을 만들 수 있어요.';
@@ -80,6 +96,25 @@ class _GroupCreateScreenState extends State<GroupCreateScreen> {
       _errorMessage = null;
       _successMessage = null;
     });
+
+    // Supabase 세션이 만료됐거나 없으면 그룹 INSERT가 42501 RLS 에러로 실패한다.
+    // authProvider.userId는 캐시라 비-null이어도 실제 JWT가 없을 수 있으므로 직접 확인.
+    final supabaseClient = _safeSupabaseClient;
+    if (supabaseClient != null &&
+        (supabaseClient.auth.currentSession == null ||
+            supabaseClient.auth.currentSession!.isExpired)) {
+      try {
+        await supabaseClient.auth.refreshSession();
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _isSubmitting = false;
+            _errorMessage = '세션이 만료됐어요. 다시 로그인해 주세요.';
+          });
+        }
+        return;
+      }
+    }
 
     try {
       final created = await _repository.createGroup(

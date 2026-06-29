@@ -563,8 +563,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
               ],
               routerConfig: appRouter,
               builder: (context, child) {
-                final showUpdateOverlay = updateState == UpdateUiState.updating ||
-                    updateState == UpdateUiState.openingPlayStore;
+                final showUpdateOverlay =
+                    updateState == UpdateUiState.updating ||
+                        updateState == UpdateUiState.openingPlayStore;
                 return Stack(
                   children: <Widget>[
                     child ?? const SizedBox.shrink(),
@@ -653,13 +654,13 @@ class _UpdateProgressOverlay extends StatelessWidget {
                       ),
                     ],
                   ),
-                  ),
                 ),
               ),
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -689,6 +690,14 @@ String? resolveHomeWidgetRoute(Uri? uri) {
       return eventId.isNotEmpty
           ? '${AppRoutes.eventDetail}/$eventId'
           : AppRoutes.calendar;
+    case 'group-invite':
+      final groupId = uri.queryParameters['groupId']?.trim() ??
+          uri.queryParameters['group_id']?.trim() ??
+          '';
+      final token = uri.queryParameters['token']?.trim() ?? '';
+      return groupId.isNotEmpty && token.isNotEmpty
+          ? AppRoutes.groupInviteLinkFor(groupId: groupId, token: token)
+          : AppRoutes.groups;
   }
 
   if (uri.path == '/voice') {
