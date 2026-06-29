@@ -180,6 +180,46 @@ void main() {
     },
   );
 
+  testWidgets('SettingsScreen defers offscreen integration loads', (
+    tester,
+  ) async {
+    final calendarSyncService = _FakeCalendarSyncService(
+      summary: CalendarSyncSummary(
+        google: CalendarIntegrationResult.ready(CalendarProvider.google),
+        naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+      ),
+    );
+    final calendarAutoSyncService = _FakeCalendarAutoSyncService();
+    final naverCalDavService = _FakeNaverCalDavService(
+      initialHasCredentials: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settingsRepository: _FakeSettingsRepository(),
+          briefingSchedulerService: _FakeBriefingSchedulerService(),
+          calendarSyncService: calendarSyncService,
+          calendarAutoSyncService: calendarAutoSyncService,
+          notificationService: _FakeNotificationService(),
+          naverCalDavService: naverCalDavService,
+          userId: 'user-1',
+        ),
+      ),
+    );
+
+    expect(calendarSyncService.fetchStatusCallCount, 0);
+    expect(calendarAutoSyncService.loadSnapshotCallCount, 0);
+    expect(naverCalDavService.hasCredentialsCallCount, 0);
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(calendarSyncService.fetchStatusCallCount, 1);
+    expect(calendarAutoSyncService.loadSnapshotCallCount, 1);
+    expect(naverCalDavService.hasCredentialsCallCount, 1);
+  });
+
   testWidgets(
     'SettingsScreen toggles time format from the whole box and reloads it',
     (tester) async {
@@ -1477,11 +1517,15 @@ class _FakeNaverCalDavService extends NaverCalDavService {
   final bool initialHasCredentials;
   final Duration syncDelay;
   final NaverCalDavSyncResult syncResult;
+  int hasCredentialsCallCount = 0;
   int syncCallCount = 0;
   int clearCallCount = 0;
 
   @override
-  Future<bool> hasCredentials() async => initialHasCredentials;
+  Future<bool> hasCredentials() async {
+    hasCredentialsCallCount += 1;
+    return initialHasCredentials;
+  }
 
   @override
   Future<NaverCalDavConnectionResult> testConnection({

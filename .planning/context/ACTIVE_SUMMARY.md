@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-30 설정 탭 초기 렌더 지연 로딩
+- 설정 탭 진입 직후 캘린더 상태, 자동 동기화 스냅샷, 기기 캘린더 sync flag, Naver CalDAV 자격증명, 백업 조회가 동시에 시작되며 초기 프레임과 큰 설정 화면 재빌드에 섞이던 흐름을 첫 프레임 이후 다음 event turn으로 지연했다.
+- 초기 액션은 지연된 Naver CalDAV 상태 로딩 Future를 기다리도록 유지했고, `_loadCalendarStatus()`가 이미 로딩 상태일 때 불필요한 loading `setState`를 다시 만들지 않게 했다.
+- 검증: focused 지연 로딩 테스트 통과, `settings_screen_test.dart` 전체 통과, 변경 파일 analyzer 통과, `git diff --check` 통과. release APK 빌드는 guarded wrapper로 실행했으나 `android/key.properties` 부재로 실패했다.
+
 ## 2026-06-30 진단 로그 버튼 피드백 카드 이동
 - 설정 화면의 `진단 로그 보기` 버튼을 `앱 정보` 카드에서 `문제 신고 / 의견 보내기` 카드로 옮겼다.
 - 다이얼로그 진입 함수의 async context 경고를 별도 동기 표시 함수로 분리해 해소했다.

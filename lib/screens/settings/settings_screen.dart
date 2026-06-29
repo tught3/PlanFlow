@@ -220,19 +220,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     unawaited(_loadSettings());
     unawaited(_loadAppVersionInfo());
     unawaited(_loadWidgetDisplaySettings());
-    unawaited(_loadCalendarStatus());
-    unawaited(_loadAutoSyncSnapshot());
-    unawaited(_loadDeviceCalendarSyncedState());
-    final naverCalDavStateLoaded = _loadNaverCalDavState();
-    unawaited(naverCalDavStateLoaded);
+    final naverCalDavStateLoaded = _deferInitialSettingsLoads();
     if (widget._initialAction != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_runInitialAction(naverCalDavStateLoaded));
       });
-    }
-    if (AppEnv.isSupabaseReady) {
-      unawaited(_loadBackups(showSignedOutMessage: false));
-      unawaited(_ensureAutomaticBackup());
     }
     if (AppEnv.isSupabaseReady) {
       authProvider.addListener(_handleFeedbackAdminAuthChanged);
@@ -259,6 +251,37 @@ class _SettingsScreenState extends State<SettingsScreen>
     _autoSyncReloadDebounce?.cancel();
     _naverCalDavProgress.dispose();
     super.dispose();
+  }
+
+  Future<void> _deferInitialSettingsLoads() {
+    final completer = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Timer.run(() {
+        if (!mounted) {
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+          return;
+        }
+        unawaited(_loadCalendarStatus());
+        unawaited(_loadAutoSyncSnapshot());
+        unawaited(_loadDeviceCalendarSyncedState());
+        final naverCalDavStateLoaded = _loadNaverCalDavState();
+        unawaited(naverCalDavStateLoaded);
+        unawaited(
+          naverCalDavStateLoaded.whenComplete(() {
+            if (!completer.isCompleted) {
+              completer.complete();
+            }
+          }),
+        );
+        if (AppEnv.isSupabaseReady) {
+          unawaited(_loadBackups(showSignedOutMessage: false));
+          unawaited(_ensureAutomaticBackup());
+        }
+      });
+    });
+    return completer.future;
   }
 
   @override
@@ -515,9 +538,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _loadCalendarStatus() async {
     _logSettingsGoogleCalendar('loadCalendarStatus start');
     _logSettingsNaverCalendar('loadCalendarStatus start');
-    setState(() {
-      _isLoadingCalendarStatus = true;
-    });
+    if (!_isLoadingCalendarStatus) {
+      setState(() {
+        _isLoadingCalendarStatus = true;
+      });
+    }
     // prefs와 summary를 병렬 조회: summary만으로 덮어쓰면 레이스 조건에서
     // _loadDeviceCalendarSyncedState가 세운 true를 false로 되돌린다.
     final results = await Future.wait<Object?>([
