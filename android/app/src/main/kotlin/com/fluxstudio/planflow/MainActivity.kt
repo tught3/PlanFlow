@@ -47,6 +47,14 @@ class MainActivity : FlutterActivity() {
     private var currentLocationListener: LocationListener? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    override fun getInitialRoute(): String {
+        val data = intent?.data
+        if (data?.scheme == "planflow") {
+            return "/"
+        }
+        return super.getInitialRoute() ?: "/"
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         planFlowStt = PlanFlowSttChannel(this, flutterEngine)

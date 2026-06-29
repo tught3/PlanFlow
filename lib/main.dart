@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 import 'core/env.dart';
 import 'core/local_time.dart';
+import 'core/runtime_error_filter.dart';
 import 'core/supabase_auth_options.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
@@ -35,38 +35,6 @@ Future<void> main() async {
   unawaited(_initializePlatformServices());
 }
 
-/// 네트워크 단절(오프라인) 계열 예외인지 판별한다.
-/// Supabase/Postgrest는 호스트 조회 실패 시 SocketException 또는 http
-/// ClientException을 던지는데, 이는 앱 버그가 아니라 단말 네트워크 상태 문제다.
-bool _isNetworkError(Object? error) {
-  if (error is SocketException || error is TimeoutException) {
-    return true;
-  }
-  final text = error.toString();
-  return text.contains('SocketException') ||
-      text.contains('Failed host lookup') ||
-      text.contains('ClientException') ||
-      text.contains('Connection closed') ||
-      text.contains('Connection reset') ||
-      text.contains('Network is unreachable');
-}
-
-/// 앱 시작 직후/백그라운드 전환/엔진 detach 시 플랫폼 채널이 일시적으로 끊겨
-/// 발생하는 channel-error / MissingPluginException 계열인지 판별한다.
-/// 앱 버그가 아니라 일시적 환경 문제이므로 fatal로 집계하지 않는다.
-bool _isTransientChannelError(Object? error) {
-  if (error is MissingPluginException) {
-    return true;
-  }
-  final text = error.toString();
-  return text.contains('channel-error') ||
-      text.contains('Unable to establish connection on channel');
-}
-
-/// fatal 크래시로 집계하지 않을 비치명적 런타임 예외인지 판별한다.
-bool _isNonFatalRuntimeError(Object? error) =>
-    _isNetworkError(error) || _isTransientChannelError(error);
-
 Future<void> _initializePlatformServices() async {
   await Future.wait([
     _initializeFirebaseServices(),
@@ -82,9 +50,13 @@ Future<void> _initializeFirebaseServices() async {
     ).timeout(const Duration(seconds: 8));
     await RemoteConfigService.initialize();
     FlutterError.onError = (FlutterErrorDetails details) {
-      // 오프라인/네트워크 단절, 일시적 플랫폼 채널 단절은 사용자 환경 문제이지
-      // 앱 버그가 아니므로 fatal 크래시로 집계하지 않고 비치명적 이벤트로만 기록한다.
-      if (_isNonFatalRuntimeError(details.exception)) {
+      // 오프라인/네트워크 단절은 사용자 환경 문제라 Crashlytics 이슈로 보내지 않는다.
+      if (shouldDropFromCrashlytics(details.exception)) {
+        debugPrint('Dropped network runtime error: ${details.exception}');
+        return;
+      }
+      // 일시적 플랫폼 채널 단절은 fatal 크래시로 집계하지 않는다.
+      if (shouldReportNonFatalToCrashlytics(details.exception)) {
         debugPrint('Non-fatal runtime error: ${details.exception}');
         unawaited(
           FirebaseCrashlytics.instance
@@ -96,7 +68,11 @@ Future<void> _initializeFirebaseServices() async {
       unawaited(FirebaseCrashlytics.instance.recordFlutterFatalError(details));
     };
     PlatformDispatcher.instance.onError = (error, stack) {
-      final nonFatal = _isNonFatalRuntimeError(error);
+      if (shouldDropFromCrashlytics(error)) {
+        debugPrint('Dropped uncaught network error: $error');
+        return true;
+      }
+      final nonFatal = shouldReportNonFatalToCrashlytics(error);
       debugPrint('Uncaught platform error (fatal=${!nonFatal}): $error');
       unawaited(
         FirebaseCrashlytics.instance
