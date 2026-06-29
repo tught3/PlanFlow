@@ -168,6 +168,53 @@ class _FakeSttService extends SttService {
   }
 }
 
+class _StopPendingSttService extends _FakeSttService {
+  bool _stopPending = false;
+  final Completer<void> stopReleased = Completer<void>();
+
+  @override
+  Future<void> stopActiveListen() {
+    stopCalls += 1;
+    _stopPending = true;
+    if (_listenCompleter != null && !_listenCompleter!.isCompleted) {
+      _listenCompleter!.complete(SttListenResult.success(_latestText));
+    }
+    return stopReleased.future.whenComplete(() {
+      _stopPending = false;
+    });
+  }
+
+  @override
+  Future<void> cancelActiveListen() async {
+    _stopPending = false;
+    await super.cancelActiveListen();
+  }
+
+  @override
+  Future<SttListenResult> listen({
+    ValueChanged<String>? onPartialResult,
+    ValueChanged<int>? onRestart,
+    ValueChanged<SttNativeStatusEvent>? onStatus,
+    SttListenMode mode = SttListenMode.dictation,
+  }) {
+    if (_stopPending) {
+      listenCalls += 1;
+      return Future<SttListenResult>.value(
+        SttListenResult.failure(
+          failure: SttListenFailure.unavailable,
+          message: 'stale stop is still pending',
+        ),
+      );
+    }
+    return super.listen(
+      onPartialResult: onPartialResult,
+      onRestart: onRestart,
+      onStatus: onStatus,
+      mode: mode,
+    );
+  }
+}
+
 GoRoute _voiceConversationTestRoute() {
   return GoRoute(
     path: AppRoutes.voiceConversation,
@@ -1350,6 +1397,51 @@ void main() {
     expect(fakeStt.listenCalls, 2);
   });
 
+  testWidgets('일정확인에서 시스템 뒤로가기 후 남은 STT stop을 정리하고 재입력한다', (tester) async {
+    final fakeStt = _StopPendingSttService();
+    final router = GoRouter(
+      initialLocation: AppRoutes.voice,
+      routes: [
+        GoRoute(
+          path: AppRoutes.voice,
+          builder: (context, state) => VoiceInputScreen(
+            autoStartOverride: false,
+            sttService: fakeStt,
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.confirm,
+          builder: (context, state) => TextButton(
+            onPressed: () => context.pop(),
+            child: const Text('뒤로가기'),
+          ),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+    fakeStt.emitPartial('내일 9시 병원');
+    await tester.pump();
+
+    await tester.tap(find.text('완료'));
+    await tester.pumpAndSettle();
+    expect(find.text('뒤로가기'), findsOneWidget);
+    expect(fakeStt.stopCalls, 1);
+
+    await tester.tap(find.text('뒤로가기'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('voice-primary-button')));
+    await tester.pump();
+
+    expect(fakeStt.cancelCalls, greaterThanOrEqualTo(1));
+    expect(fakeStt.listenCalls, 2);
+    expect(find.text('완료'), findsOneWidget);
+  });
+
   testWidgets('듣는 중 텍스트를 탭하면 자동 제출 대신 키보드 수정으로 전환한다', (tester) async {
     final fakeStt = _FakeSttService();
     final router = GoRouter(
@@ -2102,7 +2194,6 @@ void main() {
     );
   });
 
-
   testWidgets('?? ?? ? ???? ?? ??? ?? ?? ???', (tester) async {
     final router = GoRouter(
       initialLocation: AppRoutes.voice,
@@ -2144,5 +2235,4 @@ void main() {
     expect(textField.controller?.text, isEmpty);
     expect(find.text('?? ?? 7?? ??? ??? ??'), findsNothing);
   });
-
 }

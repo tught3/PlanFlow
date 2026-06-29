@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-29 음성 확인 뒤로가기 후 재입력 STT 복구
+- 음성 입력 완료 버튼이 `stopActiveListen()`을 백그라운드로 실행한 채 일정 확인 화면으로 이동한 뒤, 저장하지 않고 시스템 뒤로가기/null pop으로 돌아오면 남은 STT stop 상태 때문에 다음 음성 입력이 즉시 실패할 수 있었다.
+- `VoiceInputScreen`의 route 복귀 처리에서 confirm/voice action/conversation 복귀 시 잔여 STT listen을 먼저 cancel로 정리한 뒤 warm-up과 텍스트/제출 가드 리셋을 수행하도록 분리했다.
+- 검증: 새 회귀 테스트 RED→GREEN, `voice_input_screen_test.dart` 전체 통과, 변경 파일 analyzer 통과, `git diff --check` 통과.
+
 ## 2026-06-29 브리핑 알람 미발생 진단 로그 보강
 - 103 기기 실측에서 `com.fluxstudio.planflow.v2` 브리핑/보조 알람은 Android `dumpsys alarm` 대기열에 존재했고, 일부 non-wakeup 백그라운드 알람은 `Pending user blocked background alarms`에 남아 있었다. 알림 채널 블록은 앱 설정만 있고 채널 목록이 비어 있어 다음 재현 시 채널/스케줄 실패 원인을 더 직접적으로 봐야 한다.
 - 브리핑 알람 콜백의 `catch (_)`를 제거해 background isolate 실패를 `BriefingAlarm callback failed...`로 남기고, 브리핑 시작 알림은 실제 `scheduleEventReminderWithResult` 결과(`scheduled`/`permissionBlocked`/`error`)를 진단 로그에 기록하도록 바꿨다.

@@ -769,40 +769,57 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
       return;
     }
     unawaited(
-      context.push<Object?>(location, extra: extra).then((result) {
-        if (!mounted) {
-          return;
-        }
-        // 일정확인 등에서 돌아오면 다음 음성 입력에 대비해 STT 엔진을 미리 깨운다.
-        // (재입력 시 엔진 재초기화로 생기던 텀을 줄임)
-        unawaited(widget.sttService.warmUp());
-        // confirm에서 'cancelled'로 돌아온 경우 텍스트를 유지해 재편집·재제출 허용.
-        // 저장 완료(context.go(home))나 기타 pop은 리셋.
-        final shouldResetTranscript =
-            (location == AppRoutes.confirm && result != 'cancelled') ||
+      context
+          .push<Object?>(location, extra: extra)
+          .then((result) => _handleVoiceRouteReturned(location, result)),
+    );
+  }
+
+  Future<void> _handleVoiceRouteReturned(
+      String location, Object? result) async {
+    if (!mounted) {
+      return;
+    }
+    if (_shouldCancelResidualListenOnReturn(location)) {
+      await widget.sttService.cancelActiveListen();
+      if (!mounted) {
+        return;
+      }
+    }
+    // 일정확인 등에서 돌아오면 다음 음성 입력에 대비해 STT 엔진을 미리 깨운다.
+    // (재입력 시 엔진 재초기화로 생기던 텀을 줄임)
+    unawaited(widget.sttService.warmUp());
+    // confirm에서 'cancelled'로 돌아온 경우 텍스트를 유지해 재편집·재제출 허용.
+    // 저장 완료(context.go(home))나 기타 pop은 리셋.
+    final shouldResetTranscript =
+        (location == AppRoutes.confirm && result != 'cancelled') ||
             location == AppRoutes.voiceAction ||
             (_isVoiceConversationRoute(location) &&
                 result == voiceConversationClosedResult);
-        if (shouldResetTranscript) {
-          _resetTranscriptForFreshVoiceInput();
-          if (_isVoiceConversationRoute(location) &&
-              result == voiceConversationClosedResult) {
-            setState(() {
-              _statusMessage = _voiceConversationClosedMessage;
-            });
-          } else {
-            setState(() {
-              _statusMessage = null;
-            });
-          }
-        }
-        _resetVoiceCommandSubmitGuard(clearSignature: true);
-        // confirm 취소 등으로 트랜스크립트 텍스트를 유지하더라도, 이전 파싱의
-        // stale draft 캐시는 항상 비운다. (안 비우면 같은 텍스트 재입력 시
-        // _preparedDraftForCurrentText가 옛 draft를 반환해 제목/장소가 오염됨)
-        _clearPreparedDraft();
-      }),
-    );
+    if (shouldResetTranscript) {
+      _resetTranscriptForFreshVoiceInput();
+      if (_isVoiceConversationRoute(location) &&
+          result == voiceConversationClosedResult) {
+        setState(() {
+          _statusMessage = _voiceConversationClosedMessage;
+        });
+      } else {
+        setState(() {
+          _statusMessage = null;
+        });
+      }
+    }
+    _resetVoiceCommandSubmitGuard(clearSignature: true);
+    // confirm 취소 등으로 트랜스크립트 텍스트를 유지하더라도, 이전 파싱의
+    // stale draft 캐시는 항상 비운다. (안 비우면 같은 텍스트 재입력 시
+    // _preparedDraftForCurrentText가 옛 draft를 반환해 제목/장소가 오염됨)
+    _clearPreparedDraft();
+  }
+
+  bool _shouldCancelResidualListenOnReturn(String location) {
+    return location == AppRoutes.confirm ||
+        location == AppRoutes.voiceAction ||
+        _isVoiceConversationRoute(location);
   }
 
   bool _isVoiceConversationRoute(String location) {
@@ -1037,7 +1054,6 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
     // 정밀 일정 파싱은 확인 화면에서 로더와 함께 처리된다.
     return _detectCommandAction(text);
   }
-
 
   _VoiceCommandAction _actionFromRouteIntent(VoiceCommandRouteIntent intent) {
     return switch (intent) {
