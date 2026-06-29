@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-30 음성 확인 저장 후 알림 예약 실패 노출
+- 음성 일정 확인 화면에서 저장 성공 후 로컬 일정 알림/중요 알람 예약이 백그라운드 후속작업 안에서 조용히 실패할 수 있던 흐름을 분리했다.
+- 저장 직후 `scheduleEventReminderWithResult`/`scheduleCriticalAlarmWithResult` 결과를 즉시 확인하고, 권한 차단/예약 오류는 DiagLogger와 사용자 경고 메시지로 남긴다. 스마트 준비/출발 알림/위젯/외부 동기화는 기존처럼 백그라운드 후속작업으로 유지했다.
+- 검증: focused `confirm_screen_test` 2건(알림 예약 실패 노출, 중요 알람 예약) 통과, 변경 파일 analyzer 통과, `git diff --check` 통과.
+
 ## 2026-06-29 음성 확인 뒤로가기 후 재입력 STT 복구
 - 음성 입력 완료 버튼이 `stopActiveListen()`을 백그라운드로 실행한 채 일정 확인 화면으로 이동한 뒤, 저장하지 않고 시스템 뒤로가기/null pop으로 돌아오면 남은 STT stop 상태 때문에 다음 음성 입력이 즉시 실패할 수 있었다.
 - `VoiceInputScreen`의 route 복귀 처리에서 confirm/voice action/conversation 복귀 시 잔여 STT listen을 먼저 cancel로 정리한 뒤 warm-up과 텍스트/제출 가드 리셋을 수행하도록 분리했다.
