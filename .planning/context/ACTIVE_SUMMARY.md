@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-30 진단 로그 버튼 피드백 카드 이동
+- 설정 화면의 `진단 로그 보기` 버튼을 `앱 정보` 카드에서 `문제 신고 / 의견 보내기` 카드로 옮겼다.
+- 다이얼로그 진입 함수의 async context 경고를 별도 동기 표시 함수로 분리해 해소했다.
+- 검증: `scripts/flutter-local.ps1 test test/screens/settings_screen_test.dart --no-pub -r compact` 통과, `scripts/flutter-local.ps1 analyze lib/screens/settings/settings_screen.dart lib/screens/settings/feedback_report_sheet.dart test/screens/settings_screen_test.dart test/screens/feedback_report_sheet_test.dart --no-pub` 통과, release APK 재빌드 후 S23 설치 및 실행 확인.
+
 ## 2026-06-30 설정 화면 진단 로그/음성 진입 위치 정리 및 시간 표시 저장 복구
 - 설정 화면의 진단 로그 카드를 없애고, `앱 정보` 줄 오른쪽에 `진단 로그 보기` 버튼을 붙였다. `음성으로 일정 관리` 진입 버튼은 설정 하단의 `시간 표시 형식` 카드 안으로 옮겨서 더 이상 마지막 섹션을 가리지 않게 했다.
 - `시간 표시 형식`은 카드 전체를 탭해도 토글되도록 바꾸고, 저장 경로가 `use_24_hour_format`을 빠뜨리지 않도록 `SettingsRepository` 선택 컬럼을 보강했다. 모델/리포지토리 회귀 테스트와 설정 화면 회귀 테스트를 같이 맞췄다.

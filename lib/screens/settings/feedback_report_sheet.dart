@@ -338,6 +338,7 @@ class FeedbackReportSection extends StatelessWidget {
   const FeedbackReportSection({
     super.key,
     required this.onPressed,
+    this.onOpenDiagnosticLog,
     this.onOpenBetaSurvey,
     this.onOpenAdminInbox,
     this.newAdminReportCount,
@@ -345,6 +346,7 @@ class FeedbackReportSection extends StatelessWidget {
   });
 
   final VoidCallback onPressed;
+  final VoidCallback? onOpenDiagnosticLog;
   final VoidCallback? onOpenBetaSurvey;
   final VoidCallback? onOpenAdminInbox;
   final int? newAdminReportCount;
@@ -390,6 +392,15 @@ class FeedbackReportSection extends StatelessWidget {
               icon: const Icon(Icons.feedback_outlined),
               label: const Text('문제 신고하기'),
             ),
+            if (onOpenDiagnosticLog != null) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                key: const ValueKey('settings-diagnostic-log-button'),
+                onPressed: onOpenDiagnosticLog,
+                icon: const Icon(Icons.bug_report_outlined),
+                label: const Text('진단 로그 보기'),
+              ),
+            ],
             if (onOpenBetaSurvey != null) ...[
               const SizedBox(height: 8),
               FilledButton.icon(
