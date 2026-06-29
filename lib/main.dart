@@ -42,13 +42,14 @@ bool _isNetworkError(Object? error) {
   if (error is SocketException || error is TimeoutException) {
     return true;
   }
-  final text = error.toString();
-  return text.contains('SocketException') ||
-      text.contains('Failed host lookup') ||
-      text.contains('ClientException') ||
-      text.contains('Connection closed') ||
-      text.contains('Connection reset') ||
-      text.contains('Network is unreachable');
+  final text = error.toString().toLowerCase();
+  return text.contains('socketexception') ||
+      text.contains('failed host lookup') ||
+      text.contains('host lookup') ||
+      text.contains('clientexception') ||
+      text.contains('connection closed') ||
+      text.contains('connection reset') ||
+      text.contains('network is unreachable');
 }
 
 /// 앱 시작 직후/백그라운드 전환/엔진 detach 시 플랫폼 채널이 일시적으로 끊겨
@@ -64,7 +65,8 @@ bool _isTransientChannelError(Object? error) {
 }
 
 /// fatal 크래시로 집계하지 않을 비치명적 런타임 예외인지 판별한다.
-bool _isNonFatalRuntimeError(Object? error) =>
+@visibleForTesting
+bool isNonFatalRuntimeError(Object? error) =>
     _isNetworkError(error) || _isTransientChannelError(error);
 
 Future<void> _initializePlatformServices() async {
@@ -84,7 +86,7 @@ Future<void> _initializeFirebaseServices() async {
     FlutterError.onError = (FlutterErrorDetails details) {
       // 오프라인/네트워크 단절, 일시적 플랫폼 채널 단절은 사용자 환경 문제이지
       // 앱 버그가 아니므로 fatal 크래시로 집계하지 않고 비치명적 이벤트로만 기록한다.
-      if (_isNonFatalRuntimeError(details.exception)) {
+      if (isNonFatalRuntimeError(details.exception)) {
         debugPrint('Non-fatal runtime error: ${details.exception}');
         unawaited(
           FirebaseCrashlytics.instance
@@ -96,7 +98,7 @@ Future<void> _initializeFirebaseServices() async {
       unawaited(FirebaseCrashlytics.instance.recordFlutterFatalError(details));
     };
     PlatformDispatcher.instance.onError = (error, stack) {
-      final nonFatal = _isNonFatalRuntimeError(error);
+      final nonFatal = isNonFatalRuntimeError(error);
       debugPrint('Uncaught platform error (fatal=${!nonFatal}): $error');
       unawaited(
         FirebaseCrashlytics.instance

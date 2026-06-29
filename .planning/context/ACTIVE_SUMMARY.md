@@ -1,4 +1,10 @@
 # ACTIVE SUMMARY
+## 2026-06-29 TASK_20260629_011136 Crashlytics 비정상 종료 2건 방어
+- Postgrest host lookup/SocketException 계열은 Crashlytics fatal이 아닌 non-fatal runtime error로 분류하도록 `main.dart`의 네트워크 오류 판정을 소문자 기반으로 보강하고 테스트 가능하게 공개했다.
+- 앱 시작/복귀의 session/calendar sync 전체를 catch로 감싸 Supabase/Postgrest 네트워크 예외가 unawaited Future 밖으로 새지 않게 했다.
+- GoRouter 13.2.5가 custom-scheme URI의 empty path에서 `Uri.origin`을 호출해 예외를 던지는 경로를 피하려고, 플랫폼 route information의 `planflow://` 입력을 앱 내부 route로 정규화/소비하는 observer guard를 추가했다.
+- 검증: `flutter analyze lib\app.dart lib\main.dart test\app_home_widget_route_test.dart test\main_runtime_error_test.dart --no-pub` 통과, `flutter test test\app_home_widget_route_test.dart test\main_runtime_error_test.dart --no-pub -r compact` 통과. 전체 `flutter analyze --no-pub`는 기존 `settings_screen_test.dart` fake override 및 기존 unused/info 이슈로 실패했다. release APK 빌드는 `android/key.properties` 부재로 실패했다.
+
 ## 2026-06-29 포그라운드 브리핑 모달 SharedPreferences 브리지 보강
 - `android_alarm_manager_plus` 알람 콜백이 별도 FlutterEngine/Dart VM에서 실행되어 `IsolateNameServer` 포트가 메인 앱에 닿지 않는 문제를 이어받아, SharedPreferences pending modal 브리지의 경계 조건을 보강했다.
 - pending modal은 앱이 실제 foreground일 때만 소비하고, background 상태에서는 키를 유지한다. 앱 시작/복귀 직후에는 2초 폴링을 기다리지 않고 즉시 pending modal을 확인한다.

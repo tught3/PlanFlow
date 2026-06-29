@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -53,6 +54,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       CalendarAutoSyncService();
   final NaverIcsShareStore _naverIcsShareStore = const NaverIcsShareStore();
   final NotificationService _notificationService = NotificationService();
+  final _PlatformRouteInformationGuard _routeInformationGuard =
+      _PlatformRouteInformationGuard();
   late final AppLifecycleListener _lifecycleListener;
   String? _pendingHomeWidgetRoute;
   int _homeWidgetRouteGeneration = 0;
@@ -79,6 +82,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _foregroundBriefingSubscription = BriefingSchedulerService
         .foregroundBriefingStream
         .listen(_showForegroundBriefingDialog);
+    WidgetsBinding.instance.addObserver(_routeInformationGuard);
     unawaited(_markForegroundAndCheckPendingBriefing());
     // alarm_service의 알람 콜백은 별도 Dart VM에서 실행되므로 IsolateNameServer가
     // 작동하지 않는다. SharedPreferences pending key를 2초마다 확인해 모달로 전환한다.
@@ -142,21 +146,26 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   Future<void> _syncSessionAndCalendar({required String reason}) async {
-    if (!await _waitForInitialAuthResolution()) {
-      return;
+    try {
+      if (!await _waitForInitialAuthResolution()) {
+        return;
+      }
+      final signedIn = await authProvider.syncCurrentSession();
+      if (!signedIn) {
+        return;
+      }
+      await _syncRegionSettings();
+      unawaited(_runChannelMigrations());
+      final pendingIcsPaths = await _naverIcsShareStore.takePendingPaths();
+      if (pendingIcsPaths.isNotEmpty) {
+        appRouter.go(AppRoutes.naverIcsImport, extra: pendingIcsPaths);
+        return;
+      }
+      await _calendarAutoSyncService.syncConnectedCalendars(reason: reason);
+    } catch (error, stackTrace) {
+      debugPrint('Session/calendar sync skipped: $reason $error');
+      debugPrintStack(stackTrace: stackTrace);
     }
-    final signedIn = await authProvider.syncCurrentSession();
-    if (!signedIn) {
-      return;
-    }
-    await _syncRegionSettings();
-    unawaited(_runChannelMigrations());
-    final pendingIcsPaths = await _naverIcsShareStore.takePendingPaths();
-    if (pendingIcsPaths.isNotEmpty) {
-      appRouter.go(AppRoutes.naverIcsImport, extra: pendingIcsPaths);
-      return;
-    }
-    await _calendarAutoSyncService.syncConnectedCalendars(reason: reason);
   }
 
   Future<void> _runChannelMigrations() async {
@@ -406,6 +415,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     _sharedIcsSubscription?.cancel();
     _foregroundBriefingSubscription?.cancel();
     _foregroundBriefingPollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(_routeInformationGuard);
     unawaited(_oauthCallbackHandler.dispose());
     unawaited(BriefingSchedulerService.recordAppForegroundState(false));
     _lifecycleListener.dispose();
@@ -596,8 +606,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
           return;
         }
         final current = appRouter.routeInformationProvider.value.uri;
-        final expected = Uri.parse(route);
-        if (current.path == expected.path) {
+        if (routePathMatchesExpectedRoute(current, route)) {
           _pendingHomeWidgetRoute = null;
           unawaited(
             Future<void>.delayed(const Duration(milliseconds: 700), () {
@@ -781,4 +790,46 @@ String? resolveHomeWidgetRoute(Uri? uri) {
     return '${AppRoutes.calendar}$query';
   }
   return null;
+}
+
+@visibleForTesting
+bool routePathMatchesExpectedRoute(Uri current, String expectedRoute) {
+  try {
+    final expected = Uri.parse(expectedRoute);
+    return current.path == expected.path;
+  } catch (_) {
+    return false;
+  }
+}
+
+@visibleForTesting
+String? normalizePlatformRouteInformation(Uri uri) {
+  if (uri.scheme == 'planflow') {
+    if (uri.host == 'auth-callback') {
+      return null;
+    }
+    return resolveHomeWidgetRoute(uri);
+  }
+  return null;
+}
+
+class _PlatformRouteInformationGuard extends WidgetsBindingObserver {
+  @override
+  Future<bool> didPushRouteInformation(RouteInformation routeInformation) {
+    final uri = routeInformation.uri;
+    final route = normalizePlatformRouteInformation(uri);
+    if (route != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        appRouter.go(route);
+      });
+      return SynchronousFuture<bool>(true);
+    }
+
+    if (uri.scheme.isNotEmpty &&
+        uri.scheme != 'http' &&
+        uri.scheme != 'https') {
+      return SynchronousFuture<bool>(true);
+    }
+    return SynchronousFuture<bool>(false);
+  }
 }

@@ -47,4 +47,36 @@ void main() {
       '${AppRoutes.eventDetail}/event-456',
     );
   });
+
+  test('routePathMatchesExpectedRoute does not throw for custom-scheme URI',
+      () {
+    expect(
+      routePathMatchesExpectedRoute(
+        Uri.parse('planflow://voice-launcher'),
+        AppRoutes.voice,
+      ),
+      isFalse,
+    );
+  });
+
+  test('normalizePlatformRouteInformation maps app scheme before GoRouter', () {
+    expect(
+      normalizePlatformRouteInformation(
+        Uri.parse('planflow://voice-launcher'),
+      ),
+      '${AppRoutes.voice}?autoStart=1',
+    );
+    expect(
+      normalizePlatformRouteInformation(
+        Uri.parse('planflow://auth-callback?code=sample'),
+      ),
+      isNull,
+    );
+    expect(
+      normalizePlatformRouteInformation(
+        Uri.parse('https://example.com/calendar'),
+      ),
+      isNull,
+    );
+  });
 }
