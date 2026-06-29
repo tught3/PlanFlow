@@ -2061,7 +2061,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         travelMode: _travelMode,
         voiceAutoStart: _voiceAutoStart,
         voiceCorrectionLearningEnabled: _voiceCorrectionLearningEnabled,
-        voiceCommonLearningOptIn: _voiceCommonLearningOptIn,
+        voiceCommonLearningOptIn:
+            _voiceCorrectionLearningEnabled && _voiceCommonLearningOptIn,
         preferredMapProvider: _preferredMapProvider,
         countryCode: _countryCode,
         localeCode: _localeCode,
@@ -2508,7 +2509,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     _travelMode = settings.travelMode;
     _voiceAutoStart = settings.voiceAutoStart;
     _voiceCorrectionLearningEnabled = settings.voiceCorrectionLearningEnabled;
-    _voiceCommonLearningOptIn = settings.voiceCommonLearningOptIn;
+    _voiceCommonLearningOptIn = settings.voiceCorrectionLearningEnabled &&
+        settings.voiceCommonLearningOptIn;
     _preferredMapProvider = settings.preferredMapProvider;
     final region = PlanFlowRegions.byLocaleAndTimeZone(
       countryCode: settings.countryCode,
@@ -2772,7 +2774,28 @@ class _SettingsScreenState extends State<SettingsScreen>
                   fontWeight: FontWeight.w600,
                 ),
           ),
+          const SizedBox(height: 12),
+          _buildExternalCalendarNotificationNotice(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildExternalCalendarNotificationNotice() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: PlanFlowColors.primaryFaint.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: PlanFlowColors.primaryFaint),
+      ),
+      child: Text(
+        '알림은 PlanFlow 기준으로 울립니다. 외부 캘린더 앱의 기본 알림이 켜져 있으면 해당 앱에서도 알림이 울릴 수 있어요.',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: PlanFlowColors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
       ),
     );
   }
@@ -3122,27 +3145,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: PlanFlowColors.primaryFaint.withValues(
-                            alpha: 0.42,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: PlanFlowColors.primaryFaint,
-                          ),
-                        ),
-                        child: Text(
-                          '알림은 PlanFlow 기준으로 울립니다. 외부 캘린더 앱의 기본 알림이 켜져 있으면 해당 앱에서도 알림이 울릴 수 있어요.',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: PlanFlowColors.textPrimary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
                       _StatusRow(
                         label: 'Google Calendar',
                         value: _googleCalendarSimpleStatusLabel(),
@@ -3828,4 +3830,3 @@ class _SettingsScreenState extends State<SettingsScreen>
     };
   }
 }
-

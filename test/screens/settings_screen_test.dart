@@ -940,6 +940,121 @@ void main() {
     expect(find.text('알림 권한 요청/재확인'), findsNothing);
   });
 
+  testWidgets(
+    'SettingsScreen places external calendar notification notice with smart alarms',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 2200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: _FakeSettingsRepository(),
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+              ),
+            ),
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      final smartAlarmTitle = find.text('스마트 출발 알림 설정');
+      final notice = find.text(
+        '알림은 PlanFlow 기준으로 울립니다. 외부 캘린더 앱의 기본 알림이 켜져 있으면 해당 앱에서도 알림이 울릴 수 있어요.',
+      );
+      final calendarSyncTitle = find.text('캘린더 연동');
+
+      expect(smartAlarmTitle, findsOneWidget);
+      expect(notice, findsOneWidget);
+      expect(calendarSyncTitle, findsOneWidget);
+      expect(
+        tester.getTopLeft(notice).dy,
+        greaterThan(tester.getTopLeft(smartAlarmTitle).dy),
+      );
+      expect(
+        tester.getTopLeft(notice).dy,
+        lessThan(tester.getTopLeft(calendarSyncTitle).dy),
+      );
+    },
+  );
+
+  testWidgets(
+    'SettingsScreen disables and clears common learning when correction learning is off',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 2200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final settingsRepository = _FakeSettingsRepository(
+        fetched: const UserSettingsModel(
+          id: 'settings-1',
+          userId: 'user-1',
+          voiceCorrectionLearningEnabled: true,
+          voiceCommonLearningOptIn: false,
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: settingsRepository,
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+              ),
+            ),
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      final commonToggle = find.byKey(
+        const ValueKey('settings-voice-common-learning-opt-in'),
+      );
+      await _scrollUntilHitTestable(tester, commonToggle);
+      await tester.tap(commonToggle);
+      await tester.pumpAndSettle();
+      expect(
+        settingsRepository.savedSettings?.voiceCommonLearningOptIn,
+        isTrue,
+      );
+
+      final correctionToggle = find.byKey(
+        const ValueKey('settings-voice-correction-learning-enabled'),
+      );
+      await tester.tap(correctionToggle);
+      await tester.pumpAndSettle();
+
+      final commonTile = tester.widget<SwitchListTile>(commonToggle);
+      expect(commonTile.value, isFalse);
+      expect(commonTile.onChanged, isNull);
+      expect(
+        settingsRepository.savedSettings?.voiceCorrectionLearningEnabled,
+        isFalse,
+      );
+      expect(
+        settingsRepository.savedSettings?.voiceCommonLearningOptIn,
+        isFalse,
+      );
+    },
+  );
+
   testWidgets('SettingsScreen uses requested button colors', (tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1113,6 +1228,7 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
   Future<BriefingDailyScheduleResult> scheduleDaily({
     required String morningTime,
     required String eveningTime,
+    bool briefingEnabled = true,
     String? userId,
   }) async {
     callCount += 1;

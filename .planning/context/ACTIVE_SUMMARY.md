@@ -1,4 +1,9 @@
 # ACTIVE SUMMARY
+## 2026-06-30 설정 알림 안내 위치와 익명 개선 참여 저장 보정
+- 설정 탭의 외부 캘린더 알림 중복 안내를 캘린더 연동 카드 내부에서 스마트 출발 알림 설정 카드 말미로 옮겨 PlanFlow 알림 설정 문맥에 맞췄다.
+- `익명 공통 개선 참여`는 `내 교정 패턴 사용`이 꺼진 상태에서는 로드/저장 모두 false로 정규화해 공통 개선 opt-in이 단독으로 남지 않게 했다.
+- 검증: focused `settings_screen_test` 2건 통과, 변경 파일 analyzer 통과, `git diff --check` 통과. 릴리즈 APK 빌드는 `android/key.properties` 부재로 Gradle 단계에서 실패했다.
+
 ## 2026-06-30 음성 확인 저장 후 알림 예약 실패 노출
 - 음성 일정 확인 화면에서 저장 성공 후 로컬 일정 알림/중요 알람 예약이 백그라운드 후속작업 안에서 조용히 실패할 수 있던 흐름을 분리했다.
 - 저장 직후 `scheduleEventReminderWithResult`/`scheduleCriticalAlarmWithResult` 결과를 즉시 확인하고, 권한 차단/예약 오류는 DiagLogger와 사용자 경고 메시지로 남긴다. 스마트 준비/출발 알림/위젯/외부 동기화는 기존처럼 백그라운드 후속작업으로 유지했다.
