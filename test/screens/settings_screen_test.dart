@@ -125,8 +125,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('계정'), findsOneWidget);
-      expect(find.text('06:40'), findsWidgets);
-      expect(find.text('20:20'), findsWidgets);
+      expect(find.text('모닝 브리핑'), findsOneWidget);
+      expect(find.text('이브닝 브리핑'), findsOneWidget);
       expect(find.text('기본 알림'), findsNothing);
       expect(find.text('저장'), findsNothing);
       expect(find.text('변경 즉시 적용'), findsNothing);
@@ -145,12 +145,128 @@ void main() {
       await _scrollUntilHitTestable(tester, feedbackButton);
       expect(find.text('문제 신고 / 의견 보내기'), findsOneWidget);
       expect(feedbackButton, findsOneWidget);
+      expect(find.byKey(const ValueKey('settings-diagnostic-log-button')),
+          findsOneWidget);
+      final feedbackCard = find.ancestor(
+        of: feedbackButton,
+        matching: find.byType(Card),
+      );
+      expect(
+        find.descendant(
+          of: feedbackCard,
+          matching: find.text('문제 신고 / 의견 보내기'),
+        ),
+        findsOneWidget,
+      );
       final versionLabel = find.byKey(
         const ValueKey('settings-app-version-label'),
       );
       await _scrollUntilHitTestable(tester, versionLabel);
+      final appInfoCard = find.ancestor(
+        of: versionLabel,
+        matching: find.byType(Card),
+      );
+      expect(
+        find.descendant(
+          of: appInfoCard,
+          matching: find.byKey(
+            const ValueKey('settings-diagnostic-log-button'),
+          ),
+        ),
+        findsNothing,
+      );
       expect(find.text('버전 1.1.0 (빌드 3)'), findsOneWidget);
       expect(settingsRepository.fetchUserIds.single, 'user-1');
+    },
+  );
+
+  testWidgets(
+    'SettingsScreen toggles time format from the whole box and reloads it',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final settingsRepository = _FakeSettingsRepository(
+        fetched: const UserSettingsModel(
+          id: 'settings-1',
+          userId: 'user-1',
+          use24HourFormat: false,
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: settingsRepository,
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.signedOut(
+                  CalendarProvider.naver,
+                ),
+              ),
+            ),
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      final timeFormatToggle = find.byKey(
+        const ValueKey('settings-time-format-toggle'),
+      );
+      await _scrollUntilHitTestable(tester, timeFormatToggle);
+      final timeFormatCard = find.ancestor(
+        of: timeFormatToggle,
+        matching: find.byType(Card),
+      );
+      expect(
+        find.descendant(
+          of: timeFormatCard,
+          matching: find.byType(OutlinedButton),
+        ),
+        findsOneWidget,
+      );
+
+      expect(find.text('12시간제 (오후 2:30)'), findsOneWidget);
+
+      await tester.tap(timeFormatToggle.hitTestable().first);
+      await tester.pumpAndSettle();
+
+      expect(settingsRepository.savedSettings, isNotNull);
+      expect(settingsRepository.savedSettings!.use24HourFormat, isTrue);
+      expect(find.text('24시간제 (14:30)'), findsOneWidget);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            settingsRepository: settingsRepository,
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.signedOut(
+                  CalendarProvider.naver,
+                ),
+              ),
+            ),
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+      await _scrollUntilHitTestable(tester, timeFormatToggle);
+      expect(find.text('24시간제 (14:30)'), findsOneWidget);
     },
   );
 
@@ -1108,14 +1224,14 @@ Future<void> _scrollUntilHitTestable(
 class _FakeSettingsRepository extends SettingsRepository {
   _FakeSettingsRepository({this.fetched});
 
-  final UserSettingsModel? fetched;
+  UserSettingsModel? fetched;
   UserSettingsModel? savedSettings;
   final List<String> fetchUserIds = <String>[];
 
   @override
   Future<UserSettingsModel?> fetchSettings(String userId) async {
     fetchUserIds.add(userId);
-    return fetched;
+    return savedSettings ?? fetched;
   }
 
   @override

@@ -20,6 +20,8 @@ void main() {
         'voice_correction_learning_enabled': false,
         'voice_common_learning_opt_in': true,
         'preferred_map_provider': 'google',
+        'briefing_enabled': true,
+        'use_24_hour_format': true,
         'google_calendar_token': 'google-token',
         'naver_calendar_token': 'naver-token',
         'created_at': '2026-05-02T00:00:00Z',
@@ -44,6 +46,8 @@ void main() {
     expect(settings.voiceCorrectionLearningEnabled, isFalse);
     expect(settings.voiceCommonLearningOptIn, isTrue);
     expect(settings.preferredMapProvider, 'google');
+    expect(settings.briefingEnabled, isTrue);
+    expect(settings.use24HourFormat, isTrue);
     expect(settings.googleCalendarToken, 'google-token');
     expect(settings.naverCalendarToken, 'naver-token');
     expect(settings.createdAt, DateTime.parse('2026-05-02T00:00:00Z'));
@@ -68,6 +72,8 @@ void main() {
         'voice_correction_learning_enabled': true,
         'voice_common_learning_opt_in': false,
         'preferred_map_provider': 'tmap',
+        'briefing_enabled': false,
+        'use_24_hour_format': true,
         'created_at': '2026-05-02T01:00:00Z',
       },
     );
@@ -89,6 +95,8 @@ void main() {
         voiceCorrectionLearningEnabled: true,
         voiceCommonLearningOptIn: false,
         preferredMapProvider: 'tmap',
+        briefingEnabled: false,
+        use24HourFormat: true,
       ),
     );
 
@@ -114,11 +122,15 @@ void main() {
       isFalse,
     );
     expect(gateway.upsertPayloads.single['preferred_map_provider'], 'tmap');
+    expect(gateway.upsertPayloads.single['briefing_enabled'], isFalse);
+    expect(gateway.upsertPayloads.single['use_24_hour_format'], isTrue);
     expect(saved.travelMode, 'transit');
     expect(saved.voiceAutoStart, isFalse);
     expect(saved.voiceCorrectionLearningEnabled, isTrue);
     expect(saved.voiceCommonLearningOptIn, isFalse);
     expect(saved.preferredMapProvider, 'tmap');
+    expect(saved.briefingEnabled, isFalse);
+    expect(saved.use24HourFormat, isTrue);
     expect(saved.prepTimeMin, 45);
     expect(saved.prepPreAlarmOffset, 10);
     expect(saved.departPreAlarmOffset, 30);

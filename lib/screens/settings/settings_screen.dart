@@ -39,7 +39,6 @@ import '../../services/naver_caldav_service.dart';
 import '../../services/notification_service.dart';
 import '../../core/diag_logger.dart';
 import '../../widgets/planflow_logo.dart';
-import '../../widgets/planflow_voice_fab.dart';
 import '../../l10n/app_l10n.dart';
 import 'beta_survey_sheet.dart';
 import 'feedback_report_sheet.dart';
@@ -2530,9 +2529,63 @@ class _SettingsScreenState extends State<SettingsScreen>
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _setUse24HourFormat(bool value) {
+    if (_use24HourFormat == value) {
+      return;
+    }
+    setState(() {
+      _use24HourFormat = value;
+    });
+    TimeFormatController.instance.setUse24HourFormat(value);
+    unawaited(_persistSettings());
+  }
+
+  Future<void> _showDiagnosticLogDialog() async {
+    String preflightHeader;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final last = prefs.getString(departurePreflightLastRunKey);
+      preflightHeader = last != null
+          ? '[출발 preflight 마지막 실행]\n$last\n\n'
+          : '[출발 preflight 마지막 실행] 기록 없음\n\n';
+    } catch (error) {
+      preflightHeader = '[출발 preflight] 읽기 실패: $error\n\n';
+    }
+    final log = preflightHeader + DiagLogger.dump();
+    if (!mounted) {
+      return;
+    }
+    _presentDiagnosticLogDialog(log);
+  }
+
+  void _presentDiagnosticLogDialog(String log) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('진단 로그'),
+        content: SingleChildScrollView(
+          child: SelectableText(
+            log,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 11,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRegionSettings() {
     final selectedRegion = PlanFlowRegions.byCountryCode(_countryCode);
     final l10n = appL10n(context);
+    final theme = Theme.of(context);
     return _SectionCard(
       title: l10n.regionSettingsTitle,
       subtitle: l10n.regionSettingsSubtitle,
@@ -2572,21 +2625,69 @@ class _SettingsScreenState extends State<SettingsScreen>
             },
           ),
           const Divider(height: 24),
-          SwitchListTile(
-            key: const ValueKey('settings-time-format-toggle'),
-            contentPadding: EdgeInsets.zero,
-            title: const Text('시간 표시 형식'),
-            subtitle: Text(
-              _use24HourFormat ? '24시간제 (14:30)' : '12시간제 (오후 2:30)',
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: const ValueKey('settings-time-format-toggle'),
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => _setUse24HourFormat(!_use24HourFormat),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '시간 표시 형식',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: PlanFlowColors.primary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        OutlinedButton.icon(
+                          key: const ValueKey('settings-voice-action-button'),
+                          onPressed: () => context.push(AppRoutes.voice),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          icon: const Icon(Icons.mic, size: 18),
+                          label: const Text('음성으로 일정 관리'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _use24HourFormat
+                                ? '24시간제 (14:30)'
+                                : '12시간제 (오후 2:30)',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: PlanFlowColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                        Switch(
+                          value: _use24HourFormat,
+                          onChanged: _setUse24HourFormat,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
-            value: _use24HourFormat,
-            onChanged: (value) {
-              setState(() {
-                _use24HourFormat = value;
-              });
-              TimeFormatController.instance.setUse24HourFormat(value);
-              unawaited(_persistSettings());
-            },
           ),
         ],
       ),
@@ -3359,6 +3460,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: 16),
               FeedbackReportSection(
                 onPressed: _openFeedbackReportSheet,
+                onOpenDiagnosticLog: _showDiagnosticLogDialog,
                 onOpenBetaSurvey: _openBetaSurveySheet,
                 onOpenAdminInbox:
                     _isFeedbackAdmin ? _openFeedbackAdminReportsSheet : null,
@@ -3423,6 +3525,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 title: '앱 정보',
                 subtitle: '설치된 PlanFlow의 현재 버전입니다.',
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Icon(
                       Icons.info_outline,
@@ -3433,6 +3536,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                       child: Text(
                         _appVersionLabel,
                         key: const ValueKey('settings-app-version-label'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: PlanFlowColors.textPrimary,
                               fontWeight: FontWeight.w700,
@@ -3443,62 +3548,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
               ),
               const SizedBox(height: 16),
-              _SectionCard(
-                title: '진단 로그',
-                subtitle: '버그 진단용 로그를 화면에 표시합니다.',
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    // 출발 preflight는 백그라운드 isolate에서 실행되어 메모리
-                    // 로그에 안 남으므로 SharedPreferences 기록을 읽어 상단에 붙인다.
-                    String preflightHeader;
-                    try {
-                      final prefs = await SharedPreferences.getInstance();
-                      final last =
-                          prefs.getString(departurePreflightLastRunKey);
-                      preflightHeader = last != null
-                          ? '[출발 preflight 마지막 실행]\n$last\n\n'
-                          : '[출발 preflight 마지막 실행] 기록 없음\n\n';
-                    } catch (error) {
-                      preflightHeader = '[출발 preflight] 읽기 실패: $error\n\n';
-                    }
-                    final log = preflightHeader + DiagLogger.dump();
-                    if (!context.mounted) {
-                      return;
-                    }
-                    showDialog<void>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('진단 로그'),
-                        content: SingleChildScrollView(
-                          child: SelectableText(
-                            log,
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            child: const Text('닫기'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.bug_report_outlined),
-                  label: const Text('진단 로그 보기'),
-                ),
-              ),
-              const SizedBox(height: 16),
               _buildRegionSettings(),
             ],
           ),
         ),
-      ),
-      floatingActionButton: PlanFlowVoiceFab(
-        onPressed: () => context.push(AppRoutes.voice),
       ),
     );
   }

@@ -75,7 +75,7 @@ class SupabaseSettingsGateway implements SettingsGateway {
       'departure_safety_margin_min, '
       'travel_mode, voice_auto_start, voice_correction_learning_enabled, '
       'voice_common_learning_opt_in, preferred_map_provider, country_code, locale_code, time_zone_id, '
-      'google_calendar_token, naver_calendar_token, created_at';
+      'briefing_enabled, use_24_hour_format, google_calendar_token, naver_calendar_token, created_at';
   static const String legacySelectColumns =
       'id, user_id, morning_briefing_at, evening_briefing_at, default_reminder_min, '
       'prep_time_min, prep_pre_alarm_offset, depart_pre_alarm_offset, '

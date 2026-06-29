@@ -18,6 +18,8 @@ void main() {
       voiceCommonLearningOptIn: true,
       preferredMapProvider: 'google',
       departureSafetyMarginMin: 20,
+      briefingEnabled: false,
+      use24HourFormat: true,
       googleCalendarToken: 'google-token',
       naverCalendarToken: 'naver-token',
       createdAt: DateTime.parse('2026-04-30T12:00:00Z'),
@@ -47,6 +49,10 @@ void main() {
     expect(restored.toJson()['voice_common_learning_opt_in'], isTrue);
     expect(restored.preferredMapProvider, 'google');
     expect(restored.toJson()['preferred_map_provider'], 'google');
+    expect(restored.briefingEnabled, isFalse);
+    expect(restored.toJson()['briefing_enabled'], isFalse);
+    expect(restored.use24HourFormat, isTrue);
+    expect(restored.toJson()['use_24_hour_format'], isTrue);
     expect(restored.googleCalendarToken, model.googleCalendarToken);
     expect(restored.naverCalendarToken, model.naverCalendarToken);
     expect(restored.createdAt, model.createdAt);
@@ -67,6 +73,7 @@ void main() {
     expect(restored.prepPreAlarmOffset, 30);
     expect(restored.departPreAlarmOffset, 30);
     expect(restored.departureSafetyMarginMin, 20);
+    expect(restored.use24HourFormat, isFalse);
     expect(restored.toJson()['travel_mode'], 'car');
   });
 
