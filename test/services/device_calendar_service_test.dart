@@ -307,7 +307,7 @@ void main() {
 
   test('Android native device export keeps event-only policy', () {
     final nativeFile = File(
-      'android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt',
+      'android/app/src/main/kotlin/com/fluxstudio/planflow/v2/MainActivity.kt',
     );
     final source = nativeFile.readAsStringSync();
     final upsertStart = source.indexOf('private fun upsertDeviceCalendarEvent');

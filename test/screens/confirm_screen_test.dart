@@ -465,8 +465,11 @@ void main() {
   testWidgets('ConfirmScreen stores Korean wall time as UTC once',
       (tester) async {
     final repository = _FakeEventRepository();
-    final start = DateTime(2026, 6, 13, 10);
-    final end = DateTime(2026, 6, 14, 9);
+    // 과거 날짜는 _safeStartAt이 now()로 보정하므로(1일 이상 과거면 클램프),
+    // 캘린더가 지나도 깨지지 않도록 항상 미래인 내년 날짜를 쓴다.
+    final year = DateTime.now().year + 1;
+    final start = DateTime(year, 6, 13, 10);
+    final end = DateTime(year, 6, 14, 9);
 
     await tester.pumpWidget(
       _testApp(
@@ -490,7 +493,7 @@ void main() {
     }
 
     final saved = repository.createdEvents.single;
-    expect(saved.startAt, DateTime.utc(2026, 6, 13, 1));
+    expect(saved.startAt, DateTime.utc(year, 6, 13, 1));
     expect(planflowLocal(saved.startAt!), start);
     expect(planflowLocal(saved.endAt!), end);
     expect(saved.isMultiDay, isTrue);

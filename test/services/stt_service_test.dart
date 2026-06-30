@@ -38,7 +38,7 @@ void main() {
     // 세그먼트 세션 방식은 폐기됨(침묵마다 끊겨 발화 유실). 현재는 모드와 무관하게
     // onResults에서 final 후 즉시 재시작하고, user stop 시에만 정지한다.
     final source = File(
-      'android/app/src/main/kotlin/com/fluxstudio/planflow/MainActivity.kt',
+      'android/app/src/main/kotlin/com/fluxstudio/planflow/v2/MainActivity.kt',
     ).readAsStringSync();
 
     // 결과 확정(final) 후 끊김 없이 재청취 재시작
