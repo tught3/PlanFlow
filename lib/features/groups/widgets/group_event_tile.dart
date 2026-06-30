@@ -62,7 +62,10 @@ class GroupEventTile extends StatelessWidget {
                               ),
                     ),
                   ),
-                  _TileChip(label: _statusLabel(event.status)),
+                  // 활성은 늘 활성이라 의미 없으므로 숨기고,
+                  // 취소됨/보관됨처럼 활성이 아닐 때만 상태 칩을 보여준다.
+                  if (event.status != 'active')
+                    _TileChip(label: _statusLabel(event.status)),
                 ],
               ),
               const SizedBox(height: 8),
