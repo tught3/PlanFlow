@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -57,12 +58,15 @@ class BriefingExecutionResult {
     required this.usedFallback,
     required this.message,
     this.failureReason,
+    this.events = const [],
   });
 
   final bool delivered;
   final bool usedFallback;
   final String message;
   final String? failureReason;
+  /// 브리핑에 사용된 일정 목록. 캐시 히트 시 캐시에서 복원된 일정을 포함한다.
+  final List<EventModel> events;
 }
 
 class BriefingRuntimeStatus {
@@ -131,6 +135,11 @@ class BriefingSchedulerService {
       'briefing:last_execution_message';
   static const String _lastExecutionFailureReasonKey =
       'briefing:last_execution_failure_reason';
+  // 사전 로드(preload) 캐시 키: 알람 발생 ~ 사용자 재생 버튼 사이에 미리 생성한 텍스트를 저장한다.
+  static const String _preloadCacheMorningKey =
+      'briefing:preload_cache:morning';
+  static const String _preloadCacheEveningKey =
+      'briefing:preload_cache:evening';
   // alarm callback(별도 Dart VM)이 포그라운드 앱에게 모달 신호를 전달하는 키.
   // IsolateNameServer는 같은 VM 내에서만 작동하므로 SharedPreferences를 사용한다.
   static const String appForegroundKey = 'briefing:app_foreground';
@@ -332,6 +341,28 @@ class BriefingSchedulerService {
         return result;
       }
 
+      // 캐시 히트: 알람 발생 시 미리 생성해 둔 텍스트가 2시간 이내에 있으면 바로 재생.
+      final cachedResult = await _consumePreloadCache(isMorning: isMorning);
+      if (cachedResult != null) {
+        await _deliverBriefing(
+          cachedResult.text,
+          isMorning: isMorning,
+          suppressNotification: isManualTrigger,
+        );
+        final result = BriefingExecutionResult(
+          delivered: true,
+          usedFallback: cachedResult.usedFallback,
+          message: cachedResult.usedFallback
+              ? '캐시(OpenAI 폴백)에서 브리핑을 재생했습니다.'
+              : (isMorning
+                  ? '캐시에서 모닝 브리핑을 재생했습니다.'
+                  : '캐시에서 이브닝 브리핑을 재생했습니다.'),
+          events: cachedResult.events,
+        );
+        await _recordExecutionStatus(isMorning: isMorning, result: result);
+        return result;
+      }
+
       final events = await _fetchRelevantEvents(
         userId: resolvedUserId,
         isMorning: isMorning,
@@ -352,6 +383,7 @@ class BriefingSchedulerService {
           message: isMorning
               ? '오늘 일정이 없어 모닝 브리핑을 재생했습니다.'
               : '내일 일정이 없어 이브닝 브리핑을 재생했습니다.',
+          events: const [],
         );
         await _recordExecutionStatus(isMorning: isMorning, result: result);
         return result;
@@ -393,6 +425,7 @@ class BriefingSchedulerService {
             ? 'OpenAI 응답 실패로 로컬 브리핑을 재생했습니다.'
             : (isMorning ? '모닝 브리핑을 재생했습니다.' : '이브닝 브리핑을 재생했습니다.'),
         failureReason: failureReason,
+        events: events,
       );
       await _recordExecutionStatus(isMorning: isMorning, result: result);
       return result;
@@ -454,6 +487,10 @@ class BriefingSchedulerService {
           'status=${result.status.name} '
           'message=${result.message ?? 'none'}',
     );
+
+    // 알림 예약과 동시에 best-effort 사전 로드 시작.
+    // 사용자가 알림을 눌러 재생 화면에 진입할 때 캐시가 준비되어 있으면 즉시 재생 가능.
+    unawaited(preloadBriefing(isMorning: isMorning));
   }
 
   Future<bool> rescheduleNextBriefing({
@@ -461,6 +498,153 @@ class BriefingSchedulerService {
     String? userId,
   }) {
     return _rescheduleForTomorrow(isMorning: isMorning, userId: userId);
+  }
+
+  /// 일정 조회 → 요약 → GPT(또는 로컬 폴백) 텍스트 생성. TTS는 호출하지 않는다.
+  /// [resolvedUserId]가 null이거나 세션이 없으면 null 반환.
+  Future<({String text, bool usedFallback, List<EventModel> events})?>
+      _resolveBriefingContent({
+    required bool isMorning,
+    required String? resolvedUserId,
+  }) async {
+    if (resolvedUserId == null || !_hasActiveSessionForServerQueries()) {
+      return null;
+    }
+    final events = await _fetchRelevantEvents(
+      userId: resolvedUserId,
+      isMorning: isMorning,
+    );
+    if (events.isEmpty) {
+      final text = isMorning
+          ? '좋은 아침이에요. 오늘은 예정된 일정이 없어요. 여유로운 하루 보내세요.'
+          : '오늘 하루도 고생하셨어요. 내일은 예정된 일정이 없어요. 편안한 저녁 보내세요.';
+      return (text: text, usedFallback: false, events: <EventModel>[]);
+    }
+    final eventSummary = _buildEventSummary(events);
+    var usedFallback = false;
+    late final String text;
+    try {
+      text = await _gptService.generateBriefing(
+        rawText: eventSummary,
+        isMorning: isMorning,
+      );
+    } catch (error, stackTrace) {
+      debugPrint(
+        'Briefing preload GPT failed: type=${isMorning ? 'morning' : 'evening'} '
+        'error=$error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+      text = await _buildLocalBriefing(events, isMorning: isMorning);
+      usedFallback = true;
+    }
+    return (text: text, usedFallback: usedFallback, events: events);
+  }
+
+  /// 알람 알림 예약 직후 또는 포그라운드 다이얼로그 표시와 동시에 호출.
+  /// 브리핑 텍스트를 미리 생성해 SharedPreferences에 캐시한다(TTS 없음).
+  /// 모든 예외를 흡수해 절대 throw하지 않는다(백그라운드 isolate 안전).
+  Future<void> preloadBriefing({
+    required bool isMorning,
+    String? userId,
+  }) async {
+    try {
+      if (!RemoteConfigService.briefingEnabled) {
+        return;
+      }
+      if (!AppEnv.isSupabaseReady) {
+        return;
+      }
+      final resolvedUserId = _resolveUserId(userId);
+      final content = await _resolveBriefingContent(
+        isMorning: isMorning,
+        resolvedUserId: resolvedUserId,
+      );
+      if (content == null) {
+        return;
+      }
+      final cacheKey =
+          isMorning ? _preloadCacheMorningKey : _preloadCacheEveningKey;
+      final cacheJson = jsonEncode({
+        'generated_at': DateTime.now().toUtc().toIso8601String(),
+        'type': isMorning ? 'morning' : 'evening',
+        'text': content.text,
+        'used_fallback': content.usedFallback,
+        'events': content.events.map((e) => e.toJson()).toList(),
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(cacheKey, cacheJson);
+      debugPrint(
+        'Briefing preload cached: type=${isMorning ? 'morning' : 'evening'} '
+        'events=${content.events.length}',
+      );
+    } catch (error, stackTrace) {
+      // best-effort: 실패해도 정상 executeBriefing 라이브 경로로 폴백.
+      debugPrint(
+        'Briefing preload skipped: '
+        'type=${isMorning ? 'morning' : 'evening'} error=$error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  /// 캐시된 사전 로드 결과를 읽고 삭제한다(소비 후 제거).
+  /// 캐시가 없거나 만료(2시간 초과)·파싱 오류이면 null 반환.
+  Future<({String text, bool usedFallback, List<EventModel> events})?>
+      _consumePreloadCache({required bool isMorning}) async {
+    try {
+      final cacheKey =
+          isMorning ? _preloadCacheMorningKey : _preloadCacheEveningKey;
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(cacheKey);
+      if (raw == null) {
+        return null;
+      }
+      // 파싱 즉시 삭제(1회성 캐시)
+      await prefs.remove(cacheKey);
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final generatedAt =
+          DateTime.tryParse(map['generated_at'] as String? ?? '');
+      if (generatedAt == null) {
+        return null;
+      }
+      // 2시간 이내의 캐시만 유효
+      final age = DateTime.now().toUtc().difference(generatedAt.toUtc());
+      if (age > const Duration(hours: 2)) {
+        debugPrint(
+          'Briefing preload cache expired: '
+          'type=${isMorning ? 'morning' : 'evening'} age=${age.inMinutes}m',
+        );
+        return null;
+      }
+      final text = map['text'] as String? ?? '';
+      if (text.isEmpty) {
+        return null;
+      }
+      final usedFallback = (map['used_fallback'] as bool?) ?? false;
+      final rawEvents = map['events'];
+      final events = <EventModel>[];
+      if (rawEvents is List) {
+        for (final item in rawEvents) {
+          try {
+            if (item is Map<String, dynamic>) {
+              events.add(EventModel.fromJson(item));
+            }
+          } catch (_) {
+            // 일정 하나 파싱 실패 시 나머지는 계속 진행
+          }
+        }
+      }
+      debugPrint(
+        'Briefing preload cache hit: '
+        'type=${isMorning ? 'morning' : 'evening'} '
+        'age=${age.inMinutes}m events=${events.length}',
+      );
+      return (text: text, usedFallback: usedFallback, events: events);
+    } catch (error, stackTrace) {
+      debugPrint('Briefing preload cache read failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return null;
+    }
   }
 
   Future<List<EventModel>> _fetchRelevantEvents({

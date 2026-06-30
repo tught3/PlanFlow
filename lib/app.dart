@@ -344,6 +344,9 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   void _showForegroundBriefingDialog(bool isMorning) {
     final context = appRouter.routerDelegate.navigatorKey.currentContext;
     if (context == null || !mounted) return;
+    // 다이얼로그 표시와 동시에 사전 로드 시작.
+    // 사용자가 "재생"을 누르기 전에 브리핑 텍스트가 준비될 수 있다.
+    unawaited(BriefingSchedulerService().preloadBriefing(isMorning: isMorning));
     showDialog<void>(
       context: context,
       barrierDismissible: true,
