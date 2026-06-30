@@ -21,6 +21,14 @@ abstract class EventRepository {
     return Future<EventModel?>.value(null);
   }
 
+  /// 특정 source의 external_id 전체를 Set으로 일괄 조회 (중복 스킵용 사전 조회)
+  Future<Set<String>> fetchExternalIdsBySource({
+    required String source,
+    String? userId,
+  }) {
+    return Future.value(<String>{});
+  }
+
   Future<List<EventModel>> findOverlappingEvents({
     required DateTime rangeStart,
     required DateTime rangeEnd,
@@ -526,7 +534,7 @@ class SupabaseEventRepository extends EventRepository {
   static const String _tableName = 'events';
   static const String _selectColumns =
       'id, user_id, title, start_at, end_at, location, location_lat, '
-      'location_lng, memo, supplies, supplies_checked, is_critical, source, '
+      'location_lng, memo, supplies, supplies_checked, is_critical, use_strong_alarm, source, '
       'participants, targets, '
       'recurrence_rule, is_all_day, is_multi_day, parent_event_id, '
       'group_event_id, category, '
@@ -583,6 +591,28 @@ class SupabaseEventRepository extends EventRepository {
       return null;
     }
     return EventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<Set<String>> fetchExternalIdsBySource({
+    required String source,
+    String? userId,
+  }) async {
+    final resolvedUserId = _resolveUserId(userId);
+    final normalizedSource = source.trim();
+    if (normalizedSource.isEmpty) {
+      return <String>{};
+    }
+    final rows = await _client
+        .from(_tableName)
+        .select('external_id')
+        .eq('user_id', resolvedUserId)
+        .eq('source', normalizedSource)
+        .not('external_id', 'is', null);
+    return {
+      for (final row in rows)
+        if (row['external_id'] != null) row['external_id'] as String,
+    };
   }
 
   @override
@@ -963,6 +993,7 @@ class SupabaseEventRepository extends EventRepository {
       ..remove('parent_event_id')
       ..remove('group_event_id')
       ..remove('category')
+      ..remove('use_strong_alarm')
       ..remove('updated_at');
   }
 
@@ -981,6 +1012,7 @@ class SupabaseEventRepository extends EventRepository {
         text.contains('parent_event_id') ||
         text.contains('group_event_id') ||
         text.contains('category') ||
+        text.contains('use_strong_alarm') ||
         text.contains('updated_at') ||
         text.contains('pgrst204') ||
         text.contains('42703');
@@ -1004,10 +1036,12 @@ extension on EventModel {
       participants: participants,
       targets: targets,
       isCritical: isCritical,
+      useStrongAlarm: useStrongAlarm,
       recurrenceRule: recurrenceRule,
       isAllDay: isAllDay,
       isMultiDay: isMultiDay,
       parentEventId: parentEventId,
+      groupEventId: groupEventId,
       category: category,
       source: source,
       externalId: externalId,
@@ -1049,10 +1083,12 @@ EventModel _mergeExternalMetadata({
     participants: participants,
     targets: targets,
     isCritical: existing.isCritical || incoming.isCritical,
+    useStrongAlarm: existing.useStrongAlarm || incoming.useStrongAlarm,
     recurrenceRule: incoming.recurrenceRule,
     isAllDay: incoming.isAllDay,
     isMultiDay: incoming.isMultiDay,
     parentEventId: incoming.parentEventId,
+    groupEventId: existing.groupEventId,
     category: incoming.category,
     source: incoming.source,
     externalId: externalId,

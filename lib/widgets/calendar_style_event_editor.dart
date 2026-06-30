@@ -24,6 +24,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
     required this.recurrence,
     required this.reminderOffset,
     required this.isCritical,
+    required this.useStrongAlarm,
     required this.onStartChanged,
     required this.onEndChanged,
     required this.onAllDayChanged,
@@ -31,6 +32,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
     required this.onRecurrenceChanged,
     required this.onReminderChanged,
     required this.onCriticalChanged,
+    required this.onStrongAlarmChanged,
     required this.onLocationPick,
     this.onLocationTextChanged,
     this.titleValidator,
@@ -60,6 +62,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
   final RecurrenceSelection recurrence;
   final Duration? reminderOffset;
   final bool isCritical;
+  final bool useStrongAlarm;
   final ValueChanged<DateTime> onStartChanged;
   final ValueChanged<DateTime?> onEndChanged;
   final ValueChanged<bool> onAllDayChanged;
@@ -67,6 +70,7 @@ class CalendarStyleEventEditor extends StatefulWidget {
   final ValueChanged<RecurrenceSelection> onRecurrenceChanged;
   final ValueChanged<Duration?> onReminderChanged;
   final ValueChanged<bool> onCriticalChanged;
+  final ValueChanged<bool> onStrongAlarmChanged;
   final VoidCallback onLocationPick;
   final ValueChanged<String>? onLocationTextChanged;
   final FormFieldValidator<String>? titleValidator;
@@ -427,7 +431,7 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             key: _criticalAlarmSectionKey,
             icon: Icons.priority_high_rounded,
             title: '중요한 일정',
-            subtitle: _criticalAlarmSummary(widget.isCritical),
+            subtitle: _criticalAlarmSummary(widget.isCritical, widget.useStrongAlarm),
             collapsible: true,
             expanded: _criticalAlarmExpanded,
             onExpansionChanged: (value) => _setExpandableSection(
@@ -435,39 +439,80 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
               expanded: value,
               apply: () => _criticalAlarmExpanded = value,
             ),
-            child: SwitchListTile.adaptive(
-              tileColor: widget.isCritical
-                  ? const Color(0xFFFFE3DD)
-                  : PlanFlowColors.surfaceFaint,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: BorderSide(
-                  color: widget.isCritical
-                      ? const Color(0xFFB42318)
-                      : PlanFlowColors.primaryFaint,
-                  width: widget.isCritical ? 1.2 : 0.5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CheckboxListTile(
+                  tileColor: widget.isCritical
+                      ? const Color(0xFFFFE3DD)
+                      : PlanFlowColors.surfaceFaint,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(
+                      color: widget.isCritical
+                          ? const Color(0xFFB42318)
+                          : PlanFlowColors.primaryFaint,
+                      width: widget.isCritical ? 1.2 : 0.5,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  secondary: Icon(
+                    widget.isCritical
+                        ? Icons.priority_high_rounded
+                        : Icons.flag_outlined,
+                    color: widget.isCritical
+                        ? const Color(0xFFE53935)
+                        : PlanFlowColors.textSecondary,
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  checkColor: Colors.white,
+                  activeColor: const Color(0xFFE53935),
+                  title: const Text('중요한 일정으로 표시'),
+                  subtitle: const Text('캘린더에서 빨간색으로 표시됩니다.'),
+                  value: widget.isCritical,
+                  onChanged: (v) => widget.onCriticalChanged(v ?? false),
                 ),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 4,
-              ),
-              title: const Text('중요한 일정으로 표시'),
-              subtitle: const Text(
-                '일정 시작 시 더 강한 소리와 진동으로 알려줍니다. 미리알림 시간과 별도로 동작합니다.',
-              ),
-              secondary: Icon(
-                widget.isCritical
-                    ? Icons.priority_high_rounded
-                    : Icons.notifications_active_outlined,
-                color: widget.isCritical
-                    ? const Color(0xFFB42318)
-                    : PlanFlowColors.textSecondary,
-              ),
-              activeThumbColor: const Color(0xFFB42318),
-              activeTrackColor: const Color(0xFFFFC9BE),
-              value: widget.isCritical,
-              onChanged: widget.onCriticalChanged,
+                if (widget.isCritical) ...[
+                  const SizedBox(height: 8),
+                  SwitchListTile.adaptive(
+                    tileColor: widget.useStrongAlarm
+                        ? const Color(0xFFFFE3DD)
+                        : PlanFlowColors.surfaceFaint,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(
+                        color: widget.useStrongAlarm
+                            ? const Color(0xFFB42318)
+                            : PlanFlowColors.primaryFaint,
+                        width: widget.useStrongAlarm ? 1.2 : 0.5,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    secondary: Icon(
+                      widget.useStrongAlarm
+                          ? Icons.volume_up_rounded
+                          : Icons.volume_off_outlined,
+                      color: widget.useStrongAlarm
+                          ? const Color(0xFFB42318)
+                          : PlanFlowColors.textSecondary,
+                    ),
+                    title: const Text('강한 알람'),
+                    subtitle: const Text(
+                      '일정 시작 시 큰 소리·진동·전체화면으로 알립니다. 정확한 알람 권한이 필요합니다.',
+                    ),
+                    activeThumbColor: const Color(0xFFB42318),
+                    activeTrackColor: const Color(0xFFFFC9BE),
+                    value: widget.useStrongAlarm,
+                    onChanged: widget.onStrongAlarmChanged,
+                  ),
+                ],
+              ],
             ),
           ),
         ],
@@ -613,8 +658,10 @@ String _alarmSummary(Duration? offset) {
   };
 }
 
-String _criticalAlarmSummary(bool isCritical) {
-  return isCritical ? '켜짐 · 일정 시작 시 더 강한 소리와 진동' : '꺼짐';
+String _criticalAlarmSummary(bool isCritical, bool useStrongAlarm) {
+  if (!isCritical) return '꺼짐';
+  if (useStrongAlarm) return '중요 표시 켜짐 · 강한 알람 켜짐';
+  return '중요 표시 켜짐';
 }
 
 class _CalendarHeader extends StatelessWidget {

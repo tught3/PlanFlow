@@ -94,6 +94,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   double? _locationLng;
   String? _resolvedLocationLabel;
   late bool _critical;
+  late bool _strongAlarm;
   late RecurrenceSelection _recurrenceSelection;
   bool _isAllDay = false;
   String _category = '기타';
@@ -204,6 +205,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
   void _handleCriticalChanged(bool value) {
     setState(() {
       _critical = value;
+      if (!value) _strongAlarm = false;
+    });
+    if (value) {
+      unawaited(_ensureCriticalAlarmPermissions());
+    }
+  }
+
+  void _handleStrongAlarmChanged(bool value) {
+    setState(() {
+      _strongAlarm = value;
     });
     if (value) {
       unawaited(_ensureCriticalAlarmPermissions());
@@ -363,6 +374,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       _resolvedLocationLabel = _locationController.text.trim();
     }
     _critical = event?.isCritical ?? false;
+    _strongAlarm = event?.useStrongAlarm ?? false;
     _recurrenceSelection = RecurrenceSelection.fromRRule(event?.recurrenceRule);
     _isAllDay = event?.isAllDay ?? false;
     _category = event?.category ?? '기타';
@@ -629,6 +641,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         participants: _loadedEvent?.participants ?? const <String>[],
         targets: _loadedEvent?.targets ?? const <String>[],
         isCritical: _critical,
+        useStrongAlarm: _strongAlarm,
         recurrenceRule: _recurrenceSelection.toRRule(),
         isAllDay: _isAllDay,
         isMultiDay: isMultiDayByRange,
@@ -942,6 +955,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
             event.startAt == null ? _startAt : planflowLocal(event.startAt!);
         _endAt = event.endAt == null ? null : planflowLocal(event.endAt!);
         _critical = event.isCritical;
+        _strongAlarm = event.useStrongAlarm;
         _recurrenceSelection =
             RecurrenceSelection.fromRRule(event.recurrenceRule);
         _isAllDay = event.isAllDay;
@@ -1388,6 +1402,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   recurrence: _recurrenceSelection,
                   reminderOffset: _reminderOffset,
                   isCritical: _critical,
+                  useStrongAlarm: _strongAlarm,
                   locationLat: _locationLat,
                   locationLng: _locationLng,
                   memoMaxLines: 5,
@@ -1450,6 +1465,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                     });
                   },
                   onCriticalChanged: _handleCriticalChanged,
+                  onStrongAlarmChanged: _handleStrongAlarmChanged,
                   onLocationTextChanged: _handleLocationTextChanged,
                   onLocationPick: _pickLocationOnMap,
                   isSearchingLocation: _isLookingUpLocation,

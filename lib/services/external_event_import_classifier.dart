@@ -9,10 +9,14 @@ class ExternalEventImportClassifier {
     String? calendarPath,
     String? source,
     int? priority,
+    bool hasPreActions = false,
     Iterable<String> categories = const <String>[],
     String? status,
   }) {
-    if (priority != null && priority > 0 && priority <= 3) {
+    if (hasPreActions) {
+      return true;
+    }
+    if (priority != null && priority >= 1 && priority <= 5) {
       return true;
     }
 

@@ -61,6 +61,7 @@ void main() {
         title: '중요 발표',
         startAt: DateTime.now().add(const Duration(hours: 3)),
         isCritical: true,
+        useStrongAlarm: true,
       );
 
       final result = await service.syncAfterSave(
@@ -497,6 +498,7 @@ void main() {
         location: '강릉아산병원',
         source: 'naver_device',
         isCritical: true,
+        useStrongAlarm: true,
       );
 
       final result = await service.resyncRemindersForEvents(
