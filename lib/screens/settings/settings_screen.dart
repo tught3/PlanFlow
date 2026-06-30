@@ -1426,40 +1426,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  double _naverCalDavProgressValue(NaverCalDavSyncProgress? progress) {
-    if (progress == null) {
-      return 0.05;
-    }
-
-    switch (progress.stage) {
-      case NaverCalDavSyncStage.preparing:
-        return 0.05;
-      case NaverCalDavSyncStage.calendars:
-        return 0.12;
-      case NaverCalDavSyncStage.querying:
-        // 캘린더 조회 완료 수에 따라 0.15→0.60으로 점진 증가
-        final total = progress.totalCalendars;
-        final done = progress.currentCalendarIndex;
-        if (total <= 0) {
-          return 0.15;
-        }
-        final fraction = (done / total).clamp(0.0, 1.0);
-        return (0.15 + 0.45 * fraction).clamp(0.0, 1.0);
-      case NaverCalDavSyncStage.saving:
-        // 저장 진행에 따라 0.60→1.0으로 점진 증가
-        final done =
-            progress.savedEvents + progress.skippedEvents + progress.failedEvents;
-        final total = progress.totalEvents;
-        if (total <= 0) {
-          return 0.60;
-        }
-        final fraction = (done / total).clamp(0.0, 1.0);
-        return (0.60 + 0.40 * fraction).clamp(0.0, 1.0);
-      case NaverCalDavSyncStage.completed:
-        return 1.0;
-    }
-  }
-
   Future<void> _showNaverCalDavProgressDialog({bool dismissible = true}) {
     _isNaverCalDavProgressDialogOpen = true;
     return showDialog<void>(
@@ -1469,103 +1435,14 @@ class _SettingsScreenState extends State<SettingsScreen>
         canPop: true,
         child: AlertDialog(
           title: const Text('네이버 일정 가져오기'),
-          content: ValueListenableBuilder<NaverCalDavSyncProgress?>(
-            valueListenable: _naverCalDavProgress,
-            builder: (context, progress, _) {
-              final stage = progress?.stage;
-              final showBackgroundHint =
-                  stage == NaverCalDavSyncStage.querying ||
-                      stage == NaverCalDavSyncStage.saving;
-              final progressValue = _naverCalDavProgressValue(progress);
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 값이 단계별로 점프해도 바가 부드럽게 차오르도록 보간한다.
-                  TweenAnimationBuilder<double>(
-                    tween: Tween<double>(begin: 0, end: progressValue),
-                    duration: const Duration(milliseconds: 450),
-                    curve: Curves.easeOut,
-                    builder: (context, animatedValue, _) {
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          LinearProgressIndicator(
-                            value: animatedValue,
-                            minHeight: 8,
-                            backgroundColor: PlanFlowColors.primaryFaint,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              PlanFlowColors.primary,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Center(
-                            child: Text(
-                              '${(animatedValue * 100).round()}%',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .labelLarge
-                                  ?.copyWith(
-                                    color: PlanFlowColors.primary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Text(_naverCalDavProgressStatusText(progress)),
-                  if (showBackgroundHint) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      '앱을 전환해도 동기화는 계속됩니다.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: PlanFlowColors.textSecondary,
-                          ),
-                    ),
-                  ],
-                ],
-              );
-            },
+          content: _NaverCalDavProgressView(
+            progressListenable: _naverCalDavProgress,
           ),
         ),
       ),
     ).whenComplete(() {
       _isNaverCalDavProgressDialogOpen = false;
     });
-  }
-
-  String _naverCalDavProgressStatusText(NaverCalDavSyncProgress? progress) {
-    final totalCalendars = progress?.totalCalendars ?? 0;
-    final savedEvents = progress?.savedEvents ?? 0;
-    final skippedEvents = progress?.skippedEvents ?? 0;
-    final failedEvents = progress?.failedEvents ?? 0;
-    final totalEvents = progress?.totalEvents ?? 0;
-    final done = savedEvents + skippedEvents + failedEvents;
-
-    switch (progress?.stage) {
-      case NaverCalDavSyncStage.preparing:
-        return '네이버 연결 확인 중';
-      case NaverCalDavSyncStage.calendars:
-        return '캘린더 확인 중';
-      case NaverCalDavSyncStage.querying:
-        if (totalCalendars > 0) {
-          return '일정 가져오는 중 (캘린더 $totalCalendars개)';
-        }
-        return '일정 가져오는 중';
-      case NaverCalDavSyncStage.saving:
-        if (totalEvents > 0) {
-          return 'PlanFlow에 저장 중 ($done/$totalEvents개)';
-        }
-        return 'PlanFlow에 저장 중';
-      case NaverCalDavSyncStage.completed:
-        return '마무리 중';
-      case null:
-        return '네이버 연결 확인 중';
-    }
   }
 
   Widget _buildDialogButtonBar({
@@ -4011,5 +3888,188 @@ class _SettingsScreenState extends State<SettingsScreen>
       TargetPlatform.windows =>
         null,
     };
+  }
+}
+
+/// 네이버 동기화 진행 표시. 단계 점프는 TweenAnimationBuilder로 보간하고,
+/// 표시값이 3초 이상 멈추면 완료(97%) 전까지 1%씩 크리프해 "멈춤"으로 보이지 않게 한다.
+class _NaverCalDavProgressView extends StatefulWidget {
+  const _NaverCalDavProgressView({required this.progressListenable});
+
+  final ValueListenable<NaverCalDavSyncProgress?> progressListenable;
+
+  @override
+  State<_NaverCalDavProgressView> createState() =>
+      _NaverCalDavProgressViewState();
+}
+
+class _NaverCalDavProgressViewState extends State<_NaverCalDavProgressView> {
+  double _displayValue = 0;
+  double _lastTarget = -1;
+  DateTime _lastTargetChange = DateTime.now();
+  Timer? _creepTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.progressListenable.addListener(_onProgress);
+    _onProgress();
+    _creepTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _tickCreep(),
+    );
+  }
+
+  @override
+  void dispose() {
+    widget.progressListenable.removeListener(_onProgress);
+    _creepTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onProgress() {
+    final target = _progressValue(widget.progressListenable.value);
+    if (target != _lastTarget) {
+      _lastTarget = target;
+      _lastTargetChange = DateTime.now();
+    }
+    // 단조 증가: 실제 진행이 표시값을 추월하면 그 값으로 끌어올린다.
+    if (target > _displayValue && mounted) {
+      setState(() => _displayValue = target);
+    }
+  }
+
+  void _tickCreep() {
+    if (!mounted) {
+      return;
+    }
+    final progress = widget.progressListenable.value;
+    if (progress?.stage == NaverCalDavSyncStage.completed) {
+      return;
+    }
+    // 표시값이 3초 이상 멈춰 있으면 완료(97%) 전까지 1%씩 천천히 올린다.
+    final idle = DateTime.now().difference(_lastTargetChange);
+    if (idle.inSeconds >= 3 && _displayValue < 0.97) {
+      setState(() {
+        _displayValue = (_displayValue + 0.01).clamp(0.0, 0.97);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = widget.progressListenable.value;
+    final stage = progress?.stage;
+    final showBackgroundHint = stage == NaverCalDavSyncStage.querying ||
+        stage == NaverCalDavSyncStage.saving;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0, end: _displayValue),
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeOut,
+          builder: (context, animatedValue, _) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LinearProgressIndicator(
+                  value: animatedValue,
+                  minHeight: 8,
+                  backgroundColor: PlanFlowColors.primaryFaint,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    PlanFlowColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Center(
+                  child: Text(
+                    '${(animatedValue * 100).round()}%',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: PlanFlowColors.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        Text(_statusText(progress)),
+        if (showBackgroundHint) ...[
+          const SizedBox(height: 12),
+          Text(
+            '앱을 전환해도 동기화는 계속됩니다.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: PlanFlowColors.textSecondary,
+                ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  static double _progressValue(NaverCalDavSyncProgress? progress) {
+    if (progress == null) {
+      return 0.05;
+    }
+    switch (progress.stage) {
+      case NaverCalDavSyncStage.preparing:
+        return 0.05;
+      case NaverCalDavSyncStage.calendars:
+        return 0.12;
+      case NaverCalDavSyncStage.querying:
+        final total = progress.totalCalendars;
+        final done = progress.currentCalendarIndex;
+        if (total <= 0) {
+          return 0.15;
+        }
+        final fraction = (done / total).clamp(0.0, 1.0);
+        return (0.15 + 0.45 * fraction).clamp(0.0, 1.0);
+      case NaverCalDavSyncStage.saving:
+        final done = progress.savedEvents +
+            progress.skippedEvents +
+            progress.failedEvents;
+        final total = progress.totalEvents;
+        if (total <= 0) {
+          return 0.60;
+        }
+        final fraction = (done / total).clamp(0.0, 1.0);
+        return (0.60 + 0.40 * fraction).clamp(0.0, 1.0);
+      case NaverCalDavSyncStage.completed:
+        return 1.0;
+    }
+  }
+
+  static String _statusText(NaverCalDavSyncProgress? progress) {
+    final totalCalendars = progress?.totalCalendars ?? 0;
+    final savedEvents = progress?.savedEvents ?? 0;
+    final skippedEvents = progress?.skippedEvents ?? 0;
+    final failedEvents = progress?.failedEvents ?? 0;
+    final totalEvents = progress?.totalEvents ?? 0;
+    final done = savedEvents + skippedEvents + failedEvents;
+    switch (progress?.stage) {
+      case NaverCalDavSyncStage.preparing:
+        return '네이버 연결 확인 중';
+      case NaverCalDavSyncStage.calendars:
+        return '캘린더 확인 중';
+      case NaverCalDavSyncStage.querying:
+        if (totalCalendars > 0) {
+          return '일정 가져오는 중 (캘린더 $totalCalendars개)';
+        }
+        return '일정 가져오는 중';
+      case NaverCalDavSyncStage.saving:
+        if (totalEvents > 0) {
+          return 'PlanFlow에 저장 중 ($done/$totalEvents개)';
+        }
+        return 'PlanFlow에 저장 중';
+      case NaverCalDavSyncStage.completed:
+        return '마무리 중';
+      case null:
+        return '네이버 연결 확인 중';
+    }
   }
 }
