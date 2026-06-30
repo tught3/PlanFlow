@@ -149,21 +149,32 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         content: const Text(
           '오늘 이후의 개인 일정 중 직접 만든 일정만 이 그룹 일정으로 복사할 수 있어요. 같은 제목과 시간이 이미 있으면 중복으로 만들지 않습니다.',
         ),
+        actionsPadding:
+            const EdgeInsets.fromLTRB(16, 0, 16, 12),
         actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(ctx).pop(_ExistingEventShareChoice.later),
-            child: const Text('나중에'),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.of(ctx).pop(_ExistingEventShareChoice.onlyNewEvents),
-            child: const Text('새로 만드는 일정부터'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(ctx).pop(_ExistingEventShareChoice.shareUpcoming),
-            child: const Text('오늘 이후 일정 공유'),
+          // 한 줄에 모두 배치하되, 폭이 부족하면 각 버튼을 통째로 다음 줄로
+          // 넘겨 2줄로 보기 좋게 정렬한다(버튼 안 텍스트는 줄바꿈하지 않음).
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.of(ctx).pop(_ExistingEventShareChoice.later),
+                child: const Text('나중에'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx)
+                    .pop(_ExistingEventShareChoice.onlyNewEvents),
+                child: const Text('새로 만드는 일정부터'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx)
+                    .pop(_ExistingEventShareChoice.shareUpcoming),
+                child: const Text('오늘 이후 일정 공유'),
+              ),
+            ],
           ),
         ],
       ),
