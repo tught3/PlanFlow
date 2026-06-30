@@ -6,15 +6,24 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/calendar/v3.dart' as gcal;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/models/calendar_connection_model.dart';
 import 'package:planflow/data/repositories/calendar_connection_repository.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/calendar_sync_service.dart';
 import 'package:planflow/services/naver_calendar_permission_service.dart';
 
 void main() {
+  // SharedPreferences mock 초기화: ApiUsageGuard가 내부적으로 SharedPreferences를 사용하므로
+  // 테스트 시작 전 mock을 설정하고 싱글톤을 리셋한다.
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    ApiUsageGuard.resetForTesting();
+  });
+
   group('CalendarSyncService', () {
     test('returns setup states without requiring provider credentials',
         () async {
@@ -612,6 +621,111 @@ void main() {
         'google:primary',
       );
     });
+  });
+
+  // ------------------------------------------------------------------ //
+  // ApiUsageGuard 주입 테스트
+  // CalendarSyncService에 guard를 주입하면 rateLimit 초과 시 루프가 break되어
+  // HTTP POST가 멈추는지 검증한다.
+  // ------------------------------------------------------------------ //
+  group('CalendarSyncService ApiUsageGuard 주입', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      ApiUsageGuard.resetForTesting();
+    });
+
+    test(
+      'Naver export: rateLimit(3) 초과 시 그 이후 HTTP POST는 전송되지 않는다',
+      () async {
+        // rateLimit=3으로 설정한 격리 가드: 3회 이후 차단
+        final guard = ApiUsageGuard(
+          configs: const <String, ApiRateConfig>{
+            ApiName.naverCalendar: ApiRateConfig(
+              windowSeconds: 60,
+              rateLimit: 3,
+            ),
+          },
+        );
+
+        // 5개 이벤트를 export 시도
+        final postCount = <int>[0];
+        final events = List.generate(
+          5,
+          (i) => EventModel(
+            id: 'event-$i',
+            userId: 'user-1',
+            title: '일정 $i',
+            startAt: DateTime.now().add(Duration(hours: i + 1)),
+          ),
+        );
+
+        final service = CalendarSyncService(
+          currentUserId: 'user-1',
+          eventRepository: _FakeEventRepository(events: events),
+          naverStatusProvider: () async {
+            return const NaverCalendarPermissionResult(
+              status: NaverCalendarPermissionStatus.granted,
+              message: '권한 확인',
+            );
+          },
+          naverAccessTokenProvider: () async => 'naver-token',
+          naverStatusSaver: (_) async {},
+          httpClientFactory: () => MockClient((request) async {
+            postCount[0] += 1;
+            return http.Response('{"result":"ok"}', 200);
+          }),
+          usageGuard: guard,
+        );
+
+        final result = await service.syncNaverCalendar();
+
+        // 가드 rateLimit=3 → POST는 최대 3회, 나머지는 차단됨
+        expect(postCount[0], lessThanOrEqualTo(3),
+            reason: 'rateLimit(3) 초과 시 루프를 break해 POST가 멈춰야 한다');
+        expect(result.status, CalendarIntegrationStatus.synced,
+            reason: '이미 보낸 것은 synced 처리, 부분 동기화는 정상 종료');
+      },
+    );
+
+    test(
+      'Naver export: guard 미주입(기본 instance) 시 기존 동작 유지 — 이벤트 1개 정상 전송',
+      () async {
+        // guard를 주입하지 않으면 기본 instance(rateLimit=30)를 사용,
+        // 소량 이벤트에서는 차단 없이 정상 동작해야 한다.
+        final requests = <http.Request>[];
+        final event = EventModel(
+          id: 'event-1',
+          userId: 'user-1',
+          title: '정상 동기화 일정',
+          startAt: DateTime.now().add(const Duration(hours: 1)),
+        );
+
+        final service = CalendarSyncService(
+          currentUserId: 'user-1',
+          eventRepository: _FakeEventRepository(events: <EventModel>[event]),
+          naverStatusProvider: () async {
+            return const NaverCalendarPermissionResult(
+              status: NaverCalendarPermissionStatus.granted,
+              message: '권한 확인',
+            );
+          },
+          naverAccessTokenProvider: () async => 'naver-token',
+          naverStatusSaver: (_) async {},
+          httpClientFactory: () => MockClient((request) async {
+            requests.add(request);
+            return http.Response('{"result":"ok"}', 200);
+          }),
+          // usageGuard 미주입 → ApiUsageGuard.instance(기본 rateLimit=30) 사용
+        );
+
+        final result = await service.syncNaverCalendar();
+
+        expect(result.status, CalendarIntegrationStatus.synced);
+        expect(result.syncedItems, 1);
+        expect(requests, hasLength(1),
+            reason: 'guard 미주입이어도 소량 이벤트는 그대로 전송되어야 한다');
+      },
+    );
   });
 }
 

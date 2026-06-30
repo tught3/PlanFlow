@@ -12,6 +12,7 @@ import '../core/region_settings.dart';
 import '../data/models/voice_correction_rule.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/repositories/voice_correction_rule_repository.dart';
+import 'api_usage_guard.dart';
 import 'remote_config_service.dart';
 import 'smart_preparation_alarm_service.dart';
 import 'voice_correction_learning_service.dart';
@@ -53,6 +54,7 @@ class GptService {
     Duration? completionTimeout,
     VoiceCorrectionRuleRepository? voiceCorrectionRuleRepository,
     VoiceCorrectionLearningService? voiceCorrectionLearningService,
+    ApiUsageGuard? usageGuard,
   })  : _client = client,
         _endpoint = endpoint ??
             Uri.parse('${AppEnv.supabaseUrl}/functions/v1/openai-proxy'),
@@ -60,7 +62,8 @@ class GptService {
         _completionTimeout = completionTimeout ?? const Duration(seconds: 20),
         _voiceCorrectionRuleRepository = voiceCorrectionRuleRepository,
         _voiceCorrectionLearningService = voiceCorrectionLearningService ??
-            const VoiceCorrectionLearningService();
+            const VoiceCorrectionLearningService(),
+        _usageGuard = usageGuard;
 
   final http.Client? _client;
   final Uri _endpoint;
@@ -68,6 +71,7 @@ class GptService {
   final Duration _completionTimeout;
   final VoiceCorrectionRuleRepository? _voiceCorrectionRuleRepository;
   final VoiceCorrectionLearningService _voiceCorrectionLearningService;
+  final ApiUsageGuard? _usageGuard;
   static const VoiceScheduleStructureService _voiceScheduleStructureService =
       VoiceScheduleStructureService();
 
@@ -75,6 +79,8 @@ class GptService {
   static const Map<String, dynamic> _responseFormat = <String, dynamic>{
     'type': 'json_object',
   };
+
+  ApiUsageGuard get _guard => _usageGuard ?? ApiUsageGuard.instance;
 
   Future<Map<String, dynamic>> parseSchedule(String rawText) async {
     final content = await _requestCompletion(
@@ -276,6 +282,12 @@ class GptService {
   }) async {
     final client = _client ?? http.Client();
     try {
+      // GPT API 호출빈도 가드 확인 (20회/분 한도)
+      if (!await _guard.tryConsume(ApiName.gpt)) {
+        debugPrint('ApiUsageGuard: gpt blocked — rate limit exceeded');
+        return null;
+      }
+
       final response = await client
           .post(
             _endpoint,

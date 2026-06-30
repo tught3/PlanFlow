@@ -81,6 +81,19 @@ class LocationLookupSearchResult {
   bool get hasResults => results.isNotEmpty;
 }
 
+/// 캐시 항목 — 결과와 만료 시각을 묶음.
+class _LookupCacheEntry {
+  _LookupCacheEntry({
+    required this.result,
+    required this.expiresAt,
+  });
+
+  final LocationLookupSearchResult result;
+  final DateTime expiresAt;
+
+  bool get isExpired => DateTime.now().isAfter(expiresAt);
+}
+
 class LocationLookupService {
   LocationLookupService({
     String? clientId,
@@ -108,6 +121,32 @@ class LocationLookupService {
 
   ApiUsageGuard get _guard => _usageGuard ?? ApiUsageGuard.instance;
 
+  // ── static 공유 캐시 ────────────────────────────────────────────────────────
+  // 호출처가 매번 new LocationLookupService()를 생성하므로 인스턴스 필드로는
+  // 캐시를 공유할 수 없다. 반드시 클래스 레벨(static) 캐시를 사용해야 한다.
+
+  /// 성공(결과 있음) 캐시 TTL — 24시간.
+  static const Duration _positiveCacheTtl = Duration(hours: 24);
+
+  /// 네거티브(결과 빈 리스트) 캐시 TTL — 6시간.
+  static const Duration _negativeCacheTtl = Duration(hours: 6);
+
+  /// fallback 루프 최대 시도 횟수 — 한 미해결 검색이 tmap ≤ 1+5 = 6콜.
+  static const int _maxFallbackQueries = 5;
+
+  /// query 키 → 캐시 항목. key = query.trim().toLowerCase() (정규화).
+  /// origin/preferredProvider는 key에 포함하지 않는다(과도복잡 방지; POI 결과는 query 기반).
+  static final Map<String, _LookupCacheEntry> _resultCache = {};
+
+  /// 동일 key 동시 요청의 Future를 공유해 중복 HTTP 호출을 막는다.
+  static final Map<String, Future<LocationLookupSearchResult>> _inFlight = {};
+
+  /// 테스트 간 static 누수 방지용 리셋. 프로덕션 코드에서는 호출 금지.
+  static void resetLookupCacheForTesting() {
+    _resultCache.clear();
+    _inFlight.clear();
+  }
+
   Future<List<LocationLookupResult>> search(
     String query, {
     GeoPoint? origin,
@@ -121,12 +160,16 @@ class LocationLookupService {
     return response.results;
   }
 
+  /// 공개 진입점 — static 캐시 + in-flight 중복제거 래퍼.
+  /// 실제 검색 로직은 [_searchWithFallbackUncached]에 있다.
   Future<LocationLookupSearchResult> searchWithFallback(
     String query, {
     GeoPoint? origin,
     LocationLookupProvider? preferredProvider,
   }) async {
     final normalized = query.trim();
+
+    // 빈 쿼리, 광범위 일반어, 지역명 단독은 캐시 없이 즉시 반환.
     if (normalized.isEmpty) {
       return LocationLookupSearchResult(
         originalQuery: query,
@@ -136,6 +179,54 @@ class LocationLookupService {
       );
     }
 
+    // 캐시 key: query 정규화(소문자 trim). origin/preferredProvider는 제외.
+    final cacheKey = normalized.toLowerCase();
+
+    // 유효한 캐시 항목이 있으면 즉시 반환.
+    final cached = _resultCache[cacheKey];
+    if (cached != null && !cached.isExpired) {
+      return cached.result;
+    }
+
+    // 같은 key의 in-flight Future가 있으면 공유 — HTTP 중복 호출 방지.
+    final existing = _inFlight[cacheKey];
+    if (existing != null) {
+      return existing;
+    }
+
+    // 새 Future를 생성해 등록하고 실제 검색을 수행한다.
+    final future = _searchWithFallbackUncached(
+      normalized,
+      origin: origin,
+      preferredProvider: preferredProvider,
+    ).then((result) {
+      // authFailure가 있으면 캐싱 금지 — 일시적 401/403이 캐시를 오염하지 않게.
+      if (result.authFailure == null) {
+        final ttl = result.hasResults ? _positiveCacheTtl : _negativeCacheTtl;
+        _resultCache[cacheKey] = _LookupCacheEntry(
+          result: result,
+          expiresAt: DateTime.now().add(ttl),
+        );
+      }
+      _inFlight.remove(cacheKey);
+      return result;
+    }).onError<Object>((error, stackTrace) {
+      _inFlight.remove(cacheKey);
+      // ignore: only_throw_errors
+      throw error;
+    });
+
+    _inFlight[cacheKey] = future;
+    return future;
+  }
+
+  /// 실제 검색 로직 — 캐시/in-flight 없이 항상 HTTP를 수행한다.
+  /// [searchWithFallback]이 캐시 미스 시에만 호출한다.
+  Future<LocationLookupSearchResult> _searchWithFallbackUncached(
+    String normalized, {
+    GeoPoint? origin,
+    LocationLookupProvider? preferredProvider,
+  }) async {
     if (_isBroadGenericPlaceQuery(normalized)) {
       return LocationLookupSearchResult(
         originalQuery: normalized,
@@ -166,7 +257,8 @@ class LocationLookupService {
     });
 
     if (results.isEmpty && fallbackQueries.isNotEmpty) {
-      for (final retryQuery in fallbackQueries) {
+      // fallback 캡: 최대 _maxFallbackQueries 개만 시도 — 한 검색이 tmap ≤ 1+5 = 6콜.
+      for (final retryQuery in fallbackQueries.take(_maxFallbackQueries)) {
         await _searchAllProviders(retryQuery, results, searchedQueries, origin,
             (error) {
           authFailure ??= error;

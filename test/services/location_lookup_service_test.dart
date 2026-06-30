@@ -3,10 +3,21 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  // tmap 호출은 ApiUsageGuard(SharedPreferences)를 거치므로 prefs를 초기화해야
+  // 가드가 정상 동작(차단 아님)한다. 또한 static 캐시/가드 카운터를 테스트마다 리셋.
+  setUp(() {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    ApiUsageGuard.resetForTesting();
+    LocationLookupService.resetLookupCacheForTesting();
+  });
+
   test('LocationLookupService parses Naver geocoding results', () async {
     final service = LocationLookupService(
       clientId: 'client-id',
@@ -495,6 +506,215 @@ void main() {
         longitude: 0.0,
         provider: LocationLookupProvider.tmap,
       );
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // static 캐시 / in-flight 중복제거 / fallback 캡
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /// tmap POI 엔드포인트 여부 확인.
+  bool isTmapRequest(http.Request request) =>
+      request.url.host == 'apis.openapi.sk.com' &&
+      request.url.path.startsWith('/tmap/pois');
+
+  /// 유효한 tmap POI 응답 픽스처 — 결과 1건.
+  http.Response tmapSuccessResponse() => http.Response.bytes(
+        utf8.encode(
+          '{"searchPoiInfo":{"pois":{"poi":['
+          '{"name":"강남역","upperAddrName":"서울","middleAddrName":"강남구",'
+          '"lowerAddrName":"역삼동","roadName":"강남대로","firstBuildNo":"396",'
+          '"frontLon":"127.0276","frontLat":"37.4979"}'
+          ']}}}',
+        ),
+        200,
+        headers: const <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        },
+      );
+
+  /// 빈 결과 tmap 응답 픽스처.
+  http.Response tmapEmptyResponse() => http.Response.bytes(
+        utf8.encode(
+          '{"searchPoiInfo":{"pois":{"poi":[]}}}',
+        ),
+        200,
+        headers: const <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        },
+      );
+
+  /// 빈 결과 naver/google 응답 픽스처.
+  http.Response emptyResponse() =>
+      http.Response('{"addresses":[]}', 200);
+
+  group('캐시 / in-flight 중복제거 / fallback 캡', () {
+    setUp(() {
+      // 테스트 간 static 누수 방지.
+      LocationLookupService.resetLookupCacheForTesting();
+      ApiUsageGuard.resetForTesting();
+    });
+
+    test('같은 query 2회 검색 → tmap HTTP 1회(캐시 적중)', () async {
+      var tmapCallCount = 0;
+
+      final service = LocationLookupService(
+        tmapApiKey: 'tmap-key',
+        clientId: '',
+        clientSecret: '',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          if (isTmapRequest(request)) {
+            tmapCallCount++;
+            return tmapSuccessResponse();
+          }
+          return emptyResponse();
+        }),
+      );
+
+      await service.searchWithFallback('강남역');
+      await service.searchWithFallback('강남역'); // 캐시 적중 — HTTP 없어야 함
+
+      expect(tmapCallCount, equals(1),
+          reason: '캐시 적중 시 tmap HTTP는 1회만 호출돼야 한다');
+    });
+
+    test('결과 없는(빈) query 2회 → 2회째 tmap 0회(네거티브 캐시)', () async {
+      var tmapCallCount = 0;
+
+      final service = LocationLookupService(
+        tmapApiKey: 'tmap-key',
+        clientId: '',
+        clientSecret: '',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          if (isTmapRequest(request)) {
+            tmapCallCount++;
+            return tmapEmptyResponse();
+          }
+          return emptyResponse();
+        }),
+      );
+
+      // 결과 없는 쿼리로 두 번 검색.
+      await service.searchWithFallback('존재하지않는장소xyz');
+      final countAfterFirst = tmapCallCount;
+
+      await service.searchWithFallback('존재하지않는장소xyz'); // 네거티브 캐시 적중
+
+      expect(countAfterFirst, greaterThan(0),
+          reason: '첫 번째 검색은 tmap을 호출해야 한다');
+      expect(tmapCallCount, equals(countAfterFirst),
+          reason: '두 번째 검색은 네거티브 캐시 적중으로 tmap HTTP를 추가 호출하지 않아야 한다');
+    });
+
+    test('같은 query 동시(Future.wait) → tmap 1회(in-flight dedup)', () async {
+      var tmapCallCount = 0;
+
+      final service = LocationLookupService(
+        tmapApiKey: 'tmap-key',
+        clientId: '',
+        clientSecret: '',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          if (isTmapRequest(request)) {
+            tmapCallCount++;
+            return tmapSuccessResponse();
+          }
+          return emptyResponse();
+        }),
+      );
+
+      // 두 요청을 동시에 시작.
+      final results = await Future.wait([
+        service.searchWithFallback('강남역'),
+        service.searchWithFallback('강남역'),
+      ]);
+
+      expect(tmapCallCount, equals(1),
+          reason: 'in-flight dedup: 동시 동일 쿼리는 tmap을 1회만 호출해야 한다');
+      expect(results[0].results, equals(results[1].results),
+          reason: '두 결과는 동일해야 한다');
+    });
+
+    test('fallback 캡: 끝까지 못 찾는 query → tmap 호출 ≤ 6회', () async {
+      // 기존 ApiUsageGuard 일일 한도(기본값 60회/60초)를 넘지 않도록
+      // 충분히 큰 한도를 설정한 guard를 주입한다.
+      final guard = ApiUsageGuard(
+        configs: const <String, ApiRateConfig>{
+          ApiName.tmapPoi: ApiRateConfig(
+            windowSeconds: 60,
+            rateLimit: 1000, // 테스트에서 차단되지 않을 만큼 큰 값
+          ),
+        },
+      );
+
+      var tmapCallCount = 0;
+
+      final service = LocationLookupService(
+        tmapApiKey: 'tmap-key',
+        clientId: '',
+        clientSecret: '',
+        googleMapsApiKey: '',
+        usageGuard: guard,
+        httpClientFactory: () => MockClient((request) async {
+          if (isTmapRequest(request)) {
+            tmapCallCount++;
+            return tmapEmptyResponse(); // 항상 빈 결과
+          }
+          return emptyResponse();
+        }),
+      );
+
+      // buildRetryQueries가 5개 이상을 생성하는 쿼리 사용.
+      try {
+        await service.searchWithFallback('원주세브란스기독병원근처카페');
+      } catch (_) {
+        // fallback 캡(콜 수)만 검증하므로 결과/예외는 무시한다.
+      }
+
+      expect(tmapCallCount, lessThanOrEqualTo(6),
+          reason: 'fallback 캡(_maxFallbackQueries=5): 한 검색이 tmap ≤ 1+5 = 6콜이어야 한다');
+    });
+
+    test('401 응답 → authFailure 있으면 캐싱 안 됨: 다음 검색이 다시 HTTP 시도', () async {
+      var requestCount = 0;
+
+      final service = LocationLookupService(
+        tmapApiKey: 'tmap-key',
+        clientId: 'client-id',
+        clientSecret: 'client-secret',
+        googleMapsApiKey: '',
+        httpClientFactory: () => MockClient((request) async {
+          requestCount++;
+          if (isTmapRequest(request)) {
+            // 401 반환 — authFailure 유발.
+            return http.Response('unauthorized', 401);
+          }
+          if (request.url.host.contains('naveropenapi')) {
+            return http.Response('unauthorized', 401);
+          }
+          return emptyResponse();
+        }),
+      );
+
+      // 첫 번째 검색 — 401로 authFailure, 예외 발생 가능.
+      try {
+        await service.searchWithFallback('강남역');
+      } on LocationLookupException {
+        // 예상된 예외.
+      }
+      final requestsAfterFirst = requestCount;
+
+      // 두 번째 검색 — 캐싱되지 않았으면 다시 HTTP를 시도해야 함.
+      try {
+        await service.searchWithFallback('강남역');
+      } on LocationLookupException {
+        // 예상된 예외.
+      }
+
+      expect(requestCount, greaterThan(requestsAfterFirst),
+          reason: 'authFailure 시 결과가 캐싱되지 않아야 하므로 두 번째 검색도 HTTP를 시도해야 한다');
+    });
+  });
 
   group('sortByRelevance', () {
     final service = LocationLookupService(

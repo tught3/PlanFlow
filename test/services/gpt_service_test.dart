@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:planflow/core/env.dart';
+import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/gpt_service.dart';
 import 'package:planflow/services/voice_text_cleanup_service.dart';
 
@@ -12,6 +14,13 @@ const String _proxyEndpoint =
     'https://xqvvfnvmytjlblcngipn.supabase.co/functions/v1/openai-proxy';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    ApiUsageGuard.resetForTesting();
+  });
+
   group('GptService', () {
     test('cleans suspicious STT text with AI JSON when confidence is high',
         () async {
@@ -1084,6 +1093,115 @@ void main() {
         contains('Input: "토요일 병원 병문안" -> include "꽃이나 선물 챙기기"'),
       );
       expect(prompt, contains('Input: "내일 법원" or "내일 학교"'));
+    });
+
+    test('rate limit blocks GPT API call and returns null', () async {
+      var httpCallCount = 0;
+
+      final client = MockClient((request) async {
+        httpCallCount++;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': 'test',
+                    'start_at': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      // rateLimit=3으로 설정한 가드 생성
+      final guard = ApiUsageGuard(
+        configs: {
+          ApiName.gpt: const ApiRateConfig(windowSeconds: 60, rateLimit: 3),
+        },
+      );
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        usageGuard: guard,
+      );
+
+      // 3회 허용 (각 호출이 tryConsume을 통과하고 HTTP 요청 발생)
+      for (var i = 0; i < 3; i++) {
+        final result = await service.parseSchedule('test $i');
+        expect(result['title'], 'test', reason: '${i + 1}번째 호출은 성공');
+      }
+      expect(httpCallCount, 3, reason: 'HTTP 호출 3회');
+
+      // 4회차는 가드에서 차단 → null 반환 → HTTP 호출 안 됨
+      final blockedResult = await service.parseSchedule('test 4');
+      expect(blockedResult['parse_failed'], isTrue,
+          reason: '가드 차단 시 fallback 반환 (null → fallback)');
+      expect(httpCallCount, 3, reason: 'HTTP 호출은 여전히 3회 (4번째는 가드에서 차단)');
+    });
+
+    test('rate limit resets after window expires', () async {
+      var httpCallCount = 0;
+      var fakeNow = DateTime(2026, 6, 28, 10, 0, 0);
+
+      final client = MockClient((request) async {
+        httpCallCount++;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': 'success',
+                    'start_at': null,
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+
+      // rateLimit=2, windowSeconds=60
+      final guard = ApiUsageGuard(
+        configs: {
+          ApiName.gpt: const ApiRateConfig(windowSeconds: 60, rateLimit: 2),
+        },
+        now: () => fakeNow,
+      );
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        usageGuard: guard,
+      );
+
+      // T=0: 2회 허용 → HTTP 호출 2회
+      await service.parseSchedule('test 1');
+      await service.parseSchedule('test 2');
+      expect(httpCallCount, 2, reason: 'T=0: 첫 2회 HTTP 호출');
+
+      // T=0: 3회차는 차단 → HTTP 호출 안 됨
+      await service.parseSchedule('test 3');
+      expect(httpCallCount, 2, reason: 'T=0: 3번째는 가드에서 차단');
+
+      // T=+61초: 윈도우 밖으로 나감 → 다시 허용
+      fakeNow = DateTime(2026, 6, 28, 10, 1, 1);
+      await service.parseSchedule('test 4');
+      expect(httpCallCount, 3, reason: '+61초: 윈도우 경과 후 다시 허용됨 → HTTP 호출 3회');
     });
   });
 }

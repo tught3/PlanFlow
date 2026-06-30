@@ -17,6 +17,7 @@ import '../data/models/calendar_connection_model.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/calendar_connection_repository.dart';
 import '../data/repositories/event_repository.dart';
+import 'api_usage_guard.dart';
 import 'external_event_import_classifier.dart';
 import 'naver_calendar_permission_service.dart';
 
@@ -227,6 +228,7 @@ class CalendarSyncService {
     bool? googlePlatformSupported,
     TargetPlatform? googleTargetPlatform,
     http.Client Function()? httpClientFactory,
+    ApiUsageGuard? usageGuard,
   }) : _googleClientId = googleClientId,
        _googleServerClientId = googleServerClientId,
        _googleScopes = List<String>.unmodifiable(googleScopes),
@@ -247,7 +249,8 @@ class CalendarSyncService {
        _currentUserIdOverride = currentUserId,
        _googlePlatformSupportedOverride = googlePlatformSupported,
        _googleTargetPlatformOverride = googleTargetPlatform,
-       _httpClientFactory = httpClientFactory ?? http.Client.new;
+       _httpClientFactory = httpClientFactory ?? http.Client.new,
+       _usageGuard = usageGuard;
 
   final String? _googleClientId;
   final String? _googleServerClientId;
@@ -266,6 +269,10 @@ class CalendarSyncService {
   final Uri _naverCreateScheduleUri;
   final int _naverExportLimit;
   final String? _currentUserIdOverride;
+  final ApiUsageGuard? _usageGuard;
+
+  /// API 사용량 가드 인스턴스. 테스트 주입 우선, 없으면 싱글톤 사용.
+  ApiUsageGuard get _guard => _usageGuard ?? ApiUsageGuard.instance;
 
   GoogleSignIn? _googleSignIn;
   NaverCalendarPermissionService? _naverPermissionService;
@@ -976,6 +983,14 @@ class CalendarSyncService {
       var syncedItems = 0;
       try {
         for (final event in events) {
+          // 폭주 가드: 60초/30회 한도 초과 시 루프 중단 (이미 보낸 것은 유지)
+          if (!await _guard.tryConsume(ApiName.naverCalendar)) {
+            debugPrint(
+              'ApiUsageGuard: ${ApiName.naverCalendar} blocked — '
+              '남은 이벤트는 다음 동기화에서 처리',
+            );
+            break;
+          }
           final response = await client
               .post(
                 _naverCreateScheduleUri,
@@ -1008,6 +1023,8 @@ class CalendarSyncService {
           }
           await _markEventSyncedToNaver(event);
           syncedItems += 1;
+          // 반복 간 소량 지연으로 버스트 완화
+          await Future.delayed(const Duration(milliseconds: 50));
         }
       } finally {
         client.close();
@@ -1174,7 +1191,17 @@ class CalendarSyncService {
         continue;
       }
 
+      // 폭주 가드: 60초/30회 한도 초과 시 루프 중단 (이미 보낸 것은 유지)
+      if (!await _guard.tryConsume(ApiName.googleCalendar)) {
+        debugPrint(
+          'ApiUsageGuard: ${ApiName.googleCalendar} blocked — '
+          '남은 이벤트는 다음 동기화에서 처리',
+        );
+        break;
+      }
       exportedItems += await _exportPlanFlowEventToGoogle(api, event);
+      // 반복 간 소량 지연으로 버스트 완화
+      await Future.delayed(const Duration(milliseconds: 50));
     }
 
     return exportedItems;
