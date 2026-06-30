@@ -279,6 +279,20 @@ class ApiUsageGuard {
           windowSeconds: 60,
           rateLimit: 40,
         ),
+        // GPT: 음성 1회 처리에 수 회 호출(정리+파싱+검증). 비용이 크므로 보수적.
+        ApiName.gpt: ApiRateConfig(
+          windowSeconds: 60,
+          rateLimit: 20,
+        ),
+        // 캘린더 일괄 내보내기: 저장·동기화 시 루프 POST. 버스트 차단.
+        ApiName.naverCalendar: ApiRateConfig(
+          windowSeconds: 60,
+          rateLimit: 30,
+        ),
+        ApiName.googleCalendar: ApiRateConfig(
+          windowSeconds: 60,
+          rateLimit: 30,
+        ),
       },
       overloadAlertSender: _defaultHttpOverloadAlert,
     );
@@ -331,4 +345,13 @@ class ApiName {
   static const String tmapRoutes = 'tmap_routes';
   static const String naverGeocode = 'naver_geocode';
   static const String googleGeocode = 'google_geocode';
+
+  /// OpenAI(GPT) 호출. 음성 파싱/정리/브리핑 생성 등. 비용 보호용.
+  static const String gpt = 'gpt';
+
+  /// Naver 캘린더 일정 일괄 내보내기(POST 루프).
+  static const String naverCalendar = 'naver_calendar';
+
+  /// Google 캘린더 일정 일괄 내보내기(POST 루프).
+  static const String googleCalendar = 'google_calendar';
 }
