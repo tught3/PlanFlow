@@ -487,7 +487,7 @@ void main() {
   // sortByRelevance — 검색어 유사도 정렬 (순수 함수, API 호출 없음)
   // ──────────────────────────────────────────────────────────────────────────
 
-  LocationLookupResult _makeResult(String name, {String address = ''}) =>
+  LocationLookupResult makeResult(String name, {String address = ''}) =>
       LocationLookupResult(
         name: name,
         address: address,
@@ -507,10 +507,10 @@ void main() {
     test('수진역 검색 시 정확 일치 결과가 1순위, 군더더기 많은 결과는 후순위', () {
       // 재현 케이스: '수진역코아루천년가 정문'이 1순위로 나오던 버그
       final input = [
-        _makeResult('수진역코아루천년가 정문'),
-        _makeResult('수진역'),
-        _makeResult('수진역 8호선'),
-        _makeResult('수진역사거리'),
+        makeResult('수진역코아루천년가 정문'),
+        makeResult('수진역'),
+        makeResult('수진역 8호선'),
+        makeResult('수진역사거리'),
       ];
       final sorted = service.sortByRelevance('수진역', input);
 
@@ -533,8 +533,8 @@ void main() {
 
     test('정확 일치가 접두 일치보다 우선순위가 높다', () {
       final input = [
-        _makeResult('수진역사거리'),   // 접두 일치
-        _makeResult('수진역'),         // 정확 일치
+        makeResult('수진역사거리'),   // 접두 일치
+        makeResult('수진역'),         // 정확 일치
       ];
       final sorted = service.sortByRelevance('수진역', input);
 
@@ -543,8 +543,8 @@ void main() {
 
     test('접두 일치가 내부 포함보다 우선순위가 높다', () {
       final input = [
-        _makeResult('역수진홀'),       // 내부 포함
-        _makeResult('수진역사거리'),   // 접두 일치
+        makeResult('역수진홀'),       // 내부 포함
+        makeResult('수진역사거리'),   // 접두 일치
       ];
       final sorted = service.sortByRelevance('수진역', input);
 
@@ -554,8 +554,8 @@ void main() {
     test('교통 키워드(역) 포함 결과에 가산점이 붙는다', () {
       // '수진역' 검색 시 역 이름이 없는 결과보다 역 포함 결과가 앞에 와야 함
       final input = [
-        _makeResult('수진 코아루천년가'),   // 역 키워드 없음
-        _makeResult('수진역 8호선'),         // 역 키워드 포함
+        makeResult('수진 코아루천년가'),   // 역 키워드 없음
+        makeResult('수진역 8호선'),         // 역 키워드 포함
       ];
       final sorted = service.sortByRelevance('수진역', input);
 
@@ -564,9 +564,9 @@ void main() {
 
     test('이름 길이가 짧을수록(군더더기 적을수록) 더 높은 점수를 받는다', () {
       final input = [
-        _makeResult('수진역광장아파트단지'),  // 길이 가장 긺 (접두 일치, extraChars 큼)
-        _makeResult('수진역사거리'),            // 중간 (접두 일치, extraChars 작음)
-        _makeResult('수진역'),                  // 가장 짧음 (정확 일치)
+        makeResult('수진역광장아파트단지'),  // 길이 가장 긺 (접두 일치, extraChars 큼)
+        makeResult('수진역사거리'),            // 중간 (접두 일치, extraChars 작음)
+        makeResult('수진역'),                  // 가장 짧음 (정확 일치)
       ];
       final sorted = service.sortByRelevance('수진역', input);
 
@@ -577,7 +577,7 @@ void main() {
     });
 
     test('단일 결과면 정렬 없이 그대로 반환', () {
-      final input = [_makeResult('수진역')];
+      final input = [makeResult('수진역')];
       final sorted = service.sortByRelevance('수진역', input);
       expect(sorted, equals(input));
     });

@@ -39,7 +39,7 @@ void main() {
   });
 
   group('AppPermissionSnapshot.alarmWillFire 로직', () {
-    NotificationPermissionStatus _makeStatus({
+    NotificationPermissionStatus makeStatus({
       bool notifications = true,
       bool exactAlarms = true,
     }) {
@@ -55,7 +55,7 @@ void main() {
         microphoneGranted: true,
         locationGranted: true,
         calendarGranted: true,
-        notificationStatus: _makeStatus(exactAlarms: true),
+        notificationStatus: makeStatus(exactAlarms: true),
         batteryOptimizationIgnored: true,
       );
       expect(snapshot.alarmWillFire, isTrue);
@@ -66,7 +66,7 @@ void main() {
         microphoneGranted: true,
         locationGranted: true,
         calendarGranted: true,
-        notificationStatus: _makeStatus(exactAlarms: false),
+        notificationStatus: makeStatus(exactAlarms: false),
         batteryOptimizationIgnored: true,
       );
       expect(snapshot.alarmWillFire, isFalse,
@@ -78,7 +78,7 @@ void main() {
         microphoneGranted: true,
         locationGranted: true,
         calendarGranted: true,
-        notificationStatus: _makeStatus(exactAlarms: true),
+        notificationStatus: makeStatus(exactAlarms: true),
         batteryOptimizationIgnored: false,
       );
       expect(snapshot.alarmWillFire, isFalse,
@@ -90,7 +90,7 @@ void main() {
         microphoneGranted: true,
         locationGranted: true,
         calendarGranted: true,
-        notificationStatus: _makeStatus(exactAlarms: false),
+        notificationStatus: makeStatus(exactAlarms: false),
         batteryOptimizationIgnored: false,
       );
       expect(snapshot.alarmWillFire, isFalse);
@@ -103,7 +103,7 @@ void main() {
           microphoneGranted: true,
           locationGranted: true,
           calendarGranted: true,
-          notificationStatus: _makeStatus(exactAlarms: true),
+          notificationStatus: makeStatus(exactAlarms: true),
           // batteryOptimizationIgnored 생략 → 기본값 true
         );
         expect(snapshot.batteryOptimizationIgnored, isTrue,
