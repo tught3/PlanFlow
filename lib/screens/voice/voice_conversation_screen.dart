@@ -1636,20 +1636,26 @@ class _VoiceConversationControl extends StatelessWidget {
                 : (trimmedStatus?.isNotEmpty ?? false)
                     ? trimmedStatus!
                     : '음성입력이 중지되었습니다. 다시 음성입력하실 때 마이크 버튼을 눌러 주세요.';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: isVoiceActive
-            ? PlanFlowColors.tertiaryAccentFaint
-            : PlanFlowColors.surfaceFaint,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        // 음성 정지 상태에서는 박스 전체를 탭해도 음성 입력을 다시 시작한다.
+        onTap: isVoiceActive ? null : onListen,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isVoiceActive
-              ? PlanFlowColors.activeLight
-              : PlanFlowColors.primaryFaint,
-        ),
-      ),
-      child: Row(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: isVoiceActive
+                ? PlanFlowColors.tertiaryAccentFaint
+                : PlanFlowColors.surfaceFaint,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isVoiceActive
+                  ? PlanFlowColors.activeLight
+                  : PlanFlowColors.primaryFaint,
+            ),
+          ),
+          child: Row(
         children: [
           if (isListening)
             const Icon(
@@ -1695,8 +1701,10 @@ class _VoiceConversationControl extends StatelessWidget {
             ),
           ],
         ],
+        ),
       ),
-    );
+    ),
+  );
   }
 }
 
