@@ -1186,7 +1186,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         return '$title 일정을 변경했어요.';
       case VoiceConversationAction.confirmDelete:
         final title = result.targetEvent?.title ?? '선택한 일정';
-        return '$title 일정을 삭제할까요? 삭제하려면 “응 삭제해”라고 말하거나 삭제 확인을 눌러 주세요.';
+        return '$title 일정을 삭제할까요? 삭제하려면 아래 삭제 확인 버튼을 눌러 주세요.';
       case VoiceConversationAction.deleteConfirmed:
         return '삭제를 진행했어요.';
       case VoiceConversationAction.deleteCanceled:
