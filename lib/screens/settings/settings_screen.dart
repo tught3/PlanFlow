@@ -664,6 +664,14 @@ class _SettingsScreenState extends State<SettingsScreen>
         _lastNaverCalDavResult = null;
       }
     });
+
+    // 자격증명이 있으면 백그라운드에서 캘린더 목록을 미리 불러 캐시를 데운다.
+    // 실패해도 사용자에게 노출하지 않는다. 정식 동기화 때 다시 정상 호출된다.
+    if (hasCalDavCredentials) {
+      unawaited(
+        _naverCalDavService.getCalendars().catchError((_) => <NaverCalDavCalendar>[]),
+      );
+    }
   }
 
   Future<void> _syncGoogleCalendar() async {
@@ -1413,6 +1421,33 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  double _naverCalDavProgressValue(NaverCalDavSyncProgress? progress) {
+    if (progress == null) {
+      return 0.05;
+    }
+
+    final stage = progress.stage;
+    switch (stage) {
+      case NaverCalDavSyncStage.preparing:
+        return 0.05;
+      case NaverCalDavSyncStage.calendars:
+        return 0.15;
+      case NaverCalDavSyncStage.querying:
+        return 0.35;
+      case NaverCalDavSyncStage.saving:
+        final done =
+            progress.savedEvents + progress.skippedEvents + progress.failedEvents;
+        final total = progress.totalEvents;
+        if (total <= 0) {
+          return 0.55;
+        }
+        final progressFraction = (done / total).clamp(0.0, 1.0);
+        return (0.55 + 0.45 * progressFraction).clamp(0.0, 1.0);
+      case NaverCalDavSyncStage.completed:
+        return 1.0;
+    }
+  }
+
   Future<void> _showNaverCalDavProgressDialog({bool dismissible = true}) {
     _isNaverCalDavProgressDialogOpen = true;
     return showDialog<void>(
@@ -1429,11 +1464,31 @@ class _SettingsScreenState extends State<SettingsScreen>
               final showBackgroundHint =
                   stage == NaverCalDavSyncStage.querying ||
                       stage == NaverCalDavSyncStage.saving;
+              final progressValue = _naverCalDavProgressValue(progress);
+              final progressPercent = (progressValue * 100).round();
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Center(child: CircularProgressIndicator()),
+                  LinearProgressIndicator(
+                    value: progressValue,
+                    minHeight: 8,
+                    backgroundColor: PlanFlowColors.primaryFaint,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      PlanFlowColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Text(
+                      '$progressPercent%',
+                      style:
+                          Theme.of(context).textTheme.labelLarge?.copyWith(
+                                color: PlanFlowColors.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   Text(_naverCalDavProgressStatusText(progress)),
                   if (showBackgroundHint) ...[
@@ -1457,24 +1512,32 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   String _naverCalDavProgressStatusText(NaverCalDavSyncProgress? progress) {
-    final processed = progress?.processedEvents ?? 0;
-    final total = progress?.totalEvents ?? 0;
+    final totalCalendars = progress?.totalCalendars ?? 0;
+    final savedEvents = progress?.savedEvents ?? 0;
+    final skippedEvents = progress?.skippedEvents ?? 0;
+    final failedEvents = progress?.failedEvents ?? 0;
+    final totalEvents = progress?.totalEvents ?? 0;
+    final done = savedEvents + skippedEvents + failedEvents;
+
     switch (progress?.stage) {
       case NaverCalDavSyncStage.preparing:
-        return '연결 확인 중';
+        return '네이버 연결 확인 중';
       case NaverCalDavSyncStage.calendars:
         return '캘린더 확인 중';
       case NaverCalDavSyncStage.querying:
-        if (total > 0) {
-          return '일정 가져오는 중($processed/$total개)';
+        if (totalCalendars > 0) {
+          return '일정 가져오는 중 (캘린더 $totalCalendars개)';
         }
-        return '일정 목록 조회 중';
+        return '일정 가져오는 중';
       case NaverCalDavSyncStage.saving:
-        return 'PlanFlow에 저장 중($processed/$total개)';
+        if (totalEvents > 0) {
+          return 'PlanFlow에 저장 중 ($done/$totalEvents개)';
+        }
+        return 'PlanFlow에 저장 중';
       case NaverCalDavSyncStage.completed:
         return '마무리 중';
       case null:
-        return '연결 확인 중';
+        return '네이버 연결 확인 중';
     }
   }
 

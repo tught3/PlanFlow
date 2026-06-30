@@ -613,6 +613,11 @@ class NaverCalDavService {
   final Duration _timeout;
   final Uri _baseUri;
 
+  // 캘린더 목록 인스턴스 레벨 캐시 (TTL: 2분)
+  static const Duration _calendarCacheTtl = Duration(minutes: 2);
+  List<NaverCalDavCalendar>? _cachedCalendars;
+  DateTime? _cachedAt;
+
   EventRepository get _eventRepository =>
       _eventRepositoryOverride ?? EventRepository.supabase(client: _client);
 
@@ -675,6 +680,8 @@ class NaverCalDavService {
             naverId: normalizedId,
             appPassword: normalizedPassword,
           );
+          // 자격증명이 새로 저장되면 이전 캐시를 무효화한다
+          invalidateCalendarCache();
         }
         return result;
       }
@@ -695,13 +702,36 @@ class NaverCalDavService {
   }
 
   Future<void> clearCredentials() {
+    invalidateCalendarCache();
     return _credentialStore.clearCredentials();
+  }
+
+  /// 캘린더 목록 캐시를 즉시 만료한다.
+  /// 자격증명 변경/삭제 시 또는 캘린더 구성이 바뀌었을 때 호출한다.
+  void invalidateCalendarCache() {
+    _cachedCalendars = null;
+    _cachedAt = null;
   }
 
   Future<List<NaverCalDavCalendar>> getCalendars({
     String? naverId,
     String? appPassword,
   }) async {
+    // 명시적 자격증명(naverId/appPassword)이 들어온 경우는 캐시를 우회한다.
+    // (exportEvent 등 다른 자격증명으로 호출하는 경로는 캐시 대상이 아님)
+    final useCache = naverId == null && appPassword == null;
+
+    if (useCache) {
+      final cached = _cachedCalendars;
+      final cachedAt = _cachedAt;
+      if (cached != null &&
+          cachedAt != null &&
+          DateTime.now().difference(cachedAt) < _calendarCacheTtl) {
+        DiagLogger.log('NaverCalDav', 'getCalendars cacheHit count=${cached.length}');
+        return cached;
+      }
+    }
+
     final credentials = await _resolveCredentials(
       naverId: naverId,
       appPassword: appPassword,
@@ -741,6 +771,10 @@ class NaverCalDavService {
           );
         }
         if (calendars.isNotEmpty) {
+          if (useCache) {
+            _cachedCalendars = calendars;
+            _cachedAt = DateTime.now();
+          }
           return calendars;
         }
       } catch (error) {
@@ -1190,6 +1224,134 @@ class NaverCalDavService {
             )),
       );
 
+      // 저장 루프 진입 전 유저 전체 일정을 1회만 로드해 메모리 인덱스 구성 (O(N²) → O(N))
+      final allUserEvents = await _eventRepository.listEvents(
+        userId: resolvedUserId,
+      );
+      // externalId 인덱스: "source:externalId" → EventModel (fetchEventBySourceExternalId 대체)
+      final externalIdIndex = <String, EventModel>{
+        for (final e in allUserEvents)
+          if (e.externalId != null && e.externalId!.trim().isNotEmpty)
+            '${e.source}:${e.externalId}': e,
+      };
+      // title+시각 인덱스: _normalizeDuplicateTitle(title)+분단위UTC → EventModel
+      // naver_caldav source 제외, ±1분 허용은 분 단위 truncate 키로 처리
+      final titleStartIndex = <String, List<EventModel>>{};
+      for (final e in allUserEvents) {
+        if (e.source == 'naver_caldav') {
+          continue;
+        }
+        final start = e.startAt;
+        if (start == null) {
+          continue;
+        }
+        final normTitle = _normalizeTitleForDuplicate(e.title);
+        if (normTitle.isEmpty) {
+          continue;
+        }
+        final key = _titleStartKey(normTitle, start);
+        (titleStartIndex[key] ??= <EventModel>[]).add(e);
+      }
+
+      // 저장 대상 후보 수집 (루프 내 DB read = 0)
+      // 각 항목: (eventModel, calendarDisplayName, uid, isUpsertCandidate)
+      // 순차 순서(진행 콜백 단조 증가)를 유지하면서 저장 후보만 배치 병렬로 처리한다.
+
+      // 헬퍼: 메모리 인덱스로 externalId 기반 기존 이벤트 조회
+      EventModel? findByExternalId(EventModel em) {
+        final eid = em.externalId?.trim();
+        if (eid == null || eid.isEmpty) {
+          return null;
+        }
+        return externalIdIndex['${em.source}:$eid'];
+      }
+
+      // 헬퍼: 메모리 인덱스로 title+시각 기반 중복 이벤트 조회 (naver_caldav 제외)
+      EventModel? findByTitleStart(EventModel em) {
+        final start = em.startAt;
+        if (start == null) {
+          return null;
+        }
+        final normTitle = _normalizeTitleForDuplicate(em.title);
+        if (normTitle.isEmpty) {
+          return null;
+        }
+        // ±1분 허용: 현재 분, 이전 분, 다음 분 세 키를 확인
+        final startUtc = start.toUtc();
+        final truncated = DateTime.utc(
+          startUtc.year,
+          startUtc.month,
+          startUtc.day,
+          startUtc.hour,
+          startUtc.minute,
+        );
+        for (var delta = -1; delta <= 1; delta++) {
+          final candidate = truncated.add(Duration(minutes: delta));
+          final key = _titleStartKey(normTitle, candidate);
+          final bucket = titleStartIndex[key];
+          if (bucket == null) {
+            continue;
+          }
+          for (final e in bucket) {
+            final eStart = e.startAt;
+            if (eStart == null) {
+              continue;
+            }
+            final diff =
+                eStart.toUtc().difference(startUtc).abs();
+            if (diff <= const Duration(minutes: 1)) {
+              return e;
+            }
+          }
+        }
+        return null;
+      }
+
+      // 헬퍼: 메모리 인덱스로 _skipUnchangedReason 대체
+      String? skipUnchangedReasonFromIndex(EventModel event) {
+        final existing = findByExternalId(event);
+        if (existing == null) {
+          return null;
+        }
+        final incomingEtag = event.externalEtag?.trim();
+        final existingEtag = existing.externalEtag?.trim();
+        if (existing.startAt == null &&
+            incomingEtag != null &&
+            incomingEtag.isNotEmpty &&
+            existingEtag != null &&
+            existingEtag.isNotEmpty &&
+            incomingEtag == existingEtag) {
+          return 'external_etag 일치';
+        }
+        if (_hasMeaningfulEventDifference(event, existing)) {
+          return null;
+        }
+        if (incomingEtag != null &&
+            incomingEtag.isNotEmpty &&
+            existingEtag != null &&
+            existingEtag.isNotEmpty) {
+          return incomingEtag == existingEtag ? 'external_etag 일치' : null;
+        }
+        final incomingUpdatedAt = event.externalUpdatedAt;
+        final existingUpdatedAt = existing.externalUpdatedAt;
+        if (incomingUpdatedAt == null || existingUpdatedAt == null) {
+          return null;
+        }
+        return !incomingUpdatedAt.toUtc().isAfter(existingUpdatedAt.toUtc())
+            ? 'external_updated_at이 기존값보다 최신이 아님'
+            : null;
+      }
+
+      // 저장 후보 목록 (루프 중 수집, 저장은 chunk 병렬 처리)
+      // 각 항목: (eventModel, calendarDisplayName, uid, existingForUpsert)
+      final saveCandidates = <
+          ({
+            EventModel eventModel,
+            String calendarDisplayName,
+            String uid,
+            EventModel? existingForUpsert,
+          })>[];
+
       for (var index = 0; index < calendars.length; index += 1) {
         final calendar = calendars[index];
         final calendarNumber = index + 1;
@@ -1251,48 +1413,51 @@ class NaverCalDavService {
             continue;
           }
 
-          final duplicateReason = diagnosticImport
-              ? null
-              : await _sameTitleStartDuplicateReason(eventModel);
-          if (duplicateReason != null) {
-            final duplicate = await _findSameTitleStartDuplicate(eventModel);
-            final linked = duplicate == null
-                ? null
-                : await _eventRepository.attachExternalSyncMetadataIfCompatible(
-                    existing: duplicate,
-                    incoming: eventModel,
-                  );
-            skippedCount += 1;
-            diagnostics.duplicateSkipped += 1;
-            diagnostics.addSkipReason(
-              linked == null ? '같은 제목+시간 중복' : '기존 일정에 네이버 연결 정보 반영',
-            );
-            debugPrint(
-              'Naver CalDAV duplicate handled: '
-              'calendar="${calendar.displayName}", '
-              'uid="${event.uid}", '
-              'externalId="${eventModel.externalId}", '
-              'title="${event.title}", '
-              'reason=$duplicateReason, linked=${linked != null}',
-            );
-            emit(NaverCalDavSyncProgress(
-              mode: mode,
-              stage: NaverCalDavSyncStage.saving,
-              message: '이미 PlanFlow에 있는 일정은 건너뛰는 중입니다.',
-              currentCalendar: calendar.displayName,
-              currentCalendarIndex: calendarNumber,
-              totalCalendars: calendars.length,
-              processedEvents: eventIndex + 1,
-              totalEvents: events.length,
-              savedEvents: savedCount,
-              skippedEvents: skippedCount,
-              failedEvents: failedCount,
-            ));
-            continue;
-          } else if (diagnosticImport) {
-            final broadDuplicateReason =
-                await _sameTitleStartDuplicateReason(eventModel);
-            if (broadDuplicateReason != null) {
+          // 메모리 인덱스로 title+시각 중복 체크 (DB 조회 없이)
+          if (!diagnosticImport) {
+            final duplicate = findByTitleStart(eventModel);
+            if (duplicate != null) {
+              final duplicateReason =
+                  '같은 시작시간+제목 일정 존재(${duplicate.id}, source=${duplicate.source})';
+              final linked =
+                  await _eventRepository.attachExternalSyncMetadataIfCompatible(
+                existing: duplicate,
+                incoming: eventModel,
+              );
+              skippedCount += 1;
+              diagnostics.duplicateSkipped += 1;
+              diagnostics.addSkipReason(
+                linked == null ? '같은 제목+시간 중복' : '기존 일정에 네이버 연결 정보 반영',
+              );
+              debugPrint(
+                'Naver CalDAV duplicate handled: '
+                'calendar="${calendar.displayName}", '
+                'uid="${event.uid}", '
+                'externalId="${eventModel.externalId}", '
+                'title="${event.title}", '
+                'reason=$duplicateReason, linked=${linked != null}',
+              );
+              emit(NaverCalDavSyncProgress(
+                mode: mode,
+                stage: NaverCalDavSyncStage.saving,
+                message: '이미 PlanFlow에 있는 일정은 건너뛰는 중입니다.',
+                currentCalendar: calendar.displayName,
+                currentCalendarIndex: calendarNumber,
+                totalCalendars: calendars.length,
+                processedEvents: eventIndex + 1,
+                totalEvents: events.length,
+                savedEvents: savedCount,
+                skippedEvents: skippedCount,
+                failedEvents: failedCount,
+              ));
+              continue;
+            }
+          } else {
+            // diagnosticImport: 중복 여부만 로그 (스킵 안 함)
+            final duplicate = findByTitleStart(eventModel);
+            if (duplicate != null) {
+              final broadDuplicateReason =
+                  '같은 시작시간+제목 일정 존재(${duplicate.id}, source=${duplicate.source})';
               debugPrint(
                 'Naver CalDAV diagnostic duplicate warning: '
                 'calendar="${calendar.displayName}", '
@@ -1324,63 +1489,45 @@ class NaverCalDavService {
             ));
             continue;
           }
-          final skipReason =
-              skipUnchanged ? await _skipUnchangedReason(eventModel) : null;
-          if (skipReason != null) {
-            skippedCount += 1;
-            diagnostics.unchangedSkipped += 1;
-            diagnostics.addSkipReason(skipReason);
-            debugPrint(
-              'Naver CalDAV skip reason: '
-              'calendar="${calendar.displayName}", '
-              'uid="${event.uid}", '
-              'externalId="${eventModel.externalId}", '
-              'title="${event.title}", '
-              'reason=$skipReason',
-            );
-            emit(NaverCalDavSyncProgress(
-              mode: mode,
-              stage: NaverCalDavSyncStage.saving,
-              message: '이미 가져온 일정은 건너뛰는 중입니다.',
-              currentCalendar: calendar.displayName,
-              currentCalendarIndex: calendarNumber,
-              totalCalendars: calendars.length,
-              processedEvents: eventIndex + 1,
-              totalEvents: events.length,
-              savedEvents: savedCount,
-              skippedEvents: skippedCount,
-              failedEvents: failedCount,
-            ));
-            continue;
+          // 메모리 인덱스로 unchanged 체크 (DB 조회 없이)
+          if (skipUnchanged) {
+            final skipReason = skipUnchangedReasonFromIndex(eventModel);
+            if (skipReason != null) {
+              skippedCount += 1;
+              diagnostics.unchangedSkipped += 1;
+              diagnostics.addSkipReason(skipReason);
+              debugPrint(
+                'Naver CalDAV skip reason: '
+                'calendar="${calendar.displayName}", '
+                'uid="${event.uid}", '
+                'externalId="${eventModel.externalId}", '
+                'title="${event.title}", '
+                'reason=$skipReason',
+              );
+              emit(NaverCalDavSyncProgress(
+                mode: mode,
+                stage: NaverCalDavSyncStage.saving,
+                message: '이미 가져온 일정은 건너뛰는 중입니다.',
+                currentCalendar: calendar.displayName,
+                currentCalendarIndex: calendarNumber,
+                totalCalendars: calendars.length,
+                processedEvents: eventIndex + 1,
+                totalEvents: events.length,
+                savedEvents: savedCount,
+                skippedEvents: skippedCount,
+                failedEvents: failedCount,
+              ));
+              continue;
+            }
           }
           diagnostics.saveCandidates += 1;
-          try {
-            await _eventRepository.upsertEventBySourceExternalId(eventModel);
-            savedCount += 1;
-            diagnostics.saved += 1;
-          } catch (error, stackTrace) {
-            failedCount += 1;
-            diagnostics.failed += 1;
-            diagnostics.addSkipReason('Supabase 저장 실패');
-            debugPrint(
-              'Naver CalDAV event save failed: '
-              'calendar="${calendar.displayName}", uid="${event.uid}", '
-              'title="${event.title}", error=$error',
-            );
-            debugPrintStack(stackTrace: stackTrace);
-          }
-          emit(NaverCalDavSyncProgress(
-            mode: mode,
-            stage: NaverCalDavSyncStage.saving,
-            message: failedCount > 0 ? '일부 일정 저장에 실패했습니다.' : '일정을 저장하는 중입니다.',
-            currentCalendar: calendar.displayName,
-            currentCalendarIndex: calendarNumber,
-            totalCalendars: calendars.length,
-            processedEvents: eventIndex + 1,
-            totalEvents: events.length,
-            savedEvents: savedCount,
-            skippedEvents: skippedCount,
-            failedEvents: failedCount,
+          // 메모리 인덱스로 기존 이벤트 조회 (upsert read 부분을 메모리로 대체)
+          final existingForUpsert = findByExternalId(eventModel);
+          saveCandidates.add((
+            eventModel: eventModel,
+            calendarDisplayName: calendar.displayName,
+            uid: event.uid,
+            existingForUpsert: existingForUpsert,
           ));
         }
         debugPrint(
@@ -1391,6 +1538,53 @@ class NaverCalDavService {
           'skipped=$skippedCount, '
           'failed=$failedCount',
         );
+      }
+
+      // 저장 후보를 8개씩 chunk 병렬 처리 (write만 DB 호출)
+      const saveBatchSize = 8;
+      for (var i = 0; i < saveCandidates.length; i += saveBatchSize) {
+        final chunk = saveCandidates.skip(i).take(saveBatchSize).toList();
+        final results = await Future.wait(
+          chunk.map((item) async {
+            try {
+              await _upsertFromIndex(
+                eventModel: item.eventModel,
+                existingFromIndex: item.existingForUpsert,
+              );
+              return true;
+            } catch (error, stackTrace) {
+              debugPrint(
+                'Naver CalDAV event save failed: '
+                'uid="${item.uid}", '
+                'title="${item.eventModel.title}", error=$error',
+              );
+              debugPrintStack(stackTrace: stackTrace);
+              return false;
+            }
+          }),
+        );
+        for (final success in results) {
+          if (success) {
+            savedCount += 1;
+            diagnostics.saved += 1;
+          } else {
+            failedCount += 1;
+            diagnostics.failed += 1;
+            diagnostics.addSkipReason('Supabase 저장 실패');
+          }
+        }
+        // chunk 완료마다 진행 콜백 (단조 증가 유지)
+        emit(NaverCalDavSyncProgress(
+          mode: mode,
+          stage: NaverCalDavSyncStage.saving,
+          message: failedCount > 0 ? '일부 일정 저장에 실패했습니다.' : '일정을 저장하는 중입니다.',
+          totalCalendars: calendars.length,
+          processedEvents: eventCount,
+          totalEvents: eventCount,
+          savedEvents: savedCount,
+          skippedEvents: skippedCount,
+          failedEvents: failedCount,
+        ));
       }
 
       emit(NaverCalDavSyncProgress(
@@ -1513,46 +1707,81 @@ class NaverCalDavService {
     );
   }
 
-  Future<String?> _skipUnchangedReason(EventModel event) async {
-    final externalId = event.externalId;
-    if (externalId == null || externalId.trim().isEmpty) {
-      return null;
-    }
-    final existing = await _eventRepository.fetchEventBySourceExternalId(
-      source: event.source,
-      externalId: externalId,
-      userId: event.userId,
+  /// title 정규화 (event_repository.dart의 _normalizeDuplicateTitle과 동일 규칙)
+  static String _normalizeTitleForDuplicate(String value) {
+    return value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  }
+
+  /// 메모리 인덱스용 복합 키: 정규화 title + 분 단위 UTC 시각
+  static String _titleStartKey(String normalizedTitle, DateTime startUtc) {
+    final t = startUtc.toUtc();
+    final truncated = DateTime.utc(
+      t.year, t.month, t.day, t.hour, t.minute,
     );
-    if (existing == null) {
-      return null;
+    return '$normalizedTitle|${truncated.millisecondsSinceEpoch}';
+  }
+
+  /// 메모리 인덱스(existingFromIndex)를 이용해 upsert 쓰기만 수행.
+  /// SupabaseEventRepository.upsertEventBySourceExternalId 의 read 부분을
+  /// 인덱스로 대체하고, create/update 만 repository를 통해 처리한다.
+  Future<EventModel> _upsertFromIndex({
+    required EventModel eventModel,
+    required EventModel? existingFromIndex,
+  }) async {
+    final normalizedSource = eventModel.source.trim();
+    final normalizedExternalId = (eventModel.externalId ?? '').trim();
+    if (normalizedSource.isEmpty || normalizedExternalId.isEmpty) {
+      // externalId 없는 경우: 기존 경로 그대로
+      return _eventRepository.upsertEventBySourceExternalId(eventModel);
     }
-    final incomingEtag = event.externalEtag?.trim();
-    final existingEtag = existing.externalEtag?.trim();
-    if (existing.startAt == null &&
-        incomingEtag != null &&
-        incomingEtag.isNotEmpty &&
-        existingEtag != null &&
-        existingEtag.isNotEmpty &&
-        incomingEtag == existingEtag) {
-      return 'external_etag 일치';
+    if (existingFromIndex == null) {
+      return _eventRepository.createEvent(eventModel);
     }
-    if (_hasMeaningfulEventDifference(event, existing)) {
-      return null;
+    if (shouldKeepExistingEventForExternalImport(
+      existing: existingFromIndex,
+      incoming: eventModel,
+    )) {
+      return existingFromIndex;
     }
-    if (incomingEtag != null &&
-        incomingEtag.isNotEmpty &&
-        existingEtag != null &&
-        existingEtag.isNotEmpty) {
-      return incomingEtag == existingEtag ? 'external_etag 일치' : null;
-    }
-    final incomingUpdatedAt = event.externalUpdatedAt;
-    final existingUpdatedAt = existing.externalUpdatedAt;
-    if (incomingUpdatedAt == null || existingUpdatedAt == null) {
-      return null;
-    }
-    return !incomingUpdatedAt.toUtc().isAfter(existingUpdatedAt.toUtc())
-        ? 'external_updated_at이 기존값보다 최신이 아님'
-        : null;
+    // _mergeExternalMetadata와 동일 로직 (keepExistingPeopleFields=false)
+    final incoming = eventModel;
+    final existing = existingFromIndex;
+    final participants = incoming.participants.isEmpty
+        ? existing.participants
+        : incoming.participants;
+    final targets =
+        incoming.targets.isEmpty ? existing.targets : incoming.targets;
+    final mergedEvent = EventModel(
+      id: existing.id,
+      userId: incoming.userId,
+      title: incoming.title,
+      startAt: incoming.startAt,
+      endAt: incoming.endAt,
+      location: incoming.location,
+      locationLat: incoming.locationLat,
+      locationLng: incoming.locationLng,
+      memo: incoming.memo,
+      supplies: incoming.supplies,
+      suppliesChecked: incoming.suppliesChecked,
+      participants: participants,
+      targets: targets,
+      isCritical: existing.isCritical || incoming.isCritical,
+      recurrenceRule: incoming.recurrenceRule,
+      isAllDay: incoming.isAllDay,
+      isMultiDay: incoming.isMultiDay,
+      parentEventId: incoming.parentEventId,
+      category: incoming.category,
+      source: normalizedSource,
+      externalId: normalizedExternalId,
+      externalCalendarId: incoming.externalCalendarId,
+      externalEtag: incoming.externalEtag ?? existing.externalEtag,
+      externalUpdatedAt:
+          incoming.externalUpdatedAt ?? existing.externalUpdatedAt,
+      lastSyncedAt: incoming.lastSyncedAt ?? DateTime.now().toUtc(),
+      createdAt: existing.createdAt,
+      updatedAt: existing.updatedAt,
+    );
+    return _eventRepository.updateEvent(mergedEvent);
   }
 
   bool _hasMeaningfulEventDifference(EventModel incoming, EventModel existing) {
@@ -1581,27 +1810,6 @@ class NaverCalDavService {
       return left == null && right == null;
     }
     return left.toUtc().isAtSameMomentAs(right.toUtc());
-  }
-
-  Future<String?> _sameTitleStartDuplicateReason(EventModel event) async {
-    final duplicate = await _findSameTitleStartDuplicate(event);
-    if (duplicate == null) {
-      return null;
-    }
-    return '같은 시작시간+제목 일정 존재(${duplicate.id}, source=${duplicate.source})';
-  }
-
-  Future<EventModel?> _findSameTitleStartDuplicate(EventModel event) async {
-    final startAt = event.startAt;
-    if (startAt == null) {
-      return null;
-    }
-    return _eventRepository.findEventByTitleAndStart(
-      title: event.title,
-      startAt: startAt,
-      userId: event.userId,
-      excludedSources: const <String>{'naver_caldav'},
-    );
   }
 
   Future<void> _markCalDavExportMetadata(

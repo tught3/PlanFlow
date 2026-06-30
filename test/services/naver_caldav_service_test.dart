@@ -697,10 +697,9 @@ END:VCALENDAR
     expect(repository.upserted, hasLength(1));
     // fetchExternalIdsBySource로 일괄 prefetch가 1회만 발생해야 함 (per-event DB 쿼리 제거)
     expect(repository.fetchExternalIdSetCalls, 1);
-    // 캐시에 없는 새 externalId는 _skipUnchangedReason에서 DB 확인 1회 수행 (null 반환 → upsert)
-    expect(repository.fetchByExternalIdCalls, 1);
-    // _sameTitleStartDuplicateReason에서 title+start 중복 체크 1회 수행
-    expect(repository.findTitleStartCalls, 1);
+    // 메모리 인덱스 최적화: unchanged 체크와 title+start 중복 체크를 메모리로 처리하므로 0
+    expect(repository.fetchByExternalIdCalls, 0);
+    expect(repository.findTitleStartCalls, 0);
     expect(repository.externalIdSet,
         contains(repository.upserted.single.externalId));
   });
@@ -797,7 +796,11 @@ END:VCALENDAR
     expect(result.skipped, 0);
     expect(result.diagnostics.saveCandidates, 1);
     expect(result.diagnostics.unchangedSkipped, 0);
-    expect(repository.upserted.single.startAt, DateTime.utc(2026, 5, 5, 1));
+    // 메모리 인덱스 최적화: existingEvent를 인덱스에서 찾아 updateEvent로 처리
+    final savedEvent = repository.updated.isNotEmpty
+        ? repository.updated.single
+        : repository.upserted.single;
+    expect(savedEvent.startAt, DateTime.utc(2026, 5, 5, 1));
   });
 
   test('syncAll imports a personal in-range event after noisy range report',
@@ -1066,6 +1069,86 @@ END:VCALENDAR
     expect(repository.deletedIds, contains('bad-1'));
   });
 
+  test('syncAll N개 신규 일정 저장 시 DB read 호출이 N에 비례하지 않고 상수(0)임 (N² 제거)',
+      () async {
+    // 20개의 서로 다른 신규 이벤트를 CalDAV에서 반환하는 XML 생성
+    const n = 20;
+    final eventXmlItems = StringBuffer();
+    for (var i = 1; i <= n; i++) {
+      final uid = 'batch-event-$i';
+      // 날짜를 분 단위로 다르게 설정해 title+시각 충돌 없게 함
+      final hour = 10 + (i - 1) ~/ 60;
+      final minute = (i - 1) % 60;
+      final minuteStr = minute.toString().padLeft(2, '0');
+      eventXmlItems.write('''
+  <d:response>
+    <d:href>/calendars/tught3/default/$uid.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-$i"</d:getetag>
+        <c:calendar-data><![CDATA[
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:$uid
+SUMMARY:일정 $i
+DTSTART;TZID=Asia/Seoul:20260505T$hour${minuteStr}00
+DTEND;TZID=Asia/Seoul:20260505T$hour${minuteStr}30
+LAST-MODIFIED:20260504T120000Z
+END:VEVENT
+END:VCALENDAR
+        ]]></c:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>''');
+    }
+    final batchEventReportXml = '''<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+$eventXmlItems
+</d:multistatus>
+''';
+
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        batchEventReportXml,
+      ],
+    );
+    // seedEvents는 비어있고 externalIds도 비어있어 모든 이벤트가 신규로 저장됨
+    final repository = _FakeEventRepository();
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+    );
+
+    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+
+    expect(result.success, isTrue);
+    expect(result.createdOrUpdated, n);
+    expect(result.skipped, 0);
+    expect(repository.upserted, hasLength(n));
+    // N² 제거 핵심 단언: DB read 호출이 N에 비례하지 않고 상수(0)
+    // 메모리 인덱스가 fetchByExternalId/findTitleStart를 루프 내부에서 대체한다
+    expect(
+      repository.fetchByExternalIdCalls,
+      0,
+      reason: 'fetchByExternalId는 메모리 인덱스로 대체되어 루프 내에서 0번 호출되어야 한다',
+    );
+    expect(
+      repository.findTitleStartCalls,
+      0,
+      reason: 'findTitleStart는 메모리 인덱스로 대체되어 루프 내에서 0번 호출되어야 한다',
+    );
+    // listEvents는 1회 호출로 스냅샷 (fetchExternalIdsBySource도 1회)
+    expect(repository.fetchExternalIdSetCalls, 1);
+  });
+
   test('exportEvent writes metadata and keeps exported ICS VALARM-free',
       () async {
     final client = _FakePropfindClient(
@@ -1134,6 +1217,56 @@ END:VCALENDAR
       '/calendars/tught3/',
       '/calendars/tught3/home/',
     ]);
+  });
+
+  test('getCalendars 2회 연속 호출 시 PROPFIND HTTP 요청이 1회만 발생 (캐시 적중)', () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207],
+      bodies: <String>[_calendarListXml],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+    );
+
+    final first = await service.getCalendars();
+    final second = await service.getCalendars();
+
+    // 두 번째 호출은 캐시 적중 → 네트워크 요청 없음
+    expect(first, hasLength(1));
+    expect(second, hasLength(1));
+    expect(second.single.path, first.single.path);
+    // PROPFIND 요청은 최초 1회(첫 번째 404는 path 탐색)만 발생
+    expect(client.requests, hasLength(2));
+  });
+
+  test('invalidateCalendarCache 후 재호출 시 네트워크를 다시 요청한다', () async {
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 404, 207],
+      bodies: <String>[_calendarListXml, _calendarListXml],
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+    );
+
+    // 1차 호출: 캐시 채움
+    await service.getCalendars();
+    final requestsAfterFirst = client.requests.length;
+
+    // 캐시 무효화
+    service.invalidateCalendarCache();
+
+    // 2차 호출: 캐시 없으므로 네트워크 재요청
+    await service.getCalendars();
+
+    expect(client.requests.length, greaterThan(requestsAfterFirst));
   });
 }
 
@@ -1220,7 +1353,14 @@ class _FakeEventRepository extends EventRepository {
   }
 
   @override
-  Future<EventModel> createEvent(EventModel event) async => event;
+  Future<EventModel> createEvent(EventModel event) async {
+    upserted.add(event);
+    final externalId = event.externalId;
+    if (externalId != null && externalId.trim().isNotEmpty) {
+      externalIdSet.add(externalId);
+    }
+    return event;
+  }
 
   @override
   Future<EventModel> updateEvent(EventModel event) async {
@@ -1255,9 +1395,19 @@ class _FakeEventRepository extends EventRepository {
   }
 
   @override
-  Future<List<EventModel>> listEvents({String? userId}) async => events
-      .where((event) => userId == null || event.userId == userId)
-      .toList(growable: false);
+  Future<List<EventModel>> listEvents({String? userId}) async {
+    // existingEvent(fetchEventBySourceExternalId 픽스처)도 인덱스에 포함
+    final seededExisting = existingEvent;
+    final all = <EventModel>[
+      ...events,
+      if (seededExisting != null &&
+          !events.any((e) => e.id == seededExisting.id))
+        seededExisting,
+    ];
+    return all
+        .where((event) => userId == null || event.userId == userId)
+        .toList(growable: false);
+  }
 }
 
 String _naverCalDavExternalId({
