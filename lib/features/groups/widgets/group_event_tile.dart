@@ -66,34 +66,41 @@ class GroupEventTile extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              // 시간 레이블
-              Text(
-                timeLabel,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: PlanFlowColors.textSecondary,
+              // 시간 레이블(왼쪽) + 공유자(오른쪽 끝)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      timeLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
                     ),
-              ),
-              // 소유자 행 (ownerName이 있을 때만)
-              if (hasOwner) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
+                  ),
+                  if (hasOwner) ...[
+                    const SizedBox(width: 8),
                     const Icon(
                       Icons.person_outline,
-                      size: 14,
+                      size: 16,
                       color: PlanFlowColors.textSecondary,
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      '공유 · ${ownerName!.trim()}',
-                      style:
-                          Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: PlanFlowColors.textSecondary,
-                              ),
+                    Flexible(
+                      child: Text(
+                        '공유 · ${ownerName!.trim()}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: PlanFlowColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
                     ),
                   ],
-                ),
-              ],
+                ],
+              ),
               // 장소
               if ((event.location ?? '').trim().isNotEmpty) ...[
                 const SizedBox(height: 4),

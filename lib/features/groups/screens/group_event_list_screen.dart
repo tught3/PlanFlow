@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme.dart';
@@ -16,6 +17,9 @@ import '../widgets/group_month_calendar.dart';
 
 /// 목록/캘린더 보기 모드 토글
 enum _GroupEventsViewMode { list, calendar }
+
+/// 마지막으로 선택한 보기 모드를 저장하는 SharedPreferences 키
+const String _kGroupEventsViewModeKey = 'group_events_view_mode';
 
 class GroupEventListScreen extends StatefulWidget {
   const GroupEventListScreen({
@@ -61,6 +65,24 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
     // nowLocal()이 초기화된 _provider에 의존하므로 initState에서 설정
     _focusedMonth = _provider.nowLocal();
     unawaited(_load());
+    unawaited(_restoreViewMode());
+  }
+
+  /// 마지막에 선택했던 보기 모드를 복원한다(없으면 목록).
+  Future<void> _restoreViewMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_kGroupEventsViewModeKey);
+    if (!mounted || saved != _GroupEventsViewMode.calendar.name) {
+      return;
+    }
+    setState(() => _viewMode = _GroupEventsViewMode.calendar);
+    unawaited(_loadMonth(_focusedMonth));
+  }
+
+  /// 보기 모드를 저장한다.
+  Future<void> _saveViewMode(_GroupEventsViewMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kGroupEventsViewModeKey, mode.name);
   }
 
   @override
@@ -171,6 +193,7 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
                 onSelectionChanged: (selection) {
                   final next = selection.first;
                   setState(() => _viewMode = next);
+                  unawaited(_saveViewMode(next));
                   // 캘린더로 전환 시 현재 포커스 달의 데이터 로드
                   if (next == _GroupEventsViewMode.calendar) {
                     unawaited(_loadMonth(_focusedMonth));

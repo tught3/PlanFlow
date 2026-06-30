@@ -269,7 +269,7 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
     final isCurrentMonth = day.month == _focusedMonth.month;
     final isToday = day == todayDay;
     final isSelected = day == _selectedDay;
-    final hasEvents = (_dayIndex[day]?.isNotEmpty) ?? false;
+    final eventCount = _dayIndex[day]?.length ?? 0;
 
     Color bgColor = Colors.transparent;
     Color textColor;
@@ -296,7 +296,7 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
       child: GestureDetector(
         onTap: () => _selectDay(day),
         child: Container(
-          height: 44,
+          height: 52,
           alignment: Alignment.center,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -320,21 +320,32 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
                   ),
                 ),
               ),
-              const SizedBox(height: 2),
-              // 이벤트 인디케이터 점
-              if (hasEvents && !isSelected)
+              const SizedBox(height: 3),
+              // 일정 개수 배지 (있을 때만, 선택일 포함)
+              if (eventCount > 0)
                 Container(
-                  width: 5,
-                  height: 5,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   decoration: BoxDecoration(
                     color: isCurrentMonth
-                        ? PlanFlowColors.primaryMid
-                        : PlanFlowColors.primaryLight,
-                    shape: BoxShape.circle,
+                        ? PlanFlowColors.primaryFaint
+                        : PlanFlowColors.tagNormalBg,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$eventCount',
+                    style: TextStyle(
+                      fontSize: 10,
+                      height: 1,
+                      fontWeight: FontWeight.w700,
+                      color: isCurrentMonth
+                          ? PlanFlowColors.primary
+                          : PlanFlowColors.textDisabled,
+                    ),
                   ),
                 )
               else
-                const SizedBox(height: 5),
+                const SizedBox(height: 14),
             ],
           ),
         ),
