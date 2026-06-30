@@ -298,7 +298,8 @@ void main() {
 
       final result = await service.syncGoogleCalendar(interactive: false);
 
-      expect(result.status, CalendarIntegrationStatus.reauthRequired);
+      // 비대화형에서 토큰 일시 누락은 기존 연결을 유지하고 재인증 오탐을 내지 않는다.
+      expect(result.status, CalendarIntegrationStatus.ready);
       expect(connectionRepository.connection?.status,
           CalendarConnectionStatus.connected);
       expect(connectionRepository.connection?.providerAccountEmail,

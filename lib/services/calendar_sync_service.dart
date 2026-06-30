@@ -482,10 +482,18 @@ class CalendarSyncService {
       );
       if (accessToken == null || accessToken.isEmpty) {
         if (!interactive && existingConnection?.isConnected == true) {
-          return CalendarIntegrationResult.reauthRequired(
+          // clearAuthCache 재시도 후에도 null → 일시적 Play Services 문제이므로
+          // status를 reauthRequired로 바꾸지 않고 lastError만 기록 후 skip
+          await _saveConnection(
             CalendarProvider.google,
-            message:
-                'Google Calendar 연결은 유지되어 있지만 현재 기기에서 자동 로그인 토큰을 바로 확인하지 못해 자동 동기화를 건너뜁니다. 필요하면 다시 동기화를 눌러 주세요.',
+            status: existingConnection!.status,
+            providerAccountEmail: existingConnection.providerAccountEmail,
+            lastError:
+                'Google silent sign-in token unavailable (transient) - status unchanged',
+          );
+          return CalendarIntegrationResult.ready(
+            CalendarProvider.google,
+            message: 'Google Calendar 자동 동기화를 일시적으로 건너뜁니다. 연결 상태는 유지됩니다.',
           );
         }
         await _saveConnection(

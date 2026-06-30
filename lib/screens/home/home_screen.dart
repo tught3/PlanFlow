@@ -18,6 +18,7 @@ import '../../services/briefing_scheduler_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/event_prefetch_service.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/location_lookup_service.dart';
 import '../../services/home_header_summary_service.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/remote_config_service.dart';
@@ -92,6 +93,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   HomeHeaderSummary? _headerSummary;
   _HomeLoadState _loadState = _HomeLoadState.loading;
   String? _loadMessage;
+  int _consecutiveFailures = 0;
+  Timer? _retryTimer;
   bool _hasRenderedContent = false;
   bool _headerSummaryLoading = true;
   bool _isPlayingMorningBriefing = false;
@@ -115,10 +118,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
     _homeWidgetRefreshGeneration += 1;
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _scheduleRetry() {
+    _retryTimer?.cancel();
+    final Duration delay;
+    if (_consecutiveFailures >= 6) {
+      delay = const Duration(hours: 1);
+    } else if (_consecutiveFailures >= 3) {
+      delay = const Duration(minutes: 10);
+    } else {
+      return;
+    }
+    _retryTimer = Timer(delay, () {
+      if (mounted) _loadTodayEvents();
+    });
   }
 
   @override
@@ -288,15 +307,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final allEvents = await repository.listEvents(userId: userId);
       EventPrefetchService().store(userId, allEvents);
       await _applyHomeEvents(userId, allEvents);
+      unawaited(_resolveEventsMissingCoords(allEvents, repository));
     } catch (error) {
-      if (mounted && showLoading) {
-        setState(() {
-          _clearHomeContent();
-          _loadState = _HomeLoadState.error;
-          _loadMessage = '오늘 일정을 불러오지 못했어요. 새로고침해 주세요.';
-        });
-      }
       debugPrint('HomeScreen load failed: $error');
+      if (mounted) {
+        _consecutiveFailures++;
+        _scheduleRetry();
+      }
     } finally {
       // Loading state is replaced by one of the terminal states above.
     }
@@ -358,11 +375,74 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _loadState = _HomeLoadState.ready;
         _loadMessage = null;
         _hasRenderedContent = true;
+        _consecutiveFailures = 0;
+        _retryTimer?.cancel();
       });
     }
 
     if (refreshHomeWidget) {
       _scheduleHomeWidgetRefresh(allEvents, now: now);
+    }
+  }
+
+  Future<void> _resolveEventsMissingCoords(
+    List<EventModel> allEvents,
+    EventRepository repository,
+  ) async {
+    final missing = allEvents
+        .where(
+          (e) =>
+              e.location != null &&
+              e.location!.trim().isNotEmpty &&
+              e.locationLat == null,
+        )
+        .toList();
+    if (missing.isEmpty) return;
+    final service = LocationLookupService();
+    for (final event in missing) {
+      try {
+        final results = await service.search(event.location!, origin: null);
+        if (results.isEmpty) {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          continue;
+        }
+        final best = results.first;
+        await repository.updateEvent(EventModel(
+          id: event.id,
+          userId: event.userId,
+          title: event.title,
+          startAt: event.startAt,
+          endAt: event.endAt,
+          location: event.location,
+          locationLat: best.latitude,
+          locationLng: best.longitude,
+          memo: event.memo,
+          supplies: event.supplies,
+          suppliesChecked: event.suppliesChecked,
+          participants: event.participants,
+          targets: event.targets,
+          isCritical: event.isCritical,
+          useStrongAlarm: event.useStrongAlarm,
+          recurrenceRule: event.recurrenceRule,
+          isAllDay: event.isAllDay,
+          isMultiDay: event.isMultiDay,
+          parentEventId: event.parentEventId,
+          category: event.category,
+          source: event.source,
+          externalId: event.externalId,
+          externalCalendarId: event.externalCalendarId,
+          externalEtag: event.externalEtag,
+          externalUpdatedAt: event.externalUpdatedAt,
+          lastSyncedAt: event.lastSyncedAt,
+          createdAt: event.createdAt,
+          updatedAt: event.updatedAt,
+        ));
+      } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+    if (mounted) {
+      EventRefreshBus.instance.notifyChanged(reason: 'location_resolved');
+      unawaited(const DepartureAlarmService().refreshUpcoming());
     }
   }
 

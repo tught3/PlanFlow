@@ -13,6 +13,7 @@ import '../providers/auth_provider.dart';
 import '../services/app_permission_service.dart';
 import '../services/briefing_scheduler_service.dart';
 import '../services/calendar_auto_sync_service.dart';
+import '../services/calendar_sync_service.dart';
 import '../services/critical_alarm_channel_migration_service.dart';
 import '../services/departure_alarm_service.dart';
 import '../services/external_calendar_sync_guide_service.dart';
@@ -87,6 +88,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       BriefingSchedulerService();
   bool _checkedPermissionOnboarding = false;
   bool _checkedExternalCalendarGuide = false;
+  bool _checkedGoogleCalendarAutoPrompt = false;
   String? _observedUserId;
   // 로그인 직후 홈이 깜빡였다가 온보딩으로 넘어가는 플래시를 막기 위해,
   // 온보딩 필요 여부 판단이 끝날 때까지 홈 대신 로딩 화면을 보여준다.
@@ -135,6 +137,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _observedUserId = currentUserId;
     _checkedPermissionOnboarding = false;
     _checkedExternalCalendarGuide = false;
+    _checkedGoogleCalendarAutoPrompt = false;
 
     if (!mounted) {
       return;
@@ -163,6 +166,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     unawaited(_migrateFutureCriticalAlarms());
     unawaited(_refreshDepartureAlarmsAndMonitor());
     unawaited(_ensureBriefingsScheduled(reason: reason));
+    await _maybeAutoConnectGoogleCalendar();
   }
 
   Future<void> _refreshDepartureAlarmsAndMonitor() async {
@@ -350,6 +354,44 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     if (openSettings == true) {
       context.go('${AppRoutes.settings}?open=naver-caldav');
     }
+  }
+
+  /// Google 계정 로그인 사용자이고 Google Calendar가 미연동 상태이면
+  /// interactive sync를 1회 자동 호출해 팝업을 띄운다.
+  Future<void> _maybeAutoConnectGoogleCalendar() async {
+    if (_checkedGoogleCalendarAutoPrompt || !mounted) {
+      return;
+    }
+    _checkedGoogleCalendarAutoPrompt = true;
+
+    // Google 계정이 아니면 스킵
+    if (!authProvider.isGoogleAccount) {
+      return;
+    }
+
+    final userId = authProvider.userId;
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+
+    // Google Calendar 연동 상태 확인
+    final calendarSync = CalendarSyncService(
+      googleServerClientId: AppEnv.googleServerClientId,
+    );
+    final status = await calendarSync.getGoogleStatus();
+    final isConnected =
+        status.status == CalendarIntegrationStatus.ready ||
+        status.status == CalendarIntegrationStatus.synced;
+    if (isConnected) {
+      // 이미 연동됐으면 종료
+      return;
+    }
+
+    // 미연동 상태 → interactive sync 팝업 호출
+    if (!mounted) {
+      return;
+    }
+    unawaited(calendarSync.syncGoogleCalendar(interactive: true));
   }
 
   List<NavigationDestination> _buildNavigationBarDestinations() {
