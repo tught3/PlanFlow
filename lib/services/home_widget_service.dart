@@ -159,7 +159,9 @@ class HomeWidgetSchedulePayloadBuilder {
     bool includeWeekends = true,
   }) {
     final localNow = planflowLocal(now);
-    final sortedEvents = events
+    final month = DateTime(localNow.year, localNow.month);
+    final expandedEvents = _expandRecurringEventsForWidget(events, month);
+    final sortedEvents = expandedEvents
         .where((event) => event.startAt != null)
         .where((event) => includeWeekends || !_startsOnWeekend(event))
         .toList(growable: false)
@@ -199,7 +201,6 @@ class HomeWidgetSchedulePayloadBuilder {
         .map(_listEvent)
         .take(6)
         .toList(growable: false);
-    final month = DateTime(localNow.year, localNow.month);
     final previousMonth = DateTime(month.year, month.month - 1);
     final nextMonth = DateTime(month.year, month.month + 1);
     final previousWeekNow = DateTime(
@@ -603,6 +604,279 @@ class HomeWidgetSchedulePayloadBuilder {
         ? remainingCapacity
         : tomorrowWidgetMaxRows;
     return sourceTomorrowEvents.take(limit).toList(growable: false);
+  }
+
+  // ────────────────────────────────────────────────
+  // 반복 일정 확장 (recurring-event expansion)
+  // ────────────────────────────────────────────────
+
+  static List<EventModel> _expandRecurringEventsForWidget(
+    List<EventModel> events,
+    DateTime month,
+  ) {
+    final previousFirstCell = _firstMonthGridCell(
+      DateTime(month.year, month.month - 1),
+    );
+    final nextFirstCell = _firstMonthGridCell(
+      DateTime(month.year, month.month + 1),
+    );
+    final rangeStart = previousFirstCell;
+    final rangeEnd = nextFirstCell.add(const Duration(days: 42));
+    final expanded = <EventModel>[];
+    for (final event in events) {
+      expanded.addAll(
+        _expandSingleWidgetEvent(
+          event,
+          rangeStart: rangeStart,
+          rangeEnd: rangeEnd,
+        ),
+      );
+    }
+    return _hideOverriddenWidgetOccurrences(expanded);
+  }
+
+  static DateTime _firstMonthGridCell(DateTime month) {
+    final monthStart = DateTime(month.year, month.month);
+    final startWeekday = monthStart.weekday % 7;
+    return monthStart.subtract(Duration(days: startWeekday));
+  }
+
+  static List<EventModel> _expandSingleWidgetEvent(
+    EventModel event, {
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+  }) {
+    final rule = event.recurrenceRule?.toUpperCase();
+    final startAt = event.startAt;
+    if (rule == null || rule.isEmpty || startAt == null) {
+      return <EventModel>[event];
+    }
+
+    final freq = RegExp(r'FREQ=([A-Z]+)').firstMatch(rule)?.group(1);
+    if (freq == null) {
+      return <EventModel>[event];
+    }
+
+    final intervalText = RegExp(r'INTERVAL=(\d+)').firstMatch(rule)?.group(1);
+    final interval = int.tryParse(intervalText ?? '1')?.clamp(1, 365) ?? 1;
+    final until = _parseWidgetRRuleUntil(
+      RegExp(r'UNTIL=([0-9TzZ]+)').firstMatch(rule)?.group(1),
+    );
+    final hardEnd = until?.isBefore(rangeEnd) == true ? until! : rangeEnd;
+    final localStartAt = planflowLocal(startAt);
+    final duration = event.endAt?.difference(startAt);
+    final occurrences = <EventModel>[];
+
+    if (freq == 'WEEKLY') {
+      final byDays = _parseWidgetRRuleByDays(rule);
+      if (byDays.isNotEmpty) {
+        var weekStart = DateTime(
+          localStartAt.year,
+          localStartAt.month,
+          localStartAt.day,
+          localStartAt.hour,
+          localStartAt.minute,
+          localStartAt.second,
+        ).subtract(Duration(days: localStartAt.weekday - DateTime.monday));
+        var safety = 0;
+        while (weekStart.isBefore(hardEnd) && safety < 120) {
+          safety += 1;
+          for (final weekday in byDays) {
+            final day = weekStart.add(
+              Duration(days: weekday - DateTime.monday),
+            );
+            final current = DateTime(
+              day.year,
+              day.month,
+              day.day,
+              localStartAt.hour,
+              localStartAt.minute,
+              localStartAt.second,
+            );
+            if (current.isBefore(localStartAt) || !current.isBefore(hardEnd)) {
+              continue;
+            }
+            final occurrenceEnd = duration == null
+                ? null
+                : current.add(duration);
+            final candidate = _copyWidgetEventWithTime(
+              event,
+              startAt: current,
+              endAt: occurrenceEnd,
+            );
+            if (_widgetEventIntersectsRange(candidate, rangeStart, rangeEnd)) {
+              occurrences.add(candidate);
+            }
+          }
+          weekStart = weekStart.add(Duration(days: 7 * interval));
+        }
+        return occurrences.isEmpty ? <EventModel>[event] : occurrences;
+      }
+    }
+
+    var current = localStartAt;
+    var safety = 0;
+    while (current.isBefore(hardEnd) && safety < 420) {
+      safety += 1;
+      final occurrenceEnd = duration == null ? null : current.add(duration);
+      final candidate = _copyWidgetEventWithTime(
+        event,
+        startAt: current,
+        endAt: occurrenceEnd,
+      );
+      if (_widgetEventIntersectsRange(candidate, rangeStart, rangeEnd)) {
+        occurrences.add(candidate);
+      }
+      current = switch (freq) {
+        'DAILY' => current.add(Duration(days: interval)),
+        'WEEKLY' => current.add(Duration(days: 7 * interval)),
+        'MONTHLY' => DateTime(
+          current.year,
+          current.month + interval,
+          current.day,
+          current.hour,
+          current.minute,
+          current.second,
+        ),
+        'YEARLY' => DateTime(
+          current.year + interval,
+          current.month,
+          current.day,
+          current.hour,
+          current.minute,
+          current.second,
+        ),
+        _ => hardEnd,
+      };
+    }
+    return occurrences.isEmpty ? <EventModel>[event] : occurrences;
+  }
+
+  static DateTime? _parseWidgetRRuleUntil(String? value) {
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    final normalized = value.replaceAll('Z', '');
+    if (normalized.length < 8) {
+      return null;
+    }
+    final year = int.tryParse(normalized.substring(0, 4));
+    final month = int.tryParse(normalized.substring(4, 6));
+    final day = int.tryParse(normalized.substring(6, 8));
+    if (year == null || month == null || day == null) {
+      return null;
+    }
+    return DateTime(year, month, day).add(const Duration(days: 1));
+  }
+
+  static List<int> _parseWidgetRRuleByDays(String rule) {
+    final raw = RegExp(r'BYDAY=([A-Z0-9,\-]+)').firstMatch(rule)?.group(1);
+    if (raw == null || raw.isEmpty) {
+      return const <int>[];
+    }
+    return raw
+        .split(',')
+        .map((item) => item.replaceAll(RegExp(r'[-0-9]'), ''))
+        .map(
+          (item) => switch (item) {
+            'MO' => DateTime.monday,
+            'TU' => DateTime.tuesday,
+            'WE' => DateTime.wednesday,
+            'TH' => DateTime.thursday,
+            'FR' => DateTime.friday,
+            'SA' => DateTime.saturday,
+            'SU' => DateTime.sunday,
+            _ => null,
+          },
+        )
+        .whereType<int>()
+        .toList(growable: false);
+  }
+
+  static EventModel _copyWidgetEventWithTime(
+    EventModel event, {
+    required DateTime startAt,
+    DateTime? endAt,
+  }) {
+    return EventModel(
+      id: event.id,
+      userId: event.userId,
+      title: event.title,
+      startAt: startAt,
+      endAt: endAt,
+      location: event.location,
+      locationLat: event.locationLat,
+      locationLng: event.locationLng,
+      memo: event.memo,
+      supplies: event.supplies,
+      suppliesChecked: event.suppliesChecked,
+      participants: event.participants,
+      targets: event.targets,
+      isCritical: event.isCritical,
+      useStrongAlarm: event.useStrongAlarm,
+      recurrenceRule: null,
+      isAllDay: event.isAllDay,
+      isMultiDay: event.isMultiDay,
+      parentEventId: event.id,
+      category: event.category,
+      source: event.source,
+      externalId: event.externalId,
+      externalCalendarId: event.externalCalendarId,
+      externalEtag: event.externalEtag,
+      externalUpdatedAt: event.externalUpdatedAt,
+      lastSyncedAt: event.lastSyncedAt,
+      createdAt: event.createdAt,
+      updatedAt: event.updatedAt,
+    );
+  }
+
+  static bool _widgetEventIntersectsRange(
+    EventModel event,
+    DateTime rangeStart,
+    DateTime rangeEnd,
+  ) {
+    final startAt = event.startAt;
+    if (startAt == null) {
+      return false;
+    }
+    final localStart = planflowLocal(startAt);
+    final localDisplayEndDay = _displayEndDay(event);
+    final endExclusive = localDisplayEndDay.add(const Duration(days: 1));
+    return localStart.isBefore(rangeEnd) && endExclusive.isAfter(rangeStart);
+  }
+
+  static List<EventModel> _hideOverriddenWidgetOccurrences(
+    List<EventModel> events,
+  ) {
+    final overrides = events
+        .where(
+          (event) =>
+              event.parentEventId != null &&
+              event.parentEventId!.trim().isNotEmpty &&
+              event.parentEventId != event.id &&
+              event.startAt != null,
+        )
+        .toList(growable: false);
+    if (overrides.isEmpty) {
+      return events;
+    }
+    return events
+        .where((event) {
+          final startAt = event.startAt;
+          if (startAt == null) {
+            return true;
+          }
+          final isOverridden = overrides.any((override) {
+            if (override.parentEventId != event.id) {
+              return false;
+            }
+            final overrideStart = override.startAt;
+            return overrideStart != null &&
+                planflowIsSameLocalDay(overrideStart, startAt);
+          });
+          return !isOverridden;
+        })
+        .toList(growable: false);
   }
 }
 
