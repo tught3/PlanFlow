@@ -9,9 +9,11 @@ import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/voice/voice_conversation_screen.dart';
+import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/location_lookup_service.dart';
 import 'package:planflow/services/stt_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeSttService extends SttService {
   Completer<SttListenResult>? _completer;
@@ -170,6 +172,16 @@ class _NoLocationPermissionService extends AppPermissionService {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    // 전송 경로의 GptService().parseSchedule()이 ApiUsageGuard.tryConsume →
+    // SharedPreferences.getInstance()를 await한다. mock이 없으면 pending되어
+    // pumpAndSettle이 타임아웃되므로, 빈 mock과 가드 싱글톤 초기화를 둔다.
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    ApiUsageGuard.resetForTesting();
+  });
+
   Future<void> pumpConversation(
     WidgetTester tester,
     Widget child, {
