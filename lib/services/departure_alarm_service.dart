@@ -627,11 +627,13 @@ class DepartureAlarmService {
     final location = event.location?.trim();
     final destination =
         location == null || location.isEmpty ? event.title : location;
+    // 알림 축소 상태에서도 '출발' 버튼이 함께 보이도록 본문을 짧게 유지하고,
+    // 버튼이 가려지는 기기를 위해 펼침 안내를 덧붙인다. (safetyMargin은 호환을 위해 유지)
+    const guide = "아래 '출발' 버튼을 눌러주세요 (안 보이면 알림을 ▼ 펼치세요)";
     if (travelMinutes == null) {
-      return '$destination 출발 알림이에요. 현재 위치를 다시 확인하지 못했지만, 일정에 늦지 않게 지금 출발 여부를 확인해 주세요.';
+      return '$destination · $guide';
     }
-    final safetyMarginMinutes = safetyMargin.inMinutes;
-    return '$destination까지 이동시간이 약 $travelMinutes분이에요. 여유 $safetyMarginMinutes분을 보고 지금 출발 준비를 해 주세요.';
+    return '$destination까지 약 $travelMinutes분 · $guide';
   }
 
   MapTravelMode _travelModeFromSettings(String? travelMode) {

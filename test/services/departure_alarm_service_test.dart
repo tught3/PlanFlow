@@ -376,7 +376,8 @@ void main() {
     expect(result.travelMinutes, isNull);
     expect(result.notifyAt, now.add(const Duration(seconds: 3)));
     expect(notifications.criticalTitles.single, '지금 출발해야 해요');
-    expect(notifications.criticalBodies.single, contains('현재 위치'));
+    // 위치를 못 구해도 알람은 뜨고, 본문에 목적지와 '출발' 버튼 안내가 포함된다.
+    expect(notifications.criticalBodies.single, contains("'출발' 버튼"));
     expect(notifications.criticalBodies.single, contains('대전 성심당'));
   });
 
