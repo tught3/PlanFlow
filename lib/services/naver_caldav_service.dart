@@ -1215,20 +1215,34 @@ class NaverCalDavService {
         skippedEvents: 0,
         failedEvents: 0,
       ));
+      // 캘린더는 병렬 조회하되, 완료될 때마다 진행 콜백을 보내 진행바가
+      // 0%→100%로 점진적으로 차오르게 한다(querying 단계 중간 진행 표시).
+      var queriedCalendars = 0;
       final allCalendarEvents = await Future.wait(
-        calendars.map((calendar) => getEvents(
+        calendars.map((calendar) async {
+          final events = await getEvents(
+            calendarPath: calendar.path,
+            from: range.from,
+            to: range.to,
+            allowFullFallback: true,
+            allowResourceFallback: true,
+            parseStats: NaverCalDavParseStats._(
               calendarPath: calendar.path,
+              diagnostics: diagnostics,
               from: range.from,
               to: range.to,
-              allowFullFallback: true,
-              allowResourceFallback: true,
-              parseStats: NaverCalDavParseStats._(
-                calendarPath: calendar.path,
-                diagnostics: diagnostics,
-                from: range.from,
-                to: range.to,
-              ),
-            )),
+            ),
+          );
+          queriedCalendars += 1;
+          emit(NaverCalDavSyncProgress(
+            mode: mode,
+            stage: NaverCalDavSyncStage.querying,
+            message: '캘린더 일정을 조회하는 중입니다.',
+            currentCalendarIndex: queriedCalendars,
+            totalCalendars: calendars.length,
+          ));
+          return events;
+        }),
       );
 
       // 저장 루프 진입 전 유저 전체 일정을 1회만 로드해 메모리 인덱스 구성 (O(N²) → O(N))

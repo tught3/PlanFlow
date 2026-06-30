@@ -1119,6 +1119,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (!mounted) {
       return result;
     }
+    // 진행바가 100%까지 차오르는 모습을 잠깐 보여준 뒤 다이얼로그를 닫는다.
+    await Future.delayed(const Duration(milliseconds: 650));
+    if (!mounted) {
+      return result;
+    }
     if (_isNaverCalDavProgressDialogOpen &&
         Navigator.of(context, rootNavigator: true).canPop()) {
       Navigator.of(context, rootNavigator: true).pop();
@@ -1426,23 +1431,30 @@ class _SettingsScreenState extends State<SettingsScreen>
       return 0.05;
     }
 
-    final stage = progress.stage;
-    switch (stage) {
+    switch (progress.stage) {
       case NaverCalDavSyncStage.preparing:
         return 0.05;
       case NaverCalDavSyncStage.calendars:
-        return 0.15;
+        return 0.12;
       case NaverCalDavSyncStage.querying:
-        return 0.35;
+        // 캘린더 조회 완료 수에 따라 0.15→0.60으로 점진 증가
+        final total = progress.totalCalendars;
+        final done = progress.currentCalendarIndex;
+        if (total <= 0) {
+          return 0.15;
+        }
+        final fraction = (done / total).clamp(0.0, 1.0);
+        return (0.15 + 0.45 * fraction).clamp(0.0, 1.0);
       case NaverCalDavSyncStage.saving:
+        // 저장 진행에 따라 0.60→1.0으로 점진 증가
         final done =
             progress.savedEvents + progress.skippedEvents + progress.failedEvents;
         final total = progress.totalEvents;
         if (total <= 0) {
-          return 0.55;
+          return 0.60;
         }
-        final progressFraction = (done / total).clamp(0.0, 1.0);
-        return (0.55 + 0.45 * progressFraction).clamp(0.0, 1.0);
+        final fraction = (done / total).clamp(0.0, 1.0);
+        return (0.60 + 0.40 * fraction).clamp(0.0, 1.0);
       case NaverCalDavSyncStage.completed:
         return 1.0;
     }
@@ -1465,29 +1477,44 @@ class _SettingsScreenState extends State<SettingsScreen>
                   stage == NaverCalDavSyncStage.querying ||
                       stage == NaverCalDavSyncStage.saving;
               final progressValue = _naverCalDavProgressValue(progress);
-              final progressPercent = (progressValue * 100).round();
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  LinearProgressIndicator(
-                    value: progressValue,
-                    minHeight: 8,
-                    backgroundColor: PlanFlowColors.primaryFaint,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      PlanFlowColors.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Center(
-                    child: Text(
-                      '$progressPercent%',
-                      style:
-                          Theme.of(context).textTheme.labelLarge?.copyWith(
-                                color: PlanFlowColors.primary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                    ),
+                  // 값이 단계별로 점프해도 바가 부드럽게 차오르도록 보간한다.
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: progressValue),
+                    duration: const Duration(milliseconds: 450),
+                    curve: Curves.easeOut,
+                    builder: (context, animatedValue, _) {
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LinearProgressIndicator(
+                            value: animatedValue,
+                            minHeight: 8,
+                            backgroundColor: PlanFlowColors.primaryFaint,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              PlanFlowColors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Center(
+                            child: Text(
+                              '${(animatedValue * 100).round()}%',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelLarge
+                                  ?.copyWith(
+                                    color: PlanFlowColors.primary,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 16),
                   Text(_naverCalDavProgressStatusText(progress)),
