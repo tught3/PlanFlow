@@ -10,6 +10,7 @@ import '../models/group_role_delegation_model.dart';
 import 'group_context_provider.dart';
 import '../repositories/group_delegation_repository.dart';
 import '../repositories/group_event_repository.dart';
+import '../services/group_calendar_widget_service.dart';
 import 'group_event_state.dart';
 
 class GroupEventProvider extends ChangeNotifier {
@@ -32,6 +33,8 @@ class GroupEventProvider extends ChangeNotifier {
   final GroupEventRepository _repository;
   final GroupDelegationRepository _delegationRepository;
   final DateTime Function() _nowProvider;
+  final GroupCalendarWidgetService _calendarWidgetService =
+      GroupCalendarWidgetService();
 
   GroupEventState _state = const GroupEventState.initial();
   String? _currentUserId;
@@ -280,6 +283,10 @@ class GroupEventProvider extends ChangeNotifier {
           clearError: true,
         ),
       );
+      // 홈 위젯 그룹 달력 갱신 (fire-and-forget)
+      if (userId.isNotEmpty) {
+        unawaited(_calendarWidgetService.refresh(userId: userId));
+      }
     } catch (error) {
       _setState(
         _state.copyWith(
@@ -347,6 +354,12 @@ class GroupEventProvider extends ChangeNotifier {
         message: null,
       ),
     );
+
+    // 홈 위젯 그룹 달력 갱신 (fire-and-forget, 실패해도 무시)
+    final userId = _currentUserId;
+    if (userId != null && userId.isNotEmpty) {
+      unawaited(_calendarWidgetService.refresh(userId: userId));
+    }
   }
 
   Future<Set<String>> _loadActivePermissions(String groupId) async {
