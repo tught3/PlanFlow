@@ -50,36 +50,20 @@ class GroupEventTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 제목 + 상태 칩
+              // 제목(왼쪽) + 공유자/상태(오른쪽, '활성' 칩이 있던 자리)
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
+                  Flexible(
+                    flex: 2,
                     child: Text(
                       event.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style:
                           Theme.of(context).textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
-                    ),
-                  ),
-                  // 활성은 늘 활성이라 의미 없으므로 숨기고,
-                  // 취소됨/보관됨처럼 활성이 아닐 때만 상태 칩을 보여준다.
-                  if (event.status != 'active')
-                    _TileChip(label: _statusLabel(event.status)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // 시간 레이블(왼쪽) + 공유자(오른쪽 끝)
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      timeLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: PlanFlowColors.textSecondary,
-                          ),
                     ),
                   ),
                   if (hasOwner) ...[
@@ -91,6 +75,7 @@ class GroupEventTile extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Flexible(
+                      flex: 1,
                       child: Text(
                         '공유 · ${ownerName!.trim()}',
                         maxLines: 1,
@@ -102,7 +87,20 @@ class GroupEventTile extends StatelessWidget {
                       ),
                     ),
                   ],
+                  // 활성은 늘 활성이라 숨기고, 취소됨/보관됨일 때만 상태 칩.
+                  if (event.status != 'active') ...[
+                    const SizedBox(width: 8),
+                    _TileChip(label: _statusLabel(event.status)),
+                  ],
                 ],
+              ),
+              const SizedBox(height: 8),
+              // 시간 레이블
+              Text(
+                timeLabel,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
               ),
               // 장소
               if ((event.location ?? '').trim().isNotEmpty) ...[

@@ -321,31 +321,21 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
                 ),
               ),
               const SizedBox(height: 3),
-              // 일정 개수 배지 (있을 때만, 선택일 포함)
+              // 일정 개수 ("n건" 텍스트만, 배경/동그라미 없음)
               if (eventCount > 0)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(
+                Text(
+                  '$eventCount건',
+                  style: TextStyle(
+                    fontSize: 10,
+                    height: 1,
+                    fontWeight: FontWeight.w700,
                     color: isCurrentMonth
-                        ? PlanFlowColors.primaryFaint
-                        : PlanFlowColors.tagNormalBg,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '$eventCount',
-                    style: TextStyle(
-                      fontSize: 10,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      color: isCurrentMonth
-                          ? PlanFlowColors.primary
-                          : PlanFlowColors.textDisabled,
-                    ),
+                        ? PlanFlowColors.primary
+                        : PlanFlowColors.textDisabled,
                   ),
                 )
               else
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
             ],
           ),
         ),
