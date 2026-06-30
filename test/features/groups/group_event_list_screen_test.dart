@@ -159,12 +159,14 @@ GroupMemberModel _member({
   required String groupId,
   required String userId,
   required String role,
+  String? displayName,
 }) {
   return GroupMemberModel(
     id: id,
     groupId: groupId,
     userId: userId,
     role: role,
+    displayName: displayName,
   );
 }
 
@@ -174,6 +176,7 @@ GroupEventModel _event({
   required String title,
   required DateTime startAt,
   required DateTime endAt,
+  String createdBy = 'user-1',
 }) {
   return GroupEventModel(
     id: id,
@@ -181,7 +184,7 @@ GroupEventModel _event({
     title: title,
     startAt: startAt,
     endAt: endAt,
-    createdBy: 'user-1',
+    createdBy: createdBy,
     status: 'active',
   );
 }
@@ -224,10 +227,32 @@ void main() {
       nowProvider: () => DateTime.utc(2026, 6, 11, 9),
     );
 
+    final groupRepository = FakeGroupRepository(
+      groups: <GroupModel>[
+        _group(
+          id: 'group-1',
+          name: 'Leader Group',
+          createdBy: 'user-1',
+          createdAt: DateTime.utc(2026, 6, 11),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          _member(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'leader',
+          ),
+        ],
+      },
+    );
+
     await tester.pumpWidget(
       MaterialApp(
         home: GroupEventListScreen(
           provider: provider,
+          groupRepository: groupRepository,
           currentUserIdOverride: 'user-1',
         ),
       ),
@@ -286,10 +311,32 @@ void main() {
       nowProvider: () => DateTime.utc(2026, 6, 11, 9),
     );
 
+    final groupRepository = FakeGroupRepository(
+      groups: <GroupModel>[
+        _group(
+          id: 'group-1',
+          name: 'Leader Group',
+          createdBy: 'user-1',
+          createdAt: DateTime.utc(2026, 6, 11),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          _member(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'leader',
+          ),
+        ],
+      },
+    );
+
     await tester.pumpWidget(
       MaterialApp(
         home: GroupEventListScreen(
           provider: provider,
+          groupRepository: groupRepository,
           currentUserIdOverride: 'user-1',
         ),
       ),
@@ -298,5 +345,68 @@ void main() {
 
     expect(find.text('오늘 회의'), findsOneWidget);
     expect(find.text('이번 주 일정'), findsWidgets);
+  });
+
+  testWidgets('공유된 일정 타일에 공유자(멤버 표시이름)를 보여준다', (tester) async {
+    final members = <String, List<GroupMemberModel>>{
+      'group-1': <GroupMemberModel>[
+        _member(
+          id: 'member-1',
+          groupId: 'group-1',
+          userId: 'user-1',
+          role: 'leader',
+        ),
+        _member(
+          id: 'member-2',
+          groupId: 'group-1',
+          userId: 'user-2',
+          role: 'member',
+          displayName: '엄대용',
+        ),
+      ],
+    };
+    final groups = <GroupModel>[
+      _group(
+        id: 'group-1',
+        name: 'Leader Group',
+        createdBy: 'user-1',
+        createdAt: DateTime.utc(2026, 6, 11),
+      ),
+    ];
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(groups: groups, membersByGroupId: members),
+    );
+    final provider = GroupEventProvider(
+      contextProvider: contextProvider,
+      repository: FakeGroupEventRepository(
+        initialEvents: <GroupEventModel>[
+          _event(
+            id: 'event-1',
+            groupId: 'group-1',
+            title: '팀 미팅',
+            startAt: DateTime.utc(2026, 6, 11, 1),
+            endAt: DateTime.utc(2026, 6, 11, 2),
+            createdBy: 'user-2',
+          ),
+        ],
+      ),
+      delegationRepository: FakeGroupDelegationRepository(),
+      nowProvider: () => DateTime.utc(2026, 6, 11, 9),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupEventListScreen(
+          provider: provider,
+          groupRepository:
+              FakeGroupRepository(groups: groups, membersByGroupId: members),
+          currentUserIdOverride: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('팀 미팅'), findsOneWidget);
+    expect(find.textContaining('공유 · 엄대용'), findsOneWidget);
   });
 }

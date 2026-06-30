@@ -4,25 +4,33 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants.dart';
-import '../../../core/local_time.dart';
 import '../../../core/theme.dart';
 import '../../../providers/auth_provider.dart';
 import '../models/group_event_model.dart';
 import '../models/group_event_recurrence.dart';
 import '../providers/group_event_provider.dart';
 import '../providers/group_event_state.dart';
+import '../repositories/group_repository.dart';
+import '../widgets/group_event_tile.dart';
+import '../widgets/group_month_calendar.dart';
+
+/// 목록/캘린더 보기 모드 토글
+enum _GroupEventsViewMode { list, calendar }
 
 class GroupEventListScreen extends StatefulWidget {
   const GroupEventListScreen({
     super.key,
     GroupEventProvider? provider,
+    GroupRepository? groupRepository,
     String? currentUserIdOverride,
     String? initialGroupId,
   })  : _provider = provider,
+        _groupRepository = groupRepository,
         _currentUserIdOverride = currentUserIdOverride,
         _initialGroupId = initialGroupId;
 
   final GroupEventProvider? _provider;
+  final GroupRepository? _groupRepository;
   final String? _currentUserIdOverride;
   final String? _initialGroupId;
 
@@ -34,11 +42,24 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
   late final GroupEventProvider _provider;
   late final bool _ownsProvider;
 
+  _GroupEventsViewMode _viewMode = _GroupEventsViewMode.list;
+  DateTime _focusedMonth = DateTime.now();
+
+  /// groupId -> ownerName 맵. 선택된 그룹이 바뀔 때 재로드.
+  Map<String, String> _ownerNames = const {};
+  String? _loadedGroupId;
+
+  late final GroupRepository _groupRepository;
+
   @override
   void initState() {
     super.initState();
     _ownsProvider = widget._provider == null;
     _provider = widget._provider ?? GroupEventProvider();
+    _groupRepository =
+        widget._groupRepository ?? GroupRepository.supabase();
+    // nowLocal()이 초기화된 _provider에 의존하므로 initState에서 설정
+    _focusedMonth = _provider.nowLocal();
     unawaited(_load());
   }
 
@@ -53,7 +74,42 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
     await _provider.load(userId, preferredGroupId: widget._initialGroupId);
+    await _maybeLoadOwnerNames();
   }
+
+  Future<void> _loadMonth(DateTime month) async {
+    final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
+    await _provider.loadMonth(userId, month);
+  }
+
+  /// 선택된 그룹이 바뀌었을 때 멤버 이름 맵을 (재)로드한다.
+  Future<void> _maybeLoadOwnerNames() async {
+    final groupId = _provider.selectedGroup?.id;
+    if (groupId == _loadedGroupId) {
+      return;
+    }
+    _loadedGroupId = groupId;
+    if (groupId == null) {
+      if (mounted) {
+        setState(() => _ownerNames = const {});
+      }
+      return;
+    }
+    try {
+      final members = await _groupRepository.listMembers(groupId);
+      final map = {for (final m in members) m.userId: m.effectiveDisplayName};
+      if (mounted) {
+        setState(() => _ownerNames = map);
+      }
+    } catch (_) {
+      // 에러 시 조용히 빈 맵 유지
+      if (mounted) {
+        setState(() => _ownerNames = const {});
+      }
+    }
+  }
+
+  String? _ownerNameOf(String createdBy) => _ownerNames[createdBy];
 
   Future<void> _openCreateEvent() async {
     final selectedGroup = _provider.selectedGroup;
@@ -88,6 +144,8 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
       animation: _provider,
       builder: (context, _) {
         final state = _provider.state;
+        // 선택된 그룹 변경 감지 후 멤버 이름 로드 (AnimatedBuilder rebuild 시점에 체크)
+        _scheduleOwnerNamesReload();
         final today = _provider.nowLocal();
         final todayEvents = _eventsForDay(state.events, today);
         final weekEvents = _eventsForWeek(state.events, today)
@@ -97,6 +155,34 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
           appBar: AppBar(
             title: const Text('그룹 일정'),
             actions: [
+              // 목록/캘린더 토글
+              SegmentedButton<_GroupEventsViewMode>(
+                segments: const <ButtonSegment<_GroupEventsViewMode>>[
+                  ButtonSegment<_GroupEventsViewMode>(
+                    value: _GroupEventsViewMode.list,
+                    icon: Icon(Icons.list_outlined),
+                  ),
+                  ButtonSegment<_GroupEventsViewMode>(
+                    value: _GroupEventsViewMode.calendar,
+                    icon: Icon(Icons.calendar_month_outlined),
+                  ),
+                ],
+                selected: <_GroupEventsViewMode>{_viewMode},
+                onSelectionChanged: (selection) {
+                  final next = selection.first;
+                  setState(() => _viewMode = next);
+                  // 캘린더로 전환 시 현재 포커스 달의 데이터 로드
+                  if (next == _GroupEventsViewMode.calendar) {
+                    unawaited(_loadMonth(_focusedMonth));
+                  }
+                },
+                showSelectedIcon: false,
+                style: const ButtonStyle(
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity(horizontal: -2, vertical: -2),
+                ),
+              ),
+              const SizedBox(width: 4),
               IconButton(
                 tooltip: '새로고침',
                 onPressed: state.isLoading ? null : _load,
@@ -106,46 +192,94 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
           ),
           body: RefreshIndicator(
             onRefresh: _load,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                _buildSelectedGroupCard(context, state),
-                const SizedBox(height: 16),
-                _buildPrimaryActionRow(context, state),
-                if (state.error != null) ...[
-                  const SizedBox(height: 16),
-                  _buildErrorCard(context, state.error!),
-                ],
-                const SizedBox(height: 16),
-                _buildEventSection(
-                  context,
-                  title: '오늘 일정',
-                  subtitle: _dateLabel(today),
-                  events: todayEvents,
-                  emptyMessage: state.hasSelectedGroup
-                      ? '오늘은 아직 그룹 일정이 없어요.'
-                      : '그룹을 먼저 선택해 주세요.',
-                ),
-                const SizedBox(height: 16),
-                _buildEventSection(
-                  context,
-                  title: '이번 주 일정',
-                  subtitle: '오늘을 제외한 다음 일정들이 보여요.',
-                  events: weekEvents,
-                  emptyMessage: state.hasSelectedGroup
-                      ? '이번 주에는 추가된 그룹 일정이 없어요.'
-                      : '그룹을 먼저 선택해 주세요.',
-                ),
-                if (!state.hasSelectedGroup) ...[
-                  const SizedBox(height: 16),
-                  _buildEmptyGroupCard(context),
-                ],
-              ],
-            ),
+            child: _viewMode == _GroupEventsViewMode.list
+                ? _buildListView(context, state, todayEvents, weekEvents)
+                : _buildCalendarView(context, state),
           ),
         );
       },
+    );
+  }
+
+  // AnimatedBuilder가 rebuild될 때 그룹 변경을 감지해 멤버 이름 로드를 예약
+  void _scheduleOwnerNamesReload() {
+    final groupId = _provider.selectedGroup?.id;
+    if (groupId != _loadedGroupId) {
+      // build() 내에서 직접 setState는 금지이므로 microtask로 위임
+      Future.microtask(_maybeLoadOwnerNames);
+    }
+  }
+
+  Widget _buildListView(
+    BuildContext context,
+    GroupEventState state,
+    List<GroupEventModel> todayEvents,
+    List<GroupEventModel> weekEvents,
+  ) {
+    final today = _provider.nowLocal();
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        _buildSelectedGroupCard(context, state),
+        const SizedBox(height: 16),
+        _buildPrimaryActionRow(context, state),
+        if (state.error != null) ...[
+          const SizedBox(height: 16),
+          _buildErrorCard(context, state.error!),
+        ],
+        const SizedBox(height: 16),
+        _buildEventSection(
+          context,
+          title: '오늘 일정',
+          subtitle: _dateLabel(today),
+          events: todayEvents,
+          emptyMessage: state.hasSelectedGroup
+              ? '오늘은 아직 그룹 일정이 없어요.'
+              : '그룹을 먼저 선택해 주세요.',
+        ),
+        const SizedBox(height: 16),
+        _buildEventSection(
+          context,
+          title: '이번 주 일정',
+          subtitle: '오늘을 제외한 다음 일정들이 보여요.',
+          events: weekEvents,
+          emptyMessage: state.hasSelectedGroup
+              ? '이번 주에는 추가된 그룹 일정이 없어요.'
+              : '그룹을 먼저 선택해 주세요.',
+        ),
+        if (!state.hasSelectedGroup) ...[
+          const SizedBox(height: 16),
+          _buildEmptyGroupCard(context),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCalendarView(BuildContext context, GroupEventState state) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        _buildSelectedGroupCard(context, state),
+        const SizedBox(height: 16),
+        _buildPrimaryActionRow(context, state),
+        if (state.error != null) ...[
+          const SizedBox(height: 16),
+          _buildErrorCard(context, state.error!),
+        ],
+        const SizedBox(height: 16),
+        GroupMonthCalendar(
+          events: state.events,
+          focusedMonth: _focusedMonth,
+          ownerNameOf: _ownerNameOf,
+          onMonthChanged: (month) {
+            setState(() => _focusedMonth = month);
+            unawaited(_loadMonth(month));
+          },
+          onEventTap: _openDetail,
+        ),
+      ],
     );
   }
 
@@ -285,9 +419,10 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
                   for (final event in events)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: _GroupEventListTile(
+                      child: GroupEventTile(
                         key: ValueKey<String>('group-event-item-${event.id}'),
                         event: event,
+                        ownerName: _ownerNameOf(event.createdBy),
                         onTap: () => _openDetail(event),
                       ),
                     ),
@@ -414,119 +549,6 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
       'deleted_pending' => '삭제 대기',
       _ => status,
     };
-  }
-}
-
-class _GroupEventListTile extends StatelessWidget {
-  const _GroupEventListTile({
-    super.key,
-    required this.event,
-    required this.onTap,
-  });
-
-  final GroupEventModel event;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final localStart = planflowLocal(event.startAt);
-    final localEnd = planflowLocal(event.endAt);
-    final timeLabel = event.allDay
-        ? '종일'
-        : localStart.year == localEnd.year &&
-                localStart.month == localEnd.month &&
-                localStart.day == localEnd.day
-            ? '${_timeLabel(context, localStart)} - ${_timeLabel(context, localEnd)}'
-            : '${_dateLabel(localStart)} ${_timeLabel(context, localStart)} - ${_dateLabel(localEnd)} ${_timeLabel(context, localEnd)}';
-
-    return Card(
-      elevation: 0,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      event.title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                  ),
-                  _InfoChip(label: _statusLabel(event.status)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                timeLabel,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
-              ),
-              if ((event.location ?? '').trim().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  event.location!.trim(),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                      ),
-                ),
-              ],
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  if (event.allDay)
-                    _InfoChip(
-                      label: '종일',
-                      backgroundColor: PlanFlowColors.tagDoneBg,
-                      textColor: PlanFlowColors.tagDoneText,
-                    ),
-                  _InfoChip(label: _recurrenceLabel(event.recurrenceType)),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _statusLabel(String status) {
-    return switch (status) {
-      'active' => '활성',
-      'cancelled' => '취소됨',
-      'archived' => '보관됨',
-      _ => status,
-    };
-  }
-
-  String _recurrenceLabel(String recurrenceType) {
-    return switch (recurrenceType) {
-      'none' => '반복 없음',
-      'daily' => '매일 반복',
-      'weekly' => '매주 반복',
-      'monthly' => '매월 반복',
-      _ => recurrenceType,
-    };
-  }
-
-  String _timeLabel(BuildContext context, DateTime value) {
-    return MaterialLocalizations.of(context).formatTimeOfDay(
-      TimeOfDay.fromDateTime(value),
-      alwaysUse24HourFormat: false,
-    );
-  }
-
-  String _dateLabel(DateTime value) {
-    return '${value.year}.${value.month.toString().padLeft(2, '0')}.${value.day.toString().padLeft(2, '0')}';
   }
 }
 

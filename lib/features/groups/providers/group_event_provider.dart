@@ -254,6 +254,42 @@ class GroupEventProvider extends ChangeNotifier {
     return _repository.fetchGroupEvent(eventId);
   }
 
+  /// 캘린더 뷰에서 특정 달의 이벤트를 로드한다.
+  /// 앞뒤 7일 버퍼를 포함해 로드하고, 기존 이벤트 목록을 교체한다.
+  /// load()를 통해 이미 세팅된 그룹 컨텍스트·권한은 유지한다.
+  Future<void> loadMonth(String userId, DateTime month) async {
+    final group = _state.selectedGroup;
+    if (group == null || !group.isActive) {
+      return;
+    }
+    if (userId.isEmpty) {
+      return;
+    }
+
+    _setState(_state.copyWith(isLoading: true, clearError: true));
+    try {
+      final monthStart = DateTime(month.year, month.month, 1);
+      final monthEnd = DateTime(month.year, month.month + 1, 1);
+      final from = monthStart.subtract(const Duration(days: 7));
+      final to = monthEnd.add(const Duration(days: 7));
+      final events = await _repository.getEventsForGroup(group.id, from, to);
+      _setState(
+        _state.copyWith(
+          events: events,
+          isLoading: false,
+          clearError: true,
+        ),
+      );
+    } catch (error) {
+      _setState(
+        _state.copyWith(
+          isLoading: false,
+          error: error.toString(),
+        ),
+      );
+    }
+  }
+
   bool canUpdateGroupEvent(GroupEventModel event) {
     return event.isActive && _state.canUpdateEvent;
   }
