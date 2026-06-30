@@ -79,6 +79,24 @@ class VoiceDateRangeParser {
       );
     }
 
+    // "7월", "7월 일정", "7월 전체" 등 월 단독 패턴 ("7월 15일"은 위에서 이미 처리됨)
+    final monthMatch =
+        RegExp(r'(\d{1,2})\s*월(?!\s*\d+\s*일)').firstMatch(compact);
+    if (monthMatch != null) {
+      final month = int.tryParse(monthMatch.group(1)!);
+      if (month != null && month >= 1 && month <= 12) {
+        var year = today.year;
+        if (month < today.month) year++; // 이미 지난 달 → 내년
+        final start = DateTime(year, month, 1);
+        final end = DateTime(year, month + 1, 1);
+        return VoiceDateRangeParseResult(
+          start: start,
+          end: end,
+          label: '$month월',
+        );
+      }
+    }
+
     return null;
   }
 
