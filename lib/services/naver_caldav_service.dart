@@ -13,6 +13,7 @@ import '../core/env.dart';
 import '../core/local_time.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
+import 'api_usage_guard.dart';
 import 'external_event_import_classifier.dart';
 import 'naver_caldav_remote_store.dart';
 
@@ -591,6 +592,7 @@ class NaverCalDavService {
     String? currentUserId,
     Duration timeout = const Duration(seconds: 10),
     Uri? baseUri,
+    ApiUsageGuard? usageGuard,
   })  : _httpClient = httpClient ?? http.Client(),
         _ownsHttpClient = httpClient == null,
         _credentialStore = credentialStore ?? _defaultCredentialStore(client),
@@ -598,6 +600,7 @@ class NaverCalDavService {
         _client = client,
         _currentUserId = currentUserId,
         _timeout = timeout,
+        _usageGuard = usageGuard,
         _baseUri = baseUri ??
             Uri(
               scheme: 'https',
@@ -612,6 +615,10 @@ class NaverCalDavService {
   final String? _currentUserId;
   final Duration _timeout;
   final Uri _baseUri;
+  final ApiUsageGuard? _usageGuard;
+
+  /// API 사용량 가드 인스턴스. 테스트 주입 우선, 없으면 싱글톤 사용.
+  ApiUsageGuard get _guard => _usageGuard ?? ApiUsageGuard.instance;
 
   // 캘린더 목록 인스턴스 레벨 캐시 (TTL: 2분)
   static const Duration _calendarCacheTtl = Duration(minutes: 2);
@@ -1543,6 +1550,15 @@ class NaverCalDavService {
       // 저장 후보를 8개씩 chunk 병렬 처리 (write만 DB 호출)
       const saveBatchSize = 8;
       for (var i = 0; i < saveCandidates.length; i += saveBatchSize) {
+        // 폭주 가드: 60초/30회 한도 초과 시 루프 중단.
+        // 이미 저장된 배치는 유지되며, 남은 후보는 다음 동기화가 멱등 처리한다.
+        if (!await _guard.tryConsume(ApiName.naverCalendar)) {
+          debugPrint(
+            'ApiUsageGuard: ${ApiName.naverCalendar} blocked — '
+            '남은 저장 후보는 다음 동기화에서 처리',
+          );
+          break;
+        }
         final chunk = saveCandidates.skip(i).take(saveBatchSize).toList();
         final results = await Future.wait(
           chunk.map((item) async {
@@ -1585,6 +1601,8 @@ class NaverCalDavService {
           skippedEvents: skippedCount,
           failedEvents: failedCount,
         ));
+        // 배치 간 소량 지연으로 버스트 완화
+        await Future.delayed(const Duration(milliseconds: 50));
       }
 
       emit(NaverCalDavSyncProgress(

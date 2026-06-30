@@ -6,9 +6,19 @@ import 'package:http/http.dart' as http;
 import 'package:planflow/core/local_time.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/naver_caldav_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    // ApiUsageGuard가 SharedPreferences를 사용하므로 mock prefs 필수.
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    ApiUsageGuard.resetForTesting();
+  });
+
   test('testConnection saves credentials only after successful PROPFIND',
       () async {
     final client = _FakePropfindClient(
@@ -1147,6 +1157,110 @@ $eventXmlItems
     );
     // listEvents는 1회 호출로 스냅샷 (fetchExternalIdsBySource도 1회)
     expect(repository.fetchExternalIdSetCalls, 1);
+  });
+
+  test('syncAll 대량 저장 시 ApiUsageGuard 한도 초과하면 배치 루프가 중단된다', () async {
+    // saveBatchSize=8 기준으로, rateLimit=1이면 첫 배치(8개)만 소비 통과하고
+    // 두 번째 배치부터 tryConsume이 false를 반환해 루프가 break된다.
+    // 이미 저장된 첫 배치는 유지되고, 남은 후보는 다음 동기화가 멱등 처리한다.
+    const n = 20;
+    final eventXmlItems = StringBuffer();
+    for (var i = 1; i <= n; i++) {
+      final uid = 'guard-event-$i';
+      final hour = 10 + (i - 1) ~/ 60;
+      final minute = (i - 1) % 60;
+      final minuteStr = minute.toString().padLeft(2, '0');
+      eventXmlItems.write('''
+  <d:response>
+    <d:href>/calendars/tught3/default/$uid.ics</d:href>
+    <d:propstat>
+      <d:prop>
+        <d:getetag>"etag-$i"</d:getetag>
+        <c:calendar-data><![CDATA[
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:$uid
+SUMMARY:가드 일정 $i
+DTSTART;TZID=Asia/Seoul:20260505T$hour${minuteStr}00
+DTEND;TZID=Asia/Seoul:20260505T$hour${minuteStr}30
+LAST-MODIFIED:20260504T120000Z
+END:VEVENT
+END:VCALENDAR
+        ]]></c:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>''');
+    }
+    final batchEventReportXml = '''<?xml version="1.0" encoding="utf-8"?>
+<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+$eventXmlItems
+</d:multistatus>
+''';
+
+    final client = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        batchEventReportXml,
+      ],
+    );
+    final repository = _FakeEventRepository();
+    // rateLimit=1: 첫 배치만 통과, 두 번째 배치부터 차단.
+    final guard = ApiUsageGuard(
+      configs: const <String, ApiRateConfig>{
+        ApiName.naverCalendar: ApiRateConfig(windowSeconds: 60, rateLimit: 1),
+      },
+    );
+    final service = NaverCalDavService(
+      httpClient: client,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository,
+      currentUserId: 'user-1',
+      usageGuard: guard,
+    );
+
+    final result = await service.syncAll(mode: NaverCalDavSyncMode.quick);
+
+    // 첫 배치(8개)만 저장되고 나머지는 가드가 막아 저장되지 않는다.
+    expect(result.success, isTrue);
+    expect(result.createdOrUpdated, lessThan(n),
+        reason: '가드 차단으로 전체 $n개가 아닌 일부만 저장되어야 한다');
+    expect(repository.upserted, hasLength(8),
+        reason: 'saveBatchSize=8 · rateLimit=1 → 첫 배치 8개만 저장');
+    // 가드가 없으면 전체가 저장됨을 대조 검증.
+    ApiUsageGuard.resetForTesting();
+    final client2 = _FakePropfindClient(
+      responses: <int>[404, 207, 207],
+      bodies: <String>[
+        _emptyEventReportXml,
+        _calendarListXml,
+        batchEventReportXml,
+      ],
+    );
+    final repository2 = _FakeEventRepository();
+    final service2 = NaverCalDavService(
+      httpClient: client2,
+      credentialStore: _FakeCredentialStore(
+        savedId: 'tught3',
+        savedPassword: 'app-password',
+      ),
+      eventRepository: repository2,
+      currentUserId: 'user-1',
+      usageGuard: ApiUsageGuard(
+        configs: const <String, ApiRateConfig>{
+          ApiName.naverCalendar:
+              ApiRateConfig(windowSeconds: 60, rateLimit: 1000),
+        },
+      ),
+    );
+    final result2 = await service2.syncAll(mode: NaverCalDavSyncMode.quick);
+    expect(result2.createdOrUpdated, n,
+        reason: '넉넉한 rateLimit에서는 전체 $n개가 저장되어야 한다');
+    expect(repository2.upserted, hasLength(n));
   });
 
   test('exportEvent writes metadata and keeps exported ICS VALARM-free',
