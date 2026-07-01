@@ -1696,8 +1696,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     return confirmed == true;
   }
 
-  // Legacy CalDAV 앱 비밀번호 다이얼로그 — Open API 전환 후 미사용.
-  // OAuth 연결이 열리지 않거나 권한 확인이 끝나지 않을 때 CalDAV 직접 연결로 전환한다.
+  // CalDAV 앱 비밀번호 다이얼로그 — OAuth 연결이 열리지 않거나 권한 확인이
+  // 끝나지 않을 때 CalDAV 직접 연결 fallback으로 사용한다.
   Future<_NaverCalDavCredentials?> _showNaverCalDavDialog({
     String? initialNaverId,
   }) {

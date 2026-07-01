@@ -40,4 +40,9 @@ TASK_2[0-9]*_review.md
 # 배포/진단 산출물
 build_diag*.log
 deploy.log
+
+# Flutter 자동 생성 빌드 산출물 (플랫폼별 ephemeral) — 커밋 금지, 빌드마다 재생성됨
 linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+windows/flutter/ephemeral/
+ios/Flutter/ephemeral/
