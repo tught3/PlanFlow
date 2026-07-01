@@ -344,6 +344,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('오늘 회의'), findsOneWidget);
+    // 멤버 필터 칩 행이 추가되어 세로 목록이 길어졌으므로 스크롤 후 확인한다.
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('group-event-item-event-2')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('이번 주 일정'), findsWidgets);
   });
 
@@ -408,5 +414,152 @@ void main() {
 
     expect(find.text('팀 미팅'), findsOneWidget);
     expect(find.textContaining('공유 · 엄대용'), findsOneWidget);
+  });
+
+  testWidgets('멤버 필터 칩을 선택하면 해당 멤버의 일정만 보인다', (tester) async {
+    final members = <String, List<GroupMemberModel>>{
+      'group-1': <GroupMemberModel>[
+        _member(
+          id: 'member-1',
+          groupId: 'group-1',
+          userId: 'user-1',
+          role: 'leader',
+        ),
+        _member(
+          id: 'member-2',
+          groupId: 'group-1',
+          userId: 'user-2',
+          role: 'member',
+          displayName: '엄대용',
+        ),
+      ],
+    };
+    final groups = <GroupModel>[
+      _group(
+        id: 'group-1',
+        name: 'Leader Group',
+        createdBy: 'user-1',
+        createdAt: DateTime.utc(2026, 6, 11),
+      ),
+    ];
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(groups: groups, membersByGroupId: members),
+    );
+    final provider = GroupEventProvider(
+      contextProvider: contextProvider,
+      repository: FakeGroupEventRepository(
+        initialEvents: <GroupEventModel>[
+          _event(
+            id: 'event-1',
+            groupId: 'group-1',
+            title: '리더 일정',
+            startAt: DateTime.utc(2026, 6, 11, 1),
+            endAt: DateTime.utc(2026, 6, 11, 2),
+            createdBy: 'user-1',
+          ),
+          _event(
+            id: 'event-2',
+            groupId: 'group-1',
+            title: '멤버 일정',
+            startAt: DateTime.utc(2026, 6, 11, 3),
+            endAt: DateTime.utc(2026, 6, 11, 4),
+            createdBy: 'user-2',
+          ),
+        ],
+      ),
+      delegationRepository: FakeGroupDelegationRepository(),
+      nowProvider: () => DateTime.utc(2026, 6, 11, 9),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupEventListScreen(
+          provider: provider,
+          groupRepository:
+              FakeGroupRepository(groups: groups, membersByGroupId: members),
+          currentUserIdOverride: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 필터 적용 전에는 두 멤버의 일정이 모두 보인다.
+    expect(find.text('리더 일정'), findsOneWidget);
+    expect(find.text('멤버 일정'), findsOneWidget);
+
+    // '엄대용' 칩을 선택하면 해당 멤버(user-2)의 일정만 남는다.
+    await tester.tap(
+      find.byKey(const ValueKey('group-event-member-filter-user-2')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('멤버 일정'), findsOneWidget);
+    expect(find.text('리더 일정'), findsNothing);
+  });
+
+  testWidgets('initialMemberFilterUserId로 특정 멤버 일정만 미리 필터링해서 진입한다',
+      (tester) async {
+    final members = <String, List<GroupMemberModel>>{
+      'group-1': <GroupMemberModel>[
+        _member(
+          id: 'member-1',
+          groupId: 'group-1',
+          userId: 'user-1',
+          role: 'leader',
+        ),
+        _member(
+          id: 'member-2',
+          groupId: 'group-1',
+          userId: 'user-2',
+          role: 'member',
+          displayName: '엄대용',
+        ),
+      ],
+    };
+    final groups = <GroupModel>[
+      _group(
+        id: 'group-1',
+        name: 'Leader Group',
+        createdBy: 'user-1',
+        createdAt: DateTime.utc(2026, 6, 11),
+      ),
+    ];
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(groups: groups, membersByGroupId: members),
+    );
+    final provider = GroupEventProvider(
+      contextProvider: contextProvider,
+      repository: FakeGroupEventRepository(
+        initialEvents: <GroupEventModel>[
+          _event(
+            id: 'event-1',
+            groupId: 'group-1',
+            title: '리더 일정',
+            startAt: DateTime.utc(2026, 6, 11, 1),
+            endAt: DateTime.utc(2026, 6, 11, 2),
+            createdBy: 'user-1',
+          ),
+        ],
+      ),
+      delegationRepository: FakeGroupDelegationRepository(),
+      nowProvider: () => DateTime.utc(2026, 6, 11, 9),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupEventListScreen(
+          provider: provider,
+          groupRepository:
+              FakeGroupRepository(groups: groups, membersByGroupId: members),
+          currentUserIdOverride: 'user-1',
+          initialMemberFilterUserId: 'user-2',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // user-2로 미리 필터링되어, user-1이 만든 일정은 보이지 않고 빈 상태 메시지가 보인다.
+    expect(find.text('리더 일정'), findsNothing);
+    expect(find.text('이 멤버가 공유한 일정이 없어요.'), findsWidgets);
   });
 }

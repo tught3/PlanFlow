@@ -9,6 +9,7 @@ import '../../../core/theme.dart';
 import '../../../providers/auth_provider.dart';
 import '../models/group_event_model.dart';
 import '../models/group_event_recurrence.dart';
+import '../models/group_member_model.dart';
 import '../providers/group_event_provider.dart';
 import '../providers/group_event_state.dart';
 import '../repositories/group_repository.dart';
@@ -28,15 +29,18 @@ class GroupEventListScreen extends StatefulWidget {
     GroupRepository? groupRepository,
     String? currentUserIdOverride,
     String? initialGroupId,
+    String? initialMemberFilterUserId,
   })  : _provider = provider,
         _groupRepository = groupRepository,
         _currentUserIdOverride = currentUserIdOverride,
-        _initialGroupId = initialGroupId;
+        _initialGroupId = initialGroupId,
+        _initialMemberFilterUserId = initialMemberFilterUserId;
 
   final GroupEventProvider? _provider;
   final GroupRepository? _groupRepository;
   final String? _currentUserIdOverride;
   final String? _initialGroupId;
+  final String? _initialMemberFilterUserId;
 
   @override
   State<GroupEventListScreen> createState() => _GroupEventListScreenState();
@@ -53,6 +57,12 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
   Map<String, String> _ownerNames = const {};
   String? _loadedGroupId;
 
+  /// 현재 선택된 그룹의 활성 멤버 목록 (필터 칩 구성용).
+  List<GroupMemberModel> _activeMembers = const [];
+
+  /// 멤버 필터: null이면 전체, 값이 있으면 해당 userId의 일정만 표시.
+  String? _memberFilterUserId;
+
   late final GroupRepository _groupRepository;
 
   @override
@@ -60,8 +70,8 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
     super.initState();
     _ownsProvider = widget._provider == null;
     _provider = widget._provider ?? GroupEventProvider();
-    _groupRepository =
-        widget._groupRepository ?? GroupRepository.supabase();
+    _groupRepository = widget._groupRepository ?? GroupRepository.supabase();
+    _memberFilterUserId = widget._initialMemberFilterUserId;
     // nowLocal()이 초기화된 _provider에 의존하므로 initState에서 설정
     _focusedMonth = _provider.nowLocal();
     unawaited(_load());
@@ -113,20 +123,30 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
     _loadedGroupId = groupId;
     if (groupId == null) {
       if (mounted) {
-        setState(() => _ownerNames = const {});
+        setState(() {
+          _ownerNames = const {};
+          _activeMembers = const [];
+        });
       }
       return;
     }
     try {
       final members = await _groupRepository.listMembers(groupId);
       final map = {for (final m in members) m.userId: m.effectiveDisplayName};
+      final active = members.where((m) => m.isActive).toList(growable: false);
       if (mounted) {
-        setState(() => _ownerNames = map);
+        setState(() {
+          _ownerNames = map;
+          _activeMembers = active;
+        });
       }
     } catch (_) {
       // 에러 시 조용히 빈 맵 유지
       if (mounted) {
-        setState(() => _ownerNames = const {});
+        setState(() {
+          _ownerNames = const {};
+          _activeMembers = const [];
+        });
       }
     }
   }
@@ -168,9 +188,10 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
         final state = _provider.state;
         // 선택된 그룹 변경 감지 후 멤버 이름 로드 (AnimatedBuilder rebuild 시점에 체크)
         _scheduleOwnerNamesReload();
+        final filteredEvents = _applyMemberFilter(state.events);
         final today = _provider.nowLocal();
-        final todayEvents = _eventsForDay(state.events, today);
-        final weekEvents = _eventsForWeek(state.events, today)
+        final todayEvents = _eventsForDay(filteredEvents, today);
+        final weekEvents = _eventsForWeek(filteredEvents, today)
             .where((event) => !todayEvents.any((item) => item.id == event.id))
             .toList(growable: false);
         return Scaffold(
@@ -217,10 +238,74 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
             onRefresh: _load,
             child: _viewMode == _GroupEventsViewMode.list
                 ? _buildListView(context, state, todayEvents, weekEvents)
-                : _buildCalendarView(context, state),
+                : _buildCalendarView(context, state, filteredEvents),
           ),
         );
       },
+    );
+  }
+
+  /// 선택된 멤버 필터를 적용한 일정 목록을 반환한다. 필터가 없으면 원본 그대로.
+  List<GroupEventModel> _applyMemberFilter(List<GroupEventModel> events) {
+    final filterUserId = _memberFilterUserId;
+    if (filterUserId == null) {
+      return events;
+    }
+    return events
+        .where((event) => event.createdBy == filterUserId)
+        .toList(growable: false);
+  }
+
+  void _selectMemberFilter(String? userId) {
+    setState(() => _memberFilterUserId = userId);
+  }
+
+  /// "전체" + 활성 멤버별 필터 칩 행. 목록/캘린더 모드 공통으로 사용.
+  Widget _buildMemberFilterRow(BuildContext context) {
+    if (_activeMembers.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              key: const ValueKey('group-event-member-filter-all'),
+              label: const Text('전체'),
+              selected: _memberFilterUserId == null,
+              onSelected: (_) => _selectMemberFilter(null),
+              selectedColor: PlanFlowColors.primaryFaint,
+              labelStyle: TextStyle(
+                color: _memberFilterUserId == null
+                    ? PlanFlowColors.primary
+                    : PlanFlowColors.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          for (final member in _activeMembers)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                key: ValueKey<String>(
+                    'group-event-member-filter-${member.userId}'),
+                label: Text(member.effectiveDisplayName),
+                selected: _memberFilterUserId == member.userId,
+                onSelected: (_) => _selectMemberFilter(member.userId),
+                selectedColor: PlanFlowColors.primaryFaint,
+                labelStyle: TextStyle(
+                  color: _memberFilterUserId == member.userId
+                      ? PlanFlowColors.primary
+                      : PlanFlowColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -251,15 +336,21 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
           const SizedBox(height: 16),
           _buildErrorCard(context, state.error!),
         ],
+        if (_activeMembers.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _buildMemberFilterRow(context),
+        ],
         const SizedBox(height: 16),
         _buildEventSection(
           context,
           title: '오늘 일정',
           subtitle: _dateLabel(today),
           events: todayEvents,
-          emptyMessage: state.hasSelectedGroup
-              ? '오늘은 아직 그룹 일정이 없어요.'
-              : '그룹을 먼저 선택해 주세요.',
+          emptyMessage: !state.hasSelectedGroup
+              ? '그룹을 먼저 선택해 주세요.'
+              : _memberFilterUserId != null
+                  ? '이 멤버가 공유한 일정이 없어요.'
+                  : '오늘은 아직 그룹 일정이 없어요.',
         ),
         const SizedBox(height: 16),
         _buildEventSection(
@@ -267,9 +358,11 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
           title: '이번 주 일정',
           subtitle: '오늘을 제외한 다음 일정들이 보여요.',
           events: weekEvents,
-          emptyMessage: state.hasSelectedGroup
-              ? '이번 주에는 추가된 그룹 일정이 없어요.'
-              : '그룹을 먼저 선택해 주세요.',
+          emptyMessage: !state.hasSelectedGroup
+              ? '그룹을 먼저 선택해 주세요.'
+              : _memberFilterUserId != null
+                  ? '이 멤버가 공유한 일정이 없어요.'
+                  : '이번 주에는 추가된 그룹 일정이 없어요.',
         ),
         if (!state.hasSelectedGroup) ...[
           const SizedBox(height: 16),
@@ -279,7 +372,11 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
     );
   }
 
-  Widget _buildCalendarView(BuildContext context, GroupEventState state) {
+  Widget _buildCalendarView(
+    BuildContext context,
+    GroupEventState state,
+    List<GroupEventModel> filteredEvents,
+  ) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -291,9 +388,13 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
           const SizedBox(height: 16),
           _buildErrorCard(context, state.error!),
         ],
+        if (_activeMembers.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _buildMemberFilterRow(context),
+        ],
         const SizedBox(height: 16),
         GroupMonthCalendar(
-          events: state.events,
+          events: filteredEvents,
           focusedMonth: _focusedMonth,
           ownerNameOf: _ownerNameOf,
           onMonthChanged: (month) {
