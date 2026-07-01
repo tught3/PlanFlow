@@ -427,4 +427,63 @@ void main() {
     expect(find.byType(GroupEventDetailScreen), findsNothing);
     expect(poppedResult, 'archived');
   });
+
+  testWidgets(
+      '리더가 자신이 만든 일정을 볼 때는 지시 입력 폼 대신 안내문이 나온다',
+      (tester) async {
+    // 리더(user-1)가 곧 이 일정의 작성자(createdBy=user-1)이면 자기 자신에게
+    // 지시를 남길 수 없으므로 입력 폼을 감추고 안내문을 보여준다.
+    final event = _event(
+      id: 'event-1',
+      groupId: 'group-1',
+      title: '내가 만든 일정',
+      startAt: DateTime.utc(2026, 6, 11, 1),
+      endAt: DateTime.utc(2026, 6, 11, 2),
+    );
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-1',
+            name: 'Leader Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final provider = GroupEventProvider(
+      contextProvider: contextProvider,
+      repository: FakeGroupEventRepository(event: event),
+      delegationRepository: FakeGroupDelegationRepository(),
+      nowProvider: () => DateTime.utc(2026, 6, 11, 9),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupEventDetailScreen(
+          eventId: event.id,
+          event: event,
+          provider: provider,
+          currentUserIdOverride: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 자기 일정에는 지시 입력 폼이 없어야 하고 안내문이 보여야 한다.
+    expect(find.byKey(const ValueKey('group-event-comment-input')),
+        findsNothing);
+    expect(find.text('내가 만든 일정에는 지시를 남길 수 없어요.'), findsOneWidget);
+  });
 }

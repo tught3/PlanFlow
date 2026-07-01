@@ -541,8 +541,8 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                   );
                 },
               ),
-            // 리더: 지시 입력 폼
-            if (isLeader) ...[
+            // 리더: 지시 입력 폼 (단, 자신이 만든 일정에는 지시 불가)
+            if (isLeader && !isSharer) ...[
               const SizedBox(height: 12),
               const Divider(),
               const SizedBox(height: 8),
@@ -576,6 +576,16 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
                       : const Icon(Icons.send_outlined),
                   label: Text(_isSubmittingComment ? '전송 중...' : '지시 추가'),
                 ),
+              ),
+            ] else if (isLeader && isSharer) ...[
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                '내가 만든 일정에는 지시를 남길 수 없어요.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
               ),
             ],
           ],
