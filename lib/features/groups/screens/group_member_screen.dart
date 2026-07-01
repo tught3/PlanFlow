@@ -10,6 +10,7 @@ import '../../../providers/auth_provider.dart';
 import '../models/group_member_model.dart';
 import '../providers/group_member_provider.dart';
 import '../providers/group_member_state.dart';
+import 'group_event_list_screen.dart';
 
 class GroupMemberScreen extends StatefulWidget {
   const GroupMemberScreen({
@@ -60,6 +61,22 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
       return;
     }
     await _load();
+  }
+
+  /// 멤버 타일을 탭하면 해당 멤버로 미리 필터링된 그룹 일정 목록을 연다.
+  Future<void> _openMemberSchedule(GroupMemberModel member) async {
+    final groupId = _provider.state.selectedGroup?.id;
+    if (groupId == null) {
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => GroupEventListScreen(
+          initialGroupId: groupId,
+          initialMemberFilterUserId: member.userId,
+        ),
+      ),
+    );
   }
 
   Future<void> _confirmRemoveMember(GroupMemberModel member) async {
@@ -340,6 +357,7 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
                   canRemove: _provider.canRemoveMember(member),
                   canEditDisplayName:
                       _provider.canEditMemberDisplayName(member),
+                  onTap: () => _openMemberSchedule(member),
                   onEditDisplayNamePressed: () =>
                       _editMemberDisplayName(member),
                   onRemovePressed: () => _confirmRemoveMember(member),
@@ -472,6 +490,7 @@ class _MemberTile extends StatelessWidget {
     required this.member,
     required this.canRemove,
     required this.canEditDisplayName,
+    required this.onTap,
     required this.onEditDisplayNamePressed,
     required this.onRemovePressed,
   });
@@ -479,108 +498,117 @@ class _MemberTile extends StatelessWidget {
   final GroupMemberModel member;
   final bool canRemove;
   final bool canEditDisplayName;
+  final VoidCallback onTap;
   final VoidCallback onEditDisplayNamePressed;
   final VoidCallback onRemovePressed;
 
   @override
   Widget build(BuildContext context) {
     final isRemoved = member.status == 'removed';
-    return Container(
-      decoration: BoxDecoration(
-        color: isRemoved ? const Color(0xFFF8FAFC) : PlanFlowColors.surface,
+    return Material(
+      color: isRemoved ? const Color(0xFFF8FAFC) : PlanFlowColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        key: ValueKey<String>('group-member-tile-tap-${member.id}'),
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: PlanFlowColors.primaryFaint),
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: PlanFlowColors.primaryFaint),
+          ),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  member.effectiveDisplayName,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (canEditDisplayName) ...[
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  key: ValueKey<String>('group-member-rename-${member.id}'),
-                  onPressed: onEditDisplayNamePressed,
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('이름 변경'),
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      member.effectiveDisplayName,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              _InfoChip(label: _roleLabel(member.role)),
-              _InfoChip(label: _statusLabel(member.status)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 12,
-            runSpacing: 6,
-            children: [
-              Text(
-                member.secondaryLabel,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
-              ),
-              Text(
-                _dateLabel('가입', member.joinedAt),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
-              ),
-              Text(
-                _dateLabel('제거', member.removedAt),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: PlanFlowColors.textSecondary,
-                    ),
-              ),
-              if ((member.removedBy ?? '').trim().isNotEmpty)
-                Text(
-                  '제거자 ${member.removedBy}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
+                  if (canEditDisplayName) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      key: ValueKey<String>('group-member-rename-${member.id}'),
+                      onPressed: onEditDisplayNamePressed,
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: const Text('이름 변경'),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
                       ),
-                ),
-            ],
-          ),
-          if (canRemove) ...[
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                FilledButton.tonalIcon(
-                  key: ValueKey<String>('group-member-remove-${member.id}'),
-                  onPressed: onRemovePressed,
-                  icon: const Icon(Icons.remove_circle_outline),
-                  label: const Text('제거'),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _InfoChip(label: _roleLabel(member.role)),
+                  _InfoChip(label: _statusLabel(member.status)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 12,
+                runSpacing: 6,
+                children: [
+                  Text(
+                    member.secondaryLabel,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                        ),
+                  ),
+                  Text(
+                    _dateLabel('가입', member.joinedAt),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                        ),
+                  ),
+                  Text(
+                    _dateLabel('제거', member.removedAt),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: PlanFlowColors.textSecondary,
+                        ),
+                  ),
+                  if ((member.removedBy ?? '').trim().isNotEmpty)
+                    Text(
+                      '제거자 ${member.removedBy}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                    ),
+                ],
+              ),
+              if (canRemove) ...[
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    FilledButton.tonalIcon(
+                      key: ValueKey<String>('group-member-remove-${member.id}'),
+                      onPressed: onRemovePressed,
+                      icon: const Icon(Icons.remove_circle_outline),
+                      label: const Text('제거'),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }

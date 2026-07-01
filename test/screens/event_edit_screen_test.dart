@@ -117,6 +117,54 @@ void main() {
     expect(find.text('우리 팀만'), findsOneWidget);
   });
 
+  testWidgets('EventEditScreen does not crash when auto-share pref is enabled',
+      (tester) async {
+    // Pre-set auto-share preference before creating widget
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'planflow:group_auto_share:v1:user-1:group-1': true,
+    });
+
+    final contextProvider = GroupContextProvider(
+      repository: _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'leader-1',
+            name: '우리 팀',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'member',
+            ),
+          ],
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventEditScreen(
+          initialDate: DateTime(2026, 6, 15),
+          currentUserIdOverride: 'user-1',
+          groupContextProvider: contextProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify that the widget renders without crashing
+    // The '저장 범위' card should exist when a group is selected
+    expect(find.text('저장 범위'), findsOneWidget);
+    expect(find.text('개인 일정만'), findsOneWidget);
+    expect(find.text('개인 + 우리 팀'), findsOneWidget);
+  });
+
   testWidgets('EventEditScreen keeps duration when start date changes',
       (tester) async {
     await tester.pumpWidget(

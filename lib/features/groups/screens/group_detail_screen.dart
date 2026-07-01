@@ -49,6 +49,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   bool _sharePromptScheduled = false;
   bool _sharePromptShowing = false;
   String? _error;
+  bool _autoShareEnabled = false;
 
   @override
   void initState() {
@@ -58,6 +59,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         widget.contextProvider ?? GroupContextProvider(repository: _repository);
     _ownsProvider = widget.contextProvider == null;
     unawaited(_load());
+    unawaited(_loadAutoSharePref());
   }
 
   @override
@@ -220,6 +222,42 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   String _sharePromptKey(String userId, String groupId) =>
       'planflow:group_event_share_prompt:v1:$userId:$groupId';
 
+  String _autoSharePrefKey(String userId, String groupId) =>
+      'planflow:group_auto_share:v1:$userId:$groupId';
+
+  Future<void> _loadAutoSharePref() async {
+    final userId = _currentUserId();
+    if (userId.trim().isEmpty) {
+      return;
+    }
+    final preferences =
+        widget.preferences ?? await SharedPreferences.getInstance();
+    if (!mounted) {
+      return;
+    }
+    final key = _autoSharePrefKey(userId, widget.groupId);
+    final enabled = preferences.getBool(key) ?? false;
+    setState(() {
+      _autoShareEnabled = enabled;
+    });
+  }
+
+  Future<void> _toggleAutoShare(bool value) async {
+    final userId = _currentUserId();
+    if (userId.trim().isEmpty) {
+      return;
+    }
+    final preferences =
+        widget.preferences ?? await SharedPreferences.getInstance();
+    final key = _autoSharePrefKey(userId, widget.groupId);
+    await preferences.setBool(key, value);
+    if (mounted) {
+      setState(() {
+        _autoShareEnabled = value;
+      });
+    }
+  }
+
   Future<void> _deleteGroup() async {
     final group = _group;
     if (group == null) return;
@@ -346,6 +384,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     if (group != null) _buildHeaderCard(context, group),
                     const SizedBox(height: 20),
                     _buildActionGrid(context),
+                    const SizedBox(height: 20),
+                    _buildAutoShareCard(context),
                     if (_isLeader) ...[
                       const SizedBox(height: 28),
                       const Divider(),
@@ -478,6 +518,67 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           onTap: () => context.push(item.route, extra: item.extra),
         );
       },
+    );
+  }
+
+  Widget _buildAutoShareCard(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: PlanFlowColors.primaryFaint,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.publish_outlined,
+                    color: PlanFlowColors.primary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '이 그룹에 새 일정 자동 공유',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '켜면 새로 만드는 개인 일정이 기본으로 이 그룹에도 공유돼요.',
+                        style:
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: PlanFlowColors.textSecondary,
+                                ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              value: _autoShareEnabled,
+              onChanged: _toggleAutoShare,
+              contentPadding: EdgeInsets.zero,
+              title: null,
+              subtitle: null,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

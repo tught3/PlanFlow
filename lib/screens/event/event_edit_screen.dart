@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
@@ -448,6 +449,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     await provider.load(userId.trim());
     if (mounted) {
       setState(() {});
+      unawaited(_applyAutoShareDefaultIfNeeded());
     }
   }
 
@@ -477,6 +479,41 @@ class _EventEditScreenState extends State<EventEditScreen> {
       return override;
     }
     return Supabase.instance.client.auth.currentUser?.id;
+  }
+
+  String _autoSharePrefKey(String userId, String groupId) =>
+      'planflow:group_auto_share:v1:$userId:$groupId';
+
+  Future<void> _applyAutoShareDefaultIfNeeded() async {
+    // Only apply to NEW events, not edits
+    if (!_isNewEvent) {
+      return;
+    }
+
+    // Must have an active selected group
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return;
+    }
+
+    final userId = _currentUserId();
+    if (userId == null || userId.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final key = _autoSharePrefKey(userId, group.id);
+      final autoShareEnabled = preferences.getBool(key) ?? false;
+
+      if (autoShareEnabled && mounted) {
+        setState(() {
+          _saveTarget = _ScheduleSaveTarget.personalAndGroup;
+        });
+      }
+    } catch (error) {
+      debugPrint('EventEditScreen auto-share default error: $error');
+    }
   }
 
   Future<GroupEventModel?> _createGroupEventFromDraft(
