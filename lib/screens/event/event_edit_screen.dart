@@ -39,6 +39,7 @@ import '../../widgets/calendar_style_event_editor.dart';
 import '../../widgets/overlap_warning_dialog.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
+import '../../widgets/schedule_save_scope_card.dart';
 
 class EventEditScreen extends StatefulWidget {
   EventEditScreen({
@@ -72,12 +73,6 @@ class EventEditScreen extends StatefulWidget {
   State<EventEditScreen> createState() => _EventEditScreenState();
 }
 
-enum _ScheduleSaveTarget {
-  personalOnly,
-  personalAndGroup,
-  groupOnly,
-}
-
 enum _LinkedGroupEditScope {
   personalOnly,
   personalAndGroup,
@@ -107,7 +102,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   bool _isSaving = false;
   bool _isLookingUpLocation = false;
   bool _endEditedByUser = false;
-  _ScheduleSaveTarget _saveTarget = _ScheduleSaveTarget.personalOnly;
+  ScheduleSaveTarget _saveTarget = ScheduleSaveTarget.personalOnly;
   // 사용자가 저장 범위를 직접 바꾼 뒤에는 자동 공유 기본값이 덮어쓰지 않도록 표시.
   bool _saveTargetTouchedByUser = false;
   Timer? _locationDebounceTimer;
@@ -467,13 +462,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
   bool get _shouldSavePersonalEvent =>
       !_canShareToSelectedGroup ||
-      _saveTarget == _ScheduleSaveTarget.personalOnly ||
-      _saveTarget == _ScheduleSaveTarget.personalAndGroup;
+      _saveTarget == ScheduleSaveTarget.personalOnly ||
+      _saveTarget == ScheduleSaveTarget.personalAndGroup;
 
   bool get _shouldSaveGroupEvent =>
       _canShareToSelectedGroup &&
-      (_saveTarget == _ScheduleSaveTarget.personalAndGroup ||
-          _saveTarget == _ScheduleSaveTarget.groupOnly);
+      (_saveTarget == ScheduleSaveTarget.personalAndGroup ||
+          _saveTarget == ScheduleSaveTarget.groupOnly);
 
   String? _currentUserId() {
     final override = widget.currentUserIdOverride?.trim();
@@ -516,7 +511,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       // await 사이에 사용자가 직접 골랐을 수 있으므로 적용 직전에 다시 확인.
       if (autoShareEnabled && mounted && !_saveTargetTouchedByUser) {
         setState(() {
-          _saveTarget = _ScheduleSaveTarget.personalAndGroup;
+          _saveTarget = ScheduleSaveTarget.personalAndGroup;
         });
       }
     } catch (error) {
@@ -1567,65 +1562,15 @@ class _EventEditScreenState extends State<EventEditScreen> {
       return const SizedBox.shrink();
     }
 
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.groups_2_outlined),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '저장 범위',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '이 일정을 나만 볼지, 선택된 그룹에도 공유할지 정해 주세요.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SegmentedButton<_ScheduleSaveTarget>(
-              segments: <ButtonSegment<_ScheduleSaveTarget>>[
-                const ButtonSegment<_ScheduleSaveTarget>(
-                  value: _ScheduleSaveTarget.personalOnly,
-                  icon: Icon(Icons.person_outline),
-                  label: Text('개인 일정만'),
-                ),
-                ButtonSegment<_ScheduleSaveTarget>(
-                  value: _ScheduleSaveTarget.personalAndGroup,
-                  icon: const Icon(Icons.compare_arrows_outlined),
-                  label: Text('개인 + ${group.name}'),
-                ),
-                ButtonSegment<_ScheduleSaveTarget>(
-                  value: _ScheduleSaveTarget.groupOnly,
-                  icon: const Icon(Icons.groups_outlined),
-                  label: Text('${group.name}만'),
-                ),
-              ],
-              selected: <_ScheduleSaveTarget>{_saveTarget},
-              onSelectionChanged: (selection) {
-                setState(() {
-                  _saveTarget = selection.first;
-                  _saveTargetTouchedByUser = true;
-                });
-              },
-              showSelectedIcon: false,
-            ),
-          ],
-        ),
-      ),
+    return ScheduleSaveScopeCard(
+      groupName: group.name,
+      selected: _saveTarget,
+      onChanged: (target) {
+        setState(() {
+          _saveTarget = target;
+          _saveTargetTouchedByUser = true;
+        });
+      },
     );
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -346,5 +347,263 @@ void main() {
         find.byKey(const ValueKey('invite-accept-invite-1')), findsOneWidget);
     expect(
         find.byKey(const ValueKey('invite-reject-invite-1')), findsOneWidget);
+  });
+
+  testWidgets('shows group switcher with multiple chips when user leads multiple groups',
+      (tester) async {
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-1',
+            name: 'First Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11),
+            inviteToken: 'token-1',
+          ),
+          _group(
+            id: 'group-2',
+            name: 'Second Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 12),
+            inviteToken: 'token-2',
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+          'group-2': <GroupMemberModel>[
+            _member(
+              id: 'member-2',
+              groupId: 'group-2',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final inviteProvider = GroupInviteProvider(
+      repository: FakeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupInviteScreen(
+          contextProvider: contextProvider,
+          inviteProvider: inviteProvider,
+          currentUserIdOverride: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Should see "그룹 선택" label
+    expect(find.text('그룹 선택'), findsOneWidget);
+
+    // Should see both group chips
+    expect(
+      find.byKey(const ValueKey('group-switcher-group-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('group-switcher-group-2')),
+      findsOneWidget,
+    );
+
+    // First group should be initially selected (default behavior)
+    expect(find.text('First Group'), findsWidgets);
+    expect(find.text('Second Group'), findsWidgets);
+
+    // Verify the switcher exists with correct structure
+    expect(find.text('현재 그룹'), findsOneWidget);
+    final selectedGroupCardFinder = find.byType(Card);
+    final cards = selectedGroupCardFinder.evaluate();
+    expect(cards.isNotEmpty, true);
+  });
+
+  testWidgets('switches group when tapping different group chip',
+      (tester) async {
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-1',
+            name: 'First Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11),
+            inviteToken: 'token-1',
+          ),
+          _group(
+            id: 'group-2',
+            name: 'Second Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 12),
+            inviteToken: 'token-2',
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+          'group-2': <GroupMemberModel>[
+            _member(
+              id: 'member-2',
+              groupId: 'group-2',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final inviteProvider = GroupInviteProvider(
+      repository: FakeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+      },
+    );
+
+    // 초대 링크 복사 버튼이 ListView 하단에 있어 기본 테스트 뷰포트(600 높이)에서는
+    // 스크롤 없이 안 보인다. 스크롤 제스처 대신 뷰포트를 넉넉히 키워
+    // 모든 카드가 한 화면에 들어오게 해 스크롤 관련 테스트 취약성을 없앤다.
+    await tester.binding.setSurfaceSize(const Size(400, 2400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupInviteScreen(
+          contextProvider: contextProvider,
+          inviteProvider: inviteProvider,
+          currentUserIdOverride: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 클립보드에 실제로 복사되는 텍스트를 가로채, 이름 텍스트뿐 아니라
+    // 초대 링크/토큰 자체가 그룹 전환에 따라 바뀌는지 검증한다.
+    final copiedTexts = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          final args = call.arguments as Map<Object?, Object?>;
+          copiedTexts.add(args['text'] as String? ?? '');
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    // Initially First Group should be shown in the selected group card
+    expect(find.text('First Group'), findsWidgets);
+
+    // 전환 전: 초대 링크 복사 결과가 First Group의 토큰(token-1)을 담고 있어야 한다.
+    final copyButtonFinder =
+        find.byKey(const ValueKey('group-invite-link-copy-button'));
+    await tester.tap(copyButtonFinder);
+    await tester.pumpAndSettle();
+    expect(copiedTexts, isNotEmpty);
+    expect(copiedTexts.last, contains('token-1'));
+    expect(copiedTexts.last, isNot(contains('token-2')));
+
+    // Tap the Second Group chip
+    final secondGroupChipFinder =
+        find.byKey(const ValueKey('group-switcher-group-2'));
+    await tester.tap(secondGroupChipFinder);
+    await tester.pumpAndSettle();
+
+    // After tap, the selected group should change to Second Group
+    // The selected group card should now show Second Group
+    expect(
+      find.descendant(
+        of: find.byType(Card),
+        matching: find.text('Second Group'),
+      ),
+      findsOneWidget,
+    );
+
+    // The invite link/form should now reflect the Second Group's token
+    expect(find.text('초대 링크'), findsOneWidget);
+
+    // 전환 후(핵심 회귀 방지): 초대 링크 복사 결과가 이름만 바뀐 게 아니라
+    // 실제로 Second Group의 토큰(token-2)을 담고 있어야 한다.
+    await tester.tap(copyButtonFinder);
+    await tester.pumpAndSettle();
+    expect(copiedTexts.last, contains('token-2'));
+    expect(copiedTexts.last, isNot(contains('token-1')));
+  });
+
+  testWidgets('does not show group switcher when user has only one group',
+      (tester) async {
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-1',
+            name: 'Only Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11),
+            inviteToken: 'token-1',
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final inviteProvider = GroupInviteProvider(
+      repository: FakeGroupInviteRepository(),
+      profileLoader: (userId) async => <String, dynamic>{
+        'id': userId,
+        'invite_code': 'INVITE-0001',
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupInviteScreen(
+          contextProvider: contextProvider,
+          inviteProvider: inviteProvider,
+          currentUserIdOverride: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Should not see "그룹 선택" label
+    expect(find.text('그룹 선택'), findsNothing);
+
+    // Should not see any group switcher chips
+    expect(find.byKey(const ValueKey('group-switcher-group-1')), findsNothing);
   });
 }

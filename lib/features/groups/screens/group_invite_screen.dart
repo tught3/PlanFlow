@@ -253,6 +253,8 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
               children: [
                 _buildInviteCodeCard(context, inviteState),
                 const SizedBox(height: 16),
+                _buildGroupSwitcher(context, contextState),
+                const SizedBox(height: 16),
                 _buildSelectedGroupCard(context, contextState),
                 const SizedBox(height: 16),
                 if (canInvite) ...[
@@ -387,6 +389,72 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildGroupSwitcher(
+    BuildContext context,
+    GroupContextState state,
+  ) {
+    if (state.groups.length <= 1) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Text(
+            '그룹 선택',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ),
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final group in state.groups)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    key: ValueKey<String>('group-switcher-${group.id}'),
+                    label: Text(group.name),
+                    selected: group.id == state.selectedGroup?.id,
+                    onSelected: (selected) {
+                      if (selected && group.id != state.selectedGroup?.id) {
+                        _selectGroup(group.id);
+                      }
+                    },
+                    selectedColor: PlanFlowColors.primaryFaint,
+                    labelStyle: TextStyle(
+                      color: group.id == state.selectedGroup?.id
+                          ? PlanFlowColors.primary
+                          : PlanFlowColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _selectGroup(String groupId) async {
+    try {
+      await _contextProvider.selectGroup(groupId);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('그룹을 선택하지 못했어요.')),
+      );
+    }
   }
 
   Widget _buildSelectedGroupCard(

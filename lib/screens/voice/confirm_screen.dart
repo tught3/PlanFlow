@@ -43,6 +43,7 @@ import '../../widgets/calendar_style_event_editor.dart';
 import '../../widgets/overlap_warning_dialog.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
+import '../../widgets/schedule_save_scope_card.dart';
 
 class ConfirmScreen extends StatefulWidget {
   ConfirmScreen({
@@ -182,12 +183,6 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
   }
 }
 
-enum _ConfirmSaveTarget {
-  personalOnly,
-  personalAndGroup,
-  groupOnly,
-}
-
 class _ConfirmScreenState extends State<ConfirmScreen> {
   late final TextEditingController _titleController;
   late final TextEditingController _locationController;
@@ -233,7 +228,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   GroupContextProvider? _groupContextProvider;
   bool _ownsGroupContextProvider = false;
   GroupEventRepository? _groupEventRepositoryCache;
-  _ConfirmSaveTarget _saveTarget = _ConfirmSaveTarget.personalOnly;
+  ScheduleSaveTarget _saveTarget = ScheduleSaveTarget.personalOnly;
   // 사용자가 저장 범위를 직접 바꾼 뒤에는 자동 공유 기본값이 덮어쓰지 않도록 표시.
   bool _saveTargetTouchedByUser = false;
 
@@ -351,13 +346,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
   bool get _shouldSavePersonalEvent =>
       !_canShareToSelectedGroup ||
-      _saveTarget == _ConfirmSaveTarget.personalOnly ||
-      _saveTarget == _ConfirmSaveTarget.personalAndGroup;
+      _saveTarget == ScheduleSaveTarget.personalOnly ||
+      _saveTarget == ScheduleSaveTarget.personalAndGroup;
 
   bool get _shouldSaveGroupEvent =>
       _canShareToSelectedGroup &&
-      (_saveTarget == _ConfirmSaveTarget.personalAndGroup ||
-          _saveTarget == _ConfirmSaveTarget.groupOnly);
+      (_saveTarget == ScheduleSaveTarget.personalAndGroup ||
+          _saveTarget == ScheduleSaveTarget.groupOnly);
 
   GroupEventRepository get _groupEventRepository =>
       widget.groupEventRepository ??
@@ -390,7 +385,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       // await 사이에 사용자가 직접 골랐을 수 있으므로 적용 직전에 다시 확인.
       if (autoShareEnabled && mounted && !_saveTargetTouchedByUser) {
         setState(() {
-          _saveTarget = _ConfirmSaveTarget.personalAndGroup;
+          _saveTarget = ScheduleSaveTarget.personalAndGroup;
         });
       }
     } catch (error) {
@@ -2030,65 +2025,15 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       return const SizedBox.shrink();
     }
 
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.groups_2_outlined),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '저장 범위',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '이 일정을 나만 볼지, 선택된 그룹에도 공유할지 정해 주세요.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SegmentedButton<_ConfirmSaveTarget>(
-              segments: <ButtonSegment<_ConfirmSaveTarget>>[
-                const ButtonSegment<_ConfirmSaveTarget>(
-                  value: _ConfirmSaveTarget.personalOnly,
-                  icon: Icon(Icons.person_outline),
-                  label: Text('개인 일정만'),
-                ),
-                ButtonSegment<_ConfirmSaveTarget>(
-                  value: _ConfirmSaveTarget.personalAndGroup,
-                  icon: const Icon(Icons.compare_arrows_outlined),
-                  label: Text('개인 + ${group.name}'),
-                ),
-                ButtonSegment<_ConfirmSaveTarget>(
-                  value: _ConfirmSaveTarget.groupOnly,
-                  icon: const Icon(Icons.groups_outlined),
-                  label: Text('${group.name}만'),
-                ),
-              ],
-              selected: <_ConfirmSaveTarget>{_saveTarget},
-              onSelectionChanged: (selection) {
-                setState(() {
-                  _saveTarget = selection.first;
-                  _saveTargetTouchedByUser = true;
-                });
-              },
-              showSelectedIcon: false,
-            ),
-          ],
-        ),
-      ),
+    return ScheduleSaveScopeCard(
+      groupName: group.name,
+      selected: _saveTarget,
+      onChanged: (target) {
+        setState(() {
+          _saveTarget = target;
+          _saveTargetTouchedByUser = true;
+        });
+      },
     );
   }
 

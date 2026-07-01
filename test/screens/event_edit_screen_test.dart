@@ -15,6 +15,7 @@ import 'package:planflow/screens/event/event_edit_screen.dart';
 import 'package:planflow/services/app_permission_service.dart';
 import 'package:planflow/services/notification_service.dart';
 import 'package:planflow/widgets/calendar_style_event_editor.dart';
+import 'package:planflow/widgets/schedule_save_scope_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
@@ -165,14 +166,10 @@ void main() {
 
     // 자동 공유 pref가 켜져 있으면 새 일정의 저장 범위 기본값이
     // '개인 + 그룹'(personalAndGroup)으로 선택돼 있어야 한다(단순 무크래시가 아니라 동작 검증).
-    final segmented = tester.widget(
-      find.byWidgetPredicate((widget) => widget is SegmentedButton),
-    ) as SegmentedButton;
-    expect(segmented.selected.length, 1);
-    expect(
-      segmented.selected.first.toString(),
-      contains('personalAndGroup'),
+    final scopeCard = tester.widget<ScheduleSaveScopeCard>(
+      find.byType(ScheduleSaveScopeCard),
     );
+    expect(scopeCard.selected, ScheduleSaveTarget.personalAndGroup);
   });
 
   testWidgets(
@@ -215,10 +212,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final segmented = tester.widget(
-      find.byWidgetPredicate((widget) => widget is SegmentedButton),
-    ) as SegmentedButton;
-    expect(segmented.selected.first.toString(), contains('personalOnly'));
+    final scopeCard = tester.widget<ScheduleSaveScopeCard>(
+      find.byType(ScheduleSaveScopeCard),
+    );
+    expect(scopeCard.selected, ScheduleSaveTarget.personalOnly);
   });
 
   testWidgets('EventEditScreen keeps duration when start date changes',
