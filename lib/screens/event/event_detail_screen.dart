@@ -82,7 +82,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       widget.eventRepository ?? EventRepository.supabase();
 
   void _handleBackNavigation() {
-    if (Navigator.of(context).canPop()) {
+    if (context.canPop()) {
       context.pop();
       return;
     }

@@ -17,7 +17,12 @@ bool isNetworkRuntimeError(Object? error) {
       text.contains('ClientException') ||
       text.contains('Connection closed') ||
       text.contains('Connection reset') ||
-      text.contains('Network is unreachable');
+      text.contains('Network is unreachable') ||
+      // Supabase/Postgrest 게이트웨이 일시 장애(502/503/504)는 단말이 아닌
+      // 서버 측 문제이므로 네트워크 노이즈와 동일하게 취급한다.
+      text.contains('code: 502') ||
+      text.contains('code: 503') ||
+      text.contains('code: 504');
 }
 
 /// 앱 시작 직후/백그라운드 전환/엔진 detach 시 플랫폼 채널이 일시적으로 끊겨

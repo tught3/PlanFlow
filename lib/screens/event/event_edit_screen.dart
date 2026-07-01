@@ -312,7 +312,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   void _handleBackNavigation() {
-    if (Navigator.of(context).canPop()) {
+    if (context.canPop()) {
       context.pop();
       return;
     }

@@ -22,6 +22,15 @@ void main() {
       );
       expect(
           shouldDropFromCrashlytics(TimeoutException('slow network')), isTrue);
+      expect(
+        shouldDropFromCrashlytics(
+          Exception(
+            'PostgrestException(message: , code: 504, details: Gateway '
+            'Timeout, hint: null)',
+          ),
+        ),
+        isTrue,
+      );
     });
 
     test('keeps transient channel failures as non-fatal reports', () {
