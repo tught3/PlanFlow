@@ -35,6 +35,7 @@ class GroupDashboardProvider extends ChangeNotifier {
   List<GroupEventModel> get upcomingEvents => _state.upcomingEvents;
   bool get isLoading => _state.isLoading;
   String? get error => _state.error;
+  List<MemberShareStat> get memberShareStats => _state.memberShareStats;
   bool get hasSelectedGroup => _state.hasSelectedGroup;
   bool get isPersonalMode => _state.isPersonalMode;
   bool get isLeaderOfSelectedGroup => _state.isLeaderOfSelectedGroup;
@@ -64,6 +65,7 @@ class GroupDashboardProvider extends ChangeNotifier {
           upcomingEvents: const <GroupEventModel>[],
           isLoading: false,
           error: error.toString(),
+          memberShareStats: const <MemberShareStat>[],
         ),
       );
     }
@@ -91,6 +93,7 @@ class GroupDashboardProvider extends ChangeNotifier {
           upcomingEvents: const <GroupEventModel>[],
           isLoading: false,
           clearError: true,
+          memberShareStats: const <MemberShareStat>[],
         ),
       );
       return;
@@ -110,6 +113,7 @@ class GroupDashboardProvider extends ChangeNotifier {
         upcomingEvents: summary.upcomingEvents,
         isLoading: false,
         error: null,
+        memberShareStats: summary.memberShareStats,
       ),
     );
   }

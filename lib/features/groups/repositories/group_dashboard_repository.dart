@@ -2,8 +2,27 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/local_time.dart';
 import '../models/group_event_model.dart';
+import '../models/group_member_model.dart';
 import 'group_event_repository.dart';
 import 'group_repository.dart';
+
+/// 멤버 1인의 그룹 일정 공유 현황.
+///
+/// [sharedCount]가 0이어도 멤버 목록에 포함해, 리더가 "누가 아직
+/// 공유하지 않았는지"까지 볼 수 있게 한다.
+class MemberShareStat {
+  const MemberShareStat({
+    required this.userId,
+    required this.displayName,
+    required this.sharedCount,
+    this.lastSharedAt,
+  });
+
+  final String userId;
+  final String displayName;
+  final int sharedCount;
+  final DateTime? lastSharedAt;
+}
 
 class GroupDashboardSummary {
   const GroupDashboardSummary({
@@ -11,12 +30,14 @@ class GroupDashboardSummary {
     required this.weekEventCount,
     required this.memberCount,
     required this.upcomingEvents,
+    this.memberShareStats = const <MemberShareStat>[],
   });
 
   final int todayEventCount;
   final int weekEventCount;
   final int memberCount;
   final List<GroupEventModel> upcomingEvents;
+  final List<MemberShareStat> memberShareStats;
 }
 
 abstract class GroupDashboardRepository {
@@ -79,12 +100,56 @@ class SupabaseGroupDashboardRepository extends GroupDashboardRepository {
         .toList(growable: false)
       ..sort((left, right) => left.startAt.compareTo(right.startAt));
 
+    final memberShareStats = _buildMemberShareStats(activeMembers, events);
+
     return GroupDashboardSummary(
       todayEventCount: todayEvents.length,
       weekEventCount: events.length,
       memberCount: activeMembers.length,
       upcomingEvents: upcomingEvents,
+      memberShareStats: memberShareStats,
     );
+  }
+
+  /// 활성 멤버별 공유(생성) 일정 수와 최근 공유 시각을 집계한다.
+  ///
+  /// 0건인 멤버도 결과에 포함해 리더가 미참여 멤버를 확인할 수 있게 하고,
+  /// sharedCount 내림차순, 동률이면 이름 오름차순으로 정렬한다.
+  List<MemberShareStat> _buildMemberShareStats(
+    List<GroupMemberModel> activeMembers,
+    List<GroupEventModel> events,
+  ) {
+    final counts = <String, int>{};
+    final lastSharedAt = <String, DateTime>{};
+    for (final event in events) {
+      final userId = event.createdBy;
+      counts[userId] = (counts[userId] ?? 0) + 1;
+      final candidate = event.createdAt ?? event.startAt;
+      final current = lastSharedAt[userId];
+      if (current == null || candidate.isAfter(current)) {
+        lastSharedAt[userId] = candidate;
+      }
+    }
+
+    final stats = activeMembers
+        .map(
+          (member) => MemberShareStat(
+            userId: member.userId,
+            displayName: member.effectiveDisplayName,
+            sharedCount: counts[member.userId] ?? 0,
+            lastSharedAt: lastSharedAt[member.userId],
+          ),
+        )
+        .toList(growable: false);
+
+    stats.sort((left, right) {
+      final byCount = right.sharedCount.compareTo(left.sharedCount);
+      if (byCount != 0) {
+        return byCount;
+      }
+      return left.displayName.compareTo(right.displayName);
+    });
+    return stats;
   }
 
   _WeekRange _weekRange(DateTime now) {

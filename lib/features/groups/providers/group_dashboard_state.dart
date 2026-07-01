@@ -1,5 +1,6 @@
 import '../models/group_event_model.dart';
 import '../models/group_model.dart';
+import '../repositories/group_dashboard_repository.dart';
 
 class GroupDashboardState {
   const GroupDashboardState({
@@ -11,6 +12,7 @@ class GroupDashboardState {
     this.selectedGroup,
     this.selectedGroupRole,
     this.error,
+    this.memberShareStats = const <MemberShareStat>[],
   });
 
   const GroupDashboardState.initial()
@@ -21,7 +23,8 @@ class GroupDashboardState {
         memberCount = 0,
         upcomingEvents = const <GroupEventModel>[],
         isLoading = false,
-        error = null;
+        error = null,
+        memberShareStats = const <MemberShareStat>[];
 
   final GroupModel? selectedGroup;
   final String? selectedGroupRole;
@@ -31,6 +34,9 @@ class GroupDashboardState {
   final List<GroupEventModel> upcomingEvents;
   final bool isLoading;
   final String? error;
+
+  /// 멤버별 공유(생성) 일정 현황. 그룹 미선택/에러 시 빈 목록.
+  final List<MemberShareStat> memberShareStats;
 
   bool get hasSelectedGroup => selectedGroup != null;
 
@@ -52,6 +58,7 @@ class GroupDashboardState {
     bool? isLoading,
     String? error,
     bool clearError = false,
+    List<MemberShareStat>? memberShareStats,
   }) {
     return GroupDashboardState(
       selectedGroup:
@@ -65,6 +72,7 @@ class GroupDashboardState {
       upcomingEvents: upcomingEvents ?? this.upcomingEvents,
       isLoading: isLoading ?? this.isLoading,
       error: clearError ? null : error ?? this.error,
+      memberShareStats: memberShareStats ?? this.memberShareStats,
     );
   }
 }

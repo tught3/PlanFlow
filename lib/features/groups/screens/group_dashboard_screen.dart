@@ -10,6 +10,7 @@ import '../../../providers/auth_provider.dart';
 import '../models/group_event_model.dart';
 import '../providers/group_dashboard_provider.dart';
 import '../providers/group_dashboard_state.dart';
+import '../repositories/group_dashboard_repository.dart' show MemberShareStat;
 
 class GroupDashboardScreen extends StatefulWidget {
   const GroupDashboardScreen({
@@ -102,6 +103,11 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
                   _buildEmptyState(context),
                 ] else ...[
                   _buildMetricsGrid(context, state),
+                  if (!state.isPersonalMode &&
+                      state.memberShareStats.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _buildMemberShareCard(context, state),
+                  ],
                   const SizedBox(height: 16),
                   _buildUpcomingEventsCard(context, state),
                 ],
@@ -247,10 +253,64 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
     );
   }
 
+  Widget _buildMemberShareCard(
+    BuildContext context,
+    GroupDashboardState state,
+  ) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.people_alt_outlined),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '이번 주 멤버별 공유 현황',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '전체 기간 공유 건수는 그룹 상세 > 멤버 관리에서 확인할 수 있어요.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: PlanFlowColors.textSecondary,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Column(
+              children: [
+                for (final stat in state.memberShareStats)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _MemberShareRow(
+                      key: ValueKey<String>(
+                          'group-dashboard-member-share-${stat.userId}'),
+                      stat: stat,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildUpcomingEventsCard(
     BuildContext context,
     GroupDashboardState state,
   ) {
+    final memberNames = <String, String>{
+      for (final stat in state.memberShareStats) stat.userId: stat.displayName,
+    };
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -288,6 +348,7 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
                         key: ValueKey<String>(
                             'group-dashboard-event-${event.id}'),
                         event: event,
+                        ownerName: memberNames[event.createdBy],
                       ),
                     ),
                 ],
@@ -451,14 +512,19 @@ class _UpcomingEventTile extends StatelessWidget {
   const _UpcomingEventTile({
     super.key,
     required this.event,
+    this.ownerName,
   });
 
   final GroupEventModel event;
+
+  /// 비어 있거나 null이면 공유자 행을 표시하지 않는다.
+  final String? ownerName;
 
   @override
   Widget build(BuildContext context) {
     final localStart = planflowLocal(event.startAt);
     final localEnd = planflowLocal(event.endAt);
+    final hasOwner = ownerName != null && ownerName!.trim().isNotEmpty;
     return Container(
       decoration: BoxDecoration(
         color: PlanFlowColors.surface,
@@ -482,6 +548,26 @@ class _UpcomingEventTile extends StatelessWidget {
               _InfoChip(label: _statusLabel(event.status)),
             ],
           ),
+          if (hasOwner) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(
+                  Icons.person_outline,
+                  size: 14,
+                  color: PlanFlowColors.textSecondary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '공유 · ${ownerName!.trim()}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 8),
           Text(
             event.allDay
@@ -523,6 +609,69 @@ class _UpcomingEventTile extends StatelessWidget {
       'archived' => '보관됨',
       _ => status,
     };
+  }
+}
+
+class _MemberShareRow extends StatelessWidget {
+  const _MemberShareRow({
+    super.key,
+    required this.stat,
+  });
+
+  final MemberShareStat stat;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasShared = stat.sharedCount > 0;
+    final lastSharedLabel = stat.lastSharedAt == null
+        ? '아직 공유 없음'
+        : '최근 ${_shortDateLabel(planflowLocal(stat.lastSharedAt!))}';
+    return Container(
+      decoration: BoxDecoration(
+        color: PlanFlowColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: PlanFlowColors.primaryFaint),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  stat.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  lastSharedLabel,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: PlanFlowColors.textSecondary,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          _InfoChip(
+            label: '공유 ${stat.sharedCount}건',
+            backgroundColor:
+                hasShared ? PlanFlowColors.primaryFaint : PlanFlowColors.tagNormalBg,
+            textColor:
+                hasShared ? PlanFlowColors.primary : PlanFlowColors.tagNormalText,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _shortDateLabel(DateTime value) {
+    return '${value.month}월 ${value.day}일';
   }
 }
 

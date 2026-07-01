@@ -139,6 +139,8 @@ GroupEventModel _event({
   required DateTime startAt,
   required DateTime endAt,
   String status = 'active',
+  String createdBy = 'user-1',
+  DateTime? createdAt,
 }) {
   return GroupEventModel(
     id: id,
@@ -146,8 +148,9 @@ GroupEventModel _event({
     title: title,
     startAt: startAt,
     endAt: endAt,
-    createdBy: 'user-1',
+    createdBy: createdBy,
     status: status,
+    createdAt: createdAt,
   );
 }
 
@@ -213,5 +216,104 @@ void main() {
     expect(summary.memberCount, 2);
     expect(summary.upcomingEvents, hasLength(1));
     expect(summary.upcomingEvents.first.id, 'event-2');
+  });
+
+  test(
+      'memberShareStats aggregates per-member shared counts including zero-share members',
+      () async {
+    final groupRepository = FakeGroupRepository(
+      groups: <GroupModel>[
+        _group(
+          id: 'group-1',
+          name: 'Leader Group',
+          createdBy: 'user-1',
+          createdAt: DateTime.utc(2026, 6, 11),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          _member(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'leader',
+          ),
+          _member(
+            id: 'member-2',
+            groupId: 'group-1',
+            userId: 'user-2',
+            role: 'member',
+          ),
+          _member(
+            id: 'member-3',
+            groupId: 'group-1',
+            userId: 'user-3',
+            role: 'member',
+          ),
+        ],
+      },
+    );
+    final eventRepository = FakeGroupEventRepository(
+      initialEvents: <GroupEventModel>[
+        _event(
+          id: 'event-1',
+          groupId: 'group-1',
+          title: 'user-1 첫 일정',
+          startAt: DateTime.utc(2026, 6, 11, 1),
+          endAt: DateTime.utc(2026, 6, 11, 2),
+          createdBy: 'user-1',
+          createdAt: DateTime.utc(2026, 6, 11, 1),
+        ),
+        _event(
+          id: 'event-2',
+          groupId: 'group-1',
+          title: 'user-1 두번째 일정',
+          startAt: DateTime.utc(2026, 6, 12, 1),
+          endAt: DateTime.utc(2026, 6, 12, 2),
+          createdBy: 'user-1',
+          createdAt: DateTime.utc(2026, 6, 12, 1),
+        ),
+        _event(
+          id: 'event-3',
+          groupId: 'group-1',
+          title: 'user-2 일정',
+          startAt: DateTime.utc(2026, 6, 13, 1),
+          endAt: DateTime.utc(2026, 6, 13, 2),
+          createdBy: 'user-2',
+          createdAt: DateTime.utc(2026, 6, 13, 1),
+        ),
+      ],
+    );
+
+    final repository = SupabaseGroupDashboardRepository(
+      groupRepository: groupRepository,
+      eventRepository: eventRepository,
+    );
+    final summary = await repository.loadDashboard(
+      groupId: 'group-1',
+      now: DateTime.utc(2026, 6, 11, 9),
+    );
+
+    expect(summary.memberShareStats, hasLength(3));
+
+    // sharedCount desc: user-1 (2건) > user-2 (1건) > user-3 (0건)
+    expect(summary.memberShareStats[0].userId, 'user-1');
+    expect(summary.memberShareStats[0].sharedCount, 2);
+    expect(
+      summary.memberShareStats[0].lastSharedAt,
+      DateTime.utc(2026, 6, 12, 1),
+    );
+
+    expect(summary.memberShareStats[1].userId, 'user-2');
+    expect(summary.memberShareStats[1].sharedCount, 1);
+    expect(
+      summary.memberShareStats[1].lastSharedAt,
+      DateTime.utc(2026, 6, 13, 1),
+    );
+
+    // 0건 멤버도 포함되어야 함 (미참여 멤버 가시성)
+    expect(summary.memberShareStats[2].userId, 'user-3');
+    expect(summary.memberShareStats[2].sharedCount, 0);
+    expect(summary.memberShareStats[2].lastSharedAt, isNull);
   });
 }

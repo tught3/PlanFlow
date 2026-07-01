@@ -7,9 +7,11 @@ import '../../../core/constants.dart';
 import '../../../core/local_time.dart';
 import '../../../core/theme.dart';
 import '../../../providers/auth_provider.dart';
+import '../models/group_event_model.dart';
 import '../models/group_member_model.dart';
 import '../providers/group_member_provider.dart';
 import '../providers/group_member_state.dart';
+import '../repositories/group_event_repository.dart';
 import 'group_event_list_screen.dart';
 
 class GroupMemberScreen extends StatefulWidget {
@@ -18,13 +20,16 @@ class GroupMemberScreen extends StatefulWidget {
     GroupMemberProvider? provider,
     String? currentUserIdOverride,
     String? initialGroupId,
+    GroupEventRepository? eventRepository,
   })  : _provider = provider,
         _currentUserIdOverride = currentUserIdOverride,
-        _initialGroupId = initialGroupId;
+        _initialGroupId = initialGroupId,
+        _eventRepository = eventRepository;
 
   final GroupMemberProvider? _provider;
   final String? _currentUserIdOverride;
   final String? _initialGroupId;
+  final GroupEventRepository? _eventRepository;
 
   @override
   State<GroupMemberScreen> createState() => _GroupMemberScreenState();
@@ -33,12 +38,19 @@ class GroupMemberScreen extends StatefulWidget {
 class _GroupMemberScreenState extends State<GroupMemberScreen> {
   late final GroupMemberProvider _provider;
   late final bool _ownsProvider;
+  late final GroupEventRepository _eventRepository;
+
+  /// userId -> 해당 멤버가 만든(공유한) 일정 통계.
+  Map<String, _MemberShareStats> _shareStatsByUserId =
+      const <String, _MemberShareStats>{};
 
   @override
   void initState() {
     super.initState();
     _ownsProvider = widget._provider == null;
     _provider = widget._provider ?? GroupMemberProvider();
+    _eventRepository =
+        widget._eventRepository ?? GroupEventRepository.supabase();
     unawaited(_load());
   }
 
@@ -53,6 +65,80 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
     await _provider.load(userId, preferredGroupId: widget._initialGroupId);
+    await _loadShareStats();
+  }
+
+  /// 현재 선택된 그룹의 일정을 불러와 멤버별 공유 건수/최근 활동일을 집계한다.
+  /// 그룹이 없으면 통계를 비운다. 실패해도 멤버 목록 자체는 이미 로드됐으므로
+  /// 화면 전체 에러로 확산시키지 않고 조용히 통계만 비운다.
+  Future<void> _loadShareStats() async {
+    final groupId = _provider.state.selectedGroup?.id;
+    if (groupId == null) {
+      if (mounted && _shareStatsByUserId.isNotEmpty) {
+        setState(() {
+          _shareStatsByUserId = const <String, _MemberShareStats>{};
+        });
+      }
+      return;
+    }
+
+    try {
+      final from = DateTime.utc(2000);
+      final to = DateTime.utc(2100);
+      final events = await _eventRepository.getEventsForGroup(
+        groupId,
+        from,
+        to,
+      );
+      final stats = _aggregateShareStats(events);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _shareStatsByUserId = stats;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _shareStatsByUserId = const <String, _MemberShareStats>{};
+      });
+    }
+  }
+
+  Map<String, _MemberShareStats> _aggregateShareStats(
+    List<GroupEventModel> events,
+  ) {
+    final result = <String, _MemberShareStats>{};
+    for (final event in events) {
+      final activityAt = event.startAt;
+      final existing = result[event.createdBy];
+      if (existing == null) {
+        result[event.createdBy] = _MemberShareStats(
+          sharedCount: 1,
+          lastActivityAt: activityAt,
+        );
+        continue;
+      }
+      final nextActivityAt =
+          _laterOf(existing.lastActivityAt, activityAt);
+      result[event.createdBy] = _MemberShareStats(
+        sharedCount: existing.sharedCount + 1,
+        lastActivityAt: nextActivityAt,
+      );
+    }
+    return result;
+  }
+
+  DateTime? _laterOf(DateTime? a, DateTime? b) {
+    if (a == null) {
+      return b;
+    }
+    if (b == null) {
+      return a;
+    }
+    return a.isAfter(b) ? a : b;
   }
 
   Future<void> _openGroupList() async {
@@ -357,6 +443,7 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
                   canRemove: _provider.canRemoveMember(member),
                   canEditDisplayName:
                       _provider.canEditMemberDisplayName(member),
+                  shareStats: _shareStatsByUserId[member.userId],
                   onTap: () => _openMemberSchedule(member),
                   onEditDisplayNamePressed: () =>
                       _editMemberDisplayName(member),
@@ -493,6 +580,7 @@ class _MemberTile extends StatelessWidget {
     required this.onTap,
     required this.onEditDisplayNamePressed,
     required this.onRemovePressed,
+    this.shareStats,
   });
 
   final GroupMemberModel member;
@@ -501,6 +589,9 @@ class _MemberTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onEditDisplayNamePressed;
   final VoidCallback onRemovePressed;
+
+  /// 이 멤버가 공유한 그룹 일정 집계. 아직 로드되지 않았거나 실패하면 null.
+  final _MemberShareStats? shareStats;
 
   @override
   Widget build(BuildContext context) {
@@ -592,6 +683,14 @@ class _MemberTile extends StatelessWidget {
                     ),
                 ],
               ),
+              const SizedBox(height: 6),
+              Text(
+                key: ValueKey<String>('group-member-share-stats-${member.id}'),
+                _shareStatsLabel(shareStats),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: PlanFlowColors.textSecondary,
+                    ),
+              ),
               if (canRemove) ...[
                 const SizedBox(height: 12),
                 Row(
@@ -636,6 +735,31 @@ class _MemberTile extends StatelessWidget {
     final local = planflowLocal(value);
     return '$prefix: ${local.year}.${local.month.toString().padLeft(2, '0')}.${local.day.toString().padLeft(2, '0')}';
   }
+
+  /// 참여 가시성 요약 문구. 아직 로드 전(null)이거나 공유 이력이 없으면
+  /// 리더가 비참여 멤버를 한눈에 알아볼 수 있게 안내 문구를 보여준다.
+  String _shareStatsLabel(_MemberShareStats? stats) {
+    if (stats == null || stats.sharedCount == 0) {
+      return '아직 공유한 일정이 없어요';
+    }
+    final lastActivityAt = stats.lastActivityAt;
+    if (lastActivityAt == null) {
+      return '전체 공유 ${stats.sharedCount}건';
+    }
+    final local = planflowLocal(lastActivityAt);
+    return '전체 공유 ${stats.sharedCount}건 · 최근 일정 ${local.month}월 ${local.day}일';
+  }
+}
+
+/// 멤버별 그룹 일정 공유 집계(공유 건수 + 최근 활동 시각).
+class _MemberShareStats {
+  const _MemberShareStats({
+    required this.sharedCount,
+    this.lastActivityAt,
+  });
+
+  final int sharedCount;
+  final DateTime? lastActivityAt;
 }
 
 class _InfoChip extends StatelessWidget {
