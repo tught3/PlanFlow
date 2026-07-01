@@ -14,7 +14,6 @@ import '../data/repositories/settings_repository.dart';
 import '../data/repositories/voice_correction_rule_repository.dart';
 import 'api_usage_guard.dart';
 import 'remote_config_service.dart';
-import 'smart_preparation_alarm_service.dart';
 import 'voice_correction_learning_service.dart';
 import 'voice_schedule_structure_service.dart';
 import 'voice_text_cleanup_service.dart';
@@ -510,11 +509,6 @@ class GptService {
       normalized['start_at'] = inferredStartAt.toIso8601String();
     }
     _applyLocalDateRange(rawText, normalized);
-    normalized['pre_actions'] =
-        const SmartPreparationAlarmService().enrichParsedSchedule(
-      normalized,
-      rawText: rawText,
-    );
     return normalized;
   }
 
@@ -548,15 +542,7 @@ class GptService {
       'participants': <String>[],
       'targets': <String>[],
       'is_critical': false,
-      'pre_actions': const SmartPreparationAlarmService().enrichParsedSchedule(
-        <String, dynamic>{
-          'title': rawText.trim(),
-          'start_at': inferredStartAt?.toIso8601String(),
-          'supplies': <String>[],
-          'pre_actions': <Map<String, dynamic>>[],
-        },
-        rawText: rawText,
-      ),
+      'pre_actions': <Map<String, dynamic>>[],
     };
     _normalizeTitleMemoAndLocation(fallback, rawText);
     _normalizeEventTypeFromRawText(rawText, fallback);

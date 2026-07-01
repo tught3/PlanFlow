@@ -635,6 +635,9 @@ void main() {
 
     await tester.ensureVisible(find.text('설명 · 준비물'));
     await tester.pump(const Duration(milliseconds: 200));
+    // 준비물이 있어도 이제 자동으로 펼치지 않으므로 직접 탭해서 연다.
+    await tester.tap(find.text('설명 · 준비물'));
+    await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('물'));
 

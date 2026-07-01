@@ -240,11 +240,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   bool _isLookingUpLocation = false;
   bool _isHydratingParsedSchedule = false;
   Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
-  bool _detailsSectionInitiallyExpanded = false;
   Timer? _locationDebounce;
   String? _supplyErrorText;
   String? _hydrateMessage;
-  String? _selectedAmbiguousPurpose;
   bool _isApplyingHydration = false;
   bool _titleEditedByUser = false;
   bool _locationEditedByUser = false;
@@ -289,8 +287,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       widget.parsedSchedule['supplies'],
     ).map(_SupplyDraft.new).toList(growable: true);
     _preActions = _initialPreActions();
-    _detailsSectionInitiallyExpanded =
-        _supplies.isNotEmpty || _hasExplicitPreActions(widget.parsedSchedule);
     _startAt = _safeStartAt(widget.parsedSchedule['start_at']);
     _endAt = _safeEndAt(widget.parsedSchedule['end_at'], _startAt);
     _setAmbiguousTimeFromParsed(widget.parsedSchedule);
@@ -767,17 +763,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         final supplies = _stringListValue(parsed['supplies']);
         if (supplies.isNotEmpty && _supplies.isEmpty) {
           _supplies.addAll(supplies.map(_SupplyDraft.new));
-          _detailsSectionInitiallyExpanded = true;
         }
 
-        final parsedPreActions = _preActionsFromValue(
-          _smartPreparationAlarmValues(parsed),
-        );
+        final parsedPreActions = _preActionsFromValue(parsed['pre_actions']);
         if (parsedPreActions.isNotEmpty && _preActions.isEmpty) {
           _preActions.addAll(parsedPreActions);
-          if (_preActionsFromValue(parsed['pre_actions']).isNotEmpty) {
-            _detailsSectionInitiallyExpanded = true;
-          }
         }
 
         final parsedRecurrence = RecurrenceSelection.fromRRule(
@@ -841,9 +831,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   AppPermissionService get _permissionService =>
       widget.permissionService ?? AppPermissionService();
-
-  bool get _shouldExpandDetailsSection =>
-      _detailsSectionInitiallyExpanded || _shouldShowPurposeClarification;
 
   /// 알람 예약 후 권한이 부족한 경우 사용자에게 안내 다이얼로그를 표시.
   ///
@@ -2006,81 +1993,8 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     });
   }
 
-  bool get _shouldShowPurposeClarification {
-    if (_selectedAmbiguousPurpose != null || _preActions.isNotEmpty) {
-      return false;
-    }
-
-    final text = [
-      _titleController.text,
-      _locationController.text,
-      _memoController.text,
-      _stringValue(widget.parsedSchedule['raw_text']) ?? '',
-    ].join(' ').replaceAll(RegExp(r'\s+'), '');
-
-    if (text.isEmpty) {
-      return false;
-    }
-
-    final hasAmbiguousPlace = _containsAnyText(text, const <String>[
-      '병원',
-      '의원',
-      '치과',
-      '한의원',
-      '검진센터',
-      '법원',
-      '학교',
-    ]);
-    if (!hasAmbiguousPlace) {
-      return false;
-    }
-
-    final hasClearPurpose = _containsAnyText(text, const <String>[
-      '진료',
-      '검사',
-      '검진',
-      '수술',
-      '입원',
-      '시술',
-      '미팅',
-      '영업',
-      '방문',
-      '상담',
-      '계약',
-      '업무',
-      '회의',
-      '재판',
-      '소송',
-      '병문안',
-      '문병',
-      '학부모',
-    ]);
-    return !hasClearPurpose;
-  }
-
-  bool _containsAnyText(String text, List<String> keywords) {
-    return keywords.any(text.contains);
-  }
-
   List<_PreActionDraft> _initialPreActions() {
-    return _preActionsFromValue(
-      _smartPreparationAlarmValues(widget.parsedSchedule),
-    );
-  }
-
-  bool _hasExplicitPreActions(Map<String, dynamic> schedule) {
-    return _preActionsFromValue(schedule['pre_actions']).isNotEmpty;
-  }
-
-  List<Map<String, dynamic>> _smartPreparationAlarmValues(
-    Map<String, dynamic> schedule,
-  ) {
-    return widget.smartPreparationAlarmService.enrichParsedSchedule(
-      schedule,
-      rawText: _stringValue(schedule['raw_text']) ??
-          _stringValue(schedule['title']) ??
-          '',
-    );
+    return _preActionsFromValue(widget.parsedSchedule['pre_actions']);
   }
 
   List<_PreActionDraft> _preActionsFromValue(Object? rawPreActions) {
@@ -2283,7 +2197,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         locationHelperText: '같은 장소의 과거 준비물을 아래에서 다시 쓸 수 있어요.',
                         initiallyExpandClassification:
                             !_recurrenceSelection.isNone,
-                        initiallyExpandDetails: _shouldExpandDetailsSection,
+                        initiallyExpandDetails: false,
                         initiallyExpandAlarm: _isCritical,
                         initiallyExpandCriticalAlarm: _isCritical,
                         onLocationTextChanged: _handleLocationTextChanged,
