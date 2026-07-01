@@ -108,6 +108,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
   bool _isLookingUpLocation = false;
   bool _endEditedByUser = false;
   _ScheduleSaveTarget _saveTarget = _ScheduleSaveTarget.personalOnly;
+  // 사용자가 저장 범위를 직접 바꾼 뒤에는 자동 공유 기본값이 덮어쓰지 않도록 표시.
+  bool _saveTargetTouchedByUser = false;
   Timer? _locationDebounceTimer;
 
   // 리더 지시(그룹 이벤트 코멘트) 관련
@@ -490,6 +492,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
       return;
     }
 
+    // 사용자가 이미 저장 범위를 직접 골랐으면 자동 공유 기본값으로 덮어쓰지 않는다.
+    if (_saveTargetTouchedByUser) {
+      return;
+    }
+
     // Must have an active selected group
     final group = _selectedGroupForSharing;
     if (group == null) {
@@ -506,7 +513,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
       final key = _autoSharePrefKey(userId, group.id);
       final autoShareEnabled = preferences.getBool(key) ?? false;
 
-      if (autoShareEnabled && mounted) {
+      // await 사이에 사용자가 직접 골랐을 수 있으므로 적용 직전에 다시 확인.
+      if (autoShareEnabled && mounted && !_saveTargetTouchedByUser) {
         setState(() {
           _saveTarget = _ScheduleSaveTarget.personalAndGroup;
         });
@@ -1610,6 +1618,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
               onSelectionChanged: (selection) {
                 setState(() {
                   _saveTarget = selection.first;
+                  _saveTargetTouchedByUser = true;
                 });
               },
               showSelectedIcon: false,

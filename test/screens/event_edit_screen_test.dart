@@ -158,11 +158,67 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Verify that the widget renders without crashing
     // The '저장 범위' card should exist when a group is selected
     expect(find.text('저장 범위'), findsOneWidget);
     expect(find.text('개인 일정만'), findsOneWidget);
     expect(find.text('개인 + 우리 팀'), findsOneWidget);
+
+    // 자동 공유 pref가 켜져 있으면 새 일정의 저장 범위 기본값이
+    // '개인 + 그룹'(personalAndGroup)으로 선택돼 있어야 한다(단순 무크래시가 아니라 동작 검증).
+    final segmented = tester.widget(
+      find.byWidgetPredicate((widget) => widget is SegmentedButton),
+    ) as SegmentedButton;
+    expect(segmented.selected.length, 1);
+    expect(
+      segmented.selected.first.toString(),
+      contains('personalAndGroup'),
+    );
+  });
+
+  testWidgets(
+      '자동 공유 pref가 꺼져 있으면 새 일정 저장 범위 기본값은 개인만이다',
+      (tester) async {
+    // pref 미설정(기본 OFF)
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+
+    final contextProvider = GroupContextProvider(
+      repository: _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'leader-1',
+            name: '우리 팀',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'member',
+            ),
+          ],
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventEditScreen(
+          initialDate: DateTime(2026, 6, 15),
+          currentUserIdOverride: 'user-1',
+          groupContextProvider: contextProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final segmented = tester.widget(
+      find.byWidgetPredicate((widget) => widget is SegmentedButton),
+    ) as SegmentedButton;
+    expect(segmented.selected.first.toString(), contains('personalOnly'));
   });
 
   testWidgets('EventEditScreen keeps duration when start date changes',
