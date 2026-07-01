@@ -12,9 +12,11 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../features/groups/models/group_event_comment_model.dart';
 import '../../features/groups/models/group_event_model.dart';
 import '../../features/groups/models/group_model.dart';
 import '../../features/groups/providers/group_context_provider.dart';
+import '../../features/groups/repositories/group_event_comment_repository.dart';
 import '../../features/groups/repositories/group_event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
@@ -106,6 +108,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
   bool _endEditedByUser = false;
   _ScheduleSaveTarget _saveTarget = _ScheduleSaveTarget.personalOnly;
   Timer? _locationDebounceTimer;
+
+  // 리더 지시(그룹 이벤트 코멘트) 관련
+  List<GroupEventCommentModel> _leaderInstructions = const [];
+  bool _isLoadingInstructions = false;
+  bool _isConfirmingInstruction = false;
 
   bool get _isNewEvent => _loadedEvent == null && _resolvedEventId == null;
 
@@ -962,6 +969,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _category = event.category;
       });
       unawaited(_loadReminderOffsetIfNeeded(event));
+      // 그룹 연결 이벤트라면 리더 지시 로드
+      if (event.groupEventId != null) {
+        unawaited(_loadGroupInstructions(event));
+      }
     } catch (_) {
       if (mounted) {
         _showMessage('일정 정보를 불러오지 못했습니다.');
@@ -973,6 +984,246 @@ class _EventEditScreenState extends State<EventEditScreen> {
         });
       }
     }
+  }
+
+  /// 그룹 이벤트 코멘트(리더 지시)를 로드하고 현재 사용자를 대상으로 필터링한다.
+  Future<void> _loadGroupInstructions(EventModel event) async {
+    final groupEventId = event.groupEventId;
+    if (groupEventId == null || groupEventId.isEmpty) return;
+    if (!AppEnv.isSupabaseReady) return;
+
+    String? currentUserId;
+    try {
+      currentUserId = widget.currentUserIdOverride ??
+          Supabase.instance.client.auth.currentUser?.id;
+    } catch (_) {
+      return;
+    }
+    if (currentUserId == null || currentUserId.isEmpty) return;
+
+    if (mounted) {
+      setState(() {
+        _isLoadingInstructions = true;
+      });
+    }
+    try {
+      final repo = GroupEventCommentRepository.supabase();
+      final all = await repo.getCommentsForEvent(groupEventId);
+      final filtered = all
+          .where((c) => c.targetUserId == currentUserId)
+          .toList(growable: false);
+      if (mounted) {
+        setState(() {
+          _leaderInstructions = filtered;
+        });
+      }
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen 리더 지시 로드 실패: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingInstructions = false;
+        });
+      }
+    }
+  }
+
+  /// 리더 지시 확인 처리 (확인 버튼 탭)
+  Future<void> _confirmInstruction(String commentId) async {
+    if (_isConfirmingInstruction) return;
+    if (mounted) {
+      setState(() {
+        _isConfirmingInstruction = true;
+      });
+    }
+    try {
+      final repo = GroupEventCommentRepository.supabase();
+      await repo.confirmComment(commentId);
+      // 재로드
+      final loadedEvent = _loadedEvent;
+      if (loadedEvent != null) {
+        await _loadGroupInstructions(loadedEvent);
+      }
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen 리더 지시 확인 실패: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showMessage('지시 확인 중 오류가 발생했습니다.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isConfirmingInstruction = false;
+        });
+      }
+    }
+  }
+
+  /// 리더 지시 섹션 위젯을 빌드한다.
+  ///
+  /// - [_loadedEvent.groupEventId] 가 null 이면 빈 위젯 반환
+  /// - 지시가 없어도 '없음' 표기 없이 섹션 자체를 숨김
+  Widget _buildLeaderInstructionsSection(BuildContext context) {
+    final event = _loadedEvent;
+    if (event == null || event.groupEventId == null) {
+      return const SizedBox.shrink();
+    }
+    if (_isLoadingInstructions) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: LinearProgressIndicator(),
+      );
+    }
+    if (_leaderInstructions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: AppConstants.sectionSpacing),
+        Card(
+          color: PlanFlowColors.surface,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(
+              color: PlanFlowColors.primaryFaint,
+              width: 0.8,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.record_voice_over_outlined,
+                      size: 16,
+                      color: PlanFlowColors.primaryMid,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '리더 지시',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ..._leaderInstructions.map((instruction) {
+                  final timeLabel = instruction.createdAt != null
+                      ? _formatInstructionTime(instruction.createdAt!)
+                      : '';
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: instruction.isConfirmed
+                            ? PlanFlowColors.surface
+                            : PlanFlowColors.primaryFaint.withValues(
+                                alpha: 0.5,
+                              ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: instruction.isConfirmed
+                              ? PlanFlowColors.primaryFaint
+                              : PlanFlowColors.primaryMid
+                                  .withValues(alpha: 0.3),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            instruction.content,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: PlanFlowColors.textPrimary,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              if (timeLabel.isNotEmpty)
+                                Text(
+                                  timeLabel,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: PlanFlowColors.textSecondary,
+                                  ),
+                                ),
+                              const Spacer(),
+                              if (instruction.isConfirmed)
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.check_circle_outline,
+                                      size: 13,
+                                      color: PlanFlowColors.primaryMid,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '확인됨',
+                                      style:
+                                          theme.textTheme.labelSmall?.copyWith(
+                                        color: PlanFlowColors.primaryMid,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else
+                                FilledButton.tonal(
+                                  onPressed: _isConfirmingInstruction
+                                      ? null
+                                      : () => unawaited(
+                                            _confirmInstruction(instruction.id),
+                                          ),
+                                  style: FilledButton.styleFrom(
+                                    minimumSize: const Size(60, 28),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    visualDensity: VisualDensity.compact,
+                                    textStyle:
+                                        theme.textTheme.labelMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  child: const Text('확인'),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatInstructionTime(DateTime dt) {
+    final local = planflowLocal(dt);
+    return '${local.month}/${local.day} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
   }
 
   Future<void> _loadReminderOffsetIfNeeded(EventModel event) async {
@@ -1391,6 +1642,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 _buildSaveTargetCard(context),
                 if (_selectedGroupForSharing != null)
                   const SizedBox(height: AppConstants.sectionSpacing),
+                _buildLeaderInstructionsSection(context),
                 CalendarStyleEventEditor(
                   titleController: _titleController,
                   locationController: _locationController,

@@ -14,6 +14,7 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../features/groups/models/calendar_overlay_item.dart';
 import '../../features/groups/providers/group_calendar_overlay_provider.dart';
+import '../../features/groups/services/group_instruction_inbox_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
@@ -432,6 +433,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime? _pendingOpenDaySheetDate;
   final TextEditingController _searchController = TextEditingController();
 
+  /// 미확인 리더 지시가 있는 개인 이벤트 id 집합
+  Set<String> _instructionEventIds = const <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -559,6 +563,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         });
       }
       await _loadGroupOverlay(userId: userId);
+      unawaited(_loadGroupInstructionBadges(userId));
       if (shouldOpenDaySheet && daySheetDate != null && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -1051,6 +1056,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  /// 미확인 리더 지시가 있는 개인 이벤트 id 를 로드해 badge 표시에 사용한다.
+  Future<void> _loadGroupInstructionBadges(String userId) async {
+    // Supabase 미초기화(테스트 등)면 스킵 — _loadGroupOverlay와 동일 가드.
+    if (!AppEnv.isSupabaseReady) return;
+    try {
+      final service = GroupInstructionInboxService();
+      final ids = await service.unconfirmedPersonalEventIds(userId: userId);
+      if (mounted) {
+        setState(() {
+          _instructionEventIds = ids;
+        });
+      }
+      // 새 지시 알림 (best-effort) — 같은 서비스 인스턴스 재사용.
+      unawaited(service.notifyNewInstructions(userId: userId));
+    } catch (error, stackTrace) {
+      debugPrint(
+        'CalendarScreen 리더 지시 badge 로드 실패: $error',
+      );
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
   Future<void> _loadGroupOverlay({String? userId}) async {
     if (!AppEnv.isSupabaseReady && widget.groupCalendarOverlayProvider == null) {
       _groupOverlayProvider?.clear();
@@ -1200,11 +1227,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         ...dayEvents.map(
                           (event) => Padding(
                             padding: const EdgeInsets.only(bottom: 12),
-                            child: _EventAgendaCard(
-                              event: event,
-                              onTap: () => context.push(
-                                '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-                                extra: event,
+                            child: _InstructionBadgeWrapper(
+                              hasInstruction: _instructionEventIds
+                                  .contains(event.id),
+                              child: _EventAgendaCard(
+                                event: event,
+                                onTap: () => context.push(
+                                  '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                                  extra: event,
+                                ),
                               ),
                             ),
                           ),
@@ -2644,6 +2675,45 @@ class _GroupOverlayAgendaCard extends StatelessWidget {
     final endStr =
         '${localEnd.hour.toString().padLeft(2, '0')}:${localEnd.minute.toString().padLeft(2, '0')}';
     return '$startStr - $endStr';
+  }
+}
+
+/// 미확인 리더 지시가 있는 이벤트 카드에 작은 badge dot 을 오버레이하는 래퍼.
+///
+/// [hasInstruction] 이 false 이면 child 를 그대로 반환한다.
+class _InstructionBadgeWrapper extends StatelessWidget {
+  const _InstructionBadgeWrapper({
+    required this.hasInstruction,
+    required this.child,
+  });
+
+  final bool hasInstruction;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!hasInstruction) {
+      return child;
+    }
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        child,
+        Positioned(
+          top: -3,
+          right: -3,
+          child: Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: calendarCriticalEventMarkerColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: PlanFlowColors.surface, width: 1.5),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
