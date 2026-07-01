@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/naver_calendar_launch_service.dart';
@@ -157,7 +158,15 @@ class _NaverIcsImportScreenState extends State<NaverIcsImportScreen> {
               _ResultCard(result: _lastResult!),
             const SizedBox(height: 24),
             TextButton.icon(
-              onPressed: () => context.pop(),
+              onPressed: () {
+                // 공유/알람으로 go 진입한 경우 스택이 없어 pop이 안 먹으므로
+                // 그때는 설정 화면으로 명시 이동한다.
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go(AppRoutes.settings);
+                }
+              },
               icon: const Icon(Icons.arrow_back),
               label: const Text('설정으로 돌아가기'),
             ),
