@@ -1,10 +1,21 @@
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/map_service.dart';
 import 'package:planflow/services/travel_time_buffer_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  // Tmap 경로가 ApiUsageGuard.tryConsume → SharedPreferences.getInstance()를
+  // 호출하므로 binding 초기화와 mock이 필요하다.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    ApiUsageGuard.resetForTesting();
+  });
+
   test('TravelTimeBufferService prefers coordinates when both signals exist',
       () {
     final service = TravelTimeBufferService();

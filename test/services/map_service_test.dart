@@ -1,9 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:planflow/services/api_usage_guard.dart';
 import 'package:planflow/services/map_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  // MapService._tryTmapDuration이 ApiUsageGuard.tryConsume →
+  // SharedPreferences.getInstance()를 호출하므로 binding 초기화와 mock이 필요하다.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    ApiUsageGuard.resetForTesting();
+  });
+
   test('MapService uses Tmap first for car travel', () async {
     final service = MapService(
       tmapApiKey: 'tmap-key',
