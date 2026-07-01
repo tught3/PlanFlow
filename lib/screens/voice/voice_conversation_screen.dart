@@ -203,9 +203,13 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       );
       setState(() {
         _isLoading = false;
-        _conversationStatus = !AppEnv.isSupabaseReady
+        final message = !AppEnv.isSupabaseReady
             ? 'Supabase 설정을 확인하지 못했어요.'
             : '로그인 상태를 확인하지 못했어요.';
+        _conversationStatus = message;
+        // 상태 표시를 대화 버블로 옮겼으므로, 듣는 중이 아닌 진입 시점의 안내도
+        // 대화 메시지로 남겨 사용자가 '왜 안 되는지'를 볼 수 있게 한다.
+        _messages.add(_ConversationMessage.assistant(message));
       });
       return;
     }
@@ -384,6 +388,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       _conversationStatus = '마이크를 준비하고 있어요...';
     });
     _setConversationInputText('');
+    // 대화 꼬리에 붙는 음성 상태 버블이 바로 시야에 들어오게 맨 아래로 스크롤.
+    _scrollToBottom();
     _armConversationWatchdog(listenGeneration);
     try {
       final result = await widget.sttService.listen(
@@ -405,7 +411,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           setState(() {
             _nativeVoiceReady = true;
             _voicePhase = _VoiceConversationPhase.listening;
-            _conversationStatus = '듣고 있어요...';
+            _conversationStatus = '음성 인식 중이에요 · 다음 명령을 말해 주세요';
           });
         },
         onRestart: (count) {
@@ -557,7 +563,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           _nativeVoiceReady = true;
           _isRestartPending = false;
           _voicePhase = _VoiceConversationPhase.listening;
-          _conversationStatus = '듣고 있어요...';
+          _conversationStatus = '음성 인식 중이에요 · 다음 명령을 말해 주세요';
         });
         _armConversationWatchdog(listenGeneration);
         break;
@@ -1250,29 +1256,50 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             children: [
               if (_isLoading) const LinearProgressIndicator(minHeight: 2),
               Expanded(
-                child: ListView.separated(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(AppConstants.defaultPadding),
-                  itemBuilder: (context, index) {
-                    if (index >= _messages.length) {
-                      return const _ProcessingBubble();
-                    }
-                    final message = _messages[index];
-                    return _MessageBubble(
-                      message: message,
-                      deletedEventIds: _deletedEventIds,
-                      onEventTap: _showEventActionSheet,
-                      onConfirmDelete: message.pendingDeleteEvent == null ||
-                              _deletedEventIds
-                                  .contains(message.pendingDeleteEvent!.id)
-                          ? null
-                          : () => _confirmPendingDelete(
-                                message.pendingDeleteEvent!,
-                              ),
+                child: Builder(
+                  builder: (context) {
+                    // 대화 리스트 꼬리에 붙는 상태 버블 순서: 분석중 → 음성상태.
+                    final showProcessing = _isSubmitting;
+                    final showVoiceStatus = _isListening || _isRestartPending;
+                    return ListView.separated(
+                      controller: _scrollController,
+                      padding:
+                          const EdgeInsets.all(AppConstants.defaultPadding),
+                      itemBuilder: (context, index) {
+                        if (index < _messages.length) {
+                          final message = _messages[index];
+                          return _MessageBubble(
+                            message: message,
+                            deletedEventIds: _deletedEventIds,
+                            onEventTap: _showEventActionSheet,
+                            onConfirmDelete:
+                                message.pendingDeleteEvent == null ||
+                                        _deletedEventIds.contains(
+                                          message.pendingDeleteEvent!.id,
+                                        )
+                                    ? null
+                                    : () => _confirmPendingDelete(
+                                          message.pendingDeleteEvent!,
+                                        ),
+                          );
+                        }
+                        final tail = index - _messages.length;
+                        if (showProcessing && tail == 0) {
+                          return const _ProcessingBubble();
+                        }
+                        return _VoiceStatusBubble(
+                          isListening: _isListening,
+                          isReady: _nativeVoiceReady,
+                          isRestartPending: _isRestartPending,
+                          statusText: _conversationStatus,
+                        );
+                      },
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemCount: _messages.length +
+                          (showProcessing ? 1 : 0) +
+                          (showVoiceStatus ? 1 : 0),
                     );
                   },
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemCount: _messages.length + (_isSubmitting ? 1 : 0),
                 ),
               ),
               SafeArea(
@@ -1284,7 +1311,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                   keepListening: _keepListening,
                   voicePausedByUser: _voicePausedByUser,
                   isRestartPending: _isRestartPending,
-                  statusText: _conversationStatus,
                   onListen: () => _startConversationListen(resetRetryPolicy: true),
                   onStopListening: _pauseVoiceInput,
                   onSubmit: () => _submitText(null),
@@ -1329,6 +1355,73 @@ class _ProcessingBubble extends StatelessWidget {
                     color: PlanFlowColors.primary,
                     fontWeight: FontWeight.w800,
                   ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 대화 리스트 맨 아래에 붙는 음성 인식 상태 버블.
+/// 실제 STT 상태(마이크 준비/듣는 중/재시작 대기)를 그대로 반영해
+/// 사용자가 지금 입력이 되고 있는지 시선 근처에서 바로 확인하게 한다.
+class _VoiceStatusBubble extends StatelessWidget {
+  const _VoiceStatusBubble({
+    required this.isListening,
+    required this.isReady,
+    required this.isRestartPending,
+    required this.statusText,
+  });
+
+  final bool isListening;
+  final bool isReady;
+  final bool isRestartPending;
+  // STT가 추적하는 세밀한 실제 상태(듣는 중/마이크 재연결/연결 불안정 등).
+  // 값이 있으면 그대로 노출해 '안 되고 있으면 안 된다고' 정확히 알린다.
+  final String? statusText;
+
+  @override
+  Widget build(BuildContext context) {
+    final IconData icon = isRestartPending
+        ? Icons.sync
+        : (isListening && isReady)
+            ? Icons.hearing
+            : Icons.mic;
+    final trimmed = statusText?.trim();
+    final String label;
+    if (trimmed != null && trimmed.isNotEmpty) {
+      label = trimmed;
+    } else if (isRestartPending) {
+      label = '잠시 후 다시 듣기를 시작해요…';
+    } else if (isListening && isReady) {
+      label = '음성 인식 중이에요 · 다음 명령을 말해 주세요';
+    } else {
+      label = '마이크를 준비하고 있어요…';
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 520),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: PlanFlowColors.tertiaryAccentFaint,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: PlanFlowColors.activeLight),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: PlanFlowColors.active, size: 20),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: PlanFlowColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
             ),
           ],
         ),
@@ -1529,7 +1622,6 @@ class _ConversationInputBar extends StatelessWidget {
     required this.keepListening,
     required this.voicePausedByUser,
     required this.isRestartPending,
-    required this.statusText,
     required this.onListen,
     required this.onStopListening,
     required this.onSubmit,
@@ -1542,7 +1634,6 @@ class _ConversationInputBar extends StatelessWidget {
   final bool keepListening;
   final bool voicePausedByUser;
   final bool isRestartPending;
-  final String? statusText;
   final VoidCallback onListen;
   final VoidCallback onStopListening;
   final VoidCallback onSubmit;
@@ -1565,73 +1656,46 @@ class _ConversationInputBar extends StatelessWidget {
               keepListening: keepListening,
               voicePausedByUser: voicePausedByUser,
               isRestartPending: isRestartPending,
-              statusText: statusText,
               onListen: onListen,
               onStopListening: onStopListening,
             ),
-            // 음성 인식 중에는 인식된 내용을 입력창 위에 큰 글씨로 실시간 표시해
-            // 하단 입력창이 작아 안 보이던 문제를 해결한다.
-            if (isListening)
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: controller,
-                builder: (context, value, _) {
-                  final recognized = value.text.trim();
-                  if (recognized.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-                  return Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(top: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: PlanFlowColors.primaryFaint,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      recognized,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: PlanFlowColors.primary,
-                            fontWeight: FontWeight.w700,
-                            height: 1.4,
-                          ),
-                    ),
-                  );
-                },
-              ),
             const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    minLines: 1,
-                    maxLines: 3,
-                    style: const TextStyle(fontSize: 17, height: 1.4),
-                    textInputAction: TextInputAction.send,
-                    decoration: InputDecoration(
-                      hintText: '예: 5월 7일 일정 보여줘',
-                      filled: isListening,
-                      fillColor:
-                          isListening ? PlanFlowColors.primaryFaint : null,
+            // 인식된 텍스트는 입력창에 실시간으로 채워지므로 입력창 하나가
+            // 곧 미리보기다(별도 미리보기 카드 없음). 여러 줄 문장도 잘 보이도록
+            // 줄 수를 넉넉히 두고, 전송 버튼은 입력창 높이에 맞춰 함께 늘어난다.
+            // IntrinsicHeight로 Row 높이를 입력창 높이에 묶어 stretch가 작동하게 한다.
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      minLines: 1,
+                      maxLines: 5,
+                      style: const TextStyle(fontSize: 17, height: 1.4),
+                      textInputAction: TextInputAction.send,
+                      decoration: InputDecoration(
+                        hintText: '예: 5월 7일 일정 보여줘',
+                        filled: isListening,
+                        fillColor:
+                            isListening ? PlanFlowColors.primaryFaint : null,
+                      ),
+                      onChanged: onChanged,
+                      onSubmitted: (_) => onSubmit(),
                     ),
-                    onChanged: onChanged,
-                    onSubmitted: (_) => onSubmit(),
                   ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: isSubmitting ? null : onSubmit,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(64, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: isSubmitting ? null : onSubmit,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(64, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                    ),
+                    child: const Text('전송'),
                   ),
-                  child: const Text('전송'),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -1646,7 +1710,6 @@ class _VoiceConversationControl extends StatelessWidget {
     required this.keepListening,
     required this.voicePausedByUser,
     required this.isRestartPending,
-    required this.statusText,
     required this.onListen,
     required this.onStopListening,
   });
@@ -1655,23 +1718,17 @@ class _VoiceConversationControl extends StatelessWidget {
   final bool keepListening;
   final bool voicePausedByUser;
   final bool isRestartPending;
-  final String? statusText;
   final VoidCallback onListen;
   final VoidCallback onStopListening;
 
   @override
   Widget build(BuildContext context) {
     final isVoiceActive = isListening || isRestartPending;
-    final trimmedStatus = statusText?.trim();
-    final label = isVoiceActive && (trimmedStatus?.isNotEmpty ?? false)
-        ? trimmedStatus!
-        : isListening
-            ? '마이크를 준비하고 있어요...'
-            : isRestartPending
-                ? '곧 다시 듣기를 시작해요. 잠시만 기다려 주세요.'
-                : (trimmedStatus?.isNotEmpty ?? false)
-                    ? trimmedStatus!
-                    : '음성입력이 중지되었습니다. 다시 음성입력하실 때 마이크 버튼을 눌러 주세요.';
+    // 실제 인식 상태(듣는 중/준비 중/재시작)는 대화 영역의 음성 상태 버블이
+    // 보여주므로, 하단 컨트롤 바는 '지금 무엇을 할 수 있는지'만 짧게 안내한다.
+    final label = isVoiceActive
+        ? '음성으로 명령을 말해 주세요'
+        : '탭하면 음성으로 명령할 수 있어요';
     return Material(
       color: Colors.transparent,
       child: InkWell(

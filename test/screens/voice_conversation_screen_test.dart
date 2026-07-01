@@ -230,12 +230,12 @@ void main() {
     await tester.pump();
 
     expect(find.text('마이크를 준비하고 있어요...'), findsOneWidget);
-    expect(find.text('듣고 있어요...'), findsNothing);
+    expect(find.text('음성 인식 중이에요 · 다음 명령을 말해 주세요'), findsNothing);
 
     stt.emitStatus(SttNativeStatus.ready);
     await tester.pump();
 
-    expect(find.text('듣고 있어요...'), findsOneWidget);
+    expect(find.text('음성 인식 중이에요 · 다음 명령을 말해 주세요'), findsOneWidget);
   });
 
   testWidgets('AI 일정 대화는 STT 성공 후 사용자 말과 응답을 표시한다', (tester) async {
@@ -253,7 +253,7 @@ void main() {
 
     expect(find.text('오늘 일정 알려줘'), findsOneWidget);
     expect(find.textContaining('일정'), findsWidgets);
-    expect(find.text('듣고 있어요...'), findsNothing);
+    expect(find.text('음성 인식 중이에요 · 다음 명령을 말해 주세요'), findsNothing);
   });
 
   testWidgets('AI 일정 대화 input bar follows the keyboard inset', (tester) async {
@@ -649,7 +649,8 @@ void main() {
     await tester.tap(find.text('정지'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('음성입력이 중지되었습니다'), findsOneWidget);
+    // 정지 후 하단 컨트롤 바는 다시 시작을 유도하는 액션 안내로 돌아온다.
+    expect(find.textContaining('탭하면 음성으로 명령'), findsOneWidget);
     expect(find.byTooltip('음성 입력 다시 시작'), findsOneWidget);
     expect(stt.stopCalls, greaterThanOrEqualTo(1));
     expect(tester.takeException(), isNull);
@@ -750,7 +751,7 @@ void main() {
     expect(repository.updatedEvents.single.location, '강릉 건도리횟집');
     expect(repository.updatedEvents.single.locationLat, 37.7519);
     expect(repository.updatedEvents.single.locationLng, 128.8761);
-    expect(find.text('듣고 있어요...'), findsNothing);
+    expect(find.text('음성 인식 중이에요 · 다음 명령을 말해 주세요'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
