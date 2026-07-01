@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
@@ -15,6 +16,10 @@ import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/voice_correction_rule_repository.dart';
 import '../../core/analytics_service.dart';
+import '../../features/groups/models/group_event_model.dart';
+import '../../features/groups/models/group_model.dart';
+import '../../features/groups/providers/group_context_provider.dart';
+import '../../features/groups/repositories/group_event_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/review_service.dart';
@@ -45,6 +50,8 @@ class ConfirmScreen extends StatefulWidget {
     this.parsedSchedule = const <String, dynamic>{},
     this.userId,
     this.eventRepository,
+    this.groupContextProvider,
+    this.groupEventRepository,
     GptService? gptService,
     ConfirmScreenBackend? backend,
     NotificationService? notificationService,
@@ -73,6 +80,8 @@ class ConfirmScreen extends StatefulWidget {
   final Map<String, dynamic> parsedSchedule;
   final String? userId;
   final EventRepository? eventRepository;
+  final GroupContextProvider? groupContextProvider;
+  final GroupEventRepository? groupEventRepository;
   final GptService gptService;
   final ConfirmScreenBackend backend;
   final NotificationService notificationService;
@@ -173,6 +182,12 @@ class SupabaseConfirmScreenBackend extends ConfirmScreenBackend {
   }
 }
 
+enum _ConfirmSaveTarget {
+  personalOnly,
+  personalAndGroup,
+  groupOnly,
+}
+
 class _ConfirmScreenState extends State<ConfirmScreen> {
   late final TextEditingController _titleController;
   late final TextEditingController _locationController;
@@ -215,6 +230,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   bool _startEditedByUser = false;
   bool _endEditedByUser = false;
   Map<String, dynamic>? _initialParsedForLearning;
+  GroupContextProvider? _groupContextProvider;
+  bool _ownsGroupContextProvider = false;
+  GroupEventRepository? _groupEventRepositoryCache;
+  _ConfirmSaveTarget _saveTarget = _ConfirmSaveTarget.personalOnly;
+  // 사용자가 저장 범위를 직접 바꾼 뒤에는 자동 공유 기본값이 덮어쓰지 않도록 표시.
+  bool _saveTargetTouchedByUser = false;
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
 
@@ -259,6 +280,17 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _memoController.addListener(_markMemoEdited);
     _locationController.addListener(_schedulePastSupplyLookup);
 
+    _groupContextProvider = widget.groupContextProvider;
+    if (_groupContextProvider == null && AppEnv.isSupabaseReady) {
+      try {
+        _groupContextProvider = GroupContextProvider();
+        _ownsGroupContextProvider = true;
+      } catch (error) {
+        debugPrint('ConfirmScreen group context unavailable: $error');
+      }
+    }
+    unawaited(_loadGroupContextIfNeeded());
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPastSupplies();
       _maybeHydrateParsedSchedule();
@@ -285,7 +317,132 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     for (final draft in _preActions) {
       draft.dispose();
     }
+    if (_ownsGroupContextProvider) {
+      _groupContextProvider?.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _loadGroupContextIfNeeded() async {
+    final provider = _groupContextProvider;
+    if (provider == null) {
+      return;
+    }
+    final userId = _resolveUserId();
+    if (userId == null || userId.trim().isEmpty) {
+      return;
+    }
+    await provider.load(userId.trim());
+    if (mounted) {
+      setState(() {});
+      unawaited(_applyAutoShareDefaultIfNeeded());
+    }
+  }
+
+  GroupModel? get _selectedGroupForSharing {
+    final group = _groupContextProvider?.selectedGroup;
+    if (group == null || !group.isActive) {
+      return null;
+    }
+    return group;
+  }
+
+  bool get _canShareToSelectedGroup => _selectedGroupForSharing != null;
+
+  bool get _shouldSavePersonalEvent =>
+      !_canShareToSelectedGroup ||
+      _saveTarget == _ConfirmSaveTarget.personalOnly ||
+      _saveTarget == _ConfirmSaveTarget.personalAndGroup;
+
+  bool get _shouldSaveGroupEvent =>
+      _canShareToSelectedGroup &&
+      (_saveTarget == _ConfirmSaveTarget.personalAndGroup ||
+          _saveTarget == _ConfirmSaveTarget.groupOnly);
+
+  GroupEventRepository get _groupEventRepository =>
+      widget.groupEventRepository ??
+      (_groupEventRepositoryCache ??= GroupEventRepository.supabase());
+
+  String _autoSharePrefKey(String userId, String groupId) =>
+      'planflow:group_auto_share:v1:$userId:$groupId';
+
+  Future<void> _applyAutoShareDefaultIfNeeded() async {
+    // 사용자가 이미 저장 범위를 직접 골랐으면 자동 공유 기본값으로 덮어쓰지 않는다.
+    if (_saveTargetTouchedByUser) {
+      return;
+    }
+
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return;
+    }
+
+    final userId = _resolveUserId();
+    if (userId == null || userId.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final key = _autoSharePrefKey(userId, group.id);
+      final autoShareEnabled = preferences.getBool(key) ?? false;
+
+      // await 사이에 사용자가 직접 골랐을 수 있으므로 적용 직전에 다시 확인.
+      if (autoShareEnabled && mounted && !_saveTargetTouchedByUser) {
+        setState(() {
+          _saveTarget = _ConfirmSaveTarget.personalAndGroup;
+        });
+      }
+    } catch (error) {
+      debugPrint('ConfirmScreen auto-share default error: $error');
+    }
+  }
+
+  Future<GroupEventModel?> _createGroupEventFromDraft(
+    EventModel draft,
+    String userId, {
+    String? personalEventId,
+  }) async {
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return null;
+    }
+    final startAt = draft.startAt;
+    if (startAt == null) {
+      throw StateError('그룹 일정에는 시작 시간이 필요합니다.');
+    }
+    final endAt = draft.endAt ?? _eventRangeEnd(startAt, draft.endAt);
+    final recurrenceType = _groupRecurrenceTypeFor(draft.recurrenceRule);
+    return _groupEventRepository.createGroupEvent(
+      GroupEventModel(
+        id: '',
+        groupId: group.id,
+        title: draft.title,
+        description: draft.memo,
+        location: draft.location,
+        startAt: startAt,
+        endAt: endAt,
+        allDay: draft.isAllDay,
+        recurrenceType: recurrenceType,
+        createdBy: userId,
+        personalEventId: personalEventId,
+        status: 'active',
+      ),
+    );
+  }
+
+  String _groupRecurrenceTypeFor(String? recurrenceRule) {
+    final rule = recurrenceRule?.toUpperCase() ?? '';
+    if (rule.contains('FREQ=DAILY')) {
+      return 'daily';
+    }
+    if (rule.contains('FREQ=WEEKLY')) {
+      return 'weekly';
+    }
+    if (rule.contains('FREQ=MONTHLY')) {
+      return 'monthly';
+    }
+    return 'none';
   }
 
   void _markTitleEdited() {
@@ -899,24 +1056,27 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
       category: _category,
     );
 
-    final eventStart = draftEvent.startAt ?? _startAt;
-    final overlappingEvents = await repository.findOverlappingEvents(
-      rangeStart: eventStart,
-      rangeEnd: _eventRangeEnd(eventStart, draftEvent.endAt),
-      userId: userId,
-    );
-    final duplicateWarningEvents = filterDuplicateWarningEvents(
-      draft: draftEvent,
-      candidates: overlappingEvents,
-    );
-    if (!mounted) {
-      return;
-    }
-    if (duplicateWarningEvents.isNotEmpty) {
-      unawaited(AnalyticsService.logConflictDetected());
-      final shouldContinue = await _showOverlapWarning(duplicateWarningEvents);
-      if (!shouldContinue || !mounted) {
+    if (_shouldSavePersonalEvent) {
+      final eventStart = draftEvent.startAt ?? _startAt;
+      final overlappingEvents = await repository.findOverlappingEvents(
+        rangeStart: eventStart,
+        rangeEnd: _eventRangeEnd(eventStart, draftEvent.endAt),
+        userId: userId,
+      );
+      final duplicateWarningEvents = filterDuplicateWarningEvents(
+        draft: draftEvent,
+        candidates: overlappingEvents,
+      );
+      if (!mounted) {
         return;
+      }
+      if (duplicateWarningEvents.isNotEmpty) {
+        unawaited(AnalyticsService.logConflictDetected());
+        final shouldContinue =
+            await _showOverlapWarning(duplicateWarningEvents);
+        if (!shouldContinue || !mounted) {
+          return;
+        }
       }
     }
 
@@ -925,27 +1085,53 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     });
 
     try {
-      final savedEvent = await repository.createEvent(draftEvent);
-      unawaited(_recordVoiceCorrectionLearning(userId: userId));
+      EventModel? savedEvent;
+      if (_shouldSavePersonalEvent) {
+        savedEvent = await repository.createEvent(draftEvent);
+      }
 
-      unawaited(
-        _runPostSaveFollowUps(
-          userId: userId,
-          event: savedEvent,
-          repository: repository,
-        ),
-      );
+      if (_shouldSaveGroupEvent) {
+        if (savedEvent == null) {
+          await _createGroupEventFromDraft(draftEvent, userId);
+        } else {
+          final createdGroupEvent = await _createGroupEventFromDraft(
+            savedEvent,
+            userId,
+            personalEventId: savedEvent.id,
+          );
+          if (createdGroupEvent != null) {
+            savedEvent = await repository.updateEvent(
+              savedEvent.copyWith(groupEventId: createdGroupEvent.id),
+            );
+          }
+        }
+      }
+
+      if (savedEvent != null) {
+        unawaited(_recordVoiceCorrectionLearning(userId: userId));
+        unawaited(
+          _runPostSaveFollowUps(
+            userId: userId,
+            event: savedEvent,
+            repository: repository,
+          ),
+        );
+      }
 
       if (mounted) {
-        _showMessage('일정을 저장했어요.');
+        _showMessage(
+          savedEvent != null ? '일정을 저장했어요.' : '그룹에 일정을 공유했어요.',
+        );
         EventRefreshBus.instance.notifyChanged(
           reason: 'confirm_saved',
-          eventId: savedEvent.id,
-          startAt: savedEvent.startAt,
+          eventId: savedEvent?.id,
+          startAt: savedEvent?.startAt ?? draftEvent.startAt,
         );
         unawaited(AnalyticsService.logScheduleConfirmed());
-        unawaited(AnalyticsService.logEventCreated(source: 'voice'));
-        unawaited(ReviewService.onEventSaved());
+        if (savedEvent != null) {
+          unawaited(AnalyticsService.logEventCreated(source: 'voice'));
+          unawaited(ReviewService.onEventSaved());
+        }
         context.go(AppRoutes.home);
       }
     } on StateError catch (error) {
@@ -1838,6 +2024,74 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     });
   }
 
+  Widget _buildSaveTargetCard(BuildContext context) {
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.groups_2_outlined),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '저장 범위',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '이 일정을 나만 볼지, 선택된 그룹에도 공유할지 정해 주세요.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: PlanFlowColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<_ConfirmSaveTarget>(
+              segments: <ButtonSegment<_ConfirmSaveTarget>>[
+                const ButtonSegment<_ConfirmSaveTarget>(
+                  value: _ConfirmSaveTarget.personalOnly,
+                  icon: Icon(Icons.person_outline),
+                  label: Text('개인 일정만'),
+                ),
+                ButtonSegment<_ConfirmSaveTarget>(
+                  value: _ConfirmSaveTarget.personalAndGroup,
+                  icon: const Icon(Icons.compare_arrows_outlined),
+                  label: Text('개인 + ${group.name}'),
+                ),
+                ButtonSegment<_ConfirmSaveTarget>(
+                  value: _ConfirmSaveTarget.groupOnly,
+                  icon: const Icon(Icons.groups_outlined),
+                  label: Text('${group.name}만'),
+                ),
+              ],
+              selected: <_ConfirmSaveTarget>{_saveTarget},
+              onSelectionChanged: (selection) {
+                setState(() {
+                  _saveTarget = selection.first;
+                  _saveTargetTouchedByUser = true;
+                });
+              },
+              showSelectedIcon: false,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1943,6 +2197,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                           ),
                         ),
                       const SizedBox(height: AppConstants.sectionSpacing),
+                      _buildSaveTargetCard(context),
+                      if (_selectedGroupForSharing != null)
+                        const SizedBox(height: AppConstants.sectionSpacing),
                       CalendarStyleEventEditor(
                         titleController: _titleController,
                         locationController: _locationController,
