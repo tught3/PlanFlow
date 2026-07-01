@@ -347,4 +347,84 @@ void main() {
         findsNothing);
     expect(find.text('주간 회의'), findsOneWidget);
   });
+
+  testWidgets(
+      '보관 버튼을 누르면 String 결과로 화면이 닫힌다(그룹 일정 목록의 push<String> 계약과 타입 일치)',
+      (tester) async {
+    final event = _event(
+      id: 'event-1',
+      groupId: 'group-1',
+      title: '주간 회의',
+      startAt: DateTime.utc(2026, 6, 11, 1),
+      endAt: DateTime.utc(2026, 6, 11, 2),
+    );
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-1',
+            name: 'Leader Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final provider = GroupEventProvider(
+      contextProvider: contextProvider,
+      repository: FakeGroupEventRepository(event: event),
+      delegationRepository: FakeGroupDelegationRepository(),
+      nowProvider: () => DateTime.utc(2026, 6, 11, 9),
+    );
+
+    // group_event_list_screen._openDetail은 context.push<String>으로 이 화면을
+    // 연다. 과거 화면이 Navigator.pop(true)(bool)로 결과를 던져 타입 불일치
+    // 예외가 나 화면이 먹통(뒤로가기 불가)이 되던 회귀를 이 테스트가 지킨다.
+    String? poppedResult;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => ElevatedButton(
+            child: const Text('open'),
+            onPressed: () async {
+              poppedResult = await Navigator.of(context).push<String>(
+                MaterialPageRoute<String>(
+                  builder: (_) => GroupEventDetailScreen(
+                    eventId: event.id,
+                    event: event,
+                    provider: provider,
+                    currentUserIdOverride: 'user-1',
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey('group-event-detail-archive-button')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+
+    // 타입 불일치 예외 없이 정상적으로 pop되어 상세 화면이 사라지고,
+    // push<String> 호출자가 기대한 대로 String 값을 돌려받는다.
+    expect(find.byType(GroupEventDetailScreen), findsNothing);
+    expect(poppedResult, 'archived');
+  });
 }

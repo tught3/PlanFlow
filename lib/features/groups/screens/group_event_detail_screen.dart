@@ -242,7 +242,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
         const SnackBar(content: Text('그룹 일정을 취소했어요.')),
       );
       await Future<void>.delayed(const Duration(milliseconds: 180));
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) Navigator.of(context).pop('cancelled');
       _event = cancelled;
     } catch (error) {
       if (!mounted) return;
@@ -267,7 +267,7 @@ class _GroupEventDetailScreenState extends State<GroupEventDetailScreen> {
         const SnackBar(content: Text('그룹 일정을 보관했어요.')),
       );
       await Future<void>.delayed(const Duration(milliseconds: 180));
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) Navigator.of(context).pop('archived');
       _event = archived;
     } catch (error) {
       if (!mounted) return;
