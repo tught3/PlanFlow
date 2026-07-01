@@ -52,6 +52,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   final CalendarAutoSyncService _calendarAutoSyncService =
       CalendarAutoSyncService();
   final NaverIcsShareStore _naverIcsShareStore = const NaverIcsShareStore();
+  bool _briefingDialogShowing = false;
   final NotificationService _notificationService = NotificationService();
   late final AppLifecycleListener _lifecycleListener;
   String? _pendingHomeWidgetRoute;
@@ -342,33 +343,44 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   }
 
   void _showForegroundBriefingDialog(bool isMorning) {
-    final context = appRouter.routerDelegate.navigatorKey.currentContext;
-    if (context == null || !mounted) return;
-    // 다이얼로그 표시와 동시에 사전 로드 시작.
-    // 사용자가 "재생"을 누르기 전에 브리핑 텍스트가 준비될 수 있다.
-    unawaited(BriefingSchedulerService().preloadBriefing(isMorning: isMorning));
-    showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        title: Text(isMorning ? '모닝 브리핑' : '이브닝 브리핑'),
-        content: const Text('브리핑 알람이 도착했습니다.\n지금 재생하시겠습니까?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('나중에'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              final type = isMorning ? 'morning' : 'evening';
-              appRouter.go('${AppRoutes.briefing}?type=$type');
-            },
-            child: const Text('재생'),
-          ),
-        ],
-      ),
-    );
+    if (_briefingDialogShowing) return;
+    // 앱 시작 직후에는 splash→home 초기 라우팅(go)이 다이얼로그를 덮어
+    // 사용자가 누르기도 전에 사라진다. 라우팅이 안정된 뒤(다음 프레임 + 약간의
+    // 지연)에 표시하고, barrierDismissible=false로 실수/초기 전환에 닫히지
+    // 않게 한다. pending은 소비되기 전까지 재확인되므로 한 번은 반드시 뜬다.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+      if (!mounted || _briefingDialogShowing) return;
+      final context = appRouter.routerDelegate.navigatorKey.currentContext;
+      if (context == null || !context.mounted) return;
+      _briefingDialogShowing = true;
+      // 다이얼로그 표시와 동시에 사전 로드 시작.
+      unawaited(
+        BriefingSchedulerService().preloadBriefing(isMorning: isMorning),
+      );
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: Text(isMorning ? '모닝 브리핑' : '이브닝 브리핑'),
+          content: const Text('브리핑 알람이 도착했습니다.\n지금 재생하시겠습니까?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('나중에'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                final type = isMorning ? 'morning' : 'evening';
+                appRouter.go('${AppRoutes.briefing}?type=$type');
+              },
+              child: const Text('재생'),
+            ),
+          ],
+        ),
+      ).whenComplete(() => _briefingDialogShowing = false);
+    });
   }
 
   void _onAuthProviderChange() {
