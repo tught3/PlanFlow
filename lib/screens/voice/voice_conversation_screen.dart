@@ -1569,6 +1569,38 @@ class _ConversationInputBar extends StatelessWidget {
               onListen: onListen,
               onStopListening: onStopListening,
             ),
+            // 음성 인식 중에는 인식된 내용을 입력창 위에 큰 글씨로 실시간 표시해
+            // 하단 입력창이 작아 안 보이던 문제를 해결한다.
+            if (isListening)
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: controller,
+                builder: (context, value, _) {
+                  final recognized = value.text.trim();
+                  if (recognized.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: PlanFlowColors.primaryFaint,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      recognized,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: PlanFlowColors.primary,
+                            fontWeight: FontWeight.w700,
+                            height: 1.4,
+                          ),
+                    ),
+                  );
+                },
+              ),
             const SizedBox(height: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -1578,9 +1610,13 @@ class _ConversationInputBar extends StatelessWidget {
                     controller: controller,
                     minLines: 1,
                     maxLines: 3,
+                    style: const TextStyle(fontSize: 17, height: 1.4),
                     textInputAction: TextInputAction.send,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       hintText: '예: 5월 7일 일정 보여줘',
+                      filled: isListening,
+                      fillColor:
+                          isListening ? PlanFlowColors.primaryFaint : null,
                     ),
                     onChanged: onChanged,
                     onSubmitted: (_) => onSubmit(),
