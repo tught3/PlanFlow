@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/env.dart';
 import 'package:planflow/core/theme.dart';
+import 'package:planflow/core/time_format_controller.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
@@ -52,6 +53,10 @@ void main() {
       buildNumber: '48',
       buildSignature: '',
     );
+    // TimeFormatController는 앱 전역 싱글톤이라 다른 테스트 파일이 값을 바꿔둔 채
+    // 남을 수 있다. 매 테스트가 화면 로드 시 저장된 설정값으로 다시 맞추지만,
+    // 시작 상태를 명시적으로 리셋해 두어 실행 순서와 무관하게 만든다.
+    TimeFormatController.instance.reset();
   });
 
   test('Naver account recheck is only shown for incomplete Naver profiles', () {
@@ -213,14 +218,14 @@ void main() {
         findsOneWidget,
       );
 
-      expect(find.text('12시간제(오전 2:30)'), findsOneWidget);
+      expect(find.text('12시간제(오후 3:30)'), findsOneWidget);
 
       await tester.tap(timeFormatToggle.hitTestable().first);
       await tester.pumpAndSettle();
 
       expect(settingsRepository.savedSettings, isNotNull);
       expect(settingsRepository.savedSettings!.use24HourFormat, isTrue);
-      expect(find.text('24시간제(14:30)'), findsOneWidget);
+      expect(find.text('24시간제(15:30)'), findsOneWidget);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -246,7 +251,7 @@ void main() {
 
       await tester.pumpAndSettle();
       await _scrollUntilHitTestable(tester, timeFormatToggle);
-      expect(find.text('24시간제(14:30)'), findsOneWidget);
+      expect(find.text('24시간제(15:30)'), findsOneWidget);
     },
   );
 

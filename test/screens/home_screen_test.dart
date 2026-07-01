@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:planflow/core/env.dart';
 import 'package:planflow/core/theme.dart';
+import 'package:planflow/core/time_format_controller.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/screens/home/home_screen.dart';
@@ -25,6 +26,11 @@ void main() {
   test(
       'formatHomeUpcomingDateTime uses relative labels for tomorrow and day after',
       () {
+    // TimeFormatController는 앱 전역 싱글톤이라 다른 테스트가 12시간제로 바꿔둔 채
+    // 남을 수 있다. 이 테스트는 상대 날짜 라벨(내일/모레) 로직만 검증하므로
+    // 24시간제로 명시 고정해 결과를 안정적으로 만든다.
+    TimeFormatController.instance.setUse24HourFormat(true);
+    addTearDown(TimeFormatController.instance.reset);
     final now = DateTime(2026, 5, 23, 10);
 
     expect(

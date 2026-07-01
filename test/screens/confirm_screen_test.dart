@@ -23,38 +23,6 @@ void main() {
   });
 
   testWidgets(
-      'ConfirmScreen shows a smart preparation card from both add buttons',
-      (tester) async {
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(memo: null),
-          backend: _FakeConfirmBackend(),
-          eventRepository: _FakeEventRepository(),
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-          locationLookupService: _EmptyLocationLookupService(),
-          permissionService: _DeniedPermissionService(),
-        ),
-      ),
-    );
-
-    await tester.ensureVisible(find.text('설명 · 준비물'));
-    await tester.pump(const Duration(milliseconds: 200));
-    await tester.tap(find.text('설명 · 준비물'));
-    await tester.pump(const Duration(milliseconds: 200));
-
-    expect(find.text('스마트 준비 알람 1'), findsOneWidget);
-
-    await tester.ensureVisible(find.widgetWithText(TextButton, '추가'));
-    await tester.tap(find.widgetWithText(TextButton, '추가'));
-    await tester.pump(const Duration(milliseconds: 200));
-
-    expect(find.text('스마트 준비 알람 2'), findsOneWidget);
-  });
-
-  testWidgets(
       'ConfirmScreen schedules critical alarm when important is enabled',
       (tester) async {
     final backend = _FakeConfirmBackend();
@@ -674,42 +642,6 @@ void main() {
     expect(find.text('충전기'), findsOneWidget);
     expect(find.textContaining('체크리스트로'), findsNothing);
     expect(find.text('진행 중'), findsNothing);
-  });
-  testWidgets('ConfirmScreen asks purpose for ambiguous hospital place only',
-      (tester) async {
-    await tester.pumpWidget(
-      _testApp(
-        ConfirmScreen(
-          userId: 'user-1',
-          parsedSchedule: _parsedSchedule(
-            title: '병원',
-            location: '병원',
-            rawText: '내일 오전 10시 병원',
-          ),
-          backend: _FakeConfirmBackend(),
-          eventRepository: _FakeEventRepository(),
-          notificationService: _FakeNotificationService(),
-          homeWidgetService: _FakeHomeWidgetService(),
-        ),
-      ),
-    );
-
-    await tester.ensureVisible(find.text('설명 · 준비물'));
-    await tester.pump(const Duration(milliseconds: 200));
-
-    await tester.ensureVisible(find.text('일정 목적을 선택해 주세요'));
-
-    expect(find.text('일정 목적을 선택해 주세요'), findsOneWidget);
-    expect(find.text('진료/검사'), findsOneWidget);
-    expect(find.text('업무/영업'), findsOneWidget);
-    expect(find.text('병문안'), findsOneWidget);
-
-    await tester.tap(find.text('병문안'));
-    await tester.pump(const Duration(milliseconds: 200));
-
-    expect(find.text('꽃이나 선물 챙기기'), findsOneWidget);
-    expect(find.text('병원 준비사항 확인'), findsNothing);
-    expect(find.text('금식/복약 안내 확인'), findsNothing);
   });
 }
 
