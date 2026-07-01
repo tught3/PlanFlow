@@ -95,11 +95,15 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
   bool _isApplyingInputReset = false;
   bool _nativeVoiceReady = false;
   bool _didRetrySilentNativeStart = false;
+  // 이번 듣기 턴에서 한 번이라도 native ready에 도달했는지. 조용한 재연결 중에는
+  // 이미 도달했던 상태를 유지해 상태 문구가 계속 바뀌며 깜빡이지 않게 한다.
+  bool _hasVoiceBeenReadyThisTurn = false;
+  // 재시도 후에도 계속 응답이 없는 '진짜' 연결 문제일 때만 true.
+  bool _voiceUnstable = false;
   // ignore: unused_field
   _VoiceConversationPhase _voicePhase = _VoiceConversationPhase.idle;
   Timer? _restartListenTimer;
   Timer? _conversationWatchdogTimer;
-  String? _conversationStatus;
 
   @override
   void initState() {
@@ -136,7 +140,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       _voicePausedByUser = false;
       _isRestartPending = false;
       _voicePhase = _VoiceConversationPhase.restartPending;
-      _conversationStatus = '계속 대화를 이어서 할 수 있습니다. 그냥 편하게 말하세요.';
     });
     if (!_isListening && !_isSubmitting) {
       unawaited(_startConversationListen(resetRetryPolicy: true));
@@ -206,7 +209,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         final message = !AppEnv.isSupabaseReady
             ? 'Supabase 설정을 확인하지 못했어요.'
             : '로그인 상태를 확인하지 못했어요.';
-        _conversationStatus = message;
         // 상태 표시를 대화 버블로 옮겼으므로, 듣는 중이 아닌 진입 시점의 안내도
         // 대화 메시지로 남겨 사용자가 '왜 안 되는지'를 볼 수 있게 한다.
         _messages.add(_ConversationMessage.assistant(message));
@@ -225,14 +227,12 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         _events = events;
         _conversation.replaceEvents(events);
         _isLoading = false;
-        _conversationStatus = null;
       });
     } catch (error) {
       debugPrint('VoiceConversationScreen load events failed: $error');
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _conversationStatus = '일정을 불러오지 못했어요.';
         _messages.add(
           _ConversationMessage.assistant(
             '일정을 불러오지 못했어요. Supabase 연결과 로그인 상태를 확인해 주세요.',
@@ -269,7 +269,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         _isListening = false;
         _keepListening = false;
         _voicePausedByUser = true;
-        _conversationStatus = '음성 입력을 멈췄어요. 지금 입력한 내용만 저장할게요.';
       });
       unawaited(widget.sttService.stopActiveListen());
     } else if (_keepListening && !fromVoiceFinal) {
@@ -278,7 +277,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         _voicePhase = _VoiceConversationPhase.submitting;
         _keepListening = false;
         _voicePausedByUser = true;
-        _conversationStatus = '음성 입력을 멈췄어요. 지금 입력한 내용만 저장할게요.';
       });
       unawaited(widget.sttService.stopActiveListen());
     }
@@ -286,7 +284,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     setState(() {
       _isSubmitting = true;
       _voicePhase = _VoiceConversationPhase.submitting;
-      _conversationStatus = 'AI 문맥 분석중이에요...';
       _messages.add(_ConversationMessage.user(text));
     });
     _scrollToBottom();
@@ -337,7 +334,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
 
       if (!mounted) return;
       setState(() {
-        _conversationStatus = null;
         _messages.add(
           _ConversationMessage.assistant(
             _messageForResult(result),
@@ -351,7 +347,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       debugPrint('VoiceConversationScreen submit failed: $error');
       if (!mounted) return;
       setState(() {
-        _conversationStatus = '처리 중 문제가 생겼어요.';
         _messages.add(
           const _ConversationMessage.assistant(
             '처리 중 문제가 생겼어요. 잠시 후 다시 말해 주세요.',
@@ -385,7 +380,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       _keepListening = true;
       _voicePausedByUser = false;
       _voicePhase = _VoiceConversationPhase.restartPending;
-      _conversationStatus = '마이크를 준비하고 있어요...';
     });
     _setConversationInputText('');
     // 대화 꼬리에 붙는 음성 상태 버블이 바로 시야에 들어오게 맨 아래로 스크롤.
@@ -411,7 +405,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           setState(() {
             _nativeVoiceReady = true;
             _voicePhase = _VoiceConversationPhase.listening;
-            _conversationStatus = '음성 인식 중이에요 · 다음 명령을 말해 주세요';
           });
         },
         onRestart: (count) {
@@ -425,7 +418,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             _nativeVoiceReady = false;
             _isRestartPending = true;
             _voicePhase = _VoiceConversationPhase.restartPending;
-            _conversationStatus = '마이크를 다시 연결하고 있어요...';
           });
           _armConversationWatchdog(listenGeneration);
         },
@@ -454,7 +446,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         if (mounted && listenGeneration == _listenGeneration) {
           setState(() {
             _isListening = false;
-            _conversationStatus = null;
             _voicePhase = _VoiceConversationPhase.idle;
           });
         }
@@ -465,7 +456,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           setState(() {
             _isListening = false;
             _voicePhase = _VoiceConversationPhase.finalizing;
-            _conversationStatus = null;
           });
         }
         _applyVoiceTranscriptToInput(
@@ -485,13 +475,11 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
             _isListening = false;
             _isRestartPending = true;
             _voicePhase = _VoiceConversationPhase.restartPending;
-            _conversationStatus = '음성 입력을 다시 준비하고 있어요...';
           });
         }
       } else if (mounted) {
         final message = result.message ?? '음성을 알아듣지 못했어요. 다시 말해 주세요.';
         setState(() {
-          _conversationStatus = message;
           _messages.add(
             _ConversationMessage.assistant(
               message,
@@ -506,7 +494,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         return;
       }
       setState(() {
-        _conversationStatus = '음성 입력을 시작하지 못했어요.';
         _messages.add(
           const _ConversationMessage.assistant(
             '음성 입력을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.',
@@ -562,8 +549,9 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         setState(() {
           _nativeVoiceReady = true;
           _isRestartPending = false;
+          _hasVoiceBeenReadyThisTurn = true;
+          _voiceUnstable = false;
           _voicePhase = _VoiceConversationPhase.listening;
-          _conversationStatus = '음성 인식 중이에요 · 다음 명령을 말해 주세요';
         });
         _armConversationWatchdog(listenGeneration);
         break;
@@ -571,7 +559,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       case SttNativeStatus.segmentEnded:
         setState(() {
           _nativeVoiceReady = true;
-          _conversationStatus = '계속 듣고 있어요. 이어서 말해 주세요.';
         });
         _armConversationWatchdog(listenGeneration);
         break;
@@ -580,7 +567,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           _nativeVoiceReady = false;
           _isRestartPending = true;
           _voicePhase = _VoiceConversationPhase.restartPending;
-          _conversationStatus = '마이크를 다시 연결하고 있어요...';
         });
         _armConversationWatchdog(listenGeneration);
         break;
@@ -588,7 +574,7 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         if (_didRetrySilentNativeStart) {
           setState(() {
             _nativeVoiceReady = false;
-            _conversationStatus = '마이크 연결이 불안정해요. 정지 후 다시 눌러 주세요.';
+            _voiceUnstable = true;
           });
           return;
         }
@@ -597,7 +583,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           _nativeVoiceReady = false;
           _isRestartPending = true;
           _voicePhase = _VoiceConversationPhase.restartPending;
-          _conversationStatus = '마이크를 다시 연결하고 있어요...';
         });
         unawaited(widget.sttService.cancelActiveListen());
         break;
@@ -647,8 +632,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         setState(() {
           _nativeVoiceReady = false;
           _isRestartPending = true;
+          _voiceUnstable = true;
           _voicePhase = _VoiceConversationPhase.restartPending;
-          _conversationStatus = '마이크 연결을 확인하고 있어요. 반응이 없으면 정지 후 다시 눌러 주세요.';
         });
         _armConversationWatchdog(listenGeneration);
         return;
@@ -662,7 +647,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
           _nativeVoiceReady = false;
           _isRestartPending = true;
           _voicePhase = _VoiceConversationPhase.restartPending;
-          _conversationStatus = '마이크를 다시 연결하고 있어요...';
         });
       }
       unawaited(widget.sttService.cancelActiveListen());
@@ -682,6 +666,10 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     if (resetRetryPolicy) {
       _didRetryConversationEarlyFailure = false;
       _didRetrySilentNativeStart = false;
+      // 사용자가 직접 마이크를 다시 누른 새 시작이므로 상태 문구를 초기화한다.
+      // (계속 듣기 중 조용히 재시작하는 경우는 _listenOnce에서 유지된다.)
+      _hasVoiceBeenReadyThisTurn = false;
+      _voiceUnstable = false;
     }
     await _listenOnce();
   }
@@ -699,12 +687,15 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         _keepListening = false;
         _voicePausedByUser = true;
         _isListening = false;
-        _conversationStatus = '음성입력이 중지되었습니다. 다시 음성입력하실 때 마이크 버튼을 눌러 주세요.';
+        _hasVoiceBeenReadyThisTurn = false;
+        _voiceUnstable = false;
       });
     } else {
       _keepListening = false;
       _voicePausedByUser = true;
       _isListening = false;
+      _hasVoiceBeenReadyThisTurn = false;
+      _voiceUnstable = false;
     }
     await widget.sttService.stopActiveListen();
   }
@@ -860,7 +851,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       debugPrintStack(stackTrace: stackTrace);
       if (mounted) {
         setState(() {
-          _conversationStatus = '일정 변경 저장에 실패했어요.';
           _messages.add(
             const _ConversationMessage.assistant(
               '일정 변경 저장에 실패했어요. 잠시 후 다시 시도해 주세요.',
@@ -884,7 +874,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         _keepListening = false;
         _voicePausedByUser = false;
         _isListening = false;
-        _conversationStatus = null;
       });
     } else {
       _keepListening = false;
@@ -928,7 +917,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
       debugPrint('VoiceConversationScreen delete failed: $error');
       if (!mounted) return false;
       setState(() {
-        _conversationStatus = '삭제하지 못했어요.';
         _messages.add(
           const _ConversationMessage.assistant(
             '삭제하지 못했어요. 잠시 후 다시 시도해 주세요.',
@@ -1110,7 +1098,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         _keepListening = false;
         _voicePausedByUser = true;
         _isListening = false;
-        _conversationStatus = '음성 입력이 중지되었습니다. 다시 음성 입력하실 때 마이크 버튼을 눌러 주세요.';
       });
     } else {
       _keepListening = false;
@@ -1288,10 +1275,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
                           return const _ProcessingBubble();
                         }
                         return _VoiceStatusBubble(
-                          isListening: _isListening,
-                          isReady: _nativeVoiceReady,
-                          isRestartPending: _isRestartPending,
-                          statusText: _conversationStatus,
+                          hasBeenReady: _hasVoiceBeenReadyThisTurn,
+                          isUnstable: _voiceUnstable,
                         );
                       },
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -1364,40 +1349,44 @@ class _ProcessingBubble extends StatelessWidget {
 }
 
 /// 대화 리스트 맨 아래에 붙는 음성 인식 상태 버블.
-/// 실제 STT 상태(마이크 준비/듣는 중/재시작 대기)를 그대로 반영해
-/// 사용자가 지금 입력이 되고 있는지 시선 근처에서 바로 확인하게 한다.
+/// 조용한 내부 재연결 시도(수 초마다 반복될 수 있음)는 사용자에게 굳이
+/// 알리지 않고 '음성 인식 중'으로 계속 보여준다. 재시도해도 응답이 없는
+/// 진짜 연결 문제일 때만 '되고 있지 않다'는 문구로 전환한다.
 class _VoiceStatusBubble extends StatelessWidget {
   const _VoiceStatusBubble({
-    required this.isListening,
-    required this.isReady,
-    required this.isRestartPending,
-    required this.statusText,
+    required this.hasBeenReady,
+    required this.isUnstable,
   });
 
-  final bool isListening;
-  final bool isReady;
-  final bool isRestartPending;
-  // STT가 추적하는 세밀한 실제 상태(듣는 중/마이크 재연결/연결 불안정 등).
-  // 값이 있으면 그대로 노출해 '안 되고 있으면 안 된다고' 정확히 알린다.
-  final String? statusText;
+  final bool hasBeenReady;
+  final bool isUnstable;
 
   @override
   Widget build(BuildContext context) {
-    final IconData icon = isRestartPending
-        ? Icons.sync
-        : (isListening && isReady)
-            ? Icons.hearing
-            : Icons.mic;
-    final trimmed = statusText?.trim();
+    final colorScheme = Theme.of(context).colorScheme;
+    final IconData icon;
     final String label;
-    if (trimmed != null && trimmed.isNotEmpty) {
-      label = trimmed;
-    } else if (isRestartPending) {
-      label = '잠시 후 다시 듣기를 시작해요…';
-    } else if (isListening && isReady) {
+    final Color background;
+    final Color border;
+    final Color iconColor;
+    if (isUnstable) {
+      icon = Icons.mic_off_outlined;
+      label = '현재 음성 인식이 되고 있지 않아요. 정지 후 다시 눌러 주세요.';
+      background = colorScheme.errorContainer;
+      border = colorScheme.error;
+      iconColor = colorScheme.error;
+    } else if (hasBeenReady) {
+      icon = Icons.hearing;
       label = '음성 인식 중이에요 · 다음 명령을 말해 주세요';
+      background = PlanFlowColors.tertiaryAccentFaint;
+      border = PlanFlowColors.activeLight;
+      iconColor = PlanFlowColors.active;
     } else {
-      label = '마이크를 준비하고 있어요…';
+      icon = Icons.mic;
+      label = '마이크를 준비하고 있어요...';
+      background = PlanFlowColors.tertiaryAccentFaint;
+      border = PlanFlowColors.activeLight;
+      iconColor = PlanFlowColors.active;
     }
     return Align(
       alignment: Alignment.centerLeft,
@@ -1405,20 +1394,20 @@ class _VoiceStatusBubble extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 520),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: PlanFlowColors.tertiaryAccentFaint,
+          color: background,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: PlanFlowColors.activeLight),
+          border: Border.all(color: border),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: PlanFlowColors.active, size: 20),
+            Icon(icon, color: iconColor, size: 20),
             const SizedBox(width: 10),
             Flexible(
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: PlanFlowColors.primary,
+                      color: isUnstable ? colorScheme.error : PlanFlowColors.primary,
                       fontWeight: FontWeight.w800,
                     ),
               ),
@@ -1725,79 +1714,34 @@ class _VoiceConversationControl extends StatelessWidget {
   Widget build(BuildContext context) {
     final isVoiceActive = isListening || isRestartPending;
     // 실제 인식 상태(듣는 중/준비 중/재시작)는 대화 영역의 음성 상태 버블이
-    // 보여주므로, 하단 컨트롤 바는 '지금 무엇을 할 수 있는지'만 짧게 안내한다.
-    final label = isVoiceActive
-        ? '음성으로 명령을 말해 주세요'
-        : '탭하면 음성으로 명령할 수 있어요';
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        // 음성 정지 상태에서는 박스 전체를 탭해도 음성 입력을 다시 시작한다.
-        onTap: isVoiceActive ? null : onListen,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: isVoiceActive
-                ? PlanFlowColors.tertiaryAccentFaint
-                : PlanFlowColors.surfaceFaint,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isVoiceActive
-                  ? PlanFlowColors.activeLight
-                  : PlanFlowColors.primaryFaint,
-            ),
+    // 보여주므로, 여기는 시작/정지 동작 하나만 하는 단일 버튼으로 둔다.
+    // (이전엔 상태 아이콘·문구 + 별도 정지 버튼이 버블과 중복 표시됐음.)
+    if (isVoiceActive) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: onStopListening,
+          icon: const Icon(Icons.stop_circle_outlined),
+          label: const Text('음성 입력 정지'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(48),
+            foregroundColor: PlanFlowColors.active,
+            side: const BorderSide(color: PlanFlowColors.activeLight),
           ),
-          child: Row(
-        children: [
-          if (isListening)
-            const Icon(
-              Icons.hearing,
-              color: PlanFlowColors.active,
-              size: 22,
-            )
-          else if (isRestartPending)
-            const Icon(
-              Icons.sync,
-              color: PlanFlowColors.active,
-              size: 22,
-            )
-          else
-            IconButton.filledTonal(
-              tooltip: '음성 입력 다시 시작',
-              onPressed: onListen,
-              icon: const Icon(Icons.mic),
-            ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: PlanFlowColors.primary,
-                    fontWeight: FontWeight.w800,
-                    height: 1.25,
-                  ),
-            ),
-          ),
-          if (isVoiceActive) ...[
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: onStopListening,
-              icon: const Icon(Icons.stop_circle_outlined, size: 18),
-              label: const Text('정지'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(76, 40),
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-              ),
-            ),
-          ],
-        ],
+        ),
+      );
+    }
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.tonalIcon(
+        onPressed: onListen,
+        icon: const Icon(Icons.mic),
+        label: const Text('음성으로 명령하기'),
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(48),
         ),
       ),
-    ),
-  );
+    );
   }
 }
 

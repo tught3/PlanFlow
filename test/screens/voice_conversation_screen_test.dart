@@ -207,7 +207,7 @@ void main() {
       VoiceConversationScreen(sttService: stt),
     );
 
-    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
+    await tester.tap(find.text('음성으로 명령하기'));
     await tester.pump();
 
     expect(find.text('마이크를 준비하고 있어요...'), findsOneWidget);
@@ -226,7 +226,7 @@ void main() {
       VoiceConversationScreen(sttService: stt),
     );
 
-    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
+    await tester.tap(find.text('음성으로 명령하기'));
     await tester.pump();
 
     expect(find.text('마이크를 준비하고 있어요...'), findsOneWidget);
@@ -245,7 +245,7 @@ void main() {
       VoiceConversationScreen(sttService: stt),
     );
 
-    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
+    await tester.tap(find.text('음성으로 명령하기'));
     await tester.pump();
 
     stt.completeSuccess('오늘 일정 알려줘');
@@ -284,7 +284,7 @@ void main() {
       VoiceConversationScreen(sttService: stt),
     );
 
-    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
+    await tester.tap(find.text('음성으로 명령하기'));
     await tester.pump();
 
     stt.completeFailure('음성을 알아듣지 못했어요.');
@@ -359,7 +359,7 @@ void main() {
     expect(find.textContaining('일정을 이어서 말해도 돼요'), findsOneWidget);
     expect(find.text('계속 듣기'), findsNothing);
     expect(find.text('Supabase 설정을 확인하지 못했어요.'), findsOneWidget);
-    expect(find.byTooltip('음성 입력 다시 시작'), findsOneWidget);
+    expect(find.text('음성으로 명령하기'), findsOneWidget);
     expect(find.text('전송'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -640,18 +640,17 @@ void main() {
       VoiceConversationScreen(sttService: stt),
     );
 
-    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
+    await tester.tap(find.text('음성으로 명령하기'));
     await tester.pump();
 
     expect(find.text('마이크를 준비하고 있어요...'), findsOneWidget);
-    expect(find.text('정지'), findsOneWidget);
+    expect(find.text('음성 입력 정지'), findsOneWidget);
 
-    await tester.tap(find.text('정지'));
+    await tester.tap(find.text('음성 입력 정지'));
     await tester.pumpAndSettle();
 
-    // 정지 후 하단 컨트롤 바는 다시 시작을 유도하는 액션 안내로 돌아온다.
-    expect(find.textContaining('탭하면 음성으로 명령'), findsOneWidget);
-    expect(find.byTooltip('음성 입력 다시 시작'), findsOneWidget);
+    // 정지 후 하단 컨트롤 바는 다시 시작 버튼 하나로 돌아온다.
+    expect(find.text('음성으로 명령하기'), findsOneWidget);
     expect(stt.stopCalls, greaterThanOrEqualTo(1));
     expect(tester.takeException(), isNull);
   });
@@ -738,7 +737,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('음성 입력 다시 시작'));
+    await tester.tap(find.text('음성으로 명령하기'));
     await tester.pump();
     stt.completeSuccess('그 일정에 강릉 건도리횟집 장소추가');
     for (var i = 0; i < 20 && repository.updatedEvents.isEmpty; i += 1) {
