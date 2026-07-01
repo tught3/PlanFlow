@@ -313,12 +313,6 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
-      path: AppRoutes.groupDetail,
-      builder: (context, state) => GroupDetailScreen(
-        groupId: state.pathParameters['groupId'] ?? '',
-      ),
-    ),
-    GoRoute(
       path: AppRoutes.groupInvites,
       builder: (context, state) => GroupInviteScreen(
         contextProvider: _groupContextProviderExtra(state),
@@ -347,6 +341,17 @@ final GoRouter appRouter = GoRouter(
         event: state.extra is GroupEventModel
             ? state.extra! as GroupEventModel
             : null,
+      ),
+    ),
+    // 주의: `/groups/:groupId`(그룹 상세)는 반드시 `/groups/invites`,
+    // `/groups/members`, `/groups/events`, `/groups/dashboard` 같은 2세그먼트
+    // 정적 경로들보다 뒤에 선언한다. GoRouter는 먼저 선언된 경로가 우선이라,
+    // 앞에 두면 `/groups/invites`가 groupId="invites"인 그룹 상세로 잘못 매칭돼
+    // 초대 관리 등 정적 경로 화면이 열리지 않는다(빈/깨진 화면).
+    GoRoute(
+      path: AppRoutes.groupDetail,
+      builder: (context, state) => GroupDetailScreen(
+        groupId: state.pathParameters['groupId'] ?? '',
       ),
     ),
   ],
