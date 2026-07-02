@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import 'planflow_action_buttons.dart';
 
 const String _noReminderSheetValue = 'no_reminder';
 
@@ -179,17 +180,16 @@ class ReminderOffsetSelector extends StatelessWidget {
             suffixText: '분 전',
           ),
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () {
+          planflowCancelConfirmButtons(
+            onCancel: () => Navigator.of(context).pop(),
+            onConfirm: () {
               final minutes = int.tryParse(controller.text.trim());
               Navigator.of(context).pop(minutes);
             },
-            child: const Text('적용'),
+            cancelLabel: '취소',
+            confirmLabel: '적용',
           ),
         ],
       ),

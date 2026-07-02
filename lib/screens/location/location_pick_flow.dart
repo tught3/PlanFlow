@@ -7,6 +7,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/app_permission_service.dart';
 import '../../services/location_lookup_service.dart';
+import '../../widgets/planflow_action_buttons.dart';
 import 'location_picker_screen.dart';
 
 Future<LocationLookupResult?> pickLocationFromQuery({
@@ -229,19 +230,18 @@ Future<void> _showLocationPermissionGuide(
         content: const Text(
           '지도를 현재 위치 기준으로 보여주려면 위치 권한이 필요합니다. 권한을 켜면 주변 장소를 더 빠르게 고를 수 있어요.',
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('계속 선택'),
-          ),
-          FilledButton(
-            onPressed: () async {
+          planflowCancelConfirmButtons(
+            onCancel: () => Navigator.of(context).pop(),
+            onConfirm: () async {
               await permissions.openAppSettings();
               if (context.mounted) {
                 Navigator.of(context).pop();
               }
             },
-            child: const Text('설정 열기'),
+            cancelLabel: '계속 선택',
+            confirmLabel: '설정 열기',
           ),
         ],
       );
@@ -518,9 +518,14 @@ class _ExternalMapSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('닫기'),
+          PlanFlowActionButtons(
+            buttons: [
+              PlanFlowActionButton(
+                label: '닫기',
+                onPressed: () => Navigator.of(context).pop(),
+                type: ActionButtonType.secondary,
+              ),
+            ],
           ),
         ],
       ),

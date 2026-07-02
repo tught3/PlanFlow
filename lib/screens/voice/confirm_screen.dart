@@ -17,6 +17,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/voice_correction_rule_repository.dart';
 import '../../core/analytics_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/planflow_action_buttons.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/review_service.dart';
 import '../../services/calendar_auto_sync_service.dart';
@@ -2463,10 +2464,16 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
           ],
         ],
       ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('나중에'),
+        PlanFlowActionButtons(
+          buttons: [
+            PlanFlowActionButton(
+              label: '나중에',
+              onPressed: () => Navigator.of(context).pop(),
+              type: ActionButtonType.secondary,
+            ),
+          ],
         ),
       ],
     );
