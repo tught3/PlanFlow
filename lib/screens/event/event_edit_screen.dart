@@ -662,6 +662,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
     } on StateError catch (error) {
       debugPrint('EventEditScreen save state error: $error');
+      DiagLogger.log('EventEditSave', 'state_error error=$error');
       if (mounted) {
         _showMessage(_messageForSaveStateError(error));
       }
@@ -670,12 +671,21 @@ class _EventEditScreenState extends State<EventEditScreen> {
         'EventEditScreen save postgrest error: '
         'code=${error.code} message=${error.message} details=${error.details}',
       );
+      DiagLogger.log(
+        'EventEditSave',
+        'postgrest_error code=${error.code} message=${error.message} '
+            'details=${error.details}',
+      );
       if (mounted) {
         _showMessage(_messageForPostgrestError(error));
       }
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen save failed: $error');
       debugPrintStack(stackTrace: stackTrace);
+      DiagLogger.log(
+        'EventEditSave',
+        'unexpected_error error=$error stack=$stackTrace',
+      );
       if (mounted) {
         _showMessage('일정 저장에 실패했어요. 잠시 후 다시 시도해 주세요.');
       }
