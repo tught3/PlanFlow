@@ -440,6 +440,15 @@ class VoiceScheduleStructureService {
     for (final pattern in patterns) {
       cleaned = cleaned.replaceAll(pattern, ' ');
     }
+    // "일정 생성해줘"/"일정 만들어줘"/"일정 추가해줘"류 뒤쪽 명령 문구는 제목이
+    // 아니라 지시문이므로 제거한다. ("모란역으로 가기 일정 생성해줘" -> "모란역으로 가기")
+    cleaned = cleaned.replaceAll(
+      RegExp(
+        r'\s*일정\s*(?:을|를)?\s*(?:새로\s*)?(?:추가|등록|생성|만들어)\s*'
+        r'(?:해\s*줘|해줘|해\s*주세요|해주세요|줘)?\s*$',
+      ),
+      '',
+    );
     cleaned = cleaned
         .replaceAll(RegExp(r'^\s*(?:에|로|으로)\s+'), '')
         .replaceAll(RegExp(r'\s+'), ' ')

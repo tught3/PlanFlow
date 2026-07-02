@@ -288,6 +288,17 @@ void main() {
       expect(localTitle, '우리회사 월례 조회');
     });
 
+    test('strips trailing "일정 생성해줘" command phrase from the title', () {
+      const rawText = '오늘 오후 9시에 모란역으로 가기 일정 생성해줘';
+
+      final parsedTitle = service.normalizeParsedScheduleTitle(
+        '모란역 가기 일정 생성해줘',
+        rawText: rawText,
+      );
+
+      expect(parsedTitle, '모란역 가기');
+    });
+
     test('classifies name-like particles into target and participants', () {
       final target = service.extractPeopleFields('민수한테 확인 전화');
       final participant = service.extractPeopleFields('수연이랑 병원 방문');
