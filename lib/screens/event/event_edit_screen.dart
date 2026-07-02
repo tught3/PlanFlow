@@ -31,6 +31,7 @@ import '../../services/smart_preparation_alarm_service.dart';
 import '../../l10n/app_l10n.dart';
 import '../../widgets/calendar_style_event_editor.dart';
 import '../../widgets/overlap_warning_dialog.dart';
+import '../../widgets/planflow_action_buttons.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
 
@@ -340,24 +341,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
               ),
               actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               actions: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () =>
-                            Navigator.of(dialogContext).pop(false),
-                        child: const Text('나중에'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () =>
-                            Navigator.of(dialogContext).pop(true),
-                        child: const Text('허용하러 가기'),
-                      ),
-                    ),
-                  ],
+                planflowCancelConfirmButtons(
+                  onCancel: () => Navigator.of(dialogContext).pop(false),
+                  onConfirm: () => Navigator.of(dialogContext).pop(true),
+                  cancelLabel: '나중에',
+                  confirmLabel: '허용하러 가기',
                 ),
               ],
             ),
@@ -1111,31 +1099,25 @@ class _EventEditScreenState extends State<EventEditScreen> {
         content: const Text('어떤 범위에 수정 내용을 적용할까요?'),
         actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         actions: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop('single'),
-                      child: const Text('이 일정만'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop('future'),
-                      child: const Text('이후 모든 일정'),
-                    ),
-                  ),
-                ],
+          PlanFlowActionButtons(
+            buttons: [
+              PlanFlowActionButton(
+                label: '이 일정만',
+                onPressed: () => Navigator.of(context).pop('single'),
+                type: ActionButtonType.secondary,
+                flex: 1,
               ),
-              const SizedBox(height: 8),
-              FilledButton(
+              PlanFlowActionButton(
+                label: '이후 모든 일정',
+                onPressed: () => Navigator.of(context).pop('future'),
+                type: ActionButtonType.secondary,
+                flex: 1,
+              ),
+              PlanFlowActionButton(
+                label: '전체 반복 일정',
                 onPressed: () => Navigator.of(context).pop('all'),
-                child: const Text('전체 반복 일정'),
+                type: ActionButtonType.primary,
+                flex: 2,
               ),
             ],
           ),
@@ -1434,9 +1416,14 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('나중에'),
+        PlanFlowActionButtons(
+          buttons: [
+            PlanFlowActionButton(
+              label: '나중에',
+              onPressed: () => Navigator.of(context).pop(),
+              type: ActionButtonType.secondary,
+            ),
+          ],
         ),
       ],
     );

@@ -40,6 +40,7 @@ import '../../services/notification_service.dart';
 import '../../core/diag_logger.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
+import '../../widgets/planflow_action_buttons.dart';
 import '../../l10n/app_l10n.dart';
 import 'beta_survey_sheet.dart';
 import 'feedback_report_sheet.dart';
@@ -1203,7 +1204,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
         actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
         actions: [
-          _buildDialogButtonBar(
+          planflowCancelConfirmButtons(
             onCancel: () => Navigator.of(context).pop(),
             onConfirm: () => Navigator.of(context).pop(),
             cancelLabel: '닫기',
@@ -1415,7 +1416,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           '가져오는 데 시간이 걸릴 수 있습니다. 앱을 백그라운드로 보내도 계속 진행됩니다. 먼저 최근 3개월과 앞으로 6개월을 빠르게 가져옵니다.',
         ),
         actions: [
-          _buildDialogButtonBar(
+          planflowCancelConfirmButtons(
             onCancel: () => Navigator.of(context).pop(false),
             onConfirm: () => Navigator.of(context).pop(true),
             cancelLabel: '취소',
@@ -1443,58 +1444,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     ).whenComplete(() {
       _isNaverCalDavProgressDialogOpen = false;
     });
-  }
-
-  Widget _buildDialogButtonBar({
-    required VoidCallback onCancel,
-    required VoidCallback onConfirm,
-    required String cancelLabel,
-    required String confirmLabel,
-    int cancelFlex = 1,
-    int confirmFlex = 1,
-    Color? cancelForegroundColor,
-    Color? cancelBackgroundColor,
-    Color? confirmForegroundColor,
-    Color? confirmBackgroundColor,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: Row(
-        children: [
-          Expanded(
-            flex: cancelFlex,
-            child: FilledButton.tonal(
-              onPressed: onCancel,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                foregroundColor:
-                    cancelForegroundColor ?? PlanFlowColors.primary,
-                backgroundColor:
-                    cancelBackgroundColor ?? PlanFlowColors.primaryFaint,
-              ),
-              child: Text(cancelLabel),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: confirmFlex,
-            child: FilledButton(
-              onPressed: onConfirm,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                foregroundColor: confirmForegroundColor ?? Colors.white,
-                backgroundColor:
-                    confirmBackgroundColor ?? PlanFlowColors.primary,
-              ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(confirmLabel, maxLines: 1),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   ButtonStyle _settingsSkyButtonStyle() {
@@ -1655,7 +1604,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             ],
           ),
           actions: [
-            _buildDialogButtonBar(
+            planflowCancelConfirmButtons(
               onCancel: () => Navigator.of(context).pop(),
               onConfirm: () {
                 final value = int.tryParse(controller.text.trim());
@@ -1684,7 +1633,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         title: const Text('전체 기록 가져오기'),
         content: const Text('전체 기록은 일정 수에 따라 오래 걸릴 수 있습니다. 그래도 진행할까요?'),
         actions: [
-          _buildDialogButtonBar(
+          planflowCancelConfirmButtons(
             onCancel: () => Navigator.of(context).pop(false),
             onConfirm: () => Navigator.of(context).pop(true),
             cancelLabel: '취소',
@@ -1872,20 +1821,28 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
           actions: [
-            _buildDialogButtonBar(
-              onCancel: () => Navigator.of(context).pop(),
-              onConfirm: () {
-                Navigator.of(context).pop(
-                  _NaverCalDavCredentials(
-                    naverId: idController.text,
-                    appPassword: passwordController.text,
-                  ),
-                );
-              },
-              cancelLabel: '취소',
-              confirmLabel: '연결하고 가져오기',
-              cancelFlex: 3,
-              confirmFlex: 7,
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '취소',
+                  onPressed: () => Navigator.of(context).pop(),
+                  type: ActionButtonType.secondary,
+                  flex: 3,
+                ),
+                PlanFlowActionButton(
+                  label: '연결하고 가져오기',
+                  onPressed: () {
+                    Navigator.of(context).pop(
+                      _NaverCalDavCredentials(
+                        naverId: idController.text,
+                        appPassword: passwordController.text,
+                      ),
+                    );
+                  },
+                  type: ActionButtonType.primary,
+                  flex: 7,
+                ),
+              ],
             ),
           ],
         );
@@ -2375,7 +2332,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         content: Text('${_formatDateTime(backup.createdAt)} 백업을 복원할까요?'),
         actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
         actions: [
-          _buildDialogButtonBar(
+          planflowCancelConfirmButtons(
             onCancel: () => Navigator.of(context).pop(false),
             onConfirm: () => Navigator.of(context).pop(true),
             cancelLabel: '취소',
@@ -2457,7 +2414,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
         actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
         actions: [
-          _buildDialogButtonBar(
+          planflowCancelConfirmButtons(
             onCancel: () => Navigator.of(context).pop(),
             onConfirm: () => Navigator.of(context).pop(_backups.first),
             cancelLabel: '취소',

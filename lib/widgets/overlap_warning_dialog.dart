@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/local_time.dart';
 import '../core/theme.dart';
 import '../data/models/event_model.dart';
+import 'planflow_action_buttons.dart';
 
 Future<bool> showOverlapWarningDialog({
   required BuildContext context,
@@ -15,22 +16,11 @@ Future<bool> showOverlapWarningDialog({
       content: _OverlapWarningContent(overlappingEvents: overlappingEvents),
       actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
       actions: [
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('중단'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('계속 저장'),
-              ),
-            ),
-          ],
+        planflowCancelConfirmButtons(
+          onCancel: () => Navigator.of(dialogContext).pop(false),
+          onConfirm: () => Navigator.of(dialogContext).pop(true),
+          cancelLabel: '중단',
+          confirmLabel: '계속 저장',
         ),
       ],
     ),
