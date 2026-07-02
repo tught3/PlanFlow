@@ -141,11 +141,11 @@ void main() {
       final parsed = result.toParsedScheduleMap();
       expect(body['model'], 'gpt-4o-mini');
       expect(result.method, VoiceCommandAnalysisMethod.ai);
-      expect(result.scheduleFields['title'], '월례 조회');
+      expect(result.scheduleFields['title'], '우리회사 월례 조회');
       expect(result.scheduleFields['location'], '우리회사');
       expect(result.scheduleFields['memo'], '주차장 B2 확인');
       expect(result.scheduleFields['recurrence_rule'], 'FREQ=MONTHLY');
-      expect(parsed['title'], '월례 조회');
+      expect(parsed['title'], '우리회사 월례 조회');
       expect(parsed['location'], '우리회사');
       expect(parsed['memo'], '주차장 B2 확인');
       expect(parsed['recurrence_rule'], 'FREQ=MONTHLY');

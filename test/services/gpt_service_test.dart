@@ -480,7 +480,7 @@ void main() {
       expect(result['title'], '팀장님 내일 오시는지 확인전화하기');
     });
 
-    test('fallback parsing keeps monthly recurrence and removes location noise',
+    test('fallback parsing keeps monthly recurrence and keeps location in title',
         () async {
       final client = MockClient((request) async {
         return http.Response(
@@ -509,7 +509,7 @@ void main() {
       final result = await service.parseSchedule('우리회사에서 매월 월례 조회');
 
       expect(result['parse_failed'], isTrue);
-      expect(result['title'], '월례 조회');
+      expect(result['title'], '우리회사 월례 조회');
       expect(result['location'], '우리회사');
       expect(result['recurrence_rule'], 'FREQ=MONTHLY');
       expect(result['memo'], isNull);

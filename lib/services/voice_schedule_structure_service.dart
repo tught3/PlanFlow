@@ -1214,16 +1214,44 @@ class VoiceScheduleStructureService {
     if (extractedLocation == null || extractedLocation.isEmpty) {
       return stripLeadingLocationPhrase(normalized);
     }
-    // 장소는 location 필드에 넣되 제목에도 그대로 유지한다 (사용자 요구).
-    // 단, 조직/회사처럼 제목에 어울리지 않는 것은 제거.
-    if (!_shouldKeepLeadingLocationInTitle(extractedLocation)) {
-      return _stripKnownLeadingLocationPrefix(normalized, extractedLocation);
+    // 장소는 location 필드에 넣되 어떤 종류든 제목에도 그대로 유지한다
+    // (사용자 요구 — 회사/사무실/아파트 등 예외 없이 전부 유지).
+    // 후보 순서: 추출된 장소 전체 -> 첫 토큰만(조사 제거) 루트.
+    // extractLeadingLocation이 뒤 문장까지 과매칭할 때를 대비한 방어이며,
+    // 이미 알고 있는 후보를 문장 맨 앞에서만 정확히 잘라낸다.
+    // stripLeadingLocationPhrase의 느슨한 정규식은 "리바로"처럼 조사가 아닌
+    // 단어 끝 글자를 조사로 오인해 잘라내는 부작용이 있어 여기서는 쓰지 않는다.
+    final candidates = <String>{
+      extractedLocation.trim(),
+      _leadingLocationRoot(extractedLocation),
+    }..removeWhere((candidate) => candidate.isEmpty);
+
+    for (final candidate in candidates) {
+      final stripped = _stripKnownLeadingLocationPrefix(normalized, candidate);
+      if (stripped != normalized && stripped.isNotEmpty) {
+        return normalizeSpacingForSchedule('$candidate $stripped');
+      }
     }
-    final stripped = stripLeadingLocationPhrase(normalized);
-    if (stripped == normalized || stripped.isEmpty) {
-      return normalizeSpacingForSchedule(normalized);
+    return normalizeSpacingForSchedule(normalized);
+  }
+
+  String _leadingLocationRoot(String location) {
+    final normalized = normalizeText(location, '').trim();
+    if (normalized.isEmpty) {
+      return '';
     }
-    return normalizeSpacingForSchedule('$extractedLocation $stripped');
+    final firstToken = normalized.split(RegExp(r'\s+')).first.trim();
+    if (firstToken.isEmpty) {
+      return '';
+    }
+    final stripped = firstToken.replaceFirst(
+      RegExp(r'(?:에서|에|로|으로)$'),
+      '',
+    );
+    if (stripped.isEmpty) {
+      return '';
+    }
+    return normalizeSpacingForSchedule(stripped);
   }
 
   String _stripKnownLeadingLocationPrefix(String text, String location) {
@@ -1235,103 +1263,17 @@ class VoiceScheduleStructureService {
     if (normalizedText == normalizedLocation) {
       return '';
     }
-
-    final prefixCandidates = <String>[
-      normalizedLocation,
-      if (!_shouldKeepLeadingLocationInTitle(normalizedLocation))
-        _leadingLocationRoot(normalizedLocation),
-    ].where((candidate) => candidate.isNotEmpty).toSet().toList();
-
-    for (final candidate in prefixCandidates) {
-      final prefixPattern = RegExp(
-        '^${RegExp.escape(candidate)}(?:\\s*(?:에서|에|로|으로)\\s*)?',
-      );
-      if (!prefixPattern.hasMatch(normalizedText)) {
-        continue;
-      }
-
-      final remainder = normalizedText.replaceFirst(prefixPattern, '').trim();
-      if (remainder.isEmpty) {
-        continue;
-      }
-      return normalizeSpacingForSchedule(remainder);
-    }
-
-    return normalizedText;
-  }
-
-  String _leadingLocationRoot(String location) {
-    final normalized = normalizeText(location, '').trim();
-    if (normalized.isEmpty) {
-      return '';
-    }
-
-    final firstToken = normalized.split(RegExp(r'\s+')).first.trim();
-    if (firstToken.isEmpty) {
-      return '';
-    }
-
-    final stripped = firstToken.replaceFirst(
-      RegExp(r'(?:에서|에|로|으로)$'),
-      '',
+    final prefixPattern = RegExp(
+      '^${RegExp.escape(normalizedLocation)}(?:\\s*(?:에서|에|로|으로)\\s*)?',
     );
-    if (stripped.isEmpty) {
-      return '';
+    if (!prefixPattern.hasMatch(normalizedText)) {
+      return normalizedText;
     }
-    return normalizeSpacingForSchedule(stripped);
-  }
-
-  bool _shouldKeepLeadingLocationInTitle(String location) {
-    final normalized =
-        normalizeText(location, '').replaceAll(RegExp(r'\s+'), '');
-    if (normalized.isEmpty) {
-      return false;
+    final remainder = normalizedText.replaceFirst(prefixPattern, '').trim();
+    if (remainder.isEmpty) {
+      return normalizedText;
     }
-
-    const orgKeywords = <String>[
-      '회사',
-      '본사',
-      '부서',
-      '팀',
-      '사무실',
-      '연구소',
-    ];
-    if (orgKeywords.any(normalized.contains)) {
-      return false;
-    }
-
-    const placeKeywords = <String>[
-      '센터',
-      '병원',
-      '약국',
-      '식당',
-      '카페',
-      '호텔',
-      '학교',
-      '학원',
-      '은행',
-      '마트',
-      '공원',
-      '주차장',
-      '지점',
-      '건물',
-      '오피스',
-      '스튜디오',
-      '헬스장',
-      '편의점',
-      '아웃렛',
-      '주유소',
-      '시장',
-      '횟집',
-      '맛집',
-      '가게',
-      '본점',
-      '역',
-      '공항',
-      '터미널',
-      '항',
-    ];
-    return placeKeywords.any(normalized.contains);
+    return normalizeSpacingForSchedule(remainder);
   }
 
   String stripLeadingLocationPhrase(String text) {

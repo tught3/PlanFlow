@@ -272,7 +272,7 @@ void main() {
       expect(title, isNot(contains('모란역으 ')));
     });
 
-    test('strips organization-like leading names from the title', () {
+    test('keeps organization-like leading names in the title', () {
       const rawText = '우리회사에서 매월 월례 조회 메모에 주차장 B2 확인';
 
       final parsedTitle = service.normalizeParsedScheduleTitle(
@@ -284,8 +284,8 @@ void main() {
         referenceText: rawText,
       );
 
-      expect(parsedTitle, '월례 조회');
-      expect(localTitle, '월례 조회');
+      expect(parsedTitle, '우리회사 월례 조회');
+      expect(localTitle, '우리회사 월례 조회');
     });
 
     test('classifies name-like particles into target and participants', () {
