@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
+import 'planflow_action_buttons.dart';
 
 class RecurrenceSelection {
   const RecurrenceSelection({
@@ -257,9 +258,15 @@ class RecurrenceSelector extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('완료'),
+                    PlanFlowActionButtons(
+                      buttons: [
+                        PlanFlowActionButton(
+                          label: '완료',
+                          onPressed: () => Navigator.of(context).pop(),
+                          type: ActionButtonType.primary,
+                          flex: 1,
+                        ),
+                      ],
                     ),
                   ],
                 ),

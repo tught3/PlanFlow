@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../data/models/feedback_report_model.dart';
 import '../../data/repositories/feedback_repository.dart';
+import '../../widgets/planflow_action_buttons.dart';
 
 const String officialSupportEmail = 'support@fluxstudio.co.kr';
 const Set<String> feedbackAdminEmails = <String>{
@@ -191,23 +192,22 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                FilledButton.icon(
-                  key: const ValueKey('feedback-submit-button'),
-                  onPressed: _isSubmitting ? null : _submit,
-                  icon: _isSubmitting
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send_outlined),
-                  label: Text(_isSubmitting ? '보내는 중...' : '보내기'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  key: const ValueKey('feedback-email-button'),
-                  onPressed: _isSubmitting ? null : _openEmail,
-                  icon: const Icon(Icons.mail_outline),
-                  label: const Text('이메일로 문의하기'),
+                PlanFlowActionButtons(
+                  alignment: WrapAlignment.center,
+                  buttons: [
+                    PlanFlowActionButton(
+                      label: _isSubmitting ? '보내는 중...' : '보내기',
+                      onPressed: _isSubmitting ? null : _submit,
+                      type: ActionButtonType.primary,
+                      flex: 1,
+                    ),
+                    PlanFlowActionButton(
+                      label: '이메일로 문의하기',
+                      onPressed: _isSubmitting ? null : _openEmail,
+                      type: ActionButtonType.secondary,
+                      flex: 1,
+                    ),
+                  ],
                 ),
               ],
             ),
