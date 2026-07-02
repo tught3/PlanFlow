@@ -316,4 +316,143 @@ void main() {
     expect(summary.memberShareStats[2].sharedCount, 0);
     expect(summary.memberShareStats[2].lastSharedAt, isNull);
   });
+
+  test(
+      'memberShareStats always sorts leader first even with sharedCount 0 vs higher',
+      () async {
+    final groupRepository = FakeGroupRepository(
+      groups: <GroupModel>[
+        _group(
+          id: 'group-1',
+          name: 'Leader Group',
+          createdBy: 'user-1',
+          createdAt: DateTime.utc(2026, 6, 11),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          _member(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'leader',
+          ),
+          _member(
+            id: 'member-2',
+            groupId: 'group-1',
+            userId: 'user-2',
+            role: 'member',
+          ),
+        ],
+      },
+    );
+    final eventRepository = FakeGroupEventRepository(
+      initialEvents: <GroupEventModel>[
+        // 리더는 이번 주 공유 0건, 멤버는 5건이어도 리더가 먼저 나와야 함.
+        // 2026-06-11(목) 기준 이번 주는 06-08(월)~06-14(일).
+        for (var i = 0; i < 5; i++)
+          _event(
+            id: 'event-$i',
+            groupId: 'group-1',
+            title: '멤버 일정 $i',
+            startAt: DateTime.utc(2026, 6, 8 + i, 1),
+            endAt: DateTime.utc(2026, 6, 8 + i, 2),
+            createdBy: 'user-2',
+            createdAt: DateTime.utc(2026, 6, 8 + i, 1),
+          ),
+      ],
+    );
+
+    final repository = SupabaseGroupDashboardRepository(
+      groupRepository: groupRepository,
+      eventRepository: eventRepository,
+    );
+    final summary = await repository.loadDashboard(
+      groupId: 'group-1',
+      now: DateTime.utc(2026, 6, 11, 9),
+    );
+
+    expect(summary.memberShareStats, hasLength(2));
+    expect(summary.memberShareStats[0].userId, 'user-1');
+    expect(summary.memberShareStats[0].isLeader, isTrue);
+    expect(summary.memberShareStats[0].sharedCount, 0);
+
+    expect(summary.memberShareStats[1].userId, 'user-2');
+    expect(summary.memberShareStats[1].isLeader, isFalse);
+    expect(summary.memberShareStats[1].sharedCount, 5);
+  });
+
+  test(
+      'fetchMemberEvents returns only that member events within the given range',
+      () async {
+    final groupRepository = FakeGroupRepository(
+      groups: <GroupModel>[
+        _group(
+          id: 'group-1',
+          name: 'Leader Group',
+          createdBy: 'user-1',
+          createdAt: DateTime.utc(2026, 6, 1),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          _member(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'leader',
+          ),
+          _member(
+            id: 'member-2',
+            groupId: 'group-1',
+            userId: 'user-2',
+            role: 'member',
+          ),
+        ],
+      },
+    );
+    final eventRepository = FakeGroupEventRepository(
+      initialEvents: <GroupEventModel>[
+        _event(
+          id: 'in-range-mine',
+          groupId: 'group-1',
+          title: '범위 내 내 일정',
+          startAt: DateTime.utc(2026, 6, 15, 1),
+          endAt: DateTime.utc(2026, 6, 15, 2),
+          createdBy: 'user-2',
+        ),
+        _event(
+          id: 'in-range-other',
+          groupId: 'group-1',
+          title: '범위 내 타인 일정',
+          startAt: DateTime.utc(2026, 6, 16, 1),
+          endAt: DateTime.utc(2026, 6, 16, 2),
+          createdBy: 'user-1',
+        ),
+        _event(
+          id: 'out-of-range-mine',
+          groupId: 'group-1',
+          title: '범위 밖 내 일정',
+          startAt: DateTime.utc(2026, 7, 1, 1),
+          endAt: DateTime.utc(2026, 7, 1, 2),
+          createdBy: 'user-2',
+        ),
+      ],
+    );
+
+    final repository = SupabaseGroupDashboardRepository(
+      groupRepository: groupRepository,
+      eventRepository: eventRepository,
+    );
+
+    final events = await repository.fetchMemberEvents(
+      groupId: 'group-1',
+      memberUserId: 'user-2',
+      from: DateTime.utc(2026, 6, 10),
+      to: DateTime.utc(2026, 6, 20),
+    );
+
+    expect(events, hasLength(1));
+    expect(events.first.id, 'in-range-mine');
+  });
 }

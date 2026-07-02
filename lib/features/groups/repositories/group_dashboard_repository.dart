@@ -15,12 +15,17 @@ class MemberShareStat {
     required this.userId,
     required this.displayName,
     required this.sharedCount,
+    required this.isLeader,
     this.lastSharedAt,
   });
 
   final String userId;
   final String displayName;
   final int sharedCount;
+
+  /// 이 멤버가 그룹 리더인지 여부. 멤버 목록류 UI는 항상 리더를 최상단에
+  /// 표시해야 하므로 정렬/배지 표시에 사용한다.
+  final bool isLeader;
   final DateTime? lastSharedAt;
 }
 
@@ -49,6 +54,17 @@ abstract class GroupDashboardRepository {
   Future<GroupDashboardSummary> loadDashboard({
     required String groupId,
     required DateTime now,
+  });
+
+  /// 특정 멤버가 [from]~[to] 구간에 공유(생성)한 그룹 일정 목록을
+  /// startAt 오름차순으로 반환한다. 대시보드 멤버별 공유 현황 카드의
+  /// 바텀시트에서 사용하며, 대시보드 요약의 "이번 주" 집계와는 별개로
+  /// 임의 기간을 조회할 수 있다.
+  Future<List<GroupEventModel>> fetchMemberEvents({
+    required String groupId,
+    required String memberUserId,
+    required DateTime from,
+    required DateTime to,
   });
 }
 
@@ -114,7 +130,8 @@ class SupabaseGroupDashboardRepository extends GroupDashboardRepository {
   /// 활성 멤버별 공유(생성) 일정 수와 최근 공유 시각을 집계한다.
   ///
   /// 0건인 멤버도 결과에 포함해 리더가 미참여 멤버를 확인할 수 있게 하고,
-  /// sharedCount 내림차순, 동률이면 이름 오름차순으로 정렬한다.
+  /// 리더는 sharedCount와 무관하게 항상 최상단에 오도록 정렬한다.
+  /// 리더 내부/멤버 내부는 sharedCount 내림차순, 동률이면 이름 오름차순.
   List<MemberShareStat> _buildMemberShareStats(
     List<GroupMemberModel> activeMembers,
     List<GroupEventModel> events,
@@ -137,12 +154,16 @@ class SupabaseGroupDashboardRepository extends GroupDashboardRepository {
             userId: member.userId,
             displayName: member.effectiveDisplayName,
             sharedCount: counts[member.userId] ?? 0,
+            isLeader: member.isLeader,
             lastSharedAt: lastSharedAt[member.userId],
           ),
         )
         .toList(growable: false);
 
     stats.sort((left, right) {
+      if (left.isLeader != right.isLeader) {
+        return left.isLeader ? -1 : 1;
+      }
       final byCount = right.sharedCount.compareTo(left.sharedCount);
       if (byCount != 0) {
         return byCount;
@@ -150,6 +171,22 @@ class SupabaseGroupDashboardRepository extends GroupDashboardRepository {
       return left.displayName.compareTo(right.displayName);
     });
     return stats;
+  }
+
+  @override
+  Future<List<GroupEventModel>> fetchMemberEvents({
+    required String groupId,
+    required String memberUserId,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final events =
+        await _eventRepository.getEventsForGroup(groupId, from, to);
+    final memberEvents = events
+        .where((event) => event.createdBy == memberUserId)
+        .toList(growable: false)
+      ..sort((left, right) => left.startAt.compareTo(right.startAt));
+    return memberEvents;
   }
 
   _WeekRange _weekRange(DateTime now) {

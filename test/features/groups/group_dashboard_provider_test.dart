@@ -110,10 +110,15 @@ class FakeGroupEventRepository extends GroupEventRepository {
 class FakeGroupDashboardRepository extends GroupDashboardRepository {
   FakeGroupDashboardRepository({
     required this.summary,
+    this.memberEvents = const <GroupEventModel>[],
   });
 
   final GroupDashboardSummary summary;
+  final List<GroupEventModel> memberEvents;
   String? lastGroupId;
+  String? lastMemberUserId;
+  DateTime? lastFrom;
+  DateTime? lastTo;
 
   @override
   Future<GroupDashboardSummary> loadDashboard({
@@ -122,6 +127,20 @@ class FakeGroupDashboardRepository extends GroupDashboardRepository {
   }) async {
     lastGroupId = groupId;
     return summary;
+  }
+
+  @override
+  Future<List<GroupEventModel>> fetchMemberEvents({
+    required String groupId,
+    required String memberUserId,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    lastGroupId = groupId;
+    lastMemberUserId = memberUserId;
+    lastFrom = from;
+    lastTo = to;
+    return memberEvents;
   }
 }
 
@@ -260,5 +279,69 @@ void main() {
     expect(provider.isPersonalMode, isTrue);
     expect(provider.todayEventCount, 0);
     expect(provider.memberCount, 0);
+  });
+
+  test('fetchMemberEvents delegates to repository with selected group id',
+      () async {
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-1',
+            name: 'Leader Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final memberEvent = _event(
+      id: 'event-1',
+      groupId: 'group-1',
+      title: '멤버 일정',
+      startAt: DateTime.utc(2026, 6, 11, 1),
+      endAt: DateTime.utc(2026, 6, 11, 2),
+    );
+    final repository = FakeGroupDashboardRepository(
+      summary: GroupDashboardSummary(
+        todayEventCount: 0,
+        weekEventCount: 0,
+        memberCount: 1,
+        upcomingEvents: const <GroupEventModel>[],
+      ),
+      memberEvents: <GroupEventModel>[memberEvent],
+    );
+    final provider = GroupDashboardProvider(
+      contextProvider: contextProvider,
+      repository: repository,
+      nowProvider: () => DateTime.utc(2026, 6, 11, 9),
+    );
+
+    await provider.load('user-1');
+
+    final from = DateTime.utc(2026, 6, 5);
+    final to = DateTime.utc(2026, 6, 12);
+    final result = await provider.fetchMemberEvents(
+      memberUserId: 'user-1',
+      from: from,
+      to: to,
+    );
+
+    expect(result, hasLength(1));
+    expect(result.first.id, 'event-1');
+    expect(repository.lastGroupId, 'group-1');
+    expect(repository.lastMemberUserId, 'user-1');
+    expect(repository.lastFrom, from);
+    expect(repository.lastTo, to);
   });
 }

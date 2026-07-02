@@ -11,6 +11,7 @@ import 'package:planflow/features/groups/repositories/group_dashboard_repository
 import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/features/groups/screens/group_dashboard_screen.dart';
+import 'package:planflow/features/groups/widgets/member_shared_events_sheet.dart';
 
 class FakeGroupRepository extends GroupRepository {
   FakeGroupRepository({
@@ -112,9 +113,11 @@ class FakeGroupEventRepository extends GroupEventRepository {
 class FakeGroupDashboardRepository extends GroupDashboardRepository {
   FakeGroupDashboardRepository({
     required this.summary,
+    this.memberEvents = const <GroupEventModel>[],
   });
 
   final GroupDashboardSummary summary;
+  final List<GroupEventModel> memberEvents;
 
   @override
   Future<GroupDashboardSummary> loadDashboard({
@@ -122,6 +125,18 @@ class FakeGroupDashboardRepository extends GroupDashboardRepository {
     required DateTime now,
   }) async {
     return summary;
+  }
+
+  @override
+  Future<List<GroupEventModel>> fetchMemberEvents({
+    required String groupId,
+    required String memberUserId,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    return memberEvents
+        .where((event) => event.createdBy == memberUserId)
+        .toList(growable: false);
   }
 }
 
@@ -160,6 +175,7 @@ GroupEventModel _event({
   required DateTime startAt,
   required DateTime endAt,
   String status = 'active',
+  String createdBy = 'user-1',
 }) {
   return GroupEventModel(
     id: id,
@@ -167,8 +183,24 @@ GroupEventModel _event({
     title: title,
     startAt: startAt,
     endAt: endAt,
-    createdBy: 'user-1',
+    createdBy: createdBy,
     status: status,
+  );
+}
+
+MemberShareStat _stat({
+  required String userId,
+  required String displayName,
+  required int sharedCount,
+  required bool isLeader,
+  DateTime? lastSharedAt,
+}) {
+  return MemberShareStat(
+    userId: userId,
+    displayName: displayName,
+    sharedCount: sharedCount,
+    isLeader: isLeader,
+    lastSharedAt: lastSharedAt,
   );
 }
 
@@ -272,5 +304,155 @@ void main() {
     expect(find.text('선택된 그룹이 없어요'), findsWidgets);
     expect(find.byKey(const ValueKey('group-dashboard-group-list-button')),
         findsOneWidget);
+  });
+
+  testWidgets(
+      'tapping a member share row opens the bottom sheet showing that member name',
+      (tester) async {
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-1',
+            name: 'Leader Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+            _member(
+              id: 'member-2',
+              groupId: 'group-1',
+              userId: 'user-2',
+              role: 'member',
+            ),
+          ],
+        },
+      ),
+    );
+    final provider = GroupDashboardProvider(
+      contextProvider: contextProvider,
+      repository: FakeGroupDashboardRepository(
+        summary: GroupDashboardSummary(
+          todayEventCount: 0,
+          weekEventCount: 1,
+          memberCount: 2,
+          upcomingEvents: const <GroupEventModel>[],
+          memberShareStats: <MemberShareStat>[
+            _stat(
+              userId: 'user-1',
+              displayName: '리더 홍길동',
+              sharedCount: 0,
+              isLeader: true,
+            ),
+            _stat(
+              userId: 'user-2',
+              displayName: '멤버 김철수',
+              sharedCount: 1,
+              isLeader: false,
+            ),
+          ],
+        ),
+      ),
+      nowProvider: () => DateTime.utc(2026, 6, 11, 9),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupDashboardScreen(
+          provider: provider,
+          currentUserIdOverride: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final rowFinder =
+        find.byKey(const ValueKey('group-dashboard-member-share-user-2'));
+    expect(rowFinder, findsOneWidget);
+    await tester.ensureVisible(rowFinder);
+    await tester.pumpAndSettle();
+
+    await tester.tap(rowFinder);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MemberSharedEventsSheet), findsOneWidget);
+    expect(find.text('멤버 김철수'), findsWidgets);
+  });
+
+  testWidgets(
+      'bottom sheet default range shows last-7-days events and empty state when none',
+      (tester) async {
+    final contextProvider = GroupContextProvider(
+      repository: FakeGroupRepository(
+        groups: <GroupModel>[
+          _group(
+            id: 'group-1',
+            name: 'Leader Group',
+            createdBy: 'user-1',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            _member(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final provider = GroupDashboardProvider(
+      contextProvider: contextProvider,
+      repository: FakeGroupDashboardRepository(
+        summary: GroupDashboardSummary(
+          todayEventCount: 0,
+          weekEventCount: 0,
+          memberCount: 1,
+          upcomingEvents: const <GroupEventModel>[],
+          memberShareStats: <MemberShareStat>[
+            _stat(
+              userId: 'user-1',
+              displayName: '리더 홍길동',
+              sharedCount: 0,
+              isLeader: true,
+            ),
+          ],
+        ),
+        memberEvents: const <GroupEventModel>[],
+      ),
+      nowProvider: () => DateTime.utc(2026, 6, 11, 9),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GroupDashboardScreen(
+          provider: provider,
+          currentUserIdOverride: 'user-1',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final rowFinder =
+        find.byKey(const ValueKey('group-dashboard-member-share-user-1'));
+    await tester.ensureVisible(rowFinder);
+    await tester.pumpAndSettle();
+
+    await tester.tap(rowFinder);
+    await tester.pumpAndSettle();
+
+    expect(find.text('최근 7일'), findsOneWidget);
+    expect(find.text('이 기간에 공유한 일정이 없어요.'), findsOneWidget);
   });
 }

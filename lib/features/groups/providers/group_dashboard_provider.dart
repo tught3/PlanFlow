@@ -71,6 +71,26 @@ class GroupDashboardProvider extends ChangeNotifier {
     }
   }
 
+  /// 특정 멤버가 [from]~[to] 구간에 공유한 그룹 일정을 조회한다.
+  /// 대시보드 요약의 "이번 주" 집계와 무관한 별도 조회이며, 그룹이
+  /// 선택되어 있지 않으면 빈 목록을 반환한다.
+  Future<List<GroupEventModel>> fetchMemberEvents({
+    required String memberUserId,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final group = _state.selectedGroup;
+    if (group == null) {
+      return const <GroupEventModel>[];
+    }
+    return _repository.fetchMemberEvents(
+      groupId: group.id,
+      memberUserId: memberUserId,
+      from: from,
+      to: to,
+    );
+  }
+
   Future<void> refresh() async {
     final userId = _currentUserId;
     if (userId == null || userId.isEmpty) {

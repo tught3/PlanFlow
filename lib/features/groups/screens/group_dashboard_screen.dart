@@ -11,6 +11,7 @@ import '../models/group_event_model.dart';
 import '../providers/group_dashboard_provider.dart';
 import '../providers/group_dashboard_state.dart';
 import '../repositories/group_dashboard_repository.dart' show MemberShareStat;
+import '../widgets/member_shared_events_sheet.dart';
 
 class GroupDashboardScreen extends StatefulWidget {
   const GroupDashboardScreen({
@@ -53,6 +54,22 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
   Future<void> _load() async {
     final userId = widget._currentUserIdOverride ?? authProvider.userId ?? '';
     await _provider.load(userId, preferredGroupId: widget._initialGroupId);
+  }
+
+  Future<void> _openMemberSharedEventsSheet(
+    BuildContext context,
+    MemberShareStat stat,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return MemberSharedEventsSheet(
+          provider: _provider,
+          stat: stat,
+        );
+      },
+    );
   }
 
   Future<void> _openGroupList() async {
@@ -294,6 +311,7 @@ class _GroupDashboardScreenState extends State<GroupDashboardScreen> {
                       key: ValueKey<String>(
                           'group-dashboard-member-share-${stat.userId}'),
                       stat: stat,
+                      onTap: () => _openMemberSharedEventsSheet(context, stat),
                     ),
                   ),
               ],
@@ -616,9 +634,11 @@ class _MemberShareRow extends StatelessWidget {
   const _MemberShareRow({
     super.key,
     required this.stat,
+    this.onTap,
   });
 
   final MemberShareStat stat;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -626,46 +646,72 @@ class _MemberShareRow extends StatelessWidget {
     final lastSharedLabel = stat.lastSharedAt == null
         ? '아직 공유 없음'
         : '최근 ${_shortDateLabel(planflowLocal(stat.lastSharedAt!))}';
-    return Container(
-      decoration: BoxDecoration(
-        color: PlanFlowColors.surface,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: PlanFlowColors.primaryFaint),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  stat.displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  lastSharedLabel,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: PlanFlowColors.textSecondary,
-                      ),
-                ),
-              ],
-            ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: PlanFlowColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: PlanFlowColors.primaryFaint),
           ),
-          const SizedBox(width: 8),
-          _InfoChip(
-            label: '공유 ${stat.sharedCount}건',
-            backgroundColor:
-                hasShared ? PlanFlowColors.primaryFaint : PlanFlowColors.tagNormalBg,
-            textColor:
-                hasShared ? PlanFlowColors.primary : PlanFlowColors.tagNormalText,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            stat.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        _InfoChip(
+                          label: stat.isLeader ? '리더' : '멤버',
+                          backgroundColor: stat.isLeader
+                              ? PlanFlowColors.primaryFaint
+                              : PlanFlowColors.tagNormalBg,
+                          textColor: stat.isLeader
+                              ? PlanFlowColors.primary
+                              : PlanFlowColors.tagNormalText,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      lastSharedLabel,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _InfoChip(
+                label: '공유 ${stat.sharedCount}건',
+                backgroundColor: hasShared
+                    ? PlanFlowColors.primaryFaint
+                    : PlanFlowColors.tagNormalBg,
+                textColor: hasShared
+                    ? PlanFlowColors.primary
+                    : PlanFlowColors.tagNormalText,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

@@ -412,7 +412,7 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
           ),
         ),
         SizedBox(
-          height: 40,
+          height: 48,
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
@@ -430,6 +430,7 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
                     },
                     selectedColor: PlanFlowColors.primaryFaint,
                     labelStyle: TextStyle(
+                      fontSize: 15,
                       color: group.id == state.selectedGroup?.id
                           ? PlanFlowColors.primary
                           : PlanFlowColors.textSecondary,
@@ -439,6 +440,10 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
                       color: group.id == state.selectedGroup?.id
                           ? PlanFlowColors.primary
                           : PlanFlowColors.primaryLight,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
                     ),
                   ),
                 ),
