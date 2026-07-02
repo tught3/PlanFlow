@@ -12,6 +12,51 @@ import 'package:shared_preferences_platform_interface/in_memory_shared_preferenc
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 void main() {
+  group('resolvePersistedEventId', () {
+    test('returns null for a new-event draft with empty id', () {
+      // AI 대화에서 넘어온 새 일정 draft: id가 "" → 새 일정으로 판정돼
+      // createEvent로 가야 한다. (updateEvent로 가면 "Event id is required" 실패)
+      expect(
+        EventEditScreen.resolvePersistedEventId(
+          loadedEventId: '',
+          routeEventId: '',
+          extraEventId: '',
+        ),
+        isNull,
+      );
+    });
+
+    test('returns loaded event id when present', () {
+      expect(
+        EventEditScreen.resolvePersistedEventId(
+          loadedEventId: 'event-1',
+          routeEventId: null,
+          extraEventId: null,
+        ),
+        'event-1',
+      );
+    });
+
+    test('falls back to route id, then extra id, skipping blanks', () {
+      expect(
+        EventEditScreen.resolvePersistedEventId(
+          loadedEventId: '   ',
+          routeEventId: 'route-id',
+          extraEventId: 'extra-id',
+        ),
+        'route-id',
+      );
+      expect(
+        EventEditScreen.resolvePersistedEventId(
+          loadedEventId: null,
+          routeEventId: '',
+          extraEventId: 'extra-id',
+        ),
+        'extra-id',
+      );
+    });
+  });
+
   setUp(() {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();

@@ -35,6 +35,21 @@ class PlanFlowActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // flex 버튼이 하나라도 있으면 Row로 배치한다. Expanded는 Flex(Row/Column)
+    // 안에서만 유효하며 Wrap 안에 넣으면 ParentDataWidget 오류로 크래시한다.
+    final hasFlex = buttons.any((btn) => btn.flex != null && btn.flex! > 0);
+    if (hasFlex) {
+      final children = <Widget>[];
+      for (var i = 0; i < buttons.length; i += 1) {
+        if (i > 0) {
+          children.add(SizedBox(width: spacing));
+        }
+        children.add(buttons[i].build(context));
+      }
+      return Row(children: children);
+    }
+
+    // flex가 없으면 내용 크기대로 두고, 길어지면 2줄로 흐르게 Wrap을 쓴다.
     return SizedBox(
       width: double.infinity,
       child: Wrap(
@@ -62,6 +77,7 @@ class PlanFlowActionButton {
     required this.onPressed,
     this.type = ActionButtonType.secondary,
     this.flex,
+    this.buttonKey,
     this.foregroundColor,
     this.backgroundColor,
     this.borderColor,
@@ -70,6 +86,9 @@ class PlanFlowActionButton {
   final String label;
   final VoidCallback? onPressed;
   final ActionButtonType type;
+
+  /// 버튼 위젯에 부여할 key(테스트 식별·위젯 트리 안정화용).
+  final Key? buttonKey;
 
   /// flex > 0이면 Expanded로 감싸서 남은 공간을 채움
   /// null이면 내용물 크기만큼만 차지
@@ -103,6 +122,7 @@ class PlanFlowActionButton {
   Widget _buildPrimary(BuildContext context) {
     // 확인/저장 등 주요 액션
     return FilledButton(
+      key: buttonKey,
       onPressed: onPressed,
       style: FilledButton.styleFrom(
         foregroundColor: foregroundColor ?? Colors.white,
@@ -127,6 +147,7 @@ class PlanFlowActionButton {
   Widget _buildSecondary(BuildContext context) {
     // 취소/닫기 등 보조 액션
     return OutlinedButton(
+      key: buttonKey,
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
         foregroundColor: foregroundColor ?? PlanFlowColors.primary,
@@ -152,6 +173,7 @@ class PlanFlowActionButton {
     // 삭제/초기화 등 위험 액션
     final errorColor = Theme.of(context).colorScheme.error;
     return FilledButton(
+      key: buttonKey,
       onPressed: onPressed,
       style: FilledButton.styleFrom(
         foregroundColor: foregroundColor ?? Colors.white,
