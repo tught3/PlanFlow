@@ -767,42 +767,21 @@ class _SettingsScreenState extends State<SettingsScreen>
             '연동만 해제하고 가져온 일정은 유지할지, 공급자에서 가져온 일정도 함께 삭제할지 선택해 주세요.',
           ),
           actions: [
-            SizedBox(
-              width: double.infinity,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 44,
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFF3B82F6)),
-                          foregroundColor: const Color(0xFF2563EB),
-                        ),
-                        child: const Text('일정 유지'),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: SizedBox(
-                      height: 44,
-                      child: FilledButton(
-                        onPressed: () => Navigator.of(context).pop(true),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFB91C1C),
-                          foregroundColor: Colors.white,
-                        ),
-                        child: const FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('일정 삭제'),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '일정 유지',
+                  onPressed: () => Navigator.of(context).pop(false),
+                  type: ActionButtonType.secondary,
+                  flex: 1,
+                ),
+                PlanFlowActionButton(
+                  label: '일정 삭제',
+                  onPressed: () => Navigator.of(context).pop(true),
+                  type: ActionButtonType.destructive,
+                  flex: 1,
+                ),
+              ],
             ),
           ],
         );
@@ -1324,10 +1303,16 @@ class _SettingsScreenState extends State<SettingsScreen>
             );
           },
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('닫기'),
+          PlanFlowActionButtons(
+            buttons: [
+              PlanFlowActionButton(
+                label: '닫기',
+                onPressed: () => Navigator.of(context).pop(),
+                type: ActionButtonType.secondary,
+              ),
+            ],
           ),
         ],
       ),

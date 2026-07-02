@@ -20,6 +20,7 @@ import '../../services/background_task_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../services/home_widget_service.dart';
 import '../../services/departure_alarm_service.dart';
+import '../../widgets/planflow_action_buttons.dart';
 import '../../services/manual_event_side_effect_service.dart';
 import '../../services/smart_preparation_alarm_service.dart';
 import '../../widgets/location_resolution_status.dart';
@@ -190,15 +191,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         content: Text(
           '"${event.title}" 일정의 출발 알림을 멈출까요?',
         ),
-        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
-          FilledButton.tonal(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('아직 출발 전'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('출발'),
+          planflowCancelConfirmButtons(
+            onCancel: () => Navigator.of(dialogContext).pop(false),
+            onConfirm: () => Navigator.of(dialogContext).pop(true),
+            cancelLabel: '아직 출발 전',
+            confirmLabel: '출발',
           ),
         ],
       ),
@@ -282,32 +281,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       builder: (context) => AlertDialog(
         title: const Text('일정 삭제'),
         content: Text('"${event.title}" 일정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.'),
-        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    foregroundColor: PlanFlowColors.primary,
-                    backgroundColor: PlanFlowColors.primaryFaint,
-                  ),
-                  child: const Text('취소'),
-                ),
+          PlanFlowActionButtons(
+            buttons: [
+              PlanFlowActionButton(
+                label: '취소',
+                onPressed: () => Navigator.of(context).pop(false),
+                type: ActionButtonType.secondary,
+                flex: 1,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
-                    backgroundColor: const Color(0xFFB42318),
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('삭제'),
-                ),
+              PlanFlowActionButton(
+                label: '삭제',
+                onPressed: () => Navigator.of(context).pop(true),
+                type: ActionButtonType.destructive,
+                flex: 1,
               ),
             ],
           ),
