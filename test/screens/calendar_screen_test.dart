@@ -54,7 +54,10 @@ void main() {
   testWidgets(
       'CalendarScreen runs a queued reload after refresh signal arrives while loading',
       (tester) async {
-    final now = DateTime.now();
+    // 자정 경계 flaky 방지: 실제 현재시각 대신 오늘 정오로 고정해
+    // now+1h/+2h가 같은 날(오늘 뷰)에 머물게 한다.
+    final today = DateTime.now();
+    final now = DateTime(today.year, today.month, today.day, 12);
     final firstLoad = Completer<List<EventModel>>();
     final repository = _AsyncEventRepository([
       firstLoad.future,
