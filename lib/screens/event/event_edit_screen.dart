@@ -57,6 +57,29 @@ class EventEditScreen extends StatefulWidget {
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
 
+  /// 저장 대상 일정 id를 결정한다. 세 후보 중 공백이 아닌 첫 값을 반환하고,
+  /// 모두 비어 있으면(= 새 일정 draft) null을 반환한다.
+  /// draft는 id가 "" 이므로 반드시 새 일정(createEvent)으로 분기해야 한다 —
+  /// 빈 id로 updateEvent를 타면 "Event id is required"로 저장이 실패한다.
+  @visibleForTesting
+  static String? resolvePersistedEventId({
+    required String? loadedEventId,
+    required String? routeEventId,
+    required String? extraEventId,
+  }) {
+    for (final candidate in <String?>[
+      loadedEventId,
+      routeEventId,
+      extraEventId,
+    ]) {
+      final trimmed = candidate?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) {
+        return trimmed;
+      }
+    }
+    return null;
+  }
+
   @override
   State<EventEditScreen> createState() => _EventEditScreenState();
 }
@@ -84,19 +107,22 @@ class _EventEditScreenState extends State<EventEditScreen> {
   bool _endEditedByUser = false;
   Timer? _locationDebounceTimer;
 
-  bool get _isNewEvent => _loadedEvent == null && _resolvedEventId == null;
+  // 저장 대상이 될 실제 일정 id(빈 문자열 제외). AI 대화에서 넘어온 새 일정
+  // draft는 id가 비어 있으므로, _loadedEvent가 있어도 id가 비면 새 일정으로 본다.
+  String? get _persistedEventId => EventEditScreen.resolvePersistedEventId(
+        loadedEventId: _loadedEvent?.id,
+        routeEventId: widget.eventId,
+        extraEventId: widget.event?.id,
+      );
 
-  String? get _resolvedEventId {
-    final routeId = widget.eventId?.trim();
-    if (routeId != null && routeId.isNotEmpty) {
-      return routeId;
-    }
-    final extraId = widget.event?.id.trim();
-    if (extraId != null && extraId.isNotEmpty) {
-      return extraId;
-    }
-    return null;
-  }
+  bool get _isNewEvent => _persistedEventId == null;
+
+  // route/extra로 넘어온 id만(로드된 이벤트 제외). 저장 전 상세 재조회 판단용.
+  String? get _resolvedEventId => EventEditScreen.resolvePersistedEventId(
+        loadedEventId: null,
+        routeEventId: widget.eventId,
+        extraEventId: widget.event?.id,
+      );
 
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
@@ -525,7 +551,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
           _endAt != null && !DateUtils.isSameDay(_startAt, _endAt);
 
       final updatedEvent = EventModel(
-        id: _loadedEvent?.id ?? _resolvedEventId ?? '',
+        id: _persistedEventId ?? '',
         userId: user.id,
         title: _titleController.text.trim(),
         startAt: normalizedStartAt,
