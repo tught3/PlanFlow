@@ -19,7 +19,6 @@ class CalendarStyleEventEditor extends StatefulWidget {
     required this.memoController,
     required this.startAt,
     required this.endAt,
-    required this.isAllDay,
     required this.category,
     required this.recurrence,
     required this.reminderOffset,
@@ -27,7 +26,6 @@ class CalendarStyleEventEditor extends StatefulWidget {
     required this.useStrongAlarm,
     required this.onStartChanged,
     required this.onEndChanged,
-    required this.onAllDayChanged,
     required this.onCategoryChanged,
     required this.onRecurrenceChanged,
     required this.onReminderChanged,
@@ -57,7 +55,6 @@ class CalendarStyleEventEditor extends StatefulWidget {
   final TextEditingController memoController;
   final DateTime startAt;
   final DateTime? endAt;
-  final bool isAllDay;
   final String category;
   final RecurrenceSelection recurrence;
   final Duration? reminderOffset;
@@ -65,7 +62,6 @@ class CalendarStyleEventEditor extends StatefulWidget {
   final bool useStrongAlarm;
   final ValueChanged<DateTime> onStartChanged;
   final ValueChanged<DateTime?> onEndChanged;
-  final ValueChanged<bool> onAllDayChanged;
   final ValueChanged<String> onCategoryChanged;
   final ValueChanged<RecurrenceSelection> onRecurrenceChanged;
   final ValueChanged<Duration?> onReminderChanged;
@@ -250,17 +246,9 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SwitchListTile.adaptive(
-                  value: widget.isAllDay,
-                  onChanged: widget.onAllDayChanged,
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('종일'),
-                  secondary: const Icon(Icons.schedule_outlined),
-                ),
                 _DateRangeSummary(
                   startAt: widget.startAt,
                   endAt: widget.endAt,
-                  isAllDay: widget.isAllDay,
                   activeTarget: _activeTarget,
                   onStartTap: () => _toggleTarget(CalendarDateTarget.start),
                   onEndTap: () => _toggleTarget(CalendarDateTarget.end),
@@ -274,7 +262,6 @@ class _CalendarStyleEventEditorState extends State<CalendarStyleEventEditor> {
                           child: _InlineDateTimeWheel(
                             key: ValueKey(_activeTarget),
                             value: _activeValue,
-                            isAllDay: widget.isAllDay,
                             target: _activeTarget!,
                             onChanged: _applyDateTime,
                             onToday: _pickToday,
@@ -721,7 +708,6 @@ class _DateRangeSummary extends StatelessWidget {
   const _DateRangeSummary({
     required this.startAt,
     required this.endAt,
-    required this.isAllDay,
     required this.activeTarget,
     required this.onStartTap,
     required this.onEndTap,
@@ -729,7 +715,6 @@ class _DateRangeSummary extends StatelessWidget {
 
   final DateTime startAt;
   final DateTime? endAt;
-  final bool isAllDay;
   final CalendarDateTarget? activeTarget;
   final VoidCallback onStartTap;
   final VoidCallback onEndTap;
@@ -743,7 +728,6 @@ class _DateRangeSummary extends StatelessWidget {
           child: _DateSummaryButton(
             label: '시작',
             value: startAt,
-            isAllDay: isAllDay,
             selected: activeTarget == CalendarDateTarget.start,
             onTap: onStartTap,
           ),
@@ -756,7 +740,6 @@ class _DateRangeSummary extends StatelessWidget {
           child: _DateSummaryButton(
             label: '종료',
             value: effectiveEnd,
-            isAllDay: isAllDay,
             selected: activeTarget == CalendarDateTarget.end,
             onTap: onEndTap,
           ),
@@ -770,21 +753,19 @@ class _DateSummaryButton extends StatelessWidget {
   const _DateSummaryButton({
     required this.label,
     required this.value,
-    required this.isAllDay,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
   final DateTime value;
-  final bool isAllDay;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final date = _shortDate(value);
-    final time = isAllDay ? '종일' : _timeLabel(value);
+    final time = _timeLabel(value);
     return InkWell(
       borderRadius: BorderRadius.circular(10),
       onTap: onTap,
@@ -845,14 +826,12 @@ class _InlineDateTimeWheel extends StatefulWidget {
   const _InlineDateTimeWheel({
     super.key,
     required this.value,
-    required this.isAllDay,
     required this.target,
     required this.onChanged,
     required this.onToday,
   });
 
   final DateTime value;
-  final bool isAllDay;
   final CalendarDateTarget target;
   final ValueChanged<DateTime> onChanged;
   final VoidCallback onToday;
@@ -887,9 +866,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
   @override
   void didUpdateWidget(covariant _InlineDateTimeWheel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value ||
-        oldWidget.target != widget.target ||
-        oldWidget.isAllDay != widget.isAllDay) {
+    if (oldWidget.value != widget.value || oldWidget.target != widget.target) {
       _readValue(widget.value);
     }
   }
@@ -907,9 +884,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
     if (_day > maxDay) {
       _day = maxDay;
     }
-    final hour = widget.isAllDay ? 0 : _hour24;
-    final minute = widget.isAllDay ? 0 : _minute;
-    widget.onChanged(DateTime(_year, _month, _day, hour, minute));
+    widget.onChanged(DateTime(_year, _month, _day, _hour24, _minute));
   }
 
   void _set(void Function() update) {
@@ -1057,42 +1032,40 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
                         onChanged: _onDayChanged,
                       ),
                     ),
-                    if (!widget.isAllDay) ...[
-                      Expanded(
-                        child: _Wheel<int>(
-                          key: ValueKey('${widget.target.name}-period-wheel'),
-                          values: const [0, 1],
-                          selected: _period,
-                          labelBuilder: (value) => value == 0 ? '오전' : '오후',
-                          itemExtent: _itemExtent,
-                          looping: true,
-                          onChanged: _onPeriodChanged,
-                        ),
+                    Expanded(
+                      child: _Wheel<int>(
+                        key: ValueKey('${widget.target.name}-period-wheel'),
+                        values: const [0, 1],
+                        selected: _period,
+                        labelBuilder: (value) => value == 0 ? '오전' : '오후',
+                        itemExtent: _itemExtent,
+                        looping: true,
+                        onChanged: _onPeriodChanged,
                       ),
-                      Expanded(
-                        child: _Wheel<int>(
-                          key: ValueKey('${widget.target.name}-hour-wheel'),
-                          values: List<int>.generate(12, (index) => index + 1),
-                          selected: _hour12,
-                          labelBuilder: (value) => '$value',
-                          itemExtent: _itemExtent,
-                          looping: true,
-                          onChanged: _onHourChanged,
-                        ),
+                    ),
+                    Expanded(
+                      child: _Wheel<int>(
+                        key: ValueKey('${widget.target.name}-hour-wheel'),
+                        values: List<int>.generate(12, (index) => index + 1),
+                        selected: _hour12,
+                        labelBuilder: (value) => '$value',
+                        itemExtent: _itemExtent,
+                        looping: true,
+                        onChanged: _onHourChanged,
                       ),
-                      Expanded(
-                        child: _Wheel<int>(
-                          key: ValueKey('${widget.target.name}-minute-wheel'),
-                          values: _minutes,
-                          selected: _minute,
-                          labelBuilder: (value) =>
-                              value.toString().padLeft(2, '0'),
-                          itemExtent: _itemExtent,
-                          looping: true,
-                          onChanged: _onMinuteChanged,
-                        ),
+                    ),
+                    Expanded(
+                      child: _Wheel<int>(
+                        key: ValueKey('${widget.target.name}-minute-wheel'),
+                        values: _minutes,
+                        selected: _minute,
+                        labelBuilder: (value) =>
+                            value.toString().padLeft(2, '0'),
+                        itemExtent: _itemExtent,
+                        looping: true,
+                        onChanged: _onMinuteChanged,
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ],
@@ -1102,9 +1075,7 @@ class _InlineDateTimeWheelState extends State<_InlineDateTimeWheel> {
           Align(
             alignment: Alignment.centerRight,
             child: Text(
-              widget.isAllDay
-                  ? _shortDate(selectedDate)
-                  : '${_shortDate(selectedDate)} ${_timeLabel(DateTime(_year, _month, _day.clamp(1, maxDay), _hour24, _minute))}',
+              '${_shortDate(selectedDate)} ${_timeLabel(DateTime(_year, _month, _day.clamp(1, maxDay), _hour24, _minute))}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: PlanFlowColors.textSecondary,
                     fontWeight: FontWeight.w700,

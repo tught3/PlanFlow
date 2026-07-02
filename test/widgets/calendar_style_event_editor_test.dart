@@ -46,22 +46,6 @@ void main() {
     expect(changedStart!.day, now.day);
   });
 
-  testWidgets('all-day mode hides time wheels', (tester) async {
-    await tester.pumpWidget(
-      _TestHost(
-        startAt: DateTime(2026, 5, 13, 9),
-        endAt: DateTime(2026, 5, 13, 10),
-        isAllDay: true,
-      ),
-    );
-
-    await tester.tap(find.text('시작'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('오전'), findsNothing);
-    expect(find.text('오후'), findsNothing);
-  });
-
   testWidgets('time wheels handle minute wrap at 55 to 00', (tester) async {
     DateTime? changedStart;
 
@@ -322,7 +306,6 @@ void main() {
 
 class _TestHost extends StatelessWidget {
   _TestHost({
-    this.isAllDay = false,
     this.onStartChanged,
     this.locationText = '',
     this.locationLat,
@@ -334,7 +317,6 @@ class _TestHost extends StatelessWidget {
     required this.endAt,
   });
 
-  final bool isAllDay;
   final ValueChanged<DateTime>? onStartChanged;
   final String locationText;
   final double? locationLat;
@@ -361,7 +343,6 @@ class _TestHost extends StatelessWidget {
             memoController: memoController,
             startAt: startAt,
             endAt: endAt,
-            isAllDay: isAllDay,
             category: '업무',
             recurrence: recurrence,
             reminderOffset: const Duration(hours: 1),
@@ -373,7 +354,6 @@ class _TestHost extends StatelessWidget {
             initiallyExpandDetails: initiallyExpandDetails,
             onStartChanged: onStartChanged ?? (_) {},
             onEndChanged: (_) {},
-            onAllDayChanged: (_) {},
             onCategoryChanged: (_) {},
             onRecurrenceChanged: (_) {},
             onReminderChanged: (_) {},

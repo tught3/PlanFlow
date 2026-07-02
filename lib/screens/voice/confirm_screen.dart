@@ -231,7 +231,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   double? _locationLng;
   String? _resolvedLocationLabel;
   late RecurrenceSelection _recurrenceSelection;
-  bool _isAllDay = false;
   bool _isMultiDay = false;
   String _category = '기타';
   late bool _isCritical;
@@ -298,7 +297,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _recurrenceSelection = RecurrenceSelection.fromRRule(
       _stringValue(widget.parsedSchedule['recurrence_rule']),
     );
-    _isAllDay = widget.parsedSchedule['is_all_day'] == true;
     _isMultiDay = widget.parsedSchedule['is_multi_day'] == true;
     _category = '기타';
     _isCritical = widget.parsedSchedule['is_critical'] == true;
@@ -885,7 +883,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     if (endAt != null && endAt.isAfter(startAt)) {
       return endAt;
     }
-    if (_isAllDay || _isMultiDay) {
+    if (_isMultiDay) {
       return startAt.add(const Duration(days: 1));
     }
     return startAt.add(const Duration(minutes: 30));
@@ -959,7 +957,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       isCritical: _isCritical,
       useStrongAlarm: _strongAlarm,
       recurrenceRule: _recurrenceSelection.toRRule(),
-      isAllDay: _isAllDay,
       isMultiDay: isMultiDayByRange,
       category: _category,
     );
@@ -1076,7 +1073,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
 
   bool get _shouldShowTimePeriodClarification {
     return _timePeriodAmbiguous &&
-        !_isAllDay &&
         _ambiguousTimeHour != null &&
         _ambiguousTimeMinute != null;
   }
@@ -2184,7 +2180,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         memoController: _memoController,
                         startAt: _startAt,
                         endAt: _endAt,
-                        isAllDay: _isAllDay,
                         category: _category,
                         recurrence: _recurrenceSelection,
                         reminderOffset: _reminderOffset,
@@ -2224,25 +2219,6 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                               _endAt = _startAt;
                             } else {
                               _endAt = value;
-                            }
-                          });
-                        },
-                        onAllDayChanged: (value) {
-                          setState(() {
-                            _isAllDay = value;
-                            if (value) {
-                              _startAt = DateTime(
-                                _startAt.year,
-                                _startAt.month,
-                                _startAt.day,
-                              );
-                              if (_endAt != null) {
-                                _endAt = DateTime(
-                                  _endAt!.year,
-                                  _endAt!.month,
-                                  _endAt!.day,
-                                );
-                              }
                             }
                           });
                         },

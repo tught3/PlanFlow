@@ -74,7 +74,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late bool _critical;
   late bool _strongAlarm;
   late RecurrenceSelection _recurrenceSelection;
-  bool _isAllDay = false;
   String _category = '기타';
   Duration? _reminderOffset = ReminderOffsetSelector.defaultValue;
   EventModel? _loadedEvent;
@@ -149,7 +148,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     if (endAt != null && endAt.isAfter(startAt)) {
       return endAt;
     }
-    if (_isAllDay || (endAt != null && !DateUtils.isSameDay(startAt, endAt))) {
+    if (endAt != null && !DateUtils.isSameDay(startAt, endAt)) {
       return startAt.add(const Duration(days: 1));
     }
     return startAt.add(const Duration(minutes: 30));
@@ -432,7 +431,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _critical = event?.isCritical ?? false;
     _strongAlarm = event?.useStrongAlarm ?? false;
     _recurrenceSelection = RecurrenceSelection.fromRRule(event?.recurrenceRule);
-    _isAllDay = event?.isAllDay ?? false;
     _category = event?.category ?? '기타';
     _loadEventIfNeeded();
     if (event != null) {
@@ -555,7 +553,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
         isCritical: _critical,
         useStrongAlarm: _strongAlarm,
         recurrenceRule: _recurrenceSelection.toRRule(),
-        isAllDay: _isAllDay,
         isMultiDay: isMultiDayByRange,
         parentEventId: _loadedEvent?.parentEventId,
         category: _category,
@@ -874,7 +871,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _strongAlarm = event.useStrongAlarm;
         _recurrenceSelection =
             RecurrenceSelection.fromRRule(event.recurrenceRule);
-        _isAllDay = event.isAllDay;
         _category = event.category;
       });
       unawaited(_loadReminderOffsetIfNeeded(event));
@@ -1257,7 +1253,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   memoController: _memoController,
                   startAt: _startAt,
                   endAt: _endAt,
-                  isAllDay: _isAllDay,
                   category: _category,
                   recurrence: _recurrenceSelection,
                   reminderOffset: _reminderOffset,
@@ -1294,25 +1289,6 @@ class _EventEditScreenState extends State<EventEditScreen> {
                         _endAt = _startAt;
                       } else {
                         _endAt = value;
-                      }
-                    });
-                  },
-                  onAllDayChanged: (value) {
-                    setState(() {
-                      _isAllDay = value;
-                      if (value) {
-                        _startAt = DateTime(
-                          _startAt.year,
-                          _startAt.month,
-                          _startAt.day,
-                        );
-                        if (_endAt != null) {
-                          _endAt = DateTime(
-                            _endAt!.year,
-                            _endAt!.month,
-                            _endAt!.day,
-                          );
-                        }
                       }
                     });
                   },
