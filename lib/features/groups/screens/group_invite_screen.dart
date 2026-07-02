@@ -435,6 +435,11 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
                           : PlanFlowColors.textSecondary,
                       fontWeight: FontWeight.w700,
                     ),
+                    side: BorderSide(
+                      color: group.id == state.selectedGroup?.id
+                          ? PlanFlowColors.primary
+                          : PlanFlowColors.primaryLight,
+                    ),
                   ),
                 ),
             ],

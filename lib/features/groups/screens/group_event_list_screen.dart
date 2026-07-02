@@ -284,6 +284,11 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
                     : PlanFlowColors.textSecondary,
                 fontWeight: FontWeight.w700,
               ),
+              side: BorderSide(
+                color: _memberFilterUserId == null
+                    ? PlanFlowColors.primary
+                    : PlanFlowColors.primaryLight,
+              ),
             ),
           ),
           for (final member in _activeMembers)
@@ -301,6 +306,11 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
                       ? PlanFlowColors.primary
                       : PlanFlowColors.textSecondary,
                   fontWeight: FontWeight.w700,
+                ),
+                side: BorderSide(
+                  color: _memberFilterUserId == member.userId
+                      ? PlanFlowColors.primary
+                      : PlanFlowColors.primaryLight,
                 ),
               ),
             ),

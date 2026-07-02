@@ -50,6 +50,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   bool _sharePromptShowing = false;
   String? _error;
   bool _autoShareEnabled = false;
+  bool _isSharingExistingEvents = false;
 
   @override
   void initState() {
@@ -154,29 +155,43 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         actionsPadding:
             const EdgeInsets.fromLTRB(16, 0, 16, 12),
         actions: [
-          // 한 줄에 모두 배치하되, 폭이 부족하면 각 버튼을 통째로 다음 줄로
-          // 넘겨 2줄로 보기 좋게 정렬한다(버튼 안 텍스트는 줄바꿈하지 않음).
-          Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              TextButton(
-                onPressed: () =>
-                    Navigator.of(ctx).pop(_ExistingEventShareChoice.later),
-                child: const Text('나중에'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(ctx)
-                    .pop(_ExistingEventShareChoice.onlyNewEvents),
-                child: const Text('새로 만드는 일정부터'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(ctx)
-                    .pop(_ExistingEventShareChoice.shareUpcoming),
-                child: const Text('오늘 이후 일정 공유'),
-              ),
-            ],
+          // 1행: 보조 선택지 2개를 테두리 버튼으로 절반씩 나란히 배치.
+          // 2행: 주 선택지(오늘 이후 일정 공유)를 강조 버튼으로 전체 너비에 배치.
+          SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(ctx)
+                            .pop(_ExistingEventShareChoice.later),
+                        child: const Text('나중에'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(ctx)
+                            .pop(_ExistingEventShareChoice.onlyNewEvents),
+                        child: const Text('새로 만드는 일정부터'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx)
+                        .pop(_ExistingEventShareChoice.shareUpcoming),
+                    child: const Text('오늘 이후 일정 공유'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -216,6 +231,56 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('기존 일정 공유에 실패했어요: $error')),
       );
+    }
+  }
+
+  // 처음 그룹에 들어왔을 때 뜨는 자동 안내(_maybeShowExistingEventsSharePrompt)는
+  // 어떤 선택을 하든(나중에 포함) 다시 뜨지 않는다. '나중에'를 고른 뒤 다시
+  // 공유하고 싶어질 때를 위해 언제든 수동으로 같은 동작을 실행할 수 있는
+  // 진입점을 별도로 둔다.
+  Future<void> _shareExistingEventsManually() async {
+    if (_isSharingExistingEvents) {
+      return;
+    }
+    final userId = _currentUserId();
+    if (userId.trim().isEmpty) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('기존 일정을 공유할까요?'),
+        content: const Text(
+          '오늘 이후의 개인 일정 중 직접 만든 일정만 이 그룹 일정으로 복사할 수 있어요. 같은 제목과 시간이 이미 있으면 중복으로 만들지 않습니다.',
+        ),
+        actionsAlignment: MainAxisAlignment.end,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('취소'),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('오늘 이후 일정 공유'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    setState(() {
+      _isSharingExistingEvents = true;
+    });
+    try {
+      await _shareUpcomingPersonalEvents(userId: userId, groupId: widget.groupId);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSharingExistingEvents = false;
+        });
+      }
     }
   }
 
@@ -575,6 +640,47 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
               contentPadding: EdgeInsets.zero,
               title: null,
               subtitle: null,
+            ),
+            const Divider(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '기존 일정 공유하기',
+                        style:
+                            Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '오늘 이후의 내 개인 일정을 이 그룹에 지금 공유해요.',
+                        style:
+                            Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: PlanFlowColors.textSecondary,
+                                ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton(
+                  key: const ValueKey('group-detail-share-existing-events-button'),
+                  onPressed: _isSharingExistingEvents
+                      ? null
+                      : _shareExistingEventsManually,
+                  child: _isSharingExistingEvents
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('공유'),
+                ),
+              ],
             ),
           ],
         ),
