@@ -45,7 +45,16 @@
 - PowerShell 명령에서는 `&&`를 쓰지 않는다. 여러 명령을 이어야 하면 명령을 분리해서 실행하거나, PowerShell 네이티브 방식인 세미콜론과 `$LASTEXITCODE`/`if ($?) { ... }` 조건문을 사용한다.
 - Bash/CMD 전용 체이닝 문법을 PowerShell에 그대로 가져오지 않는다. 특히 `cmd /c`, `bash -lc`로 우회해 삭제/이동/생성 같은 파일 작업을 섞어 실행하지 않는다.
 
-## 모델 라우팅과 병렬 처리
+## 모델 라우팅과 병렬 처리 (⚠️ 비단순 작업 필수 워크플로우 — 예외 없이 준수)
+> 사용자가 매번 지시하지 않아도, 개발·수정·리팩토링·분석·리뷰 등 **비단순 작업은 아래 순서를 기본값으로 반드시 따른다.** 모델 라우팅과 별도 리뷰어 단계를 생략하지 않는다.
+>
+> **필수 체크리스트 (7단계):**
+> 1. **FluxOS 파이프라인 등록** — 위 "FluxOS Pipeline Gate"대로 `run.py pipeline` 등록(또는 pipeline-audit 확인) 후 진입.
+> 2. **계획 = `gpt-5.5`(상위 모델).** 범위·영향파일·리스크·검증기준 먼저 제시.
+> 3. **구현 = 난이도별 병렬 서브에이전트 위임.** 단순/보일러플레이트 = `gpt-5.3-codex-spark`(경량), 난도 높음 = `gpt-5.4-mini`(중간). 파일 비중첩이면 동시 실행.
+> 4. **별도 리뷰어(`gpt-5.4-mini`)가 전체 diff를 리뷰** — 계약 정합·회귀·규약 위반 점검. (구현 워커와 다른 별도 세션)
+> 5. 지적사항 **수정** → 6. **재리뷰** → 7. **검증(analyze/test/build)·보고**.
+> 메인(오케스트레이터) 세션은 **직접 구현을 쏟지 말고** 계획·분배·검토·보고만 담당한다. 이 흐름을 지키지 않고 메인이 다 처리하거나 모델 라우팅/별도 리뷰어를 건너뛰면 규약 위반이다.
 - 비단순 작업은 계획 -> 병렬 작업자 -> 별도 리뷰어 -> 수정 -> 재리뷰 순서로 진행한다.
 - 계획 단계는 `gpt-5.5`를 우선한다.
 - 일반 구현은 `gpt-5.3-codex-spark`를 우선한다.
@@ -99,6 +108,14 @@
 - 앱/서비스 프로젝트는 커밋과 푸시 후 빌드와 실행 검증까지 완료한다.
 - 앱이 아닌 문서/스크립트/위키 작업은 커밋과 푸시까지 완료한다.
 - 결과를 설명할 때는 무엇을 바꿨는지, 무엇을 검증했는지, 남은 위험이 있는지를 분리해서 말한다.
+
+## 코드 변경 후 기본 자동화 (커밋 -> 푸시 -> 빌드 -> 설치 -> 실행)
+- 앱/서비스 프로젝트(*flow)에서 코드 수정이 끝나면, 기본값으로 의도한 변경만 pathspec로 커밋하고 푸시한 뒤 빌드 -> 설치 -> 실행까지 자동으로 이어서 진행한다. 사용자가 따로 막거나 범위를 좁히지 않는 한 이 흐름이 기본이다.
+- 커밋은 자기 변경만 pathspec로 올리고 `git add -A`/`git commit -a`는 쓰지 않는다. 푸시까지 마친다.
+- 빌드는 release 기준으로 한다(debug 금지 - 서명 불일치). Android 빌드는 항상 `E:\AI_WIKI\scripts\flutter-build-guarded.ps1`를 경유한다.
+- 설치 대상은 adb로 연결된 실기기다. PlanFlow는 연결된 v2 기기 3대 모두에 설치하고, 그 외 모든 프로젝트는 S23에만 설치한다.
+- 연결된 adb 기기가 없으면 빌드한 release APK를 `I:` 드라이브(Google Drive 마운트)에 `Copy-Item`으로 올리고 완료 보고한다.
+- 이 자동화는 모든 *flow 프로젝트의 기본 동작이며, CEO OS 등 어디서 지시했는지와 무관하게 동일하게 적용한다. 단순/긴급 수정으로 일부 단계를 생략하면 생략 사유와 검증 결과를 최종 보고에 남긴다.
 
 ## 프로젝트에서 반복 확인된 공통 규칙
 <!-- [AUTO-COMMON:START] -->
@@ -184,6 +201,7 @@
 - 컨텍스트 압축 없이 작업 시작
 
 ## 필수 행동
+- **비단순 작업(개발·수정·리팩토링·분석·리뷰)은 예외 없이 "모델 라우팅과 병렬 처리" 필수 워크플로우를 따른다: FluxOS 파이프라인 등록 → 계획(상위 모델) → 난이도별 병렬 서브에이전트 위임(단순=경량, 난도 높음=중간) → 별도 리뷰어 → 수정 → 재리뷰 → 검증. 사용자가 매번 지시하지 않아도 이것이 기본값이며, 메인 세션이 직접 다 처리하거나 모델 라우팅/별도 리뷰어 단계를 생략하면 규약 위반이다.**
 - **AI가 직접 할 수 있는 모든 것은 사용자에게 묻지 않고 바로 실행한다. 사용자에게는 직접 해야만 하는 것(콘솔 접근, 물리 기기 조작, 외부 서비스 설정 등)만 전달한다.**
 - 작업 전: 컨텍스트 압축 -> 계획 제시 -> 승인 대기
 - 작업 중: 계획 외 변경 발생 시 즉시 보고
@@ -225,6 +243,75 @@
 
 ### [PREVENT] 동시 AI 세션 git add-commit 레이스로 staged 흡수 (2026-06-25)
 여러 AI 세션(Claude/Codex)이 같은 repo에서 git add 후 staged 전체를 커밋(git add . / git commit -a)하면, 한 세션이 add해둔 변경을 다른 세션의 commit이 자기 커밋에 흡수한다. FluxOS git_autocommit는 pathspec(git commit -- files)+git lease로 안전하나, AI 세션의 직접 커밋이 staged 전체를 가져가는 게 문제. 방지: AI 세션은 항상 pathspec 커밋(git commit -- <files> 또는 -o)으로 자기 파일만 커밋하고, git add . / commit -a / staged 전체 커밋을 금지한다.
+
+### [PREVENT] 단위·픽스처 테스트가 라이브 공유상태를 주입 없이 읽어 비결정 실패 (2026-06-26, 보강)
+FluxOS 테스트가 fixture로 격리된 것처럼 보여도 내부에서 라이브 전역 상태를 읽어 환경 의존 실패가 반복됨. 같은 근본이 수십 건 재발하는 **메타패턴**이다(차단/판정/시각 계산이 저장된 라이브 상태를 실측 격리 없이 신뢰).
+
+실증(누적):
+- run_controlled_parallel이 build_parallel_plan에 load_resource_locks()(라이브 공유락) 주입 → 타 프로젝트 android-build 락이 fixture lane을 blocked로.
+- test_api_runner_*가 _chat을 mock했지만 run_api_implementation이 ensure_hermes_running()을 먼저 호출 → 라이브 Hermes 404.
+- (2026-06-26 추가) `pytest tests/` 13건 동시 재발: ① dashboard/ai_org_report/lane_inventory가 실제 ROOT_DIR git·worktree·registry·**실제 큐 전수 audit**을 격리 없이 스캔 → 수분 hang(원인 `audit_tasks`·`build_lane_inventory`·`_secret_risks` 미게이트). ② `_mark_executor_blocked`이 전역 `quota_manager`(MEMORY_DIR/quota_state.json)에서 earliest_reset을 읽어 누적 라이브 상태가 테스트 reset 시각을 덮어씀. ③ adb `probe_wireless_state`가 전역 `ADB_DEVICE_ROSTER_PATH`(E:\AI_WIKI\config\adb_device_roster.json) 파일을 읽어 테스트 가짜 타깃을 allowlist에서 걸러냄. ④ `worktree_ownership_check`가 실제 FinFlow git dirty/라이브 세션을 스캔 → 실행마다 다른 PROTECTED 사유로 실패.
+
+**FluxOS 테스트가 격리해야 할 라이브 전역상태 소스(체크리스트):** 공유락(load_resource_locks) · Hermes(ensure_hermes_running) · 작업큐(QUEUE_DIR audit_tasks/list_tasks) · ownership/dirty git 스캔 · `_secret_risks` rg 스캔 · quota_manager(QUOTA_STATE_PATH) · adb 디바이스 roster(ADB_DEVICE_ROSTER_PATH) · 세션/워크트리 레지스트리 · 실제 프로젝트 git(FinFlow 등).
+
+**격리 레시피(택1, 우선순위순):** ⓐ 함수에 주입 파라미터(resource_locks_path/queue_dir/path=)가 있으면 temp로 주입 · ⓑ skip 플래그(skip_hermes_check=True) 사용 · ⓒ `_skip_heavy_scan()` 게이트(env FLUXOS_TEST_LIGHTWEIGHT, **단 그 테스트 파일에만 conftest로 한정** — tests/ 전체에 켜면 형제 파일 깨짐) · ⓓ 전역 경로 상수가 default-arg로 바인딩돼 상수 patch가 안 통하면 그 함수/모듈을 setUp에서 patch.object로 격리(quota_manager·adb roster 사례). 공용 헬퍼는 `.fluxos/tests/_live_state_isolation.py` 참조. 프로덕션 코드는 항상 그 주입 지점(path 파라미터/스킵 플래그)을 제공해야 한다.
+
+### [PREVENT] sys.modules에 mock 주입한 모듈은 지연 import되는 상수/속성까지 mock에 넣어야 함 (2026-06-26)
+무거운 의존성 체인을 피하려고 테스트가 `sys.modules['pipeline.task_queue']`에 경량 mock 모듈을 주입할 때, 프로덕션 코드가 tick/함수 내부에서 `from pipeline.task_queue import TERMINAL_TASK_STATUSES`처럼 **지연 import하는 상수/함수가 mock에 없으면** 호출 시점에 "cannot import name X (unknown location)"으로 깨진다(모듈 최상단 import는 멀쩡해 보여도 함수 내부 지연 import가 mock을 친다). 실증: supervisor_daemon tick의 safe_hold/stale 단계가 TERMINAL_TASK_STATUSES 지연 import → mock task_queue에 상수 누락으로 6건 실패(앞서 MEMORY_DIR도 동일 사유로 추가했던 전례 존재). 규칙: 모듈을 mock으로 주입하면 프로덕션이 그 모듈에서 import하는 **상수까지** 전부 mock 모듈에 채운다. 새 지연 import를 추가하면 해당 테스트 mock 빌더(_build_sys_modules_mocks 등)도 같이 갱신한다.
+
+### [PREVENT] 동시 세션이 타 세션 미커밋 워크트리 편집을 자기 커밋에 휩쓸어감 (2026-06-26)
+다중 세션 환경에서 한 세션이 git add -A / git commit -a / commit --all 또는 파일 전체 재생성(테스트 스캐폴드 regenerate)을 하면, 다른 세션이 워크트리에 만들어둔 미커밋 편집이 의도치 않게 그 세션 커밋에 섞이거나 유실된다. 이번 세션 실증 2건: (1) 내 controlled-parallel 테스트 편집을 stash한 사이 타 세션이 test_fluxos.py를 재생성 → stash pop 머지에서 내 편집 유실. (2) 내 api_runner 테스트 편집(미커밋)이 타 세션 커밋 5283dc4에 통째로 휩쓸려 들어감. 규칙: 모든 세션은 자기가 바꾼 파일만 pathspec(git add <경로> / git commit -- <경로>)으로 스테이징·커밋한다. git add -A / git add . / git commit -a / git commit --all 금지. 다른 세션이 동시에 같은 파일(특히 자동 재생성되는 test_fluxos.py)을 건드릴 수 있으면 git stash 대신 별도 워크트리나 패치 파일로 격리한다. 커밋 전 git diff --cached로 자기 hunk만 들어갔는지 확인한다.
+
+### [PREVENT] 장시간 전체 테스트 런이 동시 소스변경으로 구조가드 거짓 실패를 낸다 (2026-06-26)
+inspect.getsource 기반 구조 가드 테스트(예: test_glm_org_path_uses_worktree_resolver, test_runnable_clears_ownership_gate_outside_executor_blocked)는 라이브 상태가 0이지만, 25분짜리 전체 스위트가 도는 동안 다른 FluxOS 세션·데몬이 대상 소스(pipeline/auto_follow.py 등)나 test_fluxos.py를 동시 수정하면 단언 문자열이 일시적으로 어긋나 거짓 실패한다. 실증: 8분 부분런과 6분 통합런에서는 6/6 통과했으나 25분 전체런에서만 같은 3건 실패. 규칙: CI/완료 판정용 전체 스위트(특히 inspect.getsource 구조가드 포함)는 데몬·타 세션이 소스를 안 건드리는 정숙 창에서 1회 돌려 그린을 판정한다. 다중 세션 활성 중의 전체 런 실패는 먼저 동일 테스트를 단독·소그룹으로 재실행해 거짓 실패(동시변경) 여부를 가린 뒤 보고한다. 구조가드가 동시변경에 덜 취약하려면 대상 소스를 한 번 읽어 스냅샷한 뒤 단언하는 것을 고려한다.
+
+### [PREVENT] 정체·완료·차단 판정은 terminal을 task.status로 (pipeline_state 금지) (2026-06-26)
+FluxOS에서 task가 종료(취소/완료)됐는지는 task.status(TERMINAL_TASK_STATUSES={done,failed,cancelled})로 판정해야 한다. audit가 계산하는 pipeline_state(REVIEWING/EXECUTOR_BLOCKED/DONE 등)는 종료 작업에서도 stale 비terminal로 남을 수 있어, 정체 감지·자동수렴·runnable·차단 등 어떤 루프든 pipeline_state로 terminal을 판정하면 종료 작업을 살아있는 것으로 오판한다(실측 재발: DONE을 terminal로 본 runnable 누락 / cancelled를 정체로 본 75건 허위 알림). 규칙: 진행/알림/수렴/차단을 결정하는 모든 루프는 먼저 str(row.status).lower() in TERMINAL_TASK_STATUSES로 종료 작업을 거른 뒤 pipeline_state 분기한다. 알림 같은 출력 경계에는 권위 frontmatter status로 재확인하는 불변식 필터를 둔다.
+
+### [PREVENT] terminal·완료·정체 판정은 task_queue.is_terminal로 (로컬 terminal set 정의 금지) (2026-06-26)
+작업 종료 여부는 pipeline/task_queue.py의 is_terminal(row)(status=done/failed/cancelled 권위)·is_pipeline_terminal(state)·단일 TERMINAL_PIPELINE_STATES/STALL_EXEMPT_PIPELINE_STATES로 판정한다. monitor/project_lanes/supervisor 등 어디서도 TERMINAL_PIPELINE_STATES를 새로 정의하거나 pipeline_state in {DONE...}로 terminal을 판정하지 말 것. 복제하면 멤버 드리프트로 stranded-DONE 오판·정체가 재발한다(test_hardening_invariants가 재정의를 잡음).
+
+### [PREVENT] 공유 상태 JSON 쓰기는 state_store.locked_section/atomic으로 (직접 truncate-write 금지) (2026-06-26)
+work_locks·session_registry·notifications·company_memory·director_inbox·project_registry·codex_state·task .md 같은 다중 세션·데몬 공유 상태는 utils/state_store.py의 locked_section/locked_atomic_write_json/locked_update_json(파일락+RLock+temp·os.replace)으로만 read-modify-write 한다. 평이 write_text(json.dumps)/json.dump truncate-write는 동시쓰기 lost-update·torn JSON으로 알림 중복·상태 유실이 재발한다.
+
+### [PREVENT] 안전 게이트 기본값은 fail-closed (or PASS/or True 금지) (2026-06-26)
+계약/리뷰/승인/preflight 등 판정 게이트는 값 없음·파싱 실패 시 기본을 차단/보류로 둔다(or FAIL/or BLOCKED/or False/NEEDS_REVISION). or PASS/or True로 fail-open 하면 producer가 깨질 때 게이트가 조용히 통과(死게이트)된다. 단 데몬 생존·best-effort 알림·anti-stall(멈춤0)은 fail-open이 정당하니 구분.
+
+### [PREVENT] 누적 자원은 생성 시 retention + consolidation prune 배선 (무한 적체 금지) (2026-06-26)
+매 호출 timestamp 디렉토리/jsonl append/history 리스트를 만드는 자원은 (a) 생성 시점 keep_last N retention (b) consolidation.run_consolidation_tidy의 artifact age-prune에 배선한다. cap·정리 없으면 worktree 238개·artifacts 247MB처럼 적체로 시스템이 마비된다. worktree는 프로젝트당 생성 cap, released는 재활성 금지.
+
+### [PREVENT] 한도/인증 실패는 retry 소진해도 give-up 금지 (failure_policy 순서 END→quota→retry소진) (2026-06-26)
+failure_policy.classify_pipeline_failure 분기 순서는 명시 END → quota(CONTINUE) → retry-소진(terminal)이다. retry-소진 terminal을 quota 위로 올리면 한도 작업이 영구 포기된다(하드닝 중 실제 회귀). quota는 reset 대기.
+
+### [PREVENT] ensure-daemon spawn은 debounce + Popen 직후 PID 기록 (respawn 버스트 금지) (2026-06-26)
+백그라운드 데몬을 "PID 죽었으면 Popen"으로 기동하는 ensure_*_daemon_running류는, child가 lock 획득 후에야 PID 파일을 쓰면 그 startup 윈도우(수 초) 동안 PID가 옛 죽은 값을 가리킨다. supervisor가 매 tick마다 ensure를 부르면 계속 "죽음"으로 보고 재spawn → spawn-then-exit 버스트(실측: scheduler-daemon ~30개/9초; child들은 daemon lock 못 잡고 즉시 종료해 동시 실행은 1개지만 낭비·로그오염). 규칙: ensure는 (a) 직전 spawn 후 startup 윈도우(예: 30s) 안엔 재spawn하지 않는다(spawn mark 타임스탬프 파일) (b) Popen 직후 child PID를 즉시 PID 파일에 기록해 다음 ensure가 startup 중에도 alive로 보게 한다. lock으로 동시 실행만 막는 것으로는 부족(버스트는 spawn 호출 빈도 문제). 회귀 test_scheduler_spawn_debounce.py.
+
+### [PREVENT] 계획모드 지시는 FluxOS 파이프라인 등록 후에만 진행(plan-gate 하드 강제) (2026-06-26)
+AI 세션이 CEO 파이프라인(계획→구현→리뷰→보고)을 무시하고 계획모드 지시도 직접 구현하던 문제. plan-gate 도입: 계획모드(Claude permission_mode=plan)/계획해(Codex) 지시는 run.py pipeline 등록 전 편집(Claude PreToolUse deny)·커밋(pre-commit FLUXOS_SESSION_ID 세션 commit-check) 차단. utils/plan_gate.py(gate_status ALLOW|REQUIRE_PIPELINE, FLUXOS_PLAN_GATE=block|warn|off), scripts/claude_hooks/plan_gate_hook.py, ~/.claude/settings.json 훅. fail-open·TTL 2h·세션한정. 규칙: 계획모드/'계획해' 지시는 반드시 run.py pipeline로 등록한 뒤 진행하라(미등록 편집·커밋은 plan-gate가 차단).
+
+### [PREVENT] AI 운용 일정: 2026-07-24까지 Claude Code 전용, 7-25부터 GLM 파이프라인 (2026-06-26)
+CEO 지시(2026-06-26): 200달러 Claude Code 무제한 기간이라 7/24까지 모든 작업을 Claude Code로만(GLM/API 비용 차단), 7/25부터 파이프라인(Claude 계획→GLM 구현→Claude 검토). 규칙: 사용자가 'GLM 사용' 명시(FLUXOS_IMPLEMENTER=glm) 전까지, 그리고 2026-07-25 전까지 모든 AI 세션은 GLM 디스패치 금지하고 Claude Code로 직접 수행한다. utils/ai_schedule.claude_only_period()가 단일 소스. plan_gate.mode()는 그 기간 off(편집 자유), ai_fallback_router는 GLM 제외. 7/25 자동 전환.
+
+### [PREVENT] consolidation 알림 노이즈 — advisory 후보가 30분마다 텔레그램 반복 (2026-06-26)
+consolidation tidy advisory 모드가 정리 후보(세션/산출물 등)가 있으면 30분마다 텔레그램 알림을 보내, 안 지워지는 후보가 계속 핑을 유발(노이즈). 수정: 텔레그램은 관리 필요한 경고(워크트리 폭증·미머지 누적 임계초과 alerts)에만, 실제 안전청소는 모니터 로그만, advisory 단순 후보는 무알림. apply 모드로 안전 후보 자동청소(후보 0 유지). 규칙: 주기 데몬 알림은 '조치 필요/변화'에만 텔레그램, 일상 housekeeping은 모니터 채널만.
+
+### [PREVENT] NexusFlow codextest isolated resource guard (2026-06-27)
+External smoke tests can accidentally touch existing cloud resources unless every generated/deletion target is gated by a codextest prefix and verified with real input.
+
+### [PREVENT] ValueFlow WIP 분리 커밋·EOL/ignore 가드 (2026-06-28)
+포맷·로컬산출물·CRLF가 기능 커밋을 오염하고 salvage 두 브랜치 온보딩 중복
+
+### [PREVENT] Flow deploy 기본값 공유 헬퍼 통일 (2026-06-29)
+Flow 프로젝트별 Flutter 래퍼가 ADB 설치와 Google Drive 복사 fallback을 각자 구현해 기본 빌드 모드, 탐색기 오픈, android-build 락 사용이 달라질 수 있었음
+
+### [PREVENT] Flow deploy defaults use shared build-install-copy helper (2026-06-29)
+Flow 프로젝트별 deploy 래퍼가 빌드 설치 복사 동작을 각자 구현하면 ADB 없음 처리, Drive 복사, 탐색기 오픈, Gradle 공유락 사용이 프로젝트마다 달라져 회귀한다.
+
+### [PREVENT] FluxStudio root git status storm (2026-06-29)
+FluxStudio root repo exposed separate project roots and generated sandboxes as dirty or untracked files, causing Codex/FluxOS git status/diff/add processes to fan out and leave stale index locks during slowdowns.
+
+### [PREVENT] Flow deploy fallback helper (2026-06-29)
+Flow 프로젝트별 배포 래퍼가 ADB 기기 부재 시 공통 Google Drive 복사 fallback을 일관되게 제공하지 않음
 
 
 # PlanFlow
