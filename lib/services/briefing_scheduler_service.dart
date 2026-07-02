@@ -459,8 +459,8 @@ class BriefingSchedulerService {
   }) async {
     final title = isMorning ? '모닝 브리핑' : '이브닝 브리핑';
     final body = isMorning
-        ? '알림을 누르면 오늘 일정을 시간순으로 정리해 드릴게요.'
-        : '알림을 누르면 내일 일정을 시간순으로 정리해 드릴게요.';
+        ? '오늘 모닝 브리핑 알람이 도착했습니다. 오늘 일정을 시간순으로 알려드릴까요?'
+        : '이브닝 브리핑 알람이 도착했습니다. 내일 일정을 시간순으로 알려드릴까요?';
     if (await _shouldSuppressNotification(false)) {
       DiagLogger.log(
         'Briefing',
