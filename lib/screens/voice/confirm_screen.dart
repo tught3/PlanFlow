@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
@@ -16,6 +17,10 @@ import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/voice_correction_rule_repository.dart';
 import '../../core/analytics_service.dart';
+import '../../features/groups/models/group_event_model.dart';
+import '../../features/groups/models/group_model.dart';
+import '../../features/groups/providers/group_context_provider.dart';
+import '../../features/groups/repositories/group_event_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/planflow_action_buttons.dart';
 import '../location/location_pick_flow.dart';
@@ -41,6 +46,7 @@ import '../../widgets/calendar_style_event_editor.dart';
 import '../../widgets/overlap_warning_dialog.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
+import '../../widgets/schedule_save_scope_card.dart';
 part 'confirm_widgets.dart';
 
 class ConfirmScreen extends StatefulWidget {
@@ -49,6 +55,8 @@ class ConfirmScreen extends StatefulWidget {
     this.parsedSchedule = const <String, dynamic>{},
     this.userId,
     this.eventRepository,
+    this.groupContextProvider,
+    this.groupEventRepository,
     GptService? gptService,
     ConfirmScreenBackend? backend,
     NotificationService? notificationService,
@@ -77,6 +85,8 @@ class ConfirmScreen extends StatefulWidget {
   final Map<String, dynamic> parsedSchedule;
   final String? userId;
   final EventRepository? eventRepository;
+  final GroupContextProvider? groupContextProvider;
+  final GroupEventRepository? groupEventRepository;
   final GptService gptService;
   final ConfirmScreenBackend backend;
   final NotificationService notificationService;
@@ -253,6 +263,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   int? _ambiguousTimeHour;
   int? _ambiguousTimeMinute;
   Map<String, dynamic>? _initialParsedForLearning;
+  GroupContextProvider? _groupContextProvider;
+  bool _ownsGroupContextProvider = false;
+  GroupEventRepository? _groupEventRepositoryCache;
+  ScheduleSaveTarget _saveTarget = ScheduleSaveTarget.personalOnly;
+  // 사용자가 저장 범위를 직접 바꾼 뒤에는 자동 공유 기본값이 덮어쓰지 않도록 표시.
+  bool _saveTargetTouchedByUser = false;
 
   bool get _parseFailed => widget.parsedSchedule['parse_failed'] == true;
 
@@ -305,6 +321,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     _locationController.addListener(_markLocationEdited);
     _memoController.addListener(_markMemoEdited);
 
+    _groupContextProvider = widget.groupContextProvider;
+    if (_groupContextProvider == null && AppEnv.isSupabaseReady) {
+      try {
+        _groupContextProvider = GroupContextProvider();
+        _ownsGroupContextProvider = true;
+      } catch (error) {
+        debugPrint('ConfirmScreen group context unavailable: $error');
+      }
+    }
+    unawaited(_loadGroupContextIfNeeded());
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeHydrateParsedSchedule();
       unawaited(_resolveLocationCoordinatesIfNeeded());
@@ -341,7 +368,132 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     for (final draft in _preActions) {
       draft.dispose();
     }
+    if (_ownsGroupContextProvider) {
+      _groupContextProvider?.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _loadGroupContextIfNeeded() async {
+    final provider = _groupContextProvider;
+    if (provider == null) {
+      return;
+    }
+    final userId = _resolveUserId();
+    if (userId == null || userId.trim().isEmpty) {
+      return;
+    }
+    await provider.load(userId.trim());
+    if (mounted) {
+      setState(() {});
+      unawaited(_applyAutoShareDefaultIfNeeded());
+    }
+  }
+
+  GroupModel? get _selectedGroupForSharing {
+    final group = _groupContextProvider?.selectedGroup;
+    if (group == null || !group.isActive) {
+      return null;
+    }
+    return group;
+  }
+
+  bool get _canShareToSelectedGroup => _selectedGroupForSharing != null;
+
+  bool get _shouldSavePersonalEvent =>
+      !_canShareToSelectedGroup ||
+      _saveTarget == ScheduleSaveTarget.personalOnly ||
+      _saveTarget == ScheduleSaveTarget.personalAndGroup;
+
+  bool get _shouldSaveGroupEvent =>
+      _canShareToSelectedGroup &&
+      (_saveTarget == ScheduleSaveTarget.personalAndGroup ||
+          _saveTarget == ScheduleSaveTarget.groupOnly);
+
+  GroupEventRepository get _groupEventRepository =>
+      widget.groupEventRepository ??
+      (_groupEventRepositoryCache ??= GroupEventRepository.supabase());
+
+  String _autoSharePrefKey(String userId, String groupId) =>
+      'planflow:group_auto_share:v1:$userId:$groupId';
+
+  Future<void> _applyAutoShareDefaultIfNeeded() async {
+    // 사용자가 이미 저장 범위를 직접 골랐으면 자동 공유 기본값으로 덮어쓰지 않는다.
+    if (_saveTargetTouchedByUser) {
+      return;
+    }
+
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return;
+    }
+
+    final userId = _resolveUserId();
+    if (userId == null || userId.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final key = _autoSharePrefKey(userId, group.id);
+      final autoShareEnabled = preferences.getBool(key) ?? false;
+
+      // await 사이에 사용자가 직접 골랐을 수 있으므로 적용 직전에 다시 확인.
+      if (autoShareEnabled && mounted && !_saveTargetTouchedByUser) {
+        setState(() {
+          _saveTarget = ScheduleSaveTarget.personalAndGroup;
+        });
+      }
+    } catch (error) {
+      debugPrint('ConfirmScreen auto-share default error: $error');
+    }
+  }
+
+  Future<GroupEventModel?> _createGroupEventFromDraft(
+    EventModel draft,
+    String userId, {
+    String? personalEventId,
+  }) async {
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return null;
+    }
+    final startAt = draft.startAt;
+    if (startAt == null) {
+      throw StateError('그룹 일정에는 시작 시간이 필요합니다.');
+    }
+    final endAt = draft.endAt ?? _eventRangeEnd(startAt, draft.endAt);
+    final recurrenceType = _groupRecurrenceTypeFor(draft.recurrenceRule);
+    return _groupEventRepository.createGroupEvent(
+      GroupEventModel(
+        id: '',
+        groupId: group.id,
+        title: draft.title,
+        description: draft.memo,
+        location: draft.location,
+        startAt: startAt,
+        endAt: endAt,
+        allDay: draft.isAllDay,
+        recurrenceType: recurrenceType,
+        createdBy: userId,
+        personalEventId: personalEventId,
+        status: 'active',
+      ),
+    );
+  }
+
+  String _groupRecurrenceTypeFor(String? recurrenceRule) {
+    final rule = recurrenceRule?.toUpperCase() ?? '';
+    if (rule.contains('FREQ=DAILY')) {
+      return 'daily';
+    }
+    if (rule.contains('FREQ=WEEKLY')) {
+      return 'weekly';
+    }
+    if (rule.contains('FREQ=MONTHLY')) {
+      return 'monthly';
+    }
+    return 'none';
   }
 
   void _markTitleEdited() {
@@ -962,24 +1114,27 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       category: _category,
     );
 
-    final eventStart = draftEvent.startAt ?? _startAt;
-    final overlappingEvents = await repository.findOverlappingEvents(
-      rangeStart: eventStart,
-      rangeEnd: _eventRangeEnd(eventStart, draftEvent.endAt),
-      userId: userId,
-    );
-    final duplicateWarningEvents = filterDuplicateWarningEvents(
-      draft: draftEvent,
-      candidates: overlappingEvents,
-    );
-    if (!mounted) {
-      return;
-    }
-    if (duplicateWarningEvents.isNotEmpty) {
-      unawaited(AnalyticsService.logConflictDetected());
-      final shouldContinue = await _showOverlapWarning(duplicateWarningEvents);
-      if (!shouldContinue || !mounted) {
+    if (_shouldSavePersonalEvent) {
+      final eventStart = draftEvent.startAt ?? _startAt;
+      final overlappingEvents = await repository.findOverlappingEvents(
+        rangeStart: eventStart,
+        rangeEnd: _eventRangeEnd(eventStart, draftEvent.endAt),
+        userId: userId,
+      );
+      final duplicateWarningEvents = filterDuplicateWarningEvents(
+        draft: draftEvent,
+        candidates: overlappingEvents,
+      );
+      if (!mounted) {
         return;
+      }
+      if (duplicateWarningEvents.isNotEmpty) {
+        unawaited(AnalyticsService.logConflictDetected());
+        final shouldContinue =
+            await _showOverlapWarning(duplicateWarningEvents);
+        if (!shouldContinue || !mounted) {
+          return;
+        }
       }
     }
 
@@ -988,49 +1143,84 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     });
 
     try {
-      final savedEvent = await repository.createEvent(draftEvent);
-      unawaited(_recordVoiceCorrectionLearning(userId: userId));
+      EventModel? savedEvent;
+      if (_shouldSavePersonalEvent) {
+        savedEvent = await repository.createEvent(draftEvent);
+      }
 
-      final postSaveResult = await _scheduleImmediateAlarmNotifications(
-        event: savedEvent,
-      );
+      if (_shouldSaveGroupEvent) {
+        if (savedEvent == null) {
+          await _createGroupEventFromDraft(draftEvent, userId);
+        } else {
+          final createdGroupEvent = await _createGroupEventFromDraft(
+            savedEvent,
+            userId,
+            personalEventId: savedEvent.id,
+          );
+          if (createdGroupEvent != null) {
+            savedEvent = await repository.updateEvent(
+              savedEvent.copyWith(groupEventId: createdGroupEvent.id),
+            );
+          }
+        }
+      }
 
-      unawaited(
-        _runPostSaveFollowUps(
-          userId: userId,
+      _PostSaveFollowUpResult? postSaveResult;
+      if (savedEvent != null) {
+        unawaited(_recordVoiceCorrectionLearning(userId: userId));
+
+        postSaveResult = await _scheduleImmediateAlarmNotifications(
           event: savedEvent,
-          repository: repository,
-        ),
-      );
+        );
+
+        unawaited(
+          _runPostSaveFollowUps(
+            userId: userId,
+            event: savedEvent,
+            repository: repository,
+          ),
+        );
+      }
 
       if (mounted) {
         // 저장 성공 SnackBar는 바로 뒤이은 홈 화면 전환과 겹쳐 잔상으로 보이므로
         // 띄우지 않는다. 홈 진입 + 목록에 새 일정 표시가 저장 완료 피드백을 대신한다.
         // (저장 실패 시에는 화면이 그대로라 SnackBar를 정상 표시한다.)
+        // 단, 개인 일정 없이 그룹에만 공유한 경우에는 다른 피드백 수단이 없으므로 메시지를 띄운다.
+        if (savedEvent == null) {
+          _showMessage('그룹에 일정을 공유했어요.');
+        }
         EventRefreshBus.instance.notifyChanged(
           reason: 'confirm_saved',
-          eventId: savedEvent.id,
-          startAt: savedEvent.startAt,
+          eventId: savedEvent?.id,
+          startAt: savedEvent?.startAt ?? draftEvent.startAt,
         );
         unawaited(AnalyticsService.logScheduleConfirmed());
-        unawaited(AnalyticsService.logEventCreated(source: 'voice'));
-        unawaited(ReviewService.onEventSaved());
-        final alarmWarning = postSaveResult.alarmWarningMessage;
+        if (savedEvent != null) {
+          unawaited(AnalyticsService.logEventCreated(source: 'voice'));
+          unawaited(ReviewService.onEventSaved());
+        }
+        final alarmWarning = postSaveResult?.alarmWarningMessage;
         if (alarmWarning != null) {
           _showMessage(alarmWarning);
         }
-        // 알람 권한 가드 — 저장 성공 후 권한이 누락된 경우 안내 다이얼로그.
-        // 시스템 설정 화면이 열렸으면 true 반환 → 앱 복귀(resumed) 시 홈 이동.
-        // 다이얼로그만 닫혔거나 권한 충분이면 false → 즉시 홈 이동.
-        final openedPermissionSettings =
-            await _showAlarmPermissionGuardIfNeeded();
-        if (mounted) {
-          if (openedPermissionSettings) {
-            // 시스템 설정으로 이동 중 — didChangeAppLifecycleState(resumed)에서 처리
-            _pendingNavigateAfterSave = true;
-          } else {
-            _navigateAfterSave();
+        if (savedEvent != null) {
+          // 알람 권한 가드 — 저장 성공 후 권한이 누락된 경우 안내 다이얼로그.
+          // 시스템 설정 화면이 열렸으면 true 반환 → 앱 복귀(resumed) 시 홈 이동.
+          // 다이얼로그만 닫혔거나 권한 충분이면 false → 즉시 홈 이동.
+          final openedPermissionSettings =
+              await _showAlarmPermissionGuardIfNeeded();
+          if (mounted) {
+            if (openedPermissionSettings) {
+              // 시스템 설정으로 이동 중 — didChangeAppLifecycleState(resumed)에서 처리
+              _pendingNavigateAfterSave = true;
+            } else {
+              _navigateAfterSave();
+            }
           }
+        } else {
+          // 그룹 전용 저장에는 개인 알람이 없으므로 권한 가드를 건너뛰고 바로 이동.
+          _navigateAfterSave();
         }
       }
     } on StateError catch (error) {
@@ -2045,6 +2235,24 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     });
   }
 
+  Widget _buildSaveTargetCard(BuildContext context) {
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return const SizedBox.shrink();
+    }
+
+    return ScheduleSaveScopeCard(
+      groupName: group.name,
+      selected: _saveTarget,
+      onChanged: (target) {
+        setState(() {
+          _saveTarget = target;
+          _saveTargetTouchedByUser = true;
+        });
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -2175,6 +2383,9 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         _buildTimePeriodClarificationCard(),
                       ],
                       const SizedBox(height: AppConstants.sectionSpacing),
+                      _buildSaveTargetCard(context),
+                      if (_selectedGroupForSharing != null)
+                        const SizedBox(height: AppConstants.sectionSpacing),
                       CalendarStyleEventEditor(
                         titleController: _titleController,
                         locationController: _locationController,
