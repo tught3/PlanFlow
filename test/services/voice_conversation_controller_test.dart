@@ -531,6 +531,31 @@ void main() {
       expect(controller.pendingDelete, isNull);
       expect(controller.focusedEvent?.id, 'afternoon');
     });
+
+    test(
+        '명확한 새 일정 생성 명령은 조회로 남아있던 기존 일정과 제목이 우연히 겹쳐도 '
+        '그 일정을 편집하지 않고 새 일정 생성으로 처리한다', () {
+      // 회귀: "모란역으로 가기 일정생성해줘"가 이전 조회 결과에 남아있던
+      // 제목 "가기" 일정과 부분일치(공통 단어 "가기")해, 새 일정을 만드는
+      // 대신 그 기존 일정을 오후 2시로 편집해버리는 버그가 있었다.
+      final controller = VoiceConversationController(
+        events: <EventModel>[
+          _event('existing-1', '가기', DateTime(2026, 7, 3, 9, 30)),
+        ],
+        now: () => DateTime(2026, 7, 3, 10),
+      );
+
+      final showResult = controller.handle('오늘 일정 보여줘');
+      expect(showResult.action, VoiceConversationAction.showEvents);
+      expect(controller.focusedEvent?.id, 'existing-1');
+
+      final result =
+          controller.handle('오늘 오후2시에 모란역으로 가기 일정생성해줘');
+
+      expect(result.action, VoiceConversationAction.createEvent);
+      expect(result.targetEvent, isNull);
+      expect(result.draftEvent, isNotNull);
+    });
   });
 }
 

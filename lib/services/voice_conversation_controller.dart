@@ -354,6 +354,8 @@ class VoiceConversationController {
 
     final criticalValue = _criticalValueFromText(text);
     if (criticalValue != null) {
+      // 이미 '중요 표시' 의도가 확정됐으므로 route.intent(add 오분류 가능성,
+      // 예: '표시'의 '시'가 시간 표현으로 오매칭)와 무관하게 대상을 찾는다.
       final target = _resolveFollowUpTarget(text, state);
       if (target == null) {
         state.pendingTitleSearchText = null;
@@ -409,6 +411,7 @@ class VoiceConversationController {
           ),
         );
       }
+      // 이미 '장소 변경' 의도가 확정됐으므로 route.intent와 무관하게 대상을 찾는다.
       final target = _resolveFollowUpTarget(text, state);
       final locationText = _extractLocationText(text);
       if (target != null && locationText != null) {
@@ -465,6 +468,7 @@ class VoiceConversationController {
           ),
         );
       }
+      // 이미 '삭제' 의도가 확정됐으므로 route.intent와 무관하게 대상을 찾는다.
       final target = _resolveFollowUpTarget(text, state);
       if (target != null) {
         final pending = VoiceConversationDeleteAction(
@@ -518,7 +522,7 @@ class VoiceConversationController {
       );
     }
 
-    final followUp = _resolveFollowUpTarget(text, state);
+    final followUp = _resolveFollowUpTarget(text, state, route: route);
     if (followUp != null) {
       state
         ..focusedEvent = followUp
@@ -828,8 +832,9 @@ class VoiceConversationController {
 
   EventModel? _resolveFollowUpTarget(
     String text,
-    _VoiceConversationState state,
-  ) {
+    _VoiceConversationState state, {
+    VoiceCommandRouteResult? route,
+  }) {
     if (state.selectedEvents.length > 1) {
       final selectedOrdinal = _parseOrdinalIndex(text);
       if (selectedOrdinal != null &&
@@ -854,19 +859,28 @@ class VoiceConversationController {
       }
     }
 
+    if (_isFocusedEventReference(text)) {
+      if (state.focusedEvent != null) {
+        return state.focusedEvent;
+      }
+      return state.visibleEvents.length == 1 ? state.visibleEvents.first : null;
+    }
+
+    // 새 일정 생성 의도가 명확하면(route.intent == add) 여기부터는 전부
+    // '약한' 추론 신호(시간 매칭·제목 부분일치)라 새 명령을 기존 일정에 대한
+    // 후속 편집으로 오인할 위험이 크다. 실증: "모란역으로 가기 일정생성해줘"가
+    // 과거 조회 결과에 남아있던 제목 "가기" 일정과 부분일치해 그 일정을
+    // 편집하는 것으로 잘못 처리됨. 명확한 생성 의도에서는 이 추론을 건너뛴다.
+    if (route?.intent == VoiceCommandRouteIntent.add) {
+      return null;
+    }
+
     final time = _parseTimeReference(text);
     if (time != null) {
       final matches = _matchVisibleEventsByTime(time, state.visibleEvents);
       if (matches.length == 1) {
         return matches.single;
       }
-    }
-
-    if (_isFocusedEventReference(text)) {
-      if (state.focusedEvent != null) {
-        return state.focusedEvent;
-      }
-      return state.visibleEvents.length == 1 ? state.visibleEvents.first : null;
     }
 
     final titleMatched = _matchVisibleEventByTitle(text, state.visibleEvents);
