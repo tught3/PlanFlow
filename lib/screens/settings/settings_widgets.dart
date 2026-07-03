@@ -107,7 +107,7 @@ class _AccountSection extends StatelessWidget {
             children: [
               _StatusRow(
                 label: '로그인 상태',
-                value: signedIn ? authProvider.accountDisplayName : '로그아웃됨',
+                value: signedIn ? authProvider.accountDisplayWithMethod : '로그아웃됨',
                 icon: Icons.account_circle_outlined,
                 isConfigured: signedIn,
               ),
@@ -145,6 +145,17 @@ class _AccountSection extends StatelessWidget {
                         child: const Text('로그인'),
                       ),
               ),
+              if (signedIn) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => context.push(AppRoutes.groups),
+                    icon: const Icon(Icons.groups_outlined),
+                    label: const Text('그룹 관리'),
+                  ),
+                ),
+              ],
             ],
           );
         },

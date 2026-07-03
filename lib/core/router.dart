@@ -6,6 +6,18 @@ import '../screens/auth/login_screen.dart';
 import '../screens/onboarding/permission_onboarding_screen.dart';
 import '../screens/auth/reset_password_screen.dart';
 import '../data/models/event_model.dart';
+import '../features/groups/models/group_event_model.dart';
+import '../features/groups/screens/group_dashboard_screen.dart';
+import '../features/groups/screens/group_detail_screen.dart';
+import '../features/groups/screens/group_create_screen.dart';
+import '../features/groups/screens/group_event_create_screen.dart';
+import '../features/groups/screens/group_event_detail_screen.dart';
+import '../features/groups/screens/group_event_list_screen.dart';
+import '../features/groups/screens/group_invite_link_screen.dart';
+import '../features/groups/screens/group_invite_screen.dart';
+import '../features/groups/screens/group_list_screen.dart';
+import '../features/groups/screens/group_member_screen.dart';
+import '../features/groups/providers/group_context_provider.dart';
 import '../screens/briefing/briefing_launch_screen.dart';
 import '../screens/event/event_detail_screen.dart';
 import '../screens/event/event_edit_screen.dart';
@@ -252,6 +264,96 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),
+    GoRoute(
+      path: AppRoutes.groups,
+      builder: (context, state) => const GroupListScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupCreate,
+      builder: (context, state) => const GroupCreateScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupInviteLink,
+      builder: (context, state) => GroupInviteLinkScreen(
+        groupId: state.uri.queryParameters['groupId']?.trim() ??
+            state.uri.queryParameters['group_id']?.trim() ??
+            '',
+        inviteToken: state.uri.queryParameters['token']?.trim() ?? '',
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupInvitesForGroup,
+      builder: (context, state) => GroupInviteScreen(
+        contextProvider: _groupContextProviderExtra(state),
+        initialGroupId: state.pathParameters['groupId']?.trim(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupMembersForGroup,
+      builder: (context, state) => GroupMemberScreen(
+        initialGroupId: state.pathParameters['groupId']?.trim(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEventsForGroup,
+      builder: (context, state) => GroupEventListScreen(
+        initialGroupId: state.pathParameters['groupId']?.trim(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupDashboardForGroup,
+      builder: (context, state) => GroupDashboardScreen(
+        initialGroupId: state.pathParameters['groupId']?.trim(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEventCreateForGroup,
+      builder: (context, state) => GroupEventCreateScreen(
+        initialGroupId: state.pathParameters['groupId']?.trim(),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupInvites,
+      builder: (context, state) => GroupInviteScreen(
+        contextProvider: _groupContextProviderExtra(state),
+      ),
+    ),
+    GoRoute(
+      path: AppRoutes.groupMembers,
+      builder: (context, state) => const GroupMemberScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEvents,
+      builder: (context, state) => const GroupEventListScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupDashboard,
+      builder: (context, state) => const GroupDashboardScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEventCreate,
+      builder: (context, state) => const GroupEventCreateScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.groupEventDetail,
+      builder: (context, state) => GroupEventDetailScreen(
+        eventId: state.pathParameters['eventId']?.trim() ?? '',
+        event: state.extra is GroupEventModel
+            ? state.extra! as GroupEventModel
+            : null,
+      ),
+    ),
+    // 주의: `/groups/:groupId`(그룹 상세)는 반드시 `/groups/invites`,
+    // `/groups/members`, `/groups/events`, `/groups/dashboard` 같은 2세그먼트
+    // 정적 경로들보다 뒤에 선언한다. GoRouter는 먼저 선언된 경로가 우선이라,
+    // 앞에 두면 `/groups/invites`가 groupId="invites"인 그룹 상세로 잘못 매칭돼
+    // 초대 관리 등 정적 경로 화면이 열리지 않는다(빈/깨진 화면).
+    GoRoute(
+      path: AppRoutes.groupDetail,
+      builder: (context, state) => GroupDetailScreen(
+        groupId: state.pathParameters['groupId'] ?? '',
+      ),
+    ),
   ],
   errorBuilder: (context, state) => const PlaceholderScreen(
     title: '화면을 찾을 수 없어요',
@@ -308,4 +410,18 @@ DateTime? _parseRouteDate(String? raw) {
     return null;
   }
   return DateTime.tryParse(normalized);
+}
+
+GroupContextProvider? _groupContextProviderExtra(GoRouterState state) {
+  final extra = state.extra;
+  if (extra is GroupContextProvider) {
+    return extra;
+  }
+  if (extra is Map<String, Object?>) {
+    final provider = extra['contextProvider'];
+    if (provider is GroupContextProvider) {
+      return provider;
+    }
+  }
+  return null;
 }

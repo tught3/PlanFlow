@@ -445,6 +445,7 @@ EventModel _copyEventWithTime(
     isAllDay: event.isAllDay,
     isMultiDay: event.isMultiDay,
     parentEventId: event.parentEventId,
+    groupEventId: event.groupEventId,
     category: event.category,
     source: event.source,
     externalId: event.externalId,
@@ -536,7 +537,8 @@ class SupabaseEventRepository extends EventRepository {
       'id, user_id, title, start_at, end_at, location, location_lat, '
       'location_lng, memo, supplies, supplies_checked, is_critical, use_strong_alarm, source, '
       'participants, targets, '
-      'recurrence_rule, is_all_day, is_multi_day, parent_event_id, category, '
+      'recurrence_rule, is_all_day, is_multi_day, parent_event_id, '
+      'group_event_id, category, '
       'external_id, external_calendar_id, external_etag, external_updated_at, '
       'last_synced_at, created_at, updated_at';
   static const String _legacySelectColumns =
@@ -1028,6 +1030,7 @@ class SupabaseEventRepository extends EventRepository {
     'external_updated_at',
     'last_synced_at',
     'parent_event_id',
+    'group_event_id',
     'participants',
     'targets',
     'updated_at',
@@ -1055,6 +1058,7 @@ extension on EventModel {
       isAllDay: isAllDay,
       isMultiDay: isMultiDay,
       parentEventId: parentEventId,
+      groupEventId: groupEventId,
       category: category,
       source: source,
       externalId: externalId,
@@ -1100,6 +1104,7 @@ EventModel _mergeExternalMetadata({
     isAllDay: incoming.isAllDay,
     isMultiDay: incoming.isMultiDay,
     parentEventId: incoming.parentEventId,
+    groupEventId: incoming.groupEventId,
     category: incoming.category,
     source: incoming.source,
     externalId: externalId,

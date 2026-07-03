@@ -21,6 +21,7 @@ class EventModel {
     this.isAllDay = false,
     this.isMultiDay = false,
     this.parentEventId,
+    this.groupEventId,
     this.category = '기타',
     this.source = 'manual',
     this.externalId,
@@ -53,6 +54,7 @@ class EventModel {
       isAllDay: _boolValue(json['is_all_day']),
       isMultiDay: _boolValue(json['is_multi_day']),
       parentEventId: _optionalStringValue(json['parent_event_id']),
+      groupEventId: _optionalStringValue(json['group_event_id']),
       category: _categoryValue(json['category']),
       source: _sourceValue(json['source']),
       externalId: _optionalStringValue(json['external_id']),
@@ -84,6 +86,7 @@ class EventModel {
   final bool isAllDay;
   final bool isMultiDay;
   final String? parentEventId;
+  final String? groupEventId;
   final String category;
   final String source;
   final String? externalId;
@@ -122,6 +125,7 @@ class EventModel {
       'is_all_day': isAllDay,
       'is_multi_day': isMultiDay,
       'parent_event_id': _optionalStringValue(parentEventId),
+      'group_event_id': _optionalStringValue(groupEventId),
       'category': _categoryValue(category),
       'source': _sourceValue(source),
       'external_id': _optionalStringValue(externalId),
@@ -153,6 +157,7 @@ class EventModel {
       'is_all_day': isAllDay,
       'is_multi_day': isMultiDay,
       'parent_event_id': _optionalStringValue(parentEventId),
+      'group_event_id': _optionalStringValue(groupEventId),
       'category': _categoryValue(category),
       'source': _sourceValue(source),
       'external_id': _optionalStringValue(externalId),
@@ -161,6 +166,95 @@ class EventModel {
       'external_updated_at': _utcIsoValue(externalUpdatedAt),
       'last_synced_at': _utcIsoValue(lastSyncedAt),
     };
+  }
+
+  EventModel copyWith({
+    String? id,
+    String? userId,
+    String? title,
+    DateTime? startAt,
+    bool clearStartAt = false,
+    DateTime? endAt,
+    bool clearEndAt = false,
+    String? location,
+    bool clearLocation = false,
+    double? locationLat,
+    bool clearLocationLat = false,
+    double? locationLng,
+    bool clearLocationLng = false,
+    String? memo,
+    bool clearMemo = false,
+    List<String>? supplies,
+    List<String>? suppliesChecked,
+    List<String>? participants,
+    List<String>? targets,
+    bool? isCritical,
+    bool? useStrongAlarm,
+    String? recurrenceRule,
+    bool clearRecurrenceRule = false,
+    bool? isAllDay,
+    bool? isMultiDay,
+    String? parentEventId,
+    bool clearParentEventId = false,
+    String? groupEventId,
+    bool clearGroupEventId = false,
+    String? category,
+    String? source,
+    String? externalId,
+    bool clearExternalId = false,
+    String? externalCalendarId,
+    bool clearExternalCalendarId = false,
+    String? externalEtag,
+    bool clearExternalEtag = false,
+    DateTime? externalUpdatedAt,
+    bool clearExternalUpdatedAt = false,
+    DateTime? lastSyncedAt,
+    bool clearLastSyncedAt = false,
+    DateTime? createdAt,
+    bool clearCreatedAt = false,
+    DateTime? updatedAt,
+    bool clearUpdatedAt = false,
+  }) {
+    return EventModel(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      title: title ?? this.title,
+      startAt: clearStartAt ? null : startAt ?? this.startAt,
+      endAt: clearEndAt ? null : endAt ?? this.endAt,
+      location: clearLocation ? null : location ?? this.location,
+      locationLat: clearLocationLat ? null : locationLat ?? this.locationLat,
+      locationLng: clearLocationLng ? null : locationLng ?? this.locationLng,
+      memo: clearMemo ? null : memo ?? this.memo,
+      supplies: supplies ?? this.supplies,
+      suppliesChecked: suppliesChecked ?? this.suppliesChecked,
+      participants: participants ?? this.participants,
+      targets: targets ?? this.targets,
+      isCritical: isCritical ?? this.isCritical,
+      useStrongAlarm: useStrongAlarm ?? this.useStrongAlarm,
+      recurrenceRule:
+          clearRecurrenceRule ? null : recurrenceRule ?? this.recurrenceRule,
+      isAllDay: isAllDay ?? this.isAllDay,
+      isMultiDay: isMultiDay ?? this.isMultiDay,
+      parentEventId:
+          clearParentEventId ? null : parentEventId ?? this.parentEventId,
+      groupEventId:
+          clearGroupEventId ? null : groupEventId ?? this.groupEventId,
+      category: category ?? this.category,
+      source: source ?? this.source,
+      externalId: clearExternalId ? null : externalId ?? this.externalId,
+      externalCalendarId: clearExternalCalendarId
+          ? null
+          : externalCalendarId ?? this.externalCalendarId,
+      externalEtag:
+          clearExternalEtag ? null : externalEtag ?? this.externalEtag,
+      externalUpdatedAt: clearExternalUpdatedAt
+          ? null
+          : externalUpdatedAt ?? this.externalUpdatedAt,
+      lastSyncedAt:
+          clearLastSyncedAt ? null : lastSyncedAt ?? this.lastSyncedAt,
+      createdAt: clearCreatedAt ? null : createdAt ?? this.createdAt,
+      updatedAt: clearUpdatedAt ? null : updatedAt ?? this.updatedAt,
+    );
   }
 
   static String? _utcIsoValue(DateTime? value) {

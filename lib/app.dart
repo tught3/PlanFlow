@@ -797,6 +797,23 @@ String? resolveHomeWidgetRoute(Uri? uri) {
       return eventId.isNotEmpty
           ? '${AppRoutes.eventDetail}/$eventId'
           : AppRoutes.calendar;
+    case 'group-invite':
+      final groupId = uri.queryParameters['groupId']?.trim() ??
+          uri.queryParameters['group_id']?.trim() ??
+          '';
+      final token = uri.queryParameters['token']?.trim() ?? '';
+      return groupId.isNotEmpty && token.isNotEmpty
+          ? AppRoutes.groupInviteLinkFor(groupId: groupId, token: token)
+          : AppRoutes.groups;
+    case 'group-calendar':
+      // 홈 위젯 탭: planflow://group-calendar?groupId=<gid>
+      // → 해당 그룹의 이벤트 목록(캘린더 보기)으로 이동
+      final gcGroupId = uri.queryParameters['groupId']?.trim() ??
+          uri.queryParameters['group_id']?.trim() ??
+          '';
+      return gcGroupId.isNotEmpty
+          ? AppRoutes.groupEventsForId(gcGroupId)
+          : AppRoutes.groupEvents;
   }
 
   if (uri.path == '/voice') {
