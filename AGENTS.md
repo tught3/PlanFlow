@@ -86,9 +86,10 @@
 - Flutter 앱을 에뮬레이터로 실행해야 하거나 연결된 장치가 없으면 `flutter devices`로 먼저 확인하고, 항상 같은 AVD `flux_phone`의 `emulator-5554`에서 `flutter run -d emulator-5554`로 실행한다.
 - `flux_phone`/`emulator-5554`는 한 번에 하나의 세션만 사용한다. 다른 세션이 사용 중이면 새 실행을 직접 시작하지 말고 FIFO 큐에 적재해 앞 세션이 끝난 뒤 다음 세션이 이어서 사용하게 한다.
 - 같은 프로젝트에서 같은 에뮬레이터 실행 요청이 반복 입력되면 큐에 중복으로 쌓지 말고 기존 대기 항목 하나만 유지한다.
-- 실제 Android 기기를 무선 디버깅으로 연결할 때는 `adb connect <ip>:<port>`의 명시 IP 연결을 우선하고, 같은 기기가 `adb-..._adb-tls-connect._tcp` mDNS 항목으로 중복 표시되지 않게 자동 정리한다.
-- ADB/Flutter 실행 전에는 공용 래퍼가 `E:\AI_WIKI\scripts\adb-single-device.ps1`를 자동 호출해 mDNS 자동 연결을 비활성화하고, 같은 기기의 mDNS 중복 연결을 끊어 하나의 device만 유지한다.
-- 무선 디버깅 포트를 고정해서 자동 재연결해야 할 때만 사용자 환경변수 `AI_WIKI_ADB_DEVICE=<ip>:<port>`를 설정한다.
+- 실제 Android 기기 무선 디버깅은 S23(대용의 S23 Ultra) 자동 연결만 기본으로 유지한다. `ADB_MDNS_AUTO_CONNECT=1`(User 환경변수, 상시 설정)로 무선 디버깅 토글을 켤 때마다 바뀌는 IP:포트를 mDNS가 자동 감지·연결하므로, 더 이상 IP:포트를 수동으로 등록할 필요가 없다.
+- ADB/Flutter 실행 전에는 공용 래퍼가 `E:\AI_WIKI\scripts\adb-single-device.ps1`를 자동 호출한다. 이 스크립트는 mDNS 자동 연결을 켜둔 상태에서, 연결된 각 device의 실제 serial을 조회해 `config\adb_device_roster.json`의 `s23` 슬롯 serial과 다르면 즉시 `adb disconnect`한다 — S8/태블릿 등 다른 기기가 같이 mDNS로 잡혀도 자동으로 잘려나가고 S23 하나만 남는다.
+- 여러 기기를 동시에 붙여야 하는 예외(예: PlanFlow 3기기 설치)만 `adb-single-device.ps1 -AllowMultipleDevices`로 필터링을 건너뛴다. 그 외 프로젝트/세션은 이 예외를 쓰지 않는다.
+- 무선 디버깅 IP:포트를 수동으로 고정 등록하는 `AI_WIKI_ADB_DEVICE` 방식은 더 이상 기본 흐름이 아니다(포트가 토글마다 바뀌어 금방 stale해짐). 자동 감지가 실패할 때만 임시 진단용으로 쓴다.
 - 로컬 개발/디버그의 AI 호출은 기본적으로 Hermes 로컬 경로를 우선하고, 배포/릴리즈와 127.0.0.1을 직접 볼 수 없는 런타임은 OpenAI 배포 경로를 우선한다.
 - Hermes 로컬 기본값은 `http://127.0.0.1:8645/v1`, API key 예시는 `hermes-local`이다. 수동 override가 필요할 때만 `OPENAI_BASE_URL`로 바꾼다.
 - FLUXSTUDIO 계열의 공용 AI 호출은 Hermes 기본 경로를 사용하되, PlanFlow는 이번 자동 전환 범위에서 제외한다.
