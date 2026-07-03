@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
@@ -31,6 +32,11 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
 
 class MainActivity : FlutterActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // 화면 회전을 세로 고정 (시스템 설정과 무관하게 강제)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    }
     companion object {
         private const val REQUEST_MICROPHONE_PERMISSION = 4310
         private const val REQUEST_LOCATION_PERMISSION = 4311
