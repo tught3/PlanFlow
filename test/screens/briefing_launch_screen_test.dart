@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/briefing/briefing_launch_screen.dart';
 import 'package:planflow/services/briefing_scheduler_service.dart';
@@ -48,15 +49,38 @@ class _FakeBriefingSchedulerService extends BriefingSchedulerService {
     required bool isMorning,
     String? userId,
     bool isManualTrigger = false,
+    void Function(List<EventModel> events)? onEventsResolved,
   }) async {
     executeCalls += 1;
     receivedUserId = userId;
     receivedManualTrigger = isManualTrigger;
+    onEventsResolved?.call(const <EventModel>[]);
     return const BriefingExecutionResult(
       delivered: true,
       usedFallback: false,
       message: '모닝 브리핑을 재생했습니다.',
     );
+  }
+}
+
+/// executeBriefing이 TTS 재생 완료까지(resultCompleter가 완료될 때까지)
+/// 끝나지 않는 상황을 재현하는 fake — onEventsResolved는 즉시 호출한다.
+class _SlowFakeBriefingSchedulerService extends BriefingSchedulerService {
+  _SlowFakeBriefingSchedulerService({required this.events});
+
+  final List<EventModel> events;
+  final Completer<BriefingExecutionResult> resultCompleter =
+      Completer<BriefingExecutionResult>();
+
+  @override
+  Future<BriefingExecutionResult> executeBriefing({
+    required bool isMorning,
+    String? userId,
+    bool isManualTrigger = false,
+    void Function(List<EventModel> events)? onEventsResolved,
+  }) async {
+    onEventsResolved?.call(events);
+    return resultCompleter.future;
   }
 }
 
@@ -116,5 +140,60 @@ void main() {
       find.text('로그인 세션을 다시 확인해야 브리핑을 실행할 수 있습니다.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+      '음성 재생이 끝나기 전에도(로딩 문구만 있는 게 아니라) 읽어줄 일정 목록을 바로 보여준다',
+      (tester) async {
+    // 회귀: executeBriefing이 TTS 재생 완료까지 반환되지 않아, 재생되는
+    // 동안 화면에 "브리핑을 준비하고 있어요" 로딩 문구만 뜨고 실제 읽어줄
+    // 일정 목록은 전혀 안 보였다.
+    final auth = _FakeAuthProvider(
+      resolved: Completer<bool>()..complete(true),
+      syncResult: true,
+      currentUserId: 'user-1',
+    );
+    final scheduler = _SlowFakeBriefingSchedulerService(
+      events: <EventModel>[
+        EventModel(
+          id: 'e1',
+          userId: 'user-1',
+          title: '아침 회의',
+          startAt: DateTime.utc(2026, 1, 1, 0),
+          endAt: DateTime.utc(2026, 1, 1, 1),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BriefingLaunchScreen(
+          isMorning: true,
+          authProviderOverride: auth,
+          briefingSchedulerService: scheduler,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    // 아직 executeBriefing이 완료되지 않았지만(=TTS 재생 중인 상태를
+    // 시뮬레이션), 일정 목록은 이미 화면에 보여야 한다.
+    expect(find.text('아침 회의'), findsOneWidget);
+    expect(find.textContaining('읽어드리고 있어요'), findsOneWidget);
+
+    scheduler.resultCompleter.complete(
+      BriefingExecutionResult(
+        delivered: true,
+        usedFallback: false,
+        message: '모닝 브리핑을 재생했습니다.',
+        events: scheduler.events,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('모닝 브리핑을 재생했습니다.'), findsOneWidget);
+    expect(find.text('아침 회의'), findsOneWidget);
   });
 }
