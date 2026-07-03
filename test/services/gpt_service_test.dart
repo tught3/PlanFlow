@@ -714,6 +714,52 @@ void main() {
     });
 
     test(
+        '오전/오후 없는 시각이 이미 지났으면 다음날 같은 시각이 아니라 '
+        '오늘 12시간 뒤(반대 오전/오후)를 우선한다', () {
+      // 실증: 지금이 오후 7:55(19:55)인데 "8시"라고만 말하면, 다음날 오전
+      // 8시(약 12시간 뒤)가 아니라 오늘 오후 8시(약 5분 뒤)로 잡혀야 한다.
+      // 오전 8시를 의도했다면 "내일 8시"처럼 날짜를 같이 말했을 것이기 때문.
+      final now = DateTime(2026, 5, 7, 19, 55);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('8시'),
+        DateTime(2026, 5, 7, 20, 0),
+      );
+    });
+
+    test('두 후보(오전/오후) 모두 이미 지났으면 다음날로 넘긴다', () {
+      // 자정 직전처럼 오늘 오전/오후 후보가 둘 다 지난 경우에만
+      // 기존처럼 다음날 같은 시각(오전 해석)으로 넘어간다.
+      final now = DateTime(2026, 5, 7, 23, 30);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('8시'),
+        DateTime(2026, 5, 8, 8, 0),
+      );
+    });
+
+    test('오전/오후를 명시하면 기존처럼 다음날로 넘긴다(반대 해석 우선 안 함)', () {
+      final now = DateTime(2026, 5, 7, 19, 55);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('오전 8시'),
+        DateTime(2026, 5, 8, 8, 0),
+      );
+    });
+
+    test(
         'public local inference treats day-only dates as this month or next month',
         () {
       final now = DateTime(2026, 6, 10, 9, 30);
