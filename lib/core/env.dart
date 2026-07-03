@@ -57,6 +57,40 @@ class AppEnv {
 
   static bool get isConfigured => isSupabaseReady && hasValidSupabaseConfig;
 
+  /// 앱 시작 시 필수 환경변수를 검증한다.
+  /// SUPABASE_URL 또는 SUPABASE_ANON_KEY가 누락/placeholder인 경우
+  /// 명확한 안내 메시지와 함께 [StateError]를 throw한다.
+  ///
+  /// main()에서 runApp() 전에 호출하여 fail-fast 동작을 보장한다.
+  static void validateRequiredConfig() {
+    if (hasValidSupabaseConfig) {
+      return;
+    }
+
+    final missing = <String>[];
+    if (supabaseUrl.trim().isEmpty || _looksLikePlaceholder(supabaseUrl)) {
+      missing.add('SUPABASE_URL');
+    }
+    if (supabaseAnonKey.trim().isEmpty ||
+        _looksLikePlaceholder(supabaseAnonKey)) {
+      missing.add('SUPABASE_ANON_KEY');
+    }
+
+    throw StateError(
+      '[PlanFlow] 필수 환경변수가 누락되었거나 유효하지 않습니다.\n'
+      '누락된 항목: ${missing.join(', ')}\n'
+      '\n'
+      '해결 방법:\n'
+      '  1. env/local.example.json 을 복사하여 env/local.json 을 생성하세요.\n'
+      '  2. 다음 명령으로 앱을 실행/빌드하세요:\n'
+      '     flutter run --dart-define-from-file=env/local.json\n'
+      '     flutter build apk --dart-define-from-file=env/local.json\n'
+      '\n'
+      '참고: SUPABASE_URL / SUPABASE_ANON_KEY 는 RLS 로 보호되는 공개 클라이언트 '
+      '설정이므로 앱에 포함해도 안전합니다.',
+    );
+  }
+
   static void markSupabaseInitialized() {
     _supabaseInitialized = true;
     _supabaseInitializationFailed = false;

@@ -23,6 +23,8 @@ class AppRoutes {
   static const String eventDetailWithId = '/event/detail/:eventId';
   static const String eventEdit = '/event/edit';
   static const String eventEditWithId = '/event/edit/:eventId';
+  static const String planDetail = '/plan/:id';
+  static String planDetailForId(String id) => '/plan/$id';
   static const String groups = '/groups';
   static const String groupCreate = '/groups/create';
   static const String groupInvites = '/groups/invites';

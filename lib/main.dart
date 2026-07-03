@@ -19,8 +19,23 @@ import 'services/remote_config_service.dart';
 import 'services/calendar_auto_sync_service.dart';
 import 'services/event_prefetch_service.dart';
 
+/// PlanFlow 앱 엔트리포인트.
+///
+/// 부팅 시퀀스:
+///  1. WidgetsFlutterBinding 초기화
+///  2. 필수 환경변수 검증 (누락 시 [StateError] throw → fail-fast)
+///  3. 방향 고정 / 디버그 출력 제어
+///  4. ProviderScope 로 앱 래핑 후 runApp(PlanFlowApp)
+///     - PlanFlowApp 은 MaterialApp.router(routerConfig: appRouter) 사용
+///     - 테마: buildPlanFlowTheme() 기본값 적용
+///  5. 백그라운드에서 Supabase.initialize · Firebase · NaverMap 초기화
+///     (스플래시 화면이 로딩 상태를 표시)
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 필수 환경변수 사전 검증: 누락 시 명확한 에러로 fail-fast
+  AppEnv.validateRequiredConfig();
+
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
@@ -29,6 +44,7 @@ Future<void> main() async {
   ]);
   FlutterError.onError = FlutterError.presentError;
 
+  // ProviderScope 로 앱을 래핑. PlanFlowApp 은 MaterialApp.router + appRouter 를 사용.
   runApp(const ProviderScope(child: PlanFlowApp()));
   unawaited(_initializePlatformServices());
 }
@@ -99,6 +115,9 @@ Future<void> _initializeNaverMap() async {
 }
 
 Future<void> _initializeSupabase() async {
+  // main()에서 AppEnv.validateRequiredConfig() 를 이미 통과했으므로
+  // 여기서는 hasValidSupabaseConfig 가 true 임이 보장된다.
+  // 하지만 런타임 안전망으로 한 번 더 확인한다.
   if (AppEnv.hasValidSupabaseConfig) {
     try {
       developer.log('Supabase init start', name: 'PlanFlow');
@@ -109,7 +128,7 @@ Future<void> _initializeSupabase() async {
           supabaseUrl: AppEnv.supabaseUrl,
           detectSessionInUri: false,
         ),
-        ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 10));
       AppEnv.markSupabaseInitialized();
       developer.log('Supabase init success', name: 'PlanFlow');
       authProvider.start();
