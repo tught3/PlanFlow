@@ -80,6 +80,29 @@ class EventEditScreen extends StatefulWidget {
     return null;
   }
 
+  /// 장소 텍스트 변경 시 이미 저장된 좌표를 지워야 하는지 판정한다.
+  /// [isApplyingLoadedEvent]가 true면(서버에서 불러온 값을 프로그램적으로
+  /// 채우는 중) 항상 false를 반환한다 — TextField는 프로그램적 대입에도
+  /// onChanged를 호출하므로, 이 가드가 없으면 방금 불러온 정상 좌표를
+  /// '사용자가 지운 것'으로 오인해 지워버려 다음날 알람이 엉뚱한 장소로 울린다.
+  @visibleForTesting
+  static bool shouldClearLocationCoordinatesOnTextChange({
+    required bool isApplyingLoadedEvent,
+    required String changedText,
+    required String? resolvedLocationLabel,
+    required bool hasCoordinates,
+  }) {
+    if (isApplyingLoadedEvent) {
+      return false;
+    }
+    final trimmed = changedText.trim();
+    if (resolvedLocationLabel != null &&
+        trimmed == resolvedLocationLabel.trim()) {
+      return false;
+    }
+    return hasCoordinates;
+  }
+
   @override
   State<EventEditScreen> createState() => _EventEditScreenState();
 }
@@ -105,6 +128,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
   bool _isSaving = false;
   bool _isLookingUpLocation = false;
   bool _endEditedByUser = false;
+  // 서버에서 불러온 값을 컨트롤러에 프로그램적으로 채우는 동안 true.
+  // 이 사이 _locationController.text 대입도 TextField.onChanged를 그대로
+  // 발생시키므로(confirm_screen.dart의 _isApplyingHydration과 동일 이유),
+  // 이 플래그가 없으면 방금 불러온 정상 좌표를 '사용자가 지운 것'으로 오인해
+  // _handleLocationTextChanged가 null로 지워버릴 수 있다.
+  bool _isApplyingLoadedEvent = false;
   Timer? _locationDebounceTimer;
 
   // 저장 대상이 될 실제 일정 id(빈 문자열 제외). AI 대화에서 넘어온 새 일정
@@ -189,18 +218,29 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   void _handleLocationTextChanged(String value) {
-    final trimmed = value.trim();
-    if (_resolvedLocationLabel != null &&
-        trimmed == _resolvedLocationLabel!.trim()) {
-      return;
-    }
-    if (_locationLat != null || _locationLng != null) {
+    final shouldClear = EventEditScreen.shouldClearLocationCoordinatesOnTextChange(
+      isApplyingLoadedEvent: _isApplyingLoadedEvent,
+      changedText: value,
+      resolvedLocationLabel: _resolvedLocationLabel,
+      hasCoordinates: _locationLat != null || _locationLng != null,
+    );
+    if (shouldClear) {
+      DiagLogger.log(
+        'GeoResolve',
+        '[EditScreen] 좌표 초기화: 텍스트변경 "$value" '
+            '이전좌표=($_locationLat,$_locationLng)',
+      );
       setState(() {
         _locationLat = null;
         _locationLng = null;
         _resolvedLocationLabel = null;
       });
     }
+    if (_isApplyingLoadedEvent) {
+      // 서버에서 불러온 값을 채우는 중 발생한 이벤트 — 자동 재검색은 트리거하지 않는다.
+      return;
+    }
+    final trimmed = value.trim();
     _locationDebounceTimer?.cancel();
     if (trimmed.isNotEmpty) {
       _locationDebounceTimer = Timer(
@@ -231,6 +271,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _locationLng = best.longitude;
         _resolvedLocationLabel = query;
       });
+      DiagLogger.log(
+        'GeoResolve',
+        '[EditScreen] 자동해석 성공: "$query" -> "${best.name}" '
+            'lat=${best.latitude} lng=${best.longitude}',
+      );
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen auto location resolve failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -310,6 +355,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
       final selected = results.first;
       final resolvedLabel = selected.bestPlaceLabel.trim();
+      _isApplyingLoadedEvent = true;
       setState(() {
         if (resolvedLabel.isNotEmpty) {
           _locationController.text = resolvedLabel;
@@ -319,6 +365,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _resolvedLocationLabel =
             resolvedLabel.isNotEmpty ? resolvedLabel : query;
       });
+      _isApplyingLoadedEvent = false;
       DiagLogger.log(
         'GeoResolve',
         '[EditScreen] 성공: 쿼리="$query" 선택="${selected.name}" lat=${selected.latitude} lng=${selected.longitude}',
@@ -877,6 +924,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _showMessage('수정할 일정을 찾지 못했습니다.');
         return;
       }
+      _isApplyingLoadedEvent = true;
       setState(() {
         _loadedEvent = event;
         _titleController.text = event.title;
@@ -897,6 +945,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
             RecurrenceSelection.fromRRule(event.recurrenceRule);
         _category = event.category;
       });
+      _isApplyingLoadedEvent = false;
+      DiagLogger.log(
+        'GeoResolve',
+        '[EditScreen] fetchEvent 로드 완료 id=${event.id} '
+            'loc="${event.location ?? ''}" '
+            'lat=${event.locationLat} lng=${event.locationLng}',
+      );
       unawaited(_loadReminderOffsetIfNeeded(event));
     } catch (_) {
       if (mounted) {
@@ -1189,6 +1244,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         return;
       }
       final resolvedLabel = selected.bestPlaceLabel.trim();
+      _isApplyingLoadedEvent = true;
       setState(() {
         _locationController.text =
             resolvedLabel.isNotEmpty ? resolvedLabel : selected.label;
@@ -1197,6 +1253,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
         _resolvedLocationLabel =
             resolvedLabel.isNotEmpty ? resolvedLabel : selected.label.trim();
       });
+      _isApplyingLoadedEvent = false;
+      DiagLogger.log(
+        'GeoResolve',
+        '[EditScreen] 지도 선택 저장: "$resolvedLabel" '
+            'lat=${selected.latitude} lng=${selected.longitude}',
+      );
       _showMessage('정확한 위치를 선택했어요.');
     } catch (error, stackTrace) {
       debugPrint('EventEditScreen location pick failed: $error');

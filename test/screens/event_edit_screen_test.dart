@@ -57,6 +57,59 @@ void main() {
     });
   });
 
+  group('shouldClearLocationCoordinatesOnTextChange', () {
+    test('데이터 로드 중(isApplyingLoadedEvent=true)에는 절대 좌표를 지우지 않는다', () {
+      // 회귀: fetchEvent로 불러온 event.location을 _locationController.text에
+      // 프로그램적으로 대입할 때도 TextField.onChanged가 호출돼, 이 가드가
+      // 없으면 방금 불러온 정상 좌표가 지워지고 다음날 알람이 엉뚱한 장소로 울렸다.
+      expect(
+        EventEditScreen.shouldClearLocationCoordinatesOnTextChange(
+          isApplyingLoadedEvent: true,
+          changedText: '래온동물병원',
+          resolvedLocationLabel: null,
+          hasCoordinates: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('사용자가 실제로 텍스트를 바꾸면 좌표를 지운다', () {
+      expect(
+        EventEditScreen.shouldClearLocationCoordinatesOnTextChange(
+          isApplyingLoadedEvent: false,
+          changedText: '다른 장소',
+          resolvedLocationLabel: '래온동물병원',
+          hasCoordinates: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('텍스트가 이미 해석된 라벨과 같으면 지우지 않는다', () {
+      expect(
+        EventEditScreen.shouldClearLocationCoordinatesOnTextChange(
+          isApplyingLoadedEvent: false,
+          changedText: '래온동물병원',
+          resolvedLocationLabel: '래온동물병원',
+          hasCoordinates: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('좌표가 원래 없었으면 지울 것도 없다', () {
+      expect(
+        EventEditScreen.shouldClearLocationCoordinatesOnTextChange(
+          isApplyingLoadedEvent: false,
+          changedText: '아무 텍스트',
+          resolvedLocationLabel: null,
+          hasCoordinates: false,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   setUp(() {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
