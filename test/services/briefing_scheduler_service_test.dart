@@ -320,7 +320,7 @@ void main() {
     await service.showBriefingStartNotification(isMorning: false);
 
     expect(notification.calls, 1);
-    expect(notification.lastBody, contains('내일 일정을 시간순으로 정리'));
+    expect(notification.lastBody, contains('내일 일정을 시간순으로 알려드릴까요'));
   });
 
   test('pending foreground briefing modal emits and clears stored trigger',
