@@ -15,6 +15,7 @@ import '../../data/models/pre_action_model.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../features/groups/repositories/group_event_repository.dart';
 import '../../services/app_feedback_service.dart';
 import '../../services/background_task_service.dart';
 import '../../services/event_refresh_bus.dart';
@@ -31,6 +32,7 @@ class EventDetailScreen extends StatefulWidget {
     this.event,
     this.eventId,
     this.eventRepository,
+    this.groupEventRepository,
     this.showDeparturePrompt = false,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
@@ -47,6 +49,7 @@ class EventDetailScreen extends StatefulWidget {
   final EventModel? event;
   final String? eventId;
   final EventRepository? eventRepository;
+  final GroupEventRepository? groupEventRepository;
   final bool showDeparturePrompt;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
@@ -81,6 +84,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
+
+  GroupEventRepository? _groupEventRepositoryCache;
+  GroupEventRepository get _groupEventRepository =>
+      _groupEventRepositoryCache ??=
+          widget.groupEventRepository ?? GroupEventRepository.supabase();
 
   void _handleBackNavigation() {
     if (context.canPop()) {
@@ -276,35 +284,48 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       return;
     }
 
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('일정 삭제'),
-        content: Text('"${event.title}" 일정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.'),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-        actions: [
-          PlanFlowActionButtons(
-            buttons: [
-              PlanFlowActionButton(
-                label: '취소',
-                onPressed: () => Navigator.of(context).pop(false),
-                type: ActionButtonType.secondary,
-                flex: 1,
-              ),
-              PlanFlowActionButton(
-                label: '삭제',
-                onPressed: () => Navigator.of(context).pop(true),
-                type: ActionButtonType.destructive,
-                flex: 1,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+    final groupEventId = event.groupEventId?.trim();
+    final hasLinkedGroupEvent = groupEventId != null && groupEventId.isNotEmpty;
 
-    if (shouldDelete != true || !mounted) {
-      return;
+    var cancelGroupEventToo = false;
+
+    if (hasLinkedGroupEvent) {
+      final scope = await _chooseLinkedGroupDeleteScope(event);
+      if (scope == null || !mounted) {
+        return;
+      }
+      cancelGroupEventToo = scope == _LinkedGroupDeleteScope.personalAndGroup;
+    } else {
+      final shouldDelete = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('일정 삭제'),
+          content: Text('"${event.title}" 일정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.'),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+          actions: [
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '취소',
+                  onPressed: () => Navigator.of(context).pop(false),
+                  type: ActionButtonType.secondary,
+                  flex: 1,
+                ),
+                PlanFlowActionButton(
+                  label: '삭제',
+                  onPressed: () => Navigator.of(context).pop(true),
+                  type: ActionButtonType.destructive,
+                  flex: 1,
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      if (shouldDelete != true || !mounted) {
+        return;
+      }
     }
 
     setState(() {
@@ -313,6 +334,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     try {
       if (AppEnv.isSupabaseReady) {
+        if (cancelGroupEventToo && groupEventId != null) {
+          try {
+            await _groupEventRepository.cancelGroupEvent(groupEventId);
+          } catch (error, stackTrace) {
+            debugPrint(
+                'EventDetailScreen linked group event cancel failed: $error');
+            debugPrintStack(stackTrace: stackTrace);
+            AppFeedbackService.showSnackBar(
+              '개인 일정은 삭제됐지만 그룹 일정 취소에 실패했어요. 그룹 일정에서 직접 취소해 주세요.',
+            );
+          }
+        }
         await _repository.deleteEvent(event.id);
         unawaited(_runDeleteFollowUps(event));
       }
@@ -708,6 +741,44 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final minute = local.minute.toString().padLeft(2, '0');
     return '${_formatDate(local)} $hour:$minute';
   }
+
+  Future<_LinkedGroupDeleteScope?> _chooseLinkedGroupDeleteScope(
+    EventModel event,
+  ) {
+    return showDialog<_LinkedGroupDeleteScope>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('그룹 일정도 같이 취소할까요?'),
+        content: Text(
+          '"${event.title}" 일정은 그룹 일정과 연결되어 있어요. 개인 일정만 삭제하거나, 그룹 일정도 함께 취소할 수 있습니다.\n이 작업은 되돌릴 수 없습니다.',
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+        actions: [
+          PlanFlowActionButtons(
+            buttons: [
+              PlanFlowActionButton(
+                label: '취소',
+                onPressed: () => Navigator.of(ctx).pop(),
+                type: ActionButtonType.secondary,
+              ),
+              PlanFlowActionButton(
+                label: '개인만 삭제',
+                onPressed: () => Navigator.of(ctx)
+                    .pop(_LinkedGroupDeleteScope.personalOnly),
+                type: ActionButtonType.secondary,
+              ),
+              PlanFlowActionButton(
+                label: '그룹 일정도 취소',
+                onPressed: () => Navigator.of(ctx)
+                    .pop(_LinkedGroupDeleteScope.personalAndGroup),
+                type: ActionButtonType.destructive,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HeaderCard extends StatelessWidget {
@@ -1025,3 +1096,5 @@ class _SupplyChecklist extends StatelessWidget {
     );
   }
 }
+
+enum _LinkedGroupDeleteScope { personalOnly, personalAndGroup }
