@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../data/models/feedback_report_model.dart';
 import '../../data/repositories/feedback_repository.dart';
+import '../../widgets/planflow_action_buttons.dart';
 
 class BetaSurveySheet extends StatefulWidget {
   const BetaSurveySheet({super.key, required this.repository});
@@ -129,16 +130,15 @@ class _BetaSurveySheetState extends State<BetaSurveySheet> {
                   _ErrorBanner(message: _errorMessage!),
                 ],
                 const SizedBox(height: 24),
-                FilledButton.icon(
-                  key: const ValueKey('beta-survey-submit-button'),
-                  onPressed: _isSubmitting ? null : _submit,
-                  icon: _isSubmitting
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send_outlined),
-                  label: Text(_isSubmitting ? '보내는 중...' : '후기 보내기'),
+                PlanflowDialogActions(
+                  actions: [
+                    PlanflowDialogAction(
+                      label: _isSubmitting ? '보내는 중...' : '후기 보내기',
+                      onPressed: _isSubmitting ? null : _submit,
+                      isDefault: true,
+                      buttonKey: const ValueKey('beta-survey-submit-button'),
+                    ),
+                  ],
                 ),
               ],
             ),

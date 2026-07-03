@@ -233,3 +233,173 @@ PlanFlowActionButtons planflowCancelConfirmButtons({
     ],
   );
 }
+
+// ---------------------------------------------------------------------------
+// 공용 모달 액션 버튼바 (PlanflowDialogActions)
+// ---------------------------------------------------------------------------
+
+/// 공용 모달/다이얼로그 액션 버튼 1건 정의.
+///
+/// [PlanflowDialogActions]에 전달되며, 모든 버튼은 테두리가 있는
+/// [OutlinedButton]으로 렌더링된다. [isDefault]를 true로 주면 주요 액션
+/// 강조(primary 테두리 + primaryFaint 배경), [isDestructive]를 true로 주면
+/// 위험 액션(error 테두리)으로 표현한다.
+class PlanflowDialogAction {
+  const PlanflowDialogAction({
+    required this.label,
+    this.onPressed,
+    this.isDefault = false,
+    this.isDestructive = false,
+    this.buttonKey,
+  });
+
+  /// 버튼 라벨
+  final String label;
+
+  /// 콜백. null이면 비활성(disabled) 상태로 렌더링.
+  final VoidCallback? onPressed;
+
+  /// 주요 액션 강조 여부. true면 primary 테두리 + primaryFaint 배경.
+  /// 여전히 [OutlinedButton](테두리 있음)으로 렌더링된다.
+  final bool isDefault;
+
+  /// 위험 액션 여부. true면 error 색 테두리/전경색.
+  final bool isDestructive;
+
+  /// 버튼 위젯 식별용 key(테스트/위젯 트리 안정화).
+  final Key? buttonKey;
+}
+
+/// 공용 모달/다이얼로그/바텀시트 액션 버튼바.
+///
+/// [actions]를 받아 가로 [Row]로 배치하며, [LayoutBuilder]로 가용 폭을
+/// 측정해 [compactBreakpoint] 이하면 자동으로 [Wrap](2줄 흐름)으로 전환한다.
+///
+/// **규칙:**
+/// - 모든 버튼은 테두리가 있는 [OutlinedButton] 스타일.
+/// - 폭이 넓으면 [Row](오른쪽 정렬 기본), 폭이 좁으면 [Wrap].
+/// - 치수/색상은 [PlanFlowMetrics]/[PlanFlowColors] 토큰 사용.
+class PlanflowDialogActions extends StatelessWidget {
+  const PlanflowDialogActions({
+    super.key,
+    required this.actions,
+    this.spacing = PlanFlowMetrics.dialogActionSpacing,
+    this.runSpacing = PlanFlowMetrics.dialogActionRunSpacing,
+    this.compactBreakpoint = PlanFlowMetrics.dialogActionCompactWidth,
+    this.mainAxisAlignment = MainAxisAlignment.end,
+    this.alignment = WrapAlignment.end,
+  });
+
+  /// 액션 목록. 왼쪽부터 오른쪽 순서로 배치.
+  final List<PlanflowDialogAction> actions;
+
+  /// 버튼 간 가로 간격(Row 배치 시)
+  final double spacing;
+
+  /// Wrap 2줄 흐름 시 세로 간격
+  final double runSpacing;
+
+  /// 이 가용 폭 이하면 Wrap으로 전환
+  final double compactBreakpoint;
+
+  /// Row 배치 시 주축 정렬(기본 오른쪽)
+  final MainAxisAlignment mainAxisAlignment;
+
+  /// Wrap 배치 시 정렬(기본 오른쪽)
+  final WrapAlignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final buttons = actions
+        .map((action) => _DialogActionButton(action: action))
+        .toList(growable: false);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth <= compactBreakpoint) {
+          return SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              spacing: spacing,
+              runSpacing: runSpacing,
+              alignment: alignment,
+              children: buttons,
+            ),
+          );
+        }
+        // Row 배치: 버튼 사이에 간격을 넣되 Expanded는 사용하지 않는다.
+        final rowChildren = <Widget>[];
+        for (var i = 0; i < buttons.length; i += 1) {
+          if (i > 0) {
+            rowChildren.add(SizedBox(width: spacing));
+          }
+          rowChildren.add(buttons[i]);
+        }
+        return Row(
+          mainAxisAlignment: mainAxisAlignment,
+          mainAxisSize: MainAxisSize.max,
+          children: rowChildren,
+        );
+      },
+    );
+  }
+}
+
+/// [PlanflowDialogAction] 1건을 테두리 있는 [OutlinedButton]으로 렌더링.
+class _DialogActionButton extends StatelessWidget {
+  const _DialogActionButton({required this.action});
+
+  final PlanflowDialogAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    final errorColor = Theme.of(context).colorScheme.error;
+
+    final Color borderColor;
+    final Color foregroundColor;
+    final Color? backgroundColor;
+    if (action.isDestructive) {
+      borderColor = errorColor;
+      foregroundColor = errorColor;
+      backgroundColor = null;
+    } else if (action.isDefault) {
+      borderColor = PlanFlowColors.primary;
+      foregroundColor = PlanFlowColors.primary;
+      backgroundColor = PlanFlowColors.primaryFaint;
+    } else {
+      borderColor = PlanFlowColors.primaryLight;
+      foregroundColor = PlanFlowColors.primary;
+      backgroundColor = null;
+    }
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        minHeight: PlanFlowMetrics.dialogActionMinHeight,
+      ),
+      child: OutlinedButton(
+        key: action.buttonKey,
+        onPressed: action.onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: foregroundColor,
+          backgroundColor: backgroundColor,
+          side: BorderSide(
+            color: borderColor,
+            width: PlanFlowMetrics.dialogActionBorderWidth,
+          ),
+          minimumSize:
+              const Size.fromHeight(PlanFlowMetrics.dialogActionMinHeight),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(PlanFlowMetrics.dialogActionRadius),
+          ),
+          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(action.label),
+        ),
+      ),
+    );
+  }
+}

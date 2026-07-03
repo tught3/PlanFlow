@@ -33,6 +33,32 @@ class PlanFlowColors {
   static const tagDoneText = Color(0xFF7AB3D4);
 }
 
+/// PlanFlow 공용 디자인 토큰(치수/간격).
+///
+/// 버튼·모달 액션바 등 여러 위젯이 공유하는 수치 값을 한 곳에서 관리한다.
+/// 색상은 [PlanFlowColors]를, Material 테마는 [buildPlanFlowTheme]를 참고.
+class PlanFlowMetrics {
+  PlanFlowMetrics._();
+
+  /// 다이얼로그/모달 공용 액션 버튼 테두리 두께
+  static const double dialogActionBorderWidth = 1.0;
+
+  /// 다이얼로그/모달 공용 액션 버튼 모서리 반경
+  static const double dialogActionRadius = 14.0;
+
+  /// 다이얼로그/모달 공용 액션 버튼 최소 높이
+  static const double dialogActionMinHeight = 44.0;
+
+  /// 액션 버튼 가로 간격(Row 배치 시)
+  static const double dialogActionSpacing = 8.0;
+
+  /// Wrap 2줄 흐름 시 세로 간격
+  static const double dialogActionRunSpacing = 8.0;
+
+  /// 가용 폭이 이 값 이하면 Row 대신 Wrap(2줄 배치)으로 전환
+  static const double dialogActionCompactWidth = 360.0;
+}
+
 ThemeData buildPlanFlowTheme() {
   const colorScheme = ColorScheme.light(
     primary: PlanFlowColors.primary,

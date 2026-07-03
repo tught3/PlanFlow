@@ -16,11 +16,18 @@ Future<bool> showOverlapWarningDialog({
       content: _OverlapWarningContent(overlappingEvents: overlappingEvents),
       actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
       actions: [
-        planflowCancelConfirmButtons(
-          onCancel: () => Navigator.of(dialogContext).pop(false),
-          onConfirm: () => Navigator.of(dialogContext).pop(true),
-          cancelLabel: '중단',
-          confirmLabel: '계속 저장',
+        PlanflowDialogActions(
+          actions: [
+            PlanflowDialogAction(
+              label: '중단',
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+            ),
+            PlanflowDialogAction(
+              label: '계속 저장',
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              isDefault: true,
+            ),
+          ],
         ),
       ],
     ),

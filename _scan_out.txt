@@ -1,0 +1,1227 @@
+
+===== lib/screens/home/home_widgets.dart:337-480 =====
+  337: Future<void> _showHeaderSummarySheet(
+  338:   BuildContext context, {
+  339:   required String title,
+  340:   required HomeHeaderSummary? summary,
+  341: }) async {
+  342:   await showDialog<void>(
+  343:     context: context,
+  344:     builder: (context) {
+  345:       final effectiveSummary = summary;
+  346:       return Dialog(
+  347:         insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+  348:         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+  349:         child: SafeArea(
+  350:           child: Padding(
+  351:             padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+  352:             child: Column(
+  353:               mainAxisSize: MainAxisSize.min,
+  354:               crossAxisAlignment: CrossAxisAlignment.start,
+  355:               children: [
+  356:                 Text(
+  357:                   title,
+  358:                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
+  359:                         color: PlanFlowColors.primary,
+  360:                         fontWeight: FontWeight.w900,
+  361:                       ),
+  362:                 ),
+  363:                 const SizedBox(height: 6),
+  364:                 Text(
+  365:                   '오늘 날씨를 한눈에 확인할 수 있어요.',
+  366:                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
+  367:                         color: PlanFlowColors.textSecondary,
+  368:                       ),
+  369:                 ),
+  370:                 const SizedBox(height: 16),
+  371:                 _SummaryDetailTile(
+  372:                   icon:
+  373:                       effectiveSummary?.weatherIcon ?? Icons.wb_sunny_outlined,
+  374:                   accentColor: const Color(0xFF7A5C2E),
+  375:                   backgroundColor: const Color(0xFFFFF4E6),
+  376:                   title: '날씨 정보',
+  377:                   value: effectiveSummary?.weatherLabel ?? '날씨 확인 중',
+  378:                   detail: effectiveSummary?.detailLine ?? '현재 날씨를 불러오지 못했어요.',
+  379:                 ),
+  380:                 const SizedBox(height: 16),
+  381:                 Align(
+  382:                   alignment: Alignment.centerRight,
+  383:                   child: TextButton(
+  384:                     onPressed: () => Navigator.of(context).pop(),
+  385:                     child: const Text('닫기'),
+  386:                   ),
+  387:                 ),
+  388:               ],
+  389:             ),
+  390:           ),
+  391:         ),
+  392:       );
+  393:     },
+  394:   );
+  395: }
+  396: 
+  397: Future<void> _showRecentPastEventsSheet(
+  398:   BuildContext context,
+  399:   List<EventModel> events,
+  400: ) async {
+  401:   final rootContext = context;
+  402:   await showModalBottomSheet<void>(
+  403:     context: context,
+  404:     isScrollControlled: true,
+  405:     useSafeArea: true,
+  406:     backgroundColor: Colors.transparent,
+  407:     builder: (sheetContext) {
+  408:       final theme = Theme.of(sheetContext);
+  409:       return DraggableScrollableSheet(
+  410:         expand: false,
+  411:         initialChildSize: 0.62,
+  412:         minChildSize: 0.42,
+  413:         maxChildSize: 0.92,
+  414:         builder: (context, scrollController) {
+  415:           return Container(
+  416:             decoration: const BoxDecoration(
+  417:               color: PlanFlowColors.background,
+  418:               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+  419:             ),
+  420:             child: Column(
+  421:               children: [
+  422:                 const SizedBox(height: 10),
+  423:                 Container(
+  424:                   width: 42,
+  425:                   height: 4,
+  426:                   decoration: BoxDecoration(
+  427:                     color: PlanFlowColors.primaryFaint,
+  428:                     borderRadius: BorderRadius.circular(999),
+  429:                   ),
+  430:                 ),
+  431:                 Padding(
+  432:                   padding: const EdgeInsets.fromLTRB(18, 18, 10, 10),
+  433:                   child: Row(
+  434:                     children: [
+  435:                       Expanded(
+  436:                         child: Column(
+  437:                           crossAxisAlignment: CrossAxisAlignment.start,
+  438:                           children: [
+  439:                             Text(
+  440:                               '최근 12시간 지난 일정',
+  441:                               style: theme.textTheme.titleLarge?.copyWith(
+  442:                                 color: PlanFlowColors.primary,
+  443:                                 fontWeight: FontWeight.w900,
+  444:                               ),
+  445:                             ),
+  446:                             const SizedBox(height: 4),
+  447:                             Text(
+  448:                               '${events.length}개 일정이 이미 끝났어요.',
+  449:                               style: theme.textTheme.bodySmall?.copyWith(
+  450:                                 color: PlanFlowColors.textSecondary,
+  451:                               ),
+  452:                             ),
+  453:                           ],
+  454:                         ),
+  455:                       ),
+  456:                       IconButton(
+  457:                         tooltip: '닫기',
+  458:                         onPressed: () => Navigator.of(sheetContext).pop(),
+  459:                         icon: const Icon(Icons.close),
+  460:                       ),
+  461:                     ],
+  462:                   ),
+  463:                 ),
+  464:                 Expanded(
+  465:                   child: ListView.separated(
+  466:                     controller: scrollController,
+  467:                     padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+  468:                     itemCount: events.length,
+  469:                     separatorBuilder: (_, __) => const SizedBox(height: 8),
+  470:                     itemBuilder: (context, index) {
+  471:                       final event = events[events.length - 1 - index];
+  472:                       final startAt = event.startAt == null
+  473:                           ? null
+  474:                           : planflowLocal(event.startAt!);
+  475:                       return Card(
+  476:                         color: PlanFlowColors.surface,
+  477:                         elevation: 0,
+  478:                         shape: RoundedRectangleBorder(
+  479:                           borderRadius: BorderRadius.circular(12),
+  480:                           side: const BorderSide(
+
+===== lib/screens/settings/settings_screen.dart:1310-1480 =====
+ 1310:               PlanFlowActionButton(
+ 1311:                 label: '닫기',
+ 1312:                 onPressed: () => Navigator.of(context).pop(),
+ 1313:                 type: ActionButtonType.secondary,
+ 1314:               ),
+ 1315:             ],
+ 1316:           ),
+ 1317:         ],
+ 1318:       ),
+ 1319:     );
+ 1320:   }
+ 1321: 
+ 1322:   Future<void> _showDeviceCalendarImportProgressDialog() {
+ 1323:     _isDeviceCalendarImportProgressDialogOpen = true;
+ 1324:     return showDialog<void>(
+ 1325:       context: context,
+ 1326:       barrierDismissible: true,
+ 1327:       builder: (context) => const AlertDialog(
+ 1328:         title: Text('휴대폰 내부 캘린더 가져오기'),
+ 1329:         content: Column(
+ 1330:           mainAxisSize: MainAxisSize.min,
+ 1331:           children: [
+ 1332:             CircularProgressIndicator(),
+ 1333:             SizedBox(height: 16),
+ 1334:             Text('일정이 많아 조금 걸리고 있습니다. 앱을 전환해도 가져오기는 계속됩니다.'),
+ 1335:           ],
+ 1336:         ),
+ 1337:       ),
+ 1338:     ).whenComplete(() {
+ 1339:       _isDeviceCalendarImportProgressDialogOpen = false;
+ 1340:     });
+ 1341:   }
+ 1342: 
+ 1343:   String _naverCalDavDiagnosticReasonText(
+ 1344:     NaverCalDavSyncDiagnostics diagnostics,
+ 1345:   ) {
+ 1346:     if (diagnostics.saved > 0) {
+ 1347:       return '저장까지 성공했습니다. 홈/일정 탭에 보이지 않으면 날짜 범위나 선택된 날짜를 확인해 주세요.';
+ 1348:     }
+ 1349:     if (diagnostics.failed > 0) {
+ 1350:       return '저장 실패가 있습니다. Supabase 스키마/RLS 또는 네트워크 오류가 원인일 수 있습니다.';
+ 1351:     }
+ 1352:     if (diagnostics.duplicateSkipped > 0) {
+ 1353:       return '같은 제목과 시간이 이미 있는 일정으로 판단되어 저장하지 않았습니다. 이 판단이 너무 넓은지 확인하려면 이 진단 결과를 기준으로 중복 규칙을 조정해야 합니다.';
+ 1354:     }
+ 1355:     if (diagnostics.unchangedSkipped > 0) {
+ 1356:       return '이미 가져온 일정과 etag/수정 시간이 같아서 변경 없음으로 건너뛰었습니다.';
+ 1357:     }
+ 1358:     if (diagnostics.invalidEvents > 0 && diagnostics.saveCandidates == 0) {
+ 1359:       return '날짜 파싱 실패가 있어 저장 대상이 만들어지지 않았습니다. DTSTART/DTEND 원본 형식을 추가로 확인해야 합니다.';
+ 1360:     }
+ 1361:     if (diagnostics.parsedEvents > 0 && diagnostics.saveCandidates == 0) {
+ 1362:       return '네이버에서 일정은 읽었지만 현재 빠른 동기화 범위 안에 저장할 일정이 없었습니다.';
+ 1363:     }
+ 1364:     return '저장 0개라면 중복 스킵, 변경 없음, 저장 실패, 날짜 파싱 실패 중 어디에 해당하는지 위 숫자로 확인할 수 있습니다.';
+ 1365:   }
+ 1366: 
+ 1367:   Future<void> _markNaverCalDavConnection({
+ 1368:     required CalendarConnectionStatus status,
+ 1369:     String? lastError,
+ 1370:   }) async {
+ 1371:     final userId = _userId;
+ 1372:     if (!AppEnv.isSupabaseReady || userId == null || userId.isEmpty) {
+ 1373:       return;
+ 1374:     }
+ 1375:     try {
+ 1376:       await CalendarConnectionRepository.supabase().upsertConnection(
+ 1377:         CalendarConnectionModel(
+ 1378:           userId: userId,
+ 1379:           provider: 'naver',
+ 1380:           status: status,
+ 1381:           lastSyncedAt: status == CalendarConnectionStatus.connected
+ 1382:               ? DateTime.now().toUtc()
+ 1383:               : null,
+ 1384:           lastError: lastError,
+ 1385:         ),
+ 1386:       );
+ 1387:     } catch (error, stackTrace) {
+ 1388:       debugPrint(
+ 1389:         'Naver CalDAV connection state save skipped: ${logSafeText(error)}',
+ 1390:       );
+ 1391:       debugPrintStack(stackTrace: stackTrace);
+ 1392:     }
+ 1393:   }
+ 1394: 
+ 1395:   Future<bool?> _showNaverCalDavImportIntroDialog() {
+ 1396:     return showDialog<bool>(
+ 1397:       context: context,
+ 1398:       builder: (context) => AlertDialog(
+ 1399:         title: const Text('네이버 캘린더 동기화'),
+ 1400:         content: const Text(
+ 1401:           '가져오는 데 시간이 걸릴 수 있습니다. 앱을 백그라운드로 보내도 계속 진행됩니다. 먼저 최근 3개월과 앞으로 6개월을 빠르게 가져옵니다.',
+ 1402:         ),
+ 1403:         actions: [
+ 1404:           planflowCancelConfirmButtons(
+ 1405:             onCancel: () => Navigator.of(context).pop(false),
+ 1406:             onConfirm: () => Navigator.of(context).pop(true),
+ 1407:             cancelLabel: '취소',
+ 1408:             confirmLabel: '가져오기',
+ 1409:           ),
+ 1410:         ],
+ 1411:       ),
+ 1412:     );
+ 1413:   }
+ 1414: 
+ 1415:   Future<void> _showNaverCalDavProgressDialog({bool dismissible = true}) {
+ 1416:     _isNaverCalDavProgressDialogOpen = true;
+ 1417:     return showDialog<void>(
+ 1418:       context: context,
+ 1419:       barrierDismissible: true,
+ 1420:       builder: (context) => PopScope(
+ 1421:         canPop: true,
+ 1422:         child: AlertDialog(
+ 1423:           title: const Text('네이버 일정 가져오기'),
+ 1424:           content: _NaverCalDavProgressView(
+ 1425:             progressListenable: _naverCalDavProgress,
+ 1426:           ),
+ 1427:         ),
+ 1428:       ),
+ 1429:     ).whenComplete(() {
+ 1430:       _isNaverCalDavProgressDialogOpen = false;
+ 1431:     });
+ 1432:   }
+ 1433: 
+ 1434:   ButtonStyle _settingsSkyButtonStyle() {
+ 1435:     return FilledButton.styleFrom(
+ 1436:       backgroundColor: PlanFlowColors.primaryMid,
+ 1437:       foregroundColor: Colors.white,
+ 1438:     );
+ 1439:   }
+ 1440: 
+ 1441:   ButtonStyle _settingsBriefingButtonStyle() {
+ 1442:     return FilledButton.styleFrom(
+ 1443:       backgroundColor: PlanFlowColors.fab,
+ 1444:       foregroundColor: Colors.white,
+ 1445:     );
+ 1446:   }
+ 1447: 
+ 1448:   Future<_NaverCalDavImportRange?> _showNaverCalDavMoreRangeDialog() {
+ 1449:     Widget buildRangeButton({
+ 1450:       required String label,
+ 1451:       required VoidCallback onPressed,
+ 1452:     }) {
+ 1453:       return SizedBox(
+ 1454:         width: 100,
+ 1455:         height: 42,
+ 1456:         child: FilledButton(
+ 1457:           onPressed: onPressed,
+ 1458:           style: FilledButton.styleFrom(
+ 1459:             backgroundColor: PlanFlowColors.primary,
+ 1460:             foregroundColor: Colors.white,
+ 1461:             padding: EdgeInsets.zero,
+ 1462:             minimumSize: Size.zero,
+ 1463:           ),
+ 1464:           child: FittedBox(
+ 1465:             fit: BoxFit.scaleDown,
+ 1466:             child: Text(label, maxLines: 1, textAlign: TextAlign.center),
+ 1467:           ),
+ 1468:         ),
+ 1469:       );
+ 1470:     }
+ 1471: 
+ 1472:     return showDialog<_NaverCalDavImportRange>(
+ 1473:       context: context,
+ 1474:       builder: (context) => AlertDialog(
+ 1475:         title: const Text('추가 기록 가져오기'),
+ 1476:         content: const Text('최근 3개월과 앞으로 6개월 일정을 저장했습니다. 더 과거 기록을 얼마나 불러올까요?'),
+ 1477:         actions: [
+ 1478:           SizedBox(
+ 1479:             width: double.maxFinite,
+ 1480:             child: Column(
+
+===== lib/screens/event/event_edit_screen.dart:1400-1470 =====
+ 1400:                       labelText: '준비물',
+ 1401:                       helperText: '쉼표로 구분해서 입력해 주세요.',
+ 1402:                       prefixIcon: Icon(Icons.checklist_outlined),
+ 1403:                     ),
+ 1404:                   ),
+ 1405:                 ),
+ 1406:                 const SizedBox(height: 24),
+ 1407:                 FilledButton.icon(
+ 1408:                   onPressed: _isSaving ? null : _handleSave,
+ 1409:                   icon: _isSaving
+ 1410:                       ? const SizedBox.square(
+ 1411:                           dimension: 18,
+ 1412:                           child: CircularProgressIndicator(strokeWidth: 2),
+ 1413:                         )
+ 1414:                       : const Icon(Icons.save_outlined),
+ 1415:                   label: Text(_isSaving ? l10n.saving : l10n.save),
+ 1416:                 ),
+ 1417:                 const SizedBox(height: 8),
+ 1418:                 TextButton(
+ 1419:                   onPressed: _handleBackNavigation,
+ 1420:                   child: Text(l10n.cancel),
+ 1421:                 ),
+ 1422:               ],
+ 1423:             ),
+ 1424:           ),
+ 1425:         ),
+ 1426:       ),
+ 1427:     );
+ 1428:   }
+ 1429: }
+ 1430: 
+ 1431: /// 알람 권한이 부족할 때 저장 직후 표시하는 안내 다이얼로그.
+ 1432: ///
+ 1433: /// 정확한 알람 권한 누락 / 배터리 최적화 예외 미적용 여부에 따라
+ 1434: /// 해당 설정 화면으로 이동하는 버튼을 표시한다.
+ 1435: /// [저장을 막지 않으며] dismiss 후 캘린더로 이동한다.
+ 1436: class _AlarmPermissionGuardDialog extends StatelessWidget {
+ 1437:   const _AlarmPermissionGuardDialog({
+ 1438:     required this.missingExactAlarm,
+ 1439:     required this.missingBatteryOptimization,
+ 1440:     required this.onFixExactAlarm,
+ 1441:     required this.onFixBatteryOptimization,
+ 1442:   });
+ 1443: 
+ 1444:   final bool missingExactAlarm;
+ 1445:   final bool missingBatteryOptimization;
+ 1446:   final VoidCallback onFixExactAlarm;
+ 1447:   final VoidCallback onFixBatteryOptimization;
+ 1448: 
+ 1449:   @override
+ 1450:   Widget build(BuildContext context) {
+ 1451:     final theme = Theme.of(context);
+ 1452:     final missingBoth = missingExactAlarm && missingBatteryOptimization;
+ 1453: 
+ 1454:     return AlertDialog(
+ 1455:       icon: const Icon(
+ 1456:         Icons.alarm_off_outlined,
+ 1457:         color: PlanFlowColors.primaryMid,
+ 1458:         size: 32,
+ 1459:       ),
+ 1460:       title: const Text('알람이 제때 울리지 않을 수 있어요'),
+ 1461:       content: Column(
+ 1462:         mainAxisSize: MainAxisSize.min,
+ 1463:         crossAxisAlignment: CrossAxisAlignment.start,
+ 1464:         children: [
+ 1465:           Text(
+ 1466:             missingBoth
+ 1467:                 ? '정확한 알람 권한과 절전(배터리 최적화) 예외가 꺼져 있습니다. '
+ 1468:                     '두 가지 모두 켜야 알람이 정확한 시각에 울립니다.'
+ 1469:                 : missingExactAlarm
+ 1470:                     ? '정확한 알람 권한이 꺼져 있습니다. '
+
+===== lib/screens/voice/voice_input_screen.dart:895-1010 =====
+  895:     await _pushVoiceRoute(
+  896:       AppRoutes.voiceAction,
+  897:       extra: <String, dynamic>{
+  898:         'raw_text': rawText,
+  899:         if (_manualEditOriginalTranscript?.trim().isNotEmpty == true)
+  900:           'stt_original_text': _manualEditOriginalTranscript!.trim(),
+  901:         if (cleanup.changed) 'original_raw_text': cleanup.originalText,
+  902:         if (cleanup.changed) 'voice_cleanup_method': cleanup.method.name,
+  903:         if (cleanup.changed) 'voice_cleanup_reason': cleanup.reason,
+  904:         'action': commandAction.name,
+  905:       },
+  906:     );
+  907:   }
+  908: 
+  909:   Future<_AmbiguousFieldAdditionChoice?> _showAmbiguousFieldAdditionSheet(
+  910:     String rawText,
+  911:   ) {
+  912:     return showModalBottomSheet<_AmbiguousFieldAdditionChoice>(
+  913:       context: context,
+  914:       showDragHandle: true,
+  915:       builder: (context) {
+  916:         final theme = Theme.of(context);
+  917:         return SafeArea(
+  918:           child: Padding(
+  919:             padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+  920:             child: Column(
+  921:               mainAxisSize: MainAxisSize.min,
+  922:               crossAxisAlignment: CrossAxisAlignment.stretch,
+  923:               children: [
+  924:                 Text(
+  925:                   '어떤 뜻인가요?',
+  926:                   style: theme.textTheme.titleLarge?.copyWith(
+  927:                     fontWeight: FontWeight.w800,
+  928:                     color: PlanFlowColors.textPrimary,
+  929:                   ),
+  930:                 ),
+  931:                 const SizedBox(height: 8),
+  932:                 Text(
+  933:                   rawText,
+  934:                   style: theme.textTheme.bodyMedium?.copyWith(
+  935:                     color: PlanFlowColors.textSecondary,
+  936:                   ),
+  937:                 ),
+  938:                 const SizedBox(height: 16),
+  939:                 FilledButton.icon(
+  940:                   onPressed: () => Navigator.of(context).pop(
+  941:                     _AmbiguousFieldAdditionChoice.updateExisting,
+  942:                   ),
+  943:                   icon: const Icon(Icons.event_available_outlined),
+  944:                   label: const Text('기존 일정에 내용 추가'),
+  945:                 ),
+  946:                 const SizedBox(height: 8),
+  947:                 OutlinedButton.icon(
+  948:                   onPressed: () => Navigator.of(context).pop(
+  949:                     _AmbiguousFieldAdditionChoice.createNew,
+  950:                   ),
+  951:                   icon: const Icon(Icons.add_circle_outline),
+  952:                   label: const Text('새 일정으로 추가'),
+  953:                 ),
+  954:                 TextButton.icon(
+  955:                   onPressed: () => Navigator.of(context).pop(
+  956:                     _AmbiguousFieldAdditionChoice.editText,
+  957:                   ),
+  958:                   icon: const Icon(Icons.edit_outlined),
+  959:                   label: const Text('직접 편집'),
+  960:                 ),
+  961:               ],
+  962:             ),
+  963:           ),
+  964:         );
+  965:       },
+  966:     );
+  967:   }
+  968: 
+  969:   Future<_ExistingVoiceTextChoice?> _showVoiceTextExistsSheet() {
+  970:     return showModalBottomSheet<_ExistingVoiceTextChoice>(
+  971:       context: context,
+  972:       showDragHandle: true,
+  973:       backgroundColor: PlanFlowColors.surface,
+  974:       shape: const RoundedRectangleBorder(
+  975:         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+  976:       ),
+  977:       builder: (context) {
+  978:         final theme = Theme.of(context);
+  979:         return SafeArea(
+  980:           child: Padding(
+  981:             padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+  982:             child: Column(
+  983:               mainAxisSize: MainAxisSize.min,
+  984:               crossAxisAlignment: CrossAxisAlignment.stretch,
+  985:               children: [
+  986:                 Text(
+  987:                   '현재 입력된 내용이 있어요',
+  988:                   style: theme.textTheme.titleLarge?.copyWith(
+  989:                     color: PlanFlowColors.textPrimary,
+  990:                     fontWeight: FontWeight.w800,
+  991:                   ),
+  992:                 ),
+  993:                 const SizedBox(height: 8),
+  994:                 Text(
+  995:                   '기존 문장 뒤에 이어서 말하거나, 내용을 지우고 처음부터 다시 입력할 수 있어요.',
+  996:                   style: theme.textTheme.bodyMedium?.copyWith(
+  997:                     color: PlanFlowColors.textSecondary,
+  998:                     height: 1.35,
+  999:                   ),
+ 1000:                 ),
+ 1001:                 const SizedBox(height: 16),
+ 1002:                 FilledButton.icon(
+ 1003:                   key: const ValueKey('voice-append-existing-text-button'),
+ 1004:                   onPressed: () => Navigator.of(context).pop(
+ 1005:                     _ExistingVoiceTextChoice.append,
+ 1006:                   ),
+ 1007:                   icon: const Icon(Icons.record_voice_over_outlined),
+ 1008:                   label: const Text('이어서 말하기'),
+ 1009:                 ),
+ 1010:                 const SizedBox(height: 8),
+
+===== lib/screens/event/event_edit_screen.dart:175-250 =====
+  175:       // 둘 다 허용된 경우 다이얼로그 없이 조용히 진행.
+  176:       if (snapshot.alarmWillFire) {
+  177:         return;
+  178:       }
+  179: 
+  180:       final missingExact = !snapshot.exactAlarmsGranted;
+  181:       final missingBattery = !snapshot.batteryOptimizationIgnored;
+  182: 
+  183:       await showDialog<void>(
+  184:         context: context,
+  185:         builder: (dialogContext) => _AlarmPermissionGuardDialog(
+  186:           missingExactAlarm: missingExact,
+  187:           missingBatteryOptimization: missingBattery,
+  188:           onFixExactAlarm: () async {
+  189:             Navigator.of(dialogContext).pop();
+  190:             await _permissionService.openAlarmSettings();
+  191:           },
+  192:           onFixBatteryOptimization: () async {
+  193:             Navigator.of(dialogContext).pop();
+  194:             await _permissionService.requestIgnoreBatteryOptimizations();
+  195:           },
+  196:         ),
+  197:       );
+  198:     } catch (error) {
+  199:       debugPrint('Alarm permission guard check failed (non-blocking): $error');
+  200:     }
+  201:   }
+  202: 
+  203:   DateTime _eventRangeEnd(DateTime startAt, DateTime? endAt) {
+  204:     if (endAt != null && endAt.isAfter(startAt)) {
+  205:       return endAt;
+  206:     }
+  207:     if (endAt != null && !DateUtils.isSameDay(startAt, endAt)) {
+  208:       return startAt.add(const Duration(days: 1));
+  209:     }
+  210:     return startAt.add(const Duration(minutes: 30));
+  211:   }
+  212: 
+  213:   Future<bool> _showOverlapWarning(List<EventModel> overlappingEvents) {
+  214:     return showOverlapWarningDialog(
+  215:       context: context,
+  216:       overlappingEvents: overlappingEvents,
+  217:     );
+  218:   }
+  219: 
+  220:   void _handleLocationTextChanged(String value) {
+  221:     final shouldClear = EventEditScreen.shouldClearLocationCoordinatesOnTextChange(
+  222:       isApplyingLoadedEvent: _isApplyingLoadedEvent,
+  223:       changedText: value,
+  224:       resolvedLocationLabel: _resolvedLocationLabel,
+  225:       hasCoordinates: _locationLat != null || _locationLng != null,
+  226:     );
+  227:     if (shouldClear) {
+  228:       DiagLogger.log(
+  229:         'GeoResolve',
+  230:         '[EditScreen] 좌표 초기화: 텍스트변경 "$value" '
+  231:             '이전좌표=($_locationLat,$_locationLng)',
+  232:       );
+  233:       setState(() {
+  234:         _locationLat = null;
+  235:         _locationLng = null;
+  236:         _resolvedLocationLabel = null;
+  237:       });
+  238:     }
+  239:     if (_isApplyingLoadedEvent) {
+  240:       // 서버에서 불러온 값을 채우는 중 발생한 이벤트 — 자동 재검색은 트리거하지 않는다.
+  241:       return;
+  242:     }
+  243:     final trimmed = value.trim();
+  244:     _locationDebounceTimer?.cancel();
+  245:     if (trimmed.isNotEmpty) {
+  246:       _locationDebounceTimer = Timer(
+  247:         const Duration(milliseconds: 800),
+  248:         _autoResolveLocation,
+  249:       );
+  250:     }
+
+===== lib/screens/settings/settings_screen.dart:1195-1215 =====
+ 1195:   }
+ 1196: 
+ 1197:   Future<void> _showNaverCalDavDiagnosticDetails(
+ 1198:     NaverCalDavSyncDiagnostics diagnostics,
+ 1199:   ) {
+ 1200:     final samples = diagnostics.samples;
+ 1201:     final invalidSamples = diagnostics.invalidSamples;
+ 1202:     var query = '';
+ 1203:     return showDialog<void>(
+ 1204:       context: context,
+ 1205:       builder: (context) => AlertDialog(
+ 1206:         title: const Text('상세 진단'),
+ 1207:         content: StatefulBuilder(
+ 1208:           builder: (context, setDialogState) {
+ 1209:             bool sampleMatches(Object sample) {
+ 1210:               if (query.trim().isEmpty) {
+ 1211:                 return true;
+ 1212:               }
+ 1213:               final text = switch (sample) {
+ 1214:                 NaverCalDavDebugSample s =>
+ 1215:                   '${s.title} ${s.rawStart} ${s.rawEnd} ${s.calendarPath}',
+
+===== lib/screens/voice/confirm_screen.dart:855-880 =====
+  855:         return false;
+  856:       }
+  857: 
+  858:       final missingExact = !snapshot.exactAlarmsGranted;
+  859:       final missingBattery = !snapshot.batteryOptimizationIgnored;
+  860: 
+  861:       var openedSystemSettings = false;
+  862:       await showDialog<void>(
+  863:         context: context,
+  864:         builder: (dialogContext) => _AlarmPermissionGuardDialog(
+  865:           missingExactAlarm: missingExact,
+  866:           missingBatteryOptimization: missingBattery,
+  867:           onFixExactAlarm: () async {
+  868:             openedSystemSettings = true;
+  869:             Navigator.of(dialogContext).pop();
+  870:             await _permissionService.openAlarmSettings();
+  871:           },
+  872:           onFixBatteryOptimization: () async {
+  873:             openedSystemSettings = true;
+  874:             Navigator.of(dialogContext).pop();
+  875:             await _permissionService.requestIgnoreBatteryOptimizations();
+  876:           },
+  877:         ),
+  878:       );
+  879:       return openedSystemSettings;
+  880:     } catch (error) {
+
+===== lib/screens/voice/confirm_screen.dart:1095-1120 =====
+ 1095:     _hasPromptedTimePeriodClarification = true;
+ 1096:     unawaited(_showTimePeriodClarificationDialog());
+ 1097:   }
+ 1098: 
+ 1099:   Future<void> _showTimePeriodClarificationDialog() async {
+ 1100:     if (!mounted) {
+ 1101:       return;
+ 1102:     }
+ 1103:     await showDialog<void>(
+ 1104:       context: context,
+ 1105:       builder: (dialogContext) => _TimePeriodClarificationDialog(
+ 1106:         morningLabel: _ambiguousTimeLabel(afternoon: false),
+ 1107:         afternoonLabel: _ambiguousTimeLabel(afternoon: true),
+ 1108:         isMorningSelected: _isAmbiguousPeriodSelected(afternoon: false),
+ 1109:         isAfternoonSelected: _isAmbiguousPeriodSelected(afternoon: true),
+ 1110:         onSelect: (afternoon) {
+ 1111:           _applyAmbiguousTimePeriod(afternoon: afternoon);
+ 1112:           Navigator.of(dialogContext).pop();
+ 1113:         },
+ 1114:       ),
+ 1115:     );
+ 1116:   }
+ 1117: 
+ 1118:   void _applyAmbiguousTimePeriod({required bool afternoon}) {
+ 1119:     final hour = _ambiguousTimeHour;
+ 1120:     final minute = _ambiguousTimeMinute;
+
+===== lib/screens/settings/settings_screen.dart:1655-1700 =====
+ 1655:           alignment: 0.42,
+ 1656:           alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+ 1657:         );
+ 1658:       });
+ 1659:     }
+ 1660: 
+ 1661:     return showDialog<_NaverCalDavCredentials>(
+ 1662:       context: context,
+ 1663:       builder: (context) {
+ 1664:         final theme = Theme.of(context);
+ 1665:         final bodyStyle = theme.textTheme.bodyMedium?.copyWith(
+ 1666:               fontSize: (theme.textTheme.bodyMedium?.fontSize ?? 14) + 2,
+ 1667:               height: 1.45,
+ 1668:             ) ??
+ 1669:             const TextStyle(fontSize: 16, height: 1.45);
+ 1670:         final screenHeight = MediaQuery.sizeOf(context).height;
+ 1671: 
+ 1672:         return AlertDialog(
+ 1673:           insetPadding: const EdgeInsets.symmetric(
+ 1674:             horizontal: 20,
+ 1675:             vertical: 24,
+ 1676:           ),
+ 1677:           title: const Text('네이버 캘린더 연결'),
+ 1678:           content: ConstrainedBox(
+ 1679:             constraints: BoxConstraints(
+ 1680:               maxWidth: 460,
+ 1681:               maxHeight: screenHeight * 0.58,
+ 1682:             ),
+ 1683:             child: SingleChildScrollView(
+ 1684:               padding: const EdgeInsets.only(bottom: 12),
+ 1685:               child: Column(
+ 1686:                 mainAxisSize: MainAxisSize.min,
+ 1687:                 crossAxisAlignment: CrossAxisAlignment.start,
+ 1688:                 children: [
+ 1689:                   Text(
+ 1690:                     'PlanFlow가 네이버 CalDAV 서버에 직접 연결해 기존 일정을 가져옵니다.',
+ 1691:                     style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
+ 1692:                   ),
+ 1693:                   const SizedBox(height: 12),
+ 1694:                   Container(
+ 1695:                     width: double.infinity,
+ 1696:                     padding: const EdgeInsets.all(14),
+ 1697:                     decoration: BoxDecoration(
+ 1698:                       color: PlanFlowColors.primaryFaint.withValues(
+ 1699:                         alpha: 0.38,
+ 1700:                       ),
+
+===== lib/screens/settings/settings_widgets.dart:215-240 =====
+  215:     );
+  216:   }
+  217: }
+  218: 
+  219: Future<void> _showNaverGuideImage(
+  220:   BuildContext context, {
+  221:   required String title,
+  222:   required String assetPath,
+  223: }) async {
+  224:   await showDialog<void>(
+  225:     context: context,
+  226:     builder: (context) {
+  227:       return Dialog.fullscreen(
+  228:         backgroundColor: const Color(0xFF101820),
+  229:         child: SafeArea(
+  230:           child: Column(
+  231:             children: [
+  232:               Padding(
+  233:                 padding: const EdgeInsets.symmetric(
+  234:                   horizontal: 12,
+  235:                   vertical: 8,
+  236:                 ),
+  237:                 child: Row(
+  238:                   children: [
+  239:                     Expanded(
+  240:                       child: Text(
+
+===== lib/screens/briefing/briefing_launch_screen.dart:105-240 =====
+  105:     try {
+  106:       repository = FeedbackRepository.supabase();
+  107:     } catch (_) {
+  108:       return;
+  109:     }
+  110:     if (!mounted) return;
+  111:     final submitted = await showModalBottomSheet<bool>(
+  112:       context: context,
+  113:       isScrollControlled: true,
+  114:       useSafeArea: true,
+  115:       builder: (context) => BetaSurveySheet(repository: repository),
+  116:     );
+  117:     if (submitted == true) {
+  118:       final prefs = await SharedPreferences.getInstance();
+  119:       await prefs.setBool(_surveyCompletedKey, true);
+  120:       if (mounted) setState(() => _showSurveyButton = false);
+  121:     }
+  122:   }
+  123: 
+  124:   Future<String?> _resolveUserIdForBriefing() async {
+  125:     if (!AppEnv.isSupabaseReady && widget.authProviderOverride == null) {
+  126:       return null;
+  127:     }
+  128:     await _authProvider.waitForInitialSessionResolution();
+  129:     if (!_authProvider.isSignedIn) {
+  130:       await _authProvider.syncCurrentSession();
+  131:     }
+  132:     final providerUserId = _authProvider.userId?.trim();
+  133:     if (providerUserId != null && providerUserId.isNotEmpty) {
+  134:       return providerUserId;
+  135:     }
+  136:     if (widget.authProviderOverride != null) {
+  137:       return null;
+  138:     }
+  139:     final supabaseUserId = Supabase.instance.client.auth.currentUser?.id.trim();
+  140:     if (supabaseUserId != null && supabaseUserId.isNotEmpty) {
+  141:       return supabaseUserId;
+  142:     }
+  143:     return null;
+  144:   }
+  145: 
+  146:   @override
+  147:   Widget build(BuildContext context) {
+  148:     final theme = Theme.of(context);
+  149:     final title = widget.isMorning ? '모닝 브리핑' : '이브닝 브리핑';
+  150:     final result = _result;
+  151:     final events = result?.events ?? const <EventModel>[];
+  152:     final scheduleTitle = widget.isMorning ? '오늘 일정' : '내일 일정';
+  153: 
+  154:     return Scaffold(
+  155:       backgroundColor: PlanFlowColors.background,
+  156:       appBar: AppBar(title: Text(title)),
+  157:       body: SafeArea(
+  158:         child: Padding(
+  159:           padding: const EdgeInsets.all(AppConstants.defaultPadding),
+  160:           child: Column(
+  161:             crossAxisAlignment: CrossAxisAlignment.stretch,
+  162:             children: [
+  163:               // 상단 상태 카드
+  164:               Card(
+  165:                 elevation: 0,
+  166:                 color: PlanFlowColors.surface,
+  167:                 shape: RoundedRectangleBorder(
+  168:                   borderRadius: BorderRadius.circular(18),
+  169:                   side: const BorderSide(
+  170:                     color: PlanFlowColors.primaryFaint,
+  171:                     width: 0.8,
+  172:                   ),
+  173:                 ),
+  174:                 child: Padding(
+  175:                   padding: const EdgeInsets.all(20),
+  176:                   child: Column(
+  177:                     mainAxisSize: MainAxisSize.min,
+  178:                     crossAxisAlignment: CrossAxisAlignment.stretch,
+  179:                     children: [
+  180:                       Icon(
+  181:                         result == null && _errorMessage == null
+  182:                             ? Icons.record_voice_over_outlined
+  183:                             : result?.delivered == true
+  184:                                 ? Icons.check_circle_outline
+  185:                                 : Icons.error_outline,
+  186:                         size: 42,
+  187:                         color: result?.delivered == true
+  188:                             ? PlanFlowColors.primary
+  189:                             : theme.colorScheme.error,
+  190:                       ),
+  191:                       const SizedBox(height: 14),
+  192:                       Text(
+  193:                         result == null && _errorMessage == null
+  194:                             ? _isCheckingSession
+  195:                                 ? '로그인 세션을 확인하고 있어요.'
+  196:                                 : '$title을 준비하고 있어요.'
+  197:                             : result?.message ?? _errorMessage!,
+  198:                         textAlign: TextAlign.center,
+  199:                         style: theme.textTheme.titleMedium?.copyWith(
+  200:                           color: PlanFlowColors.textPrimary,
+  201:                           fontWeight: FontWeight.w800,
+  202:                         ),
+  203:                       ),
+  204:                       const SizedBox(height: 8),
+  205:                       Text(
+  206:                         result == null && _errorMessage == null
+  207:                             ? _isCheckingSession
+  208:                                 ? '브리핑을 실행하기 전에 저장된 로그인 정보를 조용히 복구합니다.'
+  209:                                 : '오늘/내일 일정을 시간순으로 정리한 뒤 음성으로 읽어드립니다.'
+  210:                             : '홈으로 돌아가 일정을 다시 확인할 수 있어요.',
+  211:                         textAlign: TextAlign.center,
+  212:                         style: theme.textTheme.bodySmall?.copyWith(
+  213:                           color: PlanFlowColors.textSecondary,
+  214:                           height: 1.35,
+  215:                         ),
+  216:                       ),
+  217:                       const SizedBox(height: 18),
+  218:                       if (_showSurveyButton) ...[
+  219:                         OutlinedButton.icon(
+  220:                           onPressed: _openSurvey,
+  221:                           icon: const Icon(Icons.star_border_outlined),
+  222:                           label: const Text('오늘 하루 어떠셨나요? 후기 남기기'),
+  223:                         ),
+  224:                         const SizedBox(height: 8),
+  225:                       ],
+  226:                       FilledButton(
+  227:                         onPressed: () => context.go(AppRoutes.home),
+  228:                         child: const Text('홈으로 가기'),
+  229:                       ),
+  230:                     ],
+  231:                   ),
+  232:                 ),
+  233:               ),
+  234:               const SizedBox(height: 16),
+  235:               // 일정 리스트 섹션
+  236:               if (result?.delivered == true)
+  237:                 Expanded(
+  238:                   child: Column(
+  239:                     crossAxisAlignment: CrossAxisAlignment.start,
+  240:                     children: [
+
+===== lib/screens/location/location_pick_flow.dart:320-460 =====
+  320:     'google' => LocationLookupProvider.google,
+  321:     _ => null,
+  322:   };
+  323: }
+  324: 
+  325: Future<LocationLookupResult?> showLocationCandidateSheet(
+  326:   BuildContext context,
+  327:   String query,
+  328:   List<LocationLookupResult> results,
+  329: ) {
+  330:   return showModalBottomSheet<LocationLookupResult>(
+  331:     context: context,
+  332:     showDragHandle: true,
+  333:     builder: (context) {
+  334:       final theme = Theme.of(context);
+  335:       return SafeArea(
+  336:         child: Padding(
+  337:           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+  338:           child: Column(
+  339:             mainAxisSize: MainAxisSize.min,
+  340:             crossAxisAlignment: CrossAxisAlignment.stretch,
+  341:             children: [
+  342:               Text(
+  343:                 '장소 후보 선택',
+  344:                 style: theme.textTheme.titleMedium?.copyWith(
+  345:                   color: PlanFlowColors.primary,
+  346:                   fontWeight: FontWeight.w800,
+  347:                 ),
+  348:               ),
+  349:               const SizedBox(height: 6),
+  350:               Text(
+  351:                 '"$query"로 찾은 후보입니다. 정확한 장소를 선택해 주세요.',
+  352:                 style: theme.textTheme.bodySmall?.copyWith(
+  353:                   color: PlanFlowColors.textSecondary,
+  354:                 ),
+  355:               ),
+  356:               const SizedBox(height: 12),
+  357:               Flexible(
+  358:                 child: ListView.separated(
+  359:                   shrinkWrap: true,
+  360:                   itemCount: results.length,
+  361:                   separatorBuilder: (_, __) => const SizedBox(height: 8),
+  362:                   itemBuilder: (context, index) {
+  363:                     final result = results[index];
+  364:                     return ListTile(
+  365:                       shape: RoundedRectangleBorder(
+  366:                         borderRadius: BorderRadius.circular(16),
+  367:                         side: const BorderSide(
+  368:                           color: PlanFlowColors.primaryFaint,
+  369:                         ),
+  370:                       ),
+  371:                       title: Text(result.name),
+  372:                       subtitle:
+  373:                           Text('${result.providerLabel} · ${result.label}'),
+  374:                       onTap: () => Navigator.of(context).pop(result),
+  375:                     );
+  376:                   },
+  377:                 ),
+  378:               ),
+  379:             ],
+  380:           ),
+  381:         ),
+  382:       );
+  383:     },
+  384:   );
+  385: }
+  386: 
+  387: Future<void> showExternalMapOptions(
+  388:   BuildContext context,
+  389:   String query, {
+  390:   String? message,
+  391: }) async {
+  392:   final selected = await showDialog<_ExternalMapTarget>(
+  393:     context: context,
+  394:     builder: (context) => Dialog(
+  395:       insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+  396:       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+  397:       child: _ExternalMapSheet(query: query, message: message),
+  398:     ),
+  399:   );
+  400:   if (!context.mounted || selected == null) {
+  401:     return;
+  402:   }
+  403:   await _openExternalMapTarget(
+  404:     context,
+  405:     selected,
+  406:     query,
+  407:     failureMessage: '${selected.label}를 열지 못했어요. 앱 설치 또는 브라우저 연결을 확인해 주세요.',
+  408:   );
+  409: }
+  410: 
+  411: Future<bool> _openExternalMapTarget(
+  412:   BuildContext context,
+  413:   _ExternalMapTarget target,
+  414:   String query, {
+  415:   required String failureMessage,
+  416: }) async {
+  417:   final launched = await launchUrl(
+  418:     target.uri(query),
+  419:     mode: LaunchMode.externalApplication,
+  420:   );
+  421:   if (!launched && context.mounted) {
+  422:     await showLocationMessage(context, failureMessage);
+  423:   }
+  424:   return launched;
+  425: }
+  426: 
+  427: Future<void> showLocationMessage(BuildContext context, String message) async {
+  428:   ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+  429:     SnackBar(content: Text(message)),
+  430:   );
+  431: }
+  432: 
+  433: enum _ExternalMapTarget {
+  434:   google('Google 지도'),
+  435:   naver('네이버 지도'),
+  436:   tmap('TMAP');
+  437: 
+  438:   const _ExternalMapTarget(this.label);
+  439: 
+  440:   final String label;
+  441: 
+  442:   Uri uri(String query) {
+  443:     final encoded = Uri.encodeComponent(query.trim());
+  444:     return switch (this) {
+  445:       _ExternalMapTarget.google => Uri.https(
+  446:           'www.google.com',
+  447:           '/maps/search/',
+  448:           <String, String>{'api': '1', 'query': query.trim()},
+  449:         ),
+  450:       _ExternalMapTarget.naver =>
+  451:         Uri.parse('https://map.naver.com/p/search/$encoded'),
+  452:       _ExternalMapTarget.tmap => Uri.parse('tmap://search?name=$encoded'),
+  453:     };
+  454:   }
+  455: }
+  456: 
+  457: class _ExternalMapSheet extends StatelessWidget {
+  458:   const _ExternalMapSheet({required this.query, this.message});
+  459: 
+  460:   final String query;
+
+===== lib/screens/calendar/calendar_screen.dart:915-960 =====
+  915:     );
+  916:   }
+  917: 
+  918:   void _showDayEventsSheet(DateTime day) {
+  919:     final events = _visibleEvents.where((event) {
+  920:       return _eventIntersectsDay(event, day);
+  921:     }).toList(growable: false);
+  922:     showModalBottomSheet<void>(
+  923:       context: context,
+  924:       showDragHandle: true,
+  925:       isScrollControlled: true,
+  926:       backgroundColor: PlanFlowColors.background,
+  927:       shape: const RoundedRectangleBorder(
+  928:         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+  929:       ),
+  930:       builder: (context) => DraggableScrollableSheet(
+  931:         key: const ValueKey('calendar-day-events-draggable-sheet'),
+  932:         expand: false,
+  933:         initialChildSize: 0.84,
+  934:         minChildSize: 0.58,
+  935:         maxChildSize: 0.97,
+  936:         builder: (context, scrollController) => DayEventsSheet(
+  937:           day: day,
+  938:           events: events,
+  939:           scrollController: scrollController,
+  940:           onAdd: () {
+  941:             Navigator.of(context).pop();
+  942:             context.push(_eventEditRouteForDay(day));
+  943:           },
+  944:           onVoice: () {
+  945:             Navigator.of(context).pop();
+  946:             context.push(AppRoutes.voice);
+  947:           },
+  948:           onEventTap: (event) {
+  949:             Navigator.of(context).pop();
+  950:             context.push(
+  951:               '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+  952:               extra: event,
+  953:             );
+  954:           },
+  955:         ),
+  956:       ),
+  957:     );
+  958:   }
+  959: 
+  960:   void _changeMonth(int delta) {
+
+===== lib/screens/voice/voice_conversation_screen.dart:940-1090 =====
+  940:       extra: event,
+  941:     );
+  942:     await _loadEvents();
+  943:   }
+  944: 
+  945:   Future<void> _showEventActionSheet(EventModel event) async {
+  946:     await _pauseVoiceInput();
+  947:     if (!mounted) return;
+  948:     final action = await showModalBottomSheet<_EventCardAction>(
+  949:       context: context,
+  950:       showDragHandle: true,
+  951:       builder: (context) => _EventActionSheet(event: event),
+  952:     );
+  953:     if (!mounted || action == null || action == _EventCardAction.close) {
+  954:       return;
+  955:     }
+  956:     switch (action) {
+  957:       case _EventCardAction.edit:
+  958:         await _openEditEvent(event);
+  959:       case _EventCardAction.delete:
+  960:         await _showDeleteConfirmationSheet(event);
+  961:       case _EventCardAction.close:
+  962:         break;
+  963:     }
+  964:   }
+  965: 
+  966:   Future<void> _showDeleteConfirmationSheet(EventModel event) async {
+  967:     final confirmed = await showModalBottomSheet<bool>(
+  968:       context: context,
+  969:       showDragHandle: true,
+  970:       builder: (context) => _DeleteEventSheet(event: event),
+  971:     );
+  972:     if (confirmed != true || !mounted) {
+  973:       return;
+  974:     }
+  975:     final deleted = await _deleteEvent(event);
+  976:     if (!deleted) {
+  977:       return;
+  978:     }
+  979:     if (!mounted) return;
+  980:     setState(() {
+  981:       _messages.add(
+  982:         _ConversationMessage.assistant('${event.title} 일정을 삭제했어요.'),
+  983:       );
+  984:     });
+  985:     _scrollToBottom();
+  986:   }
+  987: 
+  988:   String _normalizeSubmitTextForPendingDelete(String text) {
+  989:     final trimmed = text.trim();
+  990:     if (trimmed.isEmpty || _conversation.pendingDelete == null) {
+  991:       return trimmed;
+  992:     }
+  993:     final pendingRequest = _conversation.pendingDelete!.requestText;
+  994:     final withoutPendingRequest =
+  995:         _removeCompactPrefix(trimmed, pendingRequest).trim();
+  996:     if (withoutPendingRequest.isNotEmpty &&
+  997:         _isDeleteConfirmationPhrase(withoutPendingRequest)) {
+  998:       return withoutPendingRequest;
+  999:     }
+ 1000:     if (_isDeleteConfirmationPhrase(trimmed)) {
+ 1001:       return trimmed;
+ 1002:     }
+ 1003:     return trimmed;
+ 1004:   }
+ 1005: 
+ 1006:   String _removeCompactPrefix(String text, String prefix) {
+ 1007:     final compactPrefix = _compact(prefix);
+ 1008:     if (compactPrefix.isEmpty) {
+ 1009:       return text;
+ 1010:     }
+ 1011:     final compact = StringBuffer();
+ 1012:     final sourceIndexes = <int>[];
+ 1013:     for (var index = 0; index < text.length; index += 1) {
+ 1014:       final char = text[index];
+ 1015:       if (char.trim().isEmpty) {
+ 1016:         continue;
+ 1017:       }
+ 1018:       compact.write(char);
+ 1019:       sourceIndexes.add(index);
+ 1020:     }
+ 1021:     final compactText = compact.toString();
+ 1022:     if (!compactText.startsWith(compactPrefix) ||
+ 1023:         sourceIndexes.length < compactPrefix.length) {
+ 1024:       return text;
+ 1025:     }
+ 1026:     final endIndex = sourceIndexes[compactPrefix.length - 1] + 1;
+ 1027:     return text.substring(endIndex);
+ 1028:   }
+ 1029: 
+ 1030:   bool _isDeleteConfirmationPhrase(String text) {
+ 1031:     final normalized = _compact(text);
+ 1032:     if (normalized.contains('아니') ||
+ 1033:         normalized.contains('취소') ||
+ 1034:         normalized.contains('하지마')) {
+ 1035:       return false;
+ 1036:     }
+ 1037:     final hasDelete = normalized.contains('삭제') ||
+ 1038:         normalized.contains('지워') ||
+ 1039:         normalized.contains('없애');
+ 1040:     final hasConfirm = normalized.contains('응') ||
+ 1041:         normalized.contains('그래') ||
+ 1042:         normalized.contains('확인') ||
+ 1043:         normalized.contains('해줘') ||
+ 1044:         normalized.contains('삭제해') ||
+ 1045:         normalized.contains('지워');
+ 1046:     return hasDelete && hasConfirm;
+ 1047:   }
+ 1048: 
+ 1049:   String _compact(String text) => text.replaceAll(RegExp(r'\s+'), '');
+ 1050: 
+ 1051:   Future<void> _handleConversationBack() async {
+ 1052:     if (_isExitingConversation) {
+ 1053:       return;
+ 1054:     }
+ 1055:     final shouldExit = await showModalBottomSheet<bool>(
+ 1056:       context: context,
+ 1057:       showDragHandle: true,
+ 1058:       builder: (context) => const _ExitConversationSheet(),
+ 1059:     );
+ 1060:     if (shouldExit == true) {
+ 1061:       await _exitConversation();
+ 1062:     }
+ 1063:   }
+ 1064: 
+ 1065:   Future<void> _exitConversation() async {
+ 1066:     if (_isExitingConversation) {
+ 1067:       return;
+ 1068:     }
+ 1069:     _isExitingConversation = true;
+ 1070:     _voicePhase = _VoiceConversationPhase.exiting;
+ 1071:     await _stopVoiceBeforeNavigation();
+ 1072:     _setConversationInputText('');
+ 1073:     _inputTurnGeneration += 1;
+ 1074:     _conversation.clearSession();
+ 1075:     _isRestartPending = false;
+ 1076:     _manualEditInterruptedListening = false;
+ 1077:     _didRetryConversationEarlyFailure = false;
+ 1078:     if (!mounted) return;
+ 1079:     context.go(AppRoutes.home);
+ 1080:   }
+ 1081: 
+ 1082:   void _handleInputChanged(String value) {
+ 1083:     if (_isApplyingInputReset || _isApplyingVoiceTranscript) {
+ 1084:       return;
+ 1085:     }
+ 1086:     _inputTurnGeneration += 1;
+ 1087:     if (!_isListening && !_keepListening && !_isRestartPending) {
+ 1088:       return;
+ 1089:     }
+ 1090:     _restartListenTimer?.cancel();
+
+!! MISSING: lib/screens/widgets/recurrence_selector.dart

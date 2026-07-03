@@ -192,21 +192,19 @@ class _FeedbackReportSheetState extends State<FeedbackReportSheet> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                PlanFlowActionButtons(
+                PlanflowDialogActions(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   alignment: WrapAlignment.center,
-                  buttons: [
-                    PlanFlowActionButton(
+                  actions: [
+                    PlanflowDialogAction(
                       label: _isSubmitting ? '보내는 중...' : '보내기',
                       onPressed: _isSubmitting ? null : _submit,
-                      type: ActionButtonType.primary,
-                      flex: 1,
+                      isDefault: true,
                       buttonKey: const ValueKey('feedback-submit-button'),
                     ),
-                    PlanFlowActionButton(
+                    PlanflowDialogAction(
                       label: '이메일로 문의하기',
                       onPressed: _isSubmitting ? null : _openEmail,
-                      type: ActionButtonType.secondary,
-                      flex: 1,
                       buttonKey: const ValueKey('feedback-email-button'),
                     ),
                   ],

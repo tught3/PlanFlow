@@ -1,0 +1,22 @@
+total lines 1519
+===== 1500 =====
+1500:                 side: const BorderSide(color: PlanFlowColors.primaryFaint),
+1501:               ),
+1502:             ),
+1503:           ],
+1504:         ],
+1505:       ),
+1506:       actions: [
+1507:         PlanFlowActionButtons(
+1508:           buttons: [
+1509:             PlanFlowActionButton(
+1510:               label: '나중에',
+1511:               onPressed: () => Navigator.of(context).pop(),
+1512:               type: ActionButtonType.secondary,
+1513:             ),
+1514:           ],
+1515:         ),
+1516:       ],
+1517:     );
+1518:   }
+1519: }
