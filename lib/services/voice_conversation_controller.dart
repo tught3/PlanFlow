@@ -866,15 +866,19 @@ class VoiceConversationController {
       return state.visibleEvents.length == 1 ? state.visibleEvents.first : null;
     }
 
-    // 새 일정 생성 의도가 명확하면(route.intent == add) 여기부터는 전부
-    // '약한' 추론 신호(시간 매칭·제목 부분일치)라 새 명령을 기존 일정에 대한
-    // 후속 편집으로 오인할 위험이 크다. 실증: "모란역으로 가기 일정생성해줘"가
-    // 과거 조회 결과에 남아있던 제목 "가기" 일정과 부분일치해 그 일정을
-    // 편집하는 것으로 잘못 처리됨. 명확한 생성 의도에서는 이 추론을 건너뛴다.
+    // 새 일정 생성 의도가 명확하면(route.intent == add) 시간 매칭조차
+    // 기존 일정 오인 편집으로 이어질 수 있다(예: "오늘 오후2시에 ~ 일정
+    // 생성해줘"가 우연히 같은 시각의 기존 일정과 매칭). 명확한 생성 의도에서는
+    // 이 추론을 건너뛴다.
     if (route?.intent == VoiceCommandRouteIntent.add) {
       return null;
     }
 
+    // 제목 부분일치 추론은 쓰지 않는다. 기존 일정 변경은 사용자가 명시적으로
+    // "몇 시 일정을 이걸로 바꿔줘"처럼 시간을 짚어 말하거나(아래 시간 매칭),
+    // 조회 후 "몇 번째 일정"처럼 순번으로 지정하는 방식으로만 이뤄져야 한다.
+    // 실증: "모란역으로 가기 일정생성해줘"의 "가기"가 과거 조회 결과에 남아있던
+    // 제목 "가기" 일정과 부분일치해, 관련 없는 그 일정을 임의로 편집해버렸다.
     final time = _parseTimeReference(text);
     if (time != null) {
       final matches = _matchVisibleEventsByTime(time, state.visibleEvents);
@@ -883,48 +887,7 @@ class VoiceConversationController {
       }
     }
 
-    final titleMatched = _matchVisibleEventByTitle(text, state.visibleEvents);
-    if (titleMatched != null) {
-      return titleMatched;
-    }
-
     return null;
-  }
-
-  EventModel? _matchVisibleEventByTitle(
-    String text,
-    List<EventModel> visibleEvents,
-  ) {
-    if (visibleEvents.isEmpty) {
-      return null;
-    }
-    final queryTokens = text
-        .replaceAll(RegExp(r'\d+\s*(?:번째|번\s*째|번)'), ' ')
-        .replaceAll(
-          RegExp(
-            r'(일정|중요|긴급|급한|critical|중요한|보통|일반|normal|알람|알림|경보|장소|위치|추가|변경|수정|바꿔|고쳐|설정|넣어|으로|로|에|을|를|은|는|해줘|줘)',
-          ),
-          ' ',
-        )
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim()
-        .split(RegExp(r'\s+'))
-        .map(_compact)
-        .where((token) => !_isDateReferenceToken(token))
-        .where((token) => token.length >= 2)
-        .toList(growable: false);
-    if (queryTokens.isEmpty) {
-      return null;
-    }
-
-    final matches = <EventModel>[];
-    for (final event in visibleEvents) {
-      final compactTitle = _compact(event.title);
-      if (queryTokens.any(compactTitle.contains)) {
-        matches.add(event);
-      }
-    }
-    return matches.length == 1 ? matches.single : null;
   }
 
   _VoiceConversationTitleSearch _searchEventsByTitleOrPeople(

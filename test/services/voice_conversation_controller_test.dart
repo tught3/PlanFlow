@@ -421,7 +421,15 @@ void main() {
       expect(result.criticalValue, isTrue);
     });
 
-    test('title follow-up can mark an event as 중요한 일정', () {
+    test(
+        '제목만 겹치는 후속 명령은 추측으로 편집하지 않고 다시 물어본다 '
+        '(순번/명시적 시간 지정 없이는 제목 부분일치로 대상을 추론하지 않음)',
+        () {
+      // 기존 일정 변경은 "몇 시 일정을 바꿔줘"처럼 명시적 시간을 짚거나,
+      // 조회 후 "몇 번째 일정"처럼 순번으로 지정할 때만 이뤄져야 한다.
+      // 텍스트에 우연히 등장하는 제목 단어로 대상을 추측하면, 관련 없는
+      // 일정을 사용자 모르게 바꿔버릴 위험이 있다(실증: "모란역으로 가기
+      // 일정생성해줘"가 옛 "가기" 일정을 편집해버린 버그).
       final controller = VoiceConversationController(
         events: <EventModel>[
           _event('meeting', '내일 회의', DateTime(2026, 5, 8, 9)),
@@ -433,9 +441,8 @@ void main() {
 
       final result = controller.handle('내일 회의 중요한 일정으로 표시해줘');
 
-      expect(result.action, VoiceConversationAction.confirmedEdit);
-      expect(result.targetEvent?.id, 'meeting');
-      expect(result.criticalValue, isTrue);
+      expect(result.action, VoiceConversationAction.none);
+      expect(result.targetEvent, isNull);
     });
 
     test('ordinal follow-up can unset 중요한 일정', () {
