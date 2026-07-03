@@ -519,17 +519,38 @@ class _SettingsScreenState extends State<SettingsScreen>
             '가져온 일정을 PlanFlow에 남겨둘지, 해당 공급자 일정과 함께 정리할지 선택해 주세요.',
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(null),
-              child: const Text('취소'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('일정 유지'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('공급자 일정 삭제'),
+            SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(null),
+                          child: const Text('취소'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('일정 유지'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('공급자 일정 삭제'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         );
@@ -3425,9 +3446,8 @@ class _AccountSection extends StatelessWidget {
             children: [
               _StatusRow(
                 label: '로그인 상태',
-                value: signedIn
-                    ? authProvider.accountDisplayWithMethod
-                    : '로그아웃됨',
+                value:
+                    signedIn ? authProvider.accountDisplayWithMethod : '로그아웃됨',
                 icon: Icons.account_circle_outlined,
                 isConfigured: signedIn,
               ),
@@ -4043,4 +4063,3 @@ class _InlineNotice extends StatelessWidget {
     );
   }
 }
-

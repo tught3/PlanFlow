@@ -322,7 +322,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
               child: Row(
                 children: [
                   Expanded(
-                    child: TextButton(
+                    child: OutlinedButton(
                       onPressed: () => Navigator.of(context).pop(false),
                       child: const Text('동기화 안 함'),
                     ),

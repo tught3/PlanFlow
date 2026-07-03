@@ -351,7 +351,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           try {
             await _groupEventRepository.cancelGroupEvent(groupEventId);
           } catch (error, stackTrace) {
-            debugPrint('EventDetailScreen linked group event cancel failed: $error');
+            debugPrint(
+                'EventDetailScreen linked group event cancel failed: $error');
             debugPrintStack(stackTrace: stackTrace);
             AppFeedbackService.showSnackBar(
               '개인 일정은 삭제됐지만 그룹 일정 취소에 실패했어요. 그룹 일정에서 직접 취소해 주세요.',
@@ -403,23 +404,44 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         ),
         actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx)
-                .pop(_LinkedGroupDeleteScope.personalOnly),
-            child: const Text('개인만 삭제'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx)
-                .pop(_LinkedGroupDeleteScope.personalAndGroup),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB42318),
-              foregroundColor: Colors.white,
+          SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('취소'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(ctx)
+                            .pop(_LinkedGroupDeleteScope.personalOnly),
+                        child: const Text('개인만 삭제'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx)
+                        .pop(_LinkedGroupDeleteScope.personalAndGroup),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFB42318),
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('그룹 일정도 취소'),
+                  ),
+                ),
+              ],
             ),
-            child: const Text('그룹 일정도 취소'),
           ),
         ],
       ),

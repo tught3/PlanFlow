@@ -172,20 +172,35 @@ class _EarlyBirdSignupDialogState extends State<_EarlyBirdSignupDialog> {
           ],
         ),
       ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       actions: [
-        TextButton(
-          onPressed: widget.isSaving ? null : () => Navigator.of(context).pop(),
-          child: const Text('취소'),
-        ),
-        FilledButton(
-          onPressed: widget.isSaving
-              ? null
-              : () {
-                  if (_formKey.currentState?.validate() ?? false) {
-                    Navigator.of(context).pop(_emailController.text);
-                  }
-                },
-          child: const Text('신청하기'),
+        SizedBox(
+          width: double.maxFinite,
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: widget.isSaving
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  child: const Text('취소'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: widget.isSaving
+                      ? null
+                      : () {
+                          if (_formKey.currentState?.validate() ?? false) {
+                            Navigator.of(context).pop(_emailController.text);
+                          }
+                        },
+                  child: const Text('신청하기'),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

@@ -179,17 +179,30 @@ class ReminderOffsetSelector extends StatelessWidget {
             suffixText: '분 전',
           ),
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final minutes = int.tryParse(controller.text.trim());
-              Navigator.of(context).pop(minutes);
-            },
-            child: const Text('적용'),
+          SizedBox(
+            width: double.maxFinite,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('취소'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      final minutes = int.tryParse(controller.text.trim());
+                      Navigator.of(context).pop(minutes);
+                    },
+                    child: const Text('적용'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

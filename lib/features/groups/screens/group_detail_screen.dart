@@ -152,8 +152,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         content: const Text(
           '오늘 이후의 개인 일정 중 직접 만든 일정만 이 그룹 일정으로 복사할 수 있어요. 같은 제목과 시간이 이미 있으면 중복으로 만들지 않습니다.',
         ),
-        actionsPadding:
-            const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         actions: [
           // 1행: 보조 선택지 2개를 테두리 버튼으로 절반씩 나란히 배치.
           // 2행: 주 선택지(오늘 이후 일정 공유)를 강조 버튼으로 전체 너비에 배치.
@@ -253,16 +252,27 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         content: const Text(
           '오늘 이후의 개인 일정 중 직접 만든 일정만 이 그룹 일정으로 복사할 수 있어요. 같은 제목과 시간이 이미 있으면 중복으로 만들지 않습니다.',
         ),
-        actionsAlignment: MainAxisAlignment.end,
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('취소'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('오늘 이후 일정 공유'),
+          SizedBox(
+            width: double.maxFinite,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('취소'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('오늘 이후 일정 공유'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -274,7 +284,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       _isSharingExistingEvents = true;
     });
     try {
-      await _shareUpcomingPersonalEvents(userId: userId, groupId: widget.groupId);
+      await _shareUpcomingPersonalEvents(
+          userId: userId, groupId: widget.groupId);
     } finally {
       if (mounted) {
         setState(() {
@@ -333,19 +344,30 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         content: Text(
           '"${group.name}" 그룹을 삭제하면 모든 멤버, 초대, 일정이 함께 삭제됩니다. 계속할까요?',
         ),
-        actionsAlignment: MainAxisAlignment.end,
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('취소'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB42318),
+          SizedBox(
+            width: double.maxFinite,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('취소'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFB42318),
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('삭제'),
+                  ),
+                ),
+              ],
             ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('삭제'),
           ),
         ],
       ),
@@ -388,13 +410,25 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           onSubmitted: (value) => Navigator.of(ctx).pop(value),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: const Text('저장'),
+          SizedBox(
+            width: double.maxFinite,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('취소'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx).pop(controller.text),
+                    child: const Text('저장'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -623,10 +657,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                       const SizedBox(height: 4),
                       Text(
                         '켜면 새로 만드는 개인 일정이 기본으로 이 그룹에도 공유돼요.',
-                        style:
-                            Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: PlanFlowColors.textSecondary,
-                                ),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.textSecondary,
+                            ),
                       ),
                     ],
                   ),
@@ -650,25 +683,24 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     children: [
                       Text(
                         '기존 일정 공유하기',
-                        style:
-                            Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '오늘 이후의 내 개인 일정을 이 그룹에 지금 공유해요.',
-                        style:
-                            Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: PlanFlowColors.textSecondary,
-                                ),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: PlanFlowColors.textSecondary,
+                            ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton(
-                  key: const ValueKey('group-detail-share-existing-events-button'),
+                  key: const ValueKey(
+                      'group-detail-share-existing-events-button'),
                   onPressed: _isSharingExistingEvents
                       ? null
                       : _shareExistingEventsManually,

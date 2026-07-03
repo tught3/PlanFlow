@@ -121,8 +121,7 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
         );
         continue;
       }
-      final nextActivityAt =
-          _laterOf(existing.lastActivityAt, activityAt);
+      final nextActivityAt = _laterOf(existing.lastActivityAt, activityAt);
       result[event.createdBy] = _MemberShareStats(
         sharedCount: existing.sharedCount + 1,
         lastActivityAt: nextActivityAt,
@@ -174,14 +173,27 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
           content: Text(
             '${member.effectiveDisplayName} 멤버를 그룹에서 제거할까요?',
           ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('취소'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('제거'),
+            SizedBox(
+              width: double.maxFinite,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('취소'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('제거'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         );
@@ -241,7 +253,8 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: FilledButton(
-                      onPressed: () => Navigator.of(context).pop(controller.text),
+                      onPressed: () =>
+                          Navigator.of(context).pop(controller.text),
                       child: const Text('저장'),
                     ),
                   ),

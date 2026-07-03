@@ -230,18 +230,30 @@ Future<void> _showLocationPermissionGuide(
           '지도를 현재 위치 기준으로 보여주려면 위치 권한이 필요합니다. 권한을 켜면 주변 장소를 더 빠르게 고를 수 있어요.',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('계속 선택'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              await permissions.openAppSettings();
-              if (context.mounted) {
-                Navigator.of(context).pop();
-              }
-            },
-            child: const Text('설정 열기'),
+          SizedBox(
+            width: double.maxFinite,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('계속 선택'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () async {
+                      await permissions.openAppSettings();
+                      if (context.mounted) {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    child: const Text('설정 열기'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       );

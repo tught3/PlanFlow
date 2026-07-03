@@ -305,13 +305,27 @@ class _EventEditScreenState extends State<EventEditScreen> {
               ),
               actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('나중에'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text('허용하러 가기'),
+                SizedBox(
+                  width: double.maxFinite,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          child: const Text('나중에'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
+                          child: const Text('허용하러 가기'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -583,16 +597,29 @@ class _EventEditScreenState extends State<EventEditScreen> {
         content: const Text(
           '이 일정은 그룹 일정과 연결되어 있어요. 개인 일정만 바꾸거나, 그룹 일정도 같은 내용으로 바꿀 수 있습니다.',
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(ctx).pop(_LinkedGroupEditScope.personalOnly),
-            child: const Text('개인만 수정'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(ctx).pop(_LinkedGroupEditScope.personalAndGroup),
-            child: const Text('그룹도 같이 수정'),
+          SizedBox(
+            width: double.maxFinite,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx)
+                        .pop(_LinkedGroupEditScope.personalOnly),
+                    child: const Text('개인만 수정'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx)
+                        .pop(_LinkedGroupEditScope.personalAndGroup),
+                    child: const Text('그룹도 같이 수정'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1471,28 +1498,48 @@ class _EventEditScreenState extends State<EventEditScreen> {
         ),
         actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(null),
-                child: const Text('취소'),
-              ),
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).pop('single'),
-                child: const Text('이 일정만'),
-              ),
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).pop('future'),
-                child: const Text('이후 모든 일정'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop('all'),
-                child: const Text('전체 반복 일정'),
-              ),
-            ],
+          SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(null),
+                        child: const Text('취소'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop('single'),
+                        child: const Text('이 일정만'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop('future'),
+                        child: const Text('이후 모든 일정'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(context).pop('all'),
+                        child: const Text('전체 반복 일정'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),

@@ -508,9 +508,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return exactMatches;
     }
 
-    final threshold = focusTokens.length <= 1
-        ? 1
-        : (focusTokens.length * 0.6).ceil();
+    final threshold =
+        focusTokens.length <= 1 ? 1 : (focusTokens.length * 0.6).ceil();
     final fuzzyMatches = rankedItems
         .where(
           (item) => _isMeaningfulQueryCandidate(
@@ -577,12 +576,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         .searchTokens(normalizedQuery)
         .where(_isMeaningfulQueryToken)
         .map((token) {
-          if (token.length >= 3 && token.endsWith('라')) {
-            return token.substring(0, token.length - 1);
-          }
-          return token;
-        })
-        .toList(growable: false);
+      if (token.length >= 3 && token.endsWith('라')) {
+        return token.substring(0, token.length - 1);
+      }
+      return token;
+    }).toList(growable: false);
     final seen = <String>{};
     return tokens.where(seen.add).toList(growable: false);
   }
@@ -1483,13 +1481,25 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
             '"$nextLocation"로 교체할까요?',
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('그대로 둘게요'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('교체하기'),
+            SizedBox(
+              width: double.maxFinite,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('그대로 둘게요'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('교체하기'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         );
