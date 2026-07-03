@@ -92,6 +92,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     unawaited(_notificationService.scheduleMonthlyNaverIcsReminder());
     unawaited(_scheduleBetaSurveyReminderIfNeeded());
     _routeInitialHomeWidgetLaunch();
+    unawaited(_routeInitialNotificationLaunch());
     _listenForPlanFlowDeepLinks();
     _homeWidgetClickSubscription = HomeWidget.widgetClicked.listen(
       _handleHomeWidgetUri,
@@ -564,6 +565,18 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
     _handleHomeWidgetUri(uri);
+  }
+
+  /// 앱이 완전히 꺼진 상태에서 알림(브리핑 등)을 눌러 실행된 경우, 저장된
+  /// launch details로 목적지 라우트를 복구한다. 홈위젯 라우트와 동일한
+  /// gate(startupRouteGate)·재시도 메커니즘을 재사용한다.
+  Future<void> _routeInitialNotificationLaunch() async {
+    final route = await _notificationService.resolveColdStartLaunchRoute();
+    if (route == null || _pendingHomeWidgetRoute != null) {
+      return;
+    }
+    startupRouteGate.beginWidgetLaunch();
+    _scheduleHomeWidgetRoute(route);
   }
 
   void _handleHomeWidgetUri(Uri? uri) {

@@ -1018,6 +1018,22 @@ class NotificationService {
     return bodyLines.join('\n');
   }
 
+  /// 앱이 완전히 종료된 상태(cold start)에서 알림을 눌러 실행된 경우의
+  /// 목적지 라우트를 반환한다. onDidReceiveNotificationResponse는 프로세스가
+  /// 살아있을 때만 호출되므로, 새벽 브리핑처럼 앱이 꺼져 있을 때 울리는
+  /// 알림은 이 경로로만 딥링크를 잡을 수 있다.
+  Future<String?> resolveColdStartLaunchRoute() async {
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+    if (launchDetails == null || !launchDetails.didNotificationLaunchApp) {
+      return null;
+    }
+    final response = launchDetails.notificationResponse;
+    if (response == null) {
+      return null;
+    }
+    return routeForNotificationResponse(response);
+  }
+
   @visibleForTesting
   static String? routeForNotificationResponse(NotificationResponse response) {
     if (response.payload == 'naver_ics_monthly_reminder') {
