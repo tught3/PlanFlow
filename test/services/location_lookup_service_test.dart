@@ -370,6 +370,63 @@ void main() {
     expect(result.results.single.name, '래온동물병원');
   });
 
+  test(
+      'LocationLookupService retry queries include common Korean STT vowel '
+      'confusions (애/에, 얘/예, 왜/외/웨)', () {
+    // 현대 한국어 발음상 거의 구별되지 않아 STT가 흔히 바꿔 듣는 모음쌍.
+    // "래온동물병원"을 "레온동물병원"으로 잘못 들었어도 검색에서 찾을 수
+    // 있어야 한다.
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: '',
+      clientSecret: '',
+      googleMapsApiKey: '',
+    );
+
+    expect(service.buildRetryQueries('레온동물병원'), contains('래온동물병원'));
+    expect(service.buildRetryQueries('얘기'), contains('예기'));
+    expect(service.buildRetryQueries('웨딩홀'), containsAll(['왜딩홀', '외딩홀']));
+    // 혼동 그룹에 속하지 않는 평범한 텍스트는 엉뚱한 변형을 만들지 않는다.
+    expect(service.buildRetryQueries('강남역'), isNot(contains('걍남역')));
+  });
+
+  test(
+      'LocationLookupService finds the real place via vowel-confusion retry '
+      'when the exact STT-mangled query returns nothing', () async {
+    final requests = <String>[];
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        final query = request.url.queryParameters['query'] ?? '';
+        requests.add(query);
+        // "레온동물병원"(STT 오인식)은 실제 DB에 없고, 진짜 이름
+        // "래온동물병원"만 존재하는 상황을 시뮬레이션.
+        if (query == '래온동물병원') {
+          return http.Response.bytes(
+            utf8.encode(
+              '{"addresses":[{"placeName":"래온동물병원",'
+              '"roadAddress":"경기 성남시 수정구 123","x":"127.13","y":"37.45"}]}',
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    final result = await service.searchWithFallback('레온동물병원');
+
+    expect(requests, contains('래온동물병원'));
+    expect(result.results, hasLength(1));
+    expect(result.results.single.name, '래온동물병원');
+  });
+
   test('LocationLookupService does not auto-resolve broad medical categories',
       () async {
     final requests = <String>[];
