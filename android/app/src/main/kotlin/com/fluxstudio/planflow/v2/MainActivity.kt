@@ -46,6 +46,15 @@ class MainActivity : FlutterActivity() {
     private var currentLocationListener: LocationListener? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // 화면 회전 네이티브 레벨 강제 고정
+        // AndroidManifest.xml의 screenOrientation="portrait" 선언만으로는
+        // 일부 기기(특히 Samsung)에서 시스템 설정이 자동 회전으로 바뀌는 것을 막지 못함.
+        // onCreate에서 프로그래매틱하게 재확인하여 시스템 간섭 방지.
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         planFlowStt = PlanFlowSttChannel(this, flutterEngine)
