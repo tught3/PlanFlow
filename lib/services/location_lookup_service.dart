@@ -818,6 +818,15 @@ class LocationLookupService {
       } else if (normalizedQuery.contains(nameCompact) ||
           normalizedQuery.contains(label)) {
         score += 45;
+      } else {
+        // (3.5) 오탈자/STT 오인식으로 한두 글자만 다른 근접 일치
+        // (예: 검색어 "레온동물병원" vs 실제 이름 "래온동물병원" — 편집거리 1).
+        // 완전 무관한 결과와 동일하게(0점) 취급되면 실제로 찾던 곳이 밀려난다.
+        final nameDistance = _editDistance(nameCompact, normalizedQuery);
+        final nameMaxLen = math.max(nameCompact.length, normalizedQuery.length);
+        if (nameMaxLen >= 3 && nameDistance <= _nearMatchMaxDistance(nameMaxLen)) {
+          score += (70 - nameDistance * 15).clamp(0, 70).toDouble();
+        }
       }
     }
 
@@ -886,6 +895,45 @@ class LocationLookupService {
       origin: origin,
       preferredProvider: preferredProvider,
     );
+  }
+
+  /// 두 문자열의 Levenshtein 편집거리(치환/삽입/삭제 1회당 1).
+  int _editDistance(String a, String b) {
+    if (a == b) {
+      return 0;
+    }
+    if (a.isEmpty) {
+      return b.length;
+    }
+    if (b.isEmpty) {
+      return a.length;
+    }
+    var previousRow = List<int>.generate(b.length + 1, (i) => i);
+    for (var i = 0; i < a.length; i++) {
+      final currentRow = List<int>.filled(b.length + 1, 0);
+      currentRow[0] = i + 1;
+      for (var j = 0; j < b.length; j++) {
+        final deletionCost = previousRow[j + 1] + 1;
+        final insertionCost = currentRow[j] + 1;
+        final substitutionCost =
+            previousRow[j] + (a[i] == b[j] ? 0 : 1);
+        currentRow[j + 1] =
+            [deletionCost, insertionCost, substitutionCost].reduce(math.min);
+      }
+      previousRow = currentRow;
+    }
+    return previousRow[b.length];
+  }
+
+  /// 근접 일치로 인정할 최대 편집거리 — 문자열이 길수록 조금 더 허용.
+  int _nearMatchMaxDistance(int length) {
+    if (length <= 8) {
+      return 1;
+    }
+    if (length <= 16) {
+      return 2;
+    }
+    return 3;
   }
 
   String _compactSearchText(String value) {

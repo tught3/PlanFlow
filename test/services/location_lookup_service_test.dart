@@ -806,5 +806,28 @@ void main() {
       final sorted = service.sortByRelevance('수진역', []);
       expect(sorted, isEmpty);
     });
+
+    test('STT 오인식으로 한 글자만 다른 이름은 완전 무관한 결과보다 우선한다', () {
+      // 실증: "성남래온동물병원 가기 일정추가해줘"를 STT가 "레온동물병원"으로
+      // 잘못 인식(래→레). 완전 일치가 아니라고 편집거리 1인 후보를
+      // 무관한 결과와 동일하게(0점) 취급하면 실제로 찾던 곳이 밀려난다.
+      final input = [
+        makeResult('무지개동물메디컬센터'), // 완전 무관
+        makeResult('래온동물병원', address: '경기 성남시 수정구'), // 편집거리 1
+      ];
+      final sorted = service.sortByRelevance('레온동물병원', input);
+
+      expect(sorted.first.name, equals('래온동물병원'));
+    });
+
+    test('편집거리가 클수록(2글자 이상 다름) 근접 매칭 가산이 줄어든다', () {
+      final input = [
+        makeResult('완전다른이름병원'), // 편집거리 큼, 무관
+        makeResult('래온동물병원'), // 편집거리 1 — 여전히 우선
+      ];
+      final sorted = service.sortByRelevance('레온동물병원', input);
+
+      expect(sorted.first.name, equals('래온동물병원'));
+    });
   });
 }
