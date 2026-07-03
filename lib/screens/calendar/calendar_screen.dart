@@ -13,6 +13,9 @@ import '../../core/time_format_controller.dart';
 import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
+import '../../features/groups/models/calendar_overlay_item.dart';
+import '../../features/groups/providers/group_calendar_overlay_provider.dart';
+import '../../features/groups/services/group_instruction_inbox_service.dart';
 import '../../services/event_prefetch_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../widgets/planflow_logo.dart';
@@ -215,6 +218,7 @@ class CalendarMiniMonthCellData {
     required this.dayNumber,
     required this.inMonth,
     required this.events,
+    required this.overlayEvents,
     required this.overflowCount,
     required this.isHoliday,
   });
@@ -224,6 +228,7 @@ class CalendarMiniMonthCellData {
   final int? dayNumber;
   final bool inMonth;
   final List<EventModel> events;
+  final List<CalendarOverlayItem> overlayEvents;
   final int overflowCount;
   final bool isHoliday;
 }
@@ -232,6 +237,7 @@ class CalendarMiniMonthCellData {
 List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
   required Iterable<EventModel> events,
   required DateTime focusedMonth,
+  Iterable<CalendarOverlayItem> overlayEvents = const <CalendarOverlayItem>[],
 }) {
   final monthStart = DateTime(focusedMonth.year, focusedMonth.month);
   final firstDayOfMonth = monthStart;
@@ -248,6 +254,11 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     ),
   );
   final overflowCounts = List<int>.filled(cellCount, 0);
+  final overlayItemsByCell = List<List<CalendarOverlayItem>>.generate(
+    cellCount,
+    (_) => <CalendarOverlayItem>[],
+    growable: false,
+  );
   final cellDates = List<DateTime?>.generate(cellCount, (index) {
     final dayNumber = index - startWeekday + 1;
     if (dayNumber < 1 || dayNumber > lastDay) {
@@ -255,6 +266,33 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     }
     return DateTime(monthStart.year, monthStart.month, dayNumber);
   }, growable: false);
+
+  final visibleOverlayEvents = overlayEvents
+      .where((event) {
+        final startAt = event.startAt;
+        if (startAt == null) {
+          return false;
+        }
+        final endAt = event.endAt ?? startAt;
+        final overlayMonthStart =
+            DateTime(focusedMonth.year, focusedMonth.month);
+        final overlayMonthEnd =
+            DateTime(focusedMonth.year, focusedMonth.month + 1);
+        final localStart = planflowLocalDay(startAt);
+        final localEnd = planflowLocalDay(endAt);
+        return !localStart.isAfter(overlayMonthEnd) &&
+            !localEnd.isBefore(overlayMonthStart);
+      })
+      .toList(growable: false)
+    ..sort((a, b) {
+      final aStart = a.startAt ?? DateTime(0);
+      final bStart = b.startAt ?? DateTime(0);
+      final byStart = aStart.compareTo(bStart);
+      if (byStart != 0) {
+        return byStart;
+      }
+      return a.title.compareTo(b.title);
+    });
 
   final sortedEvents = events
       .where((event) => event.startAt != null)
@@ -338,6 +376,16 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
     }
   }
 
+  for (final event in visibleOverlayEvents) {
+    for (var index = 0; index < cellDates.length; index += 1) {
+      final day = cellDates[index];
+      if (day == null || !event.spansLocalDay(day)) {
+        continue;
+      }
+      overlayItemsByCell[index].add(event);
+    }
+  }
+
   return List.generate(cellCount, (index) {
     final day = cellDates[index];
     final visibleEvents =
@@ -350,6 +398,7 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
           day.year == monthStart.year &&
           day.month == monthStart.month,
       events: visibleEvents,
+      overlayEvents: overlayItemsByCell[index],
       overflowCount: overflowCounts[index],
       isHoliday: day != null &&
           _eventsForLocalDay(sortedEvents, day)
@@ -364,11 +413,13 @@ class CalendarScreen extends StatefulWidget {
     this.initialDate,
     this.eventRepository,
     this.userId,
+    this.groupCalendarOverlayProvider,
   });
 
   final DateTime? initialDate;
   final EventRepository? eventRepository;
   final String? userId;
+  final GroupCalendarOverlayProvider? groupCalendarOverlayProvider;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -378,6 +429,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _selectedDate;
   late DateTime _focusedMonth;
   List<EventModel> _allEvents = const <EventModel>[];
+  GroupCalendarOverlayProvider? _groupOverlayProvider;
+  /// 미확인 리더 지시가 있는 개인 이벤트 id 집합
+  Set<String> _instructionEventIds = const <String>{};
   _CalendarLoadState _loadState = _CalendarLoadState.ready;
   String? _loadMessage;
   bool _isSearching = false;
@@ -424,6 +478,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void dispose() {
     _retryTimer?.cancel();
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
+    _groupOverlayProvider?.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -550,6 +605,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
           _retryTimer?.cancel();
         });
       }
+      await _loadGroupOverlay(userId: userId);
+      unawaited(_loadGroupInstructionBadges(userId));
       if (shouldOpenDaySheet && daySheetDate != null && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -626,11 +683,107 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }).toList(growable: false);
   }
 
+  List<CalendarOverlayItem> get _overlayEventsForSelectedDate {
+    return _visibleGroupOverlayEvents.where((event) {
+      return event.spansLocalDay(_selectedDate);
+    }).toList(growable: false);
+  }
+
+  List<CalendarOverlayItem> _overlayEventsForDay(DateTime day) {
+    return _visibleGroupOverlayEvents.where((event) {
+      return event.spansLocalDay(day);
+    }).toList(growable: false);
+  }
+
   List<CalendarMiniMonthCellData> get _miniMonthCells {
     return buildCalendarMiniMonthCells(
       events: _visibleEvents,
       focusedMonth: _focusedMonth,
+      overlayEvents: _visibleGroupOverlayEvents,
     );
+  }
+
+  List<CalendarOverlayItem> get _visibleGroupOverlayEvents {
+    final groupOverlayProvider = _groupOverlayProvider;
+    if (groupOverlayProvider == null) {
+      return const <CalendarOverlayItem>[];
+    }
+    final monthStart = DateTime(_focusedMonth.year, _focusedMonth.month);
+    final monthEnd = DateTime(_focusedMonth.year, _focusedMonth.month + 1);
+    return groupOverlayProvider.items
+        .where((event) {
+          final start = event.startAt;
+          if (start == null) {
+            return false;
+          }
+          // UTC 원시값이 아닌 로컬(KST) 날짜 기준으로 비교해야, 월 경계
+          // 근처(예: UTC 자정 이전=KST 다음날 오전)의 일정이 잘못 걸러지지
+          // 않는다(이 파일의 다른 로컬 날짜 필터들과 동일하게 정규화).
+          final localStart = planflowLocalDay(start);
+          final localEnd = planflowLocalDay(event.endAt ?? start);
+          return !localStart.isAfter(monthEnd) && !localEnd.isBefore(monthStart);
+        })
+        .toList(growable: false);
+  }
+
+  /// 미확인 리더 지시가 있는 개인 이벤트 id 를 로드해 badge 표시에 사용한다.
+  Future<void> _loadGroupInstructionBadges(String userId) async {
+    // Supabase 미초기화(테스트 등)면 스킵 — _loadGroupOverlay와 동일 가드.
+    if (!AppEnv.isSupabaseReady) return;
+    try {
+      final service = GroupInstructionInboxService();
+      final ids = await service.unconfirmedPersonalEventIds(userId: userId);
+      if (mounted) {
+        setState(() {
+          _instructionEventIds = ids;
+        });
+      }
+      // 새 지시 알림 (best-effort) — 같은 서비스 인스턴스 재사용.
+      unawaited(service.notifyNewInstructions(userId: userId));
+    } catch (error, stackTrace) {
+      debugPrint('CalendarScreen 리더 지시 badge 로드 실패: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _loadGroupOverlay({String? userId}) async {
+    try {
+      if (!AppEnv.isSupabaseReady &&
+          widget.groupCalendarOverlayProvider == null) {
+        _groupOverlayProvider?.clear();
+        if (mounted) {
+          setState(() {});
+        }
+        return;
+      }
+      _groupOverlayProvider ??=
+          widget.groupCalendarOverlayProvider ?? GroupCalendarOverlayProvider();
+      final resolvedUserId = userId ?? _resolveCalendarUserId();
+      if (resolvedUserId == null || resolvedUserId.isEmpty) {
+        await _groupOverlayProvider!.clear();
+        if (mounted) {
+          setState(() {});
+        }
+        return;
+      }
+      await _groupOverlayProvider!.loadForMonth(resolvedUserId, _focusedMonth);
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (error, stackTrace) {
+      // 그룹 오버레이 로드 실패가 개인 일정 로드 흐름(_loadEvents의 재시도
+      // 로직)에 영향을 주지 않도록 여기서 흡수한다.
+      debugPrint('CalendarScreen 그룹 오버레이 로드 실패: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  String? _resolveCalendarUserId() {
+    final explicitUserId = widget.userId?.trim();
+    if (explicitUserId != null && explicitUserId.isNotEmpty) {
+      return explicitUserId;
+    }
+    return Supabase.instance.client.auth.currentUser?.id;
   }
 
   List<EventModel> get _filteredEvents {
@@ -919,6 +1072,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final events = _visibleEvents.where((event) {
       return _eventIntersectsDay(event, day);
     }).toList(growable: false);
+    final groupOverlayProvider = _groupOverlayProvider;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -933,26 +1087,45 @@ class _CalendarScreenState extends State<CalendarScreen> {
         initialChildSize: 0.84,
         minChildSize: 0.58,
         maxChildSize: 0.97,
-        builder: (context, scrollController) => DayEventsSheet(
-          day: day,
-          events: events,
-          scrollController: scrollController,
-          onAdd: () {
-            Navigator.of(context).pop();
-            context.push(_eventEditRouteForDay(day));
-          },
-          onVoice: () {
-            Navigator.of(context).pop();
-            context.push(AppRoutes.voice);
-          },
-          onEventTap: (event) {
-            Navigator.of(context).pop();
-            context.push(
-              '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-              extra: event,
+        builder: (context, scrollController) {
+          Widget sheetBuilder() {
+            return DayEventsSheet(
+              day: day,
+              personalEvents: events,
+              groupEvents: _overlayEventsForDay(day),
+              scrollController: scrollController,
+              onAdd: () {
+                Navigator.of(context).pop();
+                context.push(_eventEditRouteForDay(day));
+              },
+              onVoice: () {
+                Navigator.of(context).pop();
+                context.push(AppRoutes.voice);
+              },
+              onEventTap: (event) {
+                Navigator.of(context).pop();
+                context.push(
+                  '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                  extra: event,
+                );
+              },
+              onGroupEventTap: (event) {
+                Navigator.of(context).pop();
+                context.push(
+                  '${AppRoutes.groupEvents}/${Uri.encodeComponent(event.id)}',
+                );
+              },
             );
-          },
-        ),
+          }
+
+          if (groupOverlayProvider == null) {
+            return sheetBuilder();
+          }
+          return AnimatedBuilder(
+            animation: groupOverlayProvider,
+            builder: (context, _) => sheetBuilder(),
+          );
+        },
       ),
     );
   }
@@ -964,6 +1137,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _focusedMonth.month + delta,
       );
     });
+    unawaited(_loadGroupOverlay());
   }
 
   void _handleMonthSwipe(DragEndDetails details) {
@@ -983,6 +1157,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final monthLabel = '${_focusedMonth.year}년 ${_focusedMonth.month}월';
     final selectedDateLabel = _koreanDateLabel(_selectedDate);
     final dayEvents = _eventsForSelectedDate;
+    final groupDayEvents = _overlayEventsForSelectedDate;
+    final totalDayEventCount = dayEvents.length + groupDayEvents.length;
+    final selectedGroupLabel =
+        _groupOverlayProvider?.selectedGroup?.name ?? '개인 모드';
 
     return Scaffold(
       backgroundColor: PlanFlowColors.background,
@@ -1036,8 +1214,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             _focusedMonth = DateTime.now();
                             _selectedDate = DateTime.now();
                           });
+                          unawaited(_loadGroupOverlay());
                         },
                       ),
+                      const SizedBox(height: 8),
+                      _CalendarGroupContextChip(label: selectedGroupLabel),
                       const SizedBox(height: 12),
                       _MiniCalendarGrid(
                         focusedMonth: _focusedMonth,
@@ -1060,29 +1241,68 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   children: [
                     _CalendarSelectedDateHeader(
                       selectedDateLabel: selectedDateLabel,
-                      eventCount: dayEvents.length,
+                      eventCount: totalDayEventCount,
                       onAdd: () =>
                           context.push(_eventEditRouteForDay(_selectedDate)),
                       onVoice: () => context.push(AppRoutes.voice),
                     ),
+                    const SizedBox(height: 8),
+                    _CalendarGroupContextChip(label: selectedGroupLabel),
+                    if (_groupOverlayProvider?.error != null) ...[
+                      const SizedBox(height: 8),
+                      const _CalendarOverlayErrorBanner(
+                        message: '그룹 일정만 불러오지 못했어요.',
+                      ),
+                    ],
                     const SizedBox(height: 12),
-                    if (dayEvents.isEmpty)
+                    if (dayEvents.isEmpty && groupDayEvents.isEmpty)
                       _EmptyAgendaCard(
                         onVoice: () => context.push(AppRoutes.voice),
                       )
-                    else
-                      ...dayEvents.map(
-                        (event) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _EventAgendaCard(
-                            event: event,
-                            onTap: () => context.push(
-                              '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
-                              extra: event,
+                    else ...[
+                      if (dayEvents.isNotEmpty) ...[
+                        _AgendaSectionHeader(
+                          title: '개인 일정',
+                          count: dayEvents.length,
+                        ),
+                        const SizedBox(height: 8),
+                        ...dayEvents.map(
+                          (event) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _InstructionBadgeWrapper(
+                              hasInstruction:
+                                  _instructionEventIds.contains(event.id),
+                              child: _EventAgendaCard(
+                                event: event,
+                                onTap: () => context.push(
+                                  '${AppRoutes.eventDetail}/${Uri.encodeComponent(event.id)}',
+                                  extra: event,
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
+                      if (groupDayEvents.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        _AgendaSectionHeader(
+                          title: '그룹 일정',
+                          count: groupDayEvents.length,
+                        ),
+                        const SizedBox(height: 8),
+                        ...groupDayEvents.map(
+                          (event) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _GroupOverlayAgendaCard(
+                              event: event,
+                              onTap: () => context.push(
+                                '${AppRoutes.groupEvents}/${Uri.encodeComponent(event.id)}',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ],
                 );
 

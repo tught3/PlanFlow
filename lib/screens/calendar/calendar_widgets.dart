@@ -101,24 +101,29 @@ class DayEventsSheet extends StatelessWidget {
   const DayEventsSheet({
     super.key,
     required this.day,
-    required this.events,
+    required this.personalEvents,
+    required this.groupEvents,
     required this.onAdd,
     required this.onVoice,
     required this.onEventTap,
+    required this.onGroupEventTap,
     this.scrollController,
   });
 
   final DateTime day;
-  final List<EventModel> events;
+  final List<EventModel> personalEvents;
+  final List<CalendarOverlayItem> groupEvents;
   final VoidCallback onAdd;
   final VoidCallback onVoice;
   final ValueChanged<EventModel> onEventTap;
+  final ValueChanged<CalendarOverlayItem> onGroupEventTap;
   final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final title = _koreanDateLabel(day);
+    final totalCount = personalEvents.length + groupEvents.length;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
@@ -146,7 +151,7 @@ class DayEventsSheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(color: PlanFlowColors.primaryFaint),
                   ),
-                  child: Text('${events.length}개'),
+                  child: Text('$totalCount개'),
                 ),
               ],
             ),
@@ -181,24 +186,54 @@ class DayEventsSheet extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: events.isEmpty
+              child: personalEvents.isEmpty && groupEvents.isEmpty
                   ? ListView(
                       key: const ValueKey('calendar-day-events-empty-scroll'),
                       controller: scrollController,
                       children: const [_SheetEmptyState()],
                     )
-                  : ListView.separated(
+                  : ListView(
                       key: const ValueKey('calendar-day-events-list'),
                       controller: scrollController,
-                      itemCount: events.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final event = events[index];
-                        return _EventAgendaCard(
-                          event: event,
-                          onTap: () => onEventTap(event),
-                        );
-                      },
+                      children: [
+                        if (personalEvents.isNotEmpty) ...[
+                          _AgendaSectionHeader(
+                            title: '개인 일정',
+                            count: personalEvents.length,
+                          ),
+                          const SizedBox(height: 10),
+                          ...personalEvents.map(
+                            (event) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _EventAgendaCard(
+                                event: event,
+                                onTap: () => onEventTap(event),
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (groupEvents.isNotEmpty) ...[
+                          if (personalEvents.isNotEmpty)
+                            const SizedBox(height: 4),
+                          _AgendaSectionHeader(
+                            title: '그룹 일정',
+                            count: groupEvents.length,
+                          ),
+                          const SizedBox(height: 10),
+                          ...groupEvents.map(
+                            (event) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _GroupOverlayAgendaCard(
+                                key: ValueKey(
+                                  'calendar-group-overlay-event-${event.id}',
+                                ),
+                                event: event,
+                                onTap: () => onGroupEventTap(event),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
             ),
           ],
@@ -548,6 +583,7 @@ class _MiniCalendarGrid extends StatelessWidget {
                                     'calendar-mini-events-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
                                   ),
                                   events: cell.events,
+                                  overlayEvents: cell.overlayEvents,
                                   overflowCount: cell.overflowCount,
                                   isSelected: isSelected,
                                   day: dayDate,
@@ -573,32 +609,44 @@ class _CalendarMiniEventList extends StatelessWidget {
   const _CalendarMiniEventList({
     super.key,
     required this.events,
+    required this.overlayEvents,
     required this.overflowCount,
     required this.isSelected,
     required this.day,
   });
 
   final List<EventModel> events;
+  final List<CalendarOverlayItem> overlayEvents;
   final int overflowCount;
   final bool isSelected;
   final DateTime day;
 
   @override
   Widget build(BuildContext context) {
-    if (events.isEmpty && overflowCount <= 0) {
+    if (events.isEmpty && overlayEvents.isEmpty && overflowCount <= 0) {
       return const SizedBox.shrink();
     }
+    // 개인 일정 + 그룹 일정을 합쳐 셀 높이(고정 행 수)를 넘지 않게 예산을
+    // 나눈다. 개인 일정을 먼저 채우고, 남는 행에 그룹 일정을 채운 뒤,
+    // 양쪽에서 못 들어간 만큼을 하나의 +N개 라벨로 합쳐 보여준다.
+    final totalItems = events.length + overlayEvents.length;
     final requiresOverflowLabel =
-        overflowCount > 0 || events.length > _calendarMiniMonthEventRows;
-    final maxVisibleEvents = requiresOverflowLabel
+        overflowCount > 0 || totalItems > _calendarMiniMonthEventRows;
+    final maxVisibleRows = requiresOverflowLabel
         ? (_calendarMiniMonthEventRows - 1)
             .clamp(1, _calendarMiniMonthEventRows)
         : _calendarMiniMonthEventRows;
-    final displayEvents = events.length > maxVisibleEvents
-        ? events.take(maxVisibleEvents).toList(growable: false)
+    final displayEvents = events.length > maxVisibleRows
+        ? events.take(maxVisibleRows).toList(growable: false)
         : events;
+    final remainingRows = maxVisibleRows - displayEvents.length;
+    final displayOverlayEvents = remainingRows > 0
+        ? overlayEvents.take(remainingRows).toList(growable: false)
+        : const <CalendarOverlayItem>[];
     final hiddenCount = requiresOverflowLabel
-        ? (events.length + overflowCount) - displayEvents.length
+        ? (totalItems + overflowCount) -
+            displayEvents.length -
+            displayOverlayEvents.length
         : 0;
     return Column(
       mainAxisSize: MainAxisSize.max,
@@ -606,6 +654,12 @@ class _CalendarMiniEventList extends StatelessWidget {
       children: [
         for (final event in displayEvents)
           _CalendarMiniEventLabel(
+            event: event,
+            isSelected: isSelected,
+            day: day,
+          ),
+        for (final event in displayOverlayEvents)
+          _CalendarMiniOverlayLabel(
             event: event,
             isSelected: isSelected,
             day: day,
@@ -756,6 +810,100 @@ class _CalendarMiniEventLabel extends StatelessWidget {
     final current = DateTime(day.year, day.month, day.day);
     final first = planflowLocalDay(event.startAt!);
     final last = _calendarDisplayEndDay(event.startAt!, event.endAt!);
+    return (
+      current == first || current.weekday == DateTime.sunday,
+      current == last || current.weekday == DateTime.saturday
+    );
+  }
+}
+
+class _CalendarMiniOverlayLabel extends StatelessWidget {
+  const _CalendarMiniOverlayLabel({
+    required this.event,
+    required this.isSelected,
+    required this.day,
+  });
+
+  final CalendarOverlayItem event;
+  final bool isSelected;
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    final segment = _multiDaySegment(event, day);
+    final isMultiDay = event.isMultiDay;
+    final bg = isMultiDay
+        ? const Color(0xFFD9E9FF)
+        : isSelected
+            ? Colors.white.withValues(alpha: 0.2)
+            : const Color(0xFFD9E9FF);
+    final fg = isSelected ? Colors.white : PlanFlowColors.primary;
+    final showTitle = !isMultiDay || segment.$1;
+    final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;
+    final extendLeft = isMultiDay && !segment.$1 ? 1.5 : 0.0;
+    final extendRight = isMultiDay && !segment.$2 ? 1.5 : 0.0;
+    return SizedBox(
+      height: 9,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: -extendLeft,
+            right: -extendRight,
+            top: 1,
+            bottom: 0,
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.horizontal(
+                  left: Radius.circular(segment.$1 ? 3 : 0),
+                  right: Radius.circular(segment.$2 ? 3 : 0),
+                ),
+                border: Border.all(
+                  color: PlanFlowColors.primaryMid.withValues(alpha: 0.18),
+                  width: 0.4,
+                ),
+              ),
+              alignment: Alignment.centerLeft,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: hPadding,
+                  ),
+                  child: Text(
+                    showTitle
+                        ? (event.groupName != null && event.groupName!.isNotEmpty
+                            ? '팀 ${event.title}'
+                            : event.title)
+                        : '',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 6.8,
+                      height: 1.0,
+                      color: fg,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  (bool, bool) _multiDaySegment(CalendarOverlayItem event, DateTime day) {
+    if (!event.isMultiDay || event.startAt == null || event.endAt == null) {
+      return (true, true);
+    }
+    final current = DateTime(day.year, day.month, day.day);
+    final first = event.localStart;
+    final last = event.localEnd;
     return (
       current == first || current.weekday == DateTime.sunday,
       current == last || current.weekday == DateTime.saturday
@@ -920,6 +1068,324 @@ class _EventAgendaCard extends StatelessWidget {
     final localEnd = planflowLocal(end);
     final endStr = planflowFormatTime(localEnd.hour, localEnd.minute);
     return '$startStr - $endStr';
+  }
+}
+
+// --- Group Overlay Agenda Card ---
+class _GroupOverlayAgendaCard extends StatelessWidget {
+  const _GroupOverlayAgendaCard({
+    super.key,
+    required this.event,
+    this.onTap,
+  });
+
+  final CalendarOverlayItem event;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final startAt = event.startAt;
+    final endAt = event.endAt;
+    final timeLabel = _formatOverlayTimeRange(startAt, endAt);
+    const accentColor = Color(0xFF2E6DA4);
+
+    return Card(
+      color: accentColor.withValues(alpha: 0.08),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: accentColor.withValues(alpha: 0.28),
+          width: event.isMultiDay ? 1.0 : 0.8,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 8,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: accentColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            '그룹',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: PlanFlowColors.primaryMid,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if ((event.groupName ?? '').trim().isNotEmpty)
+                          Text(
+                            event.groupName!,
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: PlanFlowColors.primaryMid,
+                              fontSize: 10,
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (timeLabel != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        timeLabel,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: PlanFlowColors.primaryMid,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                    if (timeLabel != null) const SizedBox(height: 4),
+                    Text(
+                      event.title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (event.location != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 12,
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              event.location!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: PlanFlowColors.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right, color: PlanFlowColors.primaryMid),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String? _formatOverlayTimeRange(DateTime? start, DateTime? end) {
+    if (start == null) {
+      return null;
+    }
+    final localStart = planflowLocal(start);
+    final startStr = planflowFormatTime(localStart.hour, localStart.minute);
+    if (end == null) {
+      return startStr;
+    }
+    final localEnd = planflowLocal(end);
+    final endStr = planflowFormatTime(localEnd.hour, localEnd.minute);
+    return '$startStr - $endStr';
+  }
+}
+
+/// 현재 캘린더가 개인 모드인지 특정 그룹 모드인지 보여주는 작은 컨텍스트 칩.
+class _CalendarGroupContextChip extends StatelessWidget {
+  const _CalendarGroupContextChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: PlanFlowColors.surface,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: PlanFlowColors.primaryFaint),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              label == '개인 모드'
+                  ? Icons.person_outline
+                  : Icons.groups_outlined,
+              size: 14,
+              color: PlanFlowColors.primaryMid,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: PlanFlowColors.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 개인/그룹 일정 목록 섹션 제목 (개수 배지 포함).
+class _AgendaSectionHeader extends StatelessWidget {
+  const _AgendaSectionHeader({
+    required this.title,
+    required this.count,
+  });
+
+  final String title;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: PlanFlowColors.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        if (count > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: PlanFlowColors.surface,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: PlanFlowColors.primaryFaint),
+            ),
+            child: Text(
+              '$count',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: PlanFlowColors.primaryMid,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// 그룹 일정만 불러오지 못했을 때 표시하는 경고 배너.
+class _CalendarOverlayErrorBanner extends StatelessWidget {
+  const _CalendarOverlayErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF2F0),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF8C8C0)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.warning_amber_outlined,
+            size: 16,
+            color: Color(0xFFB42318),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Color(0xFF7A271A),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 미확인 리더 지시가 있는 이벤트 카드에 작은 badge dot 을 오버레이하는 래퍼.
+///
+/// [hasInstruction] 이 false 이면 child 를 그대로 반환한다.
+class _InstructionBadgeWrapper extends StatelessWidget {
+  const _InstructionBadgeWrapper({
+    required this.hasInstruction,
+    required this.child,
+  });
+
+  final bool hasInstruction;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!hasInstruction) {
+      return child;
+    }
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        child,
+        Positioned(
+          top: -3,
+          right: -3,
+          child: Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: calendarCriticalEventMarkerColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: PlanFlowColors.surface, width: 1.5),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 

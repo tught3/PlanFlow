@@ -26,10 +26,12 @@ void main() {
             height: 360,
             child: DayEventsSheet(
               day: DateTime(2026, 5, 12),
-              events: events,
+              personalEvents: events,
+              groupEvents: const [],
               onAdd: () {},
               onVoice: () {},
               onEventTap: (_) {},
+              onGroupEventTap: (_) {},
             ),
           ),
         ),

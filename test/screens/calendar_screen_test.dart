@@ -7,10 +7,22 @@ import 'package:planflow/core/constants.dart';
 import 'package:planflow/core/theme.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
+import 'package:planflow/features/groups/models/group_event_model.dart';
+import 'package:planflow/features/groups/models/group_member_model.dart';
+import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/providers/group_calendar_overlay_provider.dart';
+import 'package:planflow/features/groups/providers/group_context_provider.dart';
+import 'package:planflow/features/groups/repositories/group_event_repository.dart';
+import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/screens/calendar/calendar_screen.dart';
 import 'package:planflow/services/event_refresh_bus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
   testWidgets('CalendarScreen does not show a loading panel while loading',
       (tester) async {
     await tester.pumpWidget(
@@ -302,6 +314,188 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+      'CalendarScreen shows group overlay events in the day sheet and context chip',
+      (tester) async {
+    final selectedDay = DateTime(2026, 6, 15);
+    final repository = _AsyncEventRepository([
+      Future.value(<EventModel>[]),
+    ]);
+    final groupOverlayProvider = GroupCalendarOverlayProvider(
+      contextProvider: GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: <GroupModel>[
+            _group(id: 'group-1', name: '서울1팀', createdBy: 'leader-1'),
+          ],
+          membersByGroupId: <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              _member(
+                id: 'leader-row',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'leader',
+              ),
+            ],
+          },
+        ),
+      ),
+      repository: _FakeGroupEventRepository(
+        <String, List<GroupEventModel>>{
+          'group-1': <GroupEventModel>[
+            _groupEvent(
+              id: 'group-event-1',
+              groupId: 'group-1',
+              title: '팀 회의',
+              startAt: selectedDay.add(const Duration(hours: 9)),
+              endAt: selectedDay.add(const Duration(hours: 10)),
+            ),
+          ],
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: selectedDay,
+          groupCalendarOverlayProvider: groupOverlayProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 그룹 컨텍스트 칩이 선택된 그룹 이름을 표시한다.
+    expect(find.text('서울1팀'), findsWidgets);
+
+    final dayEventsList =
+        find.byKey(const ValueKey('calendar-day-events-list'));
+    expect(
+      find.descendant(
+        of: dayEventsList,
+        matching: find.text('팀 회의'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'CalendarScreen mini-month grid shows a marker for a day with only group events (no personal events)',
+      (tester) async {
+    final groupOnlyDay = DateTime(2026, 6, 18);
+    // 리뷰 지적(HIGH) 회귀 방지: 개인 일정이 0개인 날짜라도 그룹 일정이
+    // 있으면 미니 달력 셀이 SizedBox.shrink()로 완전히 비어 보이면 안 된다.
+    // 선택된 날짜로 바로 진입해 day sheet가 자동으로 열리는 기존 패턴을
+    // 재사용한다(수동 셀 탭은 안정적인 위치 식별자가 없어 사용하지 않음).
+    final repository = _AsyncEventRepository([
+      Future.value(<EventModel>[]),
+    ]);
+    final groupOverlayProvider = GroupCalendarOverlayProvider(
+      contextProvider: GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: <GroupModel>[
+            _group(id: 'group-1', name: '서울1팀', createdBy: 'leader-1'),
+          ],
+          membersByGroupId: <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              _member(
+                id: 'leader-row',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'leader',
+              ),
+            ],
+          },
+        ),
+      ),
+      repository: _FakeGroupEventRepository(
+        <String, List<GroupEventModel>>{
+          'group-1': <GroupEventModel>[
+            _groupEvent(
+              id: 'group-event-only',
+              groupId: 'group-1',
+              title: '개인 일정 없는 날 그룹 회의',
+              startAt: groupOnlyDay.add(const Duration(hours: 9)),
+              endAt: groupOnlyDay.add(const Duration(hours: 10)),
+            ),
+          ],
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: groupOnlyDay,
+          groupCalendarOverlayProvider: groupOverlayProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 개인 일정이 0개인 날짜라도 day sheet의 그룹 일정 섹션에 해당 일정이
+    // 표시되어야 한다(과거엔 미니그리드 셀 렌더 로직이 개인 일정 0건이면
+    // 그룹 일정과 무관하게 SizedBox.shrink()를 반환해 완전히 숨겨졌음).
+    final dayEventsList =
+        find.byKey(const ValueKey('calendar-day-events-list'));
+    expect(
+      find.descendant(
+        of: dayEventsList,
+        matching: find.text('개인 일정 없는 날 그룹 회의'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('CalendarScreen shows personal mode chip when no group selected',
+      (tester) async {
+    final repository = _AsyncEventRepository([
+      Future.value(<EventModel>[]),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: DateTime(2026, 6, 1),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('개인 모드'), findsWidgets);
+  });
+
+  testWidgets(
+      'CalendarScreen shows instruction badge for a personal event with unconfirmed leader comment',
+      (tester) async {
+    final selectedDay = DateTime(2026, 6, 20, 9);
+    final repository = _AsyncEventRepository([
+      Future.value([
+        _event('personal-1', '지시받은 일정', selectedDay),
+      ]),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalendarScreen(
+          eventRepository: repository,
+          userId: 'user-1',
+          initialDate: selectedDay,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Supabase 미초기화 환경(테스트)에서는 _loadGroupInstructionBadges가
+    // AppEnv.isSupabaseReady 가드로 스킵되므로 badge 없이 이벤트 카드만 보인다.
+    expect(find.text('지시받은 일정'), findsWidgets);
+  });
 }
 
 EventModel _event(String id, String title, DateTime startAt) {
@@ -347,6 +541,143 @@ class _AsyncEventRepository extends EventRepository {
 
   @override
   Future<EventModel> updateEvent(EventModel event) {
+    throw UnimplementedError();
+  }
+}
+
+GroupModel _group({
+  required String id,
+  required String name,
+  required String createdBy,
+}) {
+  return GroupModel(
+    id: id,
+    createdBy: createdBy,
+    name: name,
+    createdAt: DateTime.utc(2026, 6, 11),
+  );
+}
+
+GroupMemberModel _member({
+  required String id,
+  required String groupId,
+  required String userId,
+  required String role,
+}) {
+  return GroupMemberModel(
+    id: id,
+    groupId: groupId,
+    userId: userId,
+    role: role,
+    status: 'active',
+    createdAt: DateTime.utc(2026, 6, 11),
+  );
+}
+
+GroupEventModel _groupEvent({
+  required String id,
+  required String groupId,
+  required String title,
+  required DateTime startAt,
+  required DateTime endAt,
+}) {
+  return GroupEventModel(
+    id: id,
+    groupId: groupId,
+    title: title,
+    startAt: startAt,
+    endAt: endAt,
+    createdBy: 'leader-1',
+    location: '회의실',
+  );
+}
+
+class _FakeGroupRepository extends GroupRepository {
+  _FakeGroupRepository({
+    required this.groups,
+    required this.membersByGroupId,
+  });
+
+  final List<GroupModel> groups;
+  final Map<String, List<GroupMemberModel>> membersByGroupId;
+
+  @override
+  Future<List<GroupModel>> listGroups() async => groups;
+
+  @override
+  Future<GroupModel?> fetchGroup(String groupId) async {
+    for (final group in groups) {
+      if (group.id == groupId) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<GroupModel> createGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupModel> updateGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<GroupMemberModel>> listMembers(String groupId) async {
+    return membersByGroupId[groupId] ?? const <GroupMemberModel>[];
+  }
+
+  @override
+  Future<GroupMemberModel> addMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupMemberModel> updateMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+}
+
+class _FakeGroupEventRepository extends GroupEventRepository {
+  _FakeGroupEventRepository(this.eventsByGroupId);
+
+  final Map<String, List<GroupEventModel>> eventsByGroupId;
+
+  @override
+  Future<List<GroupEventModel>> getEventsForGroup(
+    String groupId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    return List<GroupEventModel>.from(
+      eventsByGroupId[groupId] ?? const <GroupEventModel>[],
+    );
+  }
+
+  @override
+  Future<GroupEventModel> createGroupEvent(GroupEventModel event) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> updateGroupEvent(GroupEventModel event) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> cancelGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> archiveGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> fetchGroupEvent(String eventId) {
     throw UnimplementedError();
   }
 }
