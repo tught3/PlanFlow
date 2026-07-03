@@ -8,6 +8,11 @@ import 'group_context_provider.dart';
 import 'group_calendar_overlay_state.dart';
 
 class GroupCalendarOverlayProvider extends ChangeNotifier {
+  /// 주의: contextProvider/repository를 주입하지 않으면 실제 Supabase 연동
+  /// 객체를 즉시 생성한다(다른 그룹 프로바이더/레포지토리와 동일한 관례).
+  /// 이 프로바이더를 새로 사용하는 곳에서는 반드시 `AppEnv.isSupabaseReady`
+  /// 가드 뒤에서만 생성하거나 테스트용 인스턴스를 주입해야 한다(calendar_screen.dart의
+  /// `_loadGroupOverlay` 가드 참고).
   GroupCalendarOverlayProvider({
     GroupContextProvider? contextProvider,
     GroupEventRepository? repository,
