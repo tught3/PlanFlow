@@ -392,17 +392,19 @@ class _PrepTimeInputDialogState extends State<_PrepTimeInputDialog> {
       ),
       actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
       actions: [
-        Row(
-          children: [
-            Expanded(
-              child: FilledButton.tonal(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('취소'),
-              ),
+        PlanFlowActionButtons(
+          buttons: [
+            PlanFlowActionButton(
+              label: '취소',
+              onPressed: () => Navigator.of(context).pop(),
+              type: ActionButtonType.secondary,
+              flex: 1,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton(onPressed: _submit, child: const Text('저장')),
+            PlanFlowActionButton(
+              label: '저장',
+              onPressed: _submit,
+              type: ActionButtonType.primary,
+              flex: 1,
             ),
           ],
         ),

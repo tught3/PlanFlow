@@ -27,6 +27,7 @@ import '../../services/smart_preparation_alarm_service.dart';
 import '../../services/voice_command_router.dart';
 import '../../services/voice_date_range_parser.dart';
 import '../../services/voice_text_cleanup_service.dart';
+import '../../widgets/planflow_action_buttons.dart';
 part 'voice_action_widgets.dart';
 
 enum VoiceScheduleAction { add, edit, delete, query, choose }
@@ -1483,14 +1484,23 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
             '현재 장소가 "$currentLocation"로 등록되어 있어요.\n'
             '"$nextLocation"로 교체할까요?',
           ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('그대로 둘게요'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('교체하기'),
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '그대로 둘게요',
+                  onPressed: () => Navigator.of(context).pop(false),
+                  type: ActionButtonType.secondary,
+                  flex: 1,
+                ),
+                PlanFlowActionButton(
+                  label: '교체하기',
+                  onPressed: () => Navigator.of(context).pop(true),
+                  type: ActionButtonType.primary,
+                  flex: 1,
+                ),
+              ],
             ),
           ],
         );
@@ -1814,37 +1824,25 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) {
-        final colorScheme = Theme.of(context).colorScheme;
         return AlertDialog(
           title: const Text('음성으로 일정 삭제'),
           content: Text('"${event.title}" 일정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.'),
           actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
           actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      foregroundColor: PlanFlowColors.primary,
-                      backgroundColor: PlanFlowColors.primaryFaint,
-                    ),
-                    child: const Text('취소'),
-                  ),
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '취소',
+                  onPressed: () => Navigator.of(context).pop(false),
+                  type: ActionButtonType.secondary,
+                  flex: 1,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    key: ValueKey('voice-confirm-delete-${event.id}'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      backgroundColor: colorScheme.error,
-                      foregroundColor: colorScheme.onError,
-                    ),
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('삭제'),
-                  ),
+                PlanFlowActionButton(
+                  buttonKey: ValueKey('voice-confirm-delete-${event.id}'),
+                  label: '삭제',
+                  onPressed: () => Navigator.of(context).pop(true),
+                  type: ActionButtonType.destructive,
+                  flex: 1,
                 ),
               ],
             ),
@@ -1883,7 +1881,6 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
     final shouldDelete = await showDialog<bool>(
       context: context,
       builder: (context) {
-        final colorScheme = Theme.of(context).colorScheme;
         return AlertDialog(
           title: const Text('선택한 일정 삭제'),
           content: Text(
@@ -1891,31 +1888,20 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
           ),
           actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
           actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      foregroundColor: PlanFlowColors.primary,
-                      backgroundColor: PlanFlowColors.primaryFaint,
-                    ),
-                    child: const Text('취소'),
-                  ),
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '취소',
+                  onPressed: () => Navigator.of(context).pop(false),
+                  type: ActionButtonType.secondary,
+                  flex: 1,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    key: const ValueKey('voice-confirm-selected-delete'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                      backgroundColor: colorScheme.error,
-                      foregroundColor: colorScheme.onError,
-                    ),
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('선택 삭제'),
-                  ),
+                PlanFlowActionButton(
+                  buttonKey: const ValueKey('voice-confirm-selected-delete'),
+                  label: '선택 삭제',
+                  onPressed: () => Navigator.of(context).pop(true),
+                  type: ActionButtonType.destructive,
+                  flex: 1,
                 ),
               ],
             ),

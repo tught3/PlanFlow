@@ -2527,10 +2527,16 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
           ),
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('닫기'),
+          PlanFlowActionButtons(
+            buttons: [
+              PlanFlowActionButton(
+                label: '닫기',
+                onPressed: () => Navigator.of(ctx).pop(),
+                type: ActionButtonType.secondary,
+              ),
+            ],
           ),
         ],
       ),
@@ -3637,10 +3643,16 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => AlertDialog(
         title: const Text('Google Calendar 상태'),
         content: Text(detail),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('확인'),
+          PlanFlowActionButtons(
+            buttons: [
+              PlanFlowActionButton(
+                label: '확인',
+                onPressed: () => Navigator.of(ctx).pop(),
+                type: ActionButtonType.primary,
+              ),
+            ],
           ),
         ],
       ),
@@ -3700,10 +3712,16 @@ class _SettingsScreenState extends State<SettingsScreen>
       builder: (ctx) => AlertDialog(
         title: const Text('네이버 캘린더 상태'),
         content: Text(detail),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('닫기'),
+          PlanFlowActionButtons(
+            buttons: [
+              PlanFlowActionButton(
+                label: '닫기',
+                onPressed: () => Navigator.of(ctx).pop(),
+                type: ActionButtonType.secondary,
+              ),
+            ],
           ),
         ],
       ),
