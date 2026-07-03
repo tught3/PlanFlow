@@ -26,9 +26,8 @@ Future<void> main() async {
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
-  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
-    DeviceOrientation.portraitUp,
-  ]);
+  // AndroidManifest.xml의 screenOrientation="portrait"만으로 앱 회전 고정.
+  // SystemChrome.setPreferredOrientations는 시스템 설정까지 간섭하므로 제거.
   FlutterError.onError = FlutterError.presentError;
 
   runApp(const ProviderScope(child: PlanFlowApp()));
