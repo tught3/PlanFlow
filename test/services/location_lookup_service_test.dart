@@ -296,6 +296,80 @@ void main() {
     );
   });
 
+  test(
+      'LocationLookupService retry queries try the bare place name before '
+      'the bare region name', () {
+    // 실증: "성남 래온동물병원" 검색 시 지역명 단독 후보("성남")가 장소명
+    // 단독 후보("래온동물병원")보다 먼저 시도되면, "성남"이 지오코더에서
+    // 항상 성공(예: "경기도 성남시")해 실제 장소를 찾기도 전에 엉뚱한
+    // 시/구 단위 주소로 조기 확정된다. 지역명 단독 후보는 항상 최후순위여야
+    // 한다.
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: '',
+      clientSecret: '',
+      googleMapsApiKey: '',
+    );
+
+    final fallbackQueries = service.buildRetryQueries('성남 래온동물병원');
+
+    expect(fallbackQueries, contains('성남'));
+    expect(fallbackQueries, contains('래온동물병원'));
+    expect(
+      fallbackQueries.indexOf('래온동물병원'),
+      lessThan(fallbackQueries.indexOf('성남')),
+      reason: '장소명 단독 후보가 지역명 단독 후보보다 먼저 와야 합니다. '
+          '실제 순서: $fallbackQueries',
+    );
+  });
+
+  test(
+      'LocationLookupService prefers the specific place over the bare '
+      'region when the region-only query would also succeed', () async {
+    final requests = <String>[];
+    final service = LocationLookupService(
+      tmapApiKey: '',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      googleMapsApiKey: '',
+      httpClientFactory: () => MockClient((request) async {
+        final query = request.url.queryParameters['query'] ?? '';
+        requests.add(query);
+        if (query == '래온동물병원') {
+          return http.Response.bytes(
+            utf8.encode(
+              '{"addresses":[{"placeName":"래온동물병원",'
+              '"roadAddress":"경기도 성남시 수정구 123","x":"127.13","y":"37.45"}]}',
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        if (query == '성남') {
+          // 지역명 단독 검색은 지오코더가 항상 성공(시/구 대표주소)한다.
+          return http.Response.bytes(
+            utf8.encode(
+              '{"addresses":[{"roadAddress":"경기도 성남시",'
+              '"x":"127.126","y":"37.42"}]}',
+            ),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json; charset=utf-8',
+            },
+          );
+        }
+        return http.Response('{"addresses":[]}', 200);
+      }),
+    );
+
+    final result = await service.searchWithFallback('성남 래온동물병원');
+
+    expect(result.results, hasLength(1));
+    expect(result.results.single.name, '래온동물병원');
+  });
+
   test('LocationLookupService does not auto-resolve broad medical categories',
       () async {
     final requests = <String>[];

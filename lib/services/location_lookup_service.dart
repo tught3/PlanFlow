@@ -338,8 +338,17 @@ class LocationLookupService {
       }
     }
 
+    // 지역명 단독 후보("성남" 등)는 항상 최후순위로 미룬다. 지역명만 검색하면
+    // 지오코더가 거의 항상 시/구 단위 대표주소(예: "경기도 성남시")를 성공
+    // 응답으로 돌려주므로, 목록 앞쪽에 있으면 실제 장소명 후보("래온동물병원"
+    // 등)를 시도해 보기도 전에 무관한 행정구역 주소로 조기 확정돼 버린다.
+    // 실증: "성남 래온동물병원"의 fallback 순서가 [..., 성남, 래온동물병원]
+    // 이라 "성남"이 먼저 성공해 엉뚱하게 "경기도 성남시"가 장소로 잡힘.
+    final bareRegionVariants = <String>{};
+
     for (final region in _matchedKoreanRegionHints(normalized)) {
-      _addQueryVariant(variants, region.displayName, original: normalized);
+      _addQueryVariant(bareRegionVariants, region.displayName,
+          original: normalized);
       final coreTokens = fallbackTokens
           .where((token) => !_containsAlias(token, region))
           .toList(growable: false);
@@ -377,6 +386,10 @@ class LocationLookupService {
         );
       }
     }
+
+    // LinkedHashSet은 삽입 순서를 유지하므로, 여기서 추가하면 위에서 이미
+    // 채워진 구체적 후보들 뒤(최후순위)에 붙는다.
+    variants.addAll(bareRegionVariants);
 
     return variants.toList(growable: false);
   }
