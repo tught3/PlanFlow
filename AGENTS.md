@@ -24,7 +24,7 @@
 
 ## FluxOS Pipeline Gate
 - FluxStudio 계열 프로젝트에서 사용자가 개발, 수정, 분석, 리뷰가 필요한 비단순 지시를 내리면 먼저 FluxOS 파이프라인을 사용한다.
-- 표준 흐름은 `Claude Code 계획 -> Codex 구현 -> Claude Code 리뷰 -> CEO 보고`다.
+- 표준 흐름은 `Claude Code 계획 -> GLM 구현 -> Claude Code 리뷰 -> CEO 보고`다(Codex는 폐지 대신 dormant 상태로 필요 시에만 활성화).
 - 프로젝트 세션이 직접 코드를 수정해야 하는 경우에도 수정 전 `python E:\FluxStudio\.fluxos\run.py pipeline "<지시내용>" --project <Project> --source <session>` 또는 이미 생성된 task의 `pipeline-audit` 결과를 확인한다.
 - 진행 확인은 `python E:\FluxStudio\.fluxos\run.py pipeline-audit [TASK_ID]`를 사용하고, 최소한 `Claude Code 계획` 단계가 생성됐는지 확인한 뒤 구현에 들어간다.
 - Claude Code가 인증, 한도, 연결 문제로 실패하면 FluxOS의 Codex-only fallback을 사용하되, 최종 보고에 fallback 사유를 명시한다.
@@ -50,15 +50,15 @@
 >
 > **필수 체크리스트 (7단계):**
 > 1. **FluxOS 파이프라인 등록** — 위 "FluxOS Pipeline Gate"대로 `run.py pipeline` 등록(또는 pipeline-audit 확인) 후 진입.
-> 2. **계획 = `gpt-5.5`(상위 모델).** 범위·영향파일·리스크·검증기준 먼저 제시.
-> 3. **구현 = 난이도별 병렬 서브에이전트 위임.** 단순/보일러플레이트 = `gpt-5.3-codex-spark`(경량), 난도 높음 = `gpt-5.4-mini`(중간). 파일 비중첩이면 동시 실행.
-> 4. **별도 리뷰어(`gpt-5.4-mini`)가 전체 diff를 리뷰** — 계약 정합·회귀·규약 위반 점검. (구현 워커와 다른 별도 세션)
+> 2. **계획 = `Claude`(상위 모델).** 범위·영향파일·리스크·검증기준 먼저 제시.
+> 3. **구현 = 난이도별 병렬 서브에이전트 위임.** 구현은 `GLM`을 주력으로 하며, 난이도에 맞는 서브에이전트로 위임한다. 파일 비중첩이면 동시 실행.
+> 4. **별도 리뷰어(`Claude`)가 전체 diff를 리뷰** — 계약 정합·회귀·규약 위반 점검. (구현 워커와 다른 별도 세션)
 > 5. 지적사항 **수정** → 6. **재리뷰** → 7. **검증(analyze/test/build)·보고**.
 > 메인(오케스트레이터) 세션은 **직접 구현을 쏟지 말고** 계획·분배·검토·보고만 담당한다. 이 흐름을 지키지 않고 메인이 다 처리하거나 모델 라우팅/별도 리뷰어를 건너뛰면 규약 위반이다.
 - 비단순 작업은 계획 -> 병렬 작업자 -> 별도 리뷰어 -> 수정 -> 재리뷰 순서로 진행한다.
-- 계획 단계는 `gpt-5.5`를 우선한다.
-- 일반 구현은 `gpt-5.3-codex-spark`를 우선한다.
-- 난도가 높은 구현과 리뷰어 검토는 `gpt-5.4-mini`를 우선한다.
+- 계획 단계는 `Claude`를 우선한다.
+- 일반 구현은 `GLM`을 주력으로 한다.
+- 난도가 높은 구현과 리뷰어 검토는 `Claude`를 우선한다. Codex는 폐지 대신 dormant 상태로 필요 시에만 활성화한다.
 - 계획이 끝나면 실제 작업은 가능한 한 무조건 병렬로 진행한다.
 - 파일, 모듈, 서브시스템이 겹치지 않으면 워커를 동시에 띄우고 병렬 완료를 우선한다.
 - 병렬 작업 후 자기 할 일이 끝난 서브에이전트는 즉시 닫는다.
@@ -69,6 +69,7 @@
 
 ## 작업 방식
 - 기존 코드, 기존 문서, 기존 구조를 먼저 확인한다.
+- 새로운 방법이 더 좋아 보여도 이미 결정된 Decision·Constitution·프로젝트 규칙을 먼저 확인하고 우선한다. 변경이 필요하면 임의로 기존 규칙을 무시하지 말고 새로운 Decision(05_Decisions)을 제안한다(구 Obsidian Vault 흡수, 2026-07-03).
 - 모든 파일 수정 전에는 FluxOS 잠금 상태를 확인하고, 같은 프로젝트에 active 작업이 있으면 새 작업을 직접 시작하지 않고 지시사항 단위로 FIFO 큐에 넣는다.
 - 큐 대기는 파일 하나가 풀렸는지가 아니라 앞선 지시사항 전체가 완료되어 release될 때까지 유지한다. 앞 작업이 여러 파일을 수정 중이면 그중 일부 파일이 먼저 끝났더라도 다음 지시는 시작하지 않는다.
 - 큐에 올라간 지시사항은 앞 작업 release 후 첫 번째 대기 항목부터 순서대로 active로 승격하고, 필요한 payload가 있으면 그때 실행한다.
@@ -86,9 +87,10 @@
 - Flutter 앱을 에뮬레이터로 실행해야 하거나 연결된 장치가 없으면 `flutter devices`로 먼저 확인하고, 항상 같은 AVD `flux_phone`의 `emulator-5554`에서 `flutter run -d emulator-5554`로 실행한다.
 - `flux_phone`/`emulator-5554`는 한 번에 하나의 세션만 사용한다. 다른 세션이 사용 중이면 새 실행을 직접 시작하지 말고 FIFO 큐에 적재해 앞 세션이 끝난 뒤 다음 세션이 이어서 사용하게 한다.
 - 같은 프로젝트에서 같은 에뮬레이터 실행 요청이 반복 입력되면 큐에 중복으로 쌓지 말고 기존 대기 항목 하나만 유지한다.
-- 실제 Android 기기를 무선 디버깅으로 연결할 때는 `adb connect <ip>:<port>`의 명시 IP 연결을 우선하고, 같은 기기가 `adb-..._adb-tls-connect._tcp` mDNS 항목으로 중복 표시되지 않게 자동 정리한다.
-- ADB/Flutter 실행 전에는 공용 래퍼가 `E:\AI_WIKI\scripts\adb-single-device.ps1`를 자동 호출해 mDNS 자동 연결을 비활성화하고, 같은 기기의 mDNS 중복 연결을 끊어 하나의 device만 유지한다.
-- 무선 디버깅 포트를 고정해서 자동 재연결해야 할 때만 사용자 환경변수 `AI_WIKI_ADB_DEVICE=<ip>:<port>`를 설정한다.
+- 실제 Android 기기 무선 디버깅은 S23(대용의 S23 Ultra) 자동 연결만 기본으로 유지한다. `ADB_MDNS_AUTO_CONNECT=1`(User 환경변수, 상시 설정)로 무선 디버깅 토글을 켤 때마다 바뀌는 IP:포트를 mDNS가 자동 감지·연결하므로, 더 이상 IP:포트를 수동으로 등록할 필요가 없다.
+- ADB/Flutter 실행 전에는 공용 래퍼가 `E:\AI_WIKI\scripts\adb-single-device.ps1`를 자동 호출한다. 이 스크립트는 mDNS 자동 연결을 켜둔 상태에서, 연결된 각 device의 실제 serial을 조회해 `config\adb_device_roster.json`의 `s23` 슬롯 serial과 다르면 즉시 `adb disconnect`한다 — S8/태블릿 등 다른 기기가 같이 mDNS로 잡혀도 자동으로 잘려나가고 S23 하나만 남는다.
+- 여러 기기를 동시에 붙여야 하는 예외(예: PlanFlow 3기기 설치)만 `adb-single-device.ps1 -AllowMultipleDevices`로 필터링을 건너뛴다. 그 외 프로젝트/세션은 이 예외를 쓰지 않는다.
+- 무선 디버깅 IP:포트를 수동으로 고정 등록하는 `AI_WIKI_ADB_DEVICE` 방식은 더 이상 기본 흐름이 아니다(포트가 토글마다 바뀌어 금방 stale해짐). 자동 감지가 실패할 때만 임시 진단용으로 쓴다.
 - 로컬 개발/디버그의 AI 호출은 기본적으로 Hermes 로컬 경로를 우선하고, 배포/릴리즈와 127.0.0.1을 직접 볼 수 없는 런타임은 OpenAI 배포 경로를 우선한다.
 - Hermes 로컬 기본값은 `http://127.0.0.1:8645/v1`, API key 예시는 `hermes-local`이다. 수동 override가 필요할 때만 `OPENAI_BASE_URL`로 바꾼다.
 - FLUXSTUDIO 계열의 공용 AI 호출은 Hermes 기본 경로를 사용하되, PlanFlow는 이번 자동 전환 범위에서 제외한다.
@@ -122,6 +124,10 @@
 - (새로 승격할 공통 규칙 없음)
 <!-- [AUTO-COMMON:END] -->
 
+
+---
+tags: [layer/truth, type/gov, ai/all]
+---
 
 # Resource Optimization Rules
 <!-- 32GB RAM 로컬 개발 환경에서 AI 세션이 과도한 CPU/RAM/IO를 쓰지 않게 하는 공통 규칙 -->
@@ -188,8 +194,15 @@
 - 기존 사용자 작업으로 보이는 dirty 파일은 확인 없이 되돌리거나 묶어 커밋하지 않는다.
 
 
+---
+tags: [layer/truth, type/gov, ai/all]
+---
+
 # AI Behavior Rules
 <!-- AI가 작업 시 반드시 따라야 할 행동 원칙. 모든 프로젝트에 공통 적용. -->
+
+## ⚠️ 필수 — 코드 수정 후 재발 방지책 캡처(최우선 확인)
+- **코드를 수정하면(버그수정·기능·리팩토링 무관) 완료 보고 전에 반드시 재발 방지책(회귀 테스트·가드 등)을 만든다 — 기록보다 재발 방지가 목적.** FluxStudio 계열에서는 `python E:\FluxStudio\.fluxos\run.py prevent capture --title "<제목>" --root-cause "<근본원인>" [--files <변경파일들>] [--commit <해시>] [--ai claude|codex|glm] [--project <프로젝트>]`로 근본원인을 남기면, 도구가 유형에 맞는 강제 계층(코드=회귀테스트 자동 스캐폴드 / 행동·교차AI=AI_WIKI 공통규칙 / 메타패턴=메모리)에 예방책을 배치한다. 이는 모든 AI(Claude·Codex·GLM)·모든 프로젝트의 완료 기준이며, FluxOS는 `FLUXOS_PREVENTION_GATE=block`에서 **방지책 없는 완료를 차단**한다(방지책 캡처 시 해제).
 
 ## 절대 금지
 - 계획 없이 코드 먼저 작성
@@ -206,15 +219,25 @@
 - 작업 전: 컨텍스트 압축 -> 계획 제시 -> 승인 대기
 - 작업 중: 계획 외 변경 발생 시 즉시 보고
 - 작업 후: push -> 빌드 -> 실행 -> 테스트 순서로 검증
-- **코드를 수정하면(버그수정·기능·리팩토링 무관) 완료 보고 전에 반드시 재발 방지책(회귀 테스트·가드 등)을 만든다 — 기록보다 재발 방지가 목적.** FluxStudio 계열에서는 `python E:\FluxStudio\.fluxos\run.py prevent capture --title "<제목>" --root-cause "<근본원인>" [--files <변경파일들>] [--commit <해시>] [--ai claude|codex|glm] [--project <프로젝트>]`로 근본원인을 남기면, 도구가 유형에 맞는 강제 계층(코드=회귀테스트 자동 스캐폴드 / 행동·교차AI=AI_WIKI 공통규칙 / 메타패턴=메모리)에 예방책을 배치한다. 이는 모든 AI(Claude·Codex·GLM)·모든 프로젝트의 완료 기준이며, FluxOS는 `FLUXOS_PREVENTION_GATE=block`에서 **방지책 없는 완료를 차단**한다(방지책 캡처 시 해제).
+- 코드 수정 후 재발 방지책 캡처 — 파일 맨 위 필수 섹션 참조
 - 모르면 가정하지 말고 질문
+- **질문 타이밍 기준(2026-07-03, "가정 말고 물어볼 것" 원칙 유지 + 예외 조건 명시)**: 아래 조건에 해당하면 질문 없이 진행하고, 그 외에는 원칙대로 질문한다.
+  - **질문 없이 진행**: (a) 동일 유형의 결정이 이미 2회 이상 반복 확인되어 `confirmed` 상태로 `04_Memory/Preference` 또는 `05_Decisions`에 존재하는 경우, (b) 되돌리기 쉬운 작업(읽기전용 조사, 즉시 revert 가능한 범위의 코드 수정)인 경우.
+  - **반드시 질문**: (a) 처음 보는 유형의 결정이거나, (b) 되돌리기 어려운 작업(구조 변경·데이터 삭제·외부 API 실제 호출·사업적 판단)이거나, (c) `confirmed` 규칙끼리 서로 충돌하는 경우.
+  - **애매하면 질문 쪽으로 기운다**(fail-safe — exhausted 모드의 fail-closed 철학과 동일한 임계값 철학 재사용, 새로 발명하지 않음).
 - 난이도와 모델이 맞지 않으면 모델 변경 후 진행
+- **작업이 끝나면 완료 보고 전에 스스로 Review를 수행한다**: 이번 작업에서 배운 것, 재발 방지 후보, 자동화 후보, 기존 규칙과의 충돌 여부를 스스로 점검한 뒤 보고한다(구 Obsidian Vault 흡수, 2026-07-03).
 
 ## 응답 원칙
 - 한국어로 응답
 - 코드 변경 시 변경 전/후 명시
 - 영향 범위 항상 명시 (어느 파일, 어느 기능)
 - 에러 발생 시 원인 -> 해결책 -> 예방법 순서로 설명
+- 사람은 작업 과정보다 결과를 본다. 가능한 모든 작업을 수행한 뒤 무엇을 변경했는지·왜 변경했는지·어떻게 검증했는지·남은 위험 요소·다음 권장 작업을 보고한다. 중간 진행 상황은 필요한 경우에만 보고하고 과정 서술을 늘어놓지 않는다(구 Obsidian Vault 흡수, 2026-07-03).
+
+---
+tags: [layer/truth, type/gov, ai/all]
+---
 
 # Anti-Patterns
 <!-- 이미 실패했거나 기각된 접근법. AI에게 다시 제안하지 말 것. -->
@@ -236,13 +259,15 @@
 - 하드코딩된 API 키/비밀값
 
 ## 프로젝트별 anti-patterns
--> 각 02_PROJECTS/[프로젝트].md 파일의 금지 패턴 섹션 참조
+-> 각 03_Projects/[프로젝트].md 파일의 금지 패턴 섹션 참조
 
 ### [PREVENT] 안전 게이트는 차단입력을 실입력으로 통과하는 테스트 1개 필수 (2026-06-25)
 안전 게이트(진행·커밋·차단을 막는 판정)를 추가하거나 수정할 때, 그 게이트의 차단 입력을 만드는 producer(파서·git status·pid 생존·로그 파싱 등)를 mock한 테스트만 두지 말 것. 최소 하나의 테스트는 그 producer를 mock하지 말고 실제 입력(임시 git repo·실제 문자열·실제 파일 상태)으로 게이트를 통과시켜야 한다. 안 그러면 producer가 깨져 게이트가 死문서가 돼도 테스트가 green으로 통과한다(mocked-contract-hides-bug). 실증 사례: git status 파서가 worktree 변경 경로 첫 글자를 잘라 부분커밋 정합 게이트가 死문서였는데 모든 테스트가 그 파서를 mock해 잡지 못함.
 
 ### [PREVENT] 동시 AI 세션 git add-commit 레이스로 staged 흡수 (2026-06-25)
 여러 AI 세션(Claude/Codex)이 같은 repo에서 git add 후 staged 전체를 커밋(git add . / git commit -a)하면, 한 세션이 add해둔 변경을 다른 세션의 commit이 자기 커밋에 흡수한다. FluxOS git_autocommit는 pathspec(git commit -- files)+git lease로 안전하나, AI 세션의 직접 커밋이 staged 전체를 가져가는 게 문제. 방지: AI 세션은 항상 pathspec 커밋(git commit -- <files> 또는 -o)으로 자기 파일만 커밋하고, git add . / commit -a / staged 전체 커밋을 금지한다.
+
+**(2026-07-03 CEO 확인)** 이 근본(pathspec=파일단위, hunk단위 아님)의 재발이 2회(2026-07-01 보강, 2026-07-03 재발+강화)까지 누적됐으나, 두 재발 모두 동일한 단일 메커니즘의 발현이라 meta-pattern 승격은 보류한다. **3번째 재발 시 재검토**, 현재는 behavior tier 강화조치(commit_guard.py의 hotspot 파일 커밋 가시성 경고)로 유지한다.
 
 ### [PREVENT] 단위·픽스처 테스트가 라이브 공유상태를 주입 없이 읽어 비결정 실패 (2026-06-26, 보강)
 FluxOS 테스트가 fixture로 격리된 것처럼 보여도 내부에서 라이브 전역 상태를 읽어 환경 의존 실패가 반복됨. 같은 근본이 수십 건 재발하는 **메타패턴**이다(차단/판정/시각 계산이 저장된 라이브 상태를 실측 격리 없이 신뢰).
@@ -259,8 +284,12 @@ FluxOS 테스트가 fixture로 격리된 것처럼 보여도 내부에서 라이
 ### [PREVENT] sys.modules에 mock 주입한 모듈은 지연 import되는 상수/속성까지 mock에 넣어야 함 (2026-06-26)
 무거운 의존성 체인을 피하려고 테스트가 `sys.modules['pipeline.task_queue']`에 경량 mock 모듈을 주입할 때, 프로덕션 코드가 tick/함수 내부에서 `from pipeline.task_queue import TERMINAL_TASK_STATUSES`처럼 **지연 import하는 상수/함수가 mock에 없으면** 호출 시점에 "cannot import name X (unknown location)"으로 깨진다(모듈 최상단 import는 멀쩡해 보여도 함수 내부 지연 import가 mock을 친다). 실증: supervisor_daemon tick의 safe_hold/stale 단계가 TERMINAL_TASK_STATUSES 지연 import → mock task_queue에 상수 누락으로 6건 실패(앞서 MEMORY_DIR도 동일 사유로 추가했던 전례 존재). 규칙: 모듈을 mock으로 주입하면 프로덕션이 그 모듈에서 import하는 **상수까지** 전부 mock 모듈에 채운다. 새 지연 import를 추가하면 해당 테스트 mock 빌더(_build_sys_modules_mocks 등)도 같이 갱신한다.
 
-### [PREVENT] 동시 세션이 타 세션 미커밋 워크트리 편집을 자기 커밋에 휩쓸어감 (2026-06-26)
+### [PREVENT] 동시 세션이 타 세션 미커밋 워크트리 편집을 자기 커밋에 휩쓸어감 (2026-06-26, 2026-07-01 보강, 2026-07-03 재발+강화)
 다중 세션 환경에서 한 세션이 git add -A / git commit -a / commit --all 또는 파일 전체 재생성(테스트 스캐폴드 regenerate)을 하면, 다른 세션이 워크트리에 만들어둔 미커밋 편집이 의도치 않게 그 세션 커밋에 섞이거나 유실된다. 이번 세션 실증 2건: (1) 내 controlled-parallel 테스트 편집을 stash한 사이 타 세션이 test_fluxos.py를 재생성 → stash pop 머지에서 내 편집 유실. (2) 내 api_runner 테스트 편집(미커밋)이 타 세션 커밋 5283dc4에 통째로 휩쓸려 들어감. 규칙: 모든 세션은 자기가 바꾼 파일만 pathspec(git add <경로> / git commit -- <경로>)으로 스테이징·커밋한다. git add -A / git add . / git commit -a / git commit --all 금지. 다른 세션이 동시에 같은 파일(특히 자동 재생성되는 test_fluxos.py)을 건드릴 수 있으면 git stash 대신 별도 워크트리나 패치 파일로 격리한다. 커밋 전 git diff --cached로 자기 hunk만 들어갔는지 확인한다.
+
+**(2026-07-01 보강) pathspec 커밋은 파일 단위지 hunk 단위가 아니다.** `git commit -m ... -- <경로>`는 인덱스에 무엇이 스테이지됐는지와 무관하게 그 경로의 **현재 워킹트리 전체 내용**을 그대로 커밋한다(내부적으로 그 경로만 `git add` 후 커밋하는 것과 동일). 그래서 "다른 파일"은 안전하게 걸러내지만, 같은 파일 안에 타 세션이 남긴 다른 hunk(예: test_fluxos.py 끝에 붙는 다른 세션의 prevent-capture 스텁 테스트)는 그대로 함께 커밋된다. 실증: 9b3cd99 커밋에서 test_fluxos.py를 `git commit -- tests/test_fluxos.py`로 pathspec 커밋했더니, 내가 고친 단언 1곳 외에 다른 세션이 만들어둔 미커밋 스텁 테스트 2건(test_p0_150/151)까지 같은 커밋에 흡수됨(내용 자체는 무해한 표준 스캐폴드였지만 attribution이 내 커밋으로 잘못 붙음). 규칙: test_fluxos.py처럼 여러 세션이 상시 이어붙이는 핫스팟 파일을 pathspec 커밋하기 **전에** 반드시 `git diff -- <경로>`(스테이지 여부 무관, 워킹트리 vs HEAD)로 전체 diff를 읽고 내가 의도한 hunk만 있는지 확인한다. 예상 못한 hunk가 섞여 있으면 pathspec 전체 커밋을 쓰지 말고, `git diff -- <경로>`를 패치 파일로 떠서 원치 않는 hunk를 제거한 뒤 `git apply --cached <패치>`로 내 hunk만 인덱스에 올리고 pathspec 없이 `git commit`한다(인터랙티브 터미널이 있으면 `git add -p <경로>` + pathspec 없는 `git commit`도 동일 효과). 어느 경우든 이 마지막 커밋은 pathspec을 쓰지 않아야 하며, 남은 hunk는 워킹트리에 미커밋 상태로 남겨 그 hunk를 만든 세션이 직접 커밋하게 둔다.
+
+**(2026-07-03 재발 — 2회째, 강화 조치 추가)** 문서화된 "커밋 전 git diff 확인" 규칙은 **내가 커밋을 실행하는 시점의 확인**만 다루는데, 실제 재발 경위는 그게 아니라 **내가 아직 커밋을 시도하기도 전에** 다른 세션(직접 pathspec 커밋)이나 FluxOS 자동커밋(cadence, `utils/git_autocommit.py`)이 먼저 test_fluxos.py를 스윕해 커밋해버린 것이었다(coding-side 데이터 유실은 없었음, attribution만 다른 세션 커밋 메시지로 잘못 붙음). 조사 결과: index.lock 경합은 이미 `safe_git()`(4회 재시도+백오프)로 방지되고 있고, `commit_guard.py`(pre-commit, `core.hooksPath` 정상 설정 확인됨)는 "교차파일 부분 커밋으로 코드가 깨지는 것"만 막지 "같은 파일 안에서 attribution만 섞이는 것"(코드는 안 깨짐)은 원래 탐지 대상이 아니었다. 이건 pathspec이 파일 단위라는 근본 제약상 완전 차단이 불가능하고(강제 차단 시 여러 세션이 같은 파일의 서로 다른 부분을 정당하게 나눠 작업하는 경우까지 오탐 차단할 위험), 대신 **가시성 확보**로 강화했다: `commit_guard.py`의 `hotspot_commit_summary()`가 hotspot 파일(`tests/test_fluxos.py`) 커밋 시 diff stat을 pre-commit 단계에서 stderr에 강제 출력해, 커밋하는 세션이 "확인 안 하고 그냥 커밋"하기 어렵게 만든다(차단은 아님, fail-open 유지). 회귀: `tests/test_commit_guard.py::HotspotCommitWarningTest`(실제 임시 git repo, mock 없음).
 
 ### [PREVENT] 장시간 전체 테스트 런이 동시 소스변경으로 구조가드 거짓 실패를 낸다 (2026-06-26)
 inspect.getsource 기반 구조 가드 테스트(예: test_glm_org_path_uses_worktree_resolver, test_runnable_clears_ownership_gate_outside_executor_blocked)는 라이브 상태가 0이지만, 25분짜리 전체 스위트가 도는 동안 다른 FluxOS 세션·데몬이 대상 소스(pipeline/auto_follow.py 등)나 test_fluxos.py를 동시 수정하면 단언 문자열이 일시적으로 어긋나 거짓 실패한다. 실증: 8분 부분런과 6분 통합런에서는 6/6 통과했으나 25분 전체런에서만 같은 3건 실패. 규칙: CI/완료 판정용 전체 스위트(특히 inspect.getsource 구조가드 포함)는 데몬·타 세션이 소스를 안 건드리는 정숙 창에서 1회 돌려 그린을 판정한다. 다중 세션 활성 중의 전체 런 실패는 먼저 동일 테스트를 단독·소그룹으로 재실행해 거짓 실패(동시변경) 여부를 가린 뒤 보고한다. 구조가드가 동시변경에 덜 취약하려면 대상 소스를 한 번 읽어 스냅샷한 뒤 단언하는 것을 고려한다.
@@ -312,6 +341,49 @@ FluxStudio root repo exposed separate project roots and generated sandboxes as d
 
 ### [PREVENT] Flow deploy fallback helper (2026-06-29)
 Flow 프로젝트별 배포 래퍼가 ADB 기기 부재 시 공통 Google Drive 복사 fallback을 일관되게 제공하지 않음
+
+### [PREVENT] plan_gate=block는 자율 실행기(claude/codex CLI·Hermes) 인증 정상일 때만 활성 (2026-07-01)
+Claude 전용 기간 + codex/claude CLI 401·Hermes chat 404(자율 실행기 전부 인증/라우트 깨짐) 상태에서 FLUXOS_PLAN_GATE=block로 파이프라인 등록을 강제하면, FluxOS 데몬이 등록 태스크를 깨진 실행기로 자동 디스패치해 반복 실패 알림이 뜬다. 대화형 Claude가 유일한 작동 실행기인 기간엔 하드 block이 성립 불가. 규칙(AI_WIKI)로 워크플로우를 강제하고 게이트는 warn, 하드 block은 CLI 재로그인+Hermes 복구 후 재활성.
+
+### [PREVENT] pathspec 커밋이 hunk 단위가 아니라 파일 단위라 동시세션 편집이 재차 휩쓸림 (2026-07-01)
+상세 규칙·절차는 위 "동시 세션이 타 세션 미커밋 워크트리 편집을 자기 커밋에 휩쓸어감" 항목의 (2026-07-01 보강) 문단 참조(중복 방지로 본문은 그쪽에 통합). 요지: `git commit -- <path>`는 인덱스와 무관하게 그 경로의 현재 워킹트리 전체를 커밋하므로 파일 단위 격리이지 hunk 단위 격리가 아니다. 실증: 9b3cd99에서 test_fluxos.py pathspec 커밋 시 타 세션의 미커밋 스텁 테스트 2건이 함께 흡수됨.
+
+### [PREVENT] CEO OS pipeline_progress + 회사 거버넌스 정책이 여전히 Codex를 실행자로 표시 (2026-07-01)
+CEO OS api.py의 _PIPELINE_STAGES가 구현 단계 model을 'Codex'로 하드코딩, Monitor의 파이프라인 스테이지 키가 '코덱스 구현'으로 고정, company_governance.py의 기본 정책+영속 스냅샷(2026-06-20 저장분)이 role_model_matrix/workflow_policy에 'Codex GPT-5.4 Mini'/'Codex Implementation'을 고정 저장해 load 시 fresh default를 덮어씀. 표시 로직과 저장된 스냅샷 둘 다 실제 실행자 상태(config.codex_enabled/ai_schedule.active_implementer)를 반영하지 않고 정적 문자열/과거 저장값에 의존했기 때문.
+
+### [PREVENT] 공유 AI 캐시(context_hash 재사용 테이블)에 사용자 원문 자유텍스트 저장 금지 (2026-07-02)
+LLM 응답을 (context_type, context_hash) 조합으로 재사용하는 공유 캐시 테이블(예: HealthFlow hf_ai_insights)은 여러 사용자가 같은 캐시 행을 읽도록 설계되며, RLS도 보통 `to authenticated using (true)`처럼 로그인 사용자 전원에게 읽기를 열어둔다. 이때 클라이언트가 Edge Function payload(`input`)에 넣는 필드가 사용자가 직접 타이핑한 원문 자유텍스트(검색어·서술형 입력 등)를 하나라도 포함하면, 그 `input`이 가공 없이 그대로 캐시 컬럼(예: `input_summary` jsonb)에 영구 저장돼 다른 로그인 사용자 전원에게 노출된다. 실증: HealthFlow 검색 화면이 Edge Function `hf-ai-analyze` payload에 `'query': 검색어원문`을 그대로 실어 보내 `hf_ai_insights.input_summary`에 저장·노출됨(RLS를 anon→authenticated로만 좁히는 것으로는 안 막힘 — 로그인 사용자끼리도 문제). 이 패턴은 HealthFlow만의 문제가 아니라 LLM 응답 캐싱 + 공유 읽기 RLS를 쓰는 어떤 FluxStudio *flow 프로젝트에서도 동일하게 재발할 수 있다. 규칙: Edge Function payload/캐시에 값을 넣기 전 필드 단위로 "Rule Engine·카탈로그·고정 열거형이 만든 통제된 값인가, 아니면 사용자가 직접 입력한 원문인가"를 리뷰한다. 원문이 필요하면 LLM 프롬프트 조립에만 쓰고 캐시 저장 컬럼에는 넣지 않거나, 저장 전에 통제된 라벨/분류값으로 먼저 변환한 뒤에만 넣는다.
+
+### [PREVENT] PowerShell 재현(Python) 로직이 원본 .ps1과 인코딩(BOM) 처리에서 미세 드리프트 (2026-07-03)
+PowerShell 채널이 일시 무응답이라 generate-claude-md.ps1/generate-agents-md.ps1 로직을 Python으로 재현해 실행했다. 이후 PowerShell 복구 후 실제 스크립트와 diff 비교한 결과 콘텐츠는 100퍼센트 일치했으나 BOM 처리 방식이 달랐다: PowerShell ReadAllText는 각 소스파일 BOM을 자동 스트립하고 WriteAllText가 결과물 맨 앞에만 새 BOM을 붙이는 반면, Python open().read()는 각 파일 BOM을 그대로 유지해 결과물 안에 여러 개 산재시켰다. 콘텐츠 손상은 아니었으나 재현 로직이 원본과 별도 유지보수되면 드리프트가 축적될 위험이 있다. 규칙: PowerShell 실행 채널이 막혀 부득이 다른 언어로 로직을 재현했다면 채널 복구 즉시 실제 원본 스크립트로 재실행해 결과를 덮어써 정합성을 확보하고, 재현 코드는 1회성 우회로만 쓴다.
+
+### [PREVENT] 완료 판단은 신규 테스트뿐 아니라 영향받는 모듈 전체 스위트로 (2026-07-03)
+Task002(Mode C 자율성 수정) 완료 판단 시 신규 테스트(test_exhausted_review_glm_autonomy.py)만 돌리고 넘어갔다가, 정작 test_fluxos.py 안에 있던 기존 test_p0_61이 실제 외부 GLM API를 호출하고 있던 회귀를 놓쳤다(수정한 로직의 전제가 바뀐 기존 테스트를 전체 스위트로 안 돌려서 발견 못함). 규칙: 코드 수정 후 완료 판단은 (1) 신규/직접 관련 테스트 (2) 수정한 모듈을 import하는 모든 테스트 파일 전체 실행 두 단계를 모두 거친다. 전체 스위트에서 무관한 실패(다른 프로젝트 파일 상태, 피크시간 의존, 무관 모듈)가 나오면 트레이스백으로 원인을 확인해 내 변경과 무관함을 실측 확인한 뒤에만 넘어간다(git stash로 baseline 비교는 동시세션 편집 휩쓸림 위험이 있어 금지 — 트레이스백 분석 우선).
+
+### [PREVENT] 무인 상시 자동화(삭제·재시작 등) 요청은 명시적 위험 재확인 필수 (2026-07-03)
+사용자가 '매번 정리하라고 말하기 어려우니 자동으로 해줘'처럼 파괴적 동작(삭제·핵심 데몬 재시작·공유 체크아웃 전환)을 영구 무인 자동화로 요청하면, 모호한 AskUserQuestion만으로는 승인으로 보지 않는다. 방지: (1) 지금 만들려는 것을 구체적으로 설명한다('항상 켜진 데몬 안에서 영구히 확인 없이 X를 삭제/재시작하는 기능'). (2) AskUserQuestion에 위험을 그대로 명시한 질문을 던진다(예: '이 자동삭제 기능을 사람 확인 없이 영구적으로 심어도 될까요?') — 일반적인 '자동화할까요?' 질문으로는 부족하다. (3) 명시적 yes 이후에만 계획→구현→적대적 리뷰어(fail-closed 의심 시 무조건 REQUEST CHANGES)→수정→재검증→pathspec 커밋 파이프라인을 정상 엄격도로 적용한다. (4) 파괴 로직 자체는 scope allowlist/denylist, fail-closed 안전게이트(git dirty-check 등), 배치/시간예산 제한, off|advisory|apply 모드(기본은 명시 승인 시에만 apply), --force/reset --hard/git clean 금지, 로그전용 보고를 재사용 패턴(utils/worktree_autoclean.py)으로 따른다. 자가재시작 데몬에는 시간당 재시작 상한(supervisor_daemon.py의 _DAEMON_RESTART_TIMES 패턴 재사용)을 반드시 둔다.
+
+### [PREVENT] AI 폴백 회전 시 claude CLI는 구현 작업에 permission_mode=bypassPermissions 명시 필수 (2026-07-03)
+AI 작업이 한도/인증으로 막히면 codex↔claude→GLM 순으로 회전하며 give-up하지 않고 계속 시도한다(기존 [PREVENT] 한도/인증 실패 retry소진 give-up금지 원칙과 결합). 확정 순서(2026-07-02): GLM 1차 → claude CLI 2차(무료, Nous 불필요) → Hermes/Nous 유료 3차. 피크시간 15:00~19:00(KST)은 토큰 3배라 이 시간엔 구현하지 않고 계획만 적재, 비피크에 구현한다. GLM은 동적 한도(고정 아님)이므로 막히면 끝이 아니라 주기적으로 재확인해 한도 회복 시 재개한다. 중대 발견: claude CLI로 실제 파일 수정이 필요한 구현 작업을 실행할 때 permission_mode 기본값(dontAsk)은 자동승인이 아니라 도구 사용을 거부한다 — 그 결과 claude가 '권한 필요' 메시지만 남기고 실제로는 아무 파일도 안 고쳤는데 done.md가 비어있지 않아 시스템이 DONE으로 오판하는 잠복 버그가 있었다(모든 AI 폴백이 사실상 이 2차 경로에서 무동작이었음). 방지: claude CLI로 파일 읽기/쓰기/명령 실행 등 실제 작업을 시킬 때는 permission_mode를 반드시 명시한다 — 구현(파일 수정)=bypassPermissions, 읽기전용 계획/검증=plan. dontAsk는 계획/리뷰 같은 단발 텍스트 응답에만 쓴다. 에이전트형 구현은 단발 대비 수 분 이상 걸리므로 타임아웃도 별도 상수(예: CLAUDE_IMPL_TIMEOUT_SECONDS, 900s)로 분리한다.
+
+### [PREVENT] 시간의존 테스트에 절대 날짜 하드코딩 금지(클램프·만료 로직 있는 경우) (2026-07-03)
+클램프·만료·과거차단 로직을 거치는 시간의존 테스트에 특정 절대 날짜(예: DateTime(2026,6,13,10))를 하드코딩하면, 작성 시점엔 미래라도 시간이 지나 과거가 되는 순간 그 클램프/만료 로직에 걸려 테스트가 갑자기 깨진다(시한폭탄 — 앱 버그가 아니라 테스트가 늙은 것). 실증: PlanFlow-v2 confirm_screen_test가 ConfirmScreen의 '1일 이상 과거면 now()로 클램프'하는 의도된 로직에 걸려 날짜가 지나며 실패. 방지: 클램프/만료/과거차단을 타는 시간의존 테스트는 절대 날짜 대신 현재 기준 상대 미래를 쓴다(예: `final year = DateTime.now().year + 1;` 또는 `planflowNow().add(Duration(days: N))`). 기대값도 같은 상대식으로 계산한다. 새 테스트 리뷰 시 리터럴 연·월·일이 보이면 그 값이 시간이 지나도 유효한지 자문한다. FinFlow/PlanFlow 등 시간의존 로직이 있는 모든 Flutter 테스트에 공통 적용.
+
+### [PREVENT] 깊게 갈라진 브랜치 머지는 hunk 단위(-X ours) 대신 공유코드 전체 통일로 (2026-07-03)
+공통 조상에서 크게 갈라진(수십~백여 커밋, 다수 파일) 두 브랜치를 '충돌 시 최신(보통 로컬) 우선'으로 합칠 때, `git merge -X ours`처럼 hunk 단위로 충돌만 해소하면 파일 간 의존 관계가 어긋나(정의는 로컬인데 호출부는 origin 것을 참조하는 식) 빌드가 깨진다(duplicate_definition·undefined·non-exhaustive switch 등). 실증: PlanFlow-v2 team-v2-planning 병합(공통조상에서 각각 74/66커밋, 118파일 갈라짐)에서 -X ours 부분머지가 빌드를 깨뜨림. 방지 절차: ① 양쪽 tip을 백업 태그로 보존(무손실 보험). ② 머지 커밋을 만들어 origin을 조상으로 기록(푸시 가능하게). ③ `git checkout <최신-백업태그> -- .`로 공유 파일 전부를 최신(로컬) 전체로 통일(hunk 혼합 금지). ④ `git diff --diff-filter=A`로 origin이 새로 추가한 파일만 확인해 코드면 검토, 비코드(문서·마이그레이션)는 그대로 보존. ⑤ 머지 전 별도 워크트리에서 기존 실패 기준선을 잡고, 머지 후 실패가 기준선과 같으면 회귀 0으로 판정한다.
+
+### [PREVENT] 다중세션 동시편집 환경의 커밋/푸시 마찰은 rebase.autoStash+pull.rebase 전역설정으로 해소 (2026-07-03)
+여러 AI 세션이 같은 메인 체크아웃/브랜치를 동시 편집하는 구조에서는 push가 거부될 때마다 수동으로 stash→rebase→pop을 반복하게 되고, 그 과정에서 자기 편집이나 타 세션 편집이 휩쓸릴 위험이 있다. 방지: `git config --global rebase.autoStash true`와 `git config --global pull.rebase true`를 설정해두면, push 거부 시 `git pull` 한 번만으로 자동 stash→rebase(내 커밋만 replay)→pop이 이뤄지고 워킹트리의 타 세션 dirty 파일은 그대로 유지된다(수동 stash dance 불필요). 런타임 산출물(`.fluxos/queue_archived_stale/`, `.fluxos/**/*.lock`, `.fluxos/*_STALL_REPORT_*.md` 등)은 `.gitignore`에 등록해 불필요한 untracked 노이즈를 줄인다. 새 흐름: `git commit -- <내파일>` → `git push` → (거부 시) `git pull` → `git push`. autostash는 rebase 충돌만 흡수할 뿐 잘못된 staging은 막지 않으므로 pathspec 커밋 원칙(git add -A/commit -a 금지)은 그대로 유지한다.
+
+### [PREVENT] Google Drive 업로드는 Chrome MCP file_upload 대신 로컬 마운트 경로 직접 복사 (2026-07-03)
+대용량 파일(특히 100MB+ APK)을 Google Drive에 올릴 때 Chrome MCP의 file_upload 도구를 쓰면 '세션에 공유된 파일'만 허용되고 10MB 한도가 있어 무조건 실패한다. 방지: Google Drive for Desktop이 마운트된 로컬 드라이브 경로(예: `I:\내 드라이브\`)에 PowerShell `Copy-Item`으로 직접 복사한다 — 복사하면 자동 동기화된다. 이 방법은 파일 업로드가 필요한 모든 상황(APK 배포 산출물, 대용량 리포트 등)에 공통 적용.
+
+### [PREVENT] 백그라운드 서브에이전트 완료 후 UI 배지가 계속 실행중으로 남음(stale) (2026-07-03)
+Claude Code 앱에서 Agent 도구로 여러 서브에이전트를 한 메시지에 병렬 호출하면 harness가 자동으로 run_in_background 모드로 전환한다(명시적으로 지정하지 않아도). 서브에이전트가 실제로는 정상 완료되어 TaskOutput(block=true)로 결과를 성공적으로 회수했고, 이후 같은 task_id로 TaskOutput(block=false)/TaskStop을 다시 호출하면 둘 다 "No task found with ID"를 반환한다 — 이는 백엔드가 해당 작업을 이미 정상 종료·정리(reap)했다는 뜻이다. 그런데 화면 우측 "백그라운드 작업" 패널의 카드는 완료 이벤트를 받지 못해 "실행 중" 상태와 경과시간 카운터가 계속 올라가는 채로 남는다 (실측 사례: 3시간 넘게 "실행 중"으로 표시, 4개 전부 동일 증상). 이건 Claude Code 앱(플랫폼) 프론트엔드의 완료-상태 동기화 버그이며, 이 저장소 코드로 직접 고칠 수 있는 대상이 아니다. 방지책은 코드 수정이 아니라 진단 절차다: (1) 배지가 이미 결과를 사용한 뒤에도 오래(30분+) "실행 중"으로 남아 있으면, 그 경과시간 숫자만 보고 "멈췄다/과다실행 중"이라고 판단하지 않는다(evidence-based-no-guessing과 동일 원칙 — UI 표시는 실측이 아니다). (2) 먼저 TaskOutput(task_id, block=false, timeout=짧게) 또는 TaskStop(task_id)으로 실제 백엔드 상태를 실측 확인한다. "No task found with ID"가 나오면 이미 완료·정리된 것이고 UI만 stale — 추가 조치나 재시도, 리소스 낭비 걱정이 불필요하다. (3) 실측상 stale로 확인되면 사용자에게 해당 카드 우측 상단 체크박스/닫기 아이콘을 눌러 수동으로 지우도록 안내한다(사용자가 직접 확인한 해소 방법, 데이터 손실 없음 — 그 시점에 이미 백엔드에 작업이 없으므로 지워도 안전). (4) 같은 대화에서 이미 TaskOutput(block=true)로 결과를 받아 활용한 서브에이전트라면, 그 결과를 이미 다 썼다는 사실 자체가 완료의 증거이므로 배지 상태와 무관하게 작업을 이어가도 된다.
+
+**(같은 날 보강 — 수동 삭제는 일시적일 수 있음)** 사용자가 (3)의 카드 삭제 버튼으로 4개를 전부 지웠는데, 이후 대화가 이어지자(새 메시지 전송 시점) 같은 4개 배지가 **끊기지 않고 원래 경과시간에 이어서**(0부터 재시작이 아니라 3시간대→3시간40분대로 계속 누적) 다시 나타났다. 이는 삭제가 그 시점 렌더링에서만 반영되고 배지의 실제 데이터 소스(원본 시작시각을 들고 있는 어떤 세션/로그 레코드)는 지워지지 않는다는 뜻 — 즉 TaskOutput/TaskStop이 보는 레지스트리와 UI 배지가 읽는 소스가 서로 다르거나 최소한 삭제 동기화가 안 되는 것으로 보인다(추정, 미확정). 방지책 갱신: (5) 카드 삭제는 완전한 해결로 보장하지 말 것 — 재발하면 그 자체가 새 문제가 아니라 같은 stale 배지의 재표시임을 사용자에게 먼저 설명한다. (6) 완전 제거를 원하면 앱 완전 종료 후 재시작을 먼저 시도하도록 안내한다(단순 탭/대화 재진입보다 강한 조치). (7) 재시작 후에도 재발하면 이는 이 저장소로 고칠 수 있는 범위를 벗어난 Claude Code 플랫폼 자체의 버그이므로, 계속 반복될 경우 Anthropic에 재현 절차(병렬 Agent 호출 → TaskOutput으로 정상 회수 → TaskOutput/TaskStop 모두 "no task found" 확인 → UI 배지만 몇 시간째 미종료 → 수동삭제해도 다음 메시지에서 원래 경과시간 이어서 재출현)와 함께 제보하는 것을 권장한다. 이 경우에도 실제 연산/비용 발생은 없다(백엔드 레지스트리 기준으로는 이미 종료).
+
+**(최종 확인 — 재부팅 후 정정된 근본원인)** 사용자가 앱을 완전히 재부팅하자 즉시 4개 task_id 전부에 대해 harness가 자동으로 `status: failed` 알림을 보내며 사유를 명시했다: "Background agent ... was running when the previous Claude Code process exited and did not complete. Its in-process state was lost." 이는 (2)~(4)에서 추정했던 "완료됐는데 UI만 stale"이 아니라, **실제로는 이전 Claude Code 프로세스가 죽을 때 그 백그라운드 에이전트들의 진행상태가 함께 유실되며 좀비로 남아 있었다**는 뜻이다(TaskOutput(block=true)로 결과를 회수했던 시점엔 정상 완료였으나, 그 이후 무언가의 이유로 프로세스/세션이 비정상 종료됐고 그 좀비 흔적이 배지에 계속 남음). 새 프로세스(재부팅 후)가 기동되며 고아 상태를 스캔해 명시적으로 failed 처리하고 나서야 배지가 사라졌다. 근본원인 정정: "UI 프론트엔드 동기화 버그"가 아니라 **"백그라운드 에이전트의 진행상태가 상위 프로세스 비정상종료에 취약하고, 그 좀비 상태는 같은 프로세스 재시작 없이는 절대 스스로 해소되지 않는다"**가 맞다. 방지책 최종: (8) 배지가 오래 남아 TaskOutput/TaskStop 둘 다 "no task found"인데도 화면에서 안 사라지면, 카드 삭제를 반복 시도하지 말고 곧바로 **앱 완전 재부팅**으로 넘어간다(추정 단계 건너뛰기 — 재부팅이 유일하게 확인된 해결책). (9) 재부팅 시 harness가 스스로 좀비를 감지해 `failed` 알림을 보내는 것이 정상 동작이며, 이 알림의 "in-process state was lost" 문구가 뜨면 그건 실제 새 문제가 아니라 이 방지책이 다루는 바로 그 정리 과정이 끝났다는 신호다. 이미 TaskOutput(block=true)로 결과를 회수해 활용까지 끝낸 작업이었다면 재작업 불필요.
 
 
 # PlanFlow
