@@ -1017,6 +1017,26 @@ class SupabaseEventRepository extends EventRepository {
         text.contains('pgrst204') ||
         text.contains('42703');
   }
+<<<<<<< Updated upstream
+=======
+
+  bool _mentionsColumn(String text, String column) {
+    final escapedColumn = RegExp.escape(column);
+    return RegExp('(^|[^a-z0-9_])$escapedColumn' r'([^a-z0-9_]|$)')
+        .hasMatch(text);
+  }
+
+  static const Set<String> _fallbackRemovablePayloadColumns = <String>{
+    'external_calendar_id',
+    'external_etag',
+    'external_updated_at',
+    'last_synced_at',
+    'parent_event_id',
+    'participants',
+    'targets',
+    'updated_at',
+  };
+>>>>>>> Stashed changes
 }
 
 extension on EventModel {

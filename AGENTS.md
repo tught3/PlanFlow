@@ -53,6 +53,9 @@
 - 파일, 모듈, 서브시스템이 겹치지 않으면 워커를 동시에 띄우고 병렬 완료를 우선한다.
 - 병렬 작업 후 자기 할 일이 끝난 서브에이전트는 즉시 닫는다.
 - 완료된 서브에이전트를 띄워둔 채로 방치하지 않고, 다음 병렬 작업에 자원을 바로 쓸 수 있게 한다.
+- 비단순 작업의 구현 단계는 메인(오케스트레이터) 세션이 직접 코드를 쏟아내지 말고 경량 서브에이전트에 위임한다. 메인 세션은 계획·분배·검토·보고만 담당하고, 실제 구현과 반복 작업은 난이도에 맞는 서브에이전트(단순=경량 모델, 난도 높음=중간 모델)로 병렬 위임해 비용을 낮춘다. 이것이 기본값이며, 사용자가 따로 지시하지 않아도 비단순 구현은 위임을 우선한다.
+- 메인 세션은 자기 모델을 임의로 바꿀 수 없으므로, "계획은 상위 모델 / 구현은 경량"을 달성하려면 반드시 서브에이전트 위임을 사용한다. 메인 모델 자체를 낮추려면 사용자가 직접 모델을 전환해야 한다.
+- 다만 도구/하네스 정책이 불필요한 서브에이전트 생성을 억제할 수 있어 위임이 자동으로 항상 적용되지는 않는다. 위임이 확실히 필요한 작업이면 사용자가 "구현은 서브에이전트로" 같은 트리거를 주거나, 작업 시작 시 위임 방침을 명시한다.
 
 ## 작업 방식
 - 기존 코드, 기존 문서, 기존 구조를 먼저 확인한다.
@@ -142,6 +145,7 @@
 - Windows에서는 iOS/Xcode 전용 MCP나 도구를 자동 실행하지 않는다.
 - `xcodebuildmcp`처럼 현재 플랫폼과 작업에 불필요한 보조 프로세스가 떠 있으면 확인 후 정리한다.
 - Java/Gradle/Kotlin 데몬은 빌드 중인지 확인하고, 빌드가 끝난 뒤 남은 재시작 가능한 데몬만 정리한다.
+- Android 빌드(`flutter build apk/appbundle`)는 직접 호출하지 말고 항상 `E:\AI_WIKI\scripts\flutter-build-guarded.ps1`를 경유한다. 모든 FluxStudio 프로젝트가 `GRADLE_USER_HOME=E:\.gradle`를 공유해 Gradle 데몬 레지스트리가 하나이므로, 동시 빌드 시 서로의 데몬에 stop 명령이 닿아 "Gradle build daemon has been stopped"로 빌드가 깨진다. 이 래퍼가 FluxOS 공유 자원 락 `android-build`를 claim해 한 번에 하나의 빌드만 돌리고, 점유 중이면 FIFO 큐로 대기 후 자동 승격되면 빌드하며, 종료 시 항상 release한다. 호출 예: `powershell -File E:\AI_WIKI\scripts\flutter-build-guarded.ps1 -ProjectPath <flutter_app 경로> -Project <프로젝트> -Owner <세션> -BuildArgs "apk --release"`.
 - 활성 Flutter/Node/Vercel/Supabase dev server, test, build는 사용자의 다른 세션 작업일 수 있으므로 무작정 종료하지 않는다.
 - 오래 멈춘 진단 명령, 중복 status/diff, 종료된 작업의 잔여 프로세스는 정리 대상이다.
 - 자동 종료는 안전 목록에 한정한다. Codex 본체, 현재 작업 중인 Codex 세션, 활성 dev server, 활성 빌드/테스트, 브라우저, 보안/은행/드라이버 앱은 자동 종료하지 않는다.
@@ -327,6 +331,8 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 - For 1st release, do not implement billing, ads, reward ads, Kakao/SMS/call detection, or TEAM/BUSINESS features.
 - Naver Calendar is now a 1st-release working feature. Keep OAuth consent, token handling, and calendar export behavior visible and testable.
 - Flutter/Android 코드 수정은 기본적으로 **코드 수정까지만** 수행한다.
+- Flutter/Android 코드 수정 이후의 빌드/설치/배포는 사용자가 **명시적으로 요청했을 때만** 진행한다.
+- 배포가 허용되더라도 APK/Android 빌드는 **릴리즈 모드만** 사용한다. 디버그 APK 빌드, mode 미지정 빌드, 릴리즈 키와 다른 임시 설치본은 사용하지 않는다.
 - 배포 파이프라인(`analyze` -> related tests -> versionCode bump -> Play internal upload -> Telegram notification)은 사용자가 **명시적으로 배포를 요청했을 때만** 실행한다.
 - 사용자가 `배포하지 마`, `SkipUpload`, `코드만 수정`이라고 말한 경우는 물론, 배포 요청이 없으면 항상 배포를 생략한다.
 - When deploy automation runs, keep the final report format aligned to:
