@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
@@ -14,6 +15,12 @@ import '../../data/models/event_model.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../features/groups/models/group_event_comment_model.dart';
+import '../../features/groups/models/group_event_model.dart';
+import '../../features/groups/models/group_model.dart';
+import '../../features/groups/providers/group_context_provider.dart';
+import '../../features/groups/repositories/group_event_comment_repository.dart';
+import '../../features/groups/repositories/group_event_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/app_permission_service.dart';
@@ -34,6 +41,7 @@ import '../../widgets/overlap_warning_dialog.dart';
 import '../../widgets/planflow_action_buttons.dart';
 import '../../widgets/recurrence_selector.dart';
 import '../../widgets/reminder_offset_selector.dart';
+import '../../widgets/schedule_save_scope_card.dart';
 
 class EventEditScreen extends StatefulWidget {
   EventEditScreen({
@@ -42,6 +50,8 @@ class EventEditScreen extends StatefulWidget {
     this.eventId,
     this.initialDate,
     this.eventRepository,
+    this.groupContextProvider,
+    this.groupEventRepository,
     this.permissionService,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
@@ -53,6 +63,8 @@ class EventEditScreen extends StatefulWidget {
   final String? eventId;
   final DateTime? initialDate;
   final EventRepository? eventRepository;
+  final GroupContextProvider? groupContextProvider;
+  final GroupEventRepository? groupEventRepository;
   final AppPermissionService? permissionService;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
@@ -107,12 +119,27 @@ class EventEditScreen extends StatefulWidget {
   State<EventEditScreen> createState() => _EventEditScreenState();
 }
 
+enum _LinkedGroupEditScope {
+  personalOnly,
+  personalAndGroup,
+}
+
 class _EventEditScreenState extends State<EventEditScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
   late final TextEditingController _locationController;
   late final TextEditingController _memoController;
   late final TextEditingController _suppliesController;
+  GroupContextProvider? _groupContextProvider;
+  bool _ownsGroupContextProvider = false;
+  ScheduleSaveTarget _saveTarget = ScheduleSaveTarget.personalOnly;
+  // 사용자가 저장 범위를 직접 바꾼 뒤에는 자동 공유 기본값이 덮어쓰지 않도록 표시.
+  bool _saveTargetTouchedByUser = false;
+
+  // 리더 지시(그룹 이벤트 코멘트) 관련
+  List<GroupEventCommentModel> _leaderInstructions = const [];
+  bool _isLoadingInstructions = false;
+  bool _isConfirmingInstruction = false;
   late DateTime _startAt;
   DateTime? _endAt;
   double? _locationLat;
@@ -155,6 +182,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
+
+  GroupEventRepository get _groupEventRepository =>
+      widget.groupEventRepository ?? GroupEventRepository.supabase();
 
   AppPermissionService get _permissionService =>
       widget.permissionService ?? AppPermissionService();
@@ -493,6 +523,16 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _strongAlarm = event?.useStrongAlarm ?? false;
     _recurrenceSelection = RecurrenceSelection.fromRRule(event?.recurrenceRule);
     _category = event?.category ?? '기타';
+    _groupContextProvider = widget.groupContextProvider;
+    if (_groupContextProvider == null && AppEnv.isSupabaseReady) {
+      try {
+        _groupContextProvider = GroupContextProvider();
+        _ownsGroupContextProvider = true;
+      } catch (error) {
+        debugPrint('EventEditScreen group context unavailable: $error');
+      }
+    }
+    unawaited(_loadGroupContextIfNeeded());
     _loadEventIfNeeded();
     if (event != null) {
       unawaited(_loadReminderOffsetIfNeeded(event));
@@ -521,7 +561,220 @@ class _EventEditScreenState extends State<EventEditScreen> {
     _locationController.dispose();
     _memoController.dispose();
     _suppliesController.dispose();
+    if (_ownsGroupContextProvider) {
+      _groupContextProvider?.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _loadGroupContextIfNeeded() async {
+    final provider = _groupContextProvider;
+    if (provider == null) {
+      return;
+    }
+    var userId = authProvider.userId;
+    if (userId == null || userId.trim().isEmpty) {
+      try {
+        userId = Supabase.instance.client.auth.currentUser?.id;
+      } catch (_) {
+        userId = null;
+      }
+    }
+    if (userId == null || userId.trim().isEmpty) {
+      return;
+    }
+    await provider.load(userId.trim());
+    if (mounted) {
+      setState(() {});
+      unawaited(_applyAutoShareDefaultIfNeeded());
+    }
+  }
+
+  GroupModel? get _selectedGroupForSharing {
+    final group = _groupContextProvider?.selectedGroup;
+    if (group == null || !group.isActive) {
+      return null;
+    }
+    return group;
+  }
+
+  bool get _canShareToSelectedGroup => _selectedGroupForSharing != null;
+
+  bool get _shouldSavePersonalEvent =>
+      !_canShareToSelectedGroup ||
+      _saveTarget == ScheduleSaveTarget.personalOnly ||
+      _saveTarget == ScheduleSaveTarget.personalAndGroup;
+
+  bool get _shouldSaveGroupEvent =>
+      _canShareToSelectedGroup &&
+      (_saveTarget == ScheduleSaveTarget.personalAndGroup ||
+          _saveTarget == ScheduleSaveTarget.groupOnly);
+
+  /// 그룹 공유 관련 로직(자동 공유 기본값, 리더 지시 로드)에서 쓸 현재
+  /// 사용자 id를 해석한다. _loadGroupContextIfNeeded와 동일하게
+  /// authProvider.userId를 우선하고, 없으면 Supabase currentUser로
+  /// 폴백한다. 이 화면의 저장 로직(_handleSave)은 여전히
+  /// Supabase.instance.client.auth.currentUser에서 직접 user.id를 읽으므로
+  /// (이 파일에 별도 _currentUserId() 헬퍼가 없었음), 저장 자체는 그대로 두고
+  /// 그룹 공유 판단에만 이 헬퍼를 사용한다.
+  String? _currentUserIdForGroupSharing() {
+    final fromAuthProvider = authProvider.userId;
+    if (fromAuthProvider != null && fromAuthProvider.trim().isNotEmpty) {
+      return fromAuthProvider;
+    }
+    try {
+      return Supabase.instance.client.auth.currentUser?.id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _autoSharePrefKey(String userId, String groupId) =>
+      'planflow:group_auto_share:v1:$userId:$groupId';
+
+  Future<void> _applyAutoShareDefaultIfNeeded() async {
+    // Only apply to NEW events, not edits
+    if (!_isNewEvent) {
+      return;
+    }
+
+    // 사용자가 이미 저장 범위를 직접 골랐으면 자동 공유 기본값으로 덮어쓰지 않는다.
+    if (_saveTargetTouchedByUser) {
+      return;
+    }
+
+    // Must have an active selected group
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return;
+    }
+
+    final userId = _currentUserIdForGroupSharing();
+    if (userId == null || userId.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final key = _autoSharePrefKey(userId, group.id);
+      final autoShareEnabled = preferences.getBool(key) ?? false;
+
+      // await 사이에 사용자가 직접 골랐을 수 있으므로 적용 직전에 다시 확인.
+      if (autoShareEnabled && mounted && !_saveTargetTouchedByUser) {
+        setState(() {
+          _saveTarget = ScheduleSaveTarget.personalAndGroup;
+        });
+      }
+    } catch (error) {
+      debugPrint('EventEditScreen auto-share default error: $error');
+    }
+  }
+
+  Future<GroupEventModel?> _createGroupEventFromDraft(
+    EventModel draft, {
+    String? personalEventId,
+  }) async {
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return null;
+    }
+    final startAt = draft.startAt;
+    if (startAt == null) {
+      throw StateError('그룹 일정에는 시작 시간이 필요합니다.');
+    }
+    final endAt = draft.endAt ?? _eventRangeEnd(startAt, draft.endAt);
+    final recurrenceType = _groupRecurrenceTypeFor(draft.recurrenceRule);
+    return _groupEventRepository.createGroupEvent(
+      GroupEventModel(
+        id: '',
+        groupId: group.id,
+        title: draft.title,
+        description: draft.memo,
+        location: draft.location,
+        startAt: startAt,
+        endAt: endAt,
+        allDay: draft.isAllDay,
+        recurrenceType: recurrenceType,
+        createdBy: draft.userId,
+        personalEventId: personalEventId,
+        status: 'active',
+      ),
+    );
+  }
+
+  Future<GroupEventModel> _updateLinkedGroupEventFromDraft(
+    EventModel draft,
+    String groupEventId,
+  ) async {
+    final existing = await _groupEventRepository.fetchGroupEvent(groupEventId);
+    final startAt = draft.startAt;
+    if (startAt == null) {
+      throw StateError('그룹 일정에는 시작 시간이 필요합니다.');
+    }
+    return _groupEventRepository.updateGroupEvent(
+      existing.copyWith(
+        title: draft.title,
+        description: draft.memo,
+        location: draft.location,
+        startAt: startAt,
+        endAt: draft.endAt ?? _eventRangeEnd(startAt, draft.endAt),
+        allDay: draft.isAllDay,
+        recurrenceType: _groupRecurrenceTypeFor(draft.recurrenceRule),
+        personalEventId:
+            draft.id.trim().isEmpty ? existing.personalEventId : draft.id,
+      ),
+    );
+  }
+
+  Future<_LinkedGroupEditScope?> _chooseLinkedGroupEditScope() {
+    return showDialog<_LinkedGroupEditScope>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('그룹 일정도 같이 수정할까요?'),
+        content: const Text(
+          '이 일정은 그룹 일정과 연결되어 있어요. 개인 일정만 바꾸거나, 그룹 일정도 같은 내용으로 바꿀 수 있습니다.',
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        actions: [
+          SizedBox(
+            width: double.maxFinite,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx)
+                        .pop(_LinkedGroupEditScope.personalOnly),
+                    child: const Text('개인만 수정'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(ctx)
+                        .pop(_LinkedGroupEditScope.personalAndGroup),
+                    child: const Text('그룹도 같이 수정'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _groupRecurrenceTypeFor(String? recurrenceRule) {
+    final rule = recurrenceRule?.toUpperCase() ?? '';
+    if (rule.contains('FREQ=DAILY')) {
+      return 'daily';
+    }
+    if (rule.contains('FREQ=WEEKLY')) {
+      return 'weekly';
+    }
+    if (rule.contains('FREQ=MONTHLY')) {
+      return 'monthly';
+    }
+    return 'none';
   }
 
   Future<void> _handleSave() async {
@@ -616,6 +869,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
         recurrenceRule: _recurrenceSelection.toRRule(),
         isMultiDay: isMultiDayByRange,
         parentEventId: _loadedEvent?.parentEventId,
+        groupEventId: _loadedEvent?.groupEventId,
         category: _category,
         source: _loadedEvent?.source ?? 'manual',
         externalId: _loadedEvent?.externalId,
@@ -627,96 +881,144 @@ class _EventEditScreenState extends State<EventEditScreen> {
         updatedAt: _loadedEvent?.updatedAt,
       );
 
-      final overlapStart = updatedEvent.startAt ?? _startAt;
-      debugPrint('EventEditScreen save before findOverlappingEvents');
-      final overlappingEvents = await _repository.findOverlappingEvents(
-        rangeStart: overlapStart,
-        rangeEnd: _eventRangeEnd(overlapStart, updatedEvent.endAt),
-        userId: user.id,
-        excludedEventId: _loadedEvent?.id ?? updatedEvent.id,
-      );
-      debugPrint('EventEditScreen save after findOverlappingEvents');
-      final duplicateWarningEvents = filterDuplicateWarningEvents(
-        draft: updatedEvent,
-        candidates: overlappingEvents,
-      );
-      if (!mounted) {
-        debugPrint(
-            'EventEditScreen save stopped: unmounted after overlap check');
-        return;
-      }
-      if (duplicateWarningEvents.isNotEmpty) {
-        final shouldContinue =
-            await _showOverlapWarning(duplicateWarningEvents);
+      if (_shouldSavePersonalEvent) {
+        final overlapStart = updatedEvent.startAt ?? _startAt;
+        debugPrint('EventEditScreen save before findOverlappingEvents');
+        final overlappingEvents = await _repository.findOverlappingEvents(
+          rangeStart: overlapStart,
+          rangeEnd: _eventRangeEnd(overlapStart, updatedEvent.endAt),
+          userId: user.id,
+          excludedEventId: _loadedEvent?.id ?? updatedEvent.id,
+        );
+        debugPrint('EventEditScreen save after findOverlappingEvents');
+        final duplicateWarningEvents = filterDuplicateWarningEvents(
+          draft: updatedEvent,
+          candidates: overlappingEvents,
+        );
         if (!mounted) {
           debugPrint(
-              'EventEditScreen save stopped: unmounted after overlap warning');
+              'EventEditScreen save stopped: unmounted after overlap check');
           return;
         }
-        if (!shouldContinue) {
-          debugPrint('EventEditScreen save canceled: overlap warning');
-          _showMessage('중복 일정 경고에서 저장을 취소했어요.');
-          return;
+        if (duplicateWarningEvents.isNotEmpty) {
+          final shouldContinue =
+              await _showOverlapWarning(duplicateWarningEvents);
+          if (!mounted) {
+            debugPrint(
+                'EventEditScreen save stopped: unmounted after overlap warning');
+            return;
+          }
+          if (!shouldContinue) {
+            debugPrint('EventEditScreen save canceled: overlap warning');
+            _showMessage('중복 일정 경고에서 저장을 취소했어요.');
+            return;
+          }
         }
       }
 
       final previousStartAt = _loadedEvent?.startAt;
-      late final EventModel savedEvent;
-      if (_isNewEvent) {
-        savedEvent = await _repository.createEvent(updatedEvent);
-      } else if (recurrenceScope == 'single' && _loadedEvent != null) {
-        savedEvent = await _repository.createEvent(
-          _detachedRecurringEvent(
-            updatedEvent,
-            parentEventId: _loadedEvent!.id,
-            keepRecurrence: false,
-          ),
-        );
-      } else if (recurrenceScope == 'future' && _loadedEvent != null) {
-        final original = _loadedEvent!;
-        final originalStart = original.startAt;
-        final isFirstOccurrence = originalStart == null ||
-            planflowIsSameLocalDay(originalStart, normalizedStartAt);
-        if (isFirstOccurrence) {
-          savedEvent = await _repository.updateEvent(updatedEvent);
-        } else {
-          await _repository.updateEvent(
-            _eventWithRecurrenceRule(
-              original,
-              _truncateRRuleBefore(original.recurrenceRule, _startAt),
-            ),
-          );
+      _LinkedGroupEditScope? linkedGroupEditScope;
+      final linkedGroupEventId = _loadedEvent?.groupEventId?.trim();
+      if (!_isNewEvent &&
+          linkedGroupEventId != null &&
+          linkedGroupEventId.isNotEmpty &&
+          _shouldSavePersonalEvent) {
+        linkedGroupEditScope = await _chooseLinkedGroupEditScope();
+        if (linkedGroupEditScope == null || !mounted) {
+          debugPrint(
+              'EventEditScreen save canceled: linked group edit scope dialog');
+          return;
+        }
+      }
+
+      EventModel? savedEvent;
+      if (_shouldSavePersonalEvent) {
+        if (_isNewEvent) {
+          savedEvent = await _repository.createEvent(updatedEvent);
+        } else if (recurrenceScope == 'single' && _loadedEvent != null) {
           savedEvent = await _repository.createEvent(
             _detachedRecurringEvent(
               updatedEvent,
-              parentEventId: original.id,
-              keepRecurrence: true,
+              parentEventId: _loadedEvent!.id,
+              keepRecurrence: false,
             ),
           );
+        } else if (recurrenceScope == 'future' && _loadedEvent != null) {
+          final original = _loadedEvent!;
+          final originalStart = original.startAt;
+          final isFirstOccurrence = originalStart == null ||
+              planflowIsSameLocalDay(originalStart, normalizedStartAt);
+          if (isFirstOccurrence) {
+            savedEvent = await _repository.updateEvent(updatedEvent);
+          } else {
+            await _repository.updateEvent(
+              _eventWithRecurrenceRule(
+                original,
+                _truncateRRuleBefore(original.recurrenceRule, _startAt),
+              ),
+            );
+            savedEvent = await _repository.createEvent(
+              _detachedRecurringEvent(
+                updatedEvent,
+                parentEventId: original.id,
+                keepRecurrence: true,
+              ),
+            );
+          }
+        } else {
+          savedEvent = await _repository.updateEvent(updatedEvent);
         }
-      } else {
-        savedEvent = await _repository.updateEvent(updatedEvent);
       }
 
-      unawaited(
-        _runPostSaveSideEffects(
-          userId: user.id,
-          savedEvent: savedEvent,
-          previousStartAt: previousStartAt,
-        ),
-      );
+      if (_shouldSaveGroupEvent) {
+        if (savedEvent == null) {
+          await _createGroupEventFromDraft(updatedEvent);
+        } else {
+          final createdGroupEvent = await _createGroupEventFromDraft(
+            savedEvent,
+            personalEventId: savedEvent.id,
+          );
+          if (createdGroupEvent != null) {
+            savedEvent = await _repository.updateEvent(
+              savedEvent.copyWith(groupEventId: createdGroupEvent.id),
+            );
+          }
+        }
+      } else if (linkedGroupEditScope ==
+              _LinkedGroupEditScope.personalAndGroup &&
+          savedEvent != null &&
+          linkedGroupEventId != null &&
+          linkedGroupEventId.isNotEmpty) {
+        await _updateLinkedGroupEventFromDraft(savedEvent, linkedGroupEventId);
+      }
+
+      if (savedEvent != null) {
+        unawaited(
+          _runPostSaveSideEffects(
+            userId: user.id,
+            savedEvent: savedEvent,
+            previousStartAt: previousStartAt,
+          ),
+        );
+      }
 
       if (mounted) {
-        final actionText = _isNewEvent ? '일정을 만들었습니다.' : '일정을 수정했습니다.';
+        final actionText = savedEvent == null
+            ? '그룹에 일정을 공유했어요.'
+            : _isNewEvent
+                ? '일정을 만들었습니다.'
+                : '일정을 수정했습니다.';
         _showMessage(actionText);
         EventRefreshBus.instance.notifyChanged(
           reason: _isNewEvent ? 'event_created' : 'event_updated',
-          eventId: savedEvent.id,
-          startAt: savedEvent.startAt,
+          eventId: savedEvent?.id,
+          startAt: savedEvent?.startAt ?? updatedEvent.startAt,
         );
-        // 알람 권한 가드 — 저장 성공 후 권한이 누락된 경우 안내 다이얼로그.
-        // 저장 자체는 항상 성공 처리. 다이얼로그 dismiss 후 캘린더로 이동.
-        await _showAlarmPermissionGuardIfNeeded();
+        if (savedEvent != null) {
+          // 알람 권한 가드 — 저장 성공 후 권한이 누락된 경우 안내 다이얼로그.
+          // 저장 자체는 항상 성공 처리. 다이얼로그 dismiss 후 캘린더로 이동.
+          await _showAlarmPermissionGuardIfNeeded();
+        }
         if (mounted) {
           context.go(AppRoutes.calendar);
         }
@@ -953,6 +1255,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
             'lat=${event.locationLat} lng=${event.locationLng}',
       );
       unawaited(_loadReminderOffsetIfNeeded(event));
+      // 그룹 연결 이벤트라면 리더 지시 로드
+      if (event.groupEventId != null) {
+        unawaited(_loadGroupInstructions(event));
+      }
     } catch (_) {
       if (mounted) {
         _showMessage('일정 정보를 불러오지 못했습니다.');
@@ -964,6 +1270,245 @@ class _EventEditScreenState extends State<EventEditScreen> {
         });
       }
     }
+  }
+
+  /// 그룹 이벤트 코멘트(리더 지시)를 로드하고 현재 사용자를 대상으로 필터링한다.
+  Future<void> _loadGroupInstructions(EventModel event) async {
+    final groupEventId = event.groupEventId;
+    if (groupEventId == null || groupEventId.isEmpty) return;
+    if (!AppEnv.isSupabaseReady) return;
+
+    String? currentUserId;
+    try {
+      currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    } catch (_) {
+      return;
+    }
+    if (currentUserId == null || currentUserId.isEmpty) return;
+
+    if (mounted) {
+      setState(() {
+        _isLoadingInstructions = true;
+      });
+    }
+    try {
+      final repo = GroupEventCommentRepository.supabase();
+      final all = await repo.getCommentsForEvent(groupEventId);
+      final filtered = all
+          .where((c) => c.targetUserId == currentUserId)
+          .toList(growable: false);
+      if (mounted) {
+        setState(() {
+          _leaderInstructions = filtered;
+        });
+      }
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen 리더 지시 로드 실패: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingInstructions = false;
+        });
+      }
+    }
+  }
+
+  /// 리더 지시 확인 처리 (확인 버튼 탭)
+  Future<void> _confirmInstruction(String commentId) async {
+    if (_isConfirmingInstruction) return;
+    if (mounted) {
+      setState(() {
+        _isConfirmingInstruction = true;
+      });
+    }
+    try {
+      final repo = GroupEventCommentRepository.supabase();
+      await repo.confirmComment(commentId);
+      // 재로드
+      final loadedEvent = _loadedEvent;
+      if (loadedEvent != null) {
+        await _loadGroupInstructions(loadedEvent);
+      }
+    } catch (error, stackTrace) {
+      debugPrint('EventEditScreen 리더 지시 확인 실패: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        _showMessage('지시 확인 중 오류가 발생했습니다.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isConfirmingInstruction = false;
+        });
+      }
+    }
+  }
+
+  /// 리더 지시 섹션 위젯을 빌드한다.
+  ///
+  /// - [_loadedEvent.groupEventId] 가 null 이면 빈 위젯 반환
+  /// - 지시가 없어도 '없음' 표기 없이 섹션 자체를 숨김
+  Widget _buildLeaderInstructionsSection(BuildContext context) {
+    final event = _loadedEvent;
+    if (event == null || event.groupEventId == null) {
+      return const SizedBox.shrink();
+    }
+    if (_isLoadingInstructions) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: LinearProgressIndicator(),
+      );
+    }
+    if (_leaderInstructions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: AppConstants.sectionSpacing),
+        Card(
+          color: PlanFlowColors.surface,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(
+              color: PlanFlowColors.primaryFaint,
+              width: 0.8,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.record_voice_over_outlined,
+                      size: 16,
+                      color: PlanFlowColors.primaryMid,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '리더 지시',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: PlanFlowColors.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ..._leaderInstructions.map((instruction) {
+                  final timeLabel = instruction.createdAt != null
+                      ? _formatInstructionTime(instruction.createdAt!)
+                      : '';
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: instruction.isConfirmed
+                            ? PlanFlowColors.surface
+                            : PlanFlowColors.primaryFaint.withValues(
+                                alpha: 0.5,
+                              ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: instruction.isConfirmed
+                              ? PlanFlowColors.primaryFaint
+                              : PlanFlowColors.primaryMid
+                                  .withValues(alpha: 0.3),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            instruction.content,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: PlanFlowColors.textPrimary,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              if (timeLabel.isNotEmpty)
+                                Text(
+                                  timeLabel,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: PlanFlowColors.textSecondary,
+                                  ),
+                                ),
+                              const Spacer(),
+                              if (instruction.isConfirmed)
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.check_circle_outline,
+                                      size: 13,
+                                      color: PlanFlowColors.primaryMid,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '확인됨',
+                                      style:
+                                          theme.textTheme.labelSmall?.copyWith(
+                                        color: PlanFlowColors.primaryMid,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else
+                                FilledButton.tonal(
+                                  onPressed: _isConfirmingInstruction
+                                      ? null
+                                      : () => unawaited(
+                                            _confirmInstruction(instruction.id),
+                                          ),
+                                  style: FilledButton.styleFrom(
+                                    minimumSize: const Size(60, 28),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    visualDensity: VisualDensity.compact,
+                                    textStyle:
+                                        theme.textTheme.labelMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  child: const Text('확인'),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatInstructionTime(DateTime dt) {
+    final local = planflowLocal(dt);
+    return '${local.month}/${local.day} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
   }
 
   Future<void> _loadReminderOffsetIfNeeded(EventModel event) async {
@@ -1271,6 +1816,24 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
   }
 
+  Widget _buildSaveTargetCard(BuildContext context) {
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return const SizedBox.shrink();
+    }
+
+    return ScheduleSaveScopeCard(
+      groupName: group.name,
+      selected: _saveTarget,
+      onChanged: (target) {
+        setState(() {
+          _saveTarget = target;
+          _saveTargetTouchedByUser = true;
+        });
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1327,6 +1890,10 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   const LinearProgressIndicator(),
                 ],
                 const SizedBox(height: AppConstants.sectionSpacing),
+                _buildSaveTargetCard(context),
+                if (_selectedGroupForSharing != null)
+                  const SizedBox(height: AppConstants.sectionSpacing),
+                _buildLeaderInstructionsSection(context),
                 CalendarStyleEventEditor(
                   titleController: _titleController,
                   locationController: _locationController,
