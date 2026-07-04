@@ -379,13 +379,24 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('"${group.name}" 그룹을 삭제했어요.')),
       );
-      context.pop();
+      _handleBackNavigation();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('삭제 실패: ${_friendlyErrorMessage(e)}')),
       );
     }
+  }
+
+  /// 딥링크 등으로 push 이력 없이 이 화면에 바로 들어온 경우 pop할 대상이
+  /// 없어 GoError("There is nothing to pop.")가 발생한다. canPop을 먼저
+  /// 확인하고, 없으면 그룹 목록으로 이동한다.
+  void _handleBackNavigation() {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    context.go(AppRoutes.groups);
   }
 
   /// PostgrestException(DB 함수 raise exception 등)은 사용자에게 필요한
@@ -442,7 +453,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('"${group.name}" 그룹에서 나갔어요.')),
       );
-      context.pop();
+      _handleBackNavigation();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

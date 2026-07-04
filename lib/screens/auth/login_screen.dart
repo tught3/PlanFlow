@@ -41,7 +41,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   final _messageKey = GlobalKey();
 
-  late final AuthService? _authService;
+  late AuthService? _authService;
 
   _AuthMode _mode = _AuthMode.login;
   bool _isLoading = false;

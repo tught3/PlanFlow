@@ -1,12 +1,59 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:planflow/core/env.dart';
+import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/auth/login_screen.dart';
 import 'package:planflow/services/auth_service.dart';
 
 void main() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    try {
+      Supabase.instance;
+    } catch (_) {
+      await Supabase.initialize(
+        url: 'https://example.com',
+        anonKey: 'public-anon-key',
+        authOptions: const FlutterAuthClientOptions(
+          detectSessionInUri: false,
+          autoRefreshToken: false,
+        ),
+      );
+    }
+  });
+
+  // 주의: 이 테스트는 AppEnv.isSupabaseReady가 아직 false인 상태에서 시작해야
+  // 회귀를 재현할 수 있다(정적 플래그라 파일 내 실행 순서상 반드시 첫 테스트여야 함).
+  // widget._authService를 넘기지 않아야 initState에서 _authService가 null로
+  // 대입된 뒤, 아래에서 실제로 재대입(AuthService())이 시도된다.
+  testWidgets(
+      'LoginScreen re-initializes AuthService once Supabase becomes ready '
+      'after initState without throwing LateInitializationError',
+      (tester) async {
+    addTearDown(() => authProvider.setUser(null));
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: LoginScreen(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Supabase 초기화가 initState 이후 뒤늦게 완료되는 상황을 재현한다.
+    // (기존 버그: _authService가 late final이라 initState에서 한 번 대입된
+    // 뒤 여기서 다시 대입하려 하면 LateInitializationError가 던져졌다.)
+    AppEnv.markSupabaseInitialized();
+    authProvider.setUser('user-1');
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('이메일 로그인'), findsOneWidget);
+  });
+
   testWidgets('LoginScreen shows the Naver social login button',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(360, 1200));

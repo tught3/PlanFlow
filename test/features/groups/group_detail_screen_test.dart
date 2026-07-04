@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:planflow/core/constants.dart';
 import 'package:planflow/features/groups/models/group_member_model.dart';
 import 'package:planflow/features/groups/models/group_model.dart';
 import 'package:planflow/features/groups/repositories/group_repository.dart';
@@ -9,6 +11,71 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
+  });
+
+  testWidgets(
+      'push 이력 없이 그룹 상세로 바로 들어와 팀을 나가도 GoError 없이 그룹 목록으로 이동한다',
+      (tester) async {
+    final preferences = await SharedPreferences.getInstance();
+    // 이 테스트는 팀 나가기 흐름만 검증하므로, 무관한 '기존 일정 공유' 자동
+    // 프롬프트는 미리 꺼둔다(이미 골랐던 상태로 시뮬레이션).
+    await preferences.setBool(
+      'planflow:group_event_share_prompt:v1:user-1:group-1',
+      true,
+    );
+    final repository = _FakeGroupRepository(
+      groups: <GroupModel>[
+        GroupModel(
+          id: 'group-1',
+          createdBy: 'leader-1',
+          name: '우리 팀',
+          createdAt: DateTime.utc(2026, 6, 29),
+        ),
+      ],
+      membersByGroupId: <String, List<GroupMemberModel>>{
+        'group-1': <GroupMemberModel>[
+          GroupMemberModel(
+            id: 'member-1',
+            groupId: 'group-1',
+            userId: 'user-1',
+            role: 'member',
+          ),
+        ],
+      },
+    );
+
+    final router = GoRouter(
+      initialLocation: '/groups/group-1',
+      routes: [
+        GoRoute(
+          path: '/groups/group-1',
+          builder: (_, __) => GroupDetailScreen(
+            groupId: 'group-1',
+            repository: repository,
+            preferences: preferences,
+            currentUserIdOverride: 'user-1',
+          ),
+        ),
+        GoRoute(
+          path: AppRoutes.groups,
+          builder: (_, __) => const Scaffold(body: Text('그룹 목록')),
+        ),
+      ],
+    );
+
+    await tester.binding.setSurfaceSize(const Size(400, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('팀 나가기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('나가기'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('그룹 목록'), findsOneWidget);
   });
 
   testWidgets('처음 그룹 상세에 들어가면 기존 일정 공유 모달을 한 번만 보여준다', (tester) async {
@@ -254,5 +321,16 @@ class _FakeGroupRepository extends GroupRepository {
   @override
   Future<GroupMemberModel> updateMember(GroupMemberModel member) {
     throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupMemberModel> leaveGroup(String groupId) async {
+    return GroupMemberModel(
+      id: 'member-left',
+      groupId: groupId,
+      userId: 'user-1',
+      role: 'member',
+      status: 'removed',
+    );
   }
 }
