@@ -19,6 +19,7 @@ import '../../services/voice_command_router.dart';
 import '../../services/voice_command_analysis_service.dart';
 import 'voice_conversation_screen.dart';
 import '../../services/voice_text_cleanup_service.dart';
+import '../../widgets/planflow_action_buttons.dart';
 import '../../l10n/app_l10n.dart';
 
 class VoiceInputScreen extends StatefulWidget {
@@ -936,27 +937,31 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
                   ),
                 ),
                 const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: () => Navigator.of(context).pop(
-                    _AmbiguousFieldAdditionChoice.updateExisting,
-                  ),
-                  icon: const Icon(Icons.event_available_outlined),
-                  label: const Text('기존 일정에 내용 추가'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.of(context).pop(
-                    _AmbiguousFieldAdditionChoice.createNew,
-                  ),
-                  icon: const Icon(Icons.add_circle_outline),
-                  label: const Text('새 일정으로 추가'),
-                ),
-                TextButton.icon(
-                  onPressed: () => Navigator.of(context).pop(
-                    _AmbiguousFieldAdditionChoice.editText,
-                  ),
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('직접 편집'),
+                PlanFlowActionButtons(
+                  alignment: WrapAlignment.start,
+                  buttons: [
+                    PlanFlowActionButton(
+                      label: '기존 일정에 내용 추가',
+                      onPressed: () => Navigator.of(context).pop(
+                        _AmbiguousFieldAdditionChoice.updateExisting,
+                      ),
+                      type: ActionButtonType.primary,
+                    ),
+                    PlanFlowActionButton(
+                      label: '새 일정으로 추가',
+                      onPressed: () => Navigator.of(context).pop(
+                        _AmbiguousFieldAdditionChoice.createNew,
+                      ),
+                      type: ActionButtonType.secondary,
+                    ),
+                    PlanFlowActionButton(
+                      label: '직접 편집',
+                      onPressed: () => Navigator.of(context).pop(
+                        _AmbiguousFieldAdditionChoice.editText,
+                      ),
+                      type: ActionButtonType.secondary,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -999,30 +1004,34 @@ class _VoiceInputScreenState extends State<VoiceInputScreen>
                   ),
                 ),
                 const SizedBox(height: 16),
-                FilledButton.icon(
-                  key: const ValueKey('voice-append-existing-text-button'),
-                  onPressed: () => Navigator.of(context).pop(
-                    _ExistingVoiceTextChoice.append,
-                  ),
-                  icon: const Icon(Icons.record_voice_over_outlined),
-                  label: const Text('이어서 말하기'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  key: const ValueKey('voice-restart-with-empty-text-button'),
-                  onPressed: () => Navigator.of(context).pop(
-                    _ExistingVoiceTextChoice.restart,
-                  ),
-                  icon: const Icon(Icons.refresh_outlined),
-                  label: const Text('지우고 다시 입력'),
-                ),
-                const SizedBox(height: 4),
-                TextButton(
-                  key: const ValueKey('voice-keep-existing-text-button'),
-                  onPressed: () => Navigator.of(context).pop(
-                    _ExistingVoiceTextChoice.cancel,
-                  ),
-                  child: const Text('취소하고 현재 내용 유지'),
+                PlanFlowActionButtons(
+                  alignment: WrapAlignment.start,
+                  buttons: [
+                    PlanFlowActionButton(
+                      buttonKey: const ValueKey('voice-append-existing-text-button'),
+                      label: '이어서 말하기',
+                      onPressed: () => Navigator.of(context).pop(
+                        _ExistingVoiceTextChoice.append,
+                      ),
+                      type: ActionButtonType.primary,
+                    ),
+                    PlanFlowActionButton(
+                      buttonKey: const ValueKey('voice-restart-with-empty-text-button'),
+                      label: '지우고 다시 입력',
+                      onPressed: () => Navigator.of(context).pop(
+                        _ExistingVoiceTextChoice.restart,
+                      ),
+                      type: ActionButtonType.secondary,
+                    ),
+                    PlanFlowActionButton(
+                      buttonKey: const ValueKey('voice-keep-existing-text-button'),
+                      label: '취소하고 현재 내용 유지',
+                      onPressed: () => Navigator.of(context).pop(
+                        _ExistingVoiceTextChoice.cancel,
+                      ),
+                      type: ActionButtonType.secondary,
+                    ),
+                  ],
                 ),
               ],
             ),

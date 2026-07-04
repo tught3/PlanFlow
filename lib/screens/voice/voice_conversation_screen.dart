@@ -16,6 +16,7 @@ import '../../services/gpt_service.dart';
 import '../../services/location_lookup_service.dart';
 import '../../services/stt_service.dart';
 import '../../services/voice_conversation_controller.dart';
+import '../../widgets/planflow_action_buttons.dart';
 import '../location/location_pick_flow.dart';
 
 const String voiceConversationClosedResult = 'voiceConversationClosed';
@@ -1772,33 +1773,33 @@ class _EventActionSheet extends StatelessWidget {
               const SizedBox(height: 10),
               _EventSheetSummary(event: event),
               const SizedBox(height: 14),
-              FilledButton.icon(
-                onPressed: () =>
-                    Navigator.of(context).pop(_EventCardAction.edit),
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('수정하기'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () =>
-                    Navigator.of(context).pop(_EventCardAction.delete),
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('삭제하기'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error,
-                  side: BorderSide(
-                    color: Theme.of(context)
+              PlanFlowActionButtons(
+                alignment: WrapAlignment.start,
+                buttons: [
+                  PlanFlowActionButton(
+                    label: '수정하기',
+                    onPressed: () =>
+                        Navigator.of(context).pop(_EventCardAction.edit),
+                    type: ActionButtonType.primary,
+                  ),
+                  PlanFlowActionButton(
+                    label: '삭제하기',
+                    onPressed: () =>
+                        Navigator.of(context).pop(_EventCardAction.delete),
+                    type: ActionButtonType.secondary,
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                    borderColor: Theme.of(context)
                         .colorScheme
                         .error
                         .withValues(alpha: 0.35),
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () =>
-                    Navigator.of(context).pop(_EventCardAction.close),
-                child: const Text('닫기'),
+                  PlanFlowActionButton(
+                    label: '닫기',
+                    onPressed: () =>
+                        Navigator.of(context).pop(_EventCardAction.close),
+                    type: ActionButtonType.secondary,
+                  ),
+                ],
               ),
             ],
           ),
@@ -1833,24 +1834,20 @@ class _DeleteEventSheet extends StatelessWidget {
               const SizedBox(height: 10),
               _EventSheetSummary(event: event),
               const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text('취소'),
-                    ),
+              PlanFlowActionButtons(
+                buttons: [
+                  PlanFlowActionButton(
+                    label: '취소',
+                    onPressed: () => Navigator.of(context).pop(false),
+                    type: ActionButtonType.secondary,
+                    flex: 1,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('삭제'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
+                  PlanFlowActionButton(
+                    label: '삭제',
+                    onPressed: () => Navigator.of(context).pop(true),
+                    type: ActionButtonType.primary,
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    flex: 1,
                   ),
                 ],
               ),
@@ -1890,20 +1887,19 @@ class _ExitConversationSheet extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text('계속 대화하기'),
-                  ),
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '계속 대화하기',
+                  onPressed: () => Navigator.of(context).pop(false),
+                  type: ActionButtonType.secondary,
+                  flex: 1,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('나가기'),
-                  ),
+                PlanFlowActionButton(
+                  label: '나가기',
+                  onPressed: () => Navigator.of(context).pop(true),
+                  type: ActionButtonType.primary,
+                  flex: 1,
                 ),
               ],
             ),
