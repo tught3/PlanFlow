@@ -201,6 +201,39 @@ void main() {
     );
   });
 
+  testWidgets(
+    'shows a placeholder when the display name has not been set',
+    (tester) async {
+      final provider = GroupContextProvider(
+        repository: FakeGroupRepository(
+          groups: const <GroupModel>[],
+          membersByGroupId: const <String, List<GroupMemberModel>>{},
+        ),
+      );
+      final inviteProvider = GroupInviteProvider(
+        repository: FakeGroupInviteRepository(),
+        profileLoader: (userId) async => <String, dynamic>{
+          'id': userId,
+          'invite_code': 'INVITE-0001',
+          'display_name': null,
+        },
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GroupListScreen(
+            provider: provider,
+            inviteProvider: inviteProvider,
+            currentUserIdOverride: 'user-1',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('(이름없음)'), findsOneWidget);
+    },
+  );
+
   testWidgets('highlights the selected leader group', (tester) async {
     final provider = GroupContextProvider(
       repository: FakeGroupRepository(

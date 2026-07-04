@@ -34,6 +34,7 @@ class GroupContextProvider extends ChangeNotifier {
   String? get error => _state.error;
   bool get hasGroups => _state.hasGroups;
   bool get isLeaderOfSelectedGroup => _state.isLeaderOfSelectedGroup;
+  List<GroupModel> get leaderGroups => _state.leaderGroups;
 
   Future<void> load(String userId, {String? preferredGroupId}) async {
     if (userId.isEmpty) {
@@ -77,6 +78,7 @@ class GroupContextProvider extends ChangeNotifier {
           selectedGroupRole: selectedRole,
           isLoading: false,
           error: null,
+          memberships: memberships,
         ),
       );
 

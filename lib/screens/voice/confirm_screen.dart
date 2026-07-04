@@ -141,6 +141,17 @@ class _PostSaveFollowUpResult {
   }
 }
 
+/// 그룹 리더의 "그룹에 일정을 공유할까요?" 다이얼로그 응답.
+class _LeaderShareChoice {
+  const _LeaderShareChoice({
+    required this.share,
+    required this.dontAskAgain,
+  });
+
+  final bool share;
+  final bool dontAskAgain;
+}
+
 class _AlarmScheduleFailure {
   const _AlarmScheduleFailure({
     required this.label,
@@ -390,9 +401,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     await provider.load(userId.trim());
     if (mounted) {
-      setState(() {
-        _ensureDefaultGroupSelection();
-      });
+      await _ensureDefaultGroupSelection(userId.trim());
       unawaited(_applyAutoShareDefaultIfNeeded());
     }
   }
@@ -409,14 +418,73 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       .where((group) => _selectedGroupIds.contains(group.id))
       .toList(growable: false);
 
-  /// 아직 그룹 선택이 없으면 자동선택된 대표 그룹 1개를 기본 선택한다.
-  void _ensureDefaultGroupSelection() {
+  /// 아직 그룹 선택이 없으면 가장 최근에 공유했던 그룹(들)을, 없으면 자동선택된
+  /// 대표 그룹 1개를 기본 선택한다.
+  Future<void> _ensureDefaultGroupSelection(String? userId) async {
     if (_selectedGroupIds.isNotEmpty) {
       return;
     }
+    final activeIds = _allActiveGroups.map((group) => group.id).toSet();
+    if (activeIds.isEmpty) {
+      return;
+    }
+
+    if (userId != null && userId.trim().isNotEmpty) {
+      final lastUsed = await _readLastSharedGroupIds(userId.trim());
+      final restored = lastUsed.where(activeIds.contains).toSet();
+      if (restored.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _selectedGroupIds.addAll(restored);
+          });
+        }
+        return;
+      }
+    }
+
     final primary = _groupContextProvider?.selectedGroup;
     if (primary != null && primary.isActive) {
-      _selectedGroupIds.add(primary.id);
+      if (mounted) {
+        setState(() {
+          _selectedGroupIds.add(primary.id);
+        });
+      }
+    }
+  }
+
+  String _lastSharedGroupsPrefKey(String userId) =>
+      'planflow:group_last_shared_ids:v1:$userId';
+
+  Future<Set<String>> _readLastSharedGroupIds(String userId) async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final stored =
+          preferences.getStringList(_lastSharedGroupsPrefKey(userId));
+      if (stored == null || stored.isEmpty) {
+        return const <String>{};
+      }
+      return stored.toSet();
+    } catch (error) {
+      debugPrint('ConfirmScreen last shared groups read error: $error');
+      return const <String>{};
+    }
+  }
+
+  Future<void> _persistLastSharedGroupIds(
+    String userId,
+    Set<String> groupIds,
+  ) async {
+    if (groupIds.isEmpty) {
+      return;
+    }
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList(
+        _lastSharedGroupsPrefKey(userId),
+        groupIds.toList(growable: false),
+      );
+    } catch (error) {
+      debugPrint('ConfirmScreen last shared groups persist error: $error');
     }
   }
 
@@ -505,6 +573,128 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     } catch (error) {
       debugPrint('ConfirmScreen auto-share default error: $error');
     }
+  }
+
+  /// 그룹 리더가 저장 범위를 직접 고르지 않았고, 이 그룹에 대한 공유 여부를
+  /// 아직 결정(다시 보지 않기/설정탭 토글)한 적이 없으면 등록 직전에 물어본다.
+  Future<void> _maybePromptLeaderAutoShareIfNeeded(String userId) async {
+    if (_saveTargetTouchedByUser) {
+      return;
+    }
+    final group = _selectedGroupForSharing;
+    if (group == null) {
+      return;
+    }
+    final isLeaderOfGroup = _groupContextProvider?.leaderGroups
+            .any((leaderGroup) => leaderGroup.id == group.id) ??
+        false;
+    if (!isLeaderOfGroup) {
+      return;
+    }
+
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final key = _autoSharePrefKey(userId, group.id);
+      if (preferences.containsKey(key)) {
+        // 이미 결정된 값이 있으면(다시 보지 않기 또는 설정탭) 물어보지 않고 그대로 적용.
+        final enabled = preferences.getBool(key) ?? false;
+        if (enabled && mounted && !_saveTargetTouchedByUser) {
+          setState(() {
+            _saveTarget = ScheduleSaveTarget.personalAndGroup;
+          });
+        }
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+      final choice = await _showLeaderShareConfirmDialog(group.name);
+      if (choice == null || !mounted || _saveTargetTouchedByUser) {
+        return;
+      }
+
+      if (choice.dontAskAgain) {
+        await preferences.setBool(key, choice.share);
+      }
+      setState(() {
+        _saveTarget = choice.share
+            ? ScheduleSaveTarget.personalAndGroup
+            : ScheduleSaveTarget.personalOnly;
+      });
+    } catch (error) {
+      debugPrint('ConfirmScreen leader auto-share prompt error: $error');
+    }
+  }
+
+  Future<_LeaderShareChoice?> _showLeaderShareConfirmDialog(
+    String groupName,
+  ) {
+    var dontAskAgain = false;
+    return showDialog<_LeaderShareChoice>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('그룹에 일정을 공유할까요?'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('"$groupName" 그룹의 리더로서 이 일정을 그룹에도 공유할 수 있어요.'),
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    key: const ValueKey('leader-share-dialog-dont-ask-again'),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: dontAskAgain,
+                    onChanged: (value) {
+                      setDialogState(() {
+                        dontAskAgain = value ?? false;
+                      });
+                    },
+                    title: const Text('다시 보지 않기'),
+                  ),
+                ],
+              ),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              actions: [
+                PlanFlowActionButtons(
+                  buttons: [
+                    PlanFlowActionButton(
+                      buttonKey:
+                          const ValueKey('leader-share-decline-button'),
+                      label: '아니요',
+                      type: ActionButtonType.secondary,
+                      flex: 1,
+                      onPressed: () => Navigator.of(dialogContext).pop(
+                        _LeaderShareChoice(
+                          share: false,
+                          dontAskAgain: dontAskAgain,
+                        ),
+                      ),
+                    ),
+                    PlanFlowActionButton(
+                      buttonKey: const ValueKey('leader-share-accept-button'),
+                      label: '공유',
+                      type: ActionButtonType.primary,
+                      flex: 1,
+                      onPressed: () => Navigator.of(dialogContext).pop(
+                        _LeaderShareChoice(
+                          share: true,
+                          dontAskAgain: dontAskAgain,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<GroupEventModel?> _createGroupEventFromDraft(
@@ -1135,6 +1325,11 @@ class _ConfirmScreenState extends State<ConfirmScreen>
       return;
     }
 
+    await _maybePromptLeaderAutoShareIfNeeded(userId);
+    if (!mounted) {
+      return;
+    }
+
     await _ensureLocationCoordinatesBeforeSave();
     if (!mounted) {
       return;
@@ -1230,6 +1425,12 @@ class _ConfirmScreenState extends State<ConfirmScreen>
             );
           }
         }
+        unawaited(
+          _persistLastSharedGroupIds(
+            userId,
+            targetGroups.map((group) => group.id).toSet(),
+          ),
+        );
       }
 
       _PostSaveFollowUpResult? postSaveResult;

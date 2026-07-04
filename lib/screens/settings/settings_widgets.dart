@@ -164,6 +164,171 @@ class _AccountSection extends StatelessWidget {
   }
 }
 
+String _groupAutoSharePrefKey(String userId, String groupId) =>
+    'planflow:group_auto_share:v1:$userId:$groupId';
+
+/// 내가 리더로 있는 그룹에만 표시되는 "일정 등록 시 그룹에 자동 공유" 토글 목록.
+/// [ConfirmScreen]/[EventEditScreen]의 리더 공유 확인 다이얼로그와 같은
+/// SharedPreferences 키(_groupAutoSharePrefKey)를 그대로 읽고 쓴다.
+class _LeaderGroupShareSection extends StatefulWidget {
+  const _LeaderGroupShareSection({
+    GroupContextProvider? provider,
+    SharedPreferences? preferences,
+    String? currentUserIdOverride,
+  })  : _provider = provider,
+        _preferences = preferences,
+        _currentUserIdOverride = currentUserIdOverride;
+
+  final GroupContextProvider? _provider;
+  final SharedPreferences? _preferences;
+  final String? _currentUserIdOverride;
+
+  @override
+  State<_LeaderGroupShareSection> createState() =>
+      _LeaderGroupShareSectionState();
+}
+
+class _LeaderGroupShareSectionState extends State<_LeaderGroupShareSection> {
+  late final GroupContextProvider _provider;
+  late final bool _ownsProvider;
+  final Map<String, bool> _decidedValues = <String, bool>{};
+  final Set<String> _decidedGroupIds = <String>{};
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsProvider = widget._provider == null;
+    _provider = widget._provider ?? GroupContextProvider();
+    unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    if (_ownsProvider) {
+      _provider.dispose();
+    }
+    super.dispose();
+  }
+
+  String? get _userId => widget._currentUserIdOverride ?? authProvider.userId;
+
+  Future<void> _load() async {
+    final userId = _userId?.trim();
+    if (userId == null || userId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _loaded = true;
+        });
+      }
+      return;
+    }
+
+    await _provider.load(userId);
+    if (!mounted) {
+      return;
+    }
+
+    final leaderGroups = _provider.leaderGroups;
+    if (leaderGroups.isEmpty) {
+      setState(() {
+        _loaded = true;
+      });
+      return;
+    }
+
+    final preferences =
+        widget._preferences ?? await SharedPreferences.getInstance();
+    final values = <String, bool>{};
+    final decided = <String>{};
+    for (final group in leaderGroups) {
+      final key = _groupAutoSharePrefKey(userId, group.id);
+      values[group.id] = preferences.getBool(key) ?? false;
+      if (preferences.containsKey(key)) {
+        decided.add(group.id);
+      }
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _decidedValues
+        ..clear()
+        ..addAll(values);
+      _decidedGroupIds
+        ..clear()
+        ..addAll(decided);
+      _loaded = true;
+    });
+  }
+
+  Future<void> _toggle(String groupId, bool value) async {
+    final userId = _userId?.trim();
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    final preferences =
+        widget._preferences ?? await SharedPreferences.getInstance();
+    await preferences.setBool(
+      _groupAutoSharePrefKey(userId, groupId),
+      value,
+    );
+    if (mounted) {
+      setState(() {
+        _decidedValues[groupId] = value;
+        _decidedGroupIds.add(groupId);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) {
+      return const SizedBox.shrink();
+    }
+    final leaderGroups = _provider.leaderGroups;
+    if (leaderGroups.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: '내가 리더로 있는 그룹에 일정공유',
+          subtitle: '새 일정을 등록할 때 아래 그룹에 자동으로 공유할지 정합니다.',
+          child: Column(
+            children: [
+              for (var i = 0; i < leaderGroups.length; i += 1) ...[
+                SwitchListTile(
+                  key: ValueKey(
+                    'settings-leader-group-share-toggle-${leaderGroups[i].id}',
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(leaderGroups[i].name),
+                  subtitle: Text(_subtitleFor(leaderGroups[i].id)),
+                  value: _decidedValues[leaderGroups[i].id] ?? false,
+                  onChanged: (value) => _toggle(leaderGroups[i].id, value),
+                ),
+                if (i != leaderGroups.length - 1) const Divider(height: 1),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _subtitleFor(String groupId) {
+    if (!_decidedGroupIds.contains(groupId)) {
+      return '아직 정하지 않았어요. 리더로 일정을 등록할 때 물어봐요.';
+    }
+    return (_decidedValues[groupId] ?? false)
+        ? '새 일정을 이 그룹에도 자동 공유해요.'
+        : '새 일정을 이 그룹에 공유하지 않아요.';
+  }
+}
+
 @visibleForTesting
 bool shouldShowNaverAccountRecheck({
   required bool signedIn,

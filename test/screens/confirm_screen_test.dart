@@ -835,6 +835,217 @@ void main() {
 
     expect(repository.createdEvents, hasLength(1));
   });
+
+  testWidgets(
+      'ConfirmScreen asks a group leader to share before saving and persists the choice with 다시 보지 않기',
+      (tester) async {
+    final contextProvider = GroupContextProvider(
+      repository: _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'user-1',
+            name: '우리 팀',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final repository = _FakeEventRepository();
+    final groupEventRepository = _FakeGroupEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          groupContextProvider: contextProvider,
+          groupEventRepository: groupEventRepository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('그룹에 일정을 공유할까요?'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('leader-share-dialog-dont-ask-again')),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('leader-share-accept-button')));
+    await tester.pumpAndSettle();
+
+    for (var i = 0;
+        i < 30 &&
+            (repository.createdEvents.isEmpty ||
+                groupEventRepository.createdEvents.isEmpty);
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(groupEventRepository.createdEvents, hasLength(1));
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(
+      preferences.getBool('planflow:group_auto_share:v1:user-1:group-1'),
+      isTrue,
+    );
+  });
+
+  testWidgets(
+      'ConfirmScreen does not ask again once the leader has already decided',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'planflow:group_auto_share:v1:user-1:group-1': true,
+    });
+    final contextProvider = GroupContextProvider(
+      repository: _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'user-1',
+            name: '우리 팀',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+        },
+      ),
+    );
+    final repository = _FakeEventRepository();
+    final groupEventRepository = _FakeGroupEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(),
+          backend: _FakeConfirmBackend(),
+          eventRepository: repository,
+          groupContextProvider: contextProvider,
+          groupEventRepository: groupEventRepository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('그룹에 일정을 공유할까요?'), findsNothing);
+
+    for (var i = 0;
+        i < 30 &&
+            (repository.createdEvents.isEmpty ||
+                groupEventRepository.createdEvents.isEmpty);
+        i += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(repository.createdEvents, hasLength(1));
+    expect(groupEventRepository.createdEvents, hasLength(1));
+  });
+
+  testWidgets(
+      'ConfirmScreen defaults the group picker to the most recently shared groups',
+      (tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'planflow:group_last_shared_ids:v1:user-1': <String>['group-2'],
+    });
+    final contextProvider = GroupContextProvider(
+      repository: _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'user-1',
+            name: '우리 팀',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+          GroupModel(
+            id: 'group-2',
+            createdBy: 'leader-2',
+            name: '동아리',
+            createdAt: DateTime.utc(2026, 6, 12),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'leader',
+            ),
+          ],
+          'group-2': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-2',
+              groupId: 'group-2',
+              userId: 'user-1',
+              role: 'member',
+            ),
+          ],
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(),
+          backend: _FakeConfirmBackend(),
+          eventRepository: _FakeEventRepository(),
+          groupContextProvider: contextProvider,
+          groupEventRepository: _FakeGroupEventRepository(),
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // provider.selectedGroup 기본값(리더 그룹인 group-1)이 아니라, 마지막으로
+    // 공유했던 group-2가 저장 범위 카드에 반영돼야 한다.
+    expect(find.text('개인 + 동아리'), findsOneWidget);
+    expect(find.text('개인 + 우리 팀'), findsNothing);
+  });
 }
 
 Widget _testApp(Widget child) {

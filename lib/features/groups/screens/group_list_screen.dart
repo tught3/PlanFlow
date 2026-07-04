@@ -265,22 +265,20 @@ class _GroupListScreenState extends State<GroupListScreen> {
                                   ),
                         ),
                       ),
-                      if (displayName.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            '($displayName)',
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: PlanFlowColors.textSecondary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          displayName.isEmpty ? '(이름없음)' : '($displayName)',
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                                color: PlanFlowColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),

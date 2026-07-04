@@ -9,6 +9,10 @@ import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/data/models/user_settings_model.dart';
 import 'package:planflow/data/repositories/settings_repository.dart';
+import 'package:planflow/features/groups/models/group_member_model.dart';
+import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/providers/group_context_provider.dart';
+import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/providers/auth_provider.dart';
 import 'package:planflow/screens/settings/settings_screen.dart';
 import 'package:planflow/services/auth_service.dart';
@@ -105,6 +109,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
             settingsRepository: settingsRepository,
             briefingSchedulerService: _FakeBriefingSchedulerService(),
             calendarSyncService: _FakeCalendarSyncService(
@@ -182,6 +187,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
             settingsRepository: settingsRepository,
             briefingSchedulerService: _FakeBriefingSchedulerService(),
             calendarSyncService: _FakeCalendarSyncService(
@@ -230,6 +236,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
             settingsRepository: settingsRepository,
             briefingSchedulerService: _FakeBriefingSchedulerService(),
             calendarSyncService: _FakeCalendarSyncService(
@@ -279,6 +286,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -342,6 +350,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -398,6 +407,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
             settingsRepository: settingsRepository,
             briefingSchedulerService: scheduler,
             calendarSyncService: _FakeCalendarSyncService(
@@ -451,6 +461,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: settingsRepository,
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -511,6 +522,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: settingsRepository,
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -608,6 +620,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: settingsRepository,
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -658,6 +671,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: calendarSyncService,
@@ -699,6 +713,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
             settingsRepository: _FakeSettingsRepository(),
             briefingSchedulerService: _FakeBriefingSchedulerService(),
             calendarSyncService: calendarSyncService,
@@ -745,6 +760,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: calendarSyncService,
@@ -801,6 +817,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -854,6 +871,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
             settingsRepository: _FakeSettingsRepository(),
             briefingSchedulerService: _FakeBriefingSchedulerService(),
             calendarSyncService: calendarSyncService,
@@ -890,6 +908,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
             settingsRepository: _FakeSettingsRepository(),
             briefingSchedulerService: _FakeBriefingSchedulerService(),
             calendarSyncService: _FakeCalendarSyncService(
@@ -946,6 +965,7 @@ void main() {
         GoRoute(
           path: '/',
           builder: (context, state) => SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
             settingsRepository: _FakeSettingsRepository(),
             briefingSchedulerService: _FakeBriefingSchedulerService(),
             calendarSyncService: _FakeCalendarSyncService(
@@ -997,6 +1017,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -1046,6 +1067,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
             settingsRepository: _FakeSettingsRepository(),
             briefingSchedulerService: _FakeBriefingSchedulerService(),
             calendarSyncService: _FakeCalendarSyncService(
@@ -1097,6 +1119,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -1130,6 +1153,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
           settingsRepository: _FakeSettingsRepository(),
           briefingSchedulerService: _FakeBriefingSchedulerService(),
           calendarSyncService: _FakeCalendarSyncService(
@@ -1211,6 +1235,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
+            groupContextProvider: _fakeEmptyGroupContextProvider(),
             settingsRepository: _FakeSettingsRepository(),
             briefingSchedulerService: _FakeBriefingSchedulerService(),
             calendarSyncService: _FakeCalendarSyncService(
@@ -1246,6 +1271,150 @@ void main() {
       expect(find.text('백업된 항목이 없습니다. 먼저 백업을 만들어 주세요.'), findsNothing);
     },
   );
+
+  testWidgets(
+    'SettingsScreen shows a share toggle for each group the user leads and persists the choice',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      AppEnv.markSupabaseInitialized();
+
+      const leaderGroup = GroupModel(
+        id: 'group-1',
+        name: '우리팀',
+        createdBy: 'user-1',
+      );
+      const memberGroup = GroupModel(
+        id: 'group-2',
+        name: '동아리',
+        createdBy: 'someone-else',
+      );
+      final groupContextProvider = GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: const <GroupModel>[leaderGroup, memberGroup],
+          membersByGroupId: const <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-1',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'leader',
+              ),
+            ],
+            'group-2': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-2',
+                groupId: 'group-2',
+                userId: 'user-1',
+                role: 'member',
+              ),
+            ],
+          },
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            groupContextProvider: groupContextProvider,
+            settingsRepository: _FakeSettingsRepository(),
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+              ),
+            ),
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('내가 리더로 있는 그룹에 일정공유'), findsOneWidget);
+      expect(find.text('우리팀'), findsOneWidget);
+      expect(find.text('동아리'), findsNothing);
+
+      final toggle = find.byKey(
+        const ValueKey('settings-leader-group-share-toggle-group-1'),
+      );
+      await _scrollUntilHitTestable(tester, toggle);
+      expect(find.text('아직 정하지 않았어요. 리더로 일정을 등록할 때 물어봐요.'), findsOneWidget);
+
+      await tester.tap(toggle.hitTestable().first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('새 일정을 이 그룹에도 자동 공유해요.'), findsOneWidget);
+
+      final preferences = await SharedPreferences.getInstance();
+      expect(
+        preferences.getBool('planflow:group_auto_share:v1:user-1:group-1'),
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets(
+    'SettingsScreen hides the leader group share section when the user leads no group',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      AppEnv.markSupabaseInitialized();
+
+      const memberGroup = GroupModel(
+        id: 'group-2',
+        name: '동아리',
+        createdBy: 'someone-else',
+      );
+      final groupContextProvider = GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: const <GroupModel>[memberGroup],
+          membersByGroupId: const <String, List<GroupMemberModel>>{
+            'group-2': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-2',
+                groupId: 'group-2',
+                userId: 'user-1',
+                role: 'member',
+              ),
+            ],
+          },
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            groupContextProvider: groupContextProvider,
+            settingsRepository: _FakeSettingsRepository(),
+            briefingSchedulerService: _FakeBriefingSchedulerService(),
+            calendarSyncService: _FakeCalendarSyncService(
+              summary: CalendarSyncSummary(
+                google: CalendarIntegrationResult.ready(
+                  CalendarProvider.google,
+                ),
+                naver: CalendarIntegrationResult.ready(CalendarProvider.naver),
+              ),
+            ),
+            notificationService: _FakeNotificationService(),
+            naverCalDavService: _FakeNaverCalDavService(),
+            userId: 'user-1',
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      expect(find.text('내가 리더로 있는 그룹에 일정공유'), findsNothing);
+    },
+  );
 }
 
 Future<void> _scrollUntilHitTestable(
@@ -1262,6 +1431,59 @@ Future<void> _scrollUntilHitTestable(
   }
   expect(finder.hitTestable(), findsWidgets);
 }
+
+/// 소속 그룹이 없는 상태를 흉내내는 최소 fake. SettingsScreen에 주입해
+/// _LeaderGroupShareSection이 실제 Supabase 네트워크를 호출하지 않게 한다.
+class _FakeGroupRepository extends GroupRepository {
+  _FakeGroupRepository({
+    this.groups = const <GroupModel>[],
+    this.membersByGroupId = const <String, List<GroupMemberModel>>{},
+  });
+
+  final List<GroupModel> groups;
+  final Map<String, List<GroupMemberModel>> membersByGroupId;
+
+  @override
+  Future<List<GroupModel>> listGroups() async => groups;
+
+  @override
+  Future<GroupModel?> fetchGroup(String groupId) async {
+    for (final group in groups) {
+      if (group.id == groupId) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<GroupModel> createGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupModel> updateGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<GroupMemberModel>> listMembers(String groupId) async {
+    return membersByGroupId[groupId] ?? const <GroupMemberModel>[];
+  }
+
+  @override
+  Future<GroupMemberModel> addMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupMemberModel> updateMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+}
+
+GroupContextProvider _fakeEmptyGroupContextProvider() =>
+    GroupContextProvider(repository: _FakeGroupRepository());
 
 class _FakeSettingsRepository extends SettingsRepository {
   _FakeSettingsRepository({this.fetched});

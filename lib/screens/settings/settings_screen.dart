@@ -21,6 +21,7 @@ import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/calendar_connection_repository.dart';
 import '../../data/repositories/feedback_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../features/groups/providers/group_context_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../core/analytics_service.dart';
@@ -62,6 +63,7 @@ class SettingsScreen extends StatefulWidget {
     NaverCalDavService? naverCalDavService,
     String? userId,
     SettingsInitialAction? initialAction,
+    GroupContextProvider? groupContextProvider,
   })  : _settingsRepository = settingsRepository,
         _briefingSchedulerService = briefingSchedulerService,
         _calendarSyncService = calendarSyncService,
@@ -72,7 +74,8 @@ class SettingsScreen extends StatefulWidget {
         _deviceCalendarService = deviceCalendarService,
         _naverCalDavService = naverCalDavService,
         _userId = userId,
-        _initialAction = initialAction;
+        _initialAction = initialAction,
+        _groupContextProvider = groupContextProvider;
 
   final SettingsRepository? _settingsRepository;
   final BriefingSchedulerService? _briefingSchedulerService;
@@ -85,6 +88,7 @@ class SettingsScreen extends StatefulWidget {
   final NaverCalDavService? _naverCalDavService;
   final String? _userId;
   final SettingsInitialAction? _initialAction;
+  final GroupContextProvider? _groupContextProvider;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -2951,6 +2955,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                   }
                 },
               ),
+              if (AppEnv.isSupabaseReady)
+                _LeaderGroupShareSection(
+                  provider: widget._groupContextProvider,
+                  currentUserIdOverride: widget._userId,
+                ),
               const SizedBox(height: 16),
               _SectionCard(
                 title: '브리핑 시간',

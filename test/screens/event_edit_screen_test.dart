@@ -470,6 +470,67 @@ void main() {
       expect(scopeCard.selected, ScheduleSaveTarget.personalOnly);
     });
 
+    testWidgets(
+        'defaults the group picker to the most recently shared groups',
+        (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'planflow:group_last_shared_ids:v1:user-1': <String>['group-2'],
+      });
+
+      final provider = GroupContextProvider(
+        repository: _FakeGroupRepository(
+          groups: <GroupModel>[
+            GroupModel(
+              id: 'group-1',
+              createdBy: 'user-1',
+              name: '우리 팀',
+              createdAt: DateTime.utc(2026, 6, 11),
+            ),
+            GroupModel(
+              id: 'group-2',
+              createdBy: 'leader-2',
+              name: '동아리',
+              createdAt: DateTime.utc(2026, 6, 12),
+            ),
+          ],
+          membersByGroupId: <String, List<GroupMemberModel>>{
+            'group-1': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-1',
+                groupId: 'group-1',
+                userId: 'user-1',
+                role: 'leader',
+              ),
+            ],
+            'group-2': <GroupMemberModel>[
+              GroupMemberModel(
+                id: 'member-2',
+                groupId: 'group-2',
+                userId: 'user-1',
+                role: 'member',
+              ),
+            ],
+          },
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EventEditScreen(
+            initialDate: DateTime(2026, 6, 15),
+            groupContextProvider: provider,
+            groupEventRepository: _FakeGroupEventRepository(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // provider.selectedGroup 기본값(리더 그룹인 group-1)이 아니라, 마지막으로
+      // 공유했던 group-2가 저장 범위 카드에 반영돼야 한다.
+      expect(find.text('개인 + 동아리'), findsOneWidget);
+      expect(find.text('개인 + 우리 팀'), findsNothing);
+    });
+
     // 참고: "그룹 일정도 같이 수정할까요?" 다이얼로그(_chooseLinkedGroupEditScope)는
     // _handleSave() 내부에서 AppEnv.isSupabaseReady && 로그인 사용자 존재 조건을
     // 통과해야 도달한다. 이 프로젝트의 다른 위젯 테스트들도 실제 Supabase 로그인
