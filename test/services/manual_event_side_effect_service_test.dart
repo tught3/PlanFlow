@@ -430,6 +430,62 @@ void main() {
       );
     });
 
+    // [PREVENT] event_preparation_service.dart와 동일한 목적지 쿼리 캡 회귀
+    // 테스트(중복 구현 _buildDestinationSearchQueries/_resolveDestinationForEvent
+    // 쪽). 이벤트 1건의 좌표 미해결 검색이 tmap POI 레이트리밋(60/60s)을 혼자
+    // 잡아먹는 폭주를 막기 위해 단독 쿼리(location/title/memo) 3개까지만
+    // 시도해야 한다(2026-07-04 실측: window_count=60 폭주 신고).
+    test(
+        'syncAfterSave caps destination search queries when all variants '
+        'are unresolvable (rate-limit storm prevention)', () async {
+      final gateway = _FakeManualEventGateway();
+      final notifications = _FakeNotificationService();
+      final lookup = _FakeLocationLookupService(
+        result: const LocationLookupResult(
+          name: '',
+          address: '',
+          latitude: 0,
+          longitude: 0,
+        ),
+        alwaysEmpty: true,
+      );
+      final service = ManualEventSideEffectService(
+        gateway: gateway,
+        notificationService: notifications,
+        eventRepository: _FakeEventRepository(),
+        departureAlarmService: _FakeDepartureAlarmService(),
+        travelTimeBufferService: _FakeTravelTimeBufferService(routeMinutes: 30),
+        locationLookupService: lookup,
+        currentLocationProvider: () async =>
+            const GeoPoint(latitude: 37.5, longitude: 127),
+        now: () => DateTime(2026, 5, 8, 6),
+      );
+      final event = EventModel(
+        id: 'unresolvable-event',
+        userId: 'user-1',
+        title: 'Totally Unrelated Title Text',
+        location: 'Totally Unrelated Location Text',
+        memo: 'Totally Unrelated Memo Text',
+        startAt: DateTime(2026, 5, 8, 10),
+        // location/title/memo가 전부 달라 _buildDestinationSearchQueries가
+        // 6개(단독 3 + 조합 3)의 서로 다른 쿼리를 만들어낸다.
+      );
+
+      await service.syncAfterSave(
+        event: event,
+        userId: 'user-1',
+        travelMode: 'car',
+      );
+
+      expect(
+        lookup.searchQueries.length,
+        lessThanOrEqualTo(3),
+        reason: '목적지 쿼리는 최대 3개(단독 location/title/memo)까지만 시도해야 한다. '
+            '조합형 쿼리 3개까지 전부 시도하면 이벤트 1건만으로 tmap POI가 '
+            '최대 36콜까지 치솟아 60/60s 레이트리밋을 혼자 소진한다.',
+      );
+    });
+
     test(
         'resyncExternalPreparationForDay uses destination coordinates when current location is unavailable',
         () async {
@@ -1207,9 +1263,10 @@ class _FakeTravelTimeBufferService extends TravelTimeBufferService {
 }
 
 class _FakeLocationLookupService extends LocationLookupService {
-  _FakeLocationLookupService({required this.result});
+  _FakeLocationLookupService({required this.result, this.alwaysEmpty = false});
 
   final LocationLookupResult result;
+  final bool alwaysEmpty;
   final searchQueries = <String>[];
 
   @override
@@ -1221,7 +1278,9 @@ class _FakeLocationLookupService extends LocationLookupService {
     searchQueries.add(query);
     return LocationLookupSearchResult(
       originalQuery: query,
-      results: <LocationLookupResult>[result],
+      results: alwaysEmpty
+          ? const <LocationLookupResult>[]
+          : <LocationLookupResult>[result],
       searchedQueries: <String>[query],
       fallbackQueries: const <String>[],
     );

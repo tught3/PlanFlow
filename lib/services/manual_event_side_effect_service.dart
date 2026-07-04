@@ -140,6 +140,12 @@ class ManualEventSideEffectService {
 
   static const Duration defaultReminderOffset = Duration(minutes: 60);
   static const Duration criticalAlarmOffset = Duration(minutes: 60);
+
+  /// 목적지 후보 쿼리(_buildDestinationSearchQueries) 중 실제로 시도할 최대 개수.
+  /// event_preparation_service.dart의 동일 상수와 같은 이유 — 이벤트 1건의
+  /// 좌표 미해결 검색이 tmap POI 레이트리밋(60/60s)을 혼자 잡아먹는 폭주를
+  /// 막기 위해 location/title/memo 단독 쿼리 3개만 시도한다(2026-07-04 실측).
+  static const int _maxDestinationQueries = 3;
   static final Map<String, Future<bool>> _externalPreparationResyncs =
       <String, Future<bool>>{};
 
@@ -897,7 +903,8 @@ class ManualEventSideEffectService {
       return GeoPoint(latitude: destinationLat, longitude: destinationLng);
     }
 
-    for (final query in _buildDestinationSearchQueries(event)) {
+    for (final query
+        in _buildDestinationSearchQueries(event).take(_maxDestinationQueries)) {
       try {
         final searchResult =
             await _locationLookup.searchWithFallback(query, origin: origin);

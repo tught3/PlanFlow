@@ -10,6 +10,15 @@ import 'location_lookup_service.dart';
 import 'travel_time_buffer_service.dart';
 
 class EventPreparationService {
+  /// 목적지 후보 쿼리(_buildDestinationSearchQueries) 중 실제로 시도할 최대 개수.
+  /// 쿼리 하나가 미해결이면 LocationLookupService 내부 fallback으로 tmap POI를
+  /// 최대 6콜까지 쓴다(_maxFallbackQueries=5, 1+5). 6개 쿼리를 전부 시도하면
+  /// 이벤트 1건 저장만으로 최대 36콜까지 치솟아 60/60s 레이트리밋을 혼자
+  /// 절반 이상 잡아먹는다(실측: window_count=60 폭주 신고, 2026-07-04).
+  /// location/title/memo 단독 쿼리(성공 확률 높음) 3개만 시도하고, 조합형
+  /// 쿼리 3개(성공 확률 낮음)는 시도하지 않는다 — 최대 18콜로 절반 이하로 캡.
+  static const int _maxDestinationQueries = 3;
+
   const EventPreparationService({
     EventRepository? eventRepository,
     LocationLookupService? locationLookupService,
@@ -109,7 +118,8 @@ class EventPreparationService {
 
     final origin = await AppPermissionService()
         .getCurrentLocationWithPermission(requestIfMissing: false);
-    for (final query in _buildDestinationSearchQueries(event)) {
+    for (final query
+        in _buildDestinationSearchQueries(event).take(_maxDestinationQueries)) {
       final candidates = await _locations.search(query, origin: origin);
       if (candidates.isEmpty) {
         continue;
