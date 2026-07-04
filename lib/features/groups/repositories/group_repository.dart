@@ -37,6 +37,12 @@ abstract class GroupRepository {
     throw UnimplementedError();
   }
 
+  /// 호출자 본인이 그룹을 나간다(멤버 스스로 탈퇴). 리더 권한이 필요 없으며
+  /// 마지막 리더는 DB 함수(leave_group)에서 예외로 차단된다.
+  Future<GroupMemberModel> leaveGroup(String groupId) async {
+    throw UnimplementedError();
+  }
+
   Future<void> deleteGroup(String groupId) async {
     throw UnimplementedError();
   }
@@ -54,10 +60,12 @@ class SupabaseGroupRepository extends GroupRepository {
       String groupId,
       String userId,
     )? removeGroupMemberRpc,
+    Future<Map<String, dynamic>> Function(String groupId)? leaveGroupRpc,
   })  : _client = client ?? Supabase.instance.client,
         _currentUserIdProvider = currentUserIdProvider,
         _ensureLeaderOfGroupOverride = ensureLeaderOfGroup,
-        _removeGroupMemberRpc = removeGroupMemberRpc;
+        _removeGroupMemberRpc = removeGroupMemberRpc,
+        _leaveGroupRpc = leaveGroupRpc;
 
   final SupabaseClient _client;
   final String? Function()? _currentUserIdProvider;
@@ -67,6 +75,7 @@ class SupabaseGroupRepository extends GroupRepository {
     String groupId,
     String userId,
   )? _removeGroupMemberRpc;
+  final Future<Map<String, dynamic>> Function(String groupId)? _leaveGroupRpc;
 
   @override
   Future<List<GroupModel>> listGroups() async {
@@ -184,6 +193,15 @@ class SupabaseGroupRepository extends GroupRepository {
     return GroupMemberModel.fromJson(response);
   }
 
+  @override
+  Future<GroupMemberModel> leaveGroup(String groupId) async {
+    // 리더 검증 없음: 어떤 멤버든 스스로 나갈 수 있다. 마지막 리더 차단은
+    // DB 함수(leave_group)가 담당한다.
+    _requireCurrentUserId();
+    final response = await (_leaveGroupRpc ?? _leaveGroupWithRpc)(groupId);
+    return GroupMemberModel.fromJson(response);
+  }
+
   String _requireCurrentUserId() {
     final currentUserId =
         _currentUserIdProvider?.call() ?? _client.auth.currentUser?.id;
@@ -201,6 +219,16 @@ class SupabaseGroupRepository extends GroupRepository {
         .rpc('remove_group_member', params: <String, dynamic>{
           'group_id_input': groupId,
           'member_user_id_input': userId,
+        })
+        .select()
+        .single();
+    return _rowAsJson(response);
+  }
+
+  Future<Map<String, dynamic>> _leaveGroupWithRpc(String groupId) async {
+    final response = await _client
+        .rpc('leave_group', params: <String, dynamic>{
+          'group_id_input': groupId,
         })
         .select()
         .single();

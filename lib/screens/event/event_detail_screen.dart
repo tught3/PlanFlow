@@ -15,7 +15,10 @@ import '../../data/models/pre_action_model.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/settings_repository.dart';
+import '../../features/groups/models/group_event_model.dart';
 import '../../features/groups/repositories/group_event_repository.dart';
+import '../../features/groups/repositories/group_repository.dart';
+import '../../features/groups/widgets/group_multi_select_sheet.dart';
 import '../../services/app_feedback_service.dart';
 import '../../services/background_task_service.dart';
 import '../../services/event_refresh_bus.dart';
@@ -33,6 +36,7 @@ class EventDetailScreen extends StatefulWidget {
     this.eventId,
     this.eventRepository,
     this.groupEventRepository,
+    this.groupRepository,
     this.showDeparturePrompt = false,
     ManualEventSideEffectService? sideEffectService,
     HomeWidgetService? homeWidgetService,
@@ -50,6 +54,7 @@ class EventDetailScreen extends StatefulWidget {
   final String? eventId;
   final EventRepository? eventRepository;
   final GroupEventRepository? groupEventRepository;
+  final GroupRepository? groupRepository;
   final bool showDeparturePrompt;
   final ManualEventSideEffectService sideEffectService;
   final HomeWidgetService homeWidgetService;
@@ -89,6 +94,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   GroupEventRepository get _groupEventRepository =>
       _groupEventRepositoryCache ??=
           widget.groupEventRepository ?? GroupEventRepository.supabase();
+
+  GroupRepository? _groupRepositoryCache;
+  GroupRepository get _groupRepository => _groupRepositoryCache ??=
+      widget.groupRepository ?? GroupRepository.supabase();
 
   void _handleBackNavigation() {
     if (context.canPop()) {
@@ -284,17 +293,31 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       return;
     }
 
-    final groupEventId = event.groupEventId?.trim();
-    final hasLinkedGroupEvent = groupEventId != null && groupEventId.isNotEmpty;
-
-    var cancelGroupEventToo = false;
-
-    if (hasLinkedGroupEvent) {
-      final scope = await _chooseLinkedGroupDeleteScope(event);
-      if (scope == null || !mounted) {
+    // 이 개인일정에 연동된(공유된) 그룹일정 전체를 불러온다(다중 그룹 대응).
+    var linkedGroupEvents = const <GroupEventModel>[];
+    if (AppEnv.isSupabaseReady) {
+      try {
+        linkedGroupEvents = await _groupEventRepository
+            .getGroupEventsByPersonalEventId(event.id);
+      } catch (error, stackTrace) {
+        debugPrint('EventDetailScreen linked group events load failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+      if (!mounted) {
         return;
       }
-      cancelGroupEventToo = scope == _LinkedGroupDeleteScope.personalAndGroup;
+    }
+
+    // 취소할 그룹일정 id 집합. null이면 사용자가 삭제를 취소한 것.
+    Set<String>? groupEventIdsToCancel;
+
+    if (linkedGroupEvents.isNotEmpty) {
+      final result =
+          await _chooseLinkedGroupsToCancel(event, linkedGroupEvents);
+      if (result == null || !mounted) {
+        return;
+      }
+      groupEventIdsToCancel = result;
     } else {
       final shouldDelete = await showDialog<bool>(
         context: context,
@@ -334,15 +357,25 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     try {
       if (AppEnv.isSupabaseReady) {
-        if (cancelGroupEventToo && groupEventId != null) {
-          try {
-            await _groupEventRepository.cancelGroupEvent(groupEventId);
-          } catch (error, stackTrace) {
-            debugPrint(
-                'EventDetailScreen linked group event cancel failed: $error');
-            debugPrintStack(stackTrace: stackTrace);
+        if (groupEventIdsToCancel != null &&
+            groupEventIdsToCancel.isNotEmpty) {
+          var anyCancelFailed = false;
+          for (final groupEvent in linkedGroupEvents) {
+            if (!groupEventIdsToCancel.contains(groupEvent.id)) {
+              continue;
+            }
+            try {
+              await _groupEventRepository.cancelGroupEvent(groupEvent.id);
+            } catch (error, stackTrace) {
+              anyCancelFailed = true;
+              debugPrint(
+                  'EventDetailScreen linked group event cancel failed: $error');
+              debugPrintStack(stackTrace: stackTrace);
+            }
+          }
+          if (anyCancelFailed) {
             AppFeedbackService.showSnackBar(
-              '개인 일정은 삭제됐지만 그룹 일정 취소에 실패했어요. 그룹 일정에서 직접 취소해 주세요.',
+              '개인 일정은 삭제됐지만 일부 그룹 일정 취소에 실패했어요. 그룹 일정에서 직접 취소해 주세요.',
             );
           }
         }
@@ -742,42 +775,51 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     return '${_formatDate(local)} $hour:$minute';
   }
 
-  Future<_LinkedGroupDeleteScope?> _chooseLinkedGroupDeleteScope(
+  /// 연동된 그룹일정 중 함께 취소(삭제)할 그룹을 고르는 체크리스트.
+  /// 기본은 이미 공유된 그룹 전부 선택. 반환=취소할 group_event id 집합
+  /// (빈 집합이면 개인일정만 삭제), null이면 사용자가 삭제 자체를 취소.
+  Future<Set<String>?> _chooseLinkedGroupsToCancel(
     EventModel event,
-  ) {
-    return showDialog<_LinkedGroupDeleteScope>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('그룹 일정도 같이 취소할까요?'),
-        content: Text(
-          '"${event.title}" 일정은 그룹 일정과 연결되어 있어요. 개인 일정만 삭제하거나, 그룹 일정도 함께 취소할 수 있습니다.\n이 작업은 되돌릴 수 없습니다.',
-        ),
-        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-        actions: [
-          PlanFlowActionButtons(
-            buttons: [
-              PlanFlowActionButton(
-                label: '취소',
-                onPressed: () => Navigator.of(ctx).pop(),
-                type: ActionButtonType.secondary,
-              ),
-              PlanFlowActionButton(
-                label: '개인만 삭제',
-                onPressed: () => Navigator.of(ctx)
-                    .pop(_LinkedGroupDeleteScope.personalOnly),
-                type: ActionButtonType.secondary,
-              ),
-              PlanFlowActionButton(
-                label: '그룹 일정도 취소',
-                onPressed: () => Navigator.of(ctx)
-                    .pop(_LinkedGroupDeleteScope.personalAndGroup),
-                type: ActionButtonType.destructive,
-              ),
-            ],
-          ),
-        ],
-      ),
+    List<GroupEventModel> linkedGroupEvents,
+  ) async {
+    final names = await _resolveGroupNames(linkedGroupEvents);
+    if (!mounted) {
+      return null;
+    }
+    return showGroupMultiSelectSheet(
+      context,
+      options: linkedGroupEvents
+          .map((groupEvent) => GroupSelectOption(
+                id: groupEvent.id,
+                name: names[groupEvent.groupId] ?? '그룹',
+              ))
+          .toList(growable: false),
+      initiallySelected:
+          linkedGroupEvents.map((groupEvent) => groupEvent.id).toSet(),
+      title: '"${event.title}" 삭제 — 함께 취소할 그룹',
+      confirmLabel: '삭제',
+      allowEmpty: true,
     );
+  }
+
+  /// 연동 그룹일정들의 group_id → 그룹 이름을 조회한다(중복 id는 1회만).
+  Future<Map<String, String>> _resolveGroupNames(
+    List<GroupEventModel> linkedGroupEvents,
+  ) async {
+    final names = <String, String>{};
+    final distinctGroupIds =
+        linkedGroupEvents.map((event) => event.groupId).toSet();
+    for (final groupId in distinctGroupIds) {
+      try {
+        final group = await _groupRepository.fetchGroup(groupId);
+        if (group != null) {
+          names[groupId] = group.name;
+        }
+      } catch (error) {
+        debugPrint('EventDetailScreen group name resolve failed: $error');
+      }
+    }
+    return names;
   }
 }
 
@@ -1097,4 +1139,3 @@ class _SupplyChecklist extends StatelessWidget {
   }
 }
 
-enum _LinkedGroupDeleteScope { personalOnly, personalAndGroup }

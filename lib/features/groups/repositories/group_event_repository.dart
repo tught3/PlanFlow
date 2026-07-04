@@ -16,6 +16,15 @@ abstract class GroupEventRepository {
 
   Future<GroupEventModel> createGroupEvent(GroupEventModel event);
 
+  /// 개인일정 하나에 연동된(공유된) 활성 그룹일정 전체를 반환한다.
+  /// 개인일정 1 ↔ 그룹일정 N(다중 그룹 공유) 연동에서 수정/삭제 전파 대상 조회에 쓴다.
+  /// 기존 fake(extends)들이 깨지지 않도록 기본 구현을 둔다(필요한 곳만 override).
+  Future<List<GroupEventModel>> getGroupEventsByPersonalEventId(
+    String personalEventId,
+  ) async {
+    throw UnimplementedError();
+  }
+
   Future<GroupEventModel> updateGroupEvent(GroupEventModel event);
 
   Future<GroupEventModel> cancelGroupEvent(String eventId);
@@ -76,6 +85,25 @@ class SupabaseGroupEventRepository extends GroupEventRepository {
         .select()
         .single();
     return GroupEventModel.fromJson(_rowAsJson(response));
+  }
+
+  @override
+  Future<List<GroupEventModel>> getGroupEventsByPersonalEventId(
+    String personalEventId,
+  ) async {
+    if (personalEventId.trim().isEmpty) {
+      return const <GroupEventModel>[];
+    }
+    final response = await _client
+        .from('group_events')
+        .select()
+        .eq('personal_event_id', personalEventId)
+        .eq('status', 'active')
+        .order('created_at', ascending: true);
+    return response
+        .map<GroupEventModel>(
+            (row) => GroupEventModel.fromJson(_rowAsJson(row)))
+        .toList(growable: false);
   }
 
   @override

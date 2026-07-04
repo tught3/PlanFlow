@@ -7,6 +7,9 @@ import 'package:planflow/core/env.dart';
 import 'package:planflow/data/models/event_model.dart';
 import 'package:planflow/data/repositories/event_repository.dart';
 import 'package:planflow/features/groups/models/group_event_model.dart';
+import 'package:planflow/features/groups/models/group_member_model.dart';
+import 'package:planflow/features/groups/models/group_model.dart';
+import 'package:planflow/features/groups/repositories/group_repository.dart';
 import 'package:planflow/features/groups/repositories/group_event_repository.dart';
 import 'package:planflow/screens/event/event_detail_screen.dart';
 import 'package:planflow/services/departure_alarm_service.dart';
@@ -119,7 +122,19 @@ void main() {
       groupEventId: 'group-event-3',
     );
     final eventRepository = _FakeEventRepository(event);
-    final groupEventRepository = _FakeGroupEventRepository();
+    final groupEventRepository = _FakeGroupEventRepository()
+      ..linkedGroupEvents = [
+        GroupEventModel(
+          id: 'group-event-3',
+          groupId: 'group-1',
+          title: '그룹 연동 일정',
+          startAt: DateTime.utc(2026, 5, 13, 0),
+          endAt: DateTime.utc(2026, 5, 13, 1),
+          createdBy: 'user-1',
+          personalEventId: 'event-3',
+          status: 'active',
+        ),
+      ];
     final router = GoRouter(
       initialLocation: '${AppRoutes.eventDetail}/${event.id}',
       routes: [
@@ -129,6 +144,7 @@ void main() {
             event: event,
             eventRepository: eventRepository,
             groupEventRepository: groupEventRepository,
+            groupRepository: _FakeGroupRepository(),
           ),
         ),
         GoRoute(
@@ -146,10 +162,12 @@ void main() {
     await tester.tap(find.text('일정 삭제'));
     await tester.pumpAndSettle();
 
-    // 그룹 연동 일정이므로 개인/그룹 선택 다이얼로그가 떠야 한다.
-    expect(find.text('그룹 일정도 같이 취소할까요?'), findsOneWidget);
+    // 연동 그룹일정이 있으므로 "함께 취소할 그룹" 체크리스트 시트가 떠야 한다.
+    expect(find.textContaining('함께 취소할 그룹'), findsOneWidget);
+    expect(find.text('우리 팀'), findsOneWidget);
 
-    await tester.tap(find.text('그룹 일정도 취소'));
+    // 기본 전체 선택 상태로 '삭제' 확인 → 그룹일정도 취소된다.
+    await tester.tap(find.text('삭제'));
     await tester.pumpAndSettle();
 
     expect(groupEventRepository.cancelledEventIds, ['group-event-3']);
@@ -169,7 +187,19 @@ void main() {
       groupEventId: 'group-event-4',
     );
     final eventRepository = _FakeEventRepository(event);
-    final groupEventRepository = _FakeGroupEventRepository();
+    final groupEventRepository = _FakeGroupEventRepository()
+      ..linkedGroupEvents = [
+        GroupEventModel(
+          id: 'group-event-4',
+          groupId: 'group-1',
+          title: '그룹 연동 일정 2',
+          startAt: DateTime.utc(2026, 5, 13, 0),
+          endAt: DateTime.utc(2026, 5, 13, 1),
+          createdBy: 'user-1',
+          personalEventId: 'event-4',
+          status: 'active',
+        ),
+      ];
     final router = GoRouter(
       initialLocation: '${AppRoutes.eventDetail}/${event.id}',
       routes: [
@@ -179,6 +209,7 @@ void main() {
             event: event,
             eventRepository: eventRepository,
             groupEventRepository: groupEventRepository,
+            groupRepository: _FakeGroupRepository(),
           ),
         ),
         GoRoute(
@@ -196,9 +227,12 @@ void main() {
     await tester.tap(find.text('일정 삭제'));
     await tester.pumpAndSettle();
 
-    expect(find.text('그룹 일정도 같이 취소할까요?'), findsOneWidget);
+    expect(find.textContaining('함께 취소할 그룹'), findsOneWidget);
 
-    await tester.tap(find.text('개인만 삭제'));
+    // 그룹 체크를 해제하면 개인일정만 삭제되고 그룹일정은 취소되지 않는다.
+    await tester.tap(find.text('우리 팀'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('삭제'));
     await tester.pumpAndSettle();
 
     expect(groupEventRepository.cancelledEventIds, isEmpty);
@@ -241,6 +275,8 @@ class _FakeEventRepository extends EventRepository {
 
 class _FakeGroupEventRepository extends GroupEventRepository {
   final cancelledEventIds = <String>[];
+  // 개인일정에 연동된 그룹일정들(다중 그룹 공유). 테스트에서 주입한다.
+  List<GroupEventModel> linkedGroupEvents = const [];
 
   GroupEventModel _fakeGroupEvent(String eventId, {String status = 'active'}) {
     return GroupEventModel(
@@ -252,6 +288,15 @@ class _FakeGroupEventRepository extends GroupEventRepository {
       createdBy: 'user-1',
       status: status,
     );
+  }
+
+  @override
+  Future<List<GroupEventModel>> getGroupEventsByPersonalEventId(
+    String personalEventId,
+  ) async {
+    return linkedGroupEvents
+        .where((event) => event.personalEventId == personalEventId)
+        .toList(growable: false);
   }
 
   @override
@@ -288,6 +333,38 @@ class _FakeGroupEventRepository extends GroupEventRepository {
   Future<GroupEventModel> fetchGroupEvent(String eventId) async {
     return _fakeGroupEvent(eventId);
   }
+}
+
+class _FakeGroupRepository extends GroupRepository {
+  @override
+  Future<GroupModel?> fetchGroup(String groupId) async {
+    return GroupModel(
+      id: groupId,
+      createdBy: 'leader-1',
+      name: '우리 팀',
+      createdAt: DateTime.utc(2026, 5, 1),
+    );
+  }
+
+  @override
+  Future<List<GroupModel>> listGroups() async => const [];
+
+  @override
+  Future<GroupModel> createGroup(GroupModel group) => throw UnimplementedError();
+
+  @override
+  Future<GroupModel> updateGroup(GroupModel group) => throw UnimplementedError();
+
+  @override
+  Future<List<GroupMemberModel>> listMembers(String groupId) async => const [];
+
+  @override
+  Future<GroupMemberModel> addMember(GroupMemberModel member) =>
+      throw UnimplementedError();
+
+  @override
+  Future<GroupMemberModel> updateMember(GroupMemberModel member) =>
+      throw UnimplementedError();
 }
 
 class _FakeDepartureAlarmService extends DepartureAlarmService {

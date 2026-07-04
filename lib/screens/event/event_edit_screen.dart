@@ -18,6 +18,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../features/groups/models/group_event_comment_model.dart';
 import '../../features/groups/models/group_event_model.dart';
 import '../../features/groups/models/group_model.dart';
+import '../../features/groups/widgets/group_multi_select_sheet.dart';
 import '../../features/groups/providers/group_context_provider.dart';
 import '../../features/groups/repositories/group_event_comment_repository.dart';
 import '../../features/groups/repositories/group_event_repository.dart';
@@ -119,11 +120,6 @@ class EventEditScreen extends StatefulWidget {
   State<EventEditScreen> createState() => _EventEditScreenState();
 }
 
-enum _LinkedGroupEditScope {
-  personalOnly,
-  personalAndGroup,
-}
-
 class _EventEditScreenState extends State<EventEditScreen> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _titleController;
@@ -135,6 +131,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
   ScheduleSaveTarget _saveTarget = ScheduleSaveTarget.personalOnly;
   // 사용자가 저장 범위를 직접 바꾼 뒤에는 자동 공유 기본값이 덮어쓰지 않도록 표시.
   bool _saveTargetTouchedByUser = false;
+  // 여러 그룹에 소속된 경우 공유할 그룹 id 집합. 기본값=자동선택된 대표 그룹 1개.
+  final Set<String> _selectedGroupIds = <String>{};
 
   // 리더 지시(그룹 이벤트 코멘트) 관련
   List<GroupEventCommentModel> _leaderInstructions = const [];
@@ -585,20 +583,73 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
     await provider.load(userId.trim());
     if (mounted) {
-      setState(() {});
+      setState(() {
+        _ensureDefaultGroupSelection();
+      });
       unawaited(_applyAutoShareDefaultIfNeeded());
     }
   }
 
-  GroupModel? get _selectedGroupForSharing {
-    final group = _groupContextProvider?.selectedGroup;
-    if (group == null || !group.isActive) {
-      return null;
+  /// 소속된 활성 그룹 전체.
+  List<GroupModel> get _allActiveGroups =>
+      _groupContextProvider?.groups
+          .where((group) => group.isActive)
+          .toList(growable: false) ??
+      const <GroupModel>[];
+
+  /// 공유 대상으로 선택된 활성 그룹들.
+  List<GroupModel> get _selectedGroupsForSharing => _allActiveGroups
+      .where((group) => _selectedGroupIds.contains(group.id))
+      .toList(growable: false);
+
+  /// 아직 그룹 선택이 없으면 자동선택된 대표 그룹 1개를 기본 선택한다.
+  void _ensureDefaultGroupSelection() {
+    if (_selectedGroupIds.isNotEmpty) {
+      return;
     }
-    return group;
+    final primary = _groupContextProvider?.selectedGroup;
+    if (primary != null && primary.isActive) {
+      _selectedGroupIds.add(primary.id);
+    }
+  }
+
+  /// 저장범위 카드 표시/자동공유 기본값 계산에 쓸 대표 그룹.
+  GroupModel? get _selectedGroupForSharing {
+    final selected = _selectedGroupsForSharing;
+    if (selected.isNotEmpty) {
+      return selected.first;
+    }
+    final primary = _groupContextProvider?.selectedGroup;
+    if (primary != null && primary.isActive) {
+      return primary;
+    }
+    return null;
   }
 
   bool get _canShareToSelectedGroup => _selectedGroupForSharing != null;
+
+  Future<void> _pickGroupsForSharing() async {
+    final all = _allActiveGroups;
+    if (all.isEmpty) {
+      return;
+    }
+    final result = await showGroupMultiSelectSheet(
+      context,
+      options: all
+          .map((group) => GroupSelectOption(id: group.id, name: group.name))
+          .toList(growable: false),
+      initiallySelected: Set<String>.from(_selectedGroupIds),
+      title: '공유할 그룹 선택',
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _selectedGroupIds
+          ..clear()
+          ..addAll(result);
+        _saveTargetTouchedByUser = true;
+      });
+    }
+  }
 
   bool get _shouldSavePersonalEvent =>
       !_canShareToSelectedGroup ||
@@ -672,12 +723,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
 
   Future<GroupEventModel?> _createGroupEventFromDraft(
     EventModel draft, {
+    required GroupModel group,
     String? personalEventId,
   }) async {
-    final group = _selectedGroupForSharing;
-    if (group == null) {
-      return null;
-    }
     final startAt = draft.startAt;
     if (startAt == null) {
       throw StateError('그룹 일정에는 시작 시간이 필요합니다.');
@@ -726,41 +774,35 @@ class _EventEditScreenState extends State<EventEditScreen> {
     );
   }
 
-  Future<_LinkedGroupEditScope?> _chooseLinkedGroupEditScope() {
-    return showDialog<_LinkedGroupEditScope>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('그룹 일정도 같이 수정할까요?'),
-        content: const Text(
-          '이 일정은 그룹 일정과 연결되어 있어요. 개인 일정만 바꾸거나, 그룹 일정도 같은 내용으로 바꿀 수 있습니다.',
-        ),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-        actions: [
-          SizedBox(
-            width: double.maxFinite,
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(ctx)
-                        .pop(_LinkedGroupEditScope.personalOnly),
-                    child: const Text('개인만 수정'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => Navigator.of(ctx)
-                        .pop(_LinkedGroupEditScope.personalAndGroup),
-                    child: const Text('그룹도 같이 수정'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+  /// 이미 공유된 그룹일정들 중 이번 수정 내용을 반영할 그룹을 고른다.
+  /// 기본은 전체 선택. 반환=선택된 group_event id 집합(빈 집합이면 개인만 수정),
+  /// null이면 사용자가 취소(저장 자체를 중단).
+  Future<Set<String>?> _chooseLinkedGroupsToUpdate(
+    List<GroupEventModel> linkedGroupEvents,
+  ) {
+    return showGroupMultiSelectSheet(
+      context,
+      options: linkedGroupEvents
+          .map((groupEvent) => GroupSelectOption(
+                id: groupEvent.id,
+                name: _groupNameForId(groupEvent.groupId),
+              ))
+          .toList(growable: false),
+      initiallySelected:
+          linkedGroupEvents.map((groupEvent) => groupEvent.id).toSet(),
+      title: '수정 내용을 반영할 그룹',
+      confirmLabel: '수정',
+      allowEmpty: true,
     );
+  }
+
+  String _groupNameForId(String groupId) {
+    for (final group in _allActiveGroups) {
+      if (group.id == groupId) {
+        return group.name;
+      }
+    }
+    return '그룹';
   }
 
   String _groupRecurrenceTypeFor(String? recurrenceRule) {
@@ -917,16 +959,19 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
 
       final previousStartAt = _loadedEvent?.startAt;
-      _LinkedGroupEditScope? linkedGroupEditScope;
-      final linkedGroupEventId = _loadedEvent?.groupEventId?.trim();
-      if (!_isNewEvent &&
-          linkedGroupEventId != null &&
-          linkedGroupEventId.isNotEmpty &&
-          _shouldSavePersonalEvent) {
-        linkedGroupEditScope = await _chooseLinkedGroupEditScope();
-        if (linkedGroupEditScope == null || !mounted) {
+      // 이미 여러 그룹에 공유된 일정이면, 연동된 그룹일정 전체를 불러와
+      // "어느 그룹에 변경을 반영할지" 체크리스트로 물어본다(기본 전체 선택).
+      final existingLinkedGroupEvents = (!_isNewEvent && _loadedEvent != null)
+          ? await _groupEventRepository
+              .getGroupEventsByPersonalEventId(_loadedEvent!.id)
+          : const <GroupEventModel>[];
+      Set<String>? groupEventIdsToUpdate;
+      if (existingLinkedGroupEvents.isNotEmpty && _shouldSavePersonalEvent) {
+        groupEventIdsToUpdate =
+            await _chooseLinkedGroupsToUpdate(existingLinkedGroupEvents);
+        if (groupEventIdsToUpdate == null || !mounted) {
           debugPrint(
-              'EventEditScreen save canceled: linked group edit scope dialog');
+              'EventEditScreen save canceled: linked group edit scope sheet');
           return;
         }
       }
@@ -970,26 +1015,39 @@ class _EventEditScreenState extends State<EventEditScreen> {
         }
       }
 
-      if (_shouldSaveGroupEvent) {
+      if (existingLinkedGroupEvents.isNotEmpty) {
+        // 이미 공유된 일정 수정: 선택된 연동 그룹일정에만 변경을 전파한다.
+        // (신규 그룹 추가는 생성 흐름에서만, 여기선 기존 공유 그룹만 대상)
+        if (savedEvent != null && groupEventIdsToUpdate != null) {
+          for (final groupEvent in existingLinkedGroupEvents) {
+            if (groupEventIdsToUpdate.contains(groupEvent.id)) {
+              await _updateLinkedGroupEventFromDraft(savedEvent, groupEvent.id);
+            }
+          }
+        }
+      } else if (_shouldSaveGroupEvent) {
+        // 아직 공유 안 된 일정을 그룹에 공유: 선택한 그룹마다 그룹일정 생성.
+        final targetGroups = _selectedGroupsForSharing;
         if (savedEvent == null) {
-          await _createGroupEventFromDraft(updatedEvent);
+          for (final group in targetGroups) {
+            await _createGroupEventFromDraft(updatedEvent, group: group);
+          }
         } else {
-          final createdGroupEvent = await _createGroupEventFromDraft(
-            savedEvent,
-            personalEventId: savedEvent.id,
-          );
-          if (createdGroupEvent != null) {
+          String? primaryGroupEventId;
+          for (final group in targetGroups) {
+            final createdGroupEvent = await _createGroupEventFromDraft(
+              savedEvent,
+              group: group,
+              personalEventId: savedEvent.id,
+            );
+            primaryGroupEventId ??= createdGroupEvent?.id;
+          }
+          if (primaryGroupEventId != null) {
             savedEvent = await _repository.updateEvent(
-              savedEvent.copyWith(groupEventId: createdGroupEvent.id),
+              savedEvent.copyWith(groupEventId: primaryGroupEventId),
             );
           }
         }
-      } else if (linkedGroupEditScope ==
-              _LinkedGroupEditScope.personalAndGroup &&
-          savedEvent != null &&
-          linkedGroupEventId != null &&
-          linkedGroupEventId.isNotEmpty) {
-        await _updateLinkedGroupEventFromDraft(savedEvent, linkedGroupEventId);
       }
 
       if (savedEvent != null) {
@@ -1822,8 +1880,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
       return const SizedBox.shrink();
     }
 
+    final selectedGroups = _selectedGroupsForSharing;
+    final summary = selectedGroups.length <= 1
+        ? group.name
+        : '${selectedGroups.first.name} 외 ${selectedGroups.length - 1}곳';
+
     return ScheduleSaveScopeCard(
-      groupName: group.name,
+      groupName: summary,
       selected: _saveTarget,
       onChanged: (target) {
         setState(() {
@@ -1831,6 +1894,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
           _saveTargetTouchedByUser = true;
         });
       },
+      onPickGroups:
+          _allActiveGroups.length > 1 ? _pickGroupsForSharing : null,
+      selectedGroupCount:
+          selectedGroups.isEmpty ? 1 : selectedGroups.length,
+      totalGroupCount: _allActiveGroups.length,
     );
   }
 

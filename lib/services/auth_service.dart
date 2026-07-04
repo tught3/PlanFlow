@@ -257,8 +257,14 @@ class AuthService implements AuthSessionClient {
     required Map<String, String>? queryParams,
     required String purpose,
   }) async {
+    // externalApplication(구글)은 별도 Chrome 태스크를 띄우는데, 리다이렉트로
+    // 앱이 포그라운드로 돌아온 뒤에도 그 Chrome 태스크가 백그라운드에 남아있어
+    // 앱 루트에서 뒤로가기를 누르면 홈 화면 대신 그 방치된 Chrome 화면이
+    // 드러나는 문제가 있었다. Custom Tab(inAppBrowserView)은 앱과 같은
+    // 태스크 안에 머물러 이 문제가 없고, Google의 WebView 로그인 차단 정책도
+    // Custom Tab은 허용 대상이라 카카오/네이버와 동일하게 통일한다.
     final launchMode = switch (appProvider) {
-      PlanFlowOAuthProvider.google => LaunchMode.externalApplication,
+      PlanFlowOAuthProvider.google => LaunchMode.inAppBrowserView,
       PlanFlowOAuthProvider.kakao => LaunchMode.inAppBrowserView,
       PlanFlowOAuthProvider.naver => LaunchMode.inAppBrowserView,
     };

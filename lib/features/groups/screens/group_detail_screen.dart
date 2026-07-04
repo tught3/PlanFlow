@@ -163,12 +163,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
               children: [
                 Row(
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(ctx)
-                            .pop(_ExistingEventShareChoice.later),
-                        child: const Text('나중에'),
-                      ),
+                    // '나중에'는 글자수가 적어 콘텐츠 크기로 왼쪽에 붙이고,
+                    // 남는 공간 전부를 '새로 만드는 일정부터'에 줘 1줄에 줄바꿈 없이 배치.
+                    OutlinedButton(
+                      onPressed: () => Navigator.of(ctx)
+                          .pop(_ExistingEventShareChoice.later),
+                      child: const Text('나중에'),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -383,7 +383,70 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('삭제 실패: $e')),
+        SnackBar(content: Text('삭제 실패: ${_friendlyErrorMessage(e)}')),
+      );
+    }
+  }
+
+  /// PostgrestException(DB 함수 raise exception 등)은 사용자에게 필요한
+  /// message만 보여주고, code/details/hint 같은 내부 정보는 노출하지 않는다.
+  String _friendlyErrorMessage(Object error) {
+    if (error is PostgrestException) {
+      return error.message;
+    }
+    return error.toString();
+  }
+
+  Future<void> _leaveGroup() async {
+    final group = _group;
+    if (group == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('팀 나가기'),
+        content: Text(
+          '"${group.name}" 그룹에서 나가시겠어요? 다시 참여하려면 새 초대가 필요해요.',
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        actions: [
+          SizedBox(
+            width: double.maxFinite,
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('취소'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFB42318),
+                    ),
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('나가기'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _repository.leaveGroup(group.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"${group.name}" 그룹에서 나갔어요.')),
+      );
+      context.pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('나가기 실패: ${_friendlyErrorMessage(e)}')),
       );
     }
   }
@@ -481,21 +544,38 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                   children: [
                     if (group != null) _buildHeaderCard(context, group),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     _buildActionGrid(context),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     _buildAutoShareCard(context),
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    const SizedBox(height: 10),
+                    // 팀 나가기: 모든 멤버에게 노출. 마지막 리더는 DB(leave_group)에서
+                    // 차단되며 그 사유가 스낵바로 안내된다.
+                    // 한 스크롤 안에 그룹삭제까지 보이도록 버튼은 압축(dense) 스타일.
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFB42318),
+                        side: const BorderSide(color: Color(0xFFB42318)),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: _leaveGroup,
+                      icon: const Icon(Icons.logout, size: 20),
+                      label: const Text('팀 나가기'),
+                    ),
                     if (_isLeader) ...[
-                      const SizedBox(height: 28),
-                      const Divider(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
                       OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFFB42318),
                           side: const BorderSide(color: Color(0xFFB42318)),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          visualDensity: VisualDensity.compact,
                         ),
                         onPressed: _deleteGroup,
-                        icon: const Icon(Icons.delete_outline),
+                        icon: const Icon(Icons.delete_outline, size: 20),
                         label: const Text('그룹 삭제'),
                       ),
                     ],
@@ -509,15 +589,15 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     final statusLabel = _statusLabel(group.status);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
                     color: PlanFlowColors.primaryFaint,
                     borderRadius: BorderRadius.circular(10),
@@ -525,10 +605,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   child: Icon(
                     Icons.groups_2_outlined,
                     color: PlanFlowColors.primary,
-                    size: 22,
+                    size: 18,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -557,10 +637,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     tooltip: '팀 이름 변경',
                     onPressed: _editGroupName,
                     icon: const Icon(Icons.edit_outlined),
+                    visualDensity: VisualDensity.compact,
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -604,9 +685,11 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.6,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        // 값을 키울수록 카드가 납작해짐: 4개 버튼 세로길이를 줄여 한 화면에
+        // 팀 나가기/그룹 삭제까지 스크롤 없이 보이게 한다.
+        childAspectRatio: 2.4,
       ),
       itemCount: actions.length,
       itemBuilder: (context, index) {
@@ -623,15 +706,15 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   Widget _buildAutoShareCard(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
                     color: PlanFlowColors.primaryFaint,
                     borderRadius: BorderRadius.circular(10),
@@ -639,10 +722,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                   child: Icon(
                     Icons.publish_outlined,
                     color: PlanFlowColors.primary,
-                    size: 22,
+                    size: 18,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -650,11 +733,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                       Text(
                         '이 그룹에 새 일정 자동 공유',
                         style:
-                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                            Theme.of(context).textTheme.titleSmall?.copyWith(
                                   fontWeight: FontWeight.w700,
                                 ),
                       ),
-                      const SizedBox(height: 4),
                       Text(
                         '켜면 새로 만드는 개인 일정이 기본으로 이 그룹에도 공유돼요.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -664,17 +746,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     ],
                   ),
                 ),
+                Switch(
+                  value: _autoShareEnabled,
+                  onChanged: _toggleAutoShare,
+                ),
               ],
             ),
-            const SizedBox(height: 12),
-            SwitchListTile(
-              value: _autoShareEnabled,
-              onChanged: _toggleAutoShare,
-              contentPadding: EdgeInsets.zero,
-              title: null,
-              subtitle: null,
-            ),
-            const Divider(height: 24),
+            const Divider(height: 16),
             Row(
               children: [
                 Expanded(
@@ -687,7 +765,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                               fontWeight: FontWeight.w700,
                             ),
                       ),
-                      const SizedBox(height: 2),
                       Text(
                         '오늘 이후의 내 개인 일정을 이 그룹에 지금 공유해요.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -701,6 +778,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 OutlinedButton(
                   key: const ValueKey(
                       'group-detail-share-existing-events-button'),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
                   onPressed: _isSharingExistingEvents
                       ? null
                       : _shareExistingEventsManually,
@@ -797,12 +877,12 @@ class _ActionCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 28, color: PlanFlowColors.primary),
-              const SizedBox(height: 8),
+              Icon(icon, size: 22, color: PlanFlowColors.primary),
+              const SizedBox(height: 4),
               Text(
                 label,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(

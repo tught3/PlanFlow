@@ -25,11 +25,20 @@ class ScheduleSaveScopeCard extends StatelessWidget {
     required this.groupName,
     required this.selected,
     required this.onChanged,
+    this.onPickGroups,
+    this.selectedGroupCount = 1,
+    this.totalGroupCount = 1,
   });
 
   final String groupName;
   final ScheduleSaveTarget selected;
   final ValueChanged<ScheduleSaveTarget> onChanged;
+
+  /// 여러 그룹에 소속된 경우 공유할 그룹을 다중 선택하는 시트를 여는 콜백.
+  /// null이거나 소속 그룹이 1개면 선택 버튼을 노출하지 않는다.
+  final VoidCallback? onPickGroups;
+  final int selectedGroupCount;
+  final int totalGroupCount;
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +83,7 @@ class ScheduleSaveScopeCard extends StatelessWidget {
               target: ScheduleSaveTarget.personalAndGroup,
               icon: Icons.compare_arrows_outlined,
               label: '개인 + $groupName',
+              description: '개인 · 그룹 동시 저장',
             ),
             const SizedBox(height: 8),
             _buildOptionRow(
@@ -81,18 +91,41 @@ class ScheduleSaveScopeCard extends StatelessWidget {
               target: ScheduleSaveTarget.groupOnly,
               icon: Icons.groups_outlined,
               label: '$groupName만',
+              description: '그룹에만 저장',
             ),
+            if (_showGroupPicker) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: PlanFlowColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: onPickGroups,
+                  icon: const Icon(Icons.checklist, size: 18),
+                  label: Text('공유할 그룹 선택 ($selectedGroupCount곳)'),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
+  bool get _showGroupPicker =>
+      onPickGroups != null &&
+      totalGroupCount > 1 &&
+      (selected == ScheduleSaveTarget.personalAndGroup ||
+          selected == ScheduleSaveTarget.groupOnly);
+
   Widget _buildOptionRow(
     BuildContext context, {
     required ScheduleSaveTarget target,
     required IconData icon,
     required String label,
+    String? description,
   }) {
     final theme = Theme.of(context);
     final isSelected = selected == target;
@@ -135,14 +168,31 @@ class ScheduleSaveScopeCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  label,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: isSelected
-                        ? PlanFlowColors.primary
-                        : PlanFlowColors.textPrimary,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isSelected
+                            ? PlanFlowColors.primary
+                            : PlanFlowColors.textPrimary,
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                    if (description != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          description,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: PlanFlowColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],

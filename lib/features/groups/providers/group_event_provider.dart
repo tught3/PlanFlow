@@ -169,8 +169,8 @@ class GroupEventProvider extends ChangeNotifier {
   }
 
   Future<GroupEventModel> updateGroupEvent(GroupEventModel event) async {
-    if (!_state.canUpdateEvent) {
-      throw StateError('현재 그룹에서는 일정을 수정할 수 없어요.');
+    if (!_isOwnEvent(event)) {
+      throw StateError('내가 만든 그룹 일정만 수정할 수 있어요.');
     }
     _requireCurrentUserId();
     _validateRecurrenceType(event.recurrenceType);
@@ -200,8 +200,9 @@ class GroupEventProvider extends ChangeNotifier {
   }
 
   Future<GroupEventModel> cancelGroupEvent(String eventId) async {
-    if (!_state.canCancelEvent) {
-      throw StateError('현재 그룹에서는 일정을 취소할 수 없어요.');
+    final target = _findLoadedEvent(eventId);
+    if (target != null && !_isOwnEvent(target)) {
+      throw StateError('내가 만든 그룹 일정만 취소할 수 있어요.');
     }
     _requireCurrentUserId();
     _setState(_state.copyWith(isSubmitting: true, clearError: true));
@@ -227,8 +228,9 @@ class GroupEventProvider extends ChangeNotifier {
   }
 
   Future<GroupEventModel> archiveGroupEvent(String eventId) async {
-    if (!_state.canArchiveEvent) {
-      throw StateError('현재 그룹에서는 일정을 보관할 수 없어요.');
+    final target = _findLoadedEvent(eventId);
+    if (target != null && !_isOwnEvent(target)) {
+      throw StateError('내가 만든 그룹 일정만 보관할 수 있어요.');
     }
     _requireCurrentUserId();
     _setState(_state.copyWith(isSubmitting: true, clearError: true));
@@ -297,16 +299,32 @@ class GroupEventProvider extends ChangeNotifier {
     }
   }
 
+  // 그룹일정 수정/취소/보관은 "만든 작성자 본인"만 가능하다. 리더라도 남이
+  // 공유한 일정은 건드릴 수 없다(리더는 '리더 지시' 댓글로만 관여).
+  bool _isOwnEvent(GroupEventModel event) {
+    final userId = _currentUserId;
+    return userId != null && userId.isNotEmpty && event.createdBy == userId;
+  }
+
+  GroupEventModel? _findLoadedEvent(String eventId) {
+    for (final event in _state.events) {
+      if (event.id == eventId) {
+        return event;
+      }
+    }
+    return null;
+  }
+
   bool canUpdateGroupEvent(GroupEventModel event) {
-    return event.isActive && _state.canUpdateEvent;
+    return event.isActive && _isOwnEvent(event);
   }
 
   bool canCancelGroupEvent(GroupEventModel event) {
-    return event.isActive && _state.canCancelEvent;
+    return event.isActive && _isOwnEvent(event);
   }
 
   bool canArchiveGroupEvent(GroupEventModel event) {
-    return event.isActive && _state.canArchiveEvent;
+    return event.isActive && _isOwnEvent(event);
   }
 
   Future<void> _reloadEvents() async {

@@ -216,6 +216,7 @@ GroupEventModel _event({
   required String title,
   required DateTime startAt,
   required DateTime endAt,
+  String createdBy = 'user-1',
 }) {
   return GroupEventModel(
     id: id,
@@ -223,7 +224,7 @@ GroupEventModel _event({
     title: title,
     startAt: startAt,
     endAt: endAt,
-    createdBy: 'user-1',
+    createdBy: createdBy,
     status: 'active',
   );
 }
@@ -291,14 +292,17 @@ void main() {
     expect(find.text('주간 회의'), findsOneWidget);
   });
 
-  testWidgets('hides management buttons for members without delegation',
+  testWidgets('hides management buttons for non-creator members',
       (tester) async {
+    // 남(leader-1)이 만든 일정을 일반 멤버(user-1)가 볼 때: 작성자가 아니므로
+    // 수정/취소/보관 버튼이 보이면 안 된다.
     final event = _event(
       id: 'event-1',
       groupId: 'group-1',
       title: '주간 회의',
       startAt: DateTime.utc(2026, 6, 11, 1),
       endAt: DateTime.utc(2026, 6, 11, 2),
+      createdBy: 'leader-1',
     );
     final contextProvider = GroupContextProvider(
       repository: FakeGroupRepository(

@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "375219078541-5n95b49uh20vph97vkggjsue0h94sj9s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fluxstudio.planflow",
+            "certificate_hash": "5a946b4525448b89b9c01369e92159a4b37016a7"
+          }
+        },
+        {
+          "client_id": "375219078541-9aur1gnugl6vd9kq1fkpr9bflj7f6l1d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fluxstudio.planflow",
+            "certificate_hash": "d8a54745f2b3ff2ea142b5072a12c7f42f325d06"
+          }
+        },
+        {
           "client_id": "375219078541-ht62grvdc4qvc39t251uash9las92jag.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
