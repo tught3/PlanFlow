@@ -27,6 +27,7 @@ import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
 import 'services/oauth_callback_handler.dart';
 import 'services/update_service.dart';
+import 'widgets/planflow_action_buttons.dart';
 
 class PlanFlowApp extends StatefulWidget {
   const PlanFlowApp({super.key});
@@ -365,18 +366,27 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         builder: (ctx) => AlertDialog(
           title: Text(isMorning ? '모닝 브리핑' : '이브닝 브리핑'),
           content: const Text('브리핑 알람이 도착했습니다.\n지금 재생하시겠습니까?'),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('나중에'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                final type = isMorning ? 'morning' : 'evening';
-                appRouter.go('${AppRoutes.briefing}?type=$type');
-              },
-              child: const Text('재생'),
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '나중에',
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  type: ActionButtonType.secondary,
+                  flex: 1,
+                ),
+                PlanFlowActionButton(
+                  label: '재생',
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    final type = isMorning ? 'morning' : 'evening';
+                    appRouter.go('${AppRoutes.briefing}?type=$type');
+                  },
+                  type: ActionButtonType.primary,
+                  flex: 1,
+                ),
+              ],
             ),
           ],
         ),

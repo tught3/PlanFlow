@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
@@ -31,6 +32,11 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
 
 class MainActivity : FlutterActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // 화면 회전을 세로 고정 (시스템 설정과 무관하게 강제)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    }
     companion object {
         private const val REQUEST_MICROPHONE_PERMISSION = 4310
         private const val REQUEST_LOCATION_PERMISSION = 4311
@@ -878,16 +884,17 @@ private class PlanFlowSttChannel(
                 "resetTranscript" -> {
                     sessionId += 1
                     latestPartialText = ""
-                    val resetGeneration = ++startGeneration  // pending restart 무효화
                     logPhase("reset_transcript")
-                    recognizer?.cancel()
                     if (listening && !userRequestedStop) {
-                        activity.window.decorView.postDelayed({
-                            if (listening && !userRequestedStop && resetGeneration == startGeneration) {
-                                ensureRecognizer()  // cancel 후 null일 수 있으므로 ensure
-                                startListening()
-                            }
-                        }, 300)  // 150ms → 300ms (cancel onError 콜백 여유)
+                        // 별도 고정 타이머(300ms 블라인드 대기) 대신, 이미 검증된
+                        // restartSoon(recreateRecognizer=true)을 재사용한다. recognizer를
+                        // cancel+destroy 후 재생성해 이전 세션이 확실히 끝난 상태에서
+                        // 재시작하므로 "취소 콜백을 못 받아 재시작이 조용히 실패"하는
+                        // 레이스가 사라진다. 재시작 시 기존 'restarted' 이벤트가 그대로
+                        // 발행되어 화면에 "다시 듣는 중" 안내도 자동으로 뜬다.
+                        restartSoon(recreateRecognizer = true, reason = "reset_transcript")
+                    } else {
+                        recognizer?.cancel()
                     }
                     result.success(sessionId)
                 }

@@ -515,6 +515,54 @@ void main() {
       expect(result['memo'], isNull);
     });
 
+    test(
+        '원문에 명시적 반복 표현이 있으면 GPT가 recurrence_rule을 놓쳐도 '
+        '로컬 판정으로 보정한다', () async {
+      // 실증: "매주 금요일 오후 3시에 태블릿계기반 찍기 일정 반복설정"처럼
+      // 반복 키워드("매주")와 실제 일정 내용이 문장에서 멀리 떨어져 있으면
+      // GPT가 recurrence_rule을 null로 반환해 반복설정이 안 되는 문제가
+      // 있었다. GPT 응답(파싱 성공 경로)이 recurrence_rule을 누락해도,
+      // 원문에 "매주"가 명시돼 있으면 로컬 정규식 판정이 우선해야 한다.
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '태블릿계기반 찍기',
+                    'start_at': '2026-07-10T15:00:00.000',
+                    'recurrence_rule': null,
+                    'participants': <String>[],
+                    'targets': <String>[],
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 7, 4, 9),
+      );
+
+      final result = await service.parseSchedule(
+        '매주 금요일 오후 3시에 태블릿계기반 찍기 일정 반복설정',
+      );
+
+      expect(result['recurrence_rule'], 'FREQ=WEEKLY;BYDAY=FR');
+    });
+
     test('keeps GPT period choice for ambiguous 7 to 11 oclock text', () async {
       final client = MockClient((request) async {
         return http.Response(
@@ -710,6 +758,52 @@ void main() {
       expect(
         service.inferStartAtFromRawText('내일 저녁 일곱시 삼십분 약속'),
         DateTime(2026, 5, 8, 19, 30),
+      );
+    });
+
+    test(
+        '오전/오후 없는 시각이 이미 지났으면 다음날 같은 시각이 아니라 '
+        '오늘 12시간 뒤(반대 오전/오후)를 우선한다', () {
+      // 실증: 지금이 오후 7:55(19:55)인데 "8시"라고만 말하면, 다음날 오전
+      // 8시(약 12시간 뒤)가 아니라 오늘 오후 8시(약 5분 뒤)로 잡혀야 한다.
+      // 오전 8시를 의도했다면 "내일 8시"처럼 날짜를 같이 말했을 것이기 때문.
+      final now = DateTime(2026, 5, 7, 19, 55);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('8시'),
+        DateTime(2026, 5, 7, 20, 0),
+      );
+    });
+
+    test('두 후보(오전/오후) 모두 이미 지났으면 다음날로 넘긴다', () {
+      // 자정 직전처럼 오늘 오전/오후 후보가 둘 다 지난 경우에만
+      // 기존처럼 다음날 같은 시각(오전 해석)으로 넘어간다.
+      final now = DateTime(2026, 5, 7, 23, 30);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('8시'),
+        DateTime(2026, 5, 8, 8, 0),
+      );
+    });
+
+    test('오전/오후를 명시하면 기존처럼 다음날로 넘긴다(반대 해석 우선 안 함)', () {
+      final now = DateTime(2026, 5, 7, 19, 55);
+      final service = GptService(
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => now,
+      );
+
+      expect(
+        service.inferStartAtFromRawText('오전 8시'),
+        DateTime(2026, 5, 8, 8, 0),
       );
     });
 

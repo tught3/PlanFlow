@@ -289,6 +289,10 @@ class BriefingSchedulerService {
     required bool isMorning,
     String? userId,
     bool isManualTrigger = false,
+    // 일정 목록이 확정되는 즉시(TTS 재생 완료를 기다리지 않고) 호출된다.
+    // 화면이 "브리핑 중..." 로딩 문구만 보여주지 않고, 읽어줄 목록을 바로
+    // 화면에 띄운 채로 음성 재생을 진행할 수 있게 하기 위함.
+    void Function(List<EventModel> events)? onEventsResolved,
   }) async {
     final resolvedUserId = _resolveUserId(userId);
     final type = isMorning ? 'morning' : 'evening';
@@ -344,6 +348,7 @@ class BriefingSchedulerService {
       // 캐시 히트: 알람 발생 시 미리 생성해 둔 텍스트가 2시간 이내에 있으면 바로 재생.
       final cachedResult = await _consumePreloadCache(isMorning: isMorning);
       if (cachedResult != null) {
+        onEventsResolved?.call(cachedResult.events);
         await _deliverBriefing(
           cachedResult.text,
           isMorning: isMorning,
@@ -369,6 +374,7 @@ class BriefingSchedulerService {
       );
 
       if (events.isEmpty) {
+        onEventsResolved?.call(const []);
         final message = isMorning
             ? '좋은 아침이에요. 오늘은 예정된 일정이 없어요. 여유로운 하루 보내세요.'
             : '오늘 하루도 고생하셨어요. 내일은 예정된 일정이 없어요. 편안한 저녁 보내세요.';
@@ -389,6 +395,7 @@ class BriefingSchedulerService {
         return result;
       }
 
+      onEventsResolved?.call(events);
       final eventSummary = _buildEventSummary(events);
       var usedFallback = false;
       String? failureReason;

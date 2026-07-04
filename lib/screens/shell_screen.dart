@@ -24,6 +24,7 @@ import '../l10n/app_l10n.dart';
 import 'calendar/calendar_screen.dart';
 import 'home/home_screen.dart';
 import 'settings/settings_screen.dart';
+import '../widgets/planflow_action_buttons.dart';
 
 const _shellDestinations = <_ShellDestination>[
   _ShellDestination(
@@ -317,26 +318,23 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
             '기존에 다른 캘린더 프로그램(구글, 네이버, 삼성)을 쓰고 계셨다면 '
             '일정 동기화를 위해 설정탭에서 동기화를 진행해 주세요.',
           ),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
           actions: [
-            SizedBox(
-              width: double.infinity,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text('동기화 안 함'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      child: const Text('동기화 설정'),
-                    ),
-                  ),
-                ],
-              ),
+            PlanFlowActionButtons(
+              buttons: [
+                PlanFlowActionButton(
+                  label: '동기화 안 함',
+                  onPressed: () => Navigator.of(context).pop(false),
+                  type: ActionButtonType.secondary,
+                  flex: 1,
+                ),
+                PlanFlowActionButton(
+                  label: '동기화 설정',
+                  onPressed: () => Navigator.of(context).pop(true),
+                  type: ActionButtonType.primary,
+                  flex: 1,
+                ),
+              ],
             ),
           ],
         );

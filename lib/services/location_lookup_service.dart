@@ -302,6 +302,19 @@ class LocationLookupService {
     _addQueryVariant(variants, noWhitespace, original: normalized);
     _addKnownPlaceAliasQueries(variants, normalized);
 
+    // STT가 흔히 혼동하는 한글 모음(애/에, 얘/예, 왜/외/웨 등 — 현대 한국어
+    // 발음상 거의 구별되지 않는 모음쌍)을 한 글자씩 바꿔본 후보를 추가한다.
+    // "래온동물병원"을 "레온동물병원"으로 잘못 들은 경우도 검색에서 찾을 수
+    // 있게 하기 위함. 지역명 단독 후보보다 훨씬 구체적이므로 앞쪽에 둔다.
+    for (final variant in _koreanVowelConfusionVariants(normalized)) {
+      _addQueryVariant(variants, variant, original: normalized);
+    }
+    if (noWhitespace != normalized) {
+      for (final variant in _koreanVowelConfusionVariants(noWhitespace)) {
+        _addQueryVariant(variants, variant, original: normalized);
+      }
+    }
+
     final normalizedTokens = _tokenize(normalized)
         .where((token) => token.isNotEmpty)
         .toList(growable: false);
@@ -338,8 +351,17 @@ class LocationLookupService {
       }
     }
 
+    // 지역명 단독 후보("성남" 등)는 항상 최후순위로 미룬다. 지역명만 검색하면
+    // 지오코더가 거의 항상 시/구 단위 대표주소(예: "경기도 성남시")를 성공
+    // 응답으로 돌려주므로, 목록 앞쪽에 있으면 실제 장소명 후보("래온동물병원"
+    // 등)를 시도해 보기도 전에 무관한 행정구역 주소로 조기 확정돼 버린다.
+    // 실증: "성남 래온동물병원"의 fallback 순서가 [..., 성남, 래온동물병원]
+    // 이라 "성남"이 먼저 성공해 엉뚱하게 "경기도 성남시"가 장소로 잡힘.
+    final bareRegionVariants = <String>{};
+
     for (final region in _matchedKoreanRegionHints(normalized)) {
-      _addQueryVariant(variants, region.displayName, original: normalized);
+      _addQueryVariant(bareRegionVariants, region.displayName,
+          original: normalized);
       final coreTokens = fallbackTokens
           .where((token) => !_containsAlias(token, region))
           .toList(growable: false);
@@ -378,6 +400,10 @@ class LocationLookupService {
       }
     }
 
+    // LinkedHashSet은 삽입 순서를 유지하므로, 여기서 추가하면 위에서 이미
+    // 채워진 구체적 후보들 뒤(최후순위)에 붙는다.
+    variants.addAll(bareRegionVariants);
+
     return variants.toList(growable: false);
   }
 
@@ -395,6 +421,58 @@ class LocationLookupService {
 
   String _normalizeWhitespace(String value) {
     return value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  static const int _hangulBase = 0xAC00;
+  static const int _hangulLast = 0xD7A3;
+  static const int _medialCount = 21;
+  static const int _finalCount = 28;
+
+  /// 현대 한국어에서 발음이 거의 구별되지 않아 STT가 흔히 서로 바꿔 듣는
+  /// 모음 그룹(중성 인덱스 기준, 유니코드 한글 음절 조합 규칙: 가=0x AC00
+  /// 기준 (초성*21+중성)*28+종성). 애/에, 얘/예, 왜/외/웨.
+  /// 유니코드 한글 중성 인덱스(0=ㅏ,1=ㅐ,2=ㅑ,3=ㅒ,4=ㅓ,5=ㅔ,6=ㅕ,7=ㅖ,8=ㅗ,
+  /// 9=ㅘ,10=ㅙ,11=ㅚ,12=ㅛ,13=ㅜ,14=ㅝ,15=ㅞ,16=ㅟ,17=ㅠ,18=ㅡ,19=ㅢ,20=ㅣ)
+  /// 기준.
+  static const List<List<int>> _confusableMedialGroups = <List<int>>[
+    <int>[1, 5], // ㅐ, ㅔ (애/에)
+    <int>[3, 7], // ㅒ, ㅖ (얘/예)
+    <int>[10, 11, 15], // ㅙ, ㅚ, ㅞ (왜/외/웨)
+  ];
+
+  /// [text]에서 한 글자씩만 혼동 모음으로 바꾼 후보들을 생성한다(편집거리 1,
+  /// 위치당 최대 1개 대체). 조합 폭발을 막기 위해 한 번에 한 글자만 바꾼다.
+  List<String> _koreanVowelConfusionVariants(String text) {
+    final variants = <String>{};
+    final runes = text.runes.toList(growable: false);
+    for (var i = 0; i < runes.length; i++) {
+      final code = runes[i];
+      if (code < _hangulBase || code > _hangulLast) {
+        continue;
+      }
+      final offset = code - _hangulBase;
+      final initial = offset ~/ (_medialCount * _finalCount);
+      final medial = (offset ~/ _finalCount) % _medialCount;
+      final finalConsonant = offset % _finalCount;
+
+      for (final group in _confusableMedialGroups) {
+        if (!group.contains(medial)) {
+          continue;
+        }
+        for (final altMedial in group) {
+          if (altMedial == medial) {
+            continue;
+          }
+          final altCode = _hangulBase +
+              (initial * _medialCount + altMedial) * _finalCount +
+              finalConsonant;
+          final altRunes = List<int>.from(runes);
+          altRunes[i] = altCode;
+          variants.add(String.fromCharCodes(altRunes));
+        }
+      }
+    }
+    return variants.toList(growable: false);
   }
 
   Future<void> _searchAllProviders(

@@ -789,7 +789,21 @@ class GptService {
     );
 
     if (date == null && time != null && candidate.isBefore(now)) {
-      candidate = candidate.add(const Duration(days: 1));
+      // 오전/오후를 말하지 않은 애매한 시각(7~12시)이 이미 지났으면, 무조건
+      // 다음날 같은 시각(오전 해석)으로 미루지 않는다. "지금 오후 7:55에
+      // '8시'라고 하면" 다음날 오전 8시(약 12시간 뒤)보다 오늘 오후 8시
+      // (약 5분 뒤)가 훨씬 자연스럽다 — 오전 8시를 의도했다면 "내일 8시"처럼
+      // 날짜를 같이 말했을 것이기 때문. 두 후보 중 지금(now) 이후로
+      // 가장 가까운 쪽을 고른다. 두 후보 다 이미 지났을 때만(예: 자정 직전)
+      // 기존처럼 다음날로 넘긴다.
+      if (_hasAmbiguousMeridiemTime(dateTimeText)) {
+        final pmCandidate = candidate.add(const Duration(hours: 12));
+        candidate = pmCandidate.isBefore(now)
+            ? candidate.add(const Duration(days: 1))
+            : pmCandidate;
+      } else {
+        candidate = candidate.add(const Duration(days: 1));
+      }
     }
 
     return candidate;
@@ -1108,10 +1122,25 @@ $_scheduleSystemPrompt
   }
 
   String? _normalizeRecurrenceFromRawText(String rawText, Object? parsedRule) {
+    // 원문에 "매주/매월/매년/격주/N마다" 같은 명시적 반복 표현이 있으면 이
+    // 로컬 정규식 판정을 GPT 응답보다 우선한다. 실증: "매주 금요일 오후
+    // 3시에 태블릿계기반 찍기 일정 반복설정"처럼 반복 키워드와 일정 내용이
+    // 길게 떨어져 있으면 GPT가 recurrence_rule을 누락하거나 다르게 반환하는
+    // 경우가 있었음. 텍스트에 명시된 반복 표현은 애매할 여지가 없는
+    // 결정적 패턴이므로, GPT 판단보다 원문 파싱을 신뢰한다(start_at 추론에서
+    // _shouldPreferInferredStartAt이 이미 쓰는 것과 같은 원칙).
+    final localRule = _localRecurrenceRuleFromRawText(rawText);
+    if (localRule != null) {
+      return localRule;
+    }
     final existing = parsedRule?.toString().trim();
     if (existing != null && existing.isNotEmpty && existing != 'null') {
       return existing;
     }
+    return null;
+  }
+
+  String? _localRecurrenceRuleFromRawText(String rawText) {
     final text = _normalizeKoreanText(rawText);
     final weekday = _weekdayRRuleToken(text);
 

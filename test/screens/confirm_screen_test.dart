@@ -617,10 +617,11 @@ void main() {
       ),
     );
 
+    await tester.pump();
     expect(find.text('오전/오후를 확인해 주세요'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(ActionChip, '오후 7:40'));
-    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.text('오후 7:40'));
+    await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.text('일정 저장'));
     await tester.tap(find.text('일정 저장'));

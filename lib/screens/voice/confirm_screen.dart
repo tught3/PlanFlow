@@ -263,6 +263,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
   bool _timePeriodAmbiguous = false;
   int? _ambiguousTimeHour;
   int? _ambiguousTimeMinute;
+  bool _hasPromptedTimePeriodClarification = false;
   Map<String, dynamic>? _initialParsedForLearning;
   GroupContextProvider? _groupContextProvider;
   bool _ownsGroupContextProvider = false;
@@ -338,6 +339,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeHydrateParsedSchedule();
       unawaited(_resolveLocationCoordinatesIfNeeded());
+      _maybePromptTimePeriodClarification();
     });
   }
 
@@ -1009,6 +1011,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         setState(() {
           _isHydratingParsedSchedule = false;
         });
+        _maybePromptTimePeriodClarification();
       }
     }
   }
@@ -1332,6 +1335,40 @@ class _ConfirmScreenState extends State<ConfirmScreen>
         _ambiguousTimeMinute != null;
   }
 
+  /// 오전/오후가 애매한 시각이 감지되면 화면 안에 조용히 카드로 두지 않고
+  /// 모달로 바로 띄워 확인을 놓치지 않게 한다. 화면당 최초 1회만 자동으로
+  /// 띄우고(초기 로컬 파싱 시점과 GPT hydrate 완료 시점 양쪽에서 호출되므로
+  /// 중복 호출 대비 플래그로 가드), 이후에는 시간 필드 아래 작은 버튼으로
+  /// 다시 열 수 있게 한다.
+  void _maybePromptTimePeriodClarification() {
+    if (!mounted ||
+        _hasPromptedTimePeriodClarification ||
+        !_shouldShowTimePeriodClarification) {
+      return;
+    }
+    _hasPromptedTimePeriodClarification = true;
+    unawaited(_showTimePeriodClarificationDialog());
+  }
+
+  Future<void> _showTimePeriodClarificationDialog() async {
+    if (!mounted) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => _TimePeriodClarificationDialog(
+        morningLabel: _ambiguousTimeLabel(afternoon: false),
+        afternoonLabel: _ambiguousTimeLabel(afternoon: true),
+        isMorningSelected: _isAmbiguousPeriodSelected(afternoon: false),
+        isAfternoonSelected: _isAmbiguousPeriodSelected(afternoon: true),
+        onSelect: (afternoon) {
+          _applyAmbiguousTimePeriod(afternoon: afternoon);
+          Navigator.of(dialogContext).pop();
+        },
+      ),
+    );
+  }
+
   void _applyAmbiguousTimePeriod({required bool afternoon}) {
     final hour = _ambiguousTimeHour;
     final minute = _ambiguousTimeMinute;
@@ -1397,59 +1434,21 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     context.go(AppRoutes.calendar);
   }
 
-  Widget _buildTimePeriodClarificationCard() {
-    final theme = Theme.of(context);
-    return Card(
-      color: PlanFlowColors.surface,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(
-          color: PlanFlowColors.primaryFaint,
-          width: 0.8,
+  /// 저장 전 오전/오후 확인은 [_showTimePeriodClarificationDialog] 모달이
+  /// 담당한다(자동 1회 표시). 이 버튼은 사용자가 모달을 닫아버렸거나
+  /// 다시 선택을 바꾸고 싶을 때 재확인용으로 남겨둔다.
+  Widget _buildTimePeriodClarificationReopenButton() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton.icon(
+        onPressed: () => unawaited(_showTimePeriodClarificationDialog()),
+        icon: const Icon(Icons.schedule_outlined, size: 16),
+        label: Text(
+          '오전/오후 확인: ${_ambiguousTimeLabel(afternoon: _startAt.hour >= 12)}',
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '오전/오후를 확인해 주세요',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: PlanFlowColors.primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '말한 시간이 오전과 오후 모두 가능한 시간대라 저장 전에 확정이 필요해요.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: PlanFlowColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ActionChip(
-                  label: Text(_ambiguousTimeLabel(afternoon: false)),
-                  avatar: _isAmbiguousPeriodSelected(afternoon: false)
-                      ? const Icon(Icons.check, size: 16)
-                      : null,
-                  onPressed: () => _applyAmbiguousTimePeriod(afternoon: false),
-                ),
-                ActionChip(
-                  label: Text(_ambiguousTimeLabel(afternoon: true)),
-                  avatar: _isAmbiguousPeriodSelected(afternoon: true)
-                      ? const Icon(Icons.check, size: 16)
-                      : null,
-                  onPressed: () => _applyAmbiguousTimePeriod(afternoon: true),
-                ),
-              ],
-            ),
-          ],
+        style: OutlinedButton.styleFrom(
+          foregroundColor: PlanFlowColors.primaryMid,
+          side: const BorderSide(color: PlanFlowColors.primaryFaint),
         ),
       ),
     );
@@ -2454,7 +2453,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         ),
                       if (_shouldShowTimePeriodClarification) ...[
                         const SizedBox(height: AppConstants.sectionSpacing),
-                        _buildTimePeriodClarificationCard(),
+                        _buildTimePeriodClarificationReopenButton(),
                       ],
                       const SizedBox(height: AppConstants.sectionSpacing),
                       _buildSaveTargetCard(context),
@@ -2757,6 +2756,69 @@ class _AlarmPermissionGuardDialog extends StatelessWidget {
               label: '나중에',
               onPressed: () => Navigator.of(context).pop(),
               type: ActionButtonType.secondary,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 말한 시각이 오전/오후 모두 가능할 때(예: "8시") 저장 전에 확정을
+/// 놓치지 않도록 모달로 띄워 확인받는다. 인라인 카드는 눈에 잘 안 띈다는
+/// 피드백으로 모달로 전환됨.
+class _TimePeriodClarificationDialog extends StatelessWidget {
+  const _TimePeriodClarificationDialog({
+    required this.morningLabel,
+    required this.afternoonLabel,
+    required this.isMorningSelected,
+    required this.isAfternoonSelected,
+    required this.onSelect,
+  });
+
+  final String morningLabel;
+  final String afternoonLabel;
+  final bool isMorningSelected;
+  final bool isAfternoonSelected;
+  final ValueChanged<bool> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      icon: const Icon(
+        Icons.schedule_outlined,
+        color: PlanFlowColors.primaryMid,
+        size: 32,
+      ),
+      title: const Text('오전/오후를 확인해 주세요'),
+      content: Text(
+        '말한 시간이 오전과 오후 모두 가능한 시간대예요. 저장 전에 확정해 주세요.',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: PlanFlowColors.textSecondary,
+        ),
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+      actions: [
+        PlanFlowActionButtons(
+          buttons: [
+            PlanFlowActionButton(
+              label: morningLabel,
+              onPressed: () => onSelect(false),
+              type: isMorningSelected
+                  ? ActionButtonType.primary
+                  : ActionButtonType.secondary,
+              borderWidth: isMorningSelected ? 2.5 : 1.0,
+              fontSize: isMorningSelected ? 16 : 13,
+            ),
+            PlanFlowActionButton(
+              label: afternoonLabel,
+              onPressed: () => onSelect(true),
+              type: isAfternoonSelected
+                  ? ActionButtonType.primary
+                  : ActionButtonType.secondary,
+              borderWidth: isAfternoonSelected ? 2.5 : 1.0,
+              fontSize: isAfternoonSelected ? 16 : 13,
             ),
           ],
         ),

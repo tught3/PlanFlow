@@ -33,6 +33,10 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
   late final BriefingSchedulerService _briefingSchedulerService;
   late final AuthProvider _authProvider;
   BriefingExecutionResult? _result;
+  // TTS 재생이 끝나야 채워지는 _result와 별개로, 일정 목록은 확정되는 즉시
+  // 채워 화면에 바로 보여준다("브리핑 중..." 문구만 뜨고 목록이 안 보인다는
+  // 피드백 반영 — 읽어주는 동안에도 목록을 같이 보여준다).
+  List<EventModel>? _resolvedEvents;
   String? _errorMessage;
   bool _isCheckingSession = true;
   bool _showSurveyButton = false;
@@ -72,6 +76,14 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
         isMorning: widget.isMorning,
         userId: userId,
         isManualTrigger: true,
+        onEventsResolved: (events) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _resolvedEvents = events;
+          });
+        },
       );
       if (!mounted) {
         return;
@@ -148,7 +160,11 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
     final theme = Theme.of(context);
     final title = widget.isMorning ? '모닝 브리핑' : '이브닝 브리핑';
     final result = _result;
-    final events = result?.events ?? const <EventModel>[];
+    final resolvedEvents = _resolvedEvents;
+    // 일정 목록은 TTS 재생 완료(result)를 기다리지 않고, 확정되는 즉시
+    // 보여준다. 아직 목록이 안 나왔으면 result의 events로라도 대체.
+    final events = resolvedEvents ?? result?.events ?? const <EventModel>[];
+    final isSpeaking = resolvedEvents != null && result == null;
     final scheduleTitle = widget.isMorning ? '오늘 일정' : '내일 일정';
 
     return Scaffold(
@@ -186,14 +202,18 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                         size: 42,
                         color: result?.delivered == true
                             ? PlanFlowColors.primary
-                            : theme.colorScheme.error,
+                            : result == null
+                                ? PlanFlowColors.primaryMid
+                                : theme.colorScheme.error,
                       ),
                       const SizedBox(height: 14),
                       Text(
                         result == null && _errorMessage == null
                             ? _isCheckingSession
                                 ? '로그인 세션을 확인하고 있어요.'
-                                : '$title을 준비하고 있어요.'
+                                : isSpeaking
+                                    ? '$title을 읽어드리고 있어요.'
+                                    : '$title을 준비하고 있어요.'
                             : result?.message ?? _errorMessage!,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.titleMedium?.copyWith(
@@ -206,7 +226,9 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                         result == null && _errorMessage == null
                             ? _isCheckingSession
                                 ? '브리핑을 실행하기 전에 저장된 로그인 정보를 조용히 복구합니다.'
-                                : '오늘/내일 일정을 시간순으로 정리한 뒤 음성으로 읽어드립니다.'
+                                : isSpeaking
+                                    ? '아래 목록을 함께 보면서 들을 수 있어요.'
+                                    : '오늘/내일 일정을 시간순으로 정리한 뒤 음성으로 읽어드립니다.'
                             : '홈으로 돌아가 일정을 다시 확인할 수 있어요.',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -232,8 +254,9 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              // 일정 리스트 섹션
-              if (result?.delivered == true)
+              // 일정 리스트 섹션 — TTS가 끝나기 전(resolvedEvents만 채워진
+              // 단계)에도 보여준다.
+              if (resolvedEvents != null || result?.delivered == true)
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
