@@ -515,6 +515,54 @@ void main() {
       expect(result['memo'], isNull);
     });
 
+    test(
+        '원문에 명시적 반복 표현이 있으면 GPT가 recurrence_rule을 놓쳐도 '
+        '로컬 판정으로 보정한다', () async {
+      // 실증: "매주 금요일 오후 3시에 태블릿계기반 찍기 일정 반복설정"처럼
+      // 반복 키워드("매주")와 실제 일정 내용이 문장에서 멀리 떨어져 있으면
+      // GPT가 recurrence_rule을 null로 반환해 반복설정이 안 되는 문제가
+      // 있었다. GPT 응답(파싱 성공 경로)이 recurrence_rule을 누락해도,
+      // 원문에 "매주"가 명시돼 있으면 로컬 정규식 판정이 우선해야 한다.
+      final client = MockClient((request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'choices': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'message': <String, dynamic>{
+                  'content': jsonEncode(<String, dynamic>{
+                    'title': '태블릿계기반 찍기',
+                    'start_at': '2026-07-10T15:00:00.000',
+                    'recurrence_rule': null,
+                    'participants': <String>[],
+                    'targets': <String>[],
+                    'supplies': <String>[],
+                    'is_critical': false,
+                    'pre_actions': <Map<String, dynamic>>[],
+                  }),
+                },
+              },
+            ],
+          }),
+          200,
+          headers: <String, String>{
+            'content-type': 'application/json',
+          },
+        );
+      });
+
+      final service = GptService(
+        client: client,
+        endpoint: Uri.parse(_proxyEndpoint),
+        now: () => DateTime(2026, 7, 4, 9),
+      );
+
+      final result = await service.parseSchedule(
+        '매주 금요일 오후 3시에 태블릿계기반 찍기 일정 반복설정',
+      );
+
+      expect(result['recurrence_rule'], 'FREQ=WEEKLY;BYDAY=FR');
+    });
+
     test('keeps GPT period choice for ambiguous 7 to 11 oclock text', () async {
       final client = MockClient((request) async {
         return http.Response(

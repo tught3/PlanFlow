@@ -1122,10 +1122,25 @@ $_scheduleSystemPrompt
   }
 
   String? _normalizeRecurrenceFromRawText(String rawText, Object? parsedRule) {
+    // 원문에 "매주/매월/매년/격주/N마다" 같은 명시적 반복 표현이 있으면 이
+    // 로컬 정규식 판정을 GPT 응답보다 우선한다. 실증: "매주 금요일 오후
+    // 3시에 태블릿계기반 찍기 일정 반복설정"처럼 반복 키워드와 일정 내용이
+    // 길게 떨어져 있으면 GPT가 recurrence_rule을 누락하거나 다르게 반환하는
+    // 경우가 있었음. 텍스트에 명시된 반복 표현은 애매할 여지가 없는
+    // 결정적 패턴이므로, GPT 판단보다 원문 파싱을 신뢰한다(start_at 추론에서
+    // _shouldPreferInferredStartAt이 이미 쓰는 것과 같은 원칙).
+    final localRule = _localRecurrenceRuleFromRawText(rawText);
+    if (localRule != null) {
+      return localRule;
+    }
     final existing = parsedRule?.toString().trim();
     if (existing != null && existing.isNotEmpty && existing != 'null') {
       return existing;
     }
+    return null;
+  }
+
+  String? _localRecurrenceRuleFromRawText(String rawText) {
     final text = _normalizeKoreanText(rawText);
     final weekday = _weekdayRRuleToken(text);
 
