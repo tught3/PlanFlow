@@ -471,7 +471,12 @@ abstract class BasePlanFlowWidgetProvider(
             return null
         }
 
-        return "+${overflowCount}개"
+        val title = previewTitle?.trim()?.takeIf { it.isNotBlank() }
+        return when {
+            title == null -> "+$overflowCount"
+            overflowCount == 1 -> title
+            else -> "$title 외 ${overflowCount}건"
+        }
     }
 
     protected fun bindWeekAction(context: Context, views: RemoteViews, viewId: Int, action: String, providerClass: Class<*>) {
