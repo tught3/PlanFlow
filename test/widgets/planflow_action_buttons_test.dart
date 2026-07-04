@@ -68,4 +68,51 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('borderWidth/fontSize로 선택된 버튼을 더 두껍고 크게 강조할 수 있다',
+      (tester) async {
+    // 오전/오후 선택처럼 여러 버튼 중 하나가 "현재 선택됨" 상태일 때,
+    // 테두리 두께와 글자 크기로 눈에 띄게 강조할 수 있어야 한다.
+    await pump(
+      tester,
+      PlanFlowActionButtons(
+        buttons: [
+          PlanFlowActionButton(
+            label: '오전 8:00',
+            onPressed: () {},
+            borderWidth: 1.0,
+            fontSize: 13,
+          ),
+          PlanFlowActionButton(
+            label: '오후 8:00',
+            onPressed: () {},
+            type: ActionButtonType.primary,
+            borderWidth: 2.5,
+            fontSize: 16,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+
+    final unselectedButton = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, '오전 8:00'),
+    );
+    final unselectedSide = unselectedButton.style?.side?.resolve(<WidgetState>{});
+    expect(unselectedSide?.width, 1.0);
+
+    final selectedButton = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, '오후 8:00'),
+    );
+    final selectedShape =
+        selectedButton.style?.shape?.resolve(<WidgetState>{})
+            as RoundedRectangleBorder?;
+    expect(selectedShape?.side.width, 2.5);
+
+    final selectedTextStyle =
+        selectedButton.style?.textStyle?.resolve(<WidgetState>{});
+    expect(selectedTextStyle?.fontSize, 16);
+  });
 }

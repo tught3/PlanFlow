@@ -81,6 +81,8 @@ class PlanFlowActionButton {
     this.foregroundColor,
     this.backgroundColor,
     this.borderColor,
+    this.borderWidth = 1.0,
+    this.fontSize = 13.0,
   });
 
   final String label;
@@ -98,6 +100,12 @@ class PlanFlowActionButton {
   final Color? foregroundColor;
   final Color? backgroundColor;
   final Color? borderColor;
+
+  /// 테두리 두께. 여러 버튼 중 현재 선택된 것을 강조할 때 더 두껍게 준다.
+  final double borderWidth;
+
+  /// 라벨 글자 크기. 선택된 버튼을 강조할 때 더 크게 준다.
+  final double fontSize;
 
   Widget build(BuildContext context) {
     final Widget button;
@@ -132,10 +140,11 @@ class PlanFlowActionButton {
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
             color: borderColor ?? PlanFlowColors.primary,
-            width: 1,
+            width: borderWidth,
           ),
         ),
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        textStyle:
+            TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600),
       ),
       child: FittedBox(
         fit: BoxFit.scaleDown,
@@ -154,13 +163,14 @@ class PlanFlowActionButton {
         backgroundColor: backgroundColor ?? PlanFlowColors.primaryFaint,
         side: BorderSide(
           color: borderColor ?? PlanFlowColors.primaryLight,
-          width: 1,
+          width: borderWidth,
         ),
         minimumSize: const Size.fromHeight(44),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
         ),
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        textStyle:
+            TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600),
       ),
       child: FittedBox(
         fit: BoxFit.scaleDown,
@@ -183,10 +193,11 @@ class PlanFlowActionButton {
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
             color: borderColor ?? errorColor,
-            width: 1,
+            width: borderWidth,
           ),
         ),
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        textStyle:
+            TextStyle(fontSize: fontSize, fontWeight: FontWeight.w600),
       ),
       child: FittedBox(
         fit: BoxFit.scaleDown,

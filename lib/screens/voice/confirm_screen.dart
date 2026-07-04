@@ -2523,6 +2523,8 @@ class _TimePeriodClarificationDialog extends StatelessWidget {
               type: isMorningSelected
                   ? ActionButtonType.primary
                   : ActionButtonType.secondary,
+              borderWidth: isMorningSelected ? 2.5 : 1.0,
+              fontSize: isMorningSelected ? 16 : 13,
             ),
             PlanFlowActionButton(
               label: afternoonLabel,
@@ -2530,6 +2532,8 @@ class _TimePeriodClarificationDialog extends StatelessWidget {
               type: isAfternoonSelected
                   ? ActionButtonType.primary
                   : ActionButtonType.secondary,
+              borderWidth: isAfternoonSelected ? 2.5 : 1.0,
+              fontSize: isAfternoonSelected ? 16 : 13,
             ),
           ],
         ),
