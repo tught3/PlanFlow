@@ -436,6 +436,59 @@ void main() {
       );
     },
   );
+
+  // 회귀: 구글 캘린더 최초 연동 등으로 좌표 없는 일정이 한꺼번에 수십 건
+  // 쌓이면, 제한 없이 한 패스에서 전부 검색해 tmap_poi의 60초/60회 예산을
+  // 이 배치 하나가 다 써버리는 사건(2026-07-05, window_count=60 차단).
+  // 한 패스당 검색 개수를 제한해 예산 여유를 남겨야 한다.
+  testWidgets(
+    'HomeScreen는 좌표 없는 일정이 한꺼번에 많아도 한 패스당 검색 개수를 제한한다(tmap_poi 예산 보호)',
+    (tester) async {
+      final now = DateTime(2026, 7, 5, 12);
+      final manyUnresolved = List<EventModel>.generate(
+        25,
+        (i) => EventModel(
+          id: 'bulk-$i',
+          userId: 'user-1',
+          title: '일정 $i',
+          startAt: DateTime(2026, 7, 5, 13),
+          location: '못 찾는 장소 $i',
+        ),
+      );
+      final repository = _StuckUnresolvedEventRepository(manyUnresolved);
+      final lookup = _CountingLocationLookupService();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            userIdOverride: 'user-1',
+            eventRepository: repository,
+            smartPreparationAlarmService:
+                const _FakeSmartPreparationAlarmService(),
+            homeWidgetService: _RecordingHomeWidgetService(),
+            locationLookupService: lookup,
+            loadHeaderSummary: false,
+            nowProvider: () => now,
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      // 좌표 보정 루프는 매 시도 사이 300ms를 두므로 25건이 모두 시도된다면
+      // 8초 이상 걸린다. 넉넉히 pump해 캡이 없다면 25회까지 다 돌 시간을 준다.
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      expect(
+        lookup.searchCallCount,
+        20,
+        reason: '한 패스에서 검색하는 일정 수는 tmap_poi 예산 보호를 위해 '
+            '20건으로 제한돼야 한다(나머지는 다음 리로드에서 이어서 처리)',
+      );
+    },
+  );
 }
 
 class _FakeSmartPreparationAlarmService extends SmartPreparationAlarmService {

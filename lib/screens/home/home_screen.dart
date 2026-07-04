@@ -119,6 +119,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// 재검색된다. 시도 시각을 영속 기록해 이 기간 동안은 재검색을 건너뛴다.
   /// 사용자가 위치를 수정하면 키가 바뀌어 즉시 재시도된다(쿨다운 우회).
   static const Duration _geoRetryCooldown = Duration(hours: 24);
+
+  /// 한 패스에서 좌표를 보정할 최대 일정 수.
+  /// 구글 캘린더 최초 연동 등으로 좌표 없는 일정이 한꺼번에 수십~수백 건
+  /// 쌓이면, 제한 없이 전부 시도하다 tmap_poi의 60초/60회 예산을 이 배치
+  /// 하나가 다 써버려(2026-07-05 window_count=60 차단 사건) 같은 창에서
+  /// 사용자가 직접 검색해도 막힌다. 한 패스당 개수를 제한해 예산 여유를
+  /// 남기고, 남은 일정은 다음 홈 리로드 때 이어서 처리한다.
+  static const int _maxCoordResolutionsPerPass = 20;
   static const String _geoAttemptKeyPrefix = 'geo_resolve_attempt:';
 
   @override
@@ -442,7 +450,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       for (final key in staleKeys) {
         await prefs.remove(key);
       }
-      for (final event in missing) {
+      for (final event in missing.take(_maxCoordResolutionsPerPass)) {
         // 쿨다운: 같은 (event, location)을 최근에 시도했으면 재검색 스킵.
         // location 문자열을 키에 넣어, 사용자가 위치를 고치면 키가 바뀌어
         // 즉시 재시도된다. 시도 기록은 성공/실패/예외 모두에 남겨,
