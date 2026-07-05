@@ -21,6 +21,9 @@ client_secret*.apps.googleusercontent.com.json
 
 CLAUDE.md
 
+# FluxOS 내부 상태 (오케스트레이터 관리, 프로젝트에 커밋하지 않음)
+.fluxos/
+
 # AI 세션 작업 중 생성되는 임시 파일 (자동 무시)
 .tmp_*
 *.tmp
