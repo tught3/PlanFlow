@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/supabase_client.dart';
+
 import '../models/user_settings_model.dart';
 
 abstract class SettingsRepository {
@@ -28,7 +30,7 @@ class SupabaseSettingsRepository extends SettingsRepository {
     SupabaseClient? client,
     SettingsGateway? gateway,
   }) : _gateway = gateway ??
-            SupabaseSettingsGateway(client: client ?? Supabase.instance.client);
+            SupabaseSettingsGateway(client: client ?? SupabaseClientProvider.requireClient());
 
   final SettingsGateway _gateway;
 

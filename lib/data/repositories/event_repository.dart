@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/supabase_client.dart';
+
 import '../../core/local_time.dart';
 import '../models/event_model.dart';
 
@@ -530,7 +532,7 @@ Set<int> _parseRRuleByDaysForOverlap(String rule) {
 
 class SupabaseEventRepository extends EventRepository {
   SupabaseEventRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : _client = client ?? SupabaseClientProvider.requireClient();
 
   static const String _tableName = 'events';
   static const String _selectColumns =

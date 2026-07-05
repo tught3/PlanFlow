@@ -9,6 +9,7 @@ class AppRoutes {
   static const String root = '/';
   static const String splash = root;
   static const String login = '/login';
+  static const String signup = '/signup';
   static const String permissionOnboarding = '/permission-onboarding';
   static const String resetPassword = '/reset-password';
   static const String home = '/home';
@@ -23,6 +24,17 @@ class AppRoutes {
   static const String eventDetailWithId = '/event/detail/:eventId';
   static const String eventEdit = '/event/edit';
   static const String eventEditWithId = '/event/edit/:eventId';
+
+  // ── Plans ──────────────────────────────────────────────────────────
+  /// Plan 목록 화면 (인증 필요).
+  static const String plans = '/plans';
+  /// Plan 생성 화면 (인증 필요).
+  static const String planCreate = '/plan/create';
+  /// Plan 상세 화면 — 경로 파라미터 :id 로 단일 계획 조회.
+  static const String planDetail = '/plan/:id';
+  /// Plan 상세 경로를 코드에서 생성할 때 사용.
+  static String planDetailForId(String id) => '/plan/$id';
+
   static const String groups = '/groups';
   static const String groupCreate = '/groups/create';
   static const String groupInvites = '/groups/invites';

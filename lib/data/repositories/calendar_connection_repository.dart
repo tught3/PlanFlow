@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/supabase_client.dart';
+
 import '../models/calendar_connection_model.dart';
 
 abstract class CalendarConnectionRepository {
@@ -32,7 +34,7 @@ abstract class CalendarConnectionRepository {
 class SupabaseCalendarConnectionRepository
     extends CalendarConnectionRepository {
   SupabaseCalendarConnectionRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : _client = client ?? SupabaseClientProvider.requireClient();
 
   static const String _tableName = 'calendar_connections';
   static const String _selectColumns =

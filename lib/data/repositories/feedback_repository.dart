@@ -10,6 +10,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/supabase_client.dart';
+
 import '../../core/analytics_service.dart';
 import '../../core/diag_logger.dart';
 import '../../core/env.dart';
@@ -99,7 +101,7 @@ class FeedbackRepository {
     if (!AppEnv.isSupabaseReady) {
       throw const FeedbackSubmissionException('Supabase 설정이 필요합니다.');
     }
-    final client = Supabase.instance.client;
+    final client = SupabaseClientProvider.requireClient();
     return FeedbackRepository(
       gateway: SupabaseFeedbackReportGateway(client),
       currentUserId: () => client.auth.currentUser?.id,

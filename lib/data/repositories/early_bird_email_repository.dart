@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/supabase_client.dart';
+
 import '../models/early_bird_email_model.dart';
 
 enum EarlyBirdSignupStatus {
@@ -33,7 +35,7 @@ class SupabaseEarlyBirdEmailRepository extends EarlyBirdEmailRepository {
     EarlyBirdEmailGateway? gateway,
   }) : _gateway = gateway ??
             SupabaseEarlyBirdEmailGateway(
-              client: client ?? Supabase.instance.client,
+              client: client ?? SupabaseClientProvider.requireClient(),
             );
 
   final EarlyBirdEmailGateway _gateway;

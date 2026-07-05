@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/supabase_client.dart';
+
 import '../models/voice_correction_rule.dart';
 
 abstract class VoiceCorrectionRuleRepository {
@@ -49,7 +51,7 @@ class SupabaseVoiceCorrectionRuleRepository
     VoiceCorrectionRuleGateway? gateway,
   }) : _gateway = gateway ??
             SupabaseVoiceCorrectionRuleGateway(
-              client: client ?? Supabase.instance.client,
+              client: client ?? SupabaseClientProvider.requireClient(),
             );
 
   final VoiceCorrectionRuleGateway _gateway;
