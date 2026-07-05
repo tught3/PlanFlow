@@ -961,4 +961,139 @@ void main() {
       expect(sorted.first.name, equals('래온동물병원'));
     });
   });
+
+  // ========================================================================= //
+  // TMAP POI 폭주 예산 게이트 (2026-07-05 window_count=60 차단 회귀)
+  //
+  // 근본 원인: 한 search()가 원본 1 + fallback 5 = 최대 6회의 tmap 호출을
+  // 소비. home_screen의 _resolveEventsMissingCoords가 한 패스에 20개 이벤트를
+  // 처리하면 120회 → 60회에서 ApiUsageGuard 차단 → 폭주 통보.
+  //
+  // 근본 해결: _searchWithFallbackUncached의 fallback 루프가 각 retry 전에
+  // guard.remainingBudget(tmapPoi)를 실측해 0 이하면 즉시 중단.
+  //
+  // 이 테스트는 게이트의 producer(remainingBudget)를 mock 하지 않고
+  // 실제 ApiUsageGuard + 실제 SharedPreferences에 진짜 타임스탬프를 누적시켜
+  // 게이트가 실제로 동작하는지 입증한다 (mocked-contract-hides-bug 방지).
+  // ========================================================================= //
+  group('TMAP POI 폭주 예산 게이트', () {
+    /// 모든 provider가 빈 결과를 반환하는 MockClient. 검색이 실패해
+    /// fallback이 예산이 허락하는 한 계속 시도하도록 유도한다.
+    /// tmap HTTP 요청 횟수를 셀 수 있게 카운터를 노출한다.
+    ({http.Client client, int Function() tmapCallCount}) emptyResultsClient() {
+      int tmapCalls = 0;
+      final client = MockClient((request) async {
+        final host = request.url.host;
+        if (host == 'apis.openapi.sk.com') {
+          tmapCalls++;
+          return http.Response(
+            jsonEncode({
+              'searchPoiInfo': <String, dynamic>{
+                'pois': <String, dynamic>{'poi': const <dynamic>[]}
+              }
+            }),
+            200,
+          );
+        }
+        if (host == 'naveropenapi.apigw.ntruss.com') {
+          return http.Response('{"addresses":[]}', 200);
+        }
+        return http.Response('{"results":[]}', 200);
+      });
+      return (client: client, tmapCallCount: () => tmapCalls);
+    }
+
+    test('예산 부족 시 fallback 루프가 중단되어 tmap 호출이 예산으로 제한된다',
+        () async {
+      // rateLimit=2: 원본 쿼리가 1회 소비, fallback 1회 더 가능, 그 다음은
+      // remainingBudget=0 으로 중단.
+      // 게이트가 없으면 원본 1 + fallback 5 = 6회가 다 호출된다.
+      final guard = ApiUsageGuard(
+        configs: {
+          ApiName.tmapPoi: const ApiRateConfig(windowSeconds: 60, rateLimit: 2),
+        },
+      );
+      final mock = emptyResultsClient();
+      final service = LocationLookupService(
+        clientId: '',
+        clientSecret: '',
+        proxyUrl: '',
+        tmapApiKey: 'real-key',
+        googleMapsApiKey: '',
+        httpClientFactory: () => mock.client,
+        usageGuard: guard,
+      );
+
+      await service.search('성남 래온동물병원');
+
+      // 핵심 단언: tmap HTTP 호출은 정확히 2회여야 한다 (원본 1 + fallback 1).
+      // 6회가 됐다면 게이트가 동작하지 않은 것 (폭주 회귀).
+      expect(mock.tmapCallCount(), 2,
+          reason:
+              'rateLimit=2일 때 원본(1) + fallback(1) = 2회에서 예산 게이트가 '
+              '중단시켜야 함. 6회면 게이트 미동작(폭주 회귀).');
+      expect(await guard.remainingBudget(ApiName.tmapPoi), 0);
+    });
+
+    test('예산이 충분하면 fallback 게이트가 정상 동작을 막지 않는다 (회귀 없음)',
+        () async {
+      final guard = ApiUsageGuard(
+        configs: {
+          ApiName.tmapPoi:
+              const ApiRateConfig(windowSeconds: 60, rateLimit: 100),
+        },
+      );
+      final mock = emptyResultsClient();
+      final service = LocationLookupService(
+        clientId: '',
+        clientSecret: '',
+        proxyUrl: '',
+        tmapApiKey: 'real-key',
+        googleMapsApiKey: '',
+        httpClientFactory: () => mock.client,
+        usageGuard: guard,
+      );
+
+      await service.search('성남 래온동물병원');
+
+      // maxTmapCallsPerSearch(=6)회로 정상 동작 — 게이트가 예산을 쓸데없이
+      // 조이지 않는다.
+      expect(mock.tmapCallCount(), LocationLookupService.maxTmapCallsPerSearch,
+          reason: '예산 충분 시 원본+fallback 전부 시도 = 6회여야 함');
+    });
+
+    test('이미 예산이 고갈된 상태면 원본 쿼리 tmap 호출 1회로만 끝난다',
+        () async {
+      // home_screen 게이트가 패스를 중단한 뒤, 남은 예산 1로 사용자가 직접
+      // 검색하는 상황. search()는 원본 1회만 tmap을 쓰고 fallback은 예산 0으로
+      // 즉시 중단한다.
+      final guard = ApiUsageGuard(
+        configs: {
+          ApiName.tmapPoi:
+              const ApiRateConfig(windowSeconds: 60, rateLimit: 60),
+        },
+      );
+      for (var i = 0; i < 59; i++) {
+        await guard.tryConsume(ApiName.tmapPoi);
+      }
+      expect(await guard.remainingBudget(ApiName.tmapPoi), 1);
+
+      final mock = emptyResultsClient();
+      final service = LocationLookupService(
+        clientId: '',
+        clientSecret: '',
+        proxyUrl: '',
+        tmapApiKey: 'real-key',
+        googleMapsApiKey: '',
+        httpClientFactory: () => mock.client,
+        usageGuard: guard,
+      );
+
+      await service.search('성남 래온동물병원');
+
+      expect(mock.tmapCallCount(), 1,
+          reason: '예산 1 남은 상태에선 원본 쿼리만 tmap 1회 호출하고 '
+              'fallback은 예산 게이트로 즉시 중단해야 함');
+    });
+  });
 }
