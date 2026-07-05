@@ -13,6 +13,7 @@ import '../core/log_text.dart';
 import '../core/router.dart';
 import '../providers/auth_provider.dart';
 import 'auth_service.dart';
+import 'calendar_sync_service.dart';
 import 'naver_calendar_permission_service.dart';
 
 enum OAuthCallbackPurpose {
@@ -309,36 +310,6 @@ class OAuthCallbackHandler {
     return !currentSessionPresent;
   }
 
-  /// 기존 세션을 "그대로 채택"(홈으로 라우팅)해도 안전한지 판정한다.
-  ///
-  /// - calendarLink / passwordRecovery / emailConfirmation 콜백은 세션이 이미
-  ///   있어도 채택을 허용한다 (기존 동작 유지).
-  /// - pendingPurpose == login 이고 currentSessionPresent == true 이면
-  ///   다른 경로로 생긴 세션을 소셜 로그인 콜백에 흡수하는 교차 오염이므로
-  ///   채택을 금지(false)한다.
-  /// - pendingPurpose == null (pending 이 만료됐거나 이미 소비된 경우) 이면
-  ///   일반적인 중복 콜백으로 보아 채택을 허용한다(true).
-  @visibleForTesting
-  static bool shouldAdoptExistingSessionForCallback({
-    required OAuthCallbackPurpose? pendingPurpose,
-    required bool currentSessionPresent,
-    required bool isPasswordRecovery,
-    required bool isEmailConfirmation,
-    required bool hasPendingCalendarLink,
-  }) {
-    // 비밀번호 복구 · 이메일 인증 · 캘린더 연동은 기존 세션 채택 허용
-    if (isPasswordRecovery || isEmailConfirmation || hasPendingCalendarLink) {
-      return true;
-    }
-    // 로그인 목적 pending 이 살아 있고, 기존 세션이 이미 존재하면 교차 오염 → 차단
-    if (pendingPurpose == OAuthCallbackPurpose.login &&
-        currentSessionPresent) {
-      return false;
-    }
-    // pending 없음(만료·소비) 또는 세션 없음 → 채택 허용
-    return true;
-  }
-
   void start() {
     if (kIsWeb || !AppEnv.hasValidSupabaseConfig || _subscription != null) {
       return;
@@ -489,31 +460,6 @@ class OAuthCallbackHandler {
       if (pendingMethod == 'naver') {
         _logNaverCalendar('no exchange path: capture provider token');
       }
-
-      // 교차 오염 체크: 로그인 목적 콜백인데 이미 다른 세션이 존재하면 채택 금지
-      final currentSessionPresent = client.auth.currentSession != null;
-      final mayAdopt = shouldAdoptExistingSessionForCallback(
-        pendingPurpose: pendingPurpose,
-        currentSessionPresent: currentSessionPresent,
-        isPasswordRecovery: isPasswordRecovery,
-        isEmailConfirmation: isEmailConfirmation,
-        hasPendingCalendarLink:
-            pendingPurpose == OAuthCallbackPurpose.calendarLink,
-      );
-      if (!mayAdopt) {
-        // 소셜 로그인 콜백이 다른 경로로 생긴 세션을 흡수하지 않도록 차단
-        debugPrint(
-          'OAuth callback cross-flow contamination blocked: '
-          'pendingPurpose=$pendingPurpose '
-          'currentSessionPresent=$currentSessionPresent',
-        );
-        clearPendingCallback();
-        latestUserMessage.value =
-            '다른 로그인 세션이 활성화되어 있어 소셜 로그인을 완료하지 못했습니다. '
-            '앱을 다시 열고 소셜 로그인을 다시 시도해 주세요.';
-        return;
-      }
-
       // getLinkIdentityUrl 콜백: URL fragment에서 직접 provider_token 추출
       final urlProviderToken = isPendingNaverCalendarLink
           ? normalizedUri.queryParameters['provider_token']
@@ -677,6 +623,13 @@ class OAuthCallbackHandler {
         explicitProviderToken: response.session.providerToken,
         allowWithoutNaverIdentity: isPendingNaverCalendarLink,
       );
+      // Google 로그인 시 Google Calendar interactive sync
+      final loginSession = client.auth.currentSession;
+      final loginProvider =
+          loginSession?.user.appMetadata['provider']?.toString() ?? '';
+      if (loginProvider.contains('google')) {
+        unawaited(CalendarSyncService().syncGoogleCalendar(interactive: true));
+      }
       if (isPasswordRecovery) {
         authProvider.markPasswordRecovery();
         clearPendingCallback();

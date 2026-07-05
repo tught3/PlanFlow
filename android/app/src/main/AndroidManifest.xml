@@ -51,7 +51,7 @@
     </queries>
 
     <application
-        android:label="PlanFlow V2"
+        android:label="PlanFlow"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"

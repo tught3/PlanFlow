@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'oauth_callback_handler.dart';
 import '../core/env.dart';
+import '../core/log_text.dart';
 import '../core/supabase_auth_options.dart';
+import 'oauth_callback_handler.dart';
 
 enum PlanFlowOAuthProvider {
   google,
@@ -25,12 +25,16 @@ abstract class AuthSessionClient {
 }
 
 class AuthService implements AuthSessionClient {
-  AuthService({SupabaseClient? client, GoogleSignIn? googleSignIn})
-      : _client = client ?? Supabase.instance.client,
-        _googleSignIn = googleSignIn;
+  AuthService({SupabaseClient? client})
+      : _client = client ?? Supabase.instance.client;
+
+  static const String _naverCalendarLogTag = 'PlanFlowNaverCalendar';
 
   final SupabaseClient _client;
-  GoogleSignIn? _googleSignIn;
+
+  static void _logNaverCalendarAuth(String message) {
+    debugPrint('[$_naverCalendarLogTag] auth ${logSafeText(message)}');
+  }
 
   @override
   Session? get currentSession => _client.auth.currentSession;
@@ -44,44 +48,6 @@ class AuthService implements AuthSessionClient {
   @override
   Future<void> refreshSession() async {
     await _client.auth.refreshSession();
-  }
-
-  Future<AuthResponse> signInWithGoogleNative() async {
-    final serverClientId = AppEnv.googleServerClientId.trim();
-    if (serverClientId.isEmpty) {
-      throw AuthException(
-        'Google 로그인 설정이 없습니다. Google serverClientId를 확인해 주세요.',
-      );
-    }
-
-    final googleUser = await _googleSignInInstance.signIn();
-    if (googleUser == null) {
-      throw AuthException('Google 로그인이 취소되었습니다.');
-    }
-
-    final googleAuth = await googleUser.authentication;
-    final idToken = googleAuth.idToken?.trim();
-    final accessToken = googleAuth.accessToken?.trim();
-    if (idToken == null || idToken.isEmpty) {
-      throw AuthException('Google ID 토큰을 받지 못했습니다.');
-    }
-    if (accessToken == null || accessToken.isEmpty) {
-      throw AuthException('Google access token을 받지 못했습니다.');
-    }
-
-    try {
-      final response = await _client.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-        accessToken: accessToken,
-      );
-      unawaited(_tryEnsureProfile(response.user));
-      return response;
-    } catch (error, stackTrace) {
-      debugPrint('Google native sign-in failed: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      rethrow;
-    }
   }
 
   Future<AuthResponse> signInWithEmail({
@@ -133,6 +99,13 @@ class AuthService implements AuthSessionClient {
     bool forceConsent = false,
     bool forCalendar = false,
   }) async {
+    if (provider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'signInWithOAuth start forCalendar=$forCalendar '
+        'forceConsent=$forceConsent '
+        'sessionPresent=${_client.auth.currentSession != null}',
+      );
+    }
     final uri = await buildOAuthSignInUri(
       provider,
       forceConsent: forceConsent,
@@ -142,18 +115,20 @@ class AuthService implements AuthSessionClient {
       provider,
       forceConsent: forceConsent,
     );
+    if (provider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'signInWithOAuth built uri host=${uri.host} path=${uri.path} '
+        'queryKeys=${uri.queryParameters.keys.join(',')} '
+        'scopes=${oauthScopesFor(provider, forCalendar: forCalendar) ?? 'default'} '
+        'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
+      );
+    }
     return _launchOAuthUrl(
       uri: uri,
       appProvider: provider,
       supabaseProvider: _oauthProvider(provider),
       queryParams: queryParams,
-      purpose: 'sign-in',
-    );
-  }
-
-  GoogleSignIn get _googleSignInInstance {
-    return _googleSignIn ??= GoogleSignIn(
-      serverClientId: AppEnv.googleServerClientId,
+      purpose: forCalendar ? 'calendar-link' : 'sign-in',
     );
   }
 
@@ -168,6 +143,13 @@ class AuthService implements AuthSessionClient {
       provider,
       forceConsent: forceConsent,
     );
+    if (provider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'buildOAuthSignInUri request forCalendar=$forCalendar '
+        'forceConsent=$forceConsent scopes=${scopes ?? 'default'} '
+        'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
+      );
+    }
     final response = await _client.auth.getOAuthSignInUrl(
       provider: oauthProvider,
       redirectTo: AppEnv.authRedirectUrl,
@@ -178,23 +160,38 @@ class AuthService implements AuthSessionClient {
   }
 
   Future<bool> recheckNaverAccountConsent() {
-    return signInWithOAuth(PlanFlowOAuthProvider.naver, forceConsent: true);
+    return signInWithOAuth(
+      PlanFlowOAuthProvider.naver,
+      forceConsent: true,
+      forCalendar: true,
+    );
   }
 
   Future<bool> connectCalendarProvider(PlanFlowOAuthProvider provider) async {
     final oauthProvider = _oauthProvider(provider);
+    if (provider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'connectCalendarProvider start sessionPresent=${_client.auth.currentSession != null} '
+        'currentUserPresent=${_client.auth.currentUser != null}',
+      );
+    }
     if (_client.auth.currentSession == null) {
+      if (provider == PlanFlowOAuthProvider.naver) {
+        _logNaverCalendarAuth(
+          'connectCalendarProvider no Supabase session -> signInWithOAuth for calendar',
+        );
+      }
       return signInWithOAuth(
         provider,
         forCalendar: provider == PlanFlowOAuthProvider.naver,
       );
     }
 
-    if (provider == PlanFlowOAuthProvider.naver &&
-        await _hasLinkedIdentity('naver')) {
-      debugPrint(
-        'OAuth calendar link fallback: provider=naver already linked, '
-        'requesting fresh consent instead of identity link',
+    // Naver 캘린더: getLinkIdentityUrl은 provider_token을 콜백 URL에 포함하지 않음.
+    // full OAuth(signInWithOAuth)만 provider_token을 제공하므로 항상 이 경로 사용.
+    if (provider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'connectCalendarProvider naver -> signInWithOAuth forceConsent=true forCalendar=true',
       );
       return signInWithOAuth(provider, forceConsent: true, forCalendar: true);
     }
@@ -214,16 +211,7 @@ class AuthService implements AuthSessionClient {
         queryParams: queryParams,
         purpose: 'calendar-link',
       );
-    } catch (error, stackTrace) {
-      if (provider == PlanFlowOAuthProvider.naver &&
-          _isIdentityAlreadyExistsError(error)) {
-        debugPrint(
-          'OAuth calendar link already exists: falling back to '
-          'fresh Naver consent flow',
-        );
-        debugPrintStack(stackTrace: stackTrace);
-        return signInWithOAuth(provider, forceConsent: true, forCalendar: true);
-      }
+    } catch (_) {
       rethrow;
     }
   }
@@ -256,35 +244,10 @@ class AuthService implements AuthSessionClient {
       await _client.auth.unlinkIdentity(naverIdentity);
       return true;
     } catch (error, stackTrace) {
-      debugPrint('Naver calendar disconnect failed: $error');
+      debugPrint('Naver calendar disconnect failed: ${logSafeText(error)}');
       debugPrintStack(stackTrace: stackTrace);
       return false;
     }
-  }
-
-  Future<bool> _hasLinkedIdentity(String providerKey) async {
-    try {
-      final identities = await _client.auth.getUserIdentities();
-      return identities.any((identity) {
-        final provider = identity.provider.toLowerCase();
-        return provider.contains(providerKey.toLowerCase());
-      });
-    } catch (error, stackTrace) {
-      debugPrint('OAuth linked identity lookup skipped: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      return false;
-    }
-  }
-
-  bool _isIdentityAlreadyExistsError(Object error) {
-    if (error is AuthException) {
-      final message = error.message.toLowerCase();
-      final code = error.code?.toLowerCase() ?? '';
-      return message.contains('identity_already_exists') ||
-          code.contains('identity_already_exists');
-    }
-    final text = error.toString().toLowerCase();
-    return text.contains('identity_already_exists');
   }
 
   Future<bool> _launchOAuthUrl({
@@ -301,28 +264,45 @@ class AuthService implements AuthSessionClient {
     // 태스크 안에 머물러 이 문제가 없고, Google의 WebView 로그인 차단 정책도
     // Custom Tab은 허용 대상이라 카카오/네이버와 동일하게 통일한다.
     final launchMode = switch (appProvider) {
-      // Google은 이제 네이티브 로그인(signInWithGoogleNative)을 쓰므로 이 경로를
-      // 타지 않는다. 남은 값은 호환용.
       PlanFlowOAuthProvider.google => LaunchMode.inAppBrowserView,
-      // Kakao/Naver 웹 OAuth: 구형 기기(S8 등)에서 커스텀 탭이 planflow://
-      // 커스텀 스킴 리다이렉트로 앱에 복귀하지 못하고 브라우저에서 멈추는 경우가
-      // 있어, OS가 딥링크 복귀를 처리하는 외부 브라우저로 띄운다.
-      PlanFlowOAuthProvider.kakao => LaunchMode.externalApplication,
-      PlanFlowOAuthProvider.naver => LaunchMode.externalApplication,
+      PlanFlowOAuthProvider.kakao => LaunchMode.inAppBrowserView,
+      PlanFlowOAuthProvider.naver => LaunchMode.inAppBrowserView,
     };
-    _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
-    await OAuthCallbackHandler.persistCurrentPendingCallback();
+    final forCalendar = purpose == 'calendar-link';
+    final effectiveScopes =
+        oauthScopesFor(appProvider, forCalendar: forCalendar) ?? 'default';
     debugPrint(
       'OAuth launch: purpose=$purpose appProvider=$appProvider '
       'supabaseProvider=$supabaseProvider host=${uri.host} path=${uri.path} '
-      'scopes=${oauthScopesFor(appProvider) ?? 'default'} '
+      'scopes=$effectiveScopes '
       'queryParams=${queryParams?.keys.join(',') ?? 'none'}',
     );
-    return launchUrl(
+    if (appProvider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth(
+        'launchOAuthUrl purpose=$purpose mode=$launchMode '
+        'host=${uri.host} path=${uri.path} '
+        'queryKeys=${uri.queryParameters.keys.join(',')} '
+        'scopes=$effectiveScopes '
+        'queryParamKeys=${queryParams?.keys.join(',') ?? 'none'}',
+      );
+    }
+    _markPendingOAuthCallback(appProvider: appProvider, purpose: purpose);
+    await OAuthCallbackHandler.persistCurrentPendingCallback();
+    final launched = await launchUrl(
       uri,
       mode: launchMode,
       webOnlyWindowName: '_self',
     );
+    if (!launched) {
+      if (appProvider == PlanFlowOAuthProvider.naver) {
+        _logNaverCalendarAuth('launchOAuthUrl failed launched=false');
+      }
+      OAuthCallbackHandler.clearPendingCallback();
+    }
+    if (appProvider == PlanFlowOAuthProvider.naver) {
+      _logNaverCalendarAuth('launchOAuthUrl result launched=$launched');
+    }
+    return launched;
   }
 
   void _markPendingOAuthCallback({
@@ -340,51 +320,10 @@ class AuthService implements AuthSessionClient {
   }
 
   @override
-  Future<void> signOut() async {
-    PlanFlowAuthLocalStorage.beginExplicitSignOut();
-    try {
-      await PlanFlowAuthLocalStorage.runWithSessionRemovalAllowed(
-        _client.auth.signOut,
-      );
-    } finally {
-      await clearCachedOAuthState();
-      // 비동기 signedOut 이벤트 리스너가 명시적 로그아웃 플래그를 본 뒤 풀리도록 지연 해제한다.
-      // 정상 경로에서는 AuthProvider 리스너가 먼저 endExplicitSignOut()을 호출하며,
-      // 리스너가 없는 경우(테스트 등)를 대비한 fallback이다.
-      unawaited(
-        Future<void>.delayed(
-          const Duration(milliseconds: 500),
-          PlanFlowAuthLocalStorage.endExplicitSignOut,
-        ),
-      );
-    }
-  }
-
-  @visibleForTesting
-  Future<void> clearCachedOAuthState() async {
-    OAuthCallbackHandler.clearPendingCallback();
-    OAuthCallbackHandler.clearLatestUserMessage();
-    await _clearGoogleSignInCache();
-  }
-
-  Future<void> _clearGoogleSignInCache() async {
-    final googleSignIn = _googleSignIn;
-    if (googleSignIn == null) {
-      return;
-    }
-
-    try {
-      await googleSignIn.disconnect();
-    } catch (error, stackTrace) {
-      debugPrint('Google sign-out cache clear via disconnect skipped: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      try {
-        await googleSignIn.signOut();
-      } catch (fallbackError, fallbackStackTrace) {
-        debugPrint('Google sign-out cache clear skipped: $fallbackError');
-        debugPrintStack(stackTrace: fallbackStackTrace);
-      }
-    }
+  Future<void> signOut() {
+    return PlanFlowAuthLocalStorage.runWithSessionRemovalAllowed(
+      _client.auth.signOut,
+    );
   }
 
   @override
@@ -415,7 +354,7 @@ class AuthService implements AuthSessionClient {
     try {
       await ensureProfile(user);
     } catch (error) {
-      debugPrint('Profile sync skipped: $error');
+      debugPrint('Profile sync skipped: ${logSafeText(error)}');
     }
   }
 
@@ -441,7 +380,11 @@ class AuthService implements AuthSessionClient {
       // enabled in Kakao Developers. Keep login on profile-only scopes; email
       // can be added later only after the Kakao consent item is approved.
       PlanFlowOAuthProvider.kakao => 'openid,profile_nickname,profile_image',
-      PlanFlowOAuthProvider.naver => forCalendar ? 'email,calendar' : 'email',
+      // Login uses the base email scope. Calendar connection still requests
+      // calendar consent, and the settings flow falls back to CalDAV if launch
+      // or permission verification does not complete.
+      PlanFlowOAuthProvider.naver when forCalendar => 'email,calendar',
+      PlanFlowOAuthProvider.naver => 'email',
     };
   }
 
