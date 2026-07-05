@@ -2728,7 +2728,7 @@ create or replace function public.record_user_activity(
   p_platform text default null,
   p_mark_login boolean default false
 )
-returns public.users
+returns void
 language plpgsql
 security definer
 set search_path = public
@@ -2753,8 +2753,7 @@ begin
            when p_mark_login then now()
            else public.users.last_login_at
          end
-   where id = uid
-   returning * into public.users;
+   where id = uid;
 end;
 $$;
 
