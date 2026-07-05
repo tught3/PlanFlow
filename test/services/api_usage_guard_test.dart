@@ -395,4 +395,62 @@ void main() {
     expect(count, 3,
         reason: '차단된 호출은 windowCount에 포함되지 않아 정확히 3이어야 함');
   });
+
+  // ------------------------------------------------------------------ //
+  // 14. rateLimitFor — API별 rateLimit 조회 (예산 산정 기준)
+  //
+  // 실측 (mock 없음): 실제 ApiUsageGuard + 실제 SharedPreferences.
+  // 호출처(home_screen/_resolveEventsMissingCoords)가 "한 검색이 소비할 수
+  // 있는 최대 호출 수"와 비교해 예산을 계산할 때 쓴다.
+  // ------------------------------------------------------------------ //
+  test('rateLimitFor는 설정된 rateLimit을 반환한다', () {
+    final guard = ApiUsageGuard(
+      configs: {
+        'budget_api': const ApiRateConfig(windowSeconds: 60, rateLimit: 42),
+      },
+    );
+    expect(guard.rateLimitFor('budget_api'), 42);
+    // 미설정 API는 기본 rateLimit(defaultRateLimit=60)
+    expect(guard.rateLimitFor('unknown_api'),
+        ApiUsageGuard.defaultRateLimit);
+  });
+
+  // ------------------------------------------------------------------ //
+  // 15. remainingBudget — tryConsume 전에 남은 예산 실측 (폭주 원천 예방)
+  //
+  // 실측 (mock 없음): 실제 ApiUsageGuard + 실제 SharedPreferences에 진짜
+  // 타임스탬프를 누적시킨 뒤 남은 예산을 계산한다. 이 값은 home_screen의
+  // _resolveEventsMissingCoords 예산 게이트가 패스 중단 여부를 결정하는
+  // 핵심 producer다. 가짜 값이면 게이트가 死문서가 돼도 테스트가 통과한다
+  // (mocked-contract-hides-bug 방지).
+  // ------------------------------------------------------------------ //
+  test('remainingBudget은 rateLimit - windowCount를 0 하한으로 반환한다',
+      () async {
+    final guard = ApiUsageGuard(
+      configs: {
+        'budget_api': const ApiRateConfig(windowSeconds: 60, rateLimit: 5),
+      },
+    );
+
+    // 초기: 예산 5 (아무 호출도 안 함)
+    expect(await guard.remainingBudget('budget_api'), 5);
+
+    // 3회 소비 → 예산 2
+    await guard.tryConsume('budget_api');
+    await guard.tryConsume('budget_api');
+    await guard.tryConsume('budget_api');
+    expect(await guard.remainingBudget('budget_api'), 2,
+        reason: '3회 소비 후 남은 예산은 2');
+
+    // 나머지 2회 소비 → 예산 0
+    await guard.tryConsume('budget_api');
+    await guard.tryConsume('budget_api');
+    expect(await guard.remainingBudget('budget_api'), 0,
+        reason: 'rateLimit 도달 후 예산은 0 (음수 아님)');
+
+    // 차단된 호출 이후에도 예산은 0으로 클램프 (음수 아님)
+    await guard.tryConsume('budget_api'); // 차단
+    expect(await guard.remainingBudget('budget_api'), 0,
+        reason: '차단 이후에도 예산은 음수가 아닌 0');
+  });
 }

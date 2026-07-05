@@ -134,6 +134,12 @@ class LocationLookupService {
   /// fallback 루프 최대 시도 횟수 — 한 미해결 검색이 tmap ≤ 1+5 = 6콜.
   static const int _maxFallbackQueries = 5;
 
+  /// 한 번의 [search]가 tmap POI를 소비할 수 있는 최대 호출 수.
+  /// 원본 쿼리 1회 + fallback [_maxFallbackQueries]회.
+  /// 호출처가 "이번 패스에 안전하게 처리할 수 있는지"를 미리 가늠할 때 쓴다.
+  /// 폭주(차단 임계 도달)를 원천 예방하기 위한 예산 산정 기준.
+  static int get maxTmapCallsPerSearch => _maxFallbackQueries + 1;
+
   /// query 키 → 캐시 항목. key = query.trim().toLowerCase() (정규화).
   /// origin/preferredProvider는 key에 포함하지 않는다(과도복잡 방지; POI 결과는 query 기반).
   static final Map<String, _LookupCacheEntry> _resultCache = {};
@@ -258,7 +264,20 @@ class LocationLookupService {
 
     if (results.isEmpty && fallbackQueries.isNotEmpty) {
       // fallback 캡: 최대 _maxFallbackQueries 개만 시도 — 한 검색이 tmap ≤ 1+5 = 6콜.
+      //
+      // 예산 게이트 (폭주 원천 예방): 각 fallback retry 전에 tmap 남은 예산을
+      // 실측한다. 원본 쿼리가 이미 tmap 예산을 1 소비했고, 남은 예산이 없으면
+      // fallback 루프를 즉시 중단한다. _searchAllProviders는 tmap/naver/google을
+      // 병렬로 부르므로, 원본 쿼리에서 이미 naver/google 결과까지 시도된 상태다.
+      // 따라서 예산이 없을 때 fallback을 더 돌려도 tmap은 tryConsume에서 차단돼
+      // 빈 결과만 반복하며, naver/google 재호출은 또 다른 provider 예산만 소모한다.
+      // 예산 기반 중단이 있으면 어떤 상황(동시 호출처, fallback 수 변화)에서도
+      // 한 검색이 윈도우 리미트를 넘기지 않는다.
       for (final retryQuery in fallbackQueries.take(_maxFallbackQueries)) {
+        final tmapRemaining = await _guard.remainingBudget(ApiName.tmapPoi);
+        if (tmapRemaining <= 0) {
+          break;
+        }
         await _searchAllProviders(retryQuery, results, searchedQueries, origin,
             (error) {
           authFailure ??= error;

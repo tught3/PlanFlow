@@ -123,6 +123,22 @@ class ApiUsageGuard {
   /// 슬라이딩 윈도우 카운트를 반환한다.
   Future<int> todayCount(String api) => windowCount(api);
 
+  /// 해당 API의 [ApiRateConfig.rateLimit]를 반환한다.
+  /// 호출처가 "한 번에 소비할 수 있는 최대 호출 수"와 비교해 예산을 계산할 때 쓴다.
+  int rateLimitFor(String api) => _configFor(api).rateLimit;
+
+  /// 윈도우 내 남은 호출 예산을 반환한다 (`rateLimit - windowCount`).
+  /// 음수가 되지 않게 0으로 클램프한다.
+  /// 호출처가 "이번 패스/이번 검색이 안전하게 진행 가능한지"를 tryConsume
+  /// 전에 미리 알고 싶을 때 사용한다 — 예산이 부족하면 시도조차 하지 않고
+  /// 다음 기회로 미룰 수 있다. 이로써 폭주(차단 임계 도달)를 원천 예방한다.
+  Future<int> remainingBudget(String api) async {
+    final limit = _configFor(api).rateLimit;
+    final used = await windowCount(api);
+    final remaining = limit - used;
+    return remaining < 0 ? 0 : remaining;
+  }
+
   /// API 호출 시도를 소비한다.
   ///
   /// - 윈도우 내 호출수 >= rateLimit → `false` 반환 (자동 차단)

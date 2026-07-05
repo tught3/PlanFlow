@@ -15,6 +15,7 @@ import '../../data/models/event_model.dart';
 import '../../data/repositories/event_repository.dart';
 import '../../data/repositories/early_bird_email_repository.dart';
 import '../../services/app_permission_service.dart';
+import '../../services/api_usage_guard.dart';
 import '../../services/briefing_scheduler_service.dart';
 import '../../services/departure_alarm_service.dart';
 import '../../services/event_prefetch_service.dart';
@@ -451,6 +452,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await prefs.remove(key);
       }
       for (final event in missing.take(_maxCoordResolutionsPerPass)) {
+        // 예산 게이트 (폭주 원천 예방, 2026-07-05 window_count=60 차단 회귀):
+        // 이 이벤트의 search가 최대 LocationLookupService.maxTmapCallsPerSearch
+        // (=6)회의 tmap 호출을 소비할 수 있다. 남은 예산이 그보다 적으면 더 이상
+        // 처리하지 않고 이번 패스를 종료한다 — 남은 일정은 다음 홈 리로드로
+        // 미룬다. 고정 캡이 아니라 실측 예산 기반이므로, 동시 호출처가 있거나
+        // fallback 수가 변해도 윈도우 리미트(60) 도달을 원천 차단한다.
+        final tmapRemaining =
+            await ApiUsageGuard.instance.remainingBudget(ApiName.tmapPoi);
+        if (tmapRemaining < LocationLookupService.maxTmapCallsPerSearch) {
+          break;
+        }
         // 쿨다운: 같은 (event, location)을 최근에 시도했으면 재검색 스킵.
         // location 문자열을 키에 넣어, 사용자가 위치를 고치면 키가 바뀌어
         // 즉시 재시도된다. 시도 기록은 성공/실패/예외 모두에 남겨,

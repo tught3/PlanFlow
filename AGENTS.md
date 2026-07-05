@@ -392,7 +392,20 @@ Claude Code 앱에서 Agent 도구로 여러 서브에이전트를 한 메시지
 E:\FluxStudio\planflow
 
 ## 현재 상태
-- Stage: 아키텍처 확정, 구현 시작 단계
+- Stage: 1차 핵심 기능 구현 완료, V2 그룹 기능 병합 완료, Play Alpha 배포 중
+- 버전: 1.1.1+77 (2026-07-05)
+- 코드베이스 규모: 176개 Dart 파일 (services 57, screens 26, features/groups 46)
+- 1차 구현 완료: 음성 입력 -> AI 파싱 -> 확인 UI -> 저장 -> 알림, 아침/저녁 브리핑, 역산 알림(pre-action), 이동 시간 버퍼, Google/Naver 캘린더 양방향 동기화, 시스템 알람, 홈 위젯(마이크 버튼)
+- V2 그룹 기능 구현: 그룹 생성/초대/멤버 관리, 그룹 일정 공유-연동, 그룹 이벤트 코멘트, 초대 링크, 역할 위임(leader/member), 그룹 나가기, 그룹 캘린더 오버레이
+- DB: 24개 테이블 (V2 groups 인프라 포함), 18개 마이그레이션, 3개 Edge Function (naver-geocode, naver-userinfo-proxy, openai-proxy)
+- 최근 변경(2026-07-05): PlanFlow-v2(feature/team-v2-planning) 병합으로 그룹 기능 완전 통합, 앱 정체 단일화, 로그인 회귀 복원
+
+## 다음 작업
+- 그룹(V2) 기능 엣지 케이스 안정화 및 크래시 모니터링 강화
+- 1차 배포 Play Alpha -> Internal -> 프로덕션 진행
+- Naver/Google 캘린더 동기화 안정성 및 예외 처리 개선
+- 성능 최적화 (홈 화면 로딩, 이벤트 프리패치, 배터리 소모)
+- 2차 배포 기능(KakaoTalk/SMS/통화 일정 감지) 검토-설계
 
 ## 기술스택
 - Framework: Flutter (Android-first)
@@ -402,8 +415,10 @@ E:\FluxStudio\planflow
 - TTS: flutter_tts
 
 ## DB 스키마
-users, events, pre_actions, reminders, voice_logs,
-location_history, user_settings, early_bird_emails
+- 코어: users, events, pre_actions, reminders, voice_logs, location_history, user_settings, calendar_connections
+- V2 그룹: groups, group_members, group_invites, group_role_delegations, group_events, group_event_comments, group_backups
+- 음성 교정: voice_correction_rules, voice_common_correction_rules
+- 기타: early_bird_emails, user_backups, feedback_reports, admin_roles, contact_messages, product_early_birds, backup.daily_snapshots
 
 ## 핵심 기능 (1차 배포)
 - 음성 입력 -> AI 파싱 -> 확인 UI -> 저장 -> 알림
@@ -519,14 +534,19 @@ Secondary detail sources: `CLAUDE.md` and `docs/agent-rules-*.md`.
 
 ```text
 lib/
-├── core/                # env, routing, theme, constants
-├── data/                # models and Supabase repositories
-├── providers/           # app/auth/event/settings state
-├── screens/             # Flutter screens
-├── services/            # STT, GPT, calendar, notification, widget, backup
-└── widgets/             # shared UI widgets
+├── core/                # env, routing, theme, constants, supabase_auth_options
+├── data/
+│   ├── models/          # event, pre_action, user_settings, calendar_connection, feedback_report, ...
+│   └── repositories/    # Supabase CRUD repositories
+├── features/
+│   └── groups/          # V2 그룹 기능 (models, providers, repositories, screens, services, widgets)
+├── providers/           # auth/settings state
+├── screens/             # auth, briefing, calendar, event, home, location, onboarding, settings, splash, voice
+├── services/            # STT, GPT, calendar sync, notification, widget, backup, Naver CalDAV, TTS, alarm
+├── widgets/             # shared UI components
+└── l10n/                # 한국어/영어 localization
 android/                 # Android app, widget, manifest
-supabase/schema.sql      # DB schema and RLS source of truth
+supabase/                # schema.sql, migrations/ (18개), functions/ (3개 Edge Function)
 ```
 
 ## Deployment structure
@@ -546,3 +566,14 @@ supabase/schema.sql      # DB schema and RLS source of truth
 - Gradle/Flutter build/test는 PlanFlow 안에서 동시에 하나만 실행한다.
 - Gradle 설정, wrapper, generated/ephemeral 파일, `.dart_tool`, `.gradle`, `build`는 명시적 목적 없이 수정/삭제/커밋하지 않는다.
 - API 키와 토큰은 명령줄, 로그, 보고에 원문 출력하지 않는다.
+
+---
+
+## AGENTS.md Changelog
+
+### TASK_20260705_091341 — GLM Worker W01 현행화 (2026-07-05)
+- **현재 상태 갱신**: "아키텍처 확정, 구현 시작 단계" -> v1.1.1+77, 1차 핵심 기능 구현 완료, V2 그룹 병합, Play Alpha 배포 중. 코드베이스 규모(176 Dart 파일), DB(24 테이블/18 마이그레이션/3 Edge Function), 최근 변경 이력 반영.
+- **DB 스키마 갱신**: 8개 테이블 -> 24개 테이블 (V2 groups 인프라, 음성 교정, calendar_connections, feedback_reports, user_backups, admin_roles 등 추가).
+- **Project structure 갱신**: features/groups(V2) 디렉터리, data/models+repositories 분리, l10n, supabase/migrations+functions 반영.
+- **다음 작업 섹션 신규 추가**: 그룹 안정화, 배포 진행, 캘린더 동기화 개선, 성능 최적화, 2차 기능 검토.
+- **규약 섹션 원문 보존**: FluxOS Pipeline Gate, 기본 원칙, 모델 라우팅, 작업 방식, Anti-Patterns, Workflow rules, Repo-specific rules 등 변경 없음.
