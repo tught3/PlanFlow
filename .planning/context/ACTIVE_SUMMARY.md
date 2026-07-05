@@ -141,16 +141,121 @@
 - `scripts/deploy-play-internal.ps1`가 `build-internal-aab.ps1`를 배열 splat로 호출하면서 `-StatusPath`가 테스트 인자로 새는 문제를 hashtable splat로 고쳤다. 이로써 `-SkipVersionBump` / `-SkipUpload`가 정상적으로 바인딩된다.
 - `deploy-play.bat planflow -SkipUpload` 검증에서 version bump 없이 `1.1.0+33` 기준으로 analyze, focused tests, release AAB build가 정상 통과하는 것을 확인했다.
 - 이어서 실제 `E:\FluxStudio\tools\deploy-play.bat planflow` 실행이 성공했고, Play alpha track에 `versionCode 34` 업로드 및 release commit까지 완료되었다. 최종 AAB는 `E:\FluxStudio\PlanFlow\build\app\outputs\bundle\release\app-release.aab`이다.
+## 2026-06-29 V2 group invite link target constraint fix
+- QR/초대 링크 참여 시 운영 DB의 `group_invites_target_check`가 `invited_user_id`, `invited_email`, `invited_invite_code` 중 정확히 하나만 허용하는데 링크 RPC가 세 값을 함께 넣어 실패하던 문제를 수정했다.
+- `accept_group_invite_link`는 이제 링크로 참여하는 로그인 사용자를 `invited_user_id` 하나로만 기록하고, 앱 화면은 원문 PostgresException 대신 사용자용 안내 문구를 보여준다.
+- 검증: 운영 Supabase 함수 정의에서 insert values가 `auth.uid(), null, null`임을 확인, targeted analyze 통과, release APK 재빌드 성공, 3기기 install 및 launch OK.
+## 2026-06-29 S8 tab Google prompt loop fix
+- `ShellScreen` 시작 작업에서 Google Calendar 미연동 상태일 때 `syncGoogleCalendar(interactive: true)`를 자동 호출하던 경로를 제거했다.
+- 탭 이동으로 `/home`, `/calendar`, `/settings` route가 바뀌며 `ShellScreen`이 재생성될 때마다 Google 계정 선택창이 다시 뜰 수 있던 원인을 차단했다.
+- 수동 Google Calendar 연결은 설정탭 버튼에만 남겼고, 백그라운드 자동 동기화는 기존처럼 `interactive: false` 경로만 사용한다.
+- 검증: `scripts/flutter-local.ps1 analyze lib\screens\shell_screen.dart --no-pub`, `scripts/flutter-local.ps1 test test\screens\shell_swipe_gesture_test.dart --no-pub -r compact` 통과.
+## 2026-06-29 V2 group invite QR
+- `qr_flutter`를 추가하고 초대관리의 초대 링크 카드에 QR 코드를 표시해, 팀원이 카메라로 스캔해 `planflow-v2://group-invite?...` 초대 화면으로 들어갈 수 있게 했다.
+- 기존 링크 복사와 이메일/초대코드 입력은 유지했고, QR은 리더에게만 보이는 초대 링크 카드 안에 배치했다.
+- 검증: QR 화면 테스트 포함 초대 관련 테스트 통과, targeted `dart analyze` 통과, release APK 빌드 성공, 3기기 install 및 launch OK.
+## 2026-06-29 V2 group invite link UX
+- 그룹 리더가 초대관리에서 `초대 링크 복사`를 누르면 `planflow-v2://group-invite?groupId=...&token=...` 링크를 카톡/문자 등에 붙여넣을 수 있게 했다.
+- 앱 딥링크 resolver/router/Android manifest에 `group-invite` 경로를 추가하고, 링크 수신자는 로그인 후 `그룹 초대` 화면에서 `그룹 참여하기`로 멤버 참여 RPC를 호출한다.
+- Supabase 운영 프로젝트 `xqvvfnvmytjlblcngipn`에 `groups.invite_token`과 `accept_group_invite_link(uuid, text)` migration을 적용했고 존재 확인도 마쳤다.
+- 검증: `flutter test test/app_home_widget_route_test.dart test/features/groups/group_invite_repository_test.dart test/features/groups/group_invite_screen_test.dart test/features/groups/group_invite_provider_test.dart --no-pub -r compact`, targeted `dart analyze`, release APK build, 3기기 install, 3기기 `planflow-v2://group-invite` launch OK.
+## 2026-06-29 V2 group sub-route context fix
+- 그룹 상세의 대시보드/그룹 일정/초대 관리/멤버 관리 진입 경로를 `/groups/{groupId}/...` 형태로 분리하고, 각 화면/provider가 route groupId를 우선 선택하도록 연결했다.
+- `GroupContextProvider.load`는 preferred groupId를 지원하며, 잘못된 groupId는 예외로 터뜨리지 않고 기존 저장값/리더/멤버 fallback으로 처리한다.
+- 검증: `flutter test test/features/groups/group_context_provider_test.dart --no-pub -r compact` 통과. `dart analyze`와 그룹 화면 테스트 묶음, release APK 빌드는 로컬 analyzer/Gradle 프로세스가 출력 없이 장시간 대기해 중단했으며 APK는 갱신되지 않았다.
+## 2026-06-21 Google login and onboarding order cleanup
+- Google 로그인 성공 직후에 바로 `CalendarSyncService.syncGoogleCalendar(interactive: true)`를 띄우던 경로를 제거해, 계정 선택이 로그인 온보딩 화면 위로 뒤늦게 튀어나오지 않도록 정리했다.
+- `ShellScreen`은 이제 권한 온보딩이 끝난 뒤에만 Google Calendar 자동 연결과 나머지 시작 작업을 실행하도록 순서를 묶어서, 로그인 -> 온보딩 -> 캘린더 계정 확인 순서로 정돈했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, `scripts/flutter-local.ps1 build apk --release --no-pub` 통과, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `adb -s 192.168.0.105:5555 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
+## 2026-06-21 Supabase readiness/error split
+- `LoginScreen`이 Supabase 초기화 진행 중인 정상 상태를 `빌드 설정값 부족` 오류로 오진하지 않도록, 준비 중과 실제 실패 상태를 분리했다.
+- `AppEnv`에 Supabase 초기화 실패 플래그와 실패 메시지를 추가하고, `main.dart`의 Supabase 초기화 예외를 실패 상태로 기록하게 해서 실제 실패만 로그인 화면에 노출되도록 정리했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, `flutter test test/screens/login_screen_test.dart --no-pub -r compact` 통과, `flutter build apk --release --no-pub` 통과, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `adb -s 192.168.0.105:5555 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
+## 2026-06-21 Google native auth error transparency
+- Google native login 실패 시 `login_screen.dart`가 더 이상 무조건 generic 문구만 내지 않도록 바꿔, Google/Supabase 원문 에러를 그대로 보여주거나 최소한 상세 메시지가 노출되게 했다.
+- `AuthService.signInWithGoogleNative()`도 실패 시 `debugPrint`로 원문을 남기게 해서, 다음 재현 때 UI와 logcat 양쪽에서 같은 원인을 확인할 수 있게 했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, `scripts/flutter-local.ps1 build apk --release --no-pub` 통과, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `adb -s 192.168.0.105:5555 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
+## 2026-06-21 Login screen Supabase readiness race fix
+- `LoginScreen`이 `initState()` 시점의 Supabase 준비 상태를 고정하지 않도록 바꾸고, `AuthService`를 필요한 시점에 lazy resolve 하도록 정리했다.
+- Supabase 초기화가 늦게 끝나는 경우에도 짧게 기다렸다가 Google native login / email login을 진행하도록 해서, 준비 완료 직후에도 stale `Supabase 빌드 설정값` 오류가 남지 않게 했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, `scripts/flutter-local.ps1 build apk --release --no-pub` 통과, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `adb -s 192.168.0.105:5555 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
+## 2026-06-21 flutter-local wrapper recovery
+- `scripts/flutter-local.ps1`가 `env/local.json`이 없어도 `env/local.example.json`으로 우회하도록 풀어서, 로컬 define 파일이 없는 워크트리에서도 analyze/build가 바로 돌게 했다.
+- Git 무시되는 `env/local.json` 템플릿도 로컬에 복원해, 나중에 실제 Google client ID를 채우면 같은 래퍼 경로를 바로 사용할 수 있게 했다.
+- 검증: `scripts/flutter-local.ps1 analyze --no-pub` 통과, `scripts/flutter-local.ps1 build apk --release --no-pub` 통과, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `adb -s 192.168.0.105:5555 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
+## 2026-06-21 Google native login split
+- Google 로그인만 `GoogleSignIn + Supabase signInWithIdToken`으로 분기하고, Kakao/Naver는 기존 브라우저 OAuth + callback 흐름을 유지했다.
+- 로그인 성공 후에는 기존과 같은 세션 동기화와 Google Calendar 인터랙티브 동기화를 이어가도록 `login_screen.dart`에 얇은 분기만 추가했다.
+- 검증: `flutter analyze --no-pub` 통과, `flutter build apk --release --no-pub` 통과로 `build/app/outputs/flutter-apk/app-release.apk` 재생성, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `adb -s 192.168.0.105:5555 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
+## 2026-06-21 Google OAuth launch stabilization
+- Google 로그인 런처를 풀 브라우저 대신 커스텀 탭(`LaunchMode.inAppBrowserView`)으로 바꿔, S8처럼 Chrome 계정 선택 화면이 오래 머무는 기기에서도 앱 복귀 가능성을 높였다.
+- 이 변경은 S8 전용 우회가 아니라 모든 Android 기기에 공통 적용되는 로그인 진입 방식 정리로 두었다.
+- 검증: `flutter analyze --no-pub` 통과, `flutter build apk --release --no-pub` 통과로 `build/app/outputs/flutter-apk/app-release.apk` 재생성, `adb -s 192.168.0.105:5555 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공 및 S8 앱 버전 갱신 확인.
+## 2026-06-21 V2 main 추적 재정렬
+- V2를 독립 수정 분기가 아니라 main PlanFlow 기준선 + 얇은 V2 overlay로 관리하도록 `docs/planflow-v2/23-main-tracking-overlay-policy.md`에 허용/비허용 차이를 문서화했다.
+- 권한 온보딩, `AppPermissionService`, `app.dart`, OAuth callback, Android manifest, `MainActivity`, 홈 위젯 provider를 main 기준으로 재정렬했고, V2에는 `planflow-v2://`, `PlanFlow V2`, `com.fluxstudio.planflow.v2`, `com.fluxstudio.planflow.v2.widget.*` overlay만 남겼다.
+- 권한 온보딩 테스트도 main 기준으로 되돌려 V2 전용 권한 흐름 drift가 생기지 않게 했다.
+- 검증: `flutter analyze --no-pub`, `flutter test test/screens/permission_onboarding_screen_test.dart test/services/oauth_callback_handler_test.dart test/app_home_widget_route_test.dart --no-pub -r compact`, `flutter build apk --release --no-pub`, `adb -s 192.168.0.103:46757 install -r -t build/app/outputs/flutter-apk/app-release.apk`, `adb -s 192.168.0.103:46757 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity`, main/V2 공존 패키지 확인, `planflow-v2://voice-launcher` 딥링크 전달 확인.
+## 2026-06-21 V2 권한 온보딩 루프/필수권한 보정
+- V2 권한 온보딩에서 설정 화면 복귀 후 같은 단계를 다시 여는 루프를 끊고, 위치/기기 캘린더를 선택 권한이 아니라 필수 권한 흐름으로 올렸다.
+- 정확한 알람과 전체 화면 알림은 앱 정보 fallback 없이 전용 설정만 열도록 정리했고, onboarding/request 흐름과 테스트를 함께 맞췄다.
+- 검증: `flutter analyze --no-pub`, `flutter test test/screens/permission_onboarding_screen_test.dart --no-pub -r compact`, `flutter build apk --release --no-pub`(timeout 후 APK 갱신 확인), `adb -s 192.168.0.103:46757 install -r -t build/app/outputs/flutter-apk/app-release.apk`, `adb -s 192.168.0.103:46757 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity`, `com.fluxstudio.planflow` / `com.fluxstudio.planflow.v2` 동시 설치 확인.
+## 2026-06-21 V2 main sync checkpoint
+- V2의 OAuth 콜백에 main 수준의 pending 상태 복구와 Naver 캘린더 토큰 캡처 흐름을 복구하고, `planflow-v2://auth-callback` scheme는 유지했다.
+- 권한 온보딩은 정확한 알람/전체 화면 알림 전용 설정 진입을 유지하면서, 폴드/플립 전용 전체 화면 알림 노출과 ready 판정을 분리했다.
+- V2 Firebase 설정은 `android/app/google-services.json`을 V2 앱 등록값으로 교체했다.
+- 검증: `flutter analyze --no-pub`, `flutter test test/screens/permission_onboarding_screen_test.dart test/services/oauth_callback_handler_test.dart test/app_home_widget_route_test.dart --no-pub -r compact`, `flutter build apk --release --no-pub`, `adb -s 192.168.0.103:46757 install -r -t build/app/outputs/flutter-apk/app-release.apk`, `adb -s 192.168.0.103:46757 shell am start -W -n com.fluxstudio.planflow.v2/.MainActivity`.
+## 2026-06-21 V2 permission onboarding settings routing
+- 권한 온보딩에서 `정확한 알람`과 `전체 화면 알림`이 앱 정보 화면으로 빠지지 않도록, Android 전용 `ACTION_REQUEST_SCHEDULE_EXACT_ALARM`과 `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT`를 통해 각 권한의 전용 설정 화면으로 연결했다.
+- `AppPermissionService`와 `PermissionOnboardingScreen`은 각각 전용 native 호출을 사용하도록 정리했고, 기존 알림/위치/캘린더 흐름은 그대로 유지했다.
+- 검증: `flutter analyze --no-pub` 통과, `flutter build apk --release --no-pub` 통과, `adb -s 192.168.0.103:46757 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 성공.
+## 2026-06-21 V2 deep link and widget namespace split
+- V2 deep link scheme를 `planflow-v2://`로 분리하고, auth callback 및 widget 진입 경로도 V2 전용 scheme만 받도록 `lib/core/env.dart`, `lib/app.dart`, `lib/services/oauth_callback_handler.dart`, `android/app/src/main/AndroidManifest.xml`을 정리했다.
+- V2 widget action 문자열도 `com.fluxstudio.planflow.v2.widget.*`로 분리해 기존 PlanFlow 위젯 액션과 겹치지 않게 했다.
+- 검증: `flutter analyze --no-pub` 통과, `flutter build apk --release --no-pub` 통과, `adb -s 192.168.0.103:46757 install -r -t build/app/outputs/flutter-apk/app-release.apk` 성공, `am start -W -a android.intent.action.VIEW -d "planflow-v2://voice-launcher"` 성공.
+## 2026-06-21 V2 Android package split
+- V2 Android `applicationId`/`namespace`를 `com.fluxstudio.planflow.v2`로 분리하고, `MainActivity`와 `PlanFlowHomeWidgetProvider`를 `android/app/src/main/kotlin/com/fluxstudio/planflow/v2/`로 이동해 패키지 경로를 V2에 맞췄다.
+- `AndroidManifest.xml` 런처 라벨을 `PlanFlow V2`로 구분했고, `android/app/google-services.json`에는 V2 Firebase client 항목을 추가해 빌드가 통과하도록 맞췄다.
+- 검증: `flutter analyze --no-pub` 통과, `flutter build apk --release --no-pub` 통과로 `build/app/outputs/flutter-apk/app-release.apk` 생성, `adb -s 192.168.0.103:46757 install -r -t ...` 성공, 그리고 동일 기기에서 `com.fluxstudio.planflow`와 `com.fluxstudio.planflow.v2`가 함께 설치됨과 `am start -W -n com.fluxstudio.planflow.v2/.MainActivity` 실행을 확인했다.
+## 2026-06-14 V2 real-device smoke test guide
+- Added `docs/planflow-v2/22-v2-real-device-smoke-test.md` to document the 3-account leader/member/outsider device layout, step-by-step smoke flow, failure checkpoints, bug log template, and PASS criteria.
+- The guide is documentation only and keeps code and DB changes out of scope for this turn.
+## 2026-06-13 V2 Supabase verification SQL draft
+- Added `docs/planflow-v2/20-v2-supabase-verification-sql.md` with staging/dev-only SQL for schema, index/constraint, RPC, RLS, rollback, and manual overlay checks.
+- The document keeps production Supabase out of scope and focuses on verification order plus expected PASS criteria before any live apply.
+- Verification this turn: `git fetch origin`, `git merge origin/main` (merge commit `3702006`), and `flutter analyze --no-pub` all completed successfully after resolving the ACTIVE_SUMMARY conflict.
+## 2026-06-13 V2 Supabase deployment plan draft
+- Added `docs/planflow-v2/19-v2-supabase-deployment-plan.md` to document schema/RPC/RLS validation order, rollback plan, and live Supabase readiness checks before any production apply.
+- The plan keeps actual DB application out of scope and frames the remaining work as validation and controlled rollout only.
+- Verification this turn: `git fetch origin`, `git merge origin/main` after resolving the ACTIVE_SUMMARY conflict, `flutter analyze --no-pub`, and `flutter test --no-pub test/features/groups -r compact` remained passing.
+## 2026-06-13 V2 E2E QA checklist draft
+- Added `docs/planflow-v2/18-v2-e2e-qa-checklist.md` to consolidate V2 end-to-end QA coverage across personal flow, group flow, DB/RLS/RPC, and main-merge risks.
+- The checklist marks merge blockers as real DB/RLS validation, atomic RPC verification, and manual overlay/context refresh checks rather than further code changes.
+- Verification in this turn: `git fetch origin`, `git merge origin/main` (`Already up to date.`), `flutter analyze --no-pub` before docs write, and `flutter test --no-pub` remains passing from the current branch state.
 
 ## 2026-06-13 PlanFlow 딥링크 우선 진입 및 업데이트 복원
-- 앱 시작 시 업데이트 확인을 뒤로 미루고, 위젯/알람/딥링크 진입 화면을 먼저 안착시킨 뒤에 업데이트를 검사하도록 lib/app.dart와 lib/services/update_service.dart를 정리했다.
+- 앱 시작 시 업데이트 확인을 뒤로 미루고, 위젯/알람/딥링크 진입 화면을 먼저 안착시킨 뒤에 업데이트를 검사하도록 `lib/app.dart`와 `lib/services/update_service.dart`를 정리했다.
 - 업데이트 안내가 떠도 현재 route와 query를 저장해뒀다가, 업데이트 뒤에 원래 들어가려던 화면으로 복원되도록 했다.
-- 검증: scripts/flutter-local.ps1 test test/services/update_service_test.dart --no-pub, scripts/flutter-local.ps1 analyze --no-pub, scripts/flutter-local.ps1 build apk --debug --no-pub 통과, 실기기 192.168.0.103:36245에 APK 설치 및 실행 확인, E:\FluxStudio\tools\deploy-play.bat planflow -SkipUpload 검증 성공, 이어서 E:\FluxStudio\tools\deploy-play.bat planflow로 Play 내부 업로드까지 완료했다. 최종 버전은 1.1.0+27이다.
+- 검증: `scripts/flutter-local.ps1 test test/services/update_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub` 통과, 실기기 `192.168.0.103:36245`에 APK 설치 및 실행 확인, `E:\FluxStudio\tools\deploy-play.bat planflow -SkipUpload` 검증 성공, 이어서 `E:\FluxStudio\tools\deploy-play.bat planflow`로 Play 내부 업로드까지 완료했다. 최종 버전은 `1.1.0+27`이다.
 
 ## 2026-06-13 Play versionCode 23 collision recovery
 - Play Console에서 `versionCode=23`이 이미 사용되었다는 오류가 나서 `pubspec.yaml` 버전을 `1.1.0+24`로 올려 재시도했다.
 - release AAB는 이미 재생성된 상태였고, `android/gradlew.bat :app:publishReleaseBundle --track alpha --artifact-dir ..\build\app\outputs\bundle\release -PplanflowPlayServiceAccountJson=E:\FluxStudio\secrets\planflow-495007-dbe93d413189.json` 실행이 `BUILD SUCCESSFUL`로 끝나 Play 전송 단계가 완료되었다.
 - 남은 확인은 Play Console에서 새 릴리스를 열어 `versionCode=24` 반영과 테스터 배포 상태를 보는 것이다.
+
+## 2026-06-11 PlanFlow V2 group_backups implementation
+- Added `public.group_backups` and its RLS/helper layer to `supabase/schema.sql`, including archive backup creation, restore marking, and a convenience archive-with-backup flow.
+- Added `GroupBackupModel`, `GroupBackupRepository`, and a focused group backup model regression test under `test/features/groups/`.
+- Verification: `flutter analyze --no-pub`, `flutter test test/features/groups/group_backup_model_test.dart --no-pub`, `flutter test --no-pub`, and `git diff --check` all passed.
+
+## 2026-06-11 PlanFlow V2 group_events implementation
+- Added `public.has_group_delegated_permission` and the `public.group_events` table/RLS slice to `supabase/schema.sql` for the V2 team-event layer.
+- Added `GroupEventModel` and `GroupEventRepository` under `lib/features/groups/` to match the new group event schema.
+- Verification: `flutter analyze --no-pub` passed; full `flutter test --no-pub` still hits unrelated existing plugin/initialization failures in manual-event and settings-related tests.
+
+## 2026-06-07 PlanFlow v2 planning docs
+- Created `docs/planflow-v2/README.md` and `docs/planflow-v2/team-v2-plan.md` on branch `feature/team-v2-planning` to keep team-function planning separate from the 1st-release stabilization line.
+- The new docs keep the personal MVP structure intact and outline a separate team-module direction for `teams`, `team_members`, `team_invites`, `team_events`, `projects`, `tasks`, `meeting_notes`, and `coaching_reports`.
 
 ## 2026-06-11 PlanFlow deploy-by-default rule confirmed
 - `AGENTS.md`에 Flutter/Android 코드 변경 후 별도 금지 문구가 없으면 `analyze -> tests -> versionCode bump -> Play internal upload -> Telegram`까지 자동으로 이어가도록 규칙을 반영했다.
@@ -185,7 +290,6 @@
 - `scripts/deploy-play-internal.ps1`에 성공/실패 Telegram 알림 후크를 추가하고, `scripts/build-internal-aab.ps1`는 단계 상태를 임시 파일로 남겨 실패 단계 식별이 가능하도록 보강했다.
 - 새 공용 헬퍼 `scripts/send-telegram.ps1`를 추가해 `E:\FluxStudio\.env`의 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`를 읽어 sendMessage를 보내게 했다.
 - 파서는 세 파일 모두 통과했고, 아직 실제 Play 업로드/Telegram 발송은 실행하지 않았다.
-
 ## 2026-06-09 TASK_20260608_141130 브리핑 foreground 알림 억제
 - 앱 lifecycle이 foreground/resumed일 때 브리핑 실행 알림과 예약 브리핑 시작 알림을 보내지 않도록 `BriefingSchedulerService`에 foreground suppress 경로를 추가했다.
 - `PlanFlowApp`이 resume/pause/dispose 시 foreground 상태를 SharedPreferences에 기록해 Android alarm callback isolate에서도 같은 상태를 참조할 수 있게 했다.
@@ -1824,17 +1928,30 @@
 - 음성 입력의 `완료` 동작은 현재 입력을 캡처한 뒤 즉시 다음 단계로 이어지도록 정리해, 별도의 `현재 내용으로 입력` 재탭 없이도 다음 화면으로 넘어가게 했다.
 - `voice_action_screen.dart`의 제목/이름 검색은 `만나기라` 같은 조사 꼬리를 정규화하고, 정확 일치가 있으면 그것만 우선 보여주며 약한 유사 후보는 숨기도록 조정했다. 날짜 기반 조회는 `이번주금요일` 같은 표현이 summary 카드로 계속 보이도록 유지했다.
 - 검증 통과: `scripts/flutter-local.ps1 test test/app_home_widget_route_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_input_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/voice_action_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.102:33527 install -r -t --user 0 build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.102:33527 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
-  - 이번 턴에서 이벤트 편집 저장 버튼을 더 크고 색이 있는 버튼으로 바꿨고, 음성 날짜 파서에 "28일" 단독 입력을 현재 달로 해석하는 경로를 추가했다. 또한 `VoiceScheduleStructureService`의 날짜 범위 해석이 시간 범위와 충돌하지 않도록 경계를 보강했다.
-  - 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_date_range_parser_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/event_edit_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/voice_schedule_structure_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.103:45819 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.103:45819 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
+
+## 2026-06-11 GroupEvent UI baseline
+- Added GroupEventProvider, GroupEventList, GroupEventCreate, and GroupEventDetail screens plus `/groups/events` routes.
+- Wired the GroupList entry point to the new group event flow without touching the personal event screens.
+- Verified `flutter analyze --no-pub`, targeted group tests, full `flutter test --no-pub`, and `git diff --check`.
+
+## 2026-06-11 voice / event_edit polish
+- 이번 턴에서 이벤트 편집 저장 버튼을 더 크고 색이 있는 버튼으로 바꿨고, 음성 날짜 파서에 "28일" 단독 입력을 현재 달로 해석하는 경로를 추가했다. 또한 `VoiceScheduleStructureService`의 날짜 범위 해석이 시간 범위와 충돌하지 않도록 경계를 보강했다.
+- 검증 통과: `scripts/flutter-local.ps1 test test/services/voice_date_range_parser_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/screens/event_edit_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 test test/services/voice_schedule_structure_service_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb -s 192.168.0.103:45819 install -r -t build/app/outputs/flutter-apk/app-debug.apk`, `adb -s 192.168.0.103:45819 shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
 
 ## 2026-06-11 달력 위젯/일정탭 가독성 정리
 - 월간 위젯과 앱 내 calendar 탭의 일정 렌더링을 packed cell 방식으로 맞춰, 남는 공간이 있으면 실제 일정을 우선 채우고 정말 부족할 때만 `+n`을 보여주도록 정리했다.
 - 연속 일정은 위젯처럼 이어지는 밴드로 보이게 바꾸고, 공휴일 날짜는 빨간색으로 강조했다.
 - 분석/테스트/디버그 빌드와 실기기 설치까지 확인해 가독성 회귀를 막았다.
+
 ## 2026-06-12 PlanFlow main 브랜치: 달력/음성 검색/키보드 정리 진행 중
 - 월간 위젯과 일정탭의 여분 슬롯 표시를 조정하고, +n 표시와 일정 밴드 스타일을 손봤다.
 - AI 일정 대화의 키보드 인셋 대응, 날짜 단독 입력(28일) 해석, 제목/이름 검색 정규화를 보강했다.
 - focused test/analyze/build/install까지는 통과했고, 실기기에서는 PlanFlow 홈 화면까지 재진입을 확인했다. 달력 화면의 시각 확인은 다음 재진입 때 추가 점검이 필요하다.
+## 2026-06-12 GroupDashboard baseline
+- Added GroupDashboardRepository, GroupDashboardProvider, GroupDashboardState, and GroupDashboardScreen for leader-oriented summary counts and upcoming events.
+- Wired a minimal GroupList dashboard entry point without touching calendar overlay or personal event screens.
+- Verified `flutter analyze --no-pub`, targeted dashboard/group tests, full `flutter test --no-pub`, and `git diff --check`.
+
 ## 2026-06-12 일정탭 overflow와 연속일정 표시 보정
 - 앱 내 일정탭 월간 그리드가 5줄을 억지로 렌더링하다 Flutter OVERFLOWED BY 디버그 문구가 빨간색으로 보이던 문제를 수정했다.
 - 한 날짜 칸은 최대 4줄 체계로 제한하고, 숨겨진 일정은 마지막 표시 슬롯 대신 오른쪽 정렬 +n개로 보여주도록 조정했다.
@@ -1881,26 +1998,21 @@
 - Android manifest에는 AD_ID/AdServices 권한 제거 지시를 남겨 향후 transitive SDK가 들어와도 광고 ID 권한이 병합되지 않게 했다.
 - 검증: `flutter pub get`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build appbundle --release --no-pub`, 릴리즈 AAB/manifest 문자열 검사에서 AD_ID/ACCESS_ADSERVICES/play-services-measurement 미검출. Play commit은 기존 alpha/보류 변경의 광고 ID 선언 상태로 계속 차단됨.
 
+## 2026-06-13 Group member remove RPC 보강
+- `group_members` 제거 경로를 UI/provider의 직접 update에서 `remove_group_member` RPC로 옮겨 서버 측에서 자기 자신 제거와 마지막 리더 제거를 함께 차단했다.
+- `group_members` RLS는 직접 `removed` 갱신 경로를 좁히고, 리포지토리 테스트에는 RPC 주입 훅과 리더 검증 훅을 추가해 호출 경로를 안정적으로 검증했다.
+- 검증: `flutter analyze --no-pub`, `flutter test --no-pub test/features/groups -r compact`, `flutter test --no-pub`, `git diff --check`.
+
 ## 2026-06-13 배포 자동화 기본 정책 변경
 - 앞으로 Flutter/Android 코드 수정 후 배포 파이프라인은 자동 실행하지 않고, 사용자가 명시적으로 배포를 요청할 때만 수행하도록 프로젝트 운영 규칙을 바꿨다.
 - 변경 대상은 AGENTS.md의 배포 규칙이며, 앱 코드/스키마/Android 파일은 건드리지 않았다.
-## 2026-06-13 권한 온보딩 기본/선택 분리
-- 초기 온보딩에서 필수 권한을 마이크+앱 알림으로 줄이고, 위치/캘린더/정확한 알람/전체 화면 알림은 선택 권한으로 내렸다.
-- 앱이 처음 시작할 때는 기본 권한만 요청하고, 나머지는 각각 선택적으로 열어보게 바꿨다.
-- 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub` 통과, `scripts/flutter-local.ps1 analyze --no-pub`는 이미 통과 상태 유지.
-## 2026-06-13 권한 온보딩 필수 범위 재조정
-- 사용자 의도에 맞춰 필수 권한은 마이크/앱 알림/정확한 알람/위치/기기 캘린더로 복구하고, 폴드/플립 겉화면용 전체 화면 알림만 선택 권한으로 유지했다.
-- `필수 권한 차례대로 요청` 버튼은 위에서부터 각 권한을 순서대로 요청하고, 전체 화면 알림은 자동 요청 흐름에서 제외한다.
-- 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub`, `scripts/flutter-local.ps1 analyze --no-pub` 통과.
-## 2026-06-14 폴드/플립 전용 전체 화면 알림 재조정
-- 일반 폰에서는 전체 화면 알림 권한을 온보딩에서 숨기고, 폴드/플립처럼 display feature가 있는 기기에서만 필수 권한으로 노출하도록 정리했다.
-- 온보딩의 완료 판정과 요청 흐름도 같은 디바이스 분기를 따르도록 맞췄다.
-- 검증: `scripts/flutter-local.ps1 test test/screens/permission_onboarding_screen_test.dart --no-pub -v`, `scripts/flutter-local.ps1 analyze --no-pub`, `scripts/flutter-local.ps1 build apk --debug --no-pub`, `adb install -r -t build\\app\\outputs\\flutter-apk\\app-debug.apk`, `adb shell monkey -p com.fluxstudio.planflow -c android.intent.category.LAUNCHER 1`.
 
-## 2026-06-14 폴드/플립 판정 cutout 오인 방지 보강
-- 전체 화면 알림 노출 조건을 `displayFeatures` 중에서도 hinge/fold 타입만 인정하도록 좁혀, 일반폰의 cutout/기타 특이 display feature가 foldable로 오인되지 않게 보강했다.
-- 회귀 테스트에 unknown display feature 케이스를 추가해, 폴드/플립 전용 노출이 아닌 경우는 계속 숨겨지도록 확인했다.
-- 검증: `flutter test test/screens/permission_onboarding_screen_test.dart --no-pub`, `flutter analyze --no-pub`, `flutter build apk --debug --no-pub`, `adb install -r -t build\\app\\outputs\\flutter-apk\\app-debug.apk`, `adb shell am start -W -n com.fluxstudio.planflow/.MainActivity`.
+## 2026-06-29 그룹 멤버 표시 이름과 초대코드 보정
+- 그룹 초대 관리의 `내 초대 코드` 카드에서 본인 표시 이름을 저장할 수 있게 했고, 멤버 관리는 `group_members.display_name -> users.display_name/name/email/invite_code -> 짧은 userId` 순서로 사람을 보여주도록 바꿨다.
+- 그룹장은 멤버 관리에서 각 멤버 표시 이름을 변경할 수 있고, 그룹 상세 상단에서 팀 이름을 바꿀 수 있다.
+- 운영 Supabase `xqvvfnvmytjlblcngipn`에 `users.display_name`, `group_members.display_name`, `ensure_current_user_profile()` 및 같은 그룹 멤버 프로필 조회 RLS를 적용했고, `group_invites` target 제약을 정확히 하나만 허용하도록 로컬 schema와 맞췄다.
+- 이메일 초대는 같은 이메일의 Google/일반 로그인 계정이 분리돼 있어도 이메일 target 하나로 처리되게 하고, 초대코드 초대는 invite_code target 하나만 저장하도록 DB 제약과 앱 payload를 맞췄다.
+- 검증: 운영 DB 객체/제약 SQL 확인 OK, `dart analyze` 대상 파일 OK, `group_invite_screen_test` 단독 PASS. Flutter 묶음 테스트와 debug/release APK 빌드는 Gradle/Flutter 실행이 출력 없이 장시간 멈춰 중단했고, 해당 빌드 PIDs는 정리했다.
 
 ## 2026-06-14 권한 온보딩 재진입 루프 차단
 - 권한 온보딩이 설정 화면으로 되돌아갔다가 같은 단계로 다시 진입하는 루프를 막기 위해, resume 후에는 열린 설정 단계를 재개할 때 다음 단계부터 이어서 처리하도록 바꿨다.
@@ -2009,3 +2121,9 @@
 - 설정 화면과 자동 동기화에서 더 이상 쓰지 않는 Naver OpenAPI 직접 가져오기 경로를 제거하고, Naver 캘린더 동기화는 CalDAV 자격증명/가져오기 기준으로만 동작하게 정리했다.
 - `naver_open_api_calendar_service.dart`와 해당 테스트를 삭제하고, 설정 화면의 OpenAPI 권한 재확인/동의 후 가져오기 흐름과 자동 동기화의 `naver_api_auto_export` 단계를 제거했다.
 - 검증: 관련 파일 분석 `No issues found`, `settings_screen_test.dart`, `calendar_auto_sync_service_test.dart` 통과. 기존 auth/callback/provider-token 관련 Naver OAuth 코드는 아직 참조 중이라 이번 죽은 코드 제거 범위에서는 유지했다.
+## 2026-06-30 기존 일정 공유와 개인-그룹 일정 연결
+- 그룹 상세 최초 진입 시 그룹별 1회 기존 일정 공유 모달을 띄우고, 선택 결과를 `planflow:group_event_share_prompt:v1:{userId}:{groupId}` SharedPreferences 키로 저장한다.
+- 기존 개인 일정 공유 서비스는 오늘 00:00 이후 `source='manual'` 일정만 그룹 일정으로 복사하고, `group_id + title + start_at + end_at` 중복은 건너뛰며 결과 카운트를 반환한다.
+- `events.group_event_id`, `group_events.personal_event_id` 연결 컬럼과 인덱스를 로컬 schema/migration 및 운영 Supabase `xqvvfnvmytjlblcngipn`에 반영했다.
+- 일반 일정 저장에서 `개인 + 그룹`은 양쪽 row 생성 후 id를 연결하고, 이미 연결된 개인 일정 수정 시 `개인만 수정 / 그룹도 같이 수정` 선택 다이얼로그를 띄운다.
+- 검증: 운영 DB 컬럼/인덱스 확인 OK, `dart analyze` PASS, 관련 그룹/일정 테스트 PASS, release APK build PASS, 3기기 install/launch PASS.

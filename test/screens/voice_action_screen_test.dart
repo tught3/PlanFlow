@@ -514,6 +514,7 @@ void main() {
             sideEffectService: const _NoopSideEffectService(),
             homeWidgetService: _NoopHomeWidgetService(),
             permissionService: _NoLocationPermissionService(),
+            locationLookupService: _FakeLocationLookupService.empty(),
           ),
         ),
         GoRoute(

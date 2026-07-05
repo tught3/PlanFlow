@@ -9,27 +9,34 @@ if (-not $SkipFluxOsSession) {
   . (Join-Path $WorkspaceRoot '.fluxos\scripts\fluxos-session-bootstrap.ps1')
 }
 
+$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$ProjectGradleHome = Join-Path $ProjectRoot '.gradle-local\gradle-home'
+New-Item -ItemType Directory -Force -Path $ProjectGradleHome | Out-Null
+$env:GRADLE_USER_HOME = $ProjectGradleHome
+$env:GRADLE_OPTS = (($env:GRADLE_OPTS, '-Dorg.gradle.vfs.watch=false', '-Dorg.gradle.parallel=false') |
+  Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' '
+
 $session = $null
 $exitCode = 0
 try {
-  if (-not $SkipFluxOsSession) {
-    $session = Start-FluxOsProjectSession -Project 'PlanFlow' -Source 'flutter-local' -Owner 'PlanFlow-local' -Label 'PlanFlow Flutter 런처' -Note ("flutter {0}" -f (($Args -join ' ').Trim())) -Cwd (Resolve-Path (Join-Path $PSScriptRoot '..')).Path -PreferCurrentProjectSession
+  try {
+    $session = Start-FluxOsProjectSession -Project 'PlanFlow' -Source 'flutter-local' -Owner 'PlanFlow-local' -Label 'PlanFlow Flutter 런처' -Note ("flutter {0}" -f (($Args -join ' ').Trim())) -Cwd $ProjectRoot -PreferCurrentProjectSession
+  } catch {
+    Write-Warning ("FluxOS session registration skipped; continuing local Flutter command. {0}" -f $_.Exception.Message)
   }
 
   $defineFile = Join-Path $PSScriptRoot '..\env\local.json'
-
+  $fallbackDefineFile = Join-Path $PSScriptRoot '..\env\local.example.json'
   if (-not (Test-Path $defineFile)) {
-    throw "Missing local define file: $defineFile"
-  }
-
-  $localDefines = Get-Content $defineFile -Raw -Encoding utf8 | ConvertFrom-Json
-  $defineArgs = @()
-  foreach ($property in $localDefines.PSObject.Properties) {
-    $value = [string]$property.Value
-    if (-not [string]::IsNullOrWhiteSpace($value)) {
-      $defineArgs += "--dart-define=$($property.Name)=$value"
+    if (Test-Path $fallbackDefineFile) {
+      $defineFile = $fallbackDefineFile
+      Write-Warning "Missing env/local.json; falling back to env/local.example.json"
+    } else {
+      Write-Warning "Missing local define file and example fallback; continuing without injected dart-defines."
+      $defineFile = $null
     }
   }
+
 
   if ($Args.Count -eq 0) {
     & flutter
@@ -39,7 +46,6 @@ try {
 
   $command = $Args[0]
   $flutterArgs = @($Args)
-  $defineSupportedCommands = @('build', 'run', 'test', 'drive')
 
   if ($command -eq 'deploy') {
     $deployHelper = 'E:\AI_WIKI\scripts\flutter-deploy-or-copy.ps1'
@@ -50,11 +56,15 @@ try {
     if ($Args.Count -gt 1) {
       $tailArgs = @($Args[1..($Args.Count - 1)])
     }
-    $extraJson = ConvertTo-Json -Compress -InputObject @($defineArgs)
+    $deployExtraArgs = @()
+    if ($defineFile) {
+      $deployExtraArgs += "--dart-define-from-file=$defineFile"
+    }
+    $extraJson = ConvertTo-Json -Compress -InputObject @($deployExtraArgs)
     $deployCommand = @(
       '-NoProfile', '-ExecutionPolicy', 'Bypass',
       '-File', $deployHelper,
-      '-ProjectPath', (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
+      '-ProjectPath', $ProjectRoot,
       '-Project', 'PlanFlow',
       '-Owner', 'PlanFlow-local',
       '-ExtraBuildArgsJson', $extraJson
@@ -64,7 +74,9 @@ try {
     return
   }
 
-  if ($defineArgs.Count -gt 0 -and ($defineSupportedCommands -contains $command)) {
+  $commandsWithDefines = @('build', 'run', 'test')
+  if ($defineFile -and $commandsWithDefines -contains $command) {
+    $defineArgs = @("--dart-define-from-file=$defineFile")
     if ($command -eq 'build' -and $Args.Count -ge 2) {
       $flutterArgs = @($command, $Args[1]) + $defineArgs + $Args[2..($Args.Count - 1)]
     } elseif ($Args.Count -gt 1) {

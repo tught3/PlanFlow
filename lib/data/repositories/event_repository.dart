@@ -543,7 +543,7 @@ class SupabaseEventRepository extends EventRepository {
       'last_synced_at, created_at, updated_at';
   static const String _legacySelectColumns =
       'id, user_id, title, start_at, end_at, location, location_lat, '
-      'location_lng, memo, supplies, supplies_checked, is_critical, use_strong_alarm, source, '
+      'location_lng, memo, supplies, supplies_checked, is_critical, source, '
       'external_id, created_at';
 
   final SupabaseClient _client;
@@ -891,9 +891,8 @@ class SupabaseEventRepository extends EventRepository {
       return _client
           .from(_tableName)
           .insert(
-            _payloadWithoutMissingSyncColumns(
+            _legacyPayload(
               event.toJson(includeId: event.id.trim().isNotEmpty),
-              error,
             ),
           )
           .select(_legacySelectColumns)
@@ -919,10 +918,7 @@ class SupabaseEventRepository extends EventRepository {
       }
       return _client
           .from(_tableName)
-          .update(_payloadWithoutMissingSyncColumns(
-            event.toUpdateJson(),
-            error,
-          ))
+          .update(_legacyPayload(event.toUpdateJson()))
           .eq('id', event.id)
           .eq('user_id', userId)
           .select(_legacySelectColumns)
@@ -947,9 +943,8 @@ class SupabaseEventRepository extends EventRepository {
       return _client
           .from(_tableName)
           .upsert(
-            _payloadWithoutMissingSyncColumns(
+            _legacyPayload(
               event.toJson(includeId: event.id.trim().isNotEmpty),
-              error,
             ),
             onConflict: 'id',
           )
@@ -985,56 +980,44 @@ class SupabaseEventRepository extends EventRepository {
     }
   }
 
-  Map<String, dynamic> _payloadWithoutMissingSyncColumns(
-    Map<String, dynamic> payload,
-    PostgrestException error,
-  ) {
-    final missingColumns = _missingPayloadColumns(error, payload.keys.toSet());
-    if (missingColumns.isEmpty) {
-      throw error;
-    }
+  Map<String, dynamic> _legacyPayload(Map<String, dynamic> payload) {
     return Map<String, dynamic>.from(payload)
-      ..removeWhere((key, _) => missingColumns.contains(key));
-  }
-
-  Set<String> _missingPayloadColumns(
-    PostgrestException error,
-    Set<String> payloadColumns,
-  ) {
-    final text =
-        '${error.message} ${error.details} ${error.hint}'.toLowerCase();
-    return _fallbackRemovablePayloadColumns
-        .where(payloadColumns.contains)
-        .where((column) => _mentionsColumn(text, column))
-        .toSet();
+      ..remove('external_calendar_id')
+      ..remove('external_etag')
+      ..remove('external_updated_at')
+      ..remove('last_synced_at')
+      ..remove('participants')
+      ..remove('targets')
+      ..remove('recurrence_rule')
+      ..remove('is_all_day')
+      ..remove('is_multi_day')
+      ..remove('parent_event_id')
+      ..remove('group_event_id')
+      ..remove('category')
+      ..remove('use_strong_alarm')
+      ..remove('updated_at');
   }
 
   bool _isMissingSyncSchemaError(PostgrestException error) {
-    final text = '${error.code} ${error.message} ${error.details} ${error.hint}'
-        .toLowerCase();
-    return _fallbackRemovablePayloadColumns
-            .any((column) => _mentionsColumn(text, column)) ||
+    final text =
+        '${error.code} ${error.message} ${error.details}'.toLowerCase();
+    return text.contains('external_calendar_id') ||
+        text.contains('external_etag') ||
+        text.contains('external_updated_at') ||
+        text.contains('last_synced_at') ||
+        text.contains('participants') ||
+        text.contains('targets') ||
+        text.contains('recurrence_rule') ||
+        text.contains('is_all_day') ||
+        text.contains('is_multi_day') ||
+        text.contains('parent_event_id') ||
+        text.contains('group_event_id') ||
+        text.contains('category') ||
+        text.contains('use_strong_alarm') ||
+        text.contains('updated_at') ||
         text.contains('pgrst204') ||
         text.contains('42703');
   }
-
-  bool _mentionsColumn(String text, String column) {
-    final escapedColumn = RegExp.escape(column);
-    return RegExp('(^|[^a-z0-9_])$escapedColumn' r'([^a-z0-9_]|$)')
-        .hasMatch(text);
-  }
-
-  static const Set<String> _fallbackRemovablePayloadColumns = <String>{
-    'external_calendar_id',
-    'external_etag',
-    'external_updated_at',
-    'last_synced_at',
-    'parent_event_id',
-    'group_event_id',
-    'participants',
-    'targets',
-    'updated_at',
-  };
 }
 
 extension on EventModel {
@@ -1054,6 +1037,7 @@ extension on EventModel {
       participants: participants,
       targets: targets,
       isCritical: isCritical,
+      useStrongAlarm: useStrongAlarm,
       recurrenceRule: recurrenceRule,
       isAllDay: isAllDay,
       isMultiDay: isMultiDay,
@@ -1100,11 +1084,12 @@ EventModel _mergeExternalMetadata({
     participants: participants,
     targets: targets,
     isCritical: existing.isCritical || incoming.isCritical,
+    useStrongAlarm: existing.useStrongAlarm || incoming.useStrongAlarm,
     recurrenceRule: incoming.recurrenceRule,
     isAllDay: incoming.isAllDay,
     isMultiDay: incoming.isMultiDay,
     parentEventId: incoming.parentEventId,
-    groupEventId: incoming.groupEventId,
+    groupEventId: existing.groupEventId,
     category: incoming.category,
     source: incoming.source,
     externalId: externalId,

@@ -1079,8 +1079,7 @@ END:VCALENDAR
     expect(repository.deletedIds, contains('bad-1'));
   });
 
-  test('syncAll N개 신규 일정 저장 시 DB read 호출이 N에 비례하지 않고 상수(0)임 (N² 제거)',
-      () async {
+  test('syncAll N개 신규 일정 저장 시 DB read 호출이 N에 비례하지 않고 상수(0)임 (N² 제거)', () async {
     // 20개의 서로 다른 신규 이벤트를 CalDAV에서 반환하는 XML 생성
     const n = 20;
     final eventXmlItems = StringBuffer();

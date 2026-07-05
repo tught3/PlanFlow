@@ -3,6 +3,7 @@
 .flutter-plugins-dependencies
 .packages
 build/
+.gradle-local/
 chat.txt
 .env
 .env.local
@@ -14,6 +15,9 @@ android/key.properties
 android/app/planflow-release.jks
 android/signing/
 secrets/
+# Google OAuth client secret JSON (절대 커밋 금지)
+client_secret_*.json
+client_secret*.apps.googleusercontent.com.json
 
 CLAUDE.md
 
@@ -22,6 +26,7 @@ CLAUDE.md
 *.tmp
 임시*
 .deploy-logs/
+.codex-logs/
 .tmp/
 *.tmp.log
 *.tmp.png
@@ -40,6 +45,14 @@ TASK_2[0-9]*_review.md
 # 배포/진단 산출물
 build_diag*.log
 deploy.log
+
+# 빌드/analyze 임시 출력 로그 (AI 세션 산출물, 보존 불필요)
+/ab.txt
+/bld.txt
+/build.txt
+/sa.txt
+/st.txt
+build-v2-release-debug.*.log
 
 # Flutter 자동 생성 빌드 산출물 (플랫폼별 ephemeral) — 커밋 금지, 빌드마다 재생성됨
 linux/flutter/ephemeral/

@@ -510,9 +510,8 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
       return exactMatches;
     }
 
-    final threshold = focusTokens.length <= 1
-        ? 1
-        : (focusTokens.length * 0.6).ceil();
+    final threshold =
+        focusTokens.length <= 1 ? 1 : (focusTokens.length * 0.6).ceil();
     final fuzzyMatches = rankedItems
         .where(
           (item) => _isMeaningfulQueryCandidate(
@@ -579,12 +578,11 @@ class _VoiceActionScreenState extends State<VoiceActionScreen>
         .searchTokens(normalizedQuery)
         .where(_isMeaningfulQueryToken)
         .map((token) {
-          if (token.length >= 3 && token.endsWith('라')) {
-            return token.substring(0, token.length - 1);
-          }
-          return token;
-        })
-        .toList(growable: false);
+      if (token.length >= 3 && token.endsWith('라')) {
+        return token.substring(0, token.length - 1);
+      }
+      return token;
+    }).toList(growable: false);
     final seen = <String>{};
     return tokens.where(seen.add).toList(growable: false);
   }

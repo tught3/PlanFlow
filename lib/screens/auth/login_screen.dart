@@ -10,7 +10,6 @@ import '../../services/auth_service.dart';
 import '../../services/oauth_callback_handler.dart';
 import '../../l10n/app_l10n.dart';
 
-
 enum _AuthMode {
   login,
   signUp,
@@ -42,6 +41,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   final _messageKey = GlobalKey();
 
   late AuthService? _authService;
+  Timer? _supabaseReadyPoller;
 
   _AuthMode _mode = _AuthMode.login;
   bool _isLoading = false;
@@ -52,17 +52,13 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _authService = AppEnv.isSupabaseReady
-        ? widget._authService ?? AuthService()
-        : widget._authService;
-    authProvider.addListener(_onAuthProviderChanged);
     OAuthCallbackHandler.latestUserMessage.addListener(_handleOAuthMessage);
+    _startSupabaseReadyPoller();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    authProvider.removeListener(_onAuthProviderChanged);
     OAuthCallbackHandler.latestUserMessage.removeListener(_handleOAuthMessage);
     _emailController.dispose();
     _passwordController.dispose();
@@ -73,6 +69,7 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     _emailFocusNode.dispose();
     _passwordFocusNode.dispose();
     _confirmPasswordFocusNode.dispose();
+    _supabaseReadyPoller?.cancel();
     super.dispose();
   }
 
@@ -81,15 +78,6 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed && _isLoading) {
       unawaited(_resolvePendingOAuthOnResume());
     }
-  }
-
-  void _onAuthProviderChanged() {
-    if (!mounted) return;
-    // Supabase 초기화가 완료되면 _authService를 지연 초기화
-    if (AppEnv.isSupabaseReady && _authService == null) {
-      _authService = widget._authService ?? AuthService();
-    }
-    setState(() {});
   }
 
   void _handleOAuthMessage() {
@@ -115,11 +103,17 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _submit() async {
-    final l10n = appL10n(context);
-    final authService = _authService;
     FocusScope.of(context).unfocus();
-    if (!AppEnv.isSupabaseReady || authService == null) {
-      _setMessage(l10n.supabaseLoginMissing);
+    // 이전에 중단된 소셜 로그인 pending이 남아있으면 이메일 로그인 시작 전에 제거한다.
+    // signUp 흐름의 markPendingEmailConfirmation은 아래에서 별도로 설정하므로 영향 없음.
+    OAuthCallbackHandler.clearPendingCallback();
+    final authService = await _resolveAuthServiceWhenReady();
+    if (!mounted) {
+      return;
+    }
+    final l10n = appL10n(context);
+    if (authService == null) {
+      _setMessage(_supabaseUnavailableMessage(forSocialLogin: false));
       return;
     }
 
@@ -193,10 +187,23 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _socialLogin(PlanFlowOAuthProvider provider) async {
+    // 이전에 중단된 다른 소셜 플로우의 stale pending을 먼저 제거한다.
+    // Kakao/Naver는 아래에서 markPendingLogin으로 새로 설정한다.
+    OAuthCallbackHandler.clearPendingCallback();
+
+    final authService = await _resolveAuthServiceWhenReady();
+    if (!mounted) {
+      return;
+    }
     final l10n = appL10n(context);
-    final authService = _authService;
-    if (!AppEnv.isSupabaseReady || authService == null) {
-      _setMessage(l10n.supabaseSocialMissing);
+    if (authService == null) {
+      _setMessage(_supabaseUnavailableMessage(forSocialLogin: true));
+      return;
+    }
+
+    // 이미 로그인된 상태라면 새 소셜 로그인을 시작하지 않는다.
+    if (authProvider.isSignedIn) {
+      _setMessage('이미 로그인된 상태입니다.');
       return;
     }
 
@@ -207,17 +214,32 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
 
     var keepLoadingForCallback = false;
     try {
-      OAuthCallbackHandler.markPendingLogin(provider);
-      final launched = await authService.signInWithOAuth(provider);
-      if (!launched) {
+      if (provider == PlanFlowOAuthProvider.google) {
+        await authService.signInWithGoogleNative();
+        // Google 네이티브 성공 후에도 stale pending이 남지 않도록 제거한다.
         OAuthCallbackHandler.clearPendingCallback();
-        _setMessage(l10n.oauthLaunchFailed);
+        final signedIn = await authProvider.syncCurrentSession();
+        if (mounted && signedIn) {
+          keepLoadingForCallback = true;
+          unawaited(AnalyticsService.logLogin(method: 'google'));
+        } else if (mounted) {
+          _setMessage(l10n.loginSessionFailed);
+        }
       } else {
-        keepLoadingForCallback = true;
+        // clearPendingCallback은 메서드 시작 시 이미 호출했으므로
+        // 여기서 바로 새 pending을 마킹한다.
+        OAuthCallbackHandler.markPendingLogin(provider);
+        final launched = await authService.signInWithOAuth(provider);
+        if (!launched) {
+          OAuthCallbackHandler.clearPendingCallback();
+          _setMessage(l10n.oauthLaunchFailed);
+        } else {
+          keepLoadingForCallback = true;
+        }
       }
     } catch (error) {
       OAuthCallbackHandler.clearPendingCallback();
-      _setMessage(_friendlyAuthMessage(error));
+      _setMessage(_friendlyAuthMessage(error, provider: provider));
     } finally {
       if (mounted && !keepLoadingForCallback) {
         setState(() {
@@ -239,23 +261,29 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
       return;
     }
 
-    final signedIn = await authProvider.syncCurrentSession();
-    if (!mounted) {
-      return;
-    }
-    if (signedIn) {
-      setState(() {
-        _isLoading = false;
-      });
-      return;
-    }
-
+    // 재개 시점의 pending 메서드를 읽어둔다 (clearPendingCallback 전에 확보).
     final method = switch (OAuthCallbackHandler.pendingLoginMethod) {
       'naver' => '네이버',
       'kakao' => '카카오',
       'google' => 'Google',
       _ => '소셜',
     };
+
+    final signedIn = await authProvider.syncCurrentSession();
+    if (!mounted) {
+      return;
+    }
+    if (signedIn) {
+      // 로그인 성공 — 콜백 핸들러가 이미 pending을 정리했을 수 있지만
+      // 만약 남아있는 경우를 대비해 여기서도 명시적으로 제거한다.
+      OAuthCallbackHandler.clearPendingCallback();
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+
+    // 인증 미완료: pending을 정리하고 재시도 안내 메시지를 표시한다.
     OAuthCallbackHandler.clearPendingCallback();
     _setMessage(
       '$method 인증이 완료되지 않았어요. 브라우저에서 PlanFlow로 돌아오기 허용을 확인한 뒤 다시 시도해 주세요.',
@@ -306,6 +334,67 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     _ensureMessageVisible();
   }
 
+  void _startSupabaseReadyPoller() {
+    if (AppEnv.isSupabaseReady || AppEnv.isSupabaseInitializationFailed) {
+      return;
+    }
+    _supabaseReadyPoller?.cancel();
+    _supabaseReadyPoller = Timer.periodic(const Duration(milliseconds: 200), (
+      timer,
+    ) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (AppEnv.isSupabaseReady || AppEnv.isSupabaseInitializationFailed) {
+        timer.cancel();
+        setState(() {});
+      }
+    });
+  }
+
+  AuthService? _resolveAuthService() {
+    if (widget._authService != null) {
+      _authService = widget._authService;
+      return _authService;
+    }
+    if (!AppEnv.isSupabaseReady) {
+      return null;
+    }
+    return _authService ??= AuthService();
+  }
+
+  Future<AuthService?> _resolveAuthServiceWhenReady() async {
+    if (widget._authService != null) {
+      _authService = widget._authService;
+      return _authService;
+    }
+    if (AppEnv.isSupabaseReady) {
+      return _authService ??= AuthService();
+    }
+
+    final deadline = DateTime.now().add(const Duration(seconds: 6));
+    while (!AppEnv.isSupabaseReady &&
+        !AppEnv.isSupabaseInitializationFailed &&
+        DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return _resolveAuthService();
+  }
+
+  String _supabaseUnavailableMessage({required bool forSocialLogin}) {
+    if (!AppEnv.hasValidSupabaseConfig) {
+      return forSocialLogin
+          ? appL10n(context).supabaseSocialMissing
+          : appL10n(context).supabaseLoginMissing;
+    }
+    if (AppEnv.isSupabaseInitializationFailed) {
+      return AppEnv.supabaseInitializationErrorMessage ??
+          appL10n(context).authGenericError;
+    }
+    return 'Supabase 초기화가 아직 끝나지 않았습니다. 잠시 후 다시 시도해 주세요.';
+  }
+
   void _ensureMessageVisible() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final messageContext = _messageKey.currentContext;
@@ -322,8 +411,29 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
     });
   }
 
-  String _friendlyAuthMessage(Object error) {
-    final message = error.toString();
+  String _friendlyAuthMessage(
+    Object error, {
+    PlanFlowOAuthProvider? provider,
+  }) {
+    final message = error.toString().trim();
+
+    if (provider == PlanFlowOAuthProvider.google &&
+        message.isNotEmpty &&
+        !message.contains(appL10n(context).authGenericError)) {
+      return message;
+    }
+
+    if (message.contains('Google 로그인 설정이 없습니다') ||
+        message.contains('Google 로그인이 취소되었습니다') ||
+        message.contains('Google ID 토큰을 받지 못했습니다') ||
+        message.contains('Google access token을 받지 못했습니다')) {
+      return message;
+    }
+    if (message.contains('AuthException') ||
+        message.contains('AuthApiException') ||
+        message.contains('PlatformException')) {
+      return message;
+    }
     if (message.contains('Invalid login credentials')) {
       return appL10n(context).authInvalidCredentials;
     }
@@ -340,6 +450,12 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = appL10n(context);
+    final supabaseBannerMessage = !AppEnv.hasValidSupabaseConfig
+        ? l10n.supabaseLoginMissing
+        : AppEnv.isSupabaseInitializationFailed
+            ? (AppEnv.supabaseInitializationErrorMessage ??
+                l10n.authGenericError)
+            : null;
     final title = switch (_mode) {
       _AuthMode.login => l10n.loginTitle,
       _AuthMode.signUp => l10n.signUpTitle,
@@ -402,9 +518,9 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 12),
-            if (authProvider.hasResolvedInitialSession && !AppEnv.isSupabaseReady)
+            if (supabaseBannerMessage != null)
               _MessageBox(
-                message: l10n.supabaseLoginMissing,
+                message: supabaseBannerMessage,
                 isError: true,
               ),
             if (_message != null) ...[

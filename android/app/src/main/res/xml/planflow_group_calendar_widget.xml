@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/planflow_group_calendar_widget_description"
+    android:initialLayout="@layout/planflow_group_calendar_widget"
+    android:previewLayout="@layout/planflow_group_calendar_widget"
+    android:minWidth="250dp"
+    android:minHeight="250dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0"
+    android:configure="com.fluxstudio.planflow.PlanFlowGroupCalendarWidgetConfigActivity"
+    android:widgetCategory="home_screen" />

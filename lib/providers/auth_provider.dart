@@ -70,6 +70,8 @@ class AuthProvider extends ChangeNotifier {
     };
   }
 
+  /// 설정 화면에서 이메일 옆 괄호로 보여줄 "무엇으로 로그인했는지" 라벨.
+  /// 연결(linking) 계정은 primary provider 기준이라 단일 provider 사용자에 정확하다.
   String? get loginMethodLabel {
     return switch (_providerKey) {
       'google' => '구글 간편로그인',
@@ -157,15 +159,20 @@ class AuthProvider extends ChangeNotifier {
         );
       }
       if (authState.event == AuthChangeEvent.signedOut &&
-          authState.session == null &&
-          !PlanFlowAuthLocalStorage.isSessionRemovalAllowed &&
-          hasAccountSnapshot) {
-        debugPrint(
-          'Auth signedOut recover: explicitSignOut=false hasSnapshot=true',
-        );
-        _setSessionStatus(AuthSessionStatus.recovering);
-        unawaited(syncCurrentSession());
-        return;
+          authState.session == null) {
+        if (PlanFlowAuthLocalStorage.isExplicitSignOutInProgress) {
+          // 사용자 주도 로그아웃은 권위적으로 처리한다: 복구하지 않고 아래 공통 경로로 떨어져
+          // _applyUser(null) + signedOut을 적용해 스냅샷(provider/email)을 확정 초기화한다.
+          PlanFlowAuthLocalStorage.endExplicitSignOut();
+        } else if (!PlanFlowAuthLocalStorage.isSessionRemovalAllowed &&
+            hasAccountSnapshot) {
+          debugPrint(
+            'Auth signedOut recover: explicitSignOut=false hasSnapshot=true',
+          );
+          _setSessionStatus(AuthSessionStatus.recovering);
+          unawaited(syncCurrentSession());
+          return;
+        }
       }
       await _syncProfileAndApplyUser(
         service,

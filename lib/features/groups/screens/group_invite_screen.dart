@@ -121,7 +121,7 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
       final link = _groupInviteDeepLink(group);
       await Clipboard.setData(
         ClipboardData(
-          text: 'PlanFlow V2 그룹 초대\n${group.name}\n$link',
+          text: 'PlanFlow 그룹 초대\n${group.name}\n$link',
         ),
       );
       if (!mounted) {
@@ -617,7 +617,7 @@ class _GroupInviteScreenState extends State<GroupInviteScreen> {
   }
 
   String _groupInviteDeepLink(GroupModel group) {
-    return 'planflow-v2://group-invite?'
+    return 'planflow://group-invite?'
         'groupId=${Uri.encodeQueryComponent(group.id)}'
         '&token=${Uri.encodeQueryComponent(group.inviteToken?.trim() ?? '')}';
   }

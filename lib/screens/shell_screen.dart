@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/constants.dart';
@@ -94,6 +93,9 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   bool _checkedExternalCalendarGuide = false;
   bool _checkedGoogleCalendarAutoPrompt = false;
   String? _observedUserId;
+  // 로그인 직후 홈이 깜빡였다가 온보딩으로 넘어가는 플래시를 막기 위해,
+  // 온보딩 필요 여부 판단이 끝날 때까지 홈 대신 로딩 화면을 보여준다.
+  bool _onboardingDecisionPending = false;
 
   @override
   void initState() {
@@ -101,19 +103,12 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     _currentIndex = widget.initialIndex;
     _homeScrollController = ScrollController(keepScrollOffset: false);
     _observedUserId = authProvider.userId;
+    _onboardingDecisionPending =
+        _observedUserId != null && _observedUserId!.isNotEmpty;
     WidgetsBinding.instance.addObserver(this);
     authProvider.addListener(_handleAuthChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _maybeOpenPermissionOnboarding();
-      unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-        reason: 'app_start',
-      ));
-      unawaited(_migrateFutureCriticalAlarms());
-      unawaited(_refreshDepartureAlarmsAndMonitor());
-      unawaited(_ensureBriefingsScheduled(reason: 'app_start'));
-      unawaited(_maybeRecalculateAllAlarms());
-      debugPrint('[GCAL] _maybeAutoConnect 호출 시도 (initState)');
-      unawaited(_maybeAutoConnectGoogleCalendar());
+      unawaited(_runSignedInStartupTasks(reason: 'app_start'));
     });
   }
 
@@ -151,28 +146,34 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       return;
     }
 
-    setState(() {});
+    setState(() {
+      _onboardingDecisionPending =
+          currentUserId != null && currentUserId.isNotEmpty;
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _maybeOpenPermissionOnboarding();
-        unawaited(_calendarAutoSyncService.syncConnectedCalendars(
-          reason: 'auth_changed',
-          force: true,
-        ));
-        unawaited(_migrateFutureCriticalAlarms());
-        unawaited(_refreshDepartureAlarmsAndMonitor());
-        unawaited(_ensureBriefingsScheduled(reason: 'auth_changed'));
-        debugPrint('[GCAL] _maybeAutoConnect 호출 시도 (auth_changed)');
-        unawaited(_maybeAutoConnectGoogleCalendar());
+        unawaited(_runSignedInStartupTasks(reason: 'auth_changed'));
       }
     });
   }
 
-  Future<void> _refreshDepartureAlarmsAndMonitor() async {
-    final result = await _departureAlarmService.refreshUpcoming();
-    await _departureAlarmService.scheduleNextMonitor(
-      interval: result.nextMonitorInterval,
-    );
+  Future<void> _runSignedInStartupTasks({required String reason}) async {
+    await _maybeOpenPermissionOnboarding();
+    if (!mounted) {
+      return;
+    }
+    unawaited(_calendarAutoSyncService.syncConnectedCalendars(
+      reason: reason,
+      force: reason == 'auth_changed',
+    ));
+    unawaited(_migrateFutureCriticalAlarms());
+    unawaited(_refreshDepartureAlarmsAndMonitor());
+    unawaited(_ensureBriefingsScheduled(reason: reason));
+    if (reason == 'app_start') {
+      unawaited(_maybeRecalculateAllAlarms());
+    }
+    debugPrint('[GCAL] _maybeAutoConnect 호출 시도 ($reason)');
+    unawaited(_maybeAutoConnectGoogleCalendar());
   }
 
   Future<void> _maybeRecalculateAllAlarms() async {
@@ -192,6 +193,63 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
       debugPrint('Alarm recalculation failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
+  }
+
+  Future<void> _maybeAutoConnectGoogleCalendar() async {
+    debugPrint('[GCAL] _maybeAutoConnect 진입');
+    if (_checkedGoogleCalendarAutoPrompt || !mounted) {
+      debugPrint(
+        '[GCAL] return: alreadyChecked=$_checkedGoogleCalendarAutoPrompt '
+        'mounted=$mounted',
+      );
+      return;
+    }
+    _checkedGoogleCalendarAutoPrompt = true;
+
+    // Google 계정이 아니면 스킵
+    debugPrint('[GCAL] isGoogleAccount=${authProvider.isGoogleAccount}');
+    if (!authProvider.isGoogleAccount) {
+      debugPrint('[GCAL] return: isGoogleAccount=false');
+      return;
+    }
+
+    final userId = authProvider.userId;
+    debugPrint('[GCAL] userId=$userId');
+    if (userId == null || userId.isEmpty) {
+      debugPrint('[GCAL] return: userId is null or empty');
+      return;
+    }
+
+    // Google Calendar 연동 상태 확인
+    final calendarSync = CalendarSyncService(
+      googleServerClientId: AppEnv.googleServerClientId,
+    );
+    final status = await calendarSync.getGoogleStatus();
+    final isConnected = status.status == CalendarIntegrationStatus.ready ||
+        status.status == CalendarIntegrationStatus.synced;
+    debugPrint(
+      '[GCAL] googleStatus=${status.status} isConnected=$isConnected',
+    );
+    if (isConnected) {
+      // 이미 연동됐으면 종료
+      debugPrint('[GCAL] return: already connected');
+      return;
+    }
+
+    // 미연동 상태 → interactive sync 팝업 호출
+    if (!mounted) {
+      debugPrint('[GCAL] return: !mounted before interactive sync');
+      return;
+    }
+    debugPrint('[GCAL] interactive sync 호출!');
+    unawaited(calendarSync.syncGoogleCalendar(interactive: true));
+  }
+
+  Future<void> _refreshDepartureAlarmsAndMonitor() async {
+    final result = await _departureAlarmService.refreshUpcoming();
+    await _departureAlarmService.scheduleNextMonitor(
+      interval: result.nextMonitorInterval,
+    );
   }
 
   Future<void> _migrateFutureCriticalAlarms() async {
@@ -269,27 +327,47 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   Future<void> _maybeOpenPermissionOnboarding() async {
     if (_checkedPermissionOnboarding || !mounted) {
+      _clearOnboardingGate();
       return;
     }
     _checkedPermissionOnboarding = true;
 
     final userId = authProvider.userId;
     if (userId == null || userId.isEmpty) {
+      _clearOnboardingGate();
       return;
     }
 
-    final completed = await _permissionService.isOnboardingCompleted(userId);
-    if (!mounted) {
-      return;
-    }
-
-    if (!completed) {
-      await context.push(AppRoutes.permissionOnboarding);
+    try {
+      final completed = await _permissionService.isOnboardingCompleted(userId);
+      if (!mounted) {
+        _clearOnboardingGate();
+        return;
+      }
+      // 온보딩 필요 여부 판단이 끝났으므로 로딩 게이트를 해제한다.
+      // push 이후에 해제하면 context.go()로 복귀하는 기기(태블릿 등)에서
+      // push Future가 완료되지 않아 로딩 화면이 영구히 남는 문제가 있다.
+      _clearOnboardingGate();
+      if (!completed && mounted) {
+        await context.push(AppRoutes.permissionOnboarding);
+      }
+    } finally {
+      // push Future 완료 전에 이미 해제됐으면 no-op, 예외 발생 시 안전망.
+      _clearOnboardingGate();
     }
 
     if (mounted) {
       await _maybeShowExternalCalendarSyncGuide();
     }
+  }
+
+  void _clearOnboardingGate() {
+    if (!mounted || !_onboardingDecisionPending) {
+      return;
+    }
+    setState(() {
+      _onboardingDecisionPending = false;
+    });
   }
 
   Future<void> _maybeShowExternalCalendarSyncGuide() async {
@@ -353,51 +431,6 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   /// Google 계정 로그인 사용자이고 Google Calendar가 미연동 상태이면
   /// interactive sync를 1회 자동 호출해 팝업을 띄운다.
-  Future<void> _maybeAutoConnectGoogleCalendar() async {
-    debugPrint('[GCAL] _maybeAutoConnect 진입');
-    if (_checkedGoogleCalendarAutoPrompt || !mounted) {
-      debugPrint('[GCAL] return: alreadyChecked=$_checkedGoogleCalendarAutoPrompt mounted=$mounted');
-      return;
-    }
-    _checkedGoogleCalendarAutoPrompt = true;
-
-    // Google 계정이 아니면 스킵
-    debugPrint('[GCAL] isGoogleAccount=${authProvider.isGoogleAccount}');
-    if (!authProvider.isGoogleAccount) {
-      debugPrint('[GCAL] return: isGoogleAccount=false');
-      return;
-    }
-
-    final userId = authProvider.userId;
-    debugPrint('[GCAL] userId=$userId');
-    if (userId == null || userId.isEmpty) {
-      debugPrint('[GCAL] return: userId is null or empty');
-      return;
-    }
-
-    // Google Calendar 연동 상태 확인
-    final calendarSync = CalendarSyncService(
-      googleServerClientId: AppEnv.googleServerClientId,
-    );
-    final status = await calendarSync.getGoogleStatus();
-    final isConnected = status.status == CalendarIntegrationStatus.ready ||
-        status.status == CalendarIntegrationStatus.synced;
-    debugPrint('[GCAL] googleStatus=${status.status} isConnected=$isConnected');
-    if (isConnected) {
-      // 이미 연동됐으면 종료
-      debugPrint('[GCAL] return: already connected');
-      return;
-    }
-
-    // 미연동 상태 → interactive sync 팝업 호출
-    if (!mounted) {
-      debugPrint('[GCAL] return: !mounted before interactive sync');
-      return;
-    }
-    debugPrint('[GCAL] interactive sync 호출!');
-    unawaited(calendarSync.syncGoogleCalendar(interactive: true));
-  }
-
   List<NavigationDestination> _buildNavigationBarDestinations() {
     final labels = _localizedDestinationLabels();
     return _shellDestinations.indexed
@@ -541,6 +574,23 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (_onboardingDecisionPending) {
+      // 로그인 직후 온보딩 여부 판단 중에는 홈 대신 로딩 화면을 보여줘
+      // 홈이 깜빡였다가 온보딩으로 넘어가는 플래시를 막는다.
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('로딩 중'),
+            ],
+          ),
+        ),
+      );
+    }
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {

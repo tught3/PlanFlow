@@ -26,8 +26,12 @@ void main() {
     }
   });
 
+  setUp(() {
+    AppEnv.resetSupabaseInitializationState();
+  });
+
   // 주의: 이 테스트는 AppEnv.isSupabaseReady가 아직 false인 상태에서 시작해야
-  // 회귀를 재현할 수 있다(정적 플래그라 파일 내 실행 순서상 반드시 첫 테스트여야 함).
+  // 회귀를 재현할 수 있다(setUp에서 매번 reset하므로 실행 순서와 무관하게 안전함).
   // widget._authService를 넘기지 않아야 initState에서 _authService가 null로
   // 대입된 뒤, 아래에서 실제로 재대입(AuthService())이 시도된다.
   testWidgets(
@@ -74,6 +78,27 @@ void main() {
       tester.getTopLeft(find.text('이메일 로그인')).dy,
       lessThan(tester.getTopLeft(find.text('간편 로그인')).dy),
     );
+    expect(
+      find.textContaining('Supabase 빌드 설정값을 먼저 주입해야 로그인할 수 있습니다.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('LoginScreen surfaces Supabase init failures', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    AppEnv.markSupabaseInitializationFailed('Supabase 초기화에 실패했습니다: timeout');
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: LoginScreen(),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Supabase 초기화에 실패했습니다'), findsOneWidget);
   });
 
   testWidgets('LoginScreen shows safer email sign-up guidance', (tester) async {

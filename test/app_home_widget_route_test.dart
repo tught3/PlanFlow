@@ -14,7 +14,8 @@ void main() {
       '${AppRoutes.voice}?autoStart=1',
     );
     expect(
-      resolveHomeWidgetRoute(Uri.parse('planflow://voice-launcher?source=mic')),
+      resolveHomeWidgetRoute(
+          Uri.parse('planflow://voice-launcher?source=mic')),
       '${AppRoutes.voice}?autoStart=1',
     );
     expect(
@@ -35,7 +36,8 @@ void main() {
 
   test('resolveHomeWidgetRoute maps calendar and event deep links', () {
     expect(
-      resolveHomeWidgetRoute(Uri.parse('planflow://calendar?date=2026-05-21')),
+      resolveHomeWidgetRoute(
+          Uri.parse('planflow://calendar?date=2026-05-21')),
       '${AppRoutes.calendar}?date=2026-05-21',
     );
     expect(
@@ -43,8 +45,18 @@ void main() {
       '${AppRoutes.eventDetail}/event-123',
     );
     expect(
-      resolveHomeWidgetRoute(Uri.parse('planflow://event?eventId=event-456')),
+      resolveHomeWidgetRoute(
+          Uri.parse('planflow://event?eventId=event-456')),
       '${AppRoutes.eventDetail}/event-456',
+    );
+  });
+
+  test('resolveHomeWidgetRoute maps group invite links', () {
+    expect(
+      resolveHomeWidgetRoute(
+        Uri.parse('planflow://group-invite?groupId=group-1&token=abc123'),
+      ),
+      '${AppRoutes.groupInviteLink}?groupId=group-1&token=abc123',
     );
   });
 }

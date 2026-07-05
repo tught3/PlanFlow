@@ -155,6 +155,7 @@ void main() {
     );
 
     AppEnv.markSupabaseInitialized();
+    addTearDown(AppEnv.resetSupabaseInitializationState);
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();
@@ -220,6 +221,7 @@ void main() {
     );
 
     AppEnv.markSupabaseInitialized();
+    addTearDown(AppEnv.resetSupabaseInitializationState);
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
     await tester.pumpAndSettle();

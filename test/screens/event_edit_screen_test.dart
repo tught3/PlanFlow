@@ -120,6 +120,7 @@ void main() {
   });
 
   setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.empty();
   });

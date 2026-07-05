@@ -14,14 +14,14 @@ import '../../core/theme.dart';
 import '../../data/models/event_model.dart';
 import '../../data/models/user_settings_model.dart';
 import '../../data/repositories/event_repository.dart';
-import '../../data/repositories/settings_repository.dart';
 import '../../features/groups/models/group_event_comment_model.dart';
 import '../../features/groups/models/group_event_model.dart';
 import '../../features/groups/models/group_model.dart';
-import '../../features/groups/widgets/group_multi_select_sheet.dart';
 import '../../features/groups/providers/group_context_provider.dart';
 import '../../features/groups/repositories/group_event_comment_repository.dart';
 import '../../features/groups/repositories/group_event_repository.dart';
+import '../../features/groups/widgets/group_multi_select_sheet.dart';
+import '../../data/repositories/settings_repository.dart';
 import '../../providers/auth_provider.dart';
 import '../location/location_pick_flow.dart';
 import '../../services/app_permission_service.dart';
@@ -437,21 +437,14 @@ class _EventEditScreenState extends State<EventEditScreen> {
       if (_criticalAlarmPermissionsReady(snapshot) || !mounted) {
         return;
       }
-      // exactAlarm은 허용됐지만 알림 권한만 없는 경우: 조용히 요청 후 재확인
-      if (snapshot.exactAlarmsGranted && !snapshot.notificationsGranted) {
-        await _permissionService.requestNotificationPermissions();
-        if (!mounted) return;
-        final refreshed = await _permissionService.checkAll();
-        if (_criticalAlarmPermissionsReady(refreshed) || !mounted) return;
-      }
       final shouldOpen = await showDialog<bool>(
             context: context,
             builder: (dialogContext) => AlertDialog(
               title: const Text('중요한 일정 알림 권한이 필요해요'),
               content: const Text(
-                '강한 알람을 울리려면 앱 알림과 정확한 알람 권한이 필요합니다. 지금 권한을 확인할게요.',
+                '중요한 일정을 시작 시점에 더 강한 소리와 진동으로 알려드리려면 앱 알림, 정확한 알람, 전체 화면 알림 권한이 필요합니다. 지금 권한을 확인할게요.',
               ),
-              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
               actions: [
                 planflowCancelConfirmButtons(
                   onCancel: () => Navigator.of(dialogContext).pop(false),
@@ -472,8 +465,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
       }
       _showMessage(
         granted
-            ? '강한 알람 권한을 확인했습니다.'
-            : '설정에서 PlanFlow의 알림과 정확한 알람을 허용한 뒤 돌아와 주세요.',
+            ? '중요한 일정 알림 권한을 확인했습니다.'
+            : '설정에서 PlanFlow의 알림, 정확한 알람, 전체 화면 알림을 허용한 뒤 돌아와 주세요.',
       );
     } catch (error, stackTrace) {
       debugPrint('Critical alarm permission request skipped: $error');
@@ -482,7 +475,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   bool _criticalAlarmPermissionsReady(AppPermissionSnapshot snapshot) {
-    return snapshot.notificationsGranted && snapshot.exactAlarmsGranted;
+    return snapshot.notificationsGranted &&
+        snapshot.exactAlarmsGranted &&
+        snapshot.fullScreenIntentGranted;
   }
 
   Future<bool> _requestCriticalAlarmPermissions() async {
@@ -492,19 +487,13 @@ class _EventEditScreenState extends State<EventEditScreen> {
         notificationStatus.notificationsEnabled == true;
     final exactAlarmsGranted = notificationStatus.exactAlarmsEnabled == true ||
         await _permissionService.requestExactAlarmPermission();
-    if (!exactAlarmsGranted && mounted) {
-      await _permissionService.openAlarmSettings();
-    }
-    // fullScreenIntent는 향상된 기능(잠금화면 오버레이)이며 필수 아님 — 가능하면 요청
-    if (notificationStatus.fullScreenIntentStatus !=
-            PermissionCheckState.granted &&
-        notificationStatus.fullScreenIntentStatus !=
-            PermissionCheckState.unsupported) {
-      unawaited(_permissionService.requestFullScreenIntentPermission());
-    }
+    final fullScreenIntentGranted = notificationStatus.fullScreenIntentStatus ==
+            PermissionCheckState.granted ||
+        await _permissionService.requestFullScreenIntentPermission();
     final latest = await _permissionService.checkAll();
     return notificationsGranted &&
         exactAlarmsGranted &&
+        fullScreenIntentGranted &&
         _criticalAlarmPermissionsReady(latest);
   }
 
@@ -543,7 +532,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
     }
     unawaited(_loadGroupContextIfNeeded());
     _loadEventIfNeeded();
-    if (event != null) {
+    if (event != null && AppEnv.isSupabaseReady) {
       unawaited(_loadReminderOffsetIfNeeded(event));
     }
   }
@@ -1074,16 +1063,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
           _loadedEvent?.recurrenceRule?.trim().isNotEmpty == true) {
         recurrenceScope = await _chooseRecurrenceEditScopeSafe();
         if (recurrenceScope == null) {
-          debugPrint('EventEditScreen save canceled: recurrence scope dialog');
           return;
         }
       }
 
-      debugPrint('EventEditScreen save before ensureLocationCoordinates');
       await _ensureLocationCoordinatesBeforeSave();
-      debugPrint('EventEditScreen save after ensureLocationCoordinates');
       if (!mounted) {
-        debugPrint('EventEditScreen save stopped: unmounted after location');
         return;
       }
 
@@ -1419,6 +1404,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       isAllDay: event.isAllDay,
       isMultiDay: event.isMultiDay,
       parentEventId: parentEventId,
+      groupEventId: null,
       category: event.category,
       source: 'manual',
       externalId: null,
@@ -1451,6 +1437,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
       isAllDay: event.isAllDay,
       isMultiDay: event.isMultiDay,
       parentEventId: event.parentEventId,
+      groupEventId: event.groupEventId,
       category: event.category,
       source: event.source,
       externalId: event.externalId,
@@ -1981,20 +1968,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        titlePadding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
-        title: Row(
-          children: [
-            const Expanded(child: Text('반복 일정 수정')),
-            IconButton(
-              icon: const Icon(Icons.close),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: () => Navigator.of(context).pop(null),
-            ),
-          ],
+        title: const Text('반복 일정 수정'),
+        content: const Text(
+          '반복 일정입니다. 어떤 범위에 수정 내용을 적용할까요?',
         ),
-        content: const Text('어떤 범위에 수정 내용을 적용할까요?'),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
         actions: [
           PlanFlowActionButtons(
             buttons: [
@@ -2205,19 +2183,12 @@ class _EventEditScreenState extends State<EventEditScreen> {
                         currentEnd: _endAt,
                         endEditedByUser: _endEditedByUser,
                       );
-                      if (_endAt != null && _endAt!.isBefore(_startAt)) {
-                        _endAt = _startAt;
-                      }
                     });
                   },
                   onEndChanged: (value) {
                     setState(() {
                       _endEditedByUser = true;
-                      if (value != null && value.isBefore(_startAt)) {
-                        _endAt = _startAt;
-                      } else {
-                        _endAt = value;
-                      }
+                      _endAt = value;
                     });
                   },
                   onCategoryChanged: (value) {

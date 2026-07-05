@@ -559,10 +559,11 @@ void main() {
   testWidgets('ConfirmScreen stores Korean wall time as UTC once',
       (tester) async {
     final repository = _FakeEventRepository();
-    // 2030년 고정 날짜 사용: _safeStartAt의 "과거 1일 이전이면 now로 교체" 로직에 걸리지 않도록
-    // KST(Asia/Seoul) 10:00 → UTC 01:00 변환 검증
-    final start = DateTime(2030, 6, 13, 10);
-    final end = DateTime(2030, 6, 14, 9);
+    // 과거 날짜는 _safeStartAt이 now()로 보정하므로(1일 이상 과거면 클램프),
+    // 캘린더가 지나도 깨지지 않도록 항상 미래인 내년 날짜를 쓴다.
+    final year = DateTime.now().year + 1;
+    final start = DateTime(year, 6, 13, 10);
+    final end = DateTime(year, 6, 14, 9);
 
     await tester.pumpWidget(
       _testApp(
@@ -586,7 +587,7 @@ void main() {
     }
 
     final saved = repository.createdEvents.single;
-    expect(saved.startAt, DateTime.utc(2030, 6, 13, 1));
+    expect(saved.startAt, DateTime.utc(year, 6, 13, 1));
     expect(planflowLocal(saved.startAt!), start);
     expect(planflowLocal(saved.endAt!), end);
     expect(saved.isMultiDay, isTrue);
@@ -1046,6 +1047,99 @@ void main() {
     expect(find.text('개인 + 동아리'), findsOneWidget);
     expect(find.text('개인 + 우리 팀'), findsNothing);
   });
+
+  testWidgets(
+      'ConfirmScreen saves both personal and group event when 개인 + 그룹 is selected',
+      (tester) async {
+    final contextProvider = GroupContextProvider(
+      repository: _FakeGroupRepository(
+        groups: <GroupModel>[
+          GroupModel(
+            id: 'group-1',
+            createdBy: 'leader-1',
+            name: '우리 팀',
+            createdAt: DateTime.utc(2026, 6, 11),
+          ),
+        ],
+        membersByGroupId: <String, List<GroupMemberModel>>{
+          'group-1': <GroupMemberModel>[
+            GroupMemberModel(
+              id: 'member-1',
+              groupId: 'group-1',
+              userId: 'user-1',
+              role: 'member',
+            ),
+          ],
+        },
+      ),
+    );
+    final eventRepository = _FakeEventRepository();
+    final groupEventRepository = _FakeGroupEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(),
+          backend: _FakeConfirmBackend(),
+          eventRepository: eventRepository,
+          groupContextProvider: contextProvider,
+          groupEventRepository: groupEventRepository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('저장 범위'), findsOneWidget);
+
+    await tester.tap(find.text('개인 + 우리 팀'));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(eventRepository.createdEvents, hasLength(1));
+    expect(groupEventRepository.createdEvents, hasLength(1));
+    expect(
+      groupEventRepository.createdEvents.single.personalEventId,
+      eventRepository.createdEvents.single.id,
+    );
+  });
+
+  testWidgets(
+      'ConfirmScreen without a selected group hides save-scope card and saves personal only',
+      (tester) async {
+    final eventRepository = _FakeEventRepository();
+
+    await tester.pumpWidget(
+      _testApp(
+        ConfirmScreen(
+          userId: 'user-1',
+          parsedSchedule: _parsedSchedule(),
+          backend: _FakeConfirmBackend(),
+          eventRepository: eventRepository,
+          notificationService: _FakeNotificationService(),
+          homeWidgetService: _FakeHomeWidgetService(),
+          locationLookupService: _EmptyLocationLookupService(),
+          permissionService: _DeniedPermissionService(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('저장 범위'), findsNothing);
+
+    await tester.ensureVisible(find.text('일정 저장'));
+    await tester.tap(find.text('일정 저장'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(eventRepository.createdEvents, hasLength(1));
+  });
 }
 
 Widget _testApp(Widget child) {
@@ -1307,6 +1401,96 @@ class _FakeEventRepository extends EventRepository {
   Future<EventModel> updateEvent(EventModel event) async => event;
 }
 
+class _FakeGroupRepository extends GroupRepository {
+  _FakeGroupRepository({
+    required this.groups,
+    required this.membersByGroupId,
+  });
+
+  final List<GroupModel> groups;
+  final Map<String, List<GroupMemberModel>> membersByGroupId;
+
+  @override
+  Future<List<GroupModel>> listGroups() async => groups;
+
+  @override
+  Future<GroupModel?> fetchGroup(String groupId) async {
+    for (final group in groups) {
+      if (group.id == groupId) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<GroupModel> createGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupModel> updateGroup(GroupModel group) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<GroupMemberModel>> listMembers(String groupId) async {
+    return membersByGroupId[groupId] ?? const <GroupMemberModel>[];
+  }
+
+  @override
+  Future<GroupMemberModel> addMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupMemberModel> updateMember(GroupMemberModel member) {
+    throw UnimplementedError();
+  }
+}
+
+class _FakeGroupEventRepository extends GroupEventRepository {
+  final createdEvents = <GroupEventModel>[];
+
+  @override
+  Future<List<GroupEventModel>> getEventsForGroup(
+    String groupId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    return const <GroupEventModel>[];
+  }
+
+  @override
+  Future<GroupEventModel> createGroupEvent(GroupEventModel event) async {
+    final saved = event.copyWith(
+      id: 'group-event-${createdEvents.length + 1}',
+    );
+    createdEvents.add(saved);
+    return saved;
+  }
+
+  @override
+  Future<GroupEventModel> updateGroupEvent(GroupEventModel event) async {
+    return event;
+  }
+
+  @override
+  Future<GroupEventModel> cancelGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> archiveGroupEvent(String eventId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<GroupEventModel> fetchGroupEvent(String eventId) async {
+    throw UnimplementedError();
+  }
+}
+
 class _ThrowingEventRepository extends _FakeEventRepository {
   @override
   Future<EventModel> createEvent(EventModel event) async {
@@ -1478,95 +1662,5 @@ class _AlarmReadyPermissionService extends _DeniedPermissionService {
       ),
       batteryOptimizationIgnored: true,
     );
-  }
-}
-
-class _FakeGroupRepository extends GroupRepository {
-  _FakeGroupRepository({
-    required this.groups,
-    required this.membersByGroupId,
-  });
-
-  final List<GroupModel> groups;
-  final Map<String, List<GroupMemberModel>> membersByGroupId;
-
-  @override
-  Future<List<GroupModel>> listGroups() async => groups;
-
-  @override
-  Future<GroupModel?> fetchGroup(String groupId) async {
-    for (final group in groups) {
-      if (group.id == groupId) {
-        return group;
-      }
-    }
-    return null;
-  }
-
-  @override
-  Future<GroupModel> createGroup(GroupModel group) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<GroupModel> updateGroup(GroupModel group) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<List<GroupMemberModel>> listMembers(String groupId) async {
-    return membersByGroupId[groupId] ?? const <GroupMemberModel>[];
-  }
-
-  @override
-  Future<GroupMemberModel> addMember(GroupMemberModel member) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<GroupMemberModel> updateMember(GroupMemberModel member) {
-    throw UnimplementedError();
-  }
-}
-
-class _FakeGroupEventRepository extends GroupEventRepository {
-  final createdEvents = <GroupEventModel>[];
-
-  @override
-  Future<List<GroupEventModel>> getEventsForGroup(
-    String groupId,
-    DateTime from,
-    DateTime to,
-  ) async {
-    return const <GroupEventModel>[];
-  }
-
-  @override
-  Future<GroupEventModel> createGroupEvent(GroupEventModel event) async {
-    final saved = event.copyWith(
-      id: 'group-event-${createdEvents.length + 1}',
-    );
-    createdEvents.add(saved);
-    return saved;
-  }
-
-  @override
-  Future<GroupEventModel> updateGroupEvent(GroupEventModel event) async {
-    return event;
-  }
-
-  @override
-  Future<GroupEventModel> cancelGroupEvent(String eventId) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<GroupEventModel> archiveGroupEvent(String eventId) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<GroupEventModel> fetchGroupEvent(String eventId) {
-    throw UnimplementedError();
   }
 }

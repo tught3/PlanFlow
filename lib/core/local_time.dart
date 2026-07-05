@@ -92,15 +92,17 @@ bool planflowEventIntersectsLocalDay({
 
 DateTime planflowSeoulDateTimeToUtc(DateTime seoulTime) {
   final location = _planflowLocation(PlanFlowRegions.korea.timeZoneId);
-  return tz.TZDateTime(
-    location,
-    seoulTime.year,
-    seoulTime.month,
-    seoulTime.day,
-    seoulTime.hour,
-    seoulTime.minute,
-    seoulTime.second,
-    seoulTime.millisecond,
-    seoulTime.microsecond,
-  ).toUtc();
+  return tz
+      .TZDateTime(
+        location,
+        seoulTime.year,
+        seoulTime.month,
+        seoulTime.day,
+        seoulTime.hour,
+        seoulTime.minute,
+        seoulTime.second,
+        seoulTime.millisecond,
+        seoulTime.microsecond,
+      )
+      .toUtc();
 }

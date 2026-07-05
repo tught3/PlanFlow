@@ -1,4 +1,4 @@
-﻿package com.fluxstudio.planflow
+package com.fluxstudio.planflow
 
 import android.appwidget.AppWidgetManager
 import android.app.PendingIntent
@@ -471,7 +471,12 @@ abstract class BasePlanFlowWidgetProvider(
             return null
         }
 
-        return "+${overflowCount}개"
+        val title = previewTitle?.trim()?.takeIf { it.isNotBlank() }
+        return when {
+            title == null -> "+$overflowCount"
+            overflowCount == 1 -> title
+            else -> "$title 외 ${overflowCount}건"
+        }
     }
 
     protected fun bindWeekAction(context: Context, views: RemoteViews, viewId: Int, action: String, providerClass: Class<*>) {
@@ -1362,16 +1367,16 @@ class PlanFlowMonthlyWidgetProvider :
                     }
                 }
 
-                // 2.5단계: 월간 위젯은 3개까지 실제 일정을 보이고, 그 이상은 +N개로 표시한다.
+                // 2.5단계: overflow가 필요한 셀의 마지막 슬롯을 비워 overflow에 합산
+                // 인앱 미니 캘린더와 동일한 requiresOverflowLabel 기준: 하루 교차 일정
+                // 총수가 4를 초과하면 마지막 슬롯을 비워 항상 "+N개"를 표시한다.
                 // (라이브 경로의 overflow 수치는 hiddenEvents.size로 동적 계산되므로
                 //  slotMap만 비우면 overflow 카운트가 자동으로 올바르게 반영됨)
-                val maxVisibleMonthlyEvents = 3
                 for (index in 0 until 42) {
                     val totalDayEvents = rawWidgetEventsForDay(rawEvents, cellDays[index]).size
-                    val requiresOverflowLabel =
-                        overflowCounts[index] > 0 || totalDayEvents > maxVisibleMonthlyEvents
-                    if (requiresOverflowLabel && slotMap[index][maxVisibleMonthlyEvents] != null) {
-                        slotMap[index][maxVisibleMonthlyEvents] = null
+                    val requiresOverflowLabel = overflowCounts[index] > 0 || totalDayEvents > 4
+                    if (requiresOverflowLabel && slotMap[index][3] != null) {
+                        slotMap[index][3] = null
                     }
                 }
 

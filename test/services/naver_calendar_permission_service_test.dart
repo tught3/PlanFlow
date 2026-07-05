@@ -16,19 +16,16 @@ void main() {
       SharedPreferencesAsyncPlatform.instance = null;
     });
 
-    test(
-        'classifies successful responses as granted and generic client errors as unknown',
-        () {
+    test('classifies successful or validation responses as granted', () {
       final ok = NaverCalendarPermissionService.classifyResponse(
         http.Response('{"result":"ok"}', 200),
       );
-      final genericClientError =
-          NaverCalendarPermissionService.classifyResponse(
+      final validation = NaverCalendarPermissionService.classifyResponse(
         http.Response('invalid schedule payload', 400),
       );
 
       expect(ok.status, NaverCalendarPermissionStatus.granted);
-      expect(genericClientError.status, NaverCalendarPermissionStatus.unknown);
+      expect(validation.status, NaverCalendarPermissionStatus.granted);
     });
 
     test('classifies auth and scope errors as denied', () {

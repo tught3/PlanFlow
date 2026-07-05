@@ -16,7 +16,6 @@ import '../../data/repositories/event_repository.dart';
 import '../../features/groups/models/calendar_overlay_item.dart';
 import '../../features/groups/providers/group_calendar_overlay_provider.dart';
 import '../../features/groups/services/group_instruction_inbox_service.dart';
-import '../../services/event_prefetch_service.dart';
 import '../../services/event_refresh_bus.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
@@ -436,8 +435,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String? _loadMessage;
   bool _isSearching = false;
   bool _isRefreshing = false;
-  int _consecutiveFailures = 0;
-  Timer? _retryTimer;
   bool _hasPendingRefresh = false;
   DateTime? _pendingFocusDate;
   DateTime? _pendingOpenDaySheetDate;
@@ -476,26 +473,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   void dispose() {
-    _retryTimer?.cancel();
     EventRefreshBus.instance.latest.removeListener(_handleEventRefresh);
     _groupOverlayProvider?.dispose();
     _searchController.dispose();
     super.dispose();
-  }
-
-  void _scheduleRetry() {
-    _retryTimer?.cancel();
-    final Duration delay;
-    if (_consecutiveFailures >= 6) {
-      delay = const Duration(hours: 1);
-    } else if (_consecutiveFailures >= 3) {
-      delay = const Duration(minutes: 10);
-    } else {
-      return;
-    }
-    _retryTimer = Timer(delay, () {
-      if (mounted) _loadEvents();
-    });
   }
 
   void _handleEventRefresh() {
@@ -563,27 +544,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return;
     }
 
-    // 캐시가 있으면 즉시 표시 후 백그라운드에서 갱신
-    if (repositoryOverride == null) {
-      final cached = EventPrefetchService().getCached(userId);
-      if (cached != null && cached.isNotEmpty) {
-        if (mounted) {
-          setState(() {
-            _allEvents = _eventsForDisplayAfterReload(cached);
-            _loadState = _CalendarLoadState.ready;
-            _loadMessage = null;
-            _consecutiveFailures = 0;
-          });
-        }
-      }
-    }
-
     try {
       final repository = repositoryOverride ?? EventRepository.supabase();
       final events = await repository.listEvents(userId: userId);
-      if (repositoryOverride == null) {
-        EventPrefetchService().store(userId, events);
-      }
       var shouldOpenDaySheet = false;
       var daySheetDate = focusDate;
       if (mounted) {
@@ -601,8 +564,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           }
           _loadState = _CalendarLoadState.ready;
           _loadMessage = null;
-          _consecutiveFailures = 0;
-          _retryTimer?.cancel();
         });
       }
       await _loadGroupOverlay(userId: userId);
@@ -615,11 +576,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
         });
       }
     } catch (error) {
-      debugPrint('CalendarScreen load failed: $error');
       if (mounted) {
-        _consecutiveFailures++;
-        _scheduleRetry();
+        setState(() {
+          _loadState = _CalendarLoadState.error;
+          _loadMessage = '캘린더 일정을 불러오지 못했어요. 다시 시도해 주세요.';
+        });
       }
+      debugPrint('CalendarScreen load failed: $error');
     } finally {
       if (mounted) {
         setState(() {
@@ -723,7 +686,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
           final localEnd = planflowLocalDay(event.endAt ?? start);
           return !localStart.isAfter(monthEnd) && !localEnd.isBefore(monthStart);
         })
-        .toList(growable: false);
+        .toList(growable: false)
+      ..sort((a, b) {
+        final aStart = a.startAt ?? DateTime(0);
+        final bStart = b.startAt ?? DateTime(0);
+        final byStart = aStart.compareTo(bStart);
+        if (byStart != 0) {
+          return byStart;
+        }
+        return a.title.compareTo(b.title);
+      });
   }
 
   /// 미확인 리더 지시가 있는 개인 이벤트 id 를 로드해 badge 표시에 사용한다.
@@ -1151,7 +1123,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _changeMonth(-1);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final monthLabel = '${_focusedMonth.year}년 ${_focusedMonth.month}월';
@@ -1311,7 +1282,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   padding: const EdgeInsets.all(AppConstants.defaultPadding),
                   children: [
                     if (_loadState == _CalendarLoadState.supabaseMissing ||
-                        _loadState == _CalendarLoadState.signedOut) ...[
+                        _loadState == _CalendarLoadState.signedOut ||
+                        _loadState == _CalendarLoadState.error) ...[
                       _CalendarStatusCard(
                         state: _loadState,
                         message: _loadMessage,
@@ -1382,4 +1354,3 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return '${value.month}월 ${value.day}일 ${weekdays[value.weekday]}';
   }
 }
-

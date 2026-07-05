@@ -5,6 +5,8 @@ class AppEnv {
       '_YMZvcyy5W5-YUI--1kNrAzCAC9H8BfW2ku0DUpXIpM';
 
   static bool _supabaseInitialized = false;
+  static bool _supabaseInitializationFailed = false;
+  static String? _supabaseInitializationErrorMessage;
   static bool _naverMapInitialized = false;
 
   static String get supabaseUrl => _envValue('SUPABASE_URL');
@@ -47,12 +49,33 @@ class AppEnv {
   }
 
   static bool get isSupabaseReady => _supabaseInitialized;
+  static bool get isSupabaseInitializationFailed =>
+      _supabaseInitializationFailed;
+  static String? get supabaseInitializationErrorMessage =>
+      _supabaseInitializationErrorMessage;
   static bool get isNaverMapReady => _naverMapInitialized;
 
   static bool get isConfigured => isSupabaseReady && hasValidSupabaseConfig;
 
   static void markSupabaseInitialized() {
     _supabaseInitialized = true;
+    _supabaseInitializationFailed = false;
+    _supabaseInitializationErrorMessage = null;
+  }
+
+  static void markSupabaseInitializationFailed([Object? error]) {
+    _supabaseInitialized = false;
+    _supabaseInitializationFailed = true;
+    final message = error?.toString().trim();
+    _supabaseInitializationErrorMessage = message != null && message.isNotEmpty
+        ? message
+        : 'Supabase 초기화에 실패했습니다.';
+  }
+
+  static void resetSupabaseInitializationState() {
+    _supabaseInitialized = false;
+    _supabaseInitializationFailed = false;
+    _supabaseInitializationErrorMessage = null;
   }
 
   static void markNaverMapInitialized() {

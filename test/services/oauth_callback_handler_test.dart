@@ -1,17 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:planflow/services/auth_service.dart';
 import 'package:planflow/services/oauth_callback_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('OAuthCallbackHandler', () {
-    setUp(() {
-      SharedPreferences.setMockInitialValues({});
-      OAuthCallbackHandler.clearInMemoryPendingCallbackForTest();
-    });
-
-    tearDown(OAuthCallbackHandler.clearInMemoryPendingCallbackForTest);
-
     test('detects Supabase password recovery callback type', () {
       expect(
         OAuthCallbackHandler.isPasswordRecoveryCallback(
@@ -120,90 +111,108 @@ void main() {
       expect(message, contains('인증이 완료되지 않았습니다'));
       expect(message, isNot(contains('소셜 동의')));
     });
+  });
 
-    test('tracks pending calendar link callbacks', () {
-      OAuthCallbackHandler.markPendingCalendarLink(
-        PlanFlowOAuthProvider.naver,
+  // -----------------------------------------------------------------------
+  // shouldAdoptExistingSessionForCallback 회귀 테스트
+  // -----------------------------------------------------------------------
+  group('shouldAdoptExistingSessionForCallback', () {
+    // 교차 오염 케이스: 로그인 pending + 기존 세션 존재 → 채택 금지
+    test(
+        'login pending + pre-existing session (no calendar/recovery/email) '
+        '=> must NOT adopt (returns false)', () {
+      expect(
+        OAuthCallbackHandler.shouldAdoptExistingSessionForCallback(
+          pendingPurpose: OAuthCallbackPurpose.login,
+          currentSessionPresent: true,
+          isPasswordRecovery: false,
+          isEmailConfirmation: false,
+          hasPendingCalendarLink: false,
+        ),
+        isFalse,
       );
-
-      expect(OAuthCallbackHandler.hasPendingCalendarLink(), isTrue);
-      expect(OAuthCallbackHandler.hasPendingLogin(), isFalse);
     });
 
-    test('restores pending Naver calendar link callback from storage',
-        () async {
-      OAuthCallbackHandler.markPendingCalendarLink(
-        PlanFlowOAuthProvider.naver,
-      );
-      await OAuthCallbackHandler.persistCurrentPendingCallback();
-      OAuthCallbackHandler.clearInMemoryPendingCallbackForTest();
-
+    // 정상 단일 로그인: 세션 없음 → 채택 허용
+    test('login pending + no pre-existing session => adopt (true)', () {
       expect(
-        await OAuthCallbackHandler
-            .hasRecoverableNaverCalendarLinkCallbackForTest(),
+        OAuthCallbackHandler.shouldAdoptExistingSessionForCallback(
+          pendingPurpose: OAuthCallbackPurpose.login,
+          currentSessionPresent: false,
+          isPasswordRecovery: false,
+          isEmailConfirmation: false,
+          hasPendingCalendarLink: false,
+        ),
         isTrue,
       );
     });
 
-    test('exchanges calendar link callbacks even with an active session', () {
+    // 캘린더 연동 pending + 세션 존재 → 기존 동작 유지(채택 허용)
+    test('calendarLink pending + session present => adopt/allowed (true)', () {
       expect(
-        OAuthCallbackHandler.shouldExchangeOAuthCallback(
+        OAuthCallbackHandler.shouldAdoptExistingSessionForCallback(
+          pendingPurpose: OAuthCallbackPurpose.calendarLink,
           currentSessionPresent: true,
           isPasswordRecovery: false,
+          isEmailConfirmation: false,
           hasPendingCalendarLink: true,
         ),
         isTrue,
       );
     });
 
-    test('trusts provider token only for Naver calendar link callback', () {
+    // 비밀번호 복구 → 채택 허용
+    test('passwordRecovery => adopt allowed (true)', () {
       expect(
-        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
-          pendingPurpose: OAuthCallbackPurpose.calendarLink,
-          pendingMethod: 'naver',
-        ),
-        isTrue,
-      );
-      expect(
-        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
+        OAuthCallbackHandler.shouldAdoptExistingSessionForCallback(
           pendingPurpose: OAuthCallbackPurpose.login,
-          pendingMethod: 'naver',
-        ),
-        isFalse,
-      );
-      expect(
-        OAuthCallbackHandler.shouldTrustProviderTokenForNaverCalendarLink(
-          pendingPurpose: OAuthCallbackPurpose.calendarLink,
-          pendingMethod: 'google',
-        ),
-        isFalse,
-      );
-    });
-
-    test('does not re-exchange normal callbacks after a session exists', () {
-      expect(
-        OAuthCallbackHandler.shouldExchangeOAuthCallback(
-          currentSessionPresent: true,
-          isPasswordRecovery: false,
-          hasPendingCalendarLink: false,
-        ),
-        isFalse,
-      );
-    });
-
-    test('exchanges password recovery and missing-session callbacks', () {
-      expect(
-        OAuthCallbackHandler.shouldExchangeOAuthCallback(
           currentSessionPresent: true,
           isPasswordRecovery: true,
+          isEmailConfirmation: false,
           hasPendingCalendarLink: false,
         ),
         isTrue,
       );
+    });
+
+    // 이메일 인증 → 채택 허용
+    test('emailConfirmation => adopt allowed (true)', () {
       expect(
-        OAuthCallbackHandler.shouldExchangeOAuthCallback(
+        OAuthCallbackHandler.shouldAdoptExistingSessionForCallback(
+          pendingPurpose: OAuthCallbackPurpose.emailConfirmation,
+          currentSessionPresent: true,
+          isPasswordRecovery: false,
+          isEmailConfirmation: true,
+          hasPendingCalendarLink: false,
+        ),
+        isTrue,
+      );
+    });
+
+    // pending 없음(만료·소비) + 세션 존재 → 중복 콜백으로 채택 허용
+    test(
+        'no pending (null) + session present '
+        '=> adopt (true) — duplicate/stale callback', () {
+      expect(
+        OAuthCallbackHandler.shouldAdoptExistingSessionForCallback(
+          pendingPurpose: null,
+          currentSessionPresent: true,
+          isPasswordRecovery: false,
+          isEmailConfirmation: false,
+          hasPendingCalendarLink: false,
+        ),
+        isTrue,
+      );
+    });
+
+    // pending 없음 + 세션 없음 → 채택 허용
+    test('no pending (null) + no session => adopt (true)', () {
+      expect(
+        OAuthCallbackHandler.shouldAdoptExistingSessionForCallback(
+          pendingPurpose: null,
           currentSessionPresent: false,
           isPasswordRecovery: false,
+          isEmailConfirmation: false,
           hasPendingCalendarLink: false,
         ),
         isTrue,

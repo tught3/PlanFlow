@@ -21,6 +21,7 @@ void main() {
 
   tearDown(() {
     SharedPreferencesAsyncPlatform.instance = null;
+    PlanFlowAuthLocalStorage.endExplicitSignOut();
   });
 
   test('refreshes the restored session snapshot before startup resolves',
@@ -214,9 +215,64 @@ void main() {
     expect(provider.provider, 'custom:planflow-naver');
     expect(provider.providerLabel, '네이버 로그인됨');
     expect(provider.accountDisplayName, '네이버 로그인됨');
+    // 이메일/식별자가 없으면 로그인 방식을 중복으로 덧붙이지 않는다.
+    expect(provider.accountDisplayWithMethod, '네이버 로그인됨');
     expect(provider.socialAccountInfoIncomplete, isTrue);
 
     provider.dispose();
+  });
+
+  test('appends login method label next to the email', () async {
+    final googleService = _FakeAuthService(
+      currentSession: _session(
+        userId: 'google-user',
+        email: 'tught2@gmail.com',
+        provider: 'google',
+      ),
+    );
+    final googleProvider = AuthProvider(authService: googleService);
+    googleProvider.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(googleProvider.loginMethodLabel, '구글 간편로그인');
+    expect(
+      googleProvider.accountDisplayWithMethod,
+      'tught2@gmail.com (구글 간편로그인)',
+    );
+    googleProvider.dispose();
+
+    final kakaoService = _FakeAuthService(
+      currentSession: _session(
+        userId: 'kakao-user',
+        email: 'user@kakao.com',
+        provider: 'kakao',
+      ),
+    );
+    final kakaoProvider = AuthProvider(authService: kakaoService);
+    kakaoProvider.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(kakaoProvider.loginMethodLabel, '카카오 간편로그인');
+    expect(
+      kakaoProvider.accountDisplayWithMethod,
+      'user@kakao.com (카카오 간편로그인)',
+    );
+    kakaoProvider.dispose();
+
+    final emailService = _FakeAuthService(
+      currentSession: _session(
+        userId: 'email-user',
+        email: 'me@example.com',
+        provider: 'email',
+      ),
+    );
+    final emailProvider = AuthProvider(authService: emailService);
+    emailProvider.start();
+    await Future<void>.delayed(Duration.zero);
+    expect(emailProvider.loginMethodLabel, '이메일 로그인');
+    expect(
+      emailProvider.accountDisplayWithMethod,
+      'me@example.com (이메일 로그인)',
+    );
+    emailProvider.dispose();
   });
 
   test('keeps restored startup user when refresh has a transient failure',
@@ -287,6 +343,48 @@ void main() {
 
     expect(provider.isSignedIn, isFalse);
     expect(provider.userId, isNull);
+
+    provider.dispose();
+    await service.dispose();
+  });
+
+  test(
+      'clears account snapshot for explicit sign out even after removal flag '
+      'is reset (async listener race)', () async {
+    final service = _FakeAuthService(
+      currentSession: _session(
+        userId: 'naver-user',
+        email: 'naver-user@example.com',
+        provider: 'custom:planflow-naver',
+      ),
+    );
+    final provider = AuthProvider(authService: service);
+
+    provider.start();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.isSignedIn, isTrue);
+    expect(provider.provider, 'custom:planflow-naver');
+    expect(provider.email, 'naver-user@example.com');
+
+    // 실제 race 재현: signOut()은 이미 끝나 isSessionRemovalAllowed는 false지만
+    // 명시적 로그아웃 플래그는 비동기 리스너가 볼 때까지 유지된다.
+    PlanFlowAuthLocalStorage.beginExplicitSignOut();
+    expect(PlanFlowAuthLocalStorage.isSessionRemovalAllowed, isFalse);
+
+    service.emitSignedOut();
+    await Future<void>.delayed(Duration.zero);
+
+    // 복구되지 않고 스냅샷이 확정 초기화되어야 한다.
+    expect(provider.isSignedIn, isFalse);
+    expect(provider.needsReauthentication, isFalse);
+    expect(provider.sessionStatus, AuthSessionStatus.signedOut);
+    expect(provider.userId, isNull);
+    expect(provider.email, isNull);
+    expect(provider.provider, isNull);
+    // 리스너가 명시적 로그아웃을 소비하면 플래그를 즉시 해제한다.
+    expect(PlanFlowAuthLocalStorage.isExplicitSignOutInProgress, isFalse);
+    expect(service.refreshCount, 1);
 
     provider.dispose();
     await service.dispose();

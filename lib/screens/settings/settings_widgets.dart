@@ -64,10 +64,15 @@ class _NaverCalDavImportRange {
 }
 
 class _AccountSection extends StatelessWidget {
-  const _AccountSection({required this.authService, required this.onSignedOut});
+  const _AccountSection({
+    required this.authService,
+    required this.onSignedOut,
+    this.onRecheckNaverAccount,
+  });
 
   final AuthService? authService;
   final VoidCallback onSignedOut;
+  final Future<void> Function()? onRecheckNaverAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -103,6 +108,14 @@ class _AccountSection extends StatelessWidget {
         animation: authProvider,
         builder: (context, _) {
           final signedIn = authProvider.isSignedIn;
+          final onRecheckNaverAccount = this.onRecheckNaverAccount;
+          final showNaverRecheck = onRecheckNaverAccount != null &&
+              shouldShowNaverAccountRecheck(
+                signedIn: signedIn,
+                isNaverAccount: authProvider.isNaverAccount,
+                socialAccountInfoIncomplete:
+                    authProvider.socialAccountInfoIncomplete,
+              );
           return Column(
             children: [
               _StatusRow(
@@ -121,6 +134,17 @@ class _AccountSection extends StatelessWidget {
                   icon: Icons.info_outline,
                   text:
                       '소셜 로그인은 되었지만 계정 이메일/이름을 확인하지 못했습니다. 제공 항목 동의나 provider 설정을 다시 확인해 주세요.',
+                ),
+              ],
+              if (showNaverRecheck) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onRecheckNaverAccount,
+                    icon: const Icon(Icons.refresh_outlined),
+                    label: const Text('네이버 계정 정보 다시 확인'),
+                  ),
                 ),
               ],
               const SizedBox(height: 12),
@@ -162,6 +186,15 @@ class _AccountSection extends StatelessWidget {
       ),
     );
   }
+}
+
+@visibleForTesting
+bool shouldShowNaverAccountRecheck({
+  required bool signedIn,
+  required bool isNaverAccount,
+  required bool socialAccountInfoIncomplete,
+}) {
+  return signedIn && isNaverAccount && socialAccountInfoIncomplete;
 }
 
 String _groupAutoSharePrefKey(String userId, String groupId) =>
@@ -327,15 +360,6 @@ class _LeaderGroupShareSectionState extends State<_LeaderGroupShareSection> {
         ? '새 일정을 이 그룹에도 자동 공유해요.'
         : '새 일정을 이 그룹에 공유하지 않아요.';
   }
-}
-
-@visibleForTesting
-bool shouldShowNaverAccountRecheck({
-  required bool signedIn,
-  required bool isNaverAccount,
-  required bool socialAccountInfoIncomplete,
-}) {
-  return signedIn && isNaverAccount && socialAccountInfoIncomplete;
 }
 
 class _NaverGuideThumbnail extends StatelessWidget {

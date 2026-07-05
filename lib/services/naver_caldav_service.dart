@@ -756,20 +756,12 @@ class NaverCalDavService {
           appPassword: credentials.appPassword,
           body: _calendarListPropfindBody,
         );
-        DiagLogger.log(
-          'NaverCalDav',
-          'getCalendars propfind status=${response.statusCode}',
-        );
         if (response.statusCode == 404) {
           lastError = StateError('CalDAV calendar-home not found: $endpoint');
           continue;
         }
         _throwForCalDavStatus(response.statusCode, endpoint);
         final calendars = _parseCalendarsFromResponse(response.body);
-        DiagLogger.log(
-          'NaverCalDav',
-          'getCalendars found=${calendars.length}',
-        );
         debugPrint('Naver CalDAV 캘린더 목록: $path / ${calendars.length}개');
         for (final calendar in calendars) {
           debugPrint(
@@ -786,18 +778,10 @@ class NaverCalDavService {
         }
       } catch (error) {
         lastError = error;
-        DiagLogger.log(
-          'NaverCalDav',
-          'getCalendars pathFailed error=${error.runtimeType}',
-        );
         debugPrint('Naver CalDAV calendar path failed: $path / $error');
       }
     }
     if (lastError != null) {
-      DiagLogger.log(
-        'NaverCalDav',
-        'getCalendars allPathsFailed lastError=${lastError.runtimeType}',
-      );
       throw StateError('네이버 CalDAV 캘린더 경로를 찾지 못했습니다. 서버 경로를 추가 확인해야 합니다.');
     }
     return const <NaverCalDavCalendar>[];
@@ -1176,7 +1160,6 @@ class NaverCalDavService {
         message: '네이버 CalDAV 연결을 확인하는 중입니다.',
       ));
       final calendars = await getCalendars();
-      DiagLogger.log('NaverCalDav', 'syncAll calendars=${calendars.length}');
       if (calendars.isEmpty) {
         return NaverCalDavSyncResult(
           success: false,
@@ -1658,10 +1641,6 @@ class NaverCalDavService {
         diagnostics: frozenDiagnostics,
       );
     } catch (error, stackTrace) {
-      DiagLogger.log(
-        'NaverCalDav',
-        'syncAll failed error=${error.runtimeType}',
-      );
       debugPrint('Naver CalDAV sync failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       return NaverCalDavSyncResult(

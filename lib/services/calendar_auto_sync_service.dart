@@ -5,9 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/diag_logger.dart';
 import '../core/env.dart';
-import '../core/log_text.dart';
 import '../core/supabase_auth_options.dart';
 import '../data/models/event_model.dart';
 import '../data/repositories/event_repository.dart';
@@ -128,11 +126,6 @@ class CalendarAutoSyncService {
     String reason = 'app_lifecycle',
     bool force = false,
   }) async {
-    DiagLogger.log(
-      'DIAG',
-      'autoSync enter method=syncConnectedCalendars reason=${logSafeText(reason)} '
-          'force=$force currentUser=${logSafeText(_currentSupabaseUserId())}',
-    );
     if (!_canSync) {
       await _recordProviderStatus(
         'all',
@@ -175,10 +168,9 @@ class CalendarAutoSyncService {
         final retryDelay = retryCount < _retryBackoffs.length
             ? _retryBackoffs[retryCount]
             : Duration.zero;
-        DiagLogger.log(
-          'DIAG',
-          'autoSync retry scheduled reason=${logSafeText(reason)} '
-              'retry=${retryCount + 1} failed=${result.failed.join(',')}',
+        debugPrint(
+          'autoSync retry scheduled reason=$reason '
+          'retry=${retryCount + 1} failed=${result.failed.join(',')}',
         );
         if (retryDelay > Duration.zero) {
           await Future<void>.delayed(retryDelay);
@@ -209,6 +201,10 @@ class CalendarAutoSyncService {
         interactive: false,
       );
       return _calendarOutcome(google);
+    });
+    await _runStep(result, 'naver_api_auto_export', () async {
+      final naver = await _calendarSync.syncNaverCalendar();
+      return _calendarOutcome(naver);
     });
     await _runStep(result, 'naver_caldav_auto_import', () async {
       if (!await _naverCalDav.hasCredentials()) {
@@ -525,6 +521,7 @@ class CalendarAutoSyncService {
 
   static const Map<String, String> _knownProviderLabels = <String, String>{
     'google_auto_sync': 'Google Calendar',
+    'naver_api_auto_export': 'Naver 직접 연동',
     'naver_caldav_auto_import': 'Naver CalDAV',
     'device_calendar_auto_import': '휴대폰 내부 캘린더',
   };

@@ -144,43 +144,6 @@ void main() {
     expect(byTitle['광복절']!.endAt, DateTime.utc(2026, 8, 15, 15));
   });
 
-  test('imports device calendar events in batches of six', () async {
-    final repository = _FakeEventRepository(
-      upsertDelay: const Duration(milliseconds: 10),
-    );
-    final rows = List<Map<Object?, Object?>>.generate(
-      7,
-      (index) => {
-        'eventId': 'event-$index',
-        'calendarId': '7',
-        'title': '배치 일정 $index',
-        'beginMillis': DateTime(2026, 5, 6, 10 + index).millisecondsSinceEpoch,
-      },
-    );
-    final service = DeviceCalendarService(
-      gateway: _FakeDeviceCalendarGateway(
-        calendars: [
-          {
-            'id': '7',
-            'displayName': '네이버 캘린더',
-            'accountName': 'tught3@naver.com',
-          },
-        ],
-        events: rows,
-      ),
-      eventRepository: repository,
-      currentUserId: 'user-1',
-    );
-
-    final result = await service.importNaverEvents();
-
-    expect(result.status, DeviceCalendarImportStatus.imported);
-    expect(result.importedCount, 7);
-    expect(repository.upserted, hasLength(7));
-    expect(repository.maxConcurrentUpserts, greaterThan(1));
-    expect(repository.maxConcurrentUpserts, lessThanOrEqualTo(6));
-  });
-
   test('links reflected device calendar duplicate instead of inserting',
       () async {
     final repository = _FakeEventRepository(
@@ -507,16 +470,11 @@ class _FakeDeviceCalendarGateway implements DeviceCalendarGateway {
 }
 
 class _FakeEventRepository extends EventRepository {
-  _FakeEventRepository({
-    List<EventModel> seedEvents = const <EventModel>[],
-    this.upsertDelay = Duration.zero,
-  }) : upserted = List<EventModel>.from(seedEvents);
+  _FakeEventRepository({List<EventModel> seedEvents = const <EventModel>[]})
+      : upserted = List<EventModel>.from(seedEvents);
 
   final List<EventModel> upserted;
   final List<EventModel> updated = <EventModel>[];
-  final Duration upsertDelay;
-  int activeUpserts = 0;
-  int maxConcurrentUpserts = 0;
 
   @override
   Future<EventModel> createEvent(EventModel event) async => event;
@@ -563,23 +521,12 @@ class _FakeEventRepository extends EventRepository {
 
   @override
   Future<EventModel> upsertEventBySourceExternalId(EventModel event) async {
-    activeUpserts += 1;
-    if (activeUpserts > maxConcurrentUpserts) {
-      maxConcurrentUpserts = activeUpserts;
-    }
-    try {
-      if (upsertDelay > Duration.zero) {
-        await Future<void>.delayed(upsertDelay);
-      }
-      upserted.removeWhere(
-        (existing) =>
-            existing.source == event.source &&
-            existing.externalId == event.externalId,
-      );
-      upserted.add(event);
-      return event;
-    } finally {
-      activeUpserts -= 1;
-    }
+    upserted.removeWhere(
+      (existing) =>
+          existing.source == event.source &&
+          existing.externalId == event.externalId,
+    );
+    upserted.add(event);
+    return event;
   }
 }

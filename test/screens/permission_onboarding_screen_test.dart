@@ -146,7 +146,7 @@ void main() {
       expect(permissionService.microphoneRequests, 1);
       expect(permissionService.notificationRequests, 1);
       // exactAlarm은 필수 권한으로 포함됨 — 일반폰에서도 요청된다
-      expect(permissionService.exactAlarmRequests, greaterThan(0));
+      expect(permissionService.exactAlarmRequests, 1);
       expect(permissionService.locationRequests, 1);
       expect(permissionService.calendarRequests, 1);
       expect(permissionService.fullScreenIntentRequests, 0);
@@ -157,16 +157,6 @@ void main() {
         find.byKey(const ValueKey('permission-onboarding-request-all-button')),
         findsOneWidget,
       );
-
-      final exactAlarmTile = find.byKey(
-        const ValueKey('permission-onboarding-exact-alarm-tile'),
-      );
-      await tester.scrollUntilVisible(
-        exactAlarmTile,
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(exactAlarmTile, findsOneWidget);
 
       final fullScreenIntentTile = find.byKey(
         const ValueKey('permission-onboarding-full-screen-intent-tile'),
@@ -208,7 +198,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const ValueKey('permission-onboarding-full-screen-intent-tile')),
+        find.byKey(
+            const ValueKey('permission-onboarding-full-screen-intent-tile')),
         findsNothing,
       );
       expect(permissionService.fullScreenIntentRequests, isZero);
@@ -369,28 +360,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final requestButton = find.descendant(
-        of: find.byKey(
-          const ValueKey('permission-onboarding-exact-alarm-tile'),
-        ),
-        matching: find.byType(TextButton),
+      await tester.tap(
+        find.byKey(const ValueKey('permission-onboarding-request-all-button')),
       );
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('permission-onboarding-exact-alarm-tile')),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      final buttonWidget = tester.widget<TextButton>(requestButton);
-      expect(buttonWidget.onPressed, isNotNull);
-      buttonWidget.onPressed!();
       await tester.pumpAndSettle();
 
       expect(permissionService.appSettingsOpened, isFalse);
       expect(permissionService.exactAlarmGranted, isFalse);
-      expect(
-        find.textContaining('앱에서 바로 켤 수 없어요'),
-        findsOneWidget,
-      );
+      expect(permissionService.alarmSettingsOpened, isTrue);
     },
   );
 }
@@ -408,6 +385,7 @@ class _FakePermissionService extends AppPermissionService {
   bool notificationRequestGranted = true;
   bool exactAlarmRequestGranted = true;
   bool notificationSettingsOpened = false;
+  bool alarmSettingsOpened = false;
   bool appSettingsOpened = false;
   int microphoneRequests = 0;
   int locationRequests = 0;
@@ -497,6 +475,12 @@ class _FakePermissionService extends AppPermissionService {
   @override
   Future<bool> openNotificationSettings() async {
     notificationSettingsOpened = true;
+    return true;
+  }
+
+  @override
+  Future<bool> openAlarmSettings() async {
+    alarmSettingsOpened = true;
     return true;
   }
 

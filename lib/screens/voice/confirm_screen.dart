@@ -347,6 +347,17 @@ class _ConfirmScreenState extends State<ConfirmScreen>
     }
     unawaited(_loadGroupContextIfNeeded());
 
+    _groupContextProvider = widget.groupContextProvider;
+    if (_groupContextProvider == null && AppEnv.isSupabaseReady) {
+      try {
+        _groupContextProvider = GroupContextProvider();
+        _ownsGroupContextProvider = true;
+      } catch (error) {
+        debugPrint('ConfirmScreen group context unavailable: $error');
+      }
+    }
+    unawaited(_loadGroupContextIfNeeded());
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeHydrateParsedSchedule();
       unawaited(_resolveLocationCoordinatesIfNeeded());
@@ -2701,11 +2712,7 @@ class _ConfirmScreenState extends State<ConfirmScreen>
                         onEndChanged: (value) {
                           setState(() {
                             _endEditedByUser = true;
-                            if (value != null && value.isBefore(_startAt)) {
-                              _endAt = _startAt;
-                            } else {
-                              _endAt = value;
-                            }
+                            _endAt = value;
                           });
                         },
                         onCategoryChanged: (value) {

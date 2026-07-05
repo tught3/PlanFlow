@@ -748,8 +748,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           child: CircularProgressIndicator(),
                         ),
                       )
-                    else if (_loadState == _HomeLoadState.supabaseMissing ||
-                        _loadState == _HomeLoadState.signedOut) ...[
+                    else if (_loadState != _HomeLoadState.ready) ...[
                       _HomeStatusCard(
                         state: _loadState,
                         message: _loadMessage,

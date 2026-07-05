@@ -90,6 +90,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   EventRepository get _repository =>
       widget.eventRepository ?? EventRepository.supabase();
 
+  // 그룹 연동 레포는 실제 사용 시점에만 생성한다(테스트 등 미초기화 환경에서
+  // Supabase.instance를 만지지 않도록 lazy + guard 유지).
   GroupEventRepository? _groupEventRepositoryCache;
   GroupEventRepository get _groupEventRepository =>
       _groupEventRepositoryCache ??=

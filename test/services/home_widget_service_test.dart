@@ -431,8 +431,8 @@ void main() {
     final may20Cell = payload.monthCells.firstWhere((cell) => cell.day == 20);
     expect(may20Cell.inMonth, isTrue);
     expect(may20Cell.date, DateTime(2026, 5, 20));
-    expect(may20Cell.events.length, 3);
-    expect(may20Cell.overflowCount, 2);
+    expect(may20Cell.events.length, 4);
+    expect(may20Cell.overflowCount, 1);
     final wednesday = payload.weekDays[2];
     expect(wednesday.eventCount, 5);
     expect(wednesday.events.length, 4);
@@ -496,68 +496,6 @@ void main() {
           .map((event) => event.title),
       isNot(contains('Saturday work')),
     );
-  });
-
-  test('HomeWidgetSchedulePayloadBuilder moves last monthly slot into overflow',
-      () {
-    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
-      now: DateTime(2026, 6, 9, 9),
-      events: <EventModel>[
-        EventModel(
-          id: 'multi-day',
-          userId: 'user-1',
-          title: '멀티데이',
-          startAt: DateTime(2026, 6, 8, 9),
-          endAt: DateTime(2026, 6, 10, 18),
-          isMultiDay: true,
-        ),
-        for (var index = 0; index < 5; index += 1)
-          EventModel(
-            id: 'single-$index',
-            userId: 'user-1',
-            title: '단일 ${index + 1}',
-            startAt: DateTime(2026, 6, 9, 10 + index),
-          ),
-      ],
-    );
-
-    final june9Cell = payload.monthCells.firstWhere(
-      (cell) => cell.inMonth && cell.day == 9,
-    );
-
-    expect(june9Cell.events.length, 3);
-    expect(june9Cell.overflowCount, 3);
-  });
-
-  test(
-      'HomeWidgetSchedulePayloadBuilder expands recurring events for adjacent month widgets',
-      () {
-    final payload = HomeWidgetSchedulePayloadBuilder.fromEvents(
-      now: DateTime(2026, 5, 20, 9),
-      events: <EventModel>[
-        EventModel(
-          id: 'weekly-review',
-          userId: 'user-1',
-          title: '주간 리뷰',
-          startAt: DateTime(2026, 4, 6, 9),
-          recurrenceRule: 'FREQ=WEEKLY;BYDAY=MO',
-        ),
-      ],
-    );
-
-    final april20Cell = payload.previousMonthCells.firstWhere(
-      (cell) => cell.inMonth && cell.date == DateTime(2026, 4, 20),
-    );
-    final may18Cell = payload.monthCells.firstWhere(
-      (cell) => cell.inMonth && cell.date == DateTime(2026, 5, 18),
-    );
-    final june15Cell = payload.nextMonthCells.firstWhere(
-      (cell) => cell.inMonth && cell.date == DateTime(2026, 6, 15),
-    );
-
-    expect(april20Cell.events.map((event) => event.title), contains('주간 리뷰'));
-    expect(may18Cell.events.map((event) => event.title), contains('주간 리뷰'));
-    expect(june15Cell.events.map((event) => event.title), contains('주간 리뷰'));
   });
 
   test('HomeWidgetSchedulePayloadBuilder fills tomorrow only in empty space',

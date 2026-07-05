@@ -7,6 +7,13 @@ import '../screens/onboarding/permission_onboarding_screen.dart';
 import '../screens/auth/reset_password_screen.dart';
 import '../data/models/event_model.dart';
 import '../features/groups/models/group_event_model.dart';
+import '../screens/briefing/briefing_launch_screen.dart';
+import '../screens/event/event_detail_screen.dart';
+import '../screens/event/event_edit_screen.dart';
+import '../screens/placeholder_screen.dart';
+import '../screens/settings/naver_ics_import_screen.dart';
+import '../screens/settings/settings_screen.dart';
+import '../screens/splash/splash_screen.dart';
 import '../features/groups/screens/group_dashboard_screen.dart';
 import '../features/groups/screens/group_detail_screen.dart';
 import '../features/groups/screens/group_create_screen.dart';
@@ -18,13 +25,6 @@ import '../features/groups/screens/group_invite_screen.dart';
 import '../features/groups/screens/group_list_screen.dart';
 import '../features/groups/screens/group_member_screen.dart';
 import '../features/groups/providers/group_context_provider.dart';
-import '../screens/briefing/briefing_launch_screen.dart';
-import '../screens/event/event_detail_screen.dart';
-import '../screens/event/event_edit_screen.dart';
-import '../screens/placeholder_screen.dart';
-import '../screens/settings/naver_ics_import_screen.dart';
-import '../screens/settings/settings_screen.dart';
-import '../screens/splash/splash_screen.dart';
 import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
@@ -361,6 +361,20 @@ final GoRouter appRouter = GoRouter(
   ),
 );
 
+GroupContextProvider? _groupContextProviderExtra(GoRouterState state) {
+  final extra = state.extra;
+  if (extra is GroupContextProvider) {
+    return extra;
+  }
+  if (extra is Map<String, Object?>) {
+    final provider = extra['contextProvider'];
+    if (provider is GroupContextProvider) {
+      return provider;
+    }
+  }
+  return null;
+}
+
 String? _resolveEventId(GoRouterState state, EventModel? event) {
   final pathId = state.pathParameters['eventId']?.trim();
   if (pathId != null && pathId.isNotEmpty) {
@@ -410,18 +424,4 @@ DateTime? _parseRouteDate(String? raw) {
     return null;
   }
   return DateTime.tryParse(normalized);
-}
-
-GroupContextProvider? _groupContextProviderExtra(GoRouterState state) {
-  final extra = state.extra;
-  if (extra is GroupContextProvider) {
-    return extra;
-  }
-  if (extra is Map<String, Object?>) {
-    final provider = extra['contextProvider'];
-    if (provider is GroupContextProvider) {
-      return provider;
-    }
-  }
-  return null;
 }

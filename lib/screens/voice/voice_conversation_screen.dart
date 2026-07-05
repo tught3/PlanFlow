@@ -315,7 +315,8 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
         if (!updated) {
           return;
         }
-      } else if (result.action == VoiceConversationAction.createEvent) {
+      } else if (result.action == VoiceConversationAction.createEvent &&
+          result.draftEvent != null) {
         await _openCreateEventScreen(result.inputText, result.draftEvent);
       } else if (result.requiresEditScreenNavigation &&
           result.targetEvent != null &&
@@ -701,44 +702,6 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
     await widget.sttService.stopActiveListen();
   }
 
-  Future<void> _openEditWithLocation(
-    EventModel event,
-    String locationText,
-  ) async {
-    await _stopVoiceBeforeNavigation();
-    final picked = await widget.locationPicker(
-      // ignore: use_build_context_synchronously
-      context: context,
-      query: locationText,
-      locationLookupService: widget.locationLookupService,
-      appPermissionService: widget.permissionService,
-    );
-    if (!mounted || picked == null) {
-      return;
-    }
-
-    final resolvedLabel = picked.bestPlaceLabel.trim();
-    final edited = _copyEventWithLocation(
-      event,
-      location: resolvedLabel.isNotEmpty ? resolvedLabel : picked.label,
-      locationLat: picked.latitude,
-      locationLng: picked.longitude,
-    );
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          edited.locationLat != null
-              ? '장소가 입력되었습니다. 지도 위치를 확인하고 저장해 주세요.'
-              : '장소 이름을 입력했습니다. 지도 위치를 확인하고 저장해 주세요.',
-        ),
-      ),
-    );
-    await context.push('${AppRoutes.eventEdit}/${edited.id}', extra: edited);
-    await _loadEvents();
-  }
-
   Future<void> _openCreateEventScreen(
     String rawInput,
     EventModel? fallbackDraft,
@@ -790,6 +753,44 @@ class _VoiceConversationScreenState extends State<VoiceConversationScreen>
 
     if (!mounted) return;
     await context.push('${AppRoutes.eventEdit}/${draft.id}', extra: draft);
+    await _loadEvents();
+  }
+
+  Future<void> _openEditWithLocation(
+    EventModel event,
+    String locationText,
+  ) async {
+    await _stopVoiceBeforeNavigation();
+    final picked = await widget.locationPicker(
+      // ignore: use_build_context_synchronously
+      context: context,
+      query: locationText,
+      locationLookupService: widget.locationLookupService,
+      appPermissionService: widget.permissionService,
+    );
+    if (!mounted || picked == null) {
+      return;
+    }
+
+    final resolvedLabel = picked.bestPlaceLabel.trim();
+    final edited = _copyEventWithLocation(
+      event,
+      location: resolvedLabel.isNotEmpty ? resolvedLabel : picked.label,
+      locationLat: picked.latitude,
+      locationLng: picked.longitude,
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          edited.locationLat != null
+              ? '장소가 입력되었습니다. 지도 위치를 확인하고 저장해 주세요.'
+              : '장소 이름을 입력했습니다. 지도 위치를 확인하고 저장해 주세요.',
+        ),
+      ),
+    );
+    await context.push('${AppRoutes.eventEdit}/${edited.id}', extra: edited);
     await _loadEvents();
   }
 

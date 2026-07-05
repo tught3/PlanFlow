@@ -8,6 +8,7 @@ create table if not exists public.users (
   id uuid primary key references auth.users (id) on delete cascade,
   email text,
   name text,
+  display_name text,
   created_at timestamptz not null default now()
 );
 
@@ -18,10 +19,15 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.users (id, email, name)
+  insert into public.users (id, email, name, display_name)
   values (
     new.id,
     new.email,
+    coalesce(
+      new.raw_user_meta_data ->> 'name',
+      new.raw_user_meta_data ->> 'full_name',
+      new.raw_user_meta_data ->> 'nickname'
+    ),
     coalesce(
       new.raw_user_meta_data ->> 'name',
       new.raw_user_meta_data ->> 'full_name',
@@ -30,7 +36,8 @@ begin
   )
   on conflict (id) do update
     set email = excluded.email,
-        name = coalesce(excluded.name, public.users.name);
+        name = coalesce(excluded.name, public.users.name),
+        display_name = coalesce(public.users.display_name, excluded.display_name);
 
   return new;
 end;
@@ -40,6 +47,74 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+alter table public.users
+  add column if not exists invite_code text;
+
+update public.users
+set invite_code = lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10))
+where invite_code is null;
+
+alter table public.users
+  alter column invite_code set default lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10));
+
+alter table public.users
+  alter column invite_code set not null;
+
+create unique index if not exists users_invite_code_uidx
+  on public.users (invite_code);
+
+create or replace function public.ensure_current_user_profile()
+returns public.users
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  auth_user_row auth.users%rowtype;
+  profile public.users%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception '로그인이 필요합니다.';
+  end if;
+
+  select *
+    into auth_user_row
+    from auth.users
+   where id = auth.uid();
+
+  insert into public.users (id, email, name, display_name, invite_code)
+  values (
+    auth.uid(),
+    auth_user_row.email,
+    coalesce(
+      auth_user_row.raw_user_meta_data ->> 'name',
+      auth_user_row.raw_user_meta_data ->> 'full_name',
+      auth_user_row.raw_user_meta_data ->> 'nickname'
+    ),
+    coalesce(
+      auth_user_row.raw_user_meta_data ->> 'name',
+      auth_user_row.raw_user_meta_data ->> 'full_name',
+      auth_user_row.raw_user_meta_data ->> 'nickname'
+    ),
+    lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10))
+  )
+  on conflict (id) do update
+    set email = excluded.email,
+        name = coalesce(public.users.name, excluded.name),
+        display_name = coalesce(public.users.display_name, excluded.display_name),
+        invite_code = coalesce(
+          nullif(public.users.invite_code, ''),
+          lower(substring(replace(gen_random_uuid()::text, '-', '') from 1 for 10))
+        )
+  returning * into profile;
+
+  return profile;
+end;
+$$;
+
+grant execute on function public.ensure_current_user_profile()
+  to authenticated;
 
 -- 2. events
 create table if not exists public.events (
@@ -1641,7 +1716,7 @@ create policy "group_backups_update_restore_leader"
     and restored_at is not null
   );
 
--- 3. pre_actions
+-- 7. pre_actions
 create table if not exists public.pre_actions (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references public.events (id) on delete cascade,
