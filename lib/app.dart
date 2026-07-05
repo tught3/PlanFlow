@@ -672,6 +672,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
               scaffoldMessengerKey: AppFeedbackService.scaffoldMessengerKey,
               title: 'PlanFlow',
               theme: buildPlanFlowTheme(),
+              darkTheme: buildPlanFlowDarkTheme(),
+              themeMode: ThemeMode.system,
               locale: PlanFlowRegionController.instance.region.uiLocale,
               supportedLocales: const [
                 Locale('ko', 'KR'),

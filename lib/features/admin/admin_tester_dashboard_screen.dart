@@ -163,20 +163,7 @@ class _AdminTesterDashboardScreenState extends State<AdminTesterDashboardScreen>
                       ),
                     ),
                   if (!state.hasMore)
-                    const SliverToBoxAdapter(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                        child: Center(
-                          child: Text(
-                            '모든 테스터를 불러왔어요.',
-                            style: TextStyle(
-                              color: PlanFlowColors.textSecondary,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    const SliverToBoxAdapter(child: _EndOfListFooter()),
                 ],
                 const SliverToBoxAdapter(child: SizedBox(height: 32)),
               ],
@@ -188,24 +175,25 @@ class _AdminTesterDashboardScreenState extends State<AdminTesterDashboardScreen>
   }
 
   Widget _buildStatsSection(TesterStats stats) {
+    final tokens = context.planflowColors;
     final cards = <_StatCardData>[
       _StatCardData(
         label: '전체 사용자',
         value: '${stats.totalTesters}',
         icon: Icons.group_outlined,
-        color: PlanFlowColors.primary,
+        color: tokens.primary,
       ),
       _StatCardData(
         label: '오늘 로그인',
         value: '${stats.loggedInToday}',
         icon: Icons.login,
-        color: PlanFlowColors.active,
+        color: tokens.active,
       ),
       _StatCardData(
         label: '최근 7일 활동',
         value: '${stats.active7d}',
         icon: Icons.calendar_today_outlined,
-        color: PlanFlowColors.primaryMid,
+        color: tokens.primaryMid,
       ),
       _StatCardData(
         label: '현재 온라인',
@@ -217,7 +205,7 @@ class _AdminTesterDashboardScreenState extends State<AdminTesterDashboardScreen>
         label: '30일 미접속',
         value: '${stats.inactive30d}',
         icon: Icons.warning_amber_outlined,
-        color: const Color(0xFFB45309),
+        color: const Color(0xFFE0A875),
       ),
       _StatCardData(
         label: 'Android',
@@ -229,7 +217,7 @@ class _AdminTesterDashboardScreenState extends State<AdminTesterDashboardScreen>
         label: 'iOS',
         value: '${stats.iosCount}',
         icon: Icons.phone_iphone,
-        color: PlanFlowColors.textSecondary,
+        color: tokens.textSecondary,
       ),
       _StatCardData(
         label: '최신 버전',
@@ -238,7 +226,7 @@ class _AdminTesterDashboardScreenState extends State<AdminTesterDashboardScreen>
             : '${stats.latestVersion} '
                 '(${(stats.latestVersionRatio * 100).round()}%)',
         icon: Icons.new_releases_outlined,
-        color: PlanFlowColors.fab,
+        color: tokens.fab,
       ),
     ];
 
@@ -456,7 +444,7 @@ class _FilterChipGroup extends StatelessWidget {
           child: Text(
             label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: PlanFlowColors.textSecondary,
+                  color: context.planflowColors.textSecondary,
                 ),
           ),
         ),
@@ -592,6 +580,26 @@ class _TesterCard extends StatelessWidget {
   }
 }
 
+class _EndOfListFooter extends StatelessWidget {
+  const _EndOfListFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Center(
+        child: Text(
+          '모든 테스터를 불러왔어요.',
+          style: TextStyle(
+            color: context.planflowColors.textSecondary,
+            fontSize: 11,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _InfoChip extends StatelessWidget {
   const _InfoChip({required this.text});
 
@@ -599,17 +607,18 @@ class _InfoChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.planflowColors;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: PlanFlowColors.tagNormalBg,
+        color: tokens.tagNormalBg,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 10,
-          color: PlanFlowColors.tagNormalText,
+          color: tokens.tagNormalText,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -640,12 +649,12 @@ class _EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 80),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 80),
       child: Center(
         child: Text(
           '조건에 맞는 테스터가 없어요.',
-          style: TextStyle(color: PlanFlowColors.textSecondary),
+          style: TextStyle(color: context.planflowColors.textSecondary),
         ),
       ),
     );
@@ -666,10 +675,10 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
+            Icon(
               Icons.cloud_off,
               size: 40,
-              color: PlanFlowColors.textSecondary,
+              color: context.planflowColors.textSecondary,
             ),
             const SizedBox(height: 12),
             Text(
