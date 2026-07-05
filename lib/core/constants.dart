@@ -54,4 +54,5 @@ class AppRoutes {
   static const String settings = '/settings';
   static const String briefing = '/briefing';
   static const String naverIcsImport = '/settings/naver-ics-import';
+  static const String adminTesters = '/admin/testers';
 }

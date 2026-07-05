@@ -343,6 +343,7 @@ class FeedbackReportSection extends StatelessWidget {
     this.onOpenDiagnosticLog,
     this.onOpenBetaSurvey,
     this.onOpenAdminInbox,
+    this.onOpenTesterDashboard,
     this.newAdminReportCount,
     this.isLoadingAdminReportCount = false,
   });
@@ -351,6 +352,7 @@ class FeedbackReportSection extends StatelessWidget {
   final VoidCallback? onOpenDiagnosticLog;
   final VoidCallback? onOpenBetaSurvey;
   final VoidCallback? onOpenAdminInbox;
+  final VoidCallback? onOpenTesterDashboard;
   final int? newAdminReportCount;
   final bool isLoadingAdminReportCount;
 
@@ -426,6 +428,19 @@ class FeedbackReportSection extends StatelessWidget {
                   newReportCount: newAdminReportCount,
                   isLoading: isLoadingAdminReportCount,
                 ),
+              ),
+            ],
+            if (onOpenTesterDashboard != null) ...[
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                key: const ValueKey('settings-admin-tester-dashboard-button'),
+                onPressed: onOpenTesterDashboard,
+                style: FilledButton.styleFrom(
+                  backgroundColor: PlanFlowColors.fab,
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.groups_2_outlined),
+                label: const Text('테스터 대시보드'),
               ),
             ],
             const SizedBox(height: 8),

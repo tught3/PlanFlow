@@ -116,6 +116,46 @@ $$;
 grant execute on function public.ensure_current_user_profile()
   to authenticated;
 
+-- 1-1. Tester Dashboard 지원 컬럼(migration 20260705143000)
+alter table public.users
+  add column if not exists last_login_at timestamptz;
+
+alter table public.users
+  add column if not exists last_active_at timestamptz;
+
+alter table public.users
+  add column if not exists app_version text;
+
+alter table public.users
+  add column if not exists build_number text;
+
+alter table public.users
+  add column if not exists platform text
+  check (platform is null or platform in ('android', 'ios', 'web', 'macos', 'windows', 'linux'));
+
+alter table public.users
+  add column if not exists updated_at timestamptz not null default now();
+
+drop trigger if exists users_set_updated_at on public.users;
+create trigger users_set_updated_at
+  before update on public.users
+  for each row execute function public.set_updated_at();
+
+create index if not exists users_last_active_at_idx
+  on public.users (last_active_at desc);
+
+create index if not exists users_last_login_at_idx
+  on public.users (last_login_at desc);
+
+create index if not exists users_email_idx
+  on public.users (email);
+
+create index if not exists users_platform_idx
+  on public.users (platform);
+
+create index if not exists users_app_version_idx
+  on public.users (app_version);
+
 -- 2. events
 create table if not exists public.events (
   id uuid primary key default gen_random_uuid(),
@@ -2255,6 +2295,18 @@ create policy "users_select_own"
   on public.users
   for select
   using (auth.uid() = id);
+create policy "users_select_admin"
+  on public.users
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.admin_roles ar
+      where ar.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+        and ar.role in ('admin', 'owner')
+    )
+  );
 create policy "users_select_group_members"
   on public.users
   for select
@@ -2661,6 +2713,237 @@ create policy "product_early_birds_select_admin"
       where ar.email = lower(coalesce(auth.jwt() ->> 'email', ''))
     )
   );
+
+-- ============================================================================
+-- Tester Dashboard RPC(관리자 전용 / 개인 활동 기록)
+-- ============================================================================
+
+-- 클라이언트가 자기 행의 활동 정보를 갱신한다(일반 사용자용).
+drop function if exists public.record_user_activity(
+  text, text, text, text
+);
+create or replace function public.record_user_activity(
+  p_app_version text default null,
+  p_build_number text default null,
+  p_platform text default null,
+  p_mark_login boolean default false
+)
+returns public.users
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+begin
+  if uid is null then
+    raise exception '로그인이 필요합니다.' using errcode = '42501';
+  end if;
+
+  update public.users
+     set last_active_at = now(),
+         app_version = coalesce(p_app_version, public.users.app_version),
+         build_number = coalesce(p_build_number, public.users.build_number),
+         platform = case
+           when p_platform is null or char_length(trim(p_platform)) = 0
+             then public.users.platform
+           else lower(trim(p_platform))
+         end,
+         last_login_at = case
+           when p_mark_login then now()
+           else public.users.last_login_at
+         end
+   where id = uid
+   returning * into public.users;
+end;
+$$;
+
+grant execute on function public.record_user_activity(
+  text, text, text, boolean
+) to authenticated;
+
+-- 관리자 전용: 대시보드용 사용자 목록(필터/정렬/페이지네이션).
+drop function if exists public.get_tester_dashboard(
+  text, text, text, text, text, int, int
+);
+create or replace function public.get_tester_dashboard(
+  p_search text default null,
+  p_status text default null,
+  p_platform text default null,
+  p_app_version text default null,
+  p_sort text default 'last_active',
+  p_limit int default 50,
+  p_offset int default 0
+)
+returns table (
+  id uuid,
+  email text,
+  display_name text,
+  name text,
+  created_at timestamptz,
+  last_login_at timestamptz,
+  last_active_at timestamptz,
+  app_version text,
+  build_number text,
+  platform text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_email text;
+  is_admin boolean := false;
+begin
+  caller_email := lower(coalesce(auth.jwt() ->> 'email', ''));
+  select exists(
+    select 1
+    from public.admin_roles ar
+    where ar.email = caller_email
+      and ar.role in ('admin', 'owner')
+  ) into is_admin;
+
+  if not is_admin then
+    raise exception '관리자 권한이 필요합니다.' using errcode = '42501';
+  end if;
+
+  if p_limit is null or p_limit < 1 or p_limit > 500 then
+    p_limit := 50;
+  end if;
+  if p_offset is null or p_offset < 0 then
+    p_offset := 0;
+  end if;
+
+  return query
+  select
+    u.id,
+    u.email,
+    u.display_name,
+    u.name,
+    u.created_at,
+    u.last_login_at,
+    u.last_active_at,
+    u.app_version,
+    u.build_number,
+    u.platform
+  from public.users u
+  where
+    (
+      p_search is null
+      or char_length(trim(p_search)) = 0
+      or u.email ilike '%' || trim(p_search) || '%'
+      or coalesce(u.display_name, '') ilike '%' || trim(p_search) || '%'
+      or coalesce(u.name, '') ilike '%' || trim(p_search) || '%'
+    )
+    and (
+      p_platform is null
+      or char_length(trim(p_platform)) = 0
+      or u.platform = lower(trim(p_platform))
+    )
+    and (
+      p_app_version is null
+      or char_length(trim(p_app_version)) = 0
+      or u.app_version = trim(p_app_version)
+    )
+    and case
+      when p_status = 'online' then
+        u.last_active_at is not null
+        and u.last_active_at >= now() - interval '5 minutes'
+      when p_status = 'recent' then
+        u.last_active_at is not null
+        and u.last_active_at >= now() - interval '7 days'
+        and u.last_active_at < now() - interval '5 minutes'
+      when p_status = 'inactive' then
+        u.last_active_at is null
+        or u.last_active_at < now() - interval '7 days'
+      else true
+    end
+  order by
+    case when p_sort = 'created' then u.created_at end desc,
+    case when p_sort is distinct from 'created' then coalesce(u.last_active_at, u.created_at) end desc
+  limit p_limit
+  offset p_offset;
+end;
+$$;
+
+grant execute on function public.get_tester_dashboard(
+  text, text, text, text, text, int, int
+) to authenticated;
+
+-- 관리자 전용: 통계 카드용 집계.
+drop function if exists public.get_tester_stats();
+create or replace function public.get_tester_stats()
+returns table (
+  total_testers bigint,
+  active_7d bigint,
+  logged_in_today bigint,
+  inactive_30d bigint,
+  online_now bigint,
+  android_count bigint,
+  ios_count bigint,
+  latest_version text,
+  latest_version_count bigint
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  caller_email text;
+  is_admin boolean := false;
+  latest_ver text;
+begin
+  caller_email := lower(coalesce(auth.jwt() ->> 'email', ''));
+  select exists(
+    select 1
+    from public.admin_roles ar
+    where ar.email = caller_email
+      and ar.role in ('admin', 'owner')
+  ) into is_admin;
+
+  if not is_admin then
+    raise exception '관리자 권한이 필요합니다.' using errcode = '42501';
+  end if;
+
+  select u.app_version
+    into latest_ver
+    from public.users u
+   where u.app_version is not null
+   order by
+     coalesce(nullif(u.build_number, '')::int, 0) desc,
+     u.app_version desc
+   limit 1;
+
+  return query
+  select
+    count(*)::bigint,
+    count(*) filter (
+      where last_active_at is not null
+        and last_active_at >= now() - interval '7 days'
+    )::bigint,
+    count(*) filter (
+      where last_login_at is not null
+        and last_login_at >= date_trunc('day', now())
+    )::bigint,
+    count(*) filter (
+      where last_active_at is null
+        or last_active_at < now() - interval '30 days'
+    )::bigint,
+    count(*) filter (
+      where last_active_at is not null
+        and last_active_at >= now() - interval '5 minutes'
+    )::bigint,
+    count(*) filter (where platform = 'android')::bigint,
+    count(*) filter (where platform = 'ios')::bigint,
+    latest_ver,
+    count(*) filter (
+      where app_version is not null
+        and app_version = latest_ver
+    )::bigint;
+end;
+$$;
+
+grant execute on function public.get_tester_stats() to authenticated;
 
 -- Naver CalDAV credentials are stored only as encrypted payloads in calendar_connections.
 -- If you set the optional custom GUC `planflow.naver_caldav_secret`, these RPCs will
@@ -3524,10 +3807,31 @@ begin
     perform cron.unschedule(existing_job_id);
   end if;
 
-  perform cron.schedule(
-    'planflow-daily-in-project-backup',
-    '30 18 * * *',
-    'select backup.create_daily_snapshot(''automatic''); select backup.prune_daily_snapshots();'
-  );
+   perform cron.schedule(
+     'planflow-daily-in-project-backup',
+     '30 18 * * *',
+     'select backup.create_daily_snapshot(''automatic''); select backup.prune_daily_snapshots();'
+   );
 end;
 $$;
+
+-- ============================================================================
+-- Realtime: users 테이블 변경 알림(Tester Dashboard 갱신용)
+-- ============================================================================
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'users'
+  ) then
+    begin
+      alter publication supabase_realtime add table public.users;
+    exception
+      when others then null;
+    end;
+  end if;
+end $$;
+

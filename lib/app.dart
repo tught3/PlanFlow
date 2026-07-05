@@ -22,6 +22,7 @@ import 'services/calendar_auto_sync_service.dart';
 import 'services/app_feedback_service.dart';
 import 'services/briefing_scheduler_service.dart';
 import 'services/event_reminder_channel_migration_service.dart';
+import 'services/activity_tracking_service.dart';
 import 'services/smart_preparation_payload_migration_service.dart';
 import 'services/naver_ics_share_store.dart';
 import 'services/notification_service.dart';
@@ -55,6 +56,8 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   final NaverIcsShareStore _naverIcsShareStore = const NaverIcsShareStore();
   bool _briefingDialogShowing = false;
   final NotificationService _notificationService = NotificationService();
+  final ActivityTrackingService _activityTrackingService =
+      ActivityTrackingService();
   late final AppLifecycleListener _lifecycleListener;
   String? _pendingHomeWidgetRoute;
   int _homeWidgetRouteGeneration = 0;
@@ -75,6 +78,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
         // widgetClicked 스트림이 유실된 warm-start를 복구하기 위해 먼저 실행
         unawaited(_resumeHomeWidgetCheck());
         unawaited(_syncSessionAndCalendar(reason: 'resume'));
+        unawaited(_activityTrackingService.recordActive());
         unawaited(_scheduleDeferredUpdateCheck());
       },
     );
@@ -153,6 +157,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       return;
     }
     await _syncRegionSettings();
+    unawaited(_activityTrackingService.recordActive());
     unawaited(_runChannelMigrations());
     final pendingIcsPaths = await _naverIcsShareStore.takePendingPaths();
     if (pendingIcsPaths.isNotEmpty) {

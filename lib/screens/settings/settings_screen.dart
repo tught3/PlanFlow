@@ -3510,6 +3510,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                 onOpenBetaSurvey: _openBetaSurveySheet,
                 onOpenAdminInbox:
                     _isFeedbackAdmin ? _openFeedbackAdminReportsSheet : null,
+                onOpenTesterDashboard: _isFeedbackAdmin
+                    ? () => context.push(AppRoutes.adminTesters)
+                    : null,
                 newAdminReportCount: _newFeedbackReportCount,
                 isLoadingAdminReportCount: _isLoadingNewFeedbackReportCount,
               ),

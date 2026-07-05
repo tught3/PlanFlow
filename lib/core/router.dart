@@ -25,6 +25,7 @@ import '../features/groups/screens/group_invite_screen.dart';
 import '../features/groups/screens/group_list_screen.dart';
 import '../features/groups/screens/group_member_screen.dart';
 import '../features/groups/providers/group_context_provider.dart';
+import '../features/admin/admin_tester_dashboard_screen.dart';
 import '../screens/voice/confirm_screen.dart';
 import '../screens/voice/voice_action_screen.dart';
 import '../screens/voice/voice_conversation_screen.dart';
@@ -162,6 +163,10 @@ final GoRouter appRouter = GoRouter(
             : const <String>[];
         return NaverIcsImportScreen(initialPaths: paths);
       },
+    ),
+    GoRoute(
+      path: AppRoutes.adminTesters,
+      builder: (context, state) => const AdminTesterDashboardScreen(),
     ),
     GoRoute(
       path: AppRoutes.voice,

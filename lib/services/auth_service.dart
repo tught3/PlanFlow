@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/env.dart';
 import '../core/log_text.dart';
 import '../core/supabase_auth_options.dart';
+import 'activity_tracking_service.dart';
 import 'oauth_callback_handler.dart';
 
 enum PlanFlowOAuthProvider {
@@ -31,6 +32,14 @@ class AuthService implements AuthSessionClient {
   static const String _naverCalendarLogTag = 'PlanFlowNaverCalendar';
 
   final SupabaseClient _client;
+
+  ActivityTrackingService? _activityTrackingService;
+
+  /// 로그인 성공 시 last_login_at / last_active_at을 갱신할 서비스를 주입한다.
+  /// 외부에서 주입하지 않으면 ensureProfile 단계에서 lazy 생성한다.
+  void attachActivityTracker(ActivityTrackingService service) {
+    _activityTrackingService = service;
+  }
 
   static void _logNaverCalendarAuth(String message) {
     debugPrint('[$_naverCalendarLogTag] auth ${logSafeText(message)}');
@@ -348,6 +357,19 @@ class AuthService implements AuthSessionClient {
       },
       onConflict: 'id',
     );
+
+    // 로그인 성공 시점으로 간주해 last_login_at / last_active_at을 갱신한다.
+    // activity 트래커가 없으면 lazy 생성. 실패해도 로그인 흐름은 유지된다.
+    unawaited(_recordLoginActivity());
+  }
+
+  Future<void> _recordLoginActivity() async {
+    try {
+      final tracker = _activityTrackingService ??= ActivityTrackingService();
+      await tracker.recordLogin();
+    } catch (error) {
+      debugPrint('Login activity record skipped: ${logSafeText(error)}');
+    }
   }
 
   Future<void> _tryEnsureProfile([User? user]) async {
