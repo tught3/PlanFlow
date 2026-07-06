@@ -17,6 +17,7 @@ import '../../features/groups/models/calendar_overlay_item.dart';
 import '../../features/groups/providers/group_calendar_overlay_provider.dart';
 import '../../features/groups/services/group_instruction_inbox_service.dart';
 import '../../services/event_refresh_bus.dart';
+import '../../services/korean_holidays.dart';
 import '../../widgets/planflow_logo.dart';
 import '../../widgets/planflow_voice_fab.dart';
 part 'calendar_widgets.dart';
@@ -169,6 +170,8 @@ const _holidayTitleKeywords = <String>[
   '한글날',
   '성탄절',
   '부처님오신날',
+  '제헌절',
+  '석가탄신일',
   '휴일',
 ];
 
@@ -400,8 +403,9 @@ List<CalendarMiniMonthCellData> buildCalendarMiniMonthCells({
       overlayEvents: overlayItemsByCell[index],
       overflowCount: overflowCounts[index],
       isHoliday: day != null &&
-          _eventsForLocalDay(sortedEvents, day)
-              .any((event) => _looksLikeHolidayTitle(event.title)),
+          (KoreanHolidays.isHoliday(day) ||
+              _eventsForLocalDay(sortedEvents, day)
+                  .any((event) => _looksLikeHolidayTitle(event.title))),
     );
   }, growable: false);
 }
