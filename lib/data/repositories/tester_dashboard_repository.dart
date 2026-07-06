@@ -41,6 +41,7 @@ class SupabaseTesterDashboardRepository
             'p_sort': filter.sortValue,
             'p_limit': filter.limit,
             'p_offset': filter.offset,
+            'p_logged_in_today': filter.loggedInToday,
           })
           .timeout(_callTimeout);
 

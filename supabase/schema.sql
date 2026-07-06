@@ -2772,7 +2772,8 @@ create or replace function public.get_tester_dashboard(
   p_app_version text default null,
   p_sort text default 'last_active',
   p_limit int default 50,
-  p_offset int default 0
+  p_offset int default 0,
+  p_logged_in_today boolean default false
 )
 returns table (
   id uuid,
@@ -2854,9 +2855,16 @@ begin
         and u.last_active_at < now() - interval '5 minutes'
       when p_status = 'inactive' then
         u.last_active_at is null
-        or u.last_active_at < now() - interval '7 days'
+        or u.last_active_at < now() - interval '30 days'
       else true
     end
+    and (
+      not coalesce(p_logged_in_today, false)
+      or (
+        u.last_login_at is not null
+        and u.last_login_at >= date_trunc('day', now())
+      )
+    )
   order by
     case when p_sort = 'created' then u.created_at end desc,
     case when p_sort is distinct from 'created' then coalesce(u.last_active_at, u.created_at) end desc
@@ -2866,7 +2874,7 @@ end;
 $$;
 
 grant execute on function public.get_tester_dashboard(
-  text, text, text, text, text, int, int
+  text, text, text, text, text, int, int, boolean
 ) to authenticated;
 
 -- 관리자 전용: 통계 카드용 집계.
@@ -2938,7 +2946,8 @@ begin
     count(*) filter (
       where app_version is not null
         and app_version = latest_ver
-    )::bigint;
+    )::bigint
+  from public.users;
 end;
 $$;
 

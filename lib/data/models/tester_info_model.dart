@@ -248,6 +248,7 @@ class TesterDashboardFilter {
     this.status,
     this.platform,
     this.appVersion,
+    this.loggedInToday = false,
     this.sort = TesterDashboardSort.lastActive,
     this.limit = 50,
     this.offset = 0,
@@ -257,6 +258,7 @@ class TesterDashboardFilter {
   final TesterStatus? status;
   final String? platform;
   final String? appVersion;
+  final bool loggedInToday;
   final TesterDashboardSort sort;
   final int limit;
   final int offset;
@@ -278,6 +280,7 @@ class TesterDashboardFilter {
     TesterStatus? status,
     Object? platform = _sentinel,
     Object? appVersion = _sentinel,
+    bool? loggedInToday,
     TesterDashboardSort? sort,
     int? limit,
     int? offset,
@@ -291,6 +294,7 @@ class TesterDashboardFilter {
       appVersion: identical(appVersion, _sentinel)
           ? this.appVersion
           : appVersion as String?,
+      loggedInToday: loggedInToday ?? this.loggedInToday,
       sort: sort ?? this.sort,
       limit: limit ?? this.limit,
       offset: offset ?? this.offset,
@@ -307,6 +311,7 @@ class TesterDashboardFilter {
         other.status == status &&
         other.platform == platform &&
         other.appVersion == appVersion &&
+        other.loggedInToday == loggedInToday &&
         other.sort == sort &&
         other.limit == limit &&
         other.offset == offset;
@@ -318,6 +323,7 @@ class TesterDashboardFilter {
         status,
         platform,
         appVersion,
+        loggedInToday,
         sort,
         limit,
         offset,

@@ -3517,26 +3517,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                 isLoadingAdminReportCount: _isLoadingNewFeedbackReportCount,
               ),
               const SizedBox(height: 16),
-              _SectionCard(
-                title: '그룹',
-                subtitle: '내가 속한 그룹을 확인하고 새 그룹을 만들 수 있어요.',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    FilledButton.icon(
-                      key: const ValueKey('settings-group-management-button'),
-                      onPressed: () => context.push(AppRoutes.groups),
-                      icon: const Icon(Icons.groups_outlined),
-                      label: const Text('그룹 관리'),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      '팀 기능은 아직 기본 목록과 생성만 제공합니다.',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
               if (AppEnv.isSupabaseReady &&
                   authProvider.isSignedIn &&
                   _backupService != null) ...[
