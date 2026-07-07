@@ -17,8 +17,8 @@
         <TextView
             android:id="@+id/widget_month_today_button"
             style="@style/PlanFlowWidgetMonthNavChip"
-            android:layout_width="84dp"
-            android:layout_height="32dp"
+            android:layout_width="64dp"
+            android:layout_height="24dp"
             android:text="오늘" />
 
         <TextView
@@ -29,8 +29,8 @@
         <TextView
             android:id="@+id/widget_month_prev_button"
             style="@style/PlanFlowWidgetMonthNavButton"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
             android:text="‹" />
 
         <TextView
@@ -38,15 +38,16 @@
             style="@style/PlanFlowWidgetTitleText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:minWidth="80dp"
+            android:minWidth="72dp"
+            android:textSize="14sp"
             android:gravity="center"
             tools:text="2026.05" />
 
         <TextView
             android:id="@+id/widget_month_next_button"
             style="@style/PlanFlowWidgetMonthNavButton"
-            android:layout_width="36dp"
-            android:layout_height="32dp"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
             android:text="›" />
 
         <TextView
@@ -57,15 +58,15 @@
         <TextView
             android:id="@+id/widget_month_voice_button"
             style="@style/PlanFlowWidgetVoiceChip"
-            android:layout_width="84dp"
-            android:layout_height="28dp"
+            android:layout_width="64dp"
+            android:layout_height="22dp"
             android:text="입력" />
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="4dp"
         android:orientation="horizontal"
         android:weightSum="7"
         tools:ignore="HardcodedText">
@@ -92,7 +93,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_1_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -132,7 +133,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_2_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -172,7 +173,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_3_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -212,7 +213,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_4_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -252,7 +253,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_5_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -292,7 +293,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_6_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -332,7 +333,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_7_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -372,7 +373,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_8_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -412,7 +413,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_9_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -452,7 +453,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_10_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -492,7 +493,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_11_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -532,7 +533,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_12_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -572,7 +573,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_13_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -612,7 +613,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_14_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -652,7 +653,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_15_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -692,7 +693,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_16_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -732,7 +733,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_17_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -772,7 +773,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_18_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -812,7 +813,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_19_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -852,7 +853,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_20_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -892,7 +893,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_21_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -932,7 +933,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_22_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -972,7 +973,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_23_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1012,7 +1013,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_24_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1052,7 +1053,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_25_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1092,7 +1093,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_26_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1132,7 +1133,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_27_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1172,7 +1173,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_28_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1212,7 +1213,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_29_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1252,7 +1253,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_30_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1292,7 +1293,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_31_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1332,7 +1333,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_32_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1372,7 +1373,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_33_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1412,7 +1413,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_34_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1452,7 +1453,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_35_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1492,7 +1493,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_36_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1532,7 +1533,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_37_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1572,7 +1573,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_38_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1612,7 +1613,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_39_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1652,7 +1653,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_40_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1692,7 +1693,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_41_container"
             style="@style/PlanFlowWidgetMonthCell" >
@@ -1732,7 +1733,7 @@
             android:layout_rowWeight="1"
             android:layout_gravity="fill"
             android:orientation="vertical"
-            android:paddingTop="2dp"
+            android:paddingTop="1dp"
             android:gravity="top"
             android:id="@+id/month_cell_42_container"
             style="@style/PlanFlowWidgetMonthCell" >

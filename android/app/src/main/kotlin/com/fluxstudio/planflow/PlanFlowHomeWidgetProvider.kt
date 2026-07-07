@@ -1421,6 +1421,17 @@ class PlanFlowMonthlyWidgetProvider :
                             "setBackgroundResource",
                             if (isToday) R.drawable.widget_month_today_day_background else android.R.color.transparent,
                         )
+                        if (cellContainerId != null) {
+                            views.setInt(
+                                cellContainerId,
+                                "setBackgroundResource",
+                                if (isToday) {
+                                    R.drawable.widget_month_cell_today_bg
+                                } else {
+                                    R.drawable.widget_month_cell_grid
+                                },
+                            )
+                        }
                         bindCalendarLink(context, views, dayId, day)
                         if (cellContainerId != null) {
                             bindCalendarLink(context, views, cellContainerId, day)
@@ -1570,6 +1581,17 @@ class PlanFlowMonthlyWidgetProvider :
                     "setBackgroundResource",
                     if (isToday) R.drawable.widget_month_today_day_background else android.R.color.transparent,
                 )
+                if (cellContainerId != 0) {
+                    views.setInt(
+                        cellContainerId,
+                        "setBackgroundResource",
+                        if (isToday) {
+                            R.drawable.widget_month_cell_today_bg
+                        } else {
+                            R.drawable.widget_month_cell_grid
+                        },
+                    )
+                }
 
                 if (inMonthId != 0) {
                     views.setTextViewText(

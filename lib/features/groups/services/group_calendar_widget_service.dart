@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/local_time.dart';
 import '../models/group_event_model.dart';
 import '../models/group_event_recurrence.dart';
+import '../models/group_member_model.dart';
 import '../repositories/group_event_repository.dart';
 import '../repositories/group_repository.dart';
 import '../../../services/home_widget_platform.dart';
@@ -21,7 +22,9 @@ import '../../../services/home_widget_platform.dart';
 ///   `gw_<gid>_c<i>_d`         : 날짜 번호 (0‥41)
 ///   `gw_<gid>_c<i>_m`         : "1" = 이번 달, "0" = 인접 달
 ///   `gw_<gid>_c<i>_t`         : "1" = 오늘, "0" = 오늘 아님
-///   `gw_<gid>_c<i>_n`         : 해당 날 이벤트 발생 횟수 (string)
+///   `gw_<gid>_c<i>_n`         : 해당 날 이벤트 발생 횟수 (string, 하위호환용 총 개수)
+///   `gw_<gid>_c<i>_names`     : 해당 날 "표시이름:개수" CSV, 개수 내림차순
+///                               (표시이름은 성이 겹치는 멤버끼리 가입순 A/B/C 접미사 부여)
 class GroupCalendarWidgetService {
   GroupCalendarWidgetService({
     GroupRepository? groupRepository,
@@ -162,6 +165,8 @@ class GroupCalendarWidgetService {
     final to = monthEnd.add(const Duration(days: 7));
 
     final events = await _eventRepository.getEventsForGroup(groupId, from, to);
+    final members = await _groupRepository.listMembers(groupId);
+    final displayNames = buildDisambiguatedDisplayNames(members);
 
     // 그리드 시작일 계산 (group_month_calendar.dart _gridFirstDay 와 동일 로직)
     final gridFirstDay = _gridFirstDay(currentMonth);
@@ -179,8 +184,9 @@ class GroupCalendarWidgetService {
       );
     }
 
-    // 날짜별 발생 횟수 인덱스
+    // 날짜별 발생 횟수 인덱스 + 날짜별 멤버(createdBy)별 발생 횟수 인덱스
     final countByDay = <DateTime, int>{};
+    final memberCountsByDay = <DateTime, Map<String, int>>{};
     for (final occ in occurrences) {
       final localStart = planflowLocal(occ.startAt);
       final localEnd = planflowLocal(occ.endAt);
@@ -190,6 +196,8 @@ class GroupCalendarWidgetService {
           !d.isAfter(endDay);
           d = d.add(const Duration(days: 1))) {
         countByDay[d] = (countByDay[d] ?? 0) + 1;
+        final byMember = memberCountsByDay.putIfAbsent(d, () => <String, int>{});
+        byMember[occ.createdBy] = (byMember[occ.createdBy] ?? 0) + 1;
       }
     }
 
@@ -213,7 +221,60 @@ class GroupCalendarWidgetService {
       await _platform.saveWidgetData('gw_${gid}_c${i}_m', inMonth ? '1' : '0');
       await _platform.saveWidgetData('gw_${gid}_c${i}_t', isToday ? '1' : '0');
       await _platform.saveWidgetData('gw_${gid}_c${i}_n', '$count');
+
+      final memberCounts = memberCountsByDay[cellDay] ?? const <String, int>{};
+      final namesCsv = memberCounts.entries
+          .map((e) => MapEntry(displayNames[e.key] ?? '?', e.value))
+          .toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      await _platform.saveWidgetData(
+        'gw_${gid}_c${i}_names',
+        namesCsv.map((e) => '${e.key}:${e.value}').join(','),
+      );
     }
+  }
+
+  /// 그룹 멤버 표시 이름을 계산한다.
+  ///
+  /// 기본값은 이름의 첫 글자(성)만 사용한다(예: 김철수 → "김"). 같은 첫 글자를
+  /// 가진 멤버가 2명 이상이면, 가입(참여) 순서 — `joinedAt`(없으면 `createdAt`,
+  /// 그마저 없으면 `id`) 기준으로 앞선 사람부터 A/B/C 접미사를 붙인다
+  /// (예: "김A", "김B"). 이 방식은 위젯의 자동 표시용이며, 사용자가 그룹
+  /// 멤버 화면에서 표시 이름을 직접 바꾸면 그 이름이 우선 사용된다.
+  @visibleForTesting
+  static Map<String, String> buildDisambiguatedDisplayNames(
+    List<GroupMemberModel> members,
+  ) {
+    final sorted = List<GroupMemberModel>.from(members)
+      ..sort((a, b) {
+        final aJoin = a.joinedAt ?? a.createdAt;
+        final bJoin = b.joinedAt ?? b.createdAt;
+        if (aJoin == null && bJoin == null) return a.id.compareTo(b.id);
+        if (aJoin == null) return 1;
+        if (bJoin == null) return -1;
+        return aJoin.compareTo(bJoin);
+      });
+
+    final bySurname = <String, List<GroupMemberModel>>{};
+    for (final member in sorted) {
+      final name = member.effectiveDisplayName;
+      final surname = name.isEmpty ? '?' : name.substring(0, 1);
+      bySurname.putIfAbsent(surname, () => <GroupMemberModel>[]).add(member);
+    }
+
+    final result = <String, String>{};
+    for (final entry in bySurname.entries) {
+      final group = entry.value;
+      if (group.length == 1) {
+        result[group.first.userId] = entry.key;
+      } else {
+        for (var i = 0; i < group.length; i++) {
+          final suffix = String.fromCharCode('A'.codeUnitAt(0) + (i % 26));
+          result[group[i].userId] = '${entry.key}$suffix';
+        }
+      }
+    }
+    return result;
   }
 
   /// group_month_calendar.dart _gridFirstDay 와 동일:

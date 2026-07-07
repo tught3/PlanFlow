@@ -22,7 +22,8 @@ import org.json.JSONArray
  *   gw_<gid>_c<i>_d         : i번 셀의 날짜 숫자 문자열 (0..41)
  *   gw_<gid>_c<i>_m         : "1" = 현재 달 셀, "0" = 이전/다음 달 셀
  *   gw_<gid>_c<i>_t         : "1" = 오늘 셀
- *   gw_<gid>_c<i>_n         : 일정 수 (정수 문자열)
+ *   gw_<gid>_c<i>_n         : 일정 수 (정수 문자열, 하위호환용 총 개수)
+ *   gw_<gid>_c<i>_names     : "표시이름:개수" CSV (개수 내림차순) — 있으면 이 값을 우선 렌더링
  *
  * 딥링크: planflow://group-calendar?groupId=<gid>
  */
@@ -112,6 +113,7 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
             val inMonth = prefs.getString("gw_${gid}_c${i}_m", "0") == "1"
             val isToday = prefs.getString("gw_${gid}_c${i}_t", "0") == "1"
             val count = prefs.getString("gw_${gid}_c${i}_n", "0")?.toIntOrNull() ?: 0
+            val namesCsv = prefs.getString("gw_${gid}_c${i}_names", null)?.takeIf { it.isNotBlank() }
 
             val dayViewId = context.resources.getIdentifier("cell_${i}_day", "id", context.packageName)
             val countViewId = context.resources.getIdentifier("cell_${i}_count", "id", context.packageName)
@@ -130,18 +132,31 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
             }
             views.setTextColor(dayViewId, dayColor)
 
-            // 오늘 배경
+            // 오늘 배경 (격자선은 기본, 오늘은 연한 파랑 강조)
             if (cellContainerId != 0) {
-                if (isToday) {
-                    views.setInt(cellContainerId, "setBackgroundResource", R.drawable.widget_today_highlight_background)
-                } else {
-                    views.setInt(cellContainerId, "setBackgroundResource", android.R.color.transparent)
-                }
+                views.setInt(
+                    cellContainerId,
+                    "setBackgroundResource",
+                    if (isToday) R.drawable.widget_month_cell_today_bg else R.drawable.widget_month_cell_grid,
+                )
             }
 
-            // 일정 수 표시
-            if (count > 0) {
-                views.setTextViewText(countViewId, "${count}건")
+            // 멤버별 "이름 개수건" 요약 (있으면 우선), 없으면 총 개수로 폴백
+            val summaryText = namesCsv?.let { csv ->
+                csv.split(",")
+                    .mapNotNull { part ->
+                        val idx = part.lastIndexOf(':')
+                        if (idx <= 0) return@mapNotNull null
+                        val name = part.substring(0, idx)
+                        val n = part.substring(idx + 1).toIntOrNull() ?: return@mapNotNull null
+                        "$name ${n}개"
+                    }
+                    .joinToString("\n")
+            }?.takeIf { it.isNotBlank() } ?: if (count > 0) "${count}건" else null
+
+            if (summaryText != null) {
+                views.setTextViewText(countViewId, summaryText)
+                views.setTextColor(countViewId, 0xFF17181C.toInt())
                 views.setViewVisibility(countViewId, View.VISIBLE)
             } else {
                 views.setTextViewText(countViewId, "")

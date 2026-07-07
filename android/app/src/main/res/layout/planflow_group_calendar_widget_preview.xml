@@ -75,7 +75,10 @@
         android:columnCount="7"
         android:rowCount="6">
 
-        <!-- 첫 주: 이전 달 마지막 일(회색) -->
+        <!-- 1주: 7월 27~31일(회색), 8월 1~2일 -->
+        <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
+            <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="27" android:textColor="#9AADC0" />
+        </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="28" android:textColor="#9AADC0" />
         </LinearLayout>
@@ -90,10 +93,10 @@
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="1" />
+            <TextView style="@style/PlanFlowWidgetPreviewCount" android:text="1건" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="2" />
-            <TextView style="@style/PlanFlowWidgetPreviewCount" android:text="1건" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="3" />

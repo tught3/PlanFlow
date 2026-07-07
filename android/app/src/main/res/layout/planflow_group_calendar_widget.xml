@@ -106,7 +106,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -121,11 +122,13 @@
                 android:id="@+id/cell_0_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -137,7 +140,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -152,11 +156,13 @@
                 android:id="@+id/cell_1_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -168,7 +174,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -183,11 +190,13 @@
                 android:id="@+id/cell_2_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -199,7 +208,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -214,11 +224,13 @@
                 android:id="@+id/cell_3_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -230,7 +242,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -245,11 +258,13 @@
                 android:id="@+id/cell_4_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -261,7 +276,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -276,11 +292,13 @@
                 android:id="@+id/cell_5_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -292,7 +310,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -307,11 +326,13 @@
                 android:id="@+id/cell_6_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -323,7 +344,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -338,11 +360,13 @@
                 android:id="@+id/cell_7_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -354,7 +378,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -369,11 +394,13 @@
                 android:id="@+id/cell_8_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -385,7 +412,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -400,11 +428,13 @@
                 android:id="@+id/cell_9_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -416,7 +446,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -431,11 +462,13 @@
                 android:id="@+id/cell_10_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -447,7 +480,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -462,11 +496,13 @@
                 android:id="@+id/cell_11_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -478,7 +514,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -493,11 +530,13 @@
                 android:id="@+id/cell_12_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -509,7 +548,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -524,11 +564,13 @@
                 android:id="@+id/cell_13_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -540,7 +582,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -555,11 +598,13 @@
                 android:id="@+id/cell_14_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -571,7 +616,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -586,11 +632,13 @@
                 android:id="@+id/cell_15_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -602,7 +650,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -617,11 +666,13 @@
                 android:id="@+id/cell_16_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -633,7 +684,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -648,11 +700,13 @@
                 android:id="@+id/cell_17_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -664,7 +718,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -679,11 +734,13 @@
                 android:id="@+id/cell_18_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -695,7 +752,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -710,11 +768,13 @@
                 android:id="@+id/cell_19_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -726,7 +786,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -741,11 +802,13 @@
                 android:id="@+id/cell_20_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -757,7 +820,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -772,11 +836,13 @@
                 android:id="@+id/cell_21_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -788,7 +854,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -803,11 +870,13 @@
                 android:id="@+id/cell_22_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -819,7 +888,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -834,11 +904,13 @@
                 android:id="@+id/cell_23_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -850,7 +922,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -865,11 +938,13 @@
                 android:id="@+id/cell_24_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -881,7 +956,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -896,11 +972,13 @@
                 android:id="@+id/cell_25_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -912,7 +990,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -927,11 +1006,13 @@
                 android:id="@+id/cell_26_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -943,7 +1024,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -958,11 +1040,13 @@
                 android:id="@+id/cell_27_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -974,7 +1058,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -989,11 +1074,13 @@
                 android:id="@+id/cell_28_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1005,7 +1092,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1020,11 +1108,13 @@
                 android:id="@+id/cell_29_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1036,7 +1126,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1051,11 +1142,13 @@
                 android:id="@+id/cell_30_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1067,7 +1160,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1082,11 +1176,13 @@
                 android:id="@+id/cell_31_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1098,7 +1194,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1113,11 +1210,13 @@
                 android:id="@+id/cell_32_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1129,7 +1228,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1144,11 +1244,13 @@
                 android:id="@+id/cell_33_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1160,7 +1262,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1175,11 +1278,13 @@
                 android:id="@+id/cell_34_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1191,7 +1296,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1206,11 +1312,13 @@
                 android:id="@+id/cell_35_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1222,7 +1330,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1237,11 +1346,13 @@
                 android:id="@+id/cell_36_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1253,7 +1364,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1268,11 +1380,13 @@
                 android:id="@+id/cell_37_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1284,7 +1398,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1299,11 +1414,13 @@
                 android:id="@+id/cell_38_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1315,7 +1432,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1330,11 +1448,13 @@
                 android:id="@+id/cell_39_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1346,7 +1466,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1361,11 +1482,13 @@
                 android:id="@+id/cell_40_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
         <LinearLayout
@@ -1377,7 +1500,8 @@
             android:layout_gravity="fill"
             android:orientation="vertical"
             android:gravity="top|center_horizontal"
-            android:paddingTop="2dp"
+            android:background="@drawable/widget_month_cell_grid"
+            android:paddingTop="1dp"
             android:paddingLeft="1dp"
             android:paddingRight="1dp">
             <TextView
@@ -1392,11 +1516,13 @@
                 android:id="@+id/cell_41_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:maxLines="1"
+                android:layout_marginTop="1dp"
+                android:gravity="start"
+                android:maxLines="4"
                 android:ellipsize="end"
-                android:textColor="#3C5D81"
-                android:textSize="8sp"
+                android:textColor="#17181C"
+                android:textStyle="bold"
+                android:textSize="8.5sp"
                 android:visibility="gone" />
         </LinearLayout>
     </GridLayout>

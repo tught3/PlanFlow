@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 월간 위젯 셀 기본 배경: 둥근 패널 대신 오른쪽/아래쪽 1dp 격자선만 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#E7EBF1" />
+        </shape>
+    </item>
+    <item
+        android:bottom="1dp"
+        android:right="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

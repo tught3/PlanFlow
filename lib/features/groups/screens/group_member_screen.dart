@@ -221,6 +221,31 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
     }
   }
 
+  /// 입력된 이름이 그룹 내 다른 멤버와 중복되는지 검사.
+  /// 실제 화면/위젯에 보이는 이름(effectiveDisplayName: displayName이 없으면
+  /// 프로필 이름/이메일/초대코드로 대체)을 기준으로 비교해야, displayName을
+  /// 아직 설정하지 않은 멤버(프로필 이름만으로 표시 중)도 중복 검사에서 빠지지 않는다.
+  /// 본인 기존 이름과 같으면 false(통과, 중복 아님).
+  bool _isDuplicateDisplayName(String newName, GroupMemberModel member) {
+    final normalized = newName.trim().toLowerCase();
+
+    // 본인 기존(현재 화면에 보이는) 이름과 같으면 통과
+    if (normalized == member.effectiveDisplayName.trim().toLowerCase()) {
+      return false;
+    }
+
+    // 같은 그룹의 다른 멤버 중 같은 이름이 있으면 중복
+    for (final otherMember in _provider.state.members) {
+      if (otherMember.userId == member.userId) {
+        continue;
+      }
+      if (normalized == otherMember.effectiveDisplayName.trim().toLowerCase()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> _editMemberDisplayName(GroupMemberModel member) async {
     final controller = TextEditingController(text: member.effectiveDisplayName);
     final displayName = await showDialog<String>(
@@ -265,8 +290,42 @@ class _GroupMemberScreenState extends State<GroupMemberScreen> {
         );
       },
     );
-    controller.dispose();
+    // 다이얼로그 pop 트랜지션(페이드/스케일 아웃)이 아직 진행 중일 수 있으므로
+    // 여기서 즉시 dispose하지 않는다 — 트랜지션 중인 위젯이 여전히 이
+    // controller를 참조하는 상태에서 dispose하면 "used after being disposed"
+    // 예외가 날 수 있다. 현재 프레임이 끝난 뒤(다음 프레임 콜백)로 미룬다.
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (displayName == null) {
+      return;
+    }
+
+    // 중복 이름 검사
+    if (_isDuplicateDisplayName(displayName, member)) {
+      // 방금 닫힌 이름 변경 다이얼로그의 pop 트랜지션이 끝난 뒤 다음 다이얼로그를
+      // 띄운다. 같은 프레임에서 바로 이어 showDialog를 호출하면 라우트 전환
+      // 애니메이션이 겹쳐 불안정해질 수 있다.
+      await Future<void>.delayed(Duration.zero);
+      if (!mounted) {
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('이름이 중복되었습니다'),
+            content: const Text('이미 있는 이름입니다. 다른 이름으로 변경해 주세요.'),
+            actions: [
+              SizedBox(
+                width: double.maxFinite,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('확인'),
+                ),
+              ),
+            ],
+          );
+        },
+      );
       return;
     }
 
