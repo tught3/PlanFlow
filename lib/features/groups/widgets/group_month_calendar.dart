@@ -249,15 +249,26 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
     final todayDay = DateTime(today.year, today.month, today.day);
     final gridFirst = _gridFirstDay(_focusedMonth);
 
-    return Column(
-      children: List.generate(6, (row) {
-        return Row(
-          children: List.generate(7, (col) {
-            final day = gridFirst.add(Duration(days: row * 7 + col));
-            return _buildDayCell(context, day, todayDay);
-          }),
-        );
-      }),
+    // 홈 위젯과 톤을 맞춘 격자선(hairline) 스타일.
+    // 바깥 Container가 위/왼쪽 테두리를, 각 셀이 오른쪽/아래쪽 테두리를 맡아
+    // 하나로 이어진 격자를 만든다.
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: PlanFlowColors.calendarGridLine, width: 1),
+          left: BorderSide(color: PlanFlowColors.calendarGridLine, width: 1),
+        ),
+      ),
+      child: Column(
+        children: List.generate(6, (row) {
+          return Row(
+            children: List.generate(7, (col) {
+              final day = gridFirst.add(Duration(days: row * 7 + col));
+              return _buildDayCell(context, day, todayDay);
+            }),
+          );
+        }),
+      ),
     );
   }
 
@@ -271,17 +282,17 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
     final isSelected = day == _selectedDay;
     final eventCount = _dayIndex[day]?.length ?? 0;
 
-    Color bgColor = Colors.transparent;
+    Color circleColor = Colors.transparent;
     Color textColor;
     FontWeight fontWeight = FontWeight.w500;
 
     if (isSelected) {
-      bgColor = PlanFlowColors.primary;
+      circleColor = PlanFlowColors.primary;
       textColor = Colors.white;
       fontWeight = FontWeight.w700;
     } else if (isToday) {
-      bgColor = PlanFlowColors.primaryFaint;
-      textColor = PlanFlowColors.primary;
+      circleColor = PlanFlowColors.calendarTodayCircle;
+      textColor = Colors.white;
       fontWeight = FontWeight.w700;
     } else if (isCurrentMonth) {
       textColor = day.weekday == DateTime.sunday
@@ -298,6 +309,25 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
         child: Container(
           height: 52,
           alignment: Alignment.center,
+          decoration: BoxDecoration(
+            // 오늘 날짜 칸 전체에 아주 연한 파란 배경(선택 시엔 진한 강조가
+            // 우선하므로 배경을 얹지 않는다).
+            color: isSelected
+                ? Colors.transparent
+                : isToday
+                    ? PlanFlowColors.calendarTodayCellBg
+                    : Colors.transparent,
+            border: const Border(
+              right: BorderSide(
+                color: PlanFlowColors.calendarGridLine,
+                width: 1,
+              ),
+              bottom: BorderSide(
+                color: PlanFlowColors.calendarGridLine,
+                width: 1,
+              ),
+            ),
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -306,7 +336,7 @@ class _GroupMonthCalendarState extends State<GroupMonthCalendar> {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: bgColor,
+                  color: circleColor,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,

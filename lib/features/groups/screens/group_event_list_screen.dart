@@ -153,20 +153,6 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
 
   String? _ownerNameOf(String createdBy) => _ownerNames[createdBy];
 
-  Future<void> _openCreateEvent() async {
-    final selectedGroup = _provider.selectedGroup;
-    final route = selectedGroup == null
-        ? AppRoutes.groupEventCreate
-        : AppRoutes.groupEventCreateForId(selectedGroup.id);
-    final result = await context.push<String>(route);
-    if (!mounted) {
-      return;
-    }
-    if (result != null) {
-      await _load();
-    }
-  }
-
   Future<void> _openDetail(GroupEventModel event) async {
     final result = await context.push<String>(
       '${AppRoutes.groupEvents}/${event.id}',
@@ -340,8 +326,6 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
         _buildSelectedGroupCard(context, state),
-        const SizedBox(height: 16),
-        _buildPrimaryActionRow(context, state),
         if (state.error != null) ...[
           const SizedBox(height: 16),
           _buildErrorCard(context, state.error!),
@@ -392,8 +376,6 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
         _buildSelectedGroupCard(context, state),
-        const SizedBox(height: 16),
-        _buildPrimaryActionRow(context, state),
         if (state.error != null) ...[
           const SizedBox(height: 16),
           _buildErrorCard(context, state.error!),
@@ -427,7 +409,7 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
             : '현재 선택 그룹의 멤버 권한으로 일정을 보고 있어요.';
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -435,12 +417,17 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
               children: [
                 const Icon(Icons.event_note_outlined),
                 const SizedBox(width: 8),
+                Text(
+                  '현재 그룹',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    '현재 그룹',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: _InfoChip(label: title),
                   ),
                 ),
                 if (state.isLoading)
@@ -450,24 +437,17 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
                   ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-            ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             Text(
               subtitle,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: PlanFlowColors.textSecondary,
                   ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 6,
+              runSpacing: 6,
               children: [
                 _InfoChip(
                   label: state.isPersonalMode ? '개인 모드' : '팀 모드',
@@ -495,21 +475,6 @@ class _GroupEventListScreenState extends State<GroupEventListScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildPrimaryActionRow(BuildContext context, GroupEventState state) {
-    return Row(
-      children: [
-        Expanded(
-          child: FilledButton.icon(
-            key: const ValueKey('group-event-list-create-button'),
-            onPressed: state.canCreateEvent ? _openCreateEvent : null,
-            icon: const Icon(Icons.add_circle_outline),
-            label: const Text('새 그룹 일정'),
-          ),
-        ),
-      ],
     );
   }
 

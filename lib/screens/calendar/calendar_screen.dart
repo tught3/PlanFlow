@@ -34,6 +34,8 @@ const calendarCriticalEventMarkerColor = Color(0xFFB42318);
 const calendarMultiDayEventBackgroundColor = Color(0xFFDDEFE6);
 const calendarMultiDayEventTextColor = Color(0xFF174F4A);
 const calendarCriticalMultiDayAccentColor = Color(0xFFE98B86);
+// 홈 위젯의 CRITICAL_TEXT_COLOR(0xFFD94444)와 톤을 맞춘 인앱 캘린더 중요 일정 텍스트 색상.
+const calendarCriticalEventTextColor = Color(0xFFD94444);
 
 Color _categoryColor(String category) {
   return PlanFlowEventCategories.colorOf(category);

@@ -31,6 +31,11 @@ class PlanFlowColors {
   static const tagActiveText = Color(0xFFFFFFFF);
   static const tagDoneBg = Color(0xFFF5F8FB);
   static const tagDoneText = Color(0xFF7AB3D4);
+
+  // 월간 캘린더 그리드 (Android 홈 위젯 디자인과 톤 통일)
+  static const calendarGridLine = Color(0xFFE7EBF1);
+  static const calendarTodayCellBg = Color(0xFFDFECFD);
+  static const calendarTodayCircle = Color(0xFF2D5CA8);
 }
 
 ThemeData buildPlanFlowTheme() {

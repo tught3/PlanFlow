@@ -62,6 +62,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
   late final AppLifecycleListener _lifecycleListener;
   String? _pendingHomeWidgetRoute;
   int _homeWidgetRouteGeneration = 0;
+  bool? _homeWidgetShouldSeedHomeBase;
 
   @override
   void initState() {
@@ -622,6 +623,7 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
 
   void _scheduleHomeWidgetRoute(String route) {
     _pendingHomeWidgetRoute = route;
+    _homeWidgetShouldSeedHomeBase = null;
     final generation = ++_homeWidgetRouteGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyPendingHomeWidgetRoute(generation, attempt: 0);
@@ -648,7 +650,34 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
       );
       return;
     }
-    appRouter.go(route);
+    // 실제 네비게이션(go/push)은 이 generation에서 딱 한 번만 실행한다.
+    // auth 세션 대기 재시도(위 hasResolvedInitialSession 루프)가 여러 번
+    // 돌면 이 지점에 처음 도달했을 때 이미 attempt > 0일 수 있으므로,
+    // "attempt == 0"이 아니라 "_homeWidgetShouldSeedHomeBase가 아직
+    // null인가"로 최초 1회를 판별해야 한다(attempt 기준이면 콜드스타트에서
+    // auth 대기가 있었던 바로 그 경우에 아래 로직을 건너뛰고 원래 버그인
+    // 단순 go(route)로 빠져 앱 종료가 재발한다). 이후 도착 확인 재시도는
+    // 네비게이션을 다시 실행하지 않고 아래 지연 확인만 반복한다.
+    if (_homeWidgetShouldSeedHomeBase == null) {
+      // 콜드스타트/백그라운드 상태에서 위젯을 탭해 진입하면 라우터 스택이
+      // 비어 있어(canPop()==false) go(route)가 유일한 스택 엔트리가 되고,
+      // 그 결과 뒤로가기 시 pop할 대상이 없어 앱이 종료된다. 이 경우 홈을
+      // 스택 베이스로 먼저 깔고 그 위에 목표 화면을 push해 back이 홈으로
+      // 돌아가게 한다. 반대로 앱을 이미 쓰던 중(정상 스택 보유) 위젯을
+      // 탭한 경우에는 기존 스택을 홈으로 초기화하지 않고 그냥 push만 한다.
+      _homeWidgetShouldSeedHomeBase = shouldSeedHomeBaseForHomeWidgetRoute(
+        route: route,
+        canPop: appRouter.canPop(),
+      );
+      if (_homeWidgetShouldSeedHomeBase!) {
+        appRouter.go(AppRoutes.home);
+        appRouter.push(route);
+      } else if (Uri.parse(route).path == AppRoutes.home) {
+        appRouter.go(route);
+      } else {
+        appRouter.push(route);
+      }
+    }
     unawaited(
       Future<void>.delayed(const Duration(milliseconds: 120), () {
         if (!mounted || generation != _homeWidgetRouteGeneration) {
@@ -857,4 +886,29 @@ String? resolveHomeWidgetRoute(Uri? uri) {
     return '${AppRoutes.calendar}$query';
   }
   return null;
+}
+
+/// 홈 위젯/딥링크로 목표 [route]에 진입할 때, 홈 화면을 먼저 스택
+/// 베이스로 깔아야 하는지 판단한다.
+///
+/// [canPop]이 false라는 것은 현재 라우터 스택에 뒤로 갈 대상이 없다는
+/// 뜻이다(콜드스타트 또는 백그라운드 상태에서 위젯을 탭해 막 진입한
+/// 경우). 이 상태에서 목표 라우트로 바로 `go()`하면 그 라우트가 스택의
+/// 유일한 엔트리가 되어, 뒤로가기를 눌러도 pop할 대상이 없어 앱이
+/// 종료된다. 따라서 이 경우에는 true를 반환해 호출부가 홈을 먼저
+/// `go()`한 뒤 목표 라우트를 `push()`하도록 한다.
+///
+/// 이미 앱을 쓰던 중이라 정상적인 뒤로가기 스택이 있으면([canPop]==true)
+/// 홈으로 스택을 초기화할 필요가 없으므로 false를 반환한다(호출부는
+/// 그 위에 `push()`만 한다). 목표가 이미 홈 라우트인 경우도 false를
+/// 반환한다(그대로 `go()`하면 된다).
+@visibleForTesting
+bool shouldSeedHomeBaseForHomeWidgetRoute({
+  required String route,
+  required bool canPop,
+}) {
+  if (canPop) {
+    return false;
+  }
+  return Uri.parse(route).path != AppRoutes.home;
 }

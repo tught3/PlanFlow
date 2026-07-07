@@ -506,97 +506,162 @@ class _MiniCalendarGrid extends StatelessWidget {
             ),
             const SizedBox(height: 8),
 
-            // Day cells
-            ...List.generate(
-              rows,
-              (weekIndex) {
-                return Row(
-                  children: List.generate(7, (dayIndex) {
-                    final cellIndex = weekIndex * 7 + dayIndex;
-                    if (cellIndex >= monthCells.length) {
-                      return const Expanded(child: SizedBox(height: 74));
-                    }
-                    final cell = monthCells[cellIndex];
-                    final dayDate = cell.date;
-                    if (dayDate == null) {
-                      return const Expanded(child: SizedBox(height: 74));
-                    }
-                    final dayNumber = cell.dayNumber ?? dayDate.day;
+            // Day cells — 홈 위젯과 톤을 맞춘 격자선(hairline) 스타일.
+            // 바깥 Container가 위/왼쪽 테두리를 담당하고, 각 셀은 오른쪽/아래쪽
+            // 테두리만 그려 전체적으로 하나의 이어진 격자를 완성한다.
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: PlanFlowColors.calendarGridLine,
+                    width: 1,
+                  ),
+                  left: BorderSide(
+                    color: PlanFlowColors.calendarGridLine,
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Column(
+                children: List.generate(
+                  rows,
+                  (weekIndex) {
+                    return Row(
+                      children: List.generate(7, (dayIndex) {
+                        final cellIndex = weekIndex * 7 + dayIndex;
+                        final cellBorder = BoxDecoration(
+                          border: Border(
+                            right: BorderSide(
+                              color: PlanFlowColors.calendarGridLine,
+                              width: 1,
+                            ),
+                            bottom: BorderSide(
+                              color: PlanFlowColors.calendarGridLine,
+                              width: 1,
+                            ),
+                          ),
+                        );
+                        if (cellIndex >= monthCells.length) {
+                          return Expanded(
+                            child: Container(
+                              height: 74,
+                              decoration: cellBorder,
+                            ),
+                          );
+                        }
+                        final cell = monthCells[cellIndex];
+                        final dayDate = cell.date;
+                        if (dayDate == null) {
+                          return Expanded(
+                            child: Container(
+                              height: 74,
+                              decoration: cellBorder,
+                            ),
+                          );
+                        }
+                        final dayNumber = cell.dayNumber ?? dayDate.day;
 
-                    final isToday = today.year == dayDate.year &&
-                        today.month == dayDate.month &&
-                        today.day == dayDate.day;
-                    final isSelected = selectedDate.year == dayDate.year &&
-                        selectedDate.month == dayDate.month &&
-                        selectedDate.day == dayDate.day;
+                        final isToday = today.year == dayDate.year &&
+                            today.month == dayDate.month &&
+                            today.day == dayDate.day;
+                        final isSelected =
+                            selectedDate.year == dayDate.year &&
+                                selectedDate.month == dayDate.month &&
+                                selectedDate.day == dayDate.day;
 
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () => onDaySelected(dayDate),
-                        child: Container(
-                          key: ValueKey(
-                            'calendar-mini-cell-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
-                          ),
-                          height: 74,
-                          margin: const EdgeInsets.all(1.5),
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? PlanFlowColors.primaryMid
-                                : isToday
-                                    ? PlanFlowColors.primaryFaint
-                                    : Colors.transparent,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 3),
-                                child: Text(
-                                  '$dayNumber',
-                                  key: ValueKey(
-                                    'calendar-mini-day-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () => onDaySelected(dayDate),
+                            child: Container(
+                              key: ValueKey(
+                                'calendar-mini-cell-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
+                              ),
+                              height: 74,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? PlanFlowColors.primaryMid
+                                    : isToday
+                                        ? PlanFlowColors.calendarTodayCellBg
+                                        : PlanFlowColors.surface,
+                                border: Border(
+                                  right: BorderSide(
+                                    color: PlanFlowColors.calendarGridLine,
+                                    width: 1,
                                   ),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: isToday || isSelected
-                                        ? FontWeight.w700
-                                        : FontWeight.w400,
-                                    color: isSelected
-                                        ? Colors.white
-                                        : isToday
-                                            ? PlanFlowColors.primaryMid
-                                            : cell.isHoliday
-                                                ? calendarCriticalEventMarkerColor
-                                                : PlanFlowColors.textPrimary,
+                                  bottom: BorderSide(
+                                    color: PlanFlowColors.calendarGridLine,
+                                    width: 1,
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Expanded(
-                                child: _CalendarMiniEventList(
-                                  key: ValueKey(
-                                    'calendar-mini-events-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 3,
+                                    ),
+                                    child: Center(
+                                      child: Container(
+                                        width: 20,
+                                        height: 20,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: isSelected
+                                              ? PlanFlowColors.primaryMid
+                                              : isToday
+                                                  ? PlanFlowColors
+                                                      .calendarTodayCircle
+                                                  : Colors.transparent,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Text(
+                                          '$dayNumber',
+                                          key: ValueKey(
+                                            'calendar-mini-day-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: isToday || isSelected
+                                                ? FontWeight.w700
+                                                : FontWeight.w400,
+                                            color: isSelected || isToday
+                                                ? Colors.white
+                                                : cell.isHoliday
+                                                    ? calendarCriticalEventMarkerColor
+                                                    : PlanFlowColors
+                                                        .textPrimary,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                  events: cell.events,
-                                  overlayEvents: cell.overlayEvents,
-                                  overflowCount: cell.overflowCount,
-                                  isSelected: isSelected,
-                                  day: dayDate,
-                                ),
+                                  const SizedBox(height: 2),
+                                  Expanded(
+                                    child: _CalendarMiniEventList(
+                                      key: ValueKey(
+                                        'calendar-mini-events-${focusedMonth.year}-${focusedMonth.month}-$dayNumber',
+                                      ),
+                                      events: cell.events,
+                                      overlayEvents: cell.overlayEvents,
+                                      overflowCount: cell.overflowCount,
+                                      isSelected: isSelected,
+                                      day: dayDate,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      }),
                     );
-                  }),
-                );
-              },
+                  },
+                ),
+              ),
             ),
           ],
         ),
@@ -714,19 +779,19 @@ class _CalendarMiniEventLabel extends StatelessWidget {
         ? calendarMultiDayEventBackgroundColor
         : isSelected
             ? event.isCritical
-                ? const Color(0xFFE53935).withValues(alpha: 0.35)
+                ? calendarCriticalEventTextColor.withValues(alpha: 0.35)
                 : Colors.white.withValues(alpha: 0.18)
             : event.isCritical
-                ? const Color(0xFFE53935).withValues(alpha: 0.20)
+                ? calendarCriticalEventTextColor.withValues(alpha: 0.20)
                 : _categoryColor(event.category).withValues(alpha: 0.16);
     final fg = isMultiDay
         ? calendarMultiDayEventTextColor
         : isSelected
             ? event.isCritical
-                ? const Color(0xFFFF6B6B)
+                ? calendarCriticalEventTextColor
                 : Colors.white
             : event.isCritical
-                ? const Color(0xFFE53935)
+                ? calendarCriticalEventTextColor
                 : _categoryColor(event.category);
     final showTitle = !isMultiDay || segment.$1;
     final hPadding = (isMultiDay && !segment.$1 && !segment.$2) ? 0.0 : 2.0;

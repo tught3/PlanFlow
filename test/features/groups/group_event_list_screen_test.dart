@@ -260,8 +260,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('오늘은 아직 그룹 일정이 없어요.'), findsOneWidget);
-    expect(find.byKey(const ValueKey('group-event-list-create-button')),
-        findsOneWidget);
   });
 
   testWidgets('shows today and week event items', (tester) async {
