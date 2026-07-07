@@ -53,7 +53,11 @@ class PlanFlowGroupCalendarWidgetConfigActivity : Activity() {
             AlertDialog.Builder(this)
                 .setTitle("그룹 달력")
                 .setMessage("앱을 먼저 실행해 그룹을 불러오세요")
-                .setPositiveButton("확인") { _, _ -> finish() }
+                .setPositiveButton("앱 열기") { _, _ ->
+                    openMainApp()
+                    finish()
+                }
+                .setNegativeButton("취소") { _, _ -> finish() }
                 .setOnCancelListener { finish() }
                 .show()
             return
@@ -67,7 +71,11 @@ class PlanFlowGroupCalendarWidgetConfigActivity : Activity() {
             AlertDialog.Builder(this)
                 .setTitle("그룹 달력")
                 .setMessage("앱을 먼저 실행해 그룹을 불러오세요")
-                .setPositiveButton("확인") { _, _ -> finish() }
+                .setPositiveButton("앱 열기") { _, _ ->
+                    openMainApp()
+                    finish()
+                }
+                .setNegativeButton("취소") { _, _ -> finish() }
                 .setOnCancelListener { finish() }
                 .show()
             return
@@ -77,7 +85,11 @@ class PlanFlowGroupCalendarWidgetConfigActivity : Activity() {
             AlertDialog.Builder(this)
                 .setTitle("그룹 달력")
                 .setMessage("앱을 먼저 실행해 그룹을 불러오세요")
-                .setPositiveButton("확인") { _, _ -> finish() }
+                .setPositiveButton("앱 열기") { _, _ ->
+                    openMainApp()
+                    finish()
+                }
+                .setNegativeButton("취소") { _, _ -> finish() }
                 .setOnCancelListener { finish() }
                 .show()
             return
@@ -100,7 +112,11 @@ class PlanFlowGroupCalendarWidgetConfigActivity : Activity() {
             AlertDialog.Builder(this)
                 .setTitle("그룹 달력")
                 .setMessage("앱을 먼저 실행해 그룹을 불러오세요")
-                .setPositiveButton("확인") { _, _ -> finish() }
+                .setPositiveButton("앱 열기") { _, _ ->
+                    openMainApp()
+                    finish()
+                }
+                .setNegativeButton("취소") { _, _ -> finish() }
                 .setOnCancelListener { finish() }
                 .show()
             return
@@ -151,5 +167,16 @@ class PlanFlowGroupCalendarWidgetConfigActivity : Activity() {
         }
         setResult(RESULT_OK, resultIntent)
         finish()
+    }
+
+    private fun openMainApp() {
+        try {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("GroupCalWidget", "앱 열기 실패: ${e.message}")
+        }
     }
 }
