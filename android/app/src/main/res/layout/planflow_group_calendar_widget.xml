@@ -17,7 +17,8 @@
         android:textColor="#59789A"
         android:textSize="14sp"
         android:textStyle="bold"
-        android:visibility="gone"
+        android:visibility="visible"
+        android:text="탭하여 그룹 선택"
         tools:text="탭하여 그룹 선택" />
 
     <!-- 헤더: 그룹 이름 | 월 레이블 | 그룹 변경 -->

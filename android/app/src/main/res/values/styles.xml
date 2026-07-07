@@ -225,4 +225,38 @@
         <item name="android:textSize">10sp</item>
         <item name="android:lineSpacingExtra">0dp</item>
     </style>
+
+    <!-- 그룹 달력 위젯 프리뷰용 스타일 -->
+    <style name="PlanFlowWidgetPreviewCell">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_columnWeight">1</item>
+        <item name="android:layout_rowWeight">1</item>
+        <item name="android:layout_gravity">fill</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:gravity">top|center_horizontal</item>
+        <item name="android:paddingTop">2dp</item>
+        <item name="android:paddingLeft">1dp</item>
+        <item name="android:paddingRight">1dp</item>
+    </style>
+
+    <style name="PlanFlowWidgetPreviewDay">
+        <item name="android:layout_width">22dp</item>
+        <item name="android:layout_height">22dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#203A57</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PlanFlowWidgetPreviewCount">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:gravity">center</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:textColor">#3C5D81</item>
+        <item name="android:textSize">8sp</item>
+        <item name="android:visibility">visible</item>
+    </style>
 </resources>
