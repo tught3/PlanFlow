@@ -29,12 +29,12 @@ void main() {
 
   group('KoreanHolidays.isHoliday (lunar)', () {
     for (final entry in {
-      '설날연휴(2026)': DateTime(2026, 2, 16),
+      '설날연휴 첫날(2026)': DateTime(2026, 2, 16),
       '설날(2026)': DateTime(2026, 2, 17),
-      '설날연휴(2026)': DateTime(2026, 2, 18),
-      '추석연휴(2026)': DateTime(2026, 9, 24),
+      '설날연휴 마지막날(2026)': DateTime(2026, 2, 18),
+      '추석연휴 첫날(2026)': DateTime(2026, 9, 24),
       '추석(2026)': DateTime(2026, 9, 25),
-      '추석연휴(2026)': DateTime(2026, 9, 26),
+      '추석연휴 마지막날(2026)': DateTime(2026, 9, 26),
       '부처님오신날(2026)': DateTime(2026, 5, 24),
       '설날(2027)': DateTime(2027, 2, 7),
       '설날(2028)': DateTime(2028, 1, 27),
