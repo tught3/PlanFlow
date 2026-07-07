@@ -124,15 +124,20 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
             // 날짜 숫자
             views.setTextViewText(dayViewId, dayStr)
 
-            // 오늘 강조 vs 다른 달 흐리게
+            // 오늘 강조(개인 위젯과 동일하게 날짜 숫자에 원 배경 + 흰 글자) vs 다른 달 흐리게
             val dayColor = when {
-                isToday -> 0xFF183A5D.toInt()           // 진한 남색 (오늘 하이라이트 배경 위)
+                isToday -> 0xFFFFFFFF.toInt()           // 흰색 (오늘 원 배경 위)
                 inMonth -> 0xFF203A57.toInt()           // 진한 파랑 (현재 달)
                 else -> 0xFF9AADC0.toInt()             // 흐린 색 (전/다음 달)
             }
             views.setTextColor(dayViewId, dayColor)
+            views.setInt(
+                dayViewId,
+                "setBackgroundResource",
+                if (isToday) R.drawable.widget_month_today_day_background else android.R.color.transparent,
+            )
 
-            // 오늘 배경 (격자선은 기본, 오늘은 연한 파랑 강조)
+            // 오늘 셀 배경 (격자선은 기본, 오늘은 연한 파랑 강조)
             if (cellContainerId != 0) {
                 views.setInt(
                     cellContainerId,
