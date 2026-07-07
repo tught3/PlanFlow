@@ -196,4 +196,46 @@ void main() {
     expect(find.text('모닝 브리핑을 재생했습니다.'), findsOneWidget);
     expect(find.text('아침 회의'), findsOneWidget);
   });
+
+  testWidgets(
+      '브리핑 목록의 시각은 raw UTC가 아니라 KST(planflowLocal)로 표시된다',
+      (tester) async {
+    // 신뢰성 회귀: 음성 브리핑은 planflowLocal(KST)로 시각을 말하는데 목록은
+    // raw startAt.hour(UTC)를 그대로 써서, 예컨대 UTC 00:00(=KST 09:00) 일정이
+    // 목록에는 12:00으로 나오고 음성은 9시라고 말하는 불일치가 있었다.
+    final auth = _FakeAuthProvider(
+      resolved: Completer<bool>()..complete(true),
+      syncResult: true,
+      currentUserId: 'user-1',
+    );
+    final scheduler = _SlowFakeBriefingSchedulerService(
+      events: <EventModel>[
+        EventModel(
+          id: 'e1',
+          userId: 'user-1',
+          title: '아침 회의',
+          startAt: DateTime.utc(2026, 1, 1, 0), // UTC 00:00 → KST 09:00
+          endAt: DateTime.utc(2026, 1, 1, 1),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BriefingLaunchScreen(
+          isMorning: true,
+          authProviderOverride: auth,
+          briefingSchedulerService: scheduler,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    // KST 09:00으로 표시(12/24h 포맷 무관하게 "9:00" 포함), 절대 UTC 00:00을
+    // 12h로 표기한 "12:00"이 아니어야 한다.
+    expect(find.textContaining('9:00'), findsOneWidget);
+    expect(find.textContaining('12:00'), findsNothing);
+  });
 }

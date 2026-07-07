@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants.dart';
 import '../../core/env.dart';
+import '../../core/local_time.dart';
 import '../../core/theme.dart';
 import '../../core/time_format_controller.dart';
 import '../../data/models/event_model.dart';
@@ -292,9 +293,16 @@ class _BriefingLaunchScreenState extends State<BriefingLaunchScreen> {
                             itemBuilder: (context, index) {
                               final event = events[index];
                               final startAt = event.startAt;
-                              final timeStr = startAt != null
+                              // 음성 브리핑(_buildEventSummary/_spokenLocalTime)은
+                              // planflowLocal로 KST 변환 후 시각을 말한다. 목록도
+                              // 반드시 동일하게 planflowLocal을 거쳐야 음성과 시각이
+                              // 일치한다. (과거 raw startAt.hour(UTC)를 그대로 써서
+                              // 목록만 시각이 어긋나던 신뢰성 버그 수정)
+                              final localStart =
+                                  startAt != null ? planflowLocal(startAt) : null;
+                              final timeStr = localStart != null
                                   ? planflowFormatTime(
-                                      startAt.hour, startAt.minute)
+                                      localStart.hour, localStart.minute)
                                   : '';
 
                               return Container(
