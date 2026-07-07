@@ -18,13 +18,18 @@ import '../../../services/home_widget_platform.dart';
 /// 데이터 계약 (home_widget SharedPreferences 키):
 ///   `gw_groups_json`          : JSON string `[{"id","name"}]` — 마지막 선택 그룹 먼저
 ///   `gw_<gid>_name`           : 그룹 이름
-///   `gw_<gid>_title`          : "\<year\>년 \<month\>월"
-///   `gw_<gid>_c<i>_d`         : 날짜 번호 (0‥41)
-///   `gw_<gid>_c<i>_m`         : "1" = 이번 달, "0" = 인접 달
-///   `gw_<gid>_c<i>_t`         : "1" = 오늘, "0" = 오늘 아님
-///   `gw_<gid>_c<i>_n`         : 해당 날 이벤트 발생 횟수 (string, 하위호환용 총 개수)
-///   `gw_<gid>_c<i>_names`     : 해당 날 "표시이름:개수" CSV, 개수 내림차순
-///                               (표시이름은 성이 겹치는 멤버끼리 가입순 A/B/C 접미사 부여)
+///   `gw_<gid>_title`          : "\<year\>년 \<month\>월" (현재 달 기준, 네이티브가
+///                               "오늘 달로 복귀"할 때의 초기값 폴백으로만 사용)
+///   `gw_<gid>_occurrences_json` : JSON 배열 `[{"d":"yyyy-MM-dd","n":"표시이름"}, ...]`
+///                               현재 달 기준 -12개월 ~ +12개월(약 25개월 창) 안의
+///                               모든 이벤트 발생(반복 전개 포함)을, 그 발생이 걸치는
+///                               모든 날짜 × 작성자(createdBy)의 표시이름으로 펼친 목록.
+///                               `d`는 KST 로컬 날짜(yyyy-MM-dd), `n`은
+///                               [buildDisambiguatedDisplayNames]로 계산된 표시 이름
+///                               (예: "김A"). 네이티브가 이 배열을 받아 원하는 달로
+///                               날짜별 재집계한다. 정렬 순서는 보장하지 않는다.
+///                               그룹 이벤트에는 "중요(critical)" 개념이 없으므로 이
+///                               JSON에 critical 필드를 넣지 않는다.
 class GroupCalendarWidgetService {
   GroupCalendarWidgetService({
     GroupRepository? groupRepository,
@@ -134,16 +139,14 @@ class GroupCalendarWidgetService {
     // 5) 현재 달 계산
     final now = planflowNow();
     final currentMonth = DateTime(now.year, now.month);
-    final today = DateTime(now.year, now.month, now.day);
 
     // 6) 그룹별 달력 데이터 저장 (병렬)
     await Future.wait(
       orderedGroups.map(
-        (group) => _writeGroupMonthData(
+        (group) => _writeGroupOccurrencesData(
           group.id,
           group.name,
           currentMonth,
-          today,
         ),
       ),
     );
@@ -152,25 +155,27 @@ class GroupCalendarWidgetService {
     await _platform.updateWidget(androidName: _widgetName);
   }
 
-  Future<void> _writeGroupMonthData(
+  Future<void> _writeGroupOccurrencesData(
     String groupId,
     String groupName,
     DateTime currentMonth,
-    DateTime today,
   ) async {
-    // 이벤트 로드 범위: monthStart-7d ~ monthEnd+7d (recurrence 포함)
-    final monthStart = DateTime(currentMonth.year, currentMonth.month, 1);
-    final monthEnd = DateTime(currentMonth.year, currentMonth.month + 1, 1);
-    final from = monthStart.subtract(const Duration(days: 7));
-    final to = monthEnd.add(const Duration(days: 7));
+    // 이벤트 로드 범위: 현재 달 기준 -12개월 ~ +12개월 (약 25개월 창).
+    // Supabase 쿼리는 그룹당 1회만 나간다.
+    final rangeStart = DateTime(currentMonth.year, currentMonth.month - 12, 1);
+    final rangeEndExclusive =
+        DateTime(currentMonth.year, currentMonth.month + 13, 1);
 
-    final events = await _eventRepository.getEventsForGroup(groupId, from, to);
+    final events = await _eventRepository.getEventsForGroup(
+      groupId,
+      rangeStart,
+      rangeEndExclusive,
+    );
     final members = await _groupRepository.listMembers(groupId);
     final displayNames = buildDisambiguatedDisplayNames(members);
 
-    // 그리드 시작일 계산 (group_month_calendar.dart _gridFirstDay 와 동일 로직)
-    final gridFirstDay = _gridFirstDay(currentMonth);
-    final gridEndUtc = gridFirstDay.toUtc().add(const Duration(days: 43));
+    final rangeStartUtc = planflowLocalDateTimeToUtc(rangeStart);
+    final rangeEndUtc = planflowLocalDateTimeToUtc(rangeEndExclusive);
 
     // 반복 일정 전개 (expandGroupEventOccurrences 재사용)
     final occurrences = <GroupEventModel>[];
@@ -178,60 +183,45 @@ class GroupCalendarWidgetService {
       occurrences.addAll(
         expandGroupEventOccurrences(
           event,
-          gridFirstDay.toUtc(),
-          gridEndUtc,
+          rangeStartUtc,
+          rangeEndUtc,
         ),
       );
     }
 
-    // 날짜별 발생 횟수 인덱스 + 날짜별 멤버(createdBy)별 발생 횟수 인덱스
-    final countByDay = <DateTime, int>{};
-    final memberCountsByDay = <DateTime, Map<String, int>>{};
+    // 발생을 "날짜 × 작성자 표시이름" 항목으로 펼친다 (다일 일정은 날짜마다 1건).
+    final items = <Map<String, String>>[];
     for (final occ in occurrences) {
       final localStart = planflowLocal(occ.startAt);
       final localEnd = planflowLocal(occ.endAt);
       final startDay = DateTime(localStart.year, localStart.month, localStart.day);
       final endDay = DateTime(localEnd.year, localEnd.month, localEnd.day);
+      final displayName = displayNames[occ.createdBy] ?? '?';
       for (var d = startDay;
           !d.isAfter(endDay);
           d = d.add(const Duration(days: 1))) {
-        countByDay[d] = (countByDay[d] ?? 0) + 1;
-        final byMember = memberCountsByDay.putIfAbsent(d, () => <String, int>{});
-        byMember[occ.createdBy] = (byMember[occ.createdBy] ?? 0) + 1;
+        items.add(<String, String>{'d': _formatYmd(d), 'n': displayName});
       }
     }
 
-    // gw_<gid>_name, gw_<gid>_title
+    // gw_<gid>_name, gw_<gid>_title, gw_<gid>_occurrences_json
     final gid = groupId;
     await _platform.saveWidgetData('gw_${gid}_name', groupName);
     await _platform.saveWidgetData(
       'gw_${gid}_title',
       '${currentMonth.year}년 ${currentMonth.month}월',
     );
+    await _platform.saveWidgetData(
+      'gw_${gid}_occurrences_json',
+      jsonEncode(items),
+    );
+  }
 
-    // gw_<gid>_c<i>_* (i = 0..41)
-    for (var i = 0; i < 42; i++) {
-      final cellDay = gridFirstDay.add(Duration(days: i));
-      final inMonth = cellDay.year == currentMonth.year &&
-          cellDay.month == currentMonth.month;
-      final isToday = cellDay == today;
-      final count = countByDay[cellDay] ?? 0;
-
-      await _platform.saveWidgetData('gw_${gid}_c${i}_d', '${cellDay.day}');
-      await _platform.saveWidgetData('gw_${gid}_c${i}_m', inMonth ? '1' : '0');
-      await _platform.saveWidgetData('gw_${gid}_c${i}_t', isToday ? '1' : '0');
-      await _platform.saveWidgetData('gw_${gid}_c${i}_n', '$count');
-
-      final memberCounts = memberCountsByDay[cellDay] ?? const <String, int>{};
-      final namesCsv = memberCounts.entries
-          .map((e) => MapEntry(displayNames[e.key] ?? '?', e.value))
-          .toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-      await _platform.saveWidgetData(
-        'gw_${gid}_c${i}_names',
-        namesCsv.map((e) => '${e.key}:${e.value}').join(','),
-      );
-    }
+  static String _formatYmd(DateTime day) {
+    final y = day.year.toString().padLeft(4, '0');
+    final m = day.month.toString().padLeft(2, '0');
+    final d = day.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
   }
 
   /// 그룹 멤버 표시 이름을 계산한다.
@@ -275,15 +265,6 @@ class GroupCalendarWidgetService {
       }
     }
     return result;
-  }
-
-  /// group_month_calendar.dart _gridFirstDay 와 동일:
-  /// 해당 달 1일이 포함된 주의 일요일을 반환한다.
-  static DateTime _gridFirstDay(DateTime month) {
-    final firstOfMonth = DateTime(month.year, month.month, 1);
-    final weekday = firstOfMonth.weekday; // 1=월 … 7=일
-    final offsetToSunday = weekday % 7; // 일=0, 월=1 … 토=6
-    return firstOfMonth.subtract(Duration(days: offsetToSunday));
   }
 
   Future<String?> _readSelectedGroupId(String userId) async {

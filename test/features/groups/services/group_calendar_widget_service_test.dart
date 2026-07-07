@@ -153,7 +153,12 @@ void main() {
     });
   });
 
-  test('오늘 셀의 gw_<gid>_c<i>_names 에 멤버별 "이름:개수"가 기록된다', () async {
+  String ymd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  test(
+      '오늘의 gw_<gid>_occurrences_json 에 멤버별 표시이름 항목이 날짜×작성자 개수만큼 기록된다',
+      () async {
     final today = planflowNow();
     GroupMemberModel member(String userId, String name, DateTime joinedAt) =>
         GroupMemberModel(
@@ -191,14 +196,118 @@ void main() {
 
     await service.doRefreshForTesting('user-1');
 
-    final todayIndexEntry = platform.saved.entries.firstWhere(
-      (e) => e.key.startsWith('gw_g1_c') && e.key.endsWith('_t') && e.value == '1',
-    );
-    final cellPrefix = todayIndexEntry.key.replaceFirst(RegExp(r'_t$'), '');
-    final namesCsv = platform.saved['${cellPrefix}_names'] as String?;
+    final raw = platform.saved['gw_g1_occurrences_json'] as String?;
+    expect(raw, isNotNull);
+    final items = (jsonDecode(raw!) as List<dynamic>)
+        .cast<Map<String, dynamic>>();
 
-    expect(namesCsv, isNotNull);
-    expect(namesCsv, contains('김:2'));
-    expect(namesCsv, contains('박:1'));
+    final todayStr = ymd(DateTime(today.year, today.month, today.day));
+    final todayItems = items.where((e) => e['d'] == todayStr).toList();
+
+    expect(todayItems.where((e) => e['n'] == '김').length, 2);
+    expect(todayItems.where((e) => e['n'] == '박').length, 1);
+    // critical 필드는 그룹 이벤트에 존재하지 않으므로 넣지 않는다.
+    for (final item in items) {
+      expect(item.containsKey('critical'), isFalse);
+    }
+  });
+
+  test(
+      '과거·미래 달의 이벤트도 gw_<gid>_occurrences_json 에 상대 날짜로 포함된다',
+      () async {
+    final now = planflowNow();
+    final pastMonth = DateTime(now.year, now.month - 6, 15, 10);
+    final futureMonth = DateTime(now.year, now.month + 6, 20, 14);
+
+    GroupMemberModel member(String userId, String name, DateTime joinedAt) =>
+        GroupMemberModel(
+          id: 'm-$userId',
+          groupId: 'g1',
+          userId: userId,
+          displayName: name,
+          joinedAt: joinedAt,
+        );
+    GroupEventModel event(String id, String createdBy, DateTime start) =>
+        GroupEventModel(
+          id: id,
+          groupId: 'g1',
+          title: '일정 $id',
+          startAt: planflowSeoulDateTimeToUtc(start),
+          endAt: planflowSeoulDateTimeToUtc(start.add(const Duration(hours: 1))),
+          createdBy: createdBy,
+        );
+
+    final platform = _FakePlatform();
+    final service = GroupCalendarWidgetService(
+      groupRepository: _FakeGroupRepo(
+        <GroupModel>[_group('g1', '팀 A')],
+        <GroupMemberModel>[
+          member('u1', '최민수', DateTime(2026, 1, 1)),
+        ],
+      ),
+      eventRepository: _FakeEventRepo(<GroupEventModel>[
+        event('past', 'u1', pastMonth),
+        event('future', 'u1', futureMonth),
+      ]),
+      platform: platform,
+    );
+
+    await service.doRefreshForTesting('user-1');
+
+    final raw = platform.saved['gw_g1_occurrences_json'] as String?;
+    expect(raw, isNotNull);
+    final items = (jsonDecode(raw!) as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    final dates = items.map((e) => e['d']).toSet();
+
+    expect(dates, contains(ymd(DateTime(pastMonth.year, pastMonth.month, pastMonth.day))));
+    expect(dates, contains(ymd(DateTime(futureMonth.year, futureMonth.month, futureMonth.day))));
+  });
+
+  test('동명이인(성 겹침) A/B/C 표시이름이 occurrences_json의 n 필드에 정확히 반영된다', () async {
+    final today = planflowNow();
+    GroupMemberModel member(String userId, String name, DateTime joinedAt) =>
+        GroupMemberModel(
+          id: 'm-$userId',
+          groupId: 'g1',
+          userId: userId,
+          displayName: name,
+          joinedAt: joinedAt,
+        );
+    GroupEventModel event(String id, String createdBy) => GroupEventModel(
+          id: id,
+          groupId: 'g1',
+          title: '일정 $id',
+          startAt: today.toUtc(),
+          endAt: today.add(const Duration(hours: 1)).toUtc(),
+          createdBy: createdBy,
+        );
+
+    final platform = _FakePlatform();
+    final service = GroupCalendarWidgetService(
+      groupRepository: _FakeGroupRepo(
+        <GroupModel>[_group('g1', '팀 A')],
+        <GroupMemberModel>[
+          member('u_first', '김철수', DateTime(2026, 1, 1)),
+          member('u_later', '김민수', DateTime(2026, 2, 1)),
+        ],
+      ),
+      eventRepository: _FakeEventRepo(<GroupEventModel>[
+        event('e1', 'u_first'),
+        event('e2', 'u_later'),
+      ]),
+      platform: platform,
+    );
+
+    await service.doRefreshForTesting('user-1');
+
+    final raw = platform.saved['gw_g1_occurrences_json'] as String?;
+    expect(raw, isNotNull);
+    final items = (jsonDecode(raw!) as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    final names = items.map((e) => e['n']).toSet();
+
+    expect(names, contains('김A'));
+    expect(names, contains('김B'));
   });
 }

@@ -21,7 +21,8 @@
         android:text="탭하여 그룹 선택"
         tools:text="탭하여 그룹 선택" />
 
-    <!-- 헤더: 그룹 이름 | 월 레이블 | 그룹 변경 -->
+    <!-- 헤더: 그룹 이름(왼쪽 들여쓰기) | 스페이서 | ‹ 월(중앙) › | 스페이서 | 그룹 변경
+         (개인 월간 위젯 상단 바와 동일한 한 줄 구조: planflow_monthly_widget.xml 참고) -->
     <LinearLayout
         android:id="@+id/group_cal_header"
         android:layout_width="match_parent"
@@ -32,9 +33,10 @@
 
         <TextView
             android:id="@+id/header_group"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:maxWidth="90dp"
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="#183A5D"
@@ -43,14 +45,39 @@
             tools:text="팀 A" />
 
         <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/group_cal_prev"
+            style="@style/PlanFlowWidgetMonthNavButton"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
+            android:text="‹" />
+
+        <TextView
             android:id="@+id/header_month"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"
             android:layout_marginEnd="4dp"
+            android:gravity="center"
             android:textColor="#3C5D81"
             android:textSize="12sp"
             tools:text="2026년 7월" />
+
+        <TextView
+            android:id="@+id/group_cal_next"
+            style="@style/PlanFlowWidgetMonthNavButton"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
+            android:text="›" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/btn_change_group"

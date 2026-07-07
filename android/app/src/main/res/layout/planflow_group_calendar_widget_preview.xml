@@ -8,7 +8,7 @@
     android:orientation="vertical"
     android:padding="8dp">
 
-    <!-- 헤더: 런타임 레이아웃과 동일 구조 -->
+    <!-- 헤더: 런타임 레이아웃과 동일 구조 (프리뷰용, id 없음) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -16,9 +16,10 @@
         android:gravity="center_vertical">
 
         <TextView
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:maxWidth="90dp"
             android:ellipsize="end"
             android:maxLines="1"
             android:text="팀 달력"
@@ -27,13 +28,36 @@
             android:textStyle="bold" />
 
         <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            style="@style/PlanFlowWidgetMonthNavButton"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
+            android:text="‹" />
+
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="4dp"
             android:layout_marginEnd="4dp"
+            android:gravity="center"
             android:text="예시 달력"
             android:textColor="#3C5D81"
             android:textSize="12sp" />
+
+        <TextView
+            style="@style/PlanFlowWidgetMonthNavButton"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
+            android:text="›" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -75,7 +99,10 @@
         android:columnCount="7"
         android:rowCount="6">
 
-        <!-- 1주: 7월 27~31일(회색), 8월 1~2일 -->
+        <!-- 1주: 7월 26~31일(회색), 8월 1일(토) -->
+        <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
+            <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="26" android:textColor="#9AADC0" />
+        </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="27" android:textColor="#9AADC0" />
         </LinearLayout>
@@ -95,14 +122,14 @@
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="1" />
             <TextView style="@style/PlanFlowWidgetPreviewCount" android:text="1건" />
         </LinearLayout>
+
+        <!-- 2주: 8월 2~8일 -->
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="2" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="3" />
         </LinearLayout>
-
-        <!-- 둘째 주 -->
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="4" />
         </LinearLayout>
@@ -111,22 +138,22 @@
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="6" />
+            <TextView style="@style/PlanFlowWidgetPreviewCount" android:text="2건" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="7" />
-            <TextView style="@style/PlanFlowWidgetPreviewCount" android:text="2건" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="8" />
         </LinearLayout>
+
+        <!-- 3주: 8월 9~15일 -->
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="9" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="10" />
         </LinearLayout>
-
-        <!-- 셋째 주 -->
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="11" />
         </LinearLayout>
@@ -135,24 +162,25 @@
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="13" />
+            <TextView style="@style/PlanFlowWidgetPreviewCount" android:text="1건" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="14" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="15" />
-            <TextView style="@style/PlanFlowWidgetPreviewCount" android:text="1건" />
         </LinearLayout>
+
+        <!-- 4주: 8월 16~22일 -->
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="16" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="17" />
         </LinearLayout>
-
-        <!-- 넷째 주 -->
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="18" />
+            <TextView style="@style/PlanFlowWidgetPreviewCount" android:text="3건" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="19" />
@@ -166,17 +194,17 @@
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="22" />
         </LinearLayout>
+
+        <!-- 5주: 8월 23~29일 -->
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="23" />
-            <TextView style="@style/PlanFlowWidgetPreviewCount" android:text="3건" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="24" />
         </LinearLayout>
-
-        <!-- 다섯째 주 -->
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="25" />
+            <TextView style="@style/PlanFlowWidgetPreviewCount" android:text="1건" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="26" />
@@ -190,14 +218,14 @@
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="29" />
         </LinearLayout>
+
+        <!-- 6주: 8월 30~31일, 9월 1~5일(회색) -->
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="30" />
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="31" />
         </LinearLayout>
-
-        <!-- 여섯째 주: 다음 달 첫 일들(회색) -->
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="1" android:textColor="#9AADC0" />
         </LinearLayout>
@@ -212,12 +240,6 @@
         </LinearLayout>
         <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
             <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="5" android:textColor="#9AADC0" />
-        </LinearLayout>
-        <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
-            <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="6" android:textColor="#9AADC0" />
-        </LinearLayout>
-        <LinearLayout style="@style/PlanFlowWidgetPreviewCell">
-            <TextView style="@style/PlanFlowWidgetPreviewDay" android:text="7" android:textColor="#9AADC0" />
         </LinearLayout>
 
     </GridLayout>
