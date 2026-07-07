@@ -148,8 +148,9 @@ Future<void> _briefingAlarmCallback(
     // android_alarm_manager_plus는 별도 FlutterEngine(별도 VM)을 생성하므로
     // SharedPreferences 기반 pending key로 포그라운드 신호를 전달한다.
     final prefs = await SharedPreferences.getInstance();
-    final isForeground =
-        prefs.getBool(BriefingSchedulerService.appForegroundKey) ?? false;
+    // 단순 bool 플래그는 백그라운드 전환/앱 종료 시 true로 고착돼 알림이 안
+    // 울리던 문제가 있었다. heartbeat 신선도로 실제 포그라운드 여부를 판정한다.
+    final isForeground = BriefingSchedulerService.isAppForegroundFresh(prefs);
     if (isForeground) {
       await prefs.setString(
         BriefingSchedulerService.pendingModalKey,

@@ -172,9 +172,55 @@ class BriefingSchedulerService {
     }
   }
 
+  // 포그라운드 heartbeat 타임스탬프 키. appForegroundKey(bool)만으로는 앱이
+  // 백그라운드로 가거나 종료될 때 false 쓰기가 flush되지 않거나 onPause가
+  // 안 불려 true로 고착돼, 알람 콜백이 포그라운드로 오판(알림 대신 모달만)하는
+  // 문제가 있었다. 포그라운드일 때만 주기적으로 이 타임스탬프를 갱신하고,
+  // 콜백은 "플래그 true + heartbeat 최근"일 때만 포그라운드로 본다.
+  static const String appForegroundAtKey = 'briefing:app_foreground_at';
+
+  /// heartbeat 신선도 창. 앱이 이 시간 내에 heartbeat를 갱신했을 때만
+  /// 포그라운드로 간주한다(백그라운드/종료 시 갱신이 멈춰 낡으면 백그라운드).
+  static const Duration foregroundHeartbeatFreshness = Duration(seconds: 10);
+
   static Future<void> recordAppForegroundState(bool isForeground) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool(appForegroundKey, isForeground);
+    if (isForeground) {
+      await preferences.setInt(
+        appForegroundAtKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } else {
+      await preferences.remove(appForegroundAtKey);
+    }
+  }
+
+  /// 포그라운드 유지 중 주기적으로(앱의 lifecycle 타이머에서) 호출해 heartbeat를
+  /// 갱신한다. 앱이 백그라운드/종료되면 타이머가 멈춰 갱신이 자연히 중단된다.
+  static Future<void> refreshForegroundHeartbeat() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(appForegroundKey, true);
+    await preferences.setInt(
+      appForegroundAtKey,
+      DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  /// 알람 콜백(별도 Dart VM)에서 앱이 실제로 포그라운드인지 heartbeat 신선도로
+  /// 판정한다. 플래그가 true여도 heartbeat가 낡았으면(갱신 중단=백그라운드/종료)
+  /// false를 반환해, 콜백이 알림을 정상 발화하도록 한다.
+  static bool isAppForegroundFresh(SharedPreferences preferences) {
+    if (!(preferences.getBool(appForegroundKey) ?? false)) {
+      return false;
+    }
+    final at = preferences.getInt(appForegroundAtKey);
+    if (at == null) {
+      return false;
+    }
+    final age = DateTime.now()
+        .difference(DateTime.fromMillisecondsSinceEpoch(at));
+    return !age.isNegative && age < foregroundHeartbeatFreshness;
   }
 
   Future<BriefingDailyScheduleResult> scheduleDaily({

@@ -16,6 +16,40 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
+  test(
+      'isAppForegroundFresh: heartbeat가 신선하면 true, 낡으면(백그라운드/종료) false',
+      () async {
+    // 백그라운드 알람 콜백이 이 판정으로 알림 발화 여부를 정한다. 플래그가
+    // true여도 heartbeat가 낡았으면(갱신 중단) 백그라운드로 봐 알림을 보내야 한다.
+    // (기존 버그: bool 플래그만 봐서 백그라운드 전환/종료 시 true 고착 → 알림 미발화)
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // 신선한 heartbeat(방금) → 포그라운드
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      BriefingSchedulerService.appForegroundKey: true,
+      BriefingSchedulerService.appForegroundAtKey: now,
+    });
+    final fresh = await SharedPreferences.getInstance();
+    expect(BriefingSchedulerService.isAppForegroundFresh(fresh), isTrue);
+
+    // 플래그는 true지만 heartbeat가 낡음(신선도 창 초과) → 백그라운드로 판정
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      BriefingSchedulerService.appForegroundKey: true,
+      BriefingSchedulerService.appForegroundAtKey: now -
+          (BriefingSchedulerService.foregroundHeartbeatFreshness.inMilliseconds +
+              5000),
+    });
+    final stale = await SharedPreferences.getInstance();
+    expect(BriefingSchedulerService.isAppForegroundFresh(stale), isFalse);
+
+    // 플래그 자체가 false → 백그라운드
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      BriefingSchedulerService.appForegroundKey: false,
+    });
+    final off = await SharedPreferences.getInstance();
+    expect(BriefingSchedulerService.isAppForegroundFresh(off), isFalse);
+  });
+
   test('rescheduleNextBriefing schedules the next morning alarm', () async {
     final alarm = _FakeAlarmService();
     final service = BriefingSchedulerService(

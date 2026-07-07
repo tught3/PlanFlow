@@ -90,7 +90,12 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     // 작동하지 않는다. SharedPreferences pending key를 2초마다 확인해 모달로 전환한다.
     _foregroundBriefingPollTimer = Timer.periodic(
       const Duration(seconds: 2),
-      (_) => unawaited(BriefingSchedulerService.checkPendingModalTrigger()),
+      (_) {
+        // 포그라운드 heartbeat 갱신: 앱이 백그라운드/종료되면 이 타이머가 멈춰
+        // heartbeat가 낡고, 알람 콜백이 이를 백그라운드로 판정해 알림을 발화한다.
+        unawaited(BriefingSchedulerService.refreshForegroundHeartbeat());
+        unawaited(BriefingSchedulerService.checkPendingModalTrigger());
+      },
     );
     unawaited(_syncSessionAndCalendar(reason: 'startup'));
     unawaited(_listenForSharedIcsFiles());
