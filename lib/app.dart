@@ -17,6 +17,7 @@ import 'core/safe_prefs.dart';
 import 'core/startup_route_gate.dart';
 import 'core/theme.dart';
 import 'data/repositories/settings_repository.dart';
+import 'features/groups/services/group_calendar_widget_service.dart';
 import 'providers/auth_provider.dart';
 import 'services/calendar_auto_sync_service.dart';
 import 'services/app_feedback_service.dart';
@@ -164,6 +165,16 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
     await _syncRegionSettings();
     unawaited(_activityTrackingService.recordActive());
     unawaited(_runChannelMigrations());
+    // 그룹 달력 홈위젯 데이터 사전 갱신: 사용자가 그룹 화면에 진입하지 않고
+    // 앱을 정상 실행/재개하기만 해도 gw_groups_json이 채워져 위젯 배치가
+    // 가능하도록 한다(개인 위젯이 홈 로드마다 갱신되는 것과 동등). 과거엔
+    // GroupEventProvider(그룹 화면 진입 시)에서만 갱신돼, 위젯 배치 시
+    // "앱을 먼저 실행해 그룹을 불러오세요"만 뜨고 배치가 안 됐다. refresh()는
+    // Android-only·10초 디바운스·내부 예외 catch라 무해하다.
+    final gwUserId = authProvider.userId;
+    if (gwUserId != null && gwUserId.isNotEmpty) {
+      unawaited(GroupCalendarWidgetService().refresh(userId: gwUserId));
+    }
     final pendingIcsPaths = await _naverIcsShareStore.takePendingPaths();
     if (pendingIcsPaths.isNotEmpty) {
       appRouter.go(AppRoutes.naverIcsImport, extra: pendingIcsPaths);

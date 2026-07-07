@@ -95,10 +95,19 @@ class GroupCalendarWidgetService {
     }
   }
 
+  /// 테스트 전용: [refresh]의 `Platform.isAndroid` 하드 게이트를 우회해
+  /// 핵심 데이터 기록 로직만 직접 실행한다. 프로덕션 경로는 [refresh]를 쓴다.
+  @visibleForTesting
+  Future<void> doRefreshForTesting(String userId) => _doRefresh(userId);
+
   Future<void> _doRefresh(String userId) async {
     // 1) 사용자의 그룹 목록 로드
     final groups = await _groupRepository.listGroups();
     if (groups.isEmpty) {
+      // 그룹이 없어도 gw_groups_json을 "[]"로 명시 저장해 위젯 상태를
+      // 결정적으로 만든다(전이적 빈 응답으로 잔상/미정의 상태 방지).
+      await _platform.saveWidgetData('gw_groups_json', '[]');
+      await _platform.updateWidget(androidName: _widgetName);
       return;
     }
 
