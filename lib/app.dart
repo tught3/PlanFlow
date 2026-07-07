@@ -733,12 +733,32 @@ class _PlanFlowAppState extends State<PlanFlowApp> {
                 final showUpdateOverlay =
                     updateState == UpdateUiState.updating ||
                         updateState == UpdateUiState.openingPlayStore;
-                return Stack(
+                final stack = Stack(
                   children: <Widget>[
                     child ?? const SizedBox.shrink(),
                     if (showUpdateOverlay)
                       _UpdateProgressOverlay(state: updateState),
                   ],
+                );
+                // 전역 뒤로가기 안전망: 위젯/딥링크로 진입해 라우터 스택이
+                // 1개뿐인 상태(canPop()==false)에서 뒤로가기를 누르면
+                // 원래는 앱이 그대로 종료된다. 홈 화면이 아닌 한 종료 대신
+                // 홈으로 이동시킨다("홈탭 제외 어디서든 뒤로가기→이전 화면"
+                // 규칙의 마지막 안전장치). 정상적인 다단계 네비게이션은
+                // canPop()==true이므로 이 로직에 전혀 영향받지 않는다.
+                final canPopNow = appRouter.canPop();
+                final currentPath =
+                    appRouter.routeInformationProvider.value.uri.path;
+                final atHome = currentPath == AppRoutes.home;
+                return PopScope(
+                  canPop: canPopNow || atHome,
+                  onPopInvokedWithResult: (didPop, result) {
+                    if (didPop) {
+                      return;
+                    }
+                    appRouter.go(AppRoutes.home);
+                  },
+                  child: stack,
                 );
               },
             );
