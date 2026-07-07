@@ -41,7 +41,11 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   final _messageKey = GlobalKey();
 
-  late AuthService? _authService;
+  // nullable 필드는 null이라는 자연스러운 미초기화값이 있으므로 late를 쓰지
+  // 않는다. late + nullable 조합은 초기화 전에 읽으면 LateInitializationError로
+  // 크래시하는데(실증: +75 소셜로그인 크래시), null 기본값이면 모든 읽기 지점의
+  // null 체크가 그대로 안전하게 동작한다.
+  AuthService? _authService;
 
   _AuthMode _mode = _AuthMode.login;
   bool _isLoading = false;
@@ -402,7 +406,16 @@ class _LoginScreenState extends State<LoginScreen> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 12),
-            if (authProvider.hasResolvedInitialSession && !AppEnv.isSupabaseReady)
+            // Supabase 초기화가 실패했으면 일반 안내 대신 실제 실패 원인을
+            // 표시한다(초기화 실패는 세션 해석 완료 여부와 무관하게 즉시 알림).
+            if (AppEnv.isSupabaseInitializationFailed)
+              _MessageBox(
+                message: AppEnv.supabaseInitializationErrorMessage ??
+                    l10n.supabaseLoginMissing,
+                isError: true,
+              )
+            else if (authProvider.hasResolvedInitialSession &&
+                !AppEnv.isSupabaseReady)
               _MessageBox(
                 message: l10n.supabaseLoginMissing,
                 isError: true,
