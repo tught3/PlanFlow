@@ -463,6 +463,13 @@ abstract class BasePlanFlowWidgetProvider(
         }
     }
 
+    /**
+     * [overflowCount]는 숨겨진 전체 개수(미리보기로 쓰는 [previewTitle] 포함)다.
+     * "제목 외 N건"에서 N은 그 제목을 뺀 "나머지" 개수여야 하므로
+     * overflowCount-1을 쓴다. 그대로 overflowCount를 쓰면 미리보기 제목이
+     * 이중으로 세져 실제보다 1개 많은 것처럼 표시된다(예: 숨김 2건인데
+     * "출발 외 2건"으로 떠서 총 3건처럼 보임 — 사용자 지적으로 발견).
+     */
     protected fun formatOverflowLabel(
         previewTitle: String?,
         overflowCount: Int,
@@ -475,7 +482,7 @@ abstract class BasePlanFlowWidgetProvider(
         return when {
             title == null -> "+${overflowCount}건"
             overflowCount == 1 -> title
-            else -> "$title 외 ${overflowCount}건"
+            else -> "$title 외 ${overflowCount - 1}건"
         }
     }
 

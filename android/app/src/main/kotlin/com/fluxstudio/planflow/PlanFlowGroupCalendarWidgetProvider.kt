@@ -45,6 +45,10 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
         private const val ACTION_GROUP_MONTH_NEXT = "com.fluxstudio.planflow.widget.GROUP_MONTH_NEXT"
         private const val ACTION_GROUP_MONTH_TODAY = "com.fluxstudio.planflow.widget.GROUP_MONTH_TODAY"
         private const val GROUP_MONTH_WIDGET_OFFSET_KEY = "gw_month_offset"
+        // 한 날짜 칸에 실제로 보여줄 최대 멤버 줄 수. 넘으면 마지막 줄을
+        // "+N명"으로 대체한다(전체 멤버 목록을 그대로 다 이어붙이면 인원이
+        // 많을 때 셀이 끝없이 길어져 균일한 GridLayout 행 높이를 넘친다).
+        private const val MAX_VISIBLE_MEMBERS_PER_CELL = 4
         private val OCCURRENCE_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd")
         private val PLANFLOW_ZONE = ZoneId.of("Asia/Seoul")
 
@@ -224,15 +228,30 @@ class PlanFlowGroupCalendarWidgetProvider : AppWidgetProvider() {
                 )
             }
 
-            // 멤버별 "이름 개수건" 요약
-            val namesForDay = occurrencesByDay[day]
-            val summaryText = namesForDay
+            // 멤버별 "이름 개수건" 요약. 멤버가 많아질수록 줄이 끝없이 늘어나면
+            // 셀이 넘치므로(균일한 GridLayout 행 높이를 넘어감), 최대
+            // MAX_VISIBLE_MEMBERS_PER_CELL명까지만 실제로 보여주고, 그보다
+            // 많으면 마지막 줄을 "+N명"으로 대체한다(개인/주간 위젯과 동일한
+            // "마지막 칸 대체" 패턴 — 별도 줄을 추가하는 대신 자리 하나를
+            // 대신 차지하게 해 항상 정해진 줄 수 안에 들어오게 한다).
+            val sortedMembers = occurrencesByDay[day]
                 ?.entries
                 ?.sortedByDescending { it.value }
-                ?.joinToString("\n") { (name, count) ->
+                ?: emptyList()
+            val summaryLines = if (sortedMembers.size > MAX_VISIBLE_MEMBERS_PER_CELL) {
+                val visible = sortedMembers.take(MAX_VISIBLE_MEMBERS_PER_CELL - 1)
+                val hiddenMemberCount = sortedMembers.size - visible.size
+                visible.map { (name, count) ->
+                    buildFittedSummaryLine(name, count, summaryTextPaint, cellTextWidthPx)
+                } + "+${hiddenMemberCount}명"
+            } else {
+                sortedMembers.map { (name, count) ->
                     buildFittedSummaryLine(name, count, summaryTextPaint, cellTextWidthPx)
                 }
-                ?.takeIf { it.isNotBlank() }
+            }
+            val summaryText = summaryLines
+                .joinToString("\n")
+                .takeIf { it.isNotBlank() }
 
             if (summaryText != null) {
                 views.setTextViewText(countViewId, summaryText)

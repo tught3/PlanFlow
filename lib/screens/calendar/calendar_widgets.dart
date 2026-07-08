@@ -694,13 +694,15 @@ class _CalendarMiniEventList extends StatelessWidget {
     // 개인 일정 + 그룹 일정을 합쳐 셀 높이(고정 행 수)를 넘지 않게 예산을
     // 나눈다. 개인 일정을 먼저 채우고, 남는 행에 그룹 일정을 채운 뒤,
     // 양쪽에서 못 들어간 만큼을 하나의 +N개 라벨로 합쳐 보여준다.
+    //
+    // 과거엔 넘치는 일정이 하나라도 있으면 무조건 행 하나를 미리 비워
+    // (_calendarMiniMonthEventRows-1)까지만 채웠는데, 그 결과 4번째 행에
+    // 채울 일정이 있었던 날짜도 마지막 줄이 빈 채로 남아 보였다(홈 위젯의
+    // 동일 버그와 같은 원인, 사용자 지적으로 함께 발견). 예산 전체
+    // (_calendarMiniMonthEventRows)를 그대로 쓰고, 그 예산을 넘는 만큼만
+    // hiddenCount로 표시한다.
     final totalItems = events.length + overlayEvents.length;
-    final requiresOverflowLabel =
-        overflowCount > 0 || totalItems > _calendarMiniMonthEventRows;
-    final maxVisibleRows = requiresOverflowLabel
-        ? (_calendarMiniMonthEventRows - 1)
-            .clamp(1, _calendarMiniMonthEventRows)
-        : _calendarMiniMonthEventRows;
+    const maxVisibleRows = _calendarMiniMonthEventRows;
     final displayEvents = events.length > maxVisibleRows
         ? events.take(maxVisibleRows).toList(growable: false)
         : events;
@@ -708,11 +710,9 @@ class _CalendarMiniEventList extends StatelessWidget {
     final displayOverlayEvents = remainingRows > 0
         ? overlayEvents.take(remainingRows).toList(growable: false)
         : const <CalendarOverlayItem>[];
-    final hiddenCount = requiresOverflowLabel
-        ? (totalItems + overflowCount) -
-            displayEvents.length -
-            displayOverlayEvents.length
-        : 0;
+    final hiddenCount = (totalItems + overflowCount) -
+        displayEvents.length -
+        displayOverlayEvents.length;
     return Column(
       mainAxisSize: MainAxisSize.max,
       crossAxisAlignment: CrossAxisAlignment.stretch,
