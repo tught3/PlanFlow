@@ -25,9 +25,14 @@ import '../../../services/home_widget_platform.dart';
 ///                               모든 이벤트 발생(반복 전개 포함)을, 그 발생이 걸치는
 ///                               모든 날짜 × 작성자(createdBy)의 표시이름으로 펼친 목록.
 ///                               `d`는 KST 로컬 날짜(yyyy-MM-dd), `n`은
-///                               [buildDisambiguatedDisplayNames]로 계산된 표시 이름
-///                               (예: "김A"). 네이티브가 이 배열을 받아 원하는 달로
-///                               날짜별 재집계한다. 정렬 순서는 보장하지 않는다.
+///                               [buildDisambiguatedDisplayNames]로 계산된 표시 이름.
+///                               기본은 전체 이름(예: "김철수")이며, 동명이인처럼
+///                               전체 이름이 완전히 같은 멤버끼리만 가입 순서로
+///                               "김철수A"/"김철수B" 접미사를 붙인다. 네이티브가
+///                               셀 폭에 맞춰 이름 부분만 말줄임(...) 처리하고
+///                               "N개" 접미사는 잘리지 않게 보존한다. 네이티브가 이
+///                               배열을 받아 원하는 달로 날짜별 재집계한다. 정렬 순서는
+///                               보장하지 않는다.
 ///                               그룹 이벤트에는 "중요(critical)" 개념이 없으므로 이
 ///                               JSON에 critical 필드를 넣지 않는다.
 class GroupCalendarWidgetService {
