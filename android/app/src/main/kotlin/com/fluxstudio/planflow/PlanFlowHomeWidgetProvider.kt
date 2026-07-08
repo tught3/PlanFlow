@@ -473,7 +473,7 @@ abstract class BasePlanFlowWidgetProvider(
 
         val title = previewTitle?.trim()?.takeIf { it.isNotBlank() }
         return when {
-            title == null -> "+$overflowCount"
+            title == null -> "+${overflowCount}건"
             overflowCount == 1 -> title
             else -> "$title 외 ${overflowCount}건"
         }
@@ -1010,34 +1010,41 @@ class PlanFlowWeeklyWidgetProvider :
             views.setTextViewText(dateIds[index], formatLocalMonthDay(targetDate))
             bindCalendarLink(context, views, weekColumnIds[index], targetDate)
 
+            // 7칸을 가로로 나열하는 좁은 위젯이라 칸당 4줄까지 보여주면 글자가
+            // 잘려 안 보이는 문제가 있었다. 실제 보여줄 이벤트를 2개(event_1/2)로
+            // 줄이고, event_3/4는 항상 숨겨 남는 폭/높이를 확보한다. 2개를
+            // 넘는 일정은 event_2 자리를 overflow("+N건")가 대신한다(세로형
+            // 위젯과 동일한 "마지막 칸 대체" 방식).
             val dayEvents = if (rawEvents.isNotEmpty()) {
-                rawWidgetEventsForDay(rawEvents, targetDate).take(4)
+                rawWidgetEventsForDay(rawEvents, targetDate).take(2)
             } else {
                 emptyList()
             }
+            views.setViewVisibility(event3Ids[index], View.GONE)
+            views.setViewVisibility(event4Ids[index], View.GONE)
 
             if (rawEvents.isNotEmpty()) {
                 val fullDayEvents = rawWidgetEventsForDay(rawEvents, targetDate)
-                val overflow = (fullDayEvents.size - dayEvents.size).coerceAtLeast(0)
-                val overflowLabel = formatOverflowLabel(
-                    fullDayEvents.drop(4).firstOrNull()?.title,
-                    overflow,
-                )
+                val hasOverflow = fullDayEvents.size > 2
+                val visibleEvents = if (hasOverflow) dayEvents.take(1) else dayEvents
+                val overflow = (fullDayEvents.size - visibleEvents.size).coerceAtLeast(0)
+                // 좁은 칸이라 넘친 일정 제목을 미리보기로 넣지 않고 "+N건"만 표시한다.
+                val overflowLabel = formatOverflowLabel(null, overflow)
                 bindEventText(
                     views,
                     event1Ids[index],
-                    dayEvents.getOrNull(0)?.title,
+                    visibleEvents.getOrNull(0)?.title,
                     null,
-                    dayEvents.getOrNull(0)?.isCritical == true,
-                    emptyText = if (dayEvents.isEmpty()) "일정 없음" else null,
+                    visibleEvents.getOrNull(0)?.isCritical == true,
+                    emptyText = if (visibleEvents.isEmpty()) "일정 없음" else null,
                 )
-                bindEventText(views, event2Ids[index], dayEvents.getOrNull(1)?.title, null, dayEvents.getOrNull(1)?.isCritical == true)
-                bindEventText(views, event3Ids[index], dayEvents.getOrNull(2)?.title, null, dayEvents.getOrNull(2)?.isCritical == true)
-                bindEventText(views, event4Ids[index], dayEvents.getOrNull(3)?.title, null, dayEvents.getOrNull(3)?.isCritical == true)
-                dayEvents.getOrNull(0)?.let { bindEventLinkIfAvailable(context, views, event1Ids[index], it.id) }
-                dayEvents.getOrNull(1)?.let { bindEventLinkIfAvailable(context, views, event2Ids[index], it.id) }
-                dayEvents.getOrNull(2)?.let { bindEventLinkIfAvailable(context, views, event3Ids[index], it.id) }
-                dayEvents.getOrNull(3)?.let { bindEventLinkIfAvailable(context, views, event4Ids[index], it.id) }
+                visibleEvents.getOrNull(0)?.let { bindEventLinkIfAvailable(context, views, event1Ids[index], it.id) }
+                if (hasOverflow) {
+                    views.setViewVisibility(event2Ids[index], View.GONE)
+                } else {
+                    bindEventText(views, event2Ids[index], visibleEvents.getOrNull(1)?.title, null, visibleEvents.getOrNull(1)?.isCritical == true)
+                    visibleEvents.getOrNull(1)?.let { bindEventLinkIfAvailable(context, views, event2Ids[index], it.id) }
+                }
 
                 if (overflowLabel != null) {
                     views.setTextViewText(overflowIds[index], overflowLabel)
@@ -1051,15 +1058,12 @@ class PlanFlowWeeklyWidgetProvider :
                     1 -> "week_offset_1_day"
                     else -> "week_day"
                 }
-                val rawDate = widgetData.getString("${weekPrefix}_${slot}_date", null)
                 val e1Title = widgetData.getString("${weekPrefix}_${slot}_event_1_title", null)?.takeIf { it.isNotBlank() }
                 val e2Title = widgetData.getString("${weekPrefix}_${slot}_event_2_title", null)?.takeIf { it.isNotBlank() }
                 val e3Title = widgetData.getString("${weekPrefix}_${slot}_event_3_title", null)?.takeIf { it.isNotBlank() }
                 val e4Title = widgetData.getString("${weekPrefix}_${slot}_event_4_title", null)?.takeIf { it.isNotBlank() }
                 val e1Critical = widgetData.getBoolean("${weekPrefix}_${slot}_event_1_is_critical", false)
                 val e2Critical = widgetData.getBoolean("${weekPrefix}_${slot}_event_2_is_critical", false)
-                val e3Critical = widgetData.getBoolean("${weekPrefix}_${slot}_event_3_is_critical", false)
-                val e4Critical = widgetData.getBoolean("${weekPrefix}_${slot}_event_4_is_critical", false)
 
                 var overflow = 0
                 if (widgetData.contains("${weekPrefix}_${slot}_overflow_count")) {
@@ -1068,21 +1072,24 @@ class PlanFlowWeeklyWidgetProvider :
                     val totalCount = widgetData.getInt("${weekPrefix}_${slot}_count", 0)
                     overflow = (totalCount - listOf(e1Title, e2Title, e3Title, e4Title).count { !it.isNullOrBlank() }).coerceAtLeast(0)
                 }
-                val overflowLabel = formatOverflowLabel(
-                    widgetData.getString("${weekPrefix}_${slot}_overflow_preview_title", null)
-                        ?: e4Title,
-                    overflow,
-                )
+                // \ub808\uac70\uc2dc \uc2ac\ub86f \uacbd\ub85c\ub3c4 2\uc904\ub9cc \ub178\ucd9c: e3/e4\ub294 overflow \uacc4\uc0b0\uc5d0\ub9cc \ubc18\uc601\ud558\uace0 \ud45c\uc2dc\ud558\uc9c0 \uc54a\ub294\ub2e4.
+                val extraFromE3E4 = listOf(e3Title, e4Title).count { !it.isNullOrBlank() }
+                val legacyOverflow = if (overflow > 0 || extraFromE3E4 > 0) {
+                    (overflow + extraFromE3E4).coerceAtLeast(1)
+                } else {
+                    0
+                }
+                val overflowLabel = formatOverflowLabel(null, legacyOverflow)
 
                 bindEventText(views, event1Ids[index], e1Title, null, e1Critical,
-                    emptyText = if (e1Title == null && e2Title == null && overflow == 0) "\uc77c\uc815 \uc5c6\uc74c" else null)
-                bindEventText(views, event2Ids[index], e2Title, null, e2Critical)
-                bindEventText(views, event3Ids[index], e3Title, null, e3Critical)
-                bindEventText(views, event4Ids[index], e4Title, null, e4Critical)
+                    emptyText = if (e1Title == null && e2Title == null && legacyOverflow == 0) "\uc77c\uc815 \uc5c6\uc74c" else null)
                 bindEventLinkIfAvailable(context, views, event1Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_1_id", null))
-                bindEventLinkIfAvailable(context, views, event2Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_2_id", null))
-                bindEventLinkIfAvailable(context, views, event3Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_3_id", null))
-                bindEventLinkIfAvailable(context, views, event4Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_4_id", null))
+                if (legacyOverflow > 0) {
+                    views.setViewVisibility(event2Ids[index], View.GONE)
+                } else {
+                    bindEventText(views, event2Ids[index], e2Title, null, e2Critical)
+                    bindEventLinkIfAvailable(context, views, event2Ids[index], widgetData.getString("${weekPrefix}_${slot}_event_2_id", null))
+                }
 
                 if (overflowLabel != null) {
                     views.setTextViewText(overflowIds[index], overflowLabel)
@@ -1161,14 +1168,21 @@ class PlanFlowWeeklyListWidgetProvider :
             views.setTextViewText(labelId, formatMonthDayWithWeekday(targetDate))
             bindCalendarLink(context, views, rowId, targetDate)
 
-            val dayEvents = if (rawEvents.isNotEmpty()) {
-                rawWidgetEventsForDay(rawEvents, targetDate).take(4)
+            // \uce78(\uc774\ubca4\ud2b8 \uc2ac\ub86f 4\uac1c + overflow 1\uc904)\uc774 \ubd80\uc871\ud574 \ub2e4 \ubabb \ubcf4\uc5ec\uc904 \ub54c, overflow\ub97c
+            // 4\ubc88\uc9f8 \uc904\uc5d0 \ubcc4\ub3c4\ub85c \ub367\ubd99\uc774\uba74 \ud55c \uc694\uc77c\uc5d0 \ucd5c\ub300 5\uc904\uc774 \ud544\uc694\ud574\uc838 \uce78\uc744 \ub118\uce5c\ub2e4.
+            // \uc2e4\uc81c\ub85c \ubcf4\uc5ec\uc904 \uc774\ubca4\ud2b8\ub97c 3\uac1c\ub85c \uc904\uc774\uace0 4\ubc88\uc9f8 \uc790\ub9ac\ub97c overflow("+N\uac74")\uac00
+            // \ub300\uc2e0 \ucc28\uc9c0\ud558\uac8c \ud574\uc11c, \ub118\uce58\ub294 \uacbd\uc6b0\uc5d0\ub3c4 \ud56d\uc0c1 4\uc904 \uc548\uc5d0 \ub4e4\uc5b4\uc624\uac8c \ud55c\ub2e4.
+            val fullDayEvents = if (rawEvents.isNotEmpty()) {
+                rawWidgetEventsForDay(rawEvents, targetDate)
             } else {
                 emptyList()
             }
+            val hasOverflowFromRaw = rawEvents.isNotEmpty() && fullDayEvents.size > 4
+            val visibleEventCount = if (hasOverflowFromRaw) 3 else 4
+            val dayEvents = fullDayEvents.take(visibleEventCount)
 
             val overflow = if (rawEvents.isNotEmpty()) {
-                (rawWidgetEventsForDay(rawEvents, targetDate).size - dayEvents.size).coerceAtLeast(0)
+                (fullDayEvents.size - dayEvents.size).coerceAtLeast(0)
             } else if (widgetData.contains("${weekPrefix}_${slot}_overflow_count")) {
                 widgetData.getInt("${weekPrefix}_${slot}_overflow_count", 0)
             } else {
@@ -1179,13 +1193,9 @@ class PlanFlowWeeklyListWidgetProvider :
                 val totalCount = widgetData.getInt("${weekPrefix}_${slot}_count", 0)
                 (totalCount - listOf(e1, e2, e3, e4).count { !it.isNullOrBlank() }).coerceAtLeast(0)
             }
-            val overflowPreviewTitle = if (rawEvents.isNotEmpty()) {
-                rawWidgetEventsForDay(rawEvents, targetDate).drop(4).firstOrNull()?.title
-            } else {
-                widgetData.getString("${weekPrefix}_${slot}_overflow_preview_title", null)
-                    ?: widgetData.getString("${weekPrefix}_${slot}_event_4_title", null)
-            }
-            val overflowLabel = formatOverflowLabel(overflowPreviewTitle, overflow)
+            // \uc138\ub85c\ud615 \uc704\uc82f\uc740 \ub118\uce5c \uc77c\uc815\uc758 \uc81c\ubaa9 \ubbf8\ub9ac\ubcf4\uae30 \uc5c6\uc774 \ud56d\uc0c1 "+N\uac74"\ub9cc \ud45c\uc2dc\ud55c\ub2e4
+            // (\ub9c8\uc9c0\ub9c9 \uce78\uc744 \ub300\uccb4\ud558\ub294 \uc790\ub9ac\ub77c \uc81c\ubaa9\uae4c\uc9c0 \ub123\uc73c\uba74 \uc881\uc544\uc11c \uc798\ub9ac\uae30 \uc27d\ub2e4).
+            val overflowLabel = formatOverflowLabel(null, overflow)
 
             if (rawEvents.isNotEmpty()) {
                 val eventIds = intArrayOf(
@@ -1226,9 +1236,16 @@ class PlanFlowWeeklyListWidgetProvider :
                     }
                 }
             } else {
+                // \ub808\uac70\uc2dc SharedPreferences \uc2ac\ub86f \uacbd\ub85c\ub3c4 \ub3d9\uc77c\ud558\uac8c: overflow\uac00 \uc788\uc73c\uba74
+                // 4\ubc88\uc9f8 \uc774\ubca4\ud2b8 \uc2ac\ub86f\uc740 \ud56d\uc0c1 \uc228\uae30\uace0 overflow \ub77c\ubca8\uc774 \uadf8 \uc790\ub9ac\ub97c \ub300\uc2e0\ud55c\ub2e4.
+                val legacyOverflow = overflow
                 for (eventSlot in 1..4) {
                     val eventId = findViewId(context, "widget_week_list_day_${slot}_event_${eventSlot}")
                     if (eventId == 0) continue
+                    if (eventSlot == 4 && legacyOverflow > 0) {
+                        views.setViewVisibility(eventId, View.GONE)
+                        continue
+                    }
                     val title = widgetData.getString("${weekPrefix}_${slot}_event_${eventSlot}_title", null)?.takeIf { it.isNotBlank() }
                     val isCritical = widgetData.getBoolean("${weekPrefix}_${slot}_event_${eventSlot}_is_critical", false)
                     bindEventText(views, eventId, title, null, isCritical,

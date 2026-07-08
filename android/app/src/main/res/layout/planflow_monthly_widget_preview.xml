@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 개인 월간 캘린더 위젯 프리뷰용 레이아웃 (샘플 데이터 표시).
+     위젯 배치 화면(런처 위젯 피커)은 이 파일을 그대로 렌더링하며 RemoteViews
+     데이터 바인딩을 거치지 않는다. 런타임 레이아웃(planflow_monthly_widget.xml)은
+     실 기기에서만 값이 채워지는 tools:text뿐이라 피커에서는 빈 칸으로 보였다
+     (그룹 달력 위젯이 이미 전용 프리뷰 레이아웃으로 이 문제를 해결한 것과 동일한
+     방식). id는 런타임과 겹치지 않도록 부여하지 않는다. 각 셀 컨테이너는 런타임
+     셀(GridLayout 6x7)과 동일한 layout_columnWeight/rowWeight 속성을 명시해야
+     GridLayout 배치가 그대로 재현된다(style만으로는 weight가 적용되지 않음). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <!-- 헤더: 런타임 레이아웃과 동일 구조 (프리뷰용, id 없음) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            style="@style/PlanFlowWidgetMonthNavChip"
+            android:layout_width="64dp"
+            android:layout_height="24dp"
+            android:text="오늘" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            style="@style/PlanFlowWidgetMonthNavButton"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
+            android:text="‹" />
+
+        <TextView
+            style="@style/PlanFlowWidgetTitleText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="72dp"
+            android:gravity="center"
+            android:textSize="14sp"
+            android:text="2026.08" />
+
+        <TextView
+            style="@style/PlanFlowWidgetMonthNavButton"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
+            android:text="›" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            style="@style/PlanFlowWidgetVoiceChip"
+            android:layout_width="64dp"
+            android:layout_height="22dp"
+            android:text="입력" />
+    </LinearLayout>
+
+    <!-- 요일 헤더 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="horizontal"
+        android:weightSum="7"
+        tools:ignore="HardcodedText">
+        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="일" />
+        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="월" />
+        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="화" />
+        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="수" />
+        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="목" />
+        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="금" />
+        <TextView style="@style/PlanFlowWidgetMonthHeader" android:text="토" />
+    </LinearLayout>
+
+    <!-- 샘플 달력 그리드: 완전한 6x7=42개 셀. 런타임과 동일한 셀 스타일을 재사용해
+         실제 위젯과 최대한 같은 인상을 준다. -->
+    <GridLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="2dp"
+        android:columnCount="7"
+        android:rowCount="6">
+
+        <!-- 1주: 7월 26~31일(회색), 8월 1일(토) -->
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="26" android:textColor="#9AADC0" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="27" android:textColor="#9AADC0" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="28" android:textColor="#9AADC0" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="29" android:textColor="#9AADC0" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="30" android:textColor="#9AADC0" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="31" android:textColor="#9AADC0" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="1" />
+        </LinearLayout>
+
+        <!-- 2주: 8월 2~8일 -->
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="2" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="3" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="4" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="5" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="6" />
+            <TextView style="@style/PlanFlowWidgetMonthCellEvent" android:text="팀 회의" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="7" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="8" />
+        </LinearLayout>
+
+        <!-- 3주: 8월 9~15일 -->
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="9" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="10" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="11" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="12" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="13" />
+            <!-- 중요 일정 샘플: 실제 위젯과 동일한 CRITICAL_TEXT_COLOR(#D94444) -->
+            <TextView style="@style/PlanFlowWidgetMonthCellEvent" android:text="치과 예약" android:textColor="#D94444" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="14" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="15" />
+        </LinearLayout>
+
+        <!-- 4주: 8월 16~22일 -->
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="16" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="17" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="18" />
+            <TextView style="@style/PlanFlowWidgetMonthCellEvent" android:text="저녁 약속" />
+            <TextView style="@style/PlanFlowWidgetMonthCellOverflow" android:text="+1" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="19" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="20" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="21" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="22" />
+        </LinearLayout>
+
+        <!-- 5주: 8월 23~29일 -->
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="23" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="24" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="25" />
+            <TextView style="@style/PlanFlowWidgetMonthCellEvent" android:text="생일" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="26" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="27" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="28" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="29" />
+        </LinearLayout>
+
+        <!-- 6주: 8월 30~31일, 9월 1~5일(회색) -->
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="30" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="31" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="1" android:textColor="#9AADC0" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="2" android:textColor="#9AADC0" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="3" android:textColor="#9AADC0" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="4" android:textColor="#9AADC0" />
+        </LinearLayout>
+        <LinearLayout style="@style/PlanFlowWidgetMonthCell" android:layout_width="0dp" android:layout_height="0dp" android:layout_columnWeight="1" android:layout_rowWeight="1" android:layout_gravity="fill" android:orientation="vertical" android:paddingTop="1dp" android:gravity="top">
+            <TextView style="@style/PlanFlowWidgetMonthCellDay" android:text="5" android:textColor="#9AADC0" />
+        </LinearLayout>
+
+    </GridLayout>
+
+</LinearLayout>
