@@ -1322,7 +1322,6 @@ class PlanFlowMonthlyWidgetProvider :
             if (rawEvents.isNotEmpty()) {
                 val cellDays = fallbackCells.map { it.third }
                 val slotMap = List(42) { arrayOfNulls<RawWidgetEvent>(4) }
-                val overflowCounts = IntArray(42)
                 val sortedEvents = rawEvents
                     .filter { it.startAt != null }
                     .sortedWith(
@@ -1344,19 +1343,12 @@ class PlanFlowMonthlyWidgetProvider :
                     }
                     if (cellIndices.isEmpty()) continue
 
-                    var reserved = false
                     for (slot in 0 until 4) {
                         if (cellIndices.all { slotMap[it][slot] == null }) {
                             for (i in cellIndices) {
                                 slotMap[i][slot] = event
                             }
-                            reserved = true
                             break
-                        }
-                    }
-                    if (!reserved) {
-                        for (i in cellIndices) {
-                            overflowCounts[i] += 1
                         }
                     }
                 }
@@ -1370,32 +1362,23 @@ class PlanFlowMonthlyWidgetProvider :
                         !lastDay.isAfter(firstDay) && firstDay == day
                     }
                     for (event in singleEvents) {
-                        var placed = false
                         for (slot in 0 until 4) {
                             if (slotMap[index][slot] == null) {
                                 slotMap[index][slot] = event
-                                placed = true
                                 break
                             }
-                        }
-                        if (!placed) {
-                            overflowCounts[index] += 1
                         }
                     }
                 }
 
-                // 2.5단계: overflow가 필요한 셀의 마지막 슬롯을 비워 overflow에 합산
-                // 인앱 미니 캘린더와 동일한 requiresOverflowLabel 기준: 하루 교차 일정
-                // 총수가 4를 초과하면 마지막 슬롯을 비워 항상 "+N개"를 표시한다.
-                // (라이브 경로의 overflow 수치는 hiddenEvents.size로 동적 계산되므로
-                //  slotMap만 비우면 overflow 카운트가 자동으로 올바르게 반영됨)
-                for (index in 0 until 42) {
-                    val totalDayEvents = rawWidgetEventsForDay(rawEvents, cellDays[index]).size
-                    val requiresOverflowLabel = overflowCounts[index] > 0 || totalDayEvents > 4
-                    if (requiresOverflowLabel && slotMap[index][3] != null) {
-                        slotMap[index][3] = null
-                    }
-                }
+                // 과거엔 overflow가 필요한 셀의 4번째 슬롯을 무조건 비워 3개 실제
+                // 일정 + overflow 줄로 강제했는데(인앱 미니 캘린더의 4행 예산과
+                // 맞추려던 것), 그 결과 4번째 슬롯이 채워질 수 있었던 칸도 마지막
+                // 한 줄이 빈 채로 남아 보였다(사용자 지적). overflow 표시는
+                // hiddenEvents.size(아래 렌더 단계에서 slotMap 실제 내용 대비
+                // 전체 일정 수로 동적 계산)로 이미 정확히 반영되므로, 여기서
+                // 4번째 슬롯을 미리 비울 필요가 없다 — 4개가 다 들어가면 그대로
+                // 4개를 보여주고, 5개 이상일 때만 초과분이 overflow로 뜬다.
 
                 for (slot in 1..42) {
                     val dayId = findViewId(context, "month_cell_${slot}_day")
